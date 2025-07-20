@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/useUserRole";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { 
   Users, 
   TrendingUp, 
@@ -15,7 +17,8 @@ import {
   FileText,
   BarChart3,
   Calendar,
-  Bell
+  Bell,
+  Shield
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -23,6 +26,7 @@ const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { role: userRole, loading: roleLoading } = useUserRole(user);
 
   useEffect(() => {
     // Get current user
@@ -145,6 +149,43 @@ const Dashboard = () => {
     }
   ];
 
+  const adminActions = [
+    {
+      title: "Quản lý người dùng",
+      description: "Quản lý tài khoản và phân quyền",
+      icon: Shield,
+      color: "bg-purple-500",
+      action: () => navigate("/user-management"),
+      roles: ['admin', 'manager']
+    }
+  ];
+
+  const getRoleDisplayName = (role: string | null) => {
+    switch (role) {
+      case 'admin': return 'Quản trị viên';
+      case 'manager': return 'Quản lý';
+      case 'employee': return 'Nhân viên';
+      default: return 'Chưa phân quyền';
+    }
+  };
+
+  const getRoleBadgeVariant = (role: string | null) => {
+    switch (role) {
+      case 'admin': return 'destructive' as const;
+      case 'manager': return 'default' as const;
+      case 'employee': return 'secondary' as const;
+      default: return 'outline' as const;
+    }
+  };
+
+  if (loading || roleLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Đang tải...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-card">
       {/* Header */}
@@ -169,6 +210,9 @@ const Dashboard = () => {
                     {user?.user_metadata?.first_name || "Admin"} {user?.user_metadata?.last_name || "User"}
                   </p>
                   <p className="text-xs text-muted-foreground">{user?.email}</p>
+                  <Badge variant={getRoleBadgeVariant(userRole)} className="mt-1">
+                    {getRoleDisplayName(userRole)}
+                  </Badge>
                 </div>
                 <Button variant="outline" size="sm" onClick={handleSignOut}>
                   <LogOut className="h-4 w-4 mr-2" />
@@ -239,6 +283,32 @@ const Dashboard = () => {
             ))}
           </div>
         </div>
+
+        {/* Admin Actions */}
+        {(userRole === 'admin' || userRole === 'manager') && (
+          <div className="mb-8">
+            <h3 className="text-xl font-semibold text-foreground mb-4">Quản lý hệ thống</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {adminActions
+                .filter(action => action.roles.includes(userRole))
+                .map((action, index) => (
+                  <Card 
+                    key={index} 
+                    className="cursor-pointer hover:shadow-crisp transition-all duration-300 hover:scale-105"
+                    onClick={action.action}
+                  >
+                    <CardContent className="p-6 text-center">
+                      <div className={`w-12 h-12 ${action.color} rounded-lg flex items-center justify-center mx-auto mb-4`}>
+                        <action.icon className="h-6 w-6 text-white" />
+                      </div>
+                      <h4 className="font-semibold text-foreground mb-2">{action.title}</h4>
+                      <p className="text-sm text-muted-foreground">{action.description}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+            </div>
+          </div>
+        )}
 
         {/* Recent Activity & Upcoming */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
