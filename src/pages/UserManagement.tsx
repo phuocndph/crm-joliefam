@@ -9,7 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { User, UserPlus, Users, Shield } from 'lucide-react';
+import { User, UserPlus, Users, Shield, Edit, Trash2, Eye } from 'lucide-react';
+import EditUserDialog from '@/components/EditUserDialog';
+import DeleteUserDialog from '@/components/DeleteUserDialog';
 
 interface Profile {
   id: string;
@@ -27,6 +29,8 @@ const UserManagement = () => {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [createUserLoading, setCreateUserLoading] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
+  const [deletingProfile, setDeletingProfile] = useState<Profile | null>(null);
   const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
   const { toast } = useToast();
 
@@ -176,6 +180,18 @@ const UserManagement = () => {
     return false;
   };
 
+  const canEditUser = (targetRole: UserRole) => {
+    if (currentUserRole === 'admin') return true;
+    if (currentUserRole === 'manager' && targetRole === 'employee') return true;
+    return false;
+  };
+
+  const canDeleteUser = (targetRole: UserRole) => {
+    if (currentUserRole === 'admin') return true;
+    if (currentUserRole === 'manager' && targetRole === 'employee') return true;
+    return false;
+  };
+
   if (roleLoading || loading) {
     return <div className="flex justify-center items-center h-64">Đang tải...</div>;
   }
@@ -309,10 +325,11 @@ const UserManagement = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Họ tên</TableHead>
-                <TableHead>Vai trò</TableHead>
-                <TableHead>Ngày tạo</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Họ tên</TableHead>
+              <TableHead>Vai trò</TableHead>
+              <TableHead>Ngày tạo</TableHead>
+              <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -333,12 +350,50 @@ const UserManagement = () => {
                   <TableCell>
                     {new Date(profile.created_at).toLocaleDateString('vi-VN')}
                   </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditingProfile(profile)}
+                        disabled={!canEditUser(profile.user_roles?.[0]?.role)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeletingProfile(profile)}
+                        disabled={!canDeleteUser(profile.user_roles?.[0]?.role)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      {/* Edit User Dialog */}
+      <EditUserDialog
+        open={!!editingProfile}
+        onOpenChange={(open) => !open && setEditingProfile(null)}
+        profile={editingProfile}
+        currentUserRole={currentUserRole}
+        onUserUpdated={fetchProfiles}
+      />
+
+      {/* Delete User Dialog */}
+      <DeleteUserDialog
+        open={!!deletingProfile}
+        onOpenChange={(open) => !open && setDeletingProfile(null)}
+        profile={deletingProfile}
+        currentUserRole={currentUserRole}
+        onUserDeleted={fetchProfiles}
+      />
     </div>
   );
 };
