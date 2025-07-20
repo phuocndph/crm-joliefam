@@ -2,41 +2,71 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* CRM Enterprise Design System - Professional gradients and modern colors */
 
 @layer base {
   :root {
+    /* Background colors - Clean whites and subtle grays */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 210 11% 15%;
 
+    /* Card and surfaces - Elevated components */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 210 11% 15%;
 
+    /* Popover styling */
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 210 11% 15%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Primary brand colors - Professional blue gradient theme */
+    --primary: 220 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 220 100% 65%;
+    --primary-dark: 220 100% 35%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Secondary colors - Supporting the brand */
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 210 11% 15%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Muted elements */
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Accent colors - Call to action elements */
+    --accent: 200 100% 50%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Status colors */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 70% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 100% 50%;
+    --warning-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    /* UI Elements */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 220 100% 50%;
 
-    --radius: 0.5rem;
+    /* Gradients - Modern enterprise look */
+    --gradient-primary: linear-gradient(135deg, hsl(220 100% 50%), hsl(240 100% 60%));
+    --gradient-secondary: linear-gradient(135deg, hsl(200 100% 50%), hsl(220 100% 50%));
+    --gradient-hero: linear-gradient(135deg, hsl(220 100% 50%) 0%, hsl(240 100% 60%) 50%, hsl(200 100% 50%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%) 0%, hsl(220 13% 98%) 100%);
+
+    /* Shadows - Professional depth */
+    --shadow-sm: 0 1px 2px 0 hsl(220 13% 0% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(220 13% 0% / 0.1), 0 2px 4px -1px hsl(220 13% 0% / 0.06);
+    --shadow-lg: 0 10px 15px -3px hsl(220 13% 0% / 0.1), 0 4px 6px -2px hsl(220 13% 0% / 0.05);
+    --shadow-xl: 0 20px 25px -5px hsl(220 13% 0% / 0.1), 0 10px 10px -5px hsl(220 13% 0% / 0.04);
+    --shadow-brand: 0 10px 30px -10px hsl(220 100% 50% / 0.3);
+
+    /* Animation values */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
 
