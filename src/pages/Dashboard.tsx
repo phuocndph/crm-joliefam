@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useUserStats } from "@/hooks/useUserStats";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { role: userRole, loading: roleLoading } = useUserRole(user);
+  const { stats: userStats, loading: statsLoading } = useUserStats(userRole);
 
   useEffect(() => {
     // Get current user
@@ -71,7 +73,7 @@ const Dashboard = () => {
     }
   };
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Đang tải...</div>
@@ -81,40 +83,44 @@ const Dashboard = () => {
 
   const stats = [
     {
-      title: "Tổng khách hàng",
-      value: "2,345",
-      change: "+12%",
+      title: "Tổng người dùng",
+      value: userStats.totalUsers.toString(),
+      change: `+${userStats.recentUsers}`,
       changeType: "positive",
       icon: Users,
       color: "text-primary",
-      bgColor: "bg-primary/10"
+      bgColor: "bg-primary/10",
+      description: "người dùng mới tuần này"
     },
     {
-      title: "Doanh thu tháng",
-      value: "₫125.4M",
-      change: "+8%",
-      changeType: "positive",
-      icon: DollarSign,
-      color: "text-success",
-      bgColor: "bg-success/10"
+      title: "Quản trị viên",
+      value: userStats.adminCount.toString(),
+      change: "",
+      changeType: "neutral",
+      icon: Shield,
+      color: "text-destructive",
+      bgColor: "bg-destructive/10",
+      description: "tài khoản admin"
     },
     {
-      title: "Tỷ lệ chuyển đổi",
-      value: "23.5%",
-      change: "+3%",
-      changeType: "positive",
+      title: "Quản lý",
+      value: userStats.managerCount.toString(),
+      change: "",
+      changeType: "neutral",
       icon: TrendingUp,
-      color: "text-accent",
-      bgColor: "bg-accent/10"
+      color: "text-warning",
+      bgColor: "bg-warning/10",
+      description: "tài khoản manager"
     },
     {
-      title: "Hoạt động hôm nay",
-      value: "157",
-      change: "-2%",
-      changeType: "negative",
+      title: "Nhân viên",
+      value: userStats.employeeCount.toString(),
+      change: "",
+      changeType: "neutral",
       icon: Activity,
-      color: "text-warning",
-      bgColor: "bg-warning/10"
+      color: "text-success",
+      bgColor: "bg-success/10",
+      description: "tài khoản employee"
     }
   ];
 
@@ -178,13 +184,6 @@ const Dashboard = () => {
     }
   };
 
-  if (loading || roleLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Đang tải...</div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-card">
@@ -252,10 +251,13 @@ const Dashboard = () => {
                 <div className="text-2xl font-bold text-foreground mb-1">
                   {stat.value}
                 </div>
-                <p className={`text-xs ${
-                  stat.changeType === 'positive' ? 'text-success' : 'text-destructive'
-                }`}>
-                  {stat.change} so với tháng trước
+                <p className="text-xs text-muted-foreground">
+                  {stat.change && (
+                    <span className={stat.changeType === 'positive' ? 'text-success' : 'text-destructive'}>
+                      {stat.change}{' '}
+                    </span>
+                  )}
+                  {stat.description}
                 </p>
               </CardContent>
             </Card>
