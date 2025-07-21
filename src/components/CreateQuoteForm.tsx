@@ -1,9 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Settings, X, Plus } from "lucide-react";
+import { CalendarIcon, Settings, X, Plus, Trash2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +34,21 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const quoteFormSchema = z.object({
   title: z.string().min(1, "Tiêu đề báo giá là bắt buộc"),
@@ -42,7 +59,7 @@ const quoteFormSchema = z.object({
   phone: z.string().optional(),
   email: z.string().optional(),
   address: z.string().optional(),
-  priceList: z.string().optional(),
+  priceList: z.string().min(1, "Bảng giá là bắt buộc"),
   responsible: z.string().optional(),
   includeVAT: z.boolean().default(false),
   vatRate: z.number().min(0).max(100).default(8),
@@ -52,21 +69,52 @@ const quoteFormSchema = z.object({
 
 type QuoteFormData = z.infer<typeof quoteFormSchema>;
 
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  category?: string;
+  in_stock: boolean;
+}
+
+interface QuoteItem {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  quantity: number;
+  total: number;
+}
+
+interface PriceList {
+  id: string;
+  name: string;
+  year: number;
+  status: string;
+}
+
 interface CreateQuoteFormProps {
   onClose?: () => void;
-  onSubmit?: (data: QuoteFormData) => void;
+  onSubmit?: () => void;
 }
 
 export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
+  const [priceLists, setPriceLists] = useState<PriceList[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<QuoteItem[]>([]);
+  const [showProductDialog, setShowProductDialog] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
   
   const form = useForm<QuoteFormData>({
     resolver: zodResolver(quoteFormSchema),
     defaultValues: {
       title: "BẢNG BÁO GIÁ",
-      quoteNumber: "BG-20250721-627",
+      quoteNumber: `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
       quoteDate: new Date(),
-      expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+      expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       customerName: "",
       phone: "",
       email: "",
@@ -80,13 +128,151 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
     },
   });
 
-  const handleSubmit = (data: QuoteFormData) => {
-    console.log("Quote data:", data);
-    onSubmit?.(data);
+  // Load price lists and products
+  useEffect(() => {
+    loadPriceLists();
+  }, []);
+
+  useEffect(() => {
+    const selectedPriceList = form.watch("priceList");
+    if (selectedPriceList) {
+      loadProducts(selectedPriceList);
+    }
+  }, [form.watch("priceList")]);
+
+  const loadPriceLists = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("price_lists")
+        .select("*")
+        .eq("status", "active")
+        .order("year", { ascending: false });
+
+      if (error) throw error;
+      setPriceLists(data || []);
+    } catch (error) {
+      console.error("Error loading price lists:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải danh sách bảng giá",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const loadProducts = async (priceListId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("price_list_id", priceListId)
+        .eq("in_stock", true)
+        .order("name");
+
+      if (error) throw error;
+      setProducts(data || []);
+    } catch (error) {
+      console.error("Error loading products:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải danh sách sản phẩm",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const addProduct = (product: Product) => {
+    const existingItem = selectedProducts.find(item => item.id === product.id);
+    
+    if (existingItem) {
+      setSelectedProducts(prev => 
+        prev.map(item => 
+          item.id === product.id 
+            ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.price }
+            : item
+        )
+      );
+    } else {
+      const newItem: QuoteItem = {
+        id: product.id,
+        name: product.name,
+        sku: product.sku,
+        price: product.price,
+        quantity: 1,
+        total: product.price,
+      };
+      setSelectedProducts(prev => [...prev, newItem]);
+    }
+    setShowProductDialog(false);
+  };
+
+  const updateQuantity = (productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeProduct(productId);
+      return;
+    }
+    
+    setSelectedProducts(prev =>
+      prev.map(item =>
+        item.id === productId
+          ? { ...item, quantity, total: quantity * item.price }
+          : item
+      )
+    );
+  };
+
+  const removeProduct = (productId: string) => {
+    setSelectedProducts(prev => prev.filter(item => item.id !== productId));
+  };
+
+  const handleSubmit = async (data: QuoteFormData) => {
+    if (selectedProducts.length === 0) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng chọn ít nhất một sản phẩm",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const quoteData = {
+        quote_number: data.quoteNumber,
+        customer_id: null, // Would need customer selection
+        total_amount: total,
+        status: "draft",
+        notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${format(data.expiryDate, "dd/MM/yyyy")}`,
+        items: JSON.stringify(selectedProducts),
+        tenant_id: "default",
+      };
+
+      const { error } = await supabase
+        .from("quotes")
+        .insert([quoteData]);
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: "Báo giá đã được tạo thành công",
+      });
+
+      onSubmit?.();
+    } catch (error) {
+      console.error("Error creating quote:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tạo báo giá",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const watchedValues = form.watch();
-  const subtotal = 0; // This would be calculated from products
+  const subtotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
   const vatAmount = watchedValues.includeVAT ? (subtotal * watchedValues.vatRate) / 100 : 0;
   const total = subtotal + vatAmount;
   const remaining = total - (watchedValues.payment1 + watchedValues.payment2);
@@ -259,10 +445,13 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
                               <SelectValue placeholder="Bảng Báo Giá Tháng 6 (2025)" />
                             </SelectTrigger>
                           </FormControl>
-                          <SelectContent>
-                            <SelectItem value="pricelist-2025-06">Bảng Báo Giá Tháng 6 (2025)</SelectItem>
-                            <SelectItem value="pricelist-2025-07">Bảng Báo Giá Tháng 7 (2025)</SelectItem>
-                          </SelectContent>
+                           <SelectContent>
+                             {priceLists.map((priceList) => (
+                               <SelectItem key={priceList.id} value={priceList.id}>
+                                 {priceList.name} ({priceList.year})
+                               </SelectItem>
+                             ))}
+                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
@@ -361,19 +550,115 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
               <CardHeader className="bg-green-50">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-green-700">Danh sách sản phẩm lựa chọn</CardTitle>
-                  <Button type="button" className="bg-green-600 hover:bg-green-700">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Thêm sản phẩm
-                  </Button>
+                  <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
+                    <DialogTrigger asChild>
+                      <Button 
+                        type="button" 
+                        className="bg-green-600 hover:bg-green-700"
+                        disabled={!watchedValues.priceList}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Thêm sản phẩm
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Chọn sản phẩm từ bảng giá</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        {products.length > 0 ? (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Tên sản phẩm</TableHead>
+                                <TableHead>SKU</TableHead>
+                                <TableHead>Danh mục</TableHead>
+                                <TableHead>Giá</TableHead>
+                                <TableHead>Hành động</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {products.map((product) => (
+                                <TableRow key={product.id}>
+                                  <TableCell className="font-medium">{product.name}</TableCell>
+                                  <TableCell>{product.sku}</TableCell>
+                                  <TableCell>{product.category || "N/A"}</TableCell>
+                                  <TableCell>{product.price?.toLocaleString()} VNĐ</TableCell>
+                                  <TableCell>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => addProduct(product)}
+                                      className="bg-green-600 hover:bg-green-700"
+                                    >
+                                      Thêm
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        ) : (
+                          <div className="text-center py-8 text-muted-foreground">
+                            {watchedValues.priceList ? "Không có sản phẩm nào trong bảng giá này" : "Vui lòng chọn bảng giá trước"}
+                          </div>
+                        )}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
                 <p className="text-sm text-green-600">
-                  Bảng giá: Bảng Báo Giá Tháng 6 (0 sản phẩm có sẵn)
+                  Bảng giá: {priceLists.find(p => p.id === watchedValues.priceList)?.name || "Chưa chọn"} ({products.length} sản phẩm có sẵn)
                 </p>
               </CardHeader>
               <CardContent className="p-6">
-                <div className="text-center py-8 text-muted-foreground">
-                  Chưa có sản phẩm nào được chọn
-                </div>
+                {selectedProducts.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tên sản phẩm</TableHead>
+                        <TableHead>SKU</TableHead>
+                        <TableHead>Đơn giá</TableHead>
+                        <TableHead>Số lượng</TableHead>
+                        <TableHead>Thành tiền</TableHead>
+                        <TableHead>Hành động</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedProducts.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell>{item.sku}</TableCell>
+                          <TableCell>{item.price.toLocaleString()} VNĐ</TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 0)}
+                              className="w-20"
+                            />
+                          </TableCell>
+                          <TableCell className="font-semibold">
+                            {item.total.toLocaleString()} VNĐ
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => removeProduct(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Chưa có sản phẩm nào được chọn
+                  </div>
+                )}
               </CardContent>
             </Card>
 

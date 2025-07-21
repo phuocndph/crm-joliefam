@@ -97,23 +97,15 @@ export default function QuotesPage() {
       quote.customerEmail.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleCreateQuote = (data: any) => {
-    console.log("Creating quote:", data);
-    
-    // Add new quote to the list
-    const newQuote = {
-      id: (quotes.length + 1).toString(),
-      quoteNumber: data.quoteNumber,
-      customerName: data.customerName,
-      customerEmail: data.email || "",
-      totalAmount: 0,
-      status: "draft" as const,
-      quoteDate: data.quoteDate.toLocaleDateString("vi-VN"),
-      expiryDate: data.expiryDate.toLocaleDateString("vi-VN"),
-      responsible: data.responsible || "Chưa phân công",
-    };
+  const loadQuotes = async () => {
+    // For now, keep using mock data
+    // Later this will load from Supabase
+    setQuotes(mockQuotes);
+  };
 
-    setQuotes([newQuote, ...quotes]);
+  const handleCreateQuote = () => {
+    // Reload quotes from database after successful creation
+    loadQuotes();
     setShowCreateForm(false);
     
     toast({
