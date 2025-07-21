@@ -38,8 +38,8 @@ const ProductManagement = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [stockFilter, setStockFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [stockFilter, setStockFilter] = useState('all');
   const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
   const { toast } = useToast();
 
@@ -109,11 +109,11 @@ const ProductManagement = () => {
       );
     }
 
-    if (categoryFilter) {
+    if (categoryFilter && categoryFilter !== 'all') {
       filtered = filtered.filter(product => product.category === categoryFilter);
     }
 
-    if (stockFilter) {
+    if (stockFilter && stockFilter !== 'all') {
       if (stockFilter === 'in-stock') {
         filtered = filtered.filter(product => product.in_stock);
       } else if (stockFilter === 'out-of-stock') {
@@ -412,7 +412,7 @@ const ProductManagement = () => {
                   <SelectValue placeholder="Tất cả danh mục" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tất cả danh mục</SelectItem>
+                  <SelectItem value="all">Tất cả danh mục</SelectItem>
                   {getUniqueCategories().map((cat) => (
                     <SelectItem key={cat} value={cat!}>
                       {cat}
@@ -428,7 +428,7 @@ const ProductManagement = () => {
                   <SelectValue placeholder="Tất cả" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tất cả</SelectItem>
+                  <SelectItem value="all">Tất cả</SelectItem>
                   <SelectItem value="in-stock">Còn hàng</SelectItem>
                   <SelectItem value="out-of-stock">Hết hàng</SelectItem>
                 </SelectContent>
@@ -439,8 +439,8 @@ const ProductManagement = () => {
                 variant="outline" 
                 onClick={() => {
                   setSearchTerm('');
-                  setCategoryFilter('');
-                  setStockFilter('');
+                  setCategoryFilter('all');
+                  setStockFilter('all');
                 }}
               >
                 Xóa bộ lọc
