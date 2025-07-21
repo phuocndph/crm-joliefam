@@ -185,6 +185,21 @@ const TransactionManagement = () => {
     return Number(amount).toLocaleString("vi-VN") + " VNĐ";
   };
 
+  const formatDate = (dateValue: string | null | undefined, formatStr: string = "dd/MM/yyyy") => {
+    if (!dateValue) {
+      return "-";
+    }
+    try {
+      const date = new Date(dateValue);
+      if (isNaN(date.getTime())) {
+        return "-";
+      }
+      return format(date, formatStr, { locale: vi });
+    } catch (error) {
+      return "-";
+    }
+  };
+
   const getPaymentStatusColor = (status: string) => {
     switch (status) {
       case 'paid': return 'bg-green-100 text-green-800';
@@ -227,7 +242,7 @@ const TransactionManagement = () => {
     const csvContent = [
       ["Ngày", "Loại", "Danh mục", "Mô tả", "Số tiền"],
       ...transactions.map(t => [
-        format(new Date(t.date), "dd/MM/yyyy"),
+        formatDate(t.date),
         t.type === "income" ? "Thu nhập" : "Chi phí",
         t.category || "",
         t.description || "",
@@ -432,7 +447,7 @@ const TransactionManagement = () => {
                       (filteredData as Transaction[]).map((transaction) => (
                         <TableRow key={transaction.id}>
                           <TableCell>
-                            {format(new Date(transaction.date), "dd/MM/yyyy", { locale: vi })}
+                            {formatDate(transaction.date)}
                           </TableCell>
                           <TableCell>
                             <Badge className={transaction.type === "income" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
@@ -557,7 +572,7 @@ const TransactionManagement = () => {
                       (filteredData as OrderPayment[]).map((payment) => (
                         <TableRow key={payment.id}>
                           <TableCell>
-                            {format(new Date(payment.payment_date), "dd/MM/yyyy HH:mm", { locale: vi })}
+                            {formatDate(payment.payment_date, "dd/MM/yyyy HH:mm")}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{getPaymentTypeLabel(payment.payment_type)}</Badge>
@@ -647,7 +662,7 @@ const TransactionManagement = () => {
                                 <Badge variant="outline">{getPaymentMethodLabel(payment.payment_method)}</Badge>
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                {format(new Date(payment.payment_date), "dd/MM/yyyy HH:mm", { locale: vi })}
+                                {formatDate(payment.payment_date, "dd/MM/yyyy HH:mm")}
                               </div>
                               {payment.notes && (
                                 <div className="text-sm text-muted-foreground">
