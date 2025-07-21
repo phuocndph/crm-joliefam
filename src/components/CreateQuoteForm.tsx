@@ -552,53 +552,58 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
             <Card>
               <CardHeader className="bg-green-50">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-green-700">Danh sách sản phẩm lựa chọn</CardTitle>
-                  <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
-                    <DialogTrigger asChild>
-                      <Button 
-                        type="button" 
-                        className="bg-green-600 hover:bg-green-700"
-                        disabled={!watchedValues.priceList}
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Thêm sản phẩm
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle>Thêm sản phẩm vào báo giá</DialogTitle>
-                        <p className="text-sm text-muted-foreground">
-                          Tìm kiếm và thêm sản phẩm từ bảng giá hiện tại
-                        </p>
-                      </DialogHeader>
-                      <ProductSelectionForm 
-                        products={products}
-                        onAddProduct={(productData) => {
-                          const newItem: QuoteItem = {
-                            id: productData.product_id || crypto.randomUUID(),
-                            name: productData.name,
-                            sku: products.find(p => p.id === productData.product_id)?.sku || '',
-                            price: productData.unit_price,
-                            quantity: productData.quantity,
-                            total: productData.unit_price * productData.quantity,
-                          };
-                          setSelectedProducts(prev => [...prev, newItem]);
-                          setShowProductDialog(false);
-                          toast({
-                            title: "Thành công",
-                            description: `Đã thêm ${productData.name} vào báo giá`,
-                          });
-                        }}
-                      />
-                    </DialogContent>
-                  </Dialog>
+                  <div>
+                    <CardTitle className="text-green-700">Danh sách sản phẩm lựa chọn</CardTitle>
+                    <p className="text-sm text-green-600">
+                      Bảng giá: {priceLists.find(p => p.id === watchedValues.priceList)?.name || "Chưa chọn"} ({products.length} sản phẩm có sẵn)
+                    </p>
+                  </div>
+                  <Button 
+                    type="button" 
+                    className="bg-green-600 hover:bg-green-700"
+                    disabled={!watchedValues.priceList}
+                    onClick={() => setShowProductDialog(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Thêm sản phẩm
+                  </Button>
                 </div>
-                <p className="text-sm text-green-600">
-                  Bảng giá: {priceLists.find(p => p.id === watchedValues.priceList)?.name || "Chưa chọn"} ({products.length} sản phẩm có sẵn)
-                </p>
               </CardHeader>
               <CardContent className="p-6">
-                {selectedProducts.length > 0 ? (
+                {watchedValues.priceList ? (
+                  <ProductSelectionForm 
+                    products={products}
+                    onAddProduct={(productData) => {
+                      const newItem: QuoteItem = {
+                        id: productData.product_id || crypto.randomUUID(),
+                        name: productData.name,
+                        sku: products.find(p => p.id === productData.product_id)?.sku || '',
+                        price: productData.unit_price,
+                        quantity: productData.quantity,
+                        total: productData.unit_price * productData.quantity,
+                      };
+                      setSelectedProducts(prev => [...prev, newItem]);
+                      toast({
+                        title: "Thành công",
+                        description: `Đã thêm ${productData.name} vào báo giá`,
+                      });
+                    }}
+                  />
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Vui lòng chọn bảng giá trước để bắt đầu thêm sản phẩm
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Danh sách sản phẩm đã chọn */}
+            {selectedProducts.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Sản phẩm đã chọn</CardTitle>
+                </CardHeader>
+                <CardContent>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -641,13 +646,9 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
                       ))}
                     </TableBody>
                   </Table>
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Chưa có sản phẩm nào được chọn
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Tổng kết thanh toán */}
             <Card>
