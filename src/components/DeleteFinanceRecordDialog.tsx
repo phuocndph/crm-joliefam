@@ -60,7 +60,15 @@ export function DeleteFinanceRecordDialog({ record, open, onOpenChange, onConfir
             <div className="space-y-2">
               <div>
                 <span className="text-sm font-medium text-gray-500">Ngày:</span>
-                <span className="ml-2 text-sm">{format(new Date(record.date), 'dd/MM/yyyy')}</span>
+                <span className="ml-2 text-sm">
+                  {(() => {
+                    try {
+                      return record.date ? format(new Date(record.date), 'dd/MM/yyyy') : '-';
+                    } catch {
+                      return '-';
+                    }
+                  })()}
+                </span>
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-500">Loại:</span>

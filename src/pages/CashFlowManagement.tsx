@@ -32,6 +32,21 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
+const formatSafeDate = (dateValue: string | null | undefined, formatStr: string = "dd/MM/yyyy") => {
+  if (!dateValue) {
+    return "-";
+  }
+  try {
+    const date = new Date(dateValue);
+    if (isNaN(date.getTime())) {
+      return "-";
+    }
+    return format(date, formatStr);
+  } catch (error) {
+    return "-";
+  }
+};
+
 interface FinanceRecord {
   id: string;
   amount: number;
@@ -311,7 +326,7 @@ export default function CashFlowManagement() {
                     const typeConfig = getTypeConfig(record.type);
                     return (
                       <TableRow key={record.id} className="hover-scale">
-                        <TableCell>{format(new Date(record.date), 'dd/MM/yyyy')}</TableCell>
+                        <TableCell>{formatSafeDate(record.date)}</TableCell>
                         <TableCell>
                           <div className="font-medium">{record.description || "—"}</div>
                         </TableCell>
@@ -406,7 +421,7 @@ export default function CashFlowManagement() {
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-gray-500">Ngày giao dịch</label>
-                <p className="text-base">{format(new Date(selectedRecord.date), 'dd/MM/yyyy')}</p>
+                <p className="text-base">{formatSafeDate(selectedRecord.date)}</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Loại giao dịch</label>
@@ -431,7 +446,7 @@ export default function CashFlowManagement() {
               <div className="pt-4 border-t">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Ngày tạo</label>
-                  <p className="text-base">{format(new Date(selectedRecord.created_at), 'dd/MM/yyyy HH:mm')}</p>
+                  <p className="text-base">{formatSafeDate(selectedRecord.created_at, 'dd/MM/yyyy HH:mm')}</p>
                 </div>
               </div>
             </div>
