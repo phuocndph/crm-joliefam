@@ -120,25 +120,47 @@ export default function CashFlowManagement() {
 
   const loadProfitStats = async () => {
     try {
-      // Load orders for revenue and cost price
+      // Load orders for revenue and cost price (only delivered orders)
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
         .select('total_amount, cost_price')
         .eq('status', 'delivered');
 
-      if (ordersError) throw ordersError;
+      if (ordersError) {
+        console.error('Error loading orders:', ordersError);
+      }
 
       // Load expenses
       const { data: expensesData, error: expensesError } = await supabase
         .from('expenses')
         .select('amount');
 
-      if (expensesError) throw expensesError;
+      if (expensesError) {
+        console.error('Error loading expenses:', expensesError);
+      }
 
-      const totalRevenue = orders?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0;
-      const totalCostPrice = orders?.reduce((sum, order) => sum + (order.cost_price || 0), 0) || 0;
-      const totalExpenses = expensesData?.reduce((sum, expense) => sum + expense.amount, 0) || 0;
+      // Calculate totals with proper null handling
+      const totalRevenue = orders?.reduce((sum, order) => {
+        return sum + (Number(order.total_amount) || 0);
+      }, 0) || 0;
+      
+      const totalCostPrice = orders?.reduce((sum, order) => {
+        return sum + (Number(order.cost_price) || 0);
+      }, 0) || 0;
+      
+      const totalExpenses = expensesData?.reduce((sum, expense) => {
+        return sum + (Number(expense.amount) || 0);
+      }, 0) || 0;
+      
+      // Apply profit formula: Revenue - Cost Price - Expenses = Net Profit
       const netProfit = totalRevenue - totalCostPrice - totalExpenses;
+
+      console.log('Profit Calculation:', {
+        totalRevenue,
+        totalCostPrice, 
+        totalExpenses,
+        netProfit
+      });
 
       setProfitStats({
         totalRevenue,
@@ -279,6 +301,32 @@ export default function CashFlowManagement() {
           </Card>
         ))}
       </div>
+
+      {/* Profit Formula Explanation */}
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-blue-900 mb-2">Công thức tính Lợi nhuận</h3>
+              <div className="text-blue-800 space-y-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium">Lợi nhuận ròng</span>
+                  <span>=</span>
+                  <span className="text-green-600 font-medium">Tổng doanh thu</span>
+                  <span>-</span>
+                  <span className="text-blue-600 font-medium">Giá gốc sản phẩm</span>
+                  <span>-</span>
+                  <span className="text-red-600 font-medium">Tổng chi phí</span>
+                </div>
+                <div className="text-xs text-blue-600 mt-1">
+                  = {profitStats.totalRevenue.toLocaleString()} ₫ - {profitStats.totalCostPrice.toLocaleString()} ₫ - {profitStats.totalExpenses.toLocaleString()} ₫ = <span className={profitStats.netProfit >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>{profitStats.netProfit.toLocaleString()} ₫</span>
+                </div>
+              </div>
+            </div>
+            <div className="text-3xl">📊</div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Finance Records Table */}
       <Card className="animate-scale-in">
