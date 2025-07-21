@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Plus, Search, Filter, Eye, Edit, Trash2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/dialog";
 import { CreateQuoteForm } from "@/components/CreateQuoteForm";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { format } from "date-fns";
 
 // Mock data for quotes - removed, will load from database
 const mockQuotes: any[] = [];
@@ -53,10 +55,47 @@ export default function QuotesPage() {
   );
 
   const loadQuotes = async () => {
-    // For now, keep using mock data
-    // Later this will load from Supabase
-    setQuotes(mockQuotes);
+    try {
+      const { data, error } = await supabase
+        .from('quotes')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const formattedQuotes = (data || []).map(quote => {
+        // Parse customer info from notes
+        const notes = quote.notes || '';
+        const customerName = notes.match(/Khách hàng:\s*(.+)/)?.[1] || 'N/A';
+        const customerEmail = notes.match(/Email:\s*(.+)/)?.[1] || 'N/A';
+        
+        return {
+          id: quote.id,
+          quoteNumber: quote.quote_number,
+          customerName: customerName.trim(),
+          customerEmail: customerEmail.trim(),
+          totalAmount: quote.total_amount || 0,
+          status: quote.status,
+          quoteDate: format(new Date(quote.created_at), 'dd/MM/yyyy'),
+          expiryDate: 'N/A', // Sẽ thêm field này sau
+          responsible: 'N/A', // Sẽ thêm field này sau
+        };
+      });
+
+      setQuotes(formattedQuotes);
+    } catch (error) {
+      console.error('Error loading quotes:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải danh sách báo giá",
+        variant: "destructive",
+      });
+    }
   };
+
+  useEffect(() => {
+    loadQuotes();
+  }, []);
 
   const handleCreateQuote = () => {
     // Reload quotes from database after successful creation
@@ -64,7 +103,7 @@ export default function QuotesPage() {
     setShowCreateForm(false);
     
     toast({
-      title: "Thành công",
+      title: "Thành công", 
       description: "Báo giá đã được tạo thành công",
     });
   };
