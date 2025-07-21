@@ -10,6 +10,8 @@ import UserManagement from "./pages/UserManagement";
 import CustomerManagement from "./pages/CustomerManagement";
 import ProductManagement from "./pages/ProductManagement";
 import QuotesPage from "./pages/QuotesPage";
+import OrderManagement from "./pages/OrderManagement";
+import CashFlowManagement from "./pages/CashFlowManagement";
 import MainLayout from "./components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
@@ -30,8 +32,8 @@ const App = () => (
             <Route path="customers" element={<CustomerManagement />} />
             <Route path="products" element={<ProductManagement />} />
             <Route path="quotes" element={<QuotesPage />} />
-            <Route path="orders" element={<div className="text-center py-8">Trang Đơn hàng đang được xây dựng</div>} />
-            <Route path="cash-flow" element={<div className="text-center py-8">Trang Dòng tiền đang được xây dựng</div>} />
+            <Route path="orders" element={<OrderManagement />} />
+            <Route path="cash-flow" element={<CashFlowManagement />} />
             <Route path="transactions" element={<div className="text-center py-8">Trang Giao dịch đang được xây dựng</div>} />
             <Route path="reports" element={<div className="text-center py-8">Trang Báo cáo đang được xây dựng</div>} />
           </Route>
