@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { CreateQuoteForm } from "@/components/CreateQuoteForm";
 import { QuotePreviewDialog } from "@/components/QuotePreviewDialog";
+import { QuoteTemplateSettings } from "@/components/QuoteTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -47,6 +48,7 @@ import {
   Clock,
   XCircle,
   AlertCircle,
+  Settings,
 } from "lucide-react";
 
 const statusLabels = {
@@ -60,6 +62,7 @@ const statusLabels = {
 export default function QuotesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showTemplateSettings, setShowTemplateSettings] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
   const [quotes, setQuotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -277,10 +280,20 @@ export default function QuotesPage() {
             Tạo và quản lý báo giá cho khách hàng
           </p>
         </div>
-        <Button onClick={() => setShowCreateForm(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Tạo báo giá mới
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowTemplateSettings(true)} 
+            className="gap-2"
+          >
+            <Settings className="h-4 w-4" />
+            Cài đặt Template
+          </Button>
+          <Button onClick={() => setShowCreateForm(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Tạo báo giá mới
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -456,6 +469,12 @@ export default function QuotesPage() {
         open={!!selectedQuote}
         onOpenChange={(open) => !open && setSelectedQuote(null)}
         quote={selectedQuote}
+      />
+
+      {/* Template Settings Dialog */}
+      <QuoteTemplateSettings
+        open={showTemplateSettings}
+        onOpenChange={setShowTemplateSettings}
       />
     </div>
   );

@@ -237,102 +237,167 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     }
   };
 
-  const handleExportExcel = () => {
-    // Tạo workbook mới
-    const wb = XLSX.utils.book_new();
-    
-    // Tạo worksheet
-    const ws = XLSX.utils.aoa_to_sheet([]);
-    
-    // Thêm header công ty
-    XLSX.utils.sheet_add_aoa(ws, [
-      ['XƯỞNG SẢN XUẤT CHĂN GA GỐI NỆM JOLIE\'FAM'],
-      ['Địa chỉ: Số 551 Linh Nam - Hoàng Mai - Hà Nội'],
-      ['Điện thoại: 0828686866 / Công Minh'],
-      ['MST: 0108652480 / Công ty TNHH Gia Lộc Hùng Phát'],
-      ['Trụ sở: Số 21 Ngõ 562 đường Linh Nam, Phường Linh Nam, Quận Hoàng Mai, Hà Nội'],
-      ['STK Ngân Hàng: MBbank (Ngân hàng quân đội) / 3798686868888 / Phan Văn Phúc'],
-      [''],
-      ['BÁO GIÁ SẢN PHẨM'],
-      [`Hà Nội ngày ${new Date().getDate()} tháng ${new Date().getMonth() + 1} năm ${new Date().getFullYear()}`],
-      [''],
-      ['THÔNG TIN KHÁCH HÀNG:'],
-      [`Tên KH: ${customerName}`],
-      [`SĐT: ${phone}`],
-      [`EMAIL: ${email}`],
-      [`Địa chỉ: ${address}`],
-      [''],
-      ['THÔNG TIN BÁO GIÁ:'],
-      [`Số báo giá: ${quote.quoteNumber}`],
-      [`Ngày báo giá: ${quote.quoteDate}`],
-      [`Ngày hết hạn: ${expiryDate}`],
-      [''],
-      ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú']
-    ], { origin: 'A1' });
-    
-    // Thêm dữ liệu sản phẩm
-    const startRow = 23;
-    items.forEach((item: any, index: number) => {
-      XLSX.utils.sheet_add_aoa(ws, [[
-        index + 1,
-        item.name,
-        item.specifications || 'N/A',
-        item.category || 'N/A',
-        item.quantity,
-        item.price,
-        item.total,
-        ''
-      ]], { origin: `A${startRow + index}` });
-    });
-    
-    // Thêm tổng cộng
-    const summaryRow = startRow + items.length + 1;
-    XLSX.utils.sheet_add_aoa(ws, [
-      ['', '', '', '', '', 'TỔNG GIÁ TRỊ CHƯA BAO GỒM GTGT', formatCurrency(subtotal), ''],
-      ['', '', '', '', '', `GTGT (${vatRate}%)`, formatCurrency(vatAmount), ''],
-      ['', '', '', '', '', 'TỔNG TIỀN ĐÃ BAO GỒM GTGT', formatCurrency(totalWithVat), ''],
-      ['', '', '', '', '', 'THANH TOÁN LẦN 1', formatCurrency(firstPayment), ''],
-      ['', '', '', '', '', 'CÒN LẠI', formatCurrency(remaining), '']
-    ], { origin: `A${summaryRow}` });
-    
-    // Thêm điều khoản
-    const termsRow = summaryRow + 7;
-    XLSX.utils.sheet_add_aoa(ws, [
-      ['1. Bảng báo giá áp dụng trong vòng 10 ngày'],
-      ['2. Bảng giá chưa bao gồm cước vận chuyển'],
-      ['3. Địa Điểm giao Hàng: Thỏa Thuận'],
-      ['4. Hình thức thanh toán: Đặt cọc trước 30%. 70% còn lại thanh toán khi giao hàng và KH nhận kiểm đếm đầy đủ'],
-      [''],
-      ['Bảng giá trên là đơn giá chuẩn và cũng là giá tốt nhất công ty chúng tôi dành cho Quý Khách hàng.'],
-      ['JOLIEFAM rất mong nhận được sự hợp tác và ủng hộ từ Quý Khách hàng.']
-    ], { origin: `A${termsRow}` });
-    
-    // Định dạng worksheet
-    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-    
-    // Merge cells cho header
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Title
-      { s: { r: 7, c: 0 }, e: { r: 7, c: 7 } }, // Báo giá sản phẩm
-    ];
-    
-    // Set column widths
-    ws['!cols'] = [
-      { wch: 5 },   // STT
-      { wch: 30 },  // Sản phẩm
-      { wch: 15 },  // Quy cách
-      { wch: 15 },  // Chất liệu
-      { wch: 10 },  // Số lượng
-      { wch: 15 },  // Đơn giá
-      { wch: 20 },  // Thành tiền
-      { wch: 15 }   // Ghi chú
-    ];
-    
-    // Thêm worksheet vào workbook
-    XLSX.utils.book_append_sheet(wb, ws, 'Báo Giá');
-    
-    // Xuất file
-    XLSX.writeFile(wb, `BaoGia_${quote.quoteNumber}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  const handleExportExcel = async () => {
+    try {
+      // Import template settings
+      const { getTemplateSettings } = await import('./QuoteTemplateSettings');
+      const templateSettings = getTemplateSettings();
+      
+      // Tạo workbook mới
+      const wb = XLSX.utils.book_new();
+      
+      // Tạo worksheet
+      const ws = XLSX.utils.aoa_to_sheet([]);
+      
+      // Company header - exactly like the sample
+      XLSX.utils.sheet_add_aoa(ws, [
+        [templateSettings.companyTitle],
+        [`Địa chỉ: ${templateSettings.address}`],
+        [`Điện thoại: ${templateSettings.phone}`],
+        [`MST: ${templateSettings.taxCode}`],
+        [`Trụ sở: ${templateSettings.headquarters}`],
+        [`STK: ${templateSettings.bankInfo}`],
+        [''],
+        ['BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN'],
+        [`Hà Nội ngày ${new Date().getDate()} tháng ${new Date().getMonth() + 1} năm ${new Date().getFullYear()}`],
+        [''],
+        ['THÔNG TIN KHÁCH HÀNG:', '', '', '', '', 'THÔNG TIN BÁO GIÁ:'],
+        [`Tên KH: ${customerName}`, '', '', '', '', `Số báo giá: ${quote.quoteNumber}`],
+        ['', '', '', '', '', `Ngày báo giá: ${quote.quoteDate}`],
+        ['', '', '', '', '', `Ngày hết hạn: ${expiryDate}`],
+        [''],
+        ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú']
+      ], { origin: 'A1' });
+      
+      // Add products data starting from row 17
+      let currentRow = 17;
+      items.forEach((item: any, index: number) => {
+        XLSX.utils.sheet_add_aoa(ws, [[
+          index + 1,
+          item.name,
+          item.specifications || '',
+          item.category || '',
+          item.quantity,
+          formatCurrency(item.price),
+          formatCurrency(item.total),
+          ''
+        ]], { origin: `A${currentRow}` });
+        currentRow++;
+      });
+      
+      // Add summary section exactly like the sample
+      currentRow += 1;
+      XLSX.utils.sheet_add_aoa(ws, [
+        ['', '', '', '', 'TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', '', formatCurrency(subtotal), ''],
+        ['', '', '', '', `GTGT (${vatRate}%)`, '', formatCurrency(vatAmount), ''],
+        ['', '', '', '', 'TỔNG TIỀN ĐÃ BAO GỒM GTGT', '', formatCurrency(totalWithVat), ''],
+        ['', '', '', '', 'THANH TOÁN LẦN 1', '', formatCurrency(firstPayment), ''],
+        ['', '', '', '', 'CÒN LẠI', '', formatCurrency(remaining), '']
+      ], { origin: `A${currentRow}` });
+      
+      // Add terms and conditions
+      currentRow += 7;
+      templateSettings.terms.forEach((term, index) => {
+        XLSX.utils.sheet_add_aoa(ws, [
+          [`${index + 1}. ${term}`]
+        ], { origin: `A${currentRow}` });
+        currentRow++;
+      });
+      
+      // Add footer note
+      currentRow += 2;
+      XLSX.utils.sheet_add_aoa(ws, [
+        [templateSettings.footerNote]
+      ], { origin: `A${currentRow}` });
+      
+      // Add signature section
+      currentRow += 3;
+      XLSX.utils.sheet_add_aoa(ws, [
+        ['ĐẠI DIỆN CÔNG TY', '', '', '', '', 'KHÁCH HÀNG'],
+        [''],
+        [''],
+        ['GIÁM ĐỐC', '', '', '', '', 'Ký tên và đóng dấu xác nhận'],
+        ['( Đã ký )']
+      ], { origin: `A${currentRow}` });
+      
+      // Style the worksheet to match the sample exactly
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+      
+      // Merge cells for headers
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Company title
+        { s: { r: 7, c: 0 }, e: { r: 7, c: 7 } }, // Quote title
+        { s: { r: 8, c: 6 }, e: { r: 8, c: 7 } }, // Date
+      ];
+      
+      // Set column widths to match sample
+      ws['!cols'] = [
+        { wch: 5 },   // STT
+        { wch: 25 },  // SẢN PHẨM
+        { wch: 18 },  // QUY CÁCH (CM)
+        { wch: 15 },  // CHẤT LIỆU
+        { wch: 12 },  // SỐ LƯỢNG
+        { wch: 15 },  // ĐƠN GIÁ
+        { wch: 18 },  // THÀNH TIỀN
+        { wch: 12 }   // Ghi Chú
+      ];
+      
+      // Apply cell styles
+      for (let row = 0; row <= range.e.r; row++) {
+        for (let col = 0; col <= range.e.c; col++) {
+          const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+          if (!ws[cellAddress]) continue;
+          
+          // Style header rows
+          if (row === 0) {
+            ws[cellAddress].s = {
+              font: { bold: true, size: 16, color: { rgb: "FF0000" } },
+              alignment: { horizontal: "center", vertical: "center" },
+              fill: { fgColor: { rgb: "FFFFFF" } }
+            };
+          } else if (row === 7) {
+            ws[cellAddress].s = {
+              font: { bold: true, size: 14, color: { rgb: "0000FF" } },
+              alignment: { horizontal: "center", vertical: "center" }
+            };
+          } else if (row === 15) {
+            // Table header
+            ws[cellAddress].s = {
+              font: { bold: true, size: 10 },
+              alignment: { horizontal: "center", vertical: "center" },
+              fill: { fgColor: { rgb: "FFFF99" } },
+              border: {
+                top: { style: "thin", color: { rgb: "000000" } },
+                bottom: { style: "thin", color: { rgb: "000000" } },
+                left: { style: "thin", color: { rgb: "000000" } },
+                right: { style: "thin", color: { rgb: "000000" } }
+              }
+            };
+          } else if (row >= 16 && row < 16 + items.length) {
+            // Product rows
+            ws[cellAddress].s = {
+              border: {
+                top: { style: "thin", color: { rgb: "000000" } },
+                bottom: { style: "thin", color: { rgb: "000000" } },
+                left: { style: "thin", color: { rgb: "000000" } },
+                right: { style: "thin", color: { rgb: "000000" } }
+              },
+              alignment: { vertical: "center" }
+            };
+          }
+        }
+      }
+      
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Báo Giá');
+      
+      // Export file
+      XLSX.writeFile(wb, `BaoGia_${quote.quoteNumber}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      
+    } catch (error) {
+      console.error('Error exporting Excel:', error);
+      alert('Có lỗi khi xuất Excel. Vui lòng thử lại.');
+    }
   };
 
   return (
