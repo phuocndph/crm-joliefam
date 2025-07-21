@@ -1,0 +1,279 @@
+import React from "react";
+import { Download, Printer, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+interface QuotePreviewDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  quote: any;
+}
+
+export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDialogProps) {
+  if (!quote) return null;
+
+  // Parse customer info from notes
+  const notes = quote.notes || '';
+  const customerName = notes.match(/Khách hàng:\s*(.+)/)?.[1] || 'N/A';
+  const phone = notes.match(/Điện thoại:\s*(.+)/)?.[1] || 'N/A';
+  const email = notes.match(/Email:\s*(.+)/)?.[1] || 'N/A';
+  const address = notes.match(/Địa chỉ:\s*(.+)/)?.[1] || 'N/A';
+  const expiryDate = notes.match(/Ngày hết hạn:\s*(.+)/)?.[1] || 'N/A';
+
+  // Parse items
+  const items = quote.items ? JSON.parse(quote.items) : [];
+  
+  // Calculate totals
+  const subtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
+  const vatRate = 8; // Default VAT rate
+  const vatAmount = (subtotal * vatRate) / 100;
+  const totalWithVat = subtotal + vatAmount;
+  const firstPayment = totalWithVat * 0.3; // 30% deposit
+  const remaining = totalWithVat - firstPayment;
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN').format(amount);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleExportPDF = () => {
+    // TODO: Implement PDF export
+    console.log('Export PDF');
+  };
+
+  const handleExportExcel = () => {
+    // TODO: Implement Excel export
+    console.log('Export Excel');
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Chi tiết báo giá</DialogTitle>
+        </DialogHeader>
+        
+        <div className="max-w-5xl w-full max-h-[95vh] overflow-y-auto">
+          {/* Action buttons */}
+          <div className="flex items-center justify-between p-6 border-b print:hidden">
+            <h2 className="text-xl font-bold text-gray-900">Xem trước báo giá</h2>
+            <div className="flex items-center space-x-2">
+              <Button variant="outline" onClick={handleExportExcel}>
+                <Download className="w-4 h-4 mr-2" />
+                Xuất Excel với Logo
+              </Button>
+              <Button variant="outline" onClick={handleExportPDF}>
+                <Download className="w-4 h-4 mr-2" />
+                Xuất PDF
+              </Button>
+              <Button variant="outline" onClick={handlePrint}>
+                <Printer className="w-4 h-4 mr-2" />
+                In
+              </Button>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Quote content */}
+          <div className="p-2 bg-white min-h-screen" id="quote-preview">
+            {/* Header with logo and company info */}
+            <div className="mb-8">
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-start space-x-8">
+                  <div className="flex-shrink-0">
+                    <img 
+                      src="/lovable-uploads/6b66a50f-3a2e-4f5a-bad8-950cf55392fa.png" 
+                      alt="Company Logo" 
+                      className="object-contain bg-white p-4 rounded-lg border border-gray-300 shadow-md"
+                      style={{ width: '300px', height: '180px' }}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h1 className="text-3xl font-bold text-red-600 mb-3 leading-tight">
+                      XƯỞNG SẢN XUẤT CHĂN GA GỐI NỆM JOLIE'FAM
+                    </h1>
+                    <div className="text-sm text-gray-700 space-y-1.5 leading-relaxed">
+                      <p><strong className="text-gray-900">Địa chỉ:</strong> Số 551 Linh Nam - Hoàng Mai - Hà Nội</p>
+                      <p><strong className="text-gray-900">Điện thoại:</strong> 0828686866 / Công Minh</p>
+                      <p><strong className="text-gray-900">MST:</strong> 0108652480 / Công ty TNHH Gia Lộc Hùng Phát</p>
+                      <p><strong className="text-gray-900">Trụ sở:</strong> Số 21 Ngõ 562 đường Linh Nam, Phường Linh Nam, Quận Hoàng Mai, Hà Nội</p>
+                      <p><strong className="text-gray-900">STK Ngân Hàng:</strong> MBbank (Ngân hàng quân đội) / 3798686868888 / Phan Văn Phúc</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Quote title */}
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-blue-600 mb-2">Báo giá sản phẩm</h2>
+              <p className="text-right text-lg font-medium text-gray-700">
+                Hà Nội ngày {new Date().getDate()} tháng {new Date().getMonth() + 1} năm {new Date().getFullYear()}
+              </p>
+            </div>
+
+            {/* Customer and quote info */}
+            <div className="grid grid-cols-2 gap-12 mb-8">
+              <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+                <h3 className="font-bold text-lg mb-4 text-blue-800 border-b border-blue-200 pb-2">
+                  THÔNG TIN KHÁCH HÀNG:
+                </h3>
+                <div className="space-y-3 text-base">
+                  <p><strong className="text-gray-900 w-20 inline-block">Tên KH:</strong> {customerName}</p>
+                  <p><strong className="text-gray-900 w-20 inline-block">SĐT:</strong> {phone}</p>
+                  <p><strong className="text-gray-900 w-20 inline-block">EMAIL:</strong> {email}</p>
+                  <p><strong className="text-gray-900 w-20 inline-block">Địa chỉ:</strong> {address}</p>
+                </div>
+              </div>
+              <div className="bg-green-50 p-6 rounded-lg border border-green-200">
+                <h3 className="font-bold text-lg mb-4 text-green-800 border-b border-green-200 pb-2">
+                  THÔNG TIN BÁO GIÁ:
+                </h3>
+                <div className="space-y-3 text-base">
+                  <p><strong className="text-gray-900 w-28 inline-block">Số báo giá:</strong> {quote.quoteNumber}</p>
+                  <p><strong>Ngày báo giá:</strong> {quote.quoteDate}</p>
+                  <p><strong>Ngày hết hạn:</strong> {expiryDate}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Products table */}
+            <div className="mb-8">
+              <div className="relative w-full overflow-auto">
+                <Table className="border-2 border-gray-300 w-full table-fixed">
+                  <TableHeader className="bg-yellow-200">
+                    <TableRow>
+                      <TableHead className="border border-gray-300 text-center font-bold text-black w-12">STT</TableHead>
+                      <TableHead className="border border-gray-300 text-center font-bold text-black w-48">SẢN PHẨM</TableHead>
+                      <TableHead className="border border-gray-300 text-center font-bold text-black w-32">QUY CÁCH (CM)</TableHead>
+                      <TableHead className="border border-gray-300 text-center font-bold text-black w-36">CHẤT LIỆU</TableHead>
+                      <TableHead className="border border-gray-300 text-center font-bold text-black w-20">SỐ LƯỢNG</TableHead>
+                      <TableHead className="border border-gray-300 text-center font-bold text-black w-28">ĐƠN GIÁ</TableHead>
+                      <TableHead className="border border-gray-300 text-center font-bold text-black w-32">THÀNH TIỀN</TableHead>
+                      <TableHead className="border border-gray-300 text-center font-bold text-black w-24">Ghi Chú</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {items.map((item: any, index: number) => (
+                      <TableRow key={index} className="h-16">
+                        <TableCell className="border border-gray-300 text-center font-medium p-3">{index + 1}</TableCell>
+                        <TableCell className="border border-gray-300 font-medium p-3 leading-relaxed">
+                          <div className="break-words">{item.name}</div>
+                        </TableCell>
+                        <TableCell className="border border-gray-300 text-center p-3">
+                          <div className="break-words">{item.specifications || 'N/A'}</div>
+                        </TableCell>
+                        <TableCell className="border border-gray-300 p-3">
+                          <div className="break-words">{item.category || 'N/A'}</div>
+                        </TableCell>
+                        <TableCell className="border border-gray-300 text-center font-medium p-3">{item.quantity}</TableCell>
+                        <TableCell className="border border-gray-300 text-right font-medium p-3">{formatCurrency(item.price)}</TableCell>
+                        <TableCell className="border border-gray-300 text-right font-bold text-red-600 p-3">{formatCurrency(item.total)}</TableCell>
+                        <TableCell className="border border-gray-300 p-3"></TableCell>
+                      </TableRow>
+                    ))}
+                    
+                    {/* Summary rows */}
+                    <TableRow className="bg-gray-50">
+                      <TableCell colSpan={6} className="border border-gray-300 text-center font-bold text-red-600 p-4">
+                        TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT
+                      </TableCell>
+                      <TableCell className="border border-gray-300 text-right font-bold text-red-600 p-4">
+                        {formatCurrency(subtotal)}
+                      </TableCell>
+                      <TableCell className="border border-gray-300 p-4"></TableCell>
+                    </TableRow>
+                    <TableRow className="bg-gray-50">
+                      <TableCell colSpan={6} className="border border-gray-300 text-center font-bold text-red-600 p-4">
+                        GTGT ({vatRate}%)
+                      </TableCell>
+                      <TableCell className="border border-gray-300 text-right font-bold text-red-600 p-4">
+                        {formatCurrency(vatAmount)}
+                      </TableCell>
+                      <TableCell className="border border-gray-300 p-4"></TableCell>
+                    </TableRow>
+                    <TableRow className="bg-gray-50">
+                      <TableCell colSpan={6} className="border border-gray-300 text-center font-bold text-red-600 p-4">
+                        TỔNG TIỀN ĐÃ BAO GỒM GTGT
+                      </TableCell>
+                      <TableCell className="border border-gray-300 text-right font-bold text-red-600 p-4">
+                        {formatCurrency(totalWithVat)}
+                      </TableCell>
+                      <TableCell className="border border-gray-300 p-4"></TableCell>
+                    </TableRow>
+                    <TableRow className="bg-gray-50">
+                      <TableCell colSpan={6} className="border border-gray-300 text-center font-bold text-red-600 p-4">
+                        THANH TOÁN LẦN 1
+                      </TableCell>
+                      <TableCell className="border border-gray-300 text-right font-bold text-red-600 p-4">
+                        {formatCurrency(firstPayment)}
+                      </TableCell>
+                      <TableCell className="border border-gray-300 p-4"></TableCell>
+                    </TableRow>
+                    <TableRow className="bg-yellow-100">
+                      <TableCell colSpan={6} className="border border-gray-300 text-center font-bold text-red-600 text-lg p-4">
+                        CÒN LẠI
+                      </TableCell>
+                      <TableCell className="border border-gray-300 text-right font-bold text-red-600 text-lg p-4">
+                        {formatCurrency(remaining)}
+                      </TableCell>
+                      <TableCell className="border border-gray-300 p-4"></TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+
+            {/* Terms and conditions */}
+            <div className="mb-8">
+              <div className="text-base space-y-2">
+                <p><strong>1. Bảng báo giá áp dụng trong vòng 10 ngày</strong></p>
+                <p><strong>2. Bảng giá chưa bao gồm cước vận chuyển</strong></p>
+                <p><strong>3. Địa Điểm giao Hàng: Thỏa Thuận</strong></p>
+                <p><strong>4. Hình thức thanh toán: Đặt cọc trước 30%. 70% còn lại thanh toán khi giao hàng và KH nhận kiểm đếm đầy đủ</strong></p>
+              </div>
+              <div className="mt-6 text-center">
+                <p className="text-blue-600 font-medium italic">
+                  Bảng giá trên là đơn giá chuẩn và cũng là giá tốt nhất công ty chúng tôi dành cho Quý Khách hàng. 
+                  JOLIEFAM rất mong nhận được sự hợp tác và ủng hộ từ Quý Khách hàng.
+                </p>
+              </div>
+            </div>
+
+            {/* Signatures */}
+            <div className="grid grid-cols-2 gap-8">
+              <div className="text-center">
+                <h4 className="font-bold mb-16">ĐẠI DIỆN CÔNG TY</h4>
+                <h4 className="font-bold">GIÁM ĐỐC</h4>
+                <p className="text-sm mt-2">( Đã ký )</p>
+              </div>
+              <div className="text-center">
+                <h4 className="font-bold mb-16">KHÁCH HÀNG</h4>
+                <div className="h-16 border-b border-gray-400 mb-4"></div>
+                <p className="text-sm">Ký tên và đóng dấu xác nhận</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

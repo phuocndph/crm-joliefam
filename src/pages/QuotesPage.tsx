@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CreateQuoteForm } from "@/components/CreateQuoteForm";
+import { QuotePreviewDialog } from "@/components/QuotePreviewDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -44,6 +45,7 @@ const statusLabels = {
 export default function QuotesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedQuote, setSelectedQuote] = useState<any>(null);
   const [quotes, setQuotes] = useState(mockQuotes);
   const { toast } = useToast();
 
@@ -70,6 +72,7 @@ export default function QuotesPage() {
         const customerEmail = notes.match(/Email:\s*(.+)/)?.[1] || 'N/A';
         
         return {
+          ...quote, // Keep original quote data for preview
           id: quote.id,
           quoteNumber: quote.quote_number,
           customerName: customerName.trim(),
@@ -262,7 +265,7 @@ export default function QuotesPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setSelectedQuote(quote)}>
                               <Eye className="mr-2 h-4 w-4" />
                               Xem chi tiết
                             </DropdownMenuItem>
@@ -298,6 +301,13 @@ export default function QuotesPage() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Quote Preview Dialog */}
+      <QuotePreviewDialog 
+        open={!!selectedQuote}
+        onOpenChange={(open) => !open && setSelectedQuote(null)}
+        quote={selectedQuote}
+      />
     </div>
   );
 }
