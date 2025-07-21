@@ -98,32 +98,20 @@ const UserManagement = () => {
       if (currentUserRole === 'admin' || 
           (currentUserRole === 'manager' && selectedRole === 'employee')) {
         
-        // Create user account using standard signup
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              first_name: firstName,
-              last_name: lastName,
-              phone
-            }
+        // Create user using Edge Function with service role
+        const { data, error } = await supabase.functions.invoke('create-user', {
+          body: {
+            email,
+            password,
+            firstName,
+            lastName,
+            phone,
+            role: selectedRole
           }
         });
 
-        if (error) throw error;
-
-        // Assign role
-        if (data.user) {
-          const { error: roleError } = await supabase
-            .from('user_roles')
-            .insert({
-              user_id: data.user.id,
-              role: selectedRole,
-              assigned_by: user?.id
-            });
-
-          if (roleError) throw roleError;
+        if (error || !data?.success) {
+          throw new Error(error?.message || data?.error || "Không thể tạo tài khoản");
         }
 
         toast({
