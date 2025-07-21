@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
 
 interface QuotePreviewDialogProps {
   open: boolean;
@@ -50,12 +51,190 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   };
 
   const handlePrint = () => {
-    window.print();
+    // In document bằng CSS print
+    const printContent = document.getElementById('quote-preview');
+    if (printContent) {
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Báo giá ${quote.quoteNumber}</title>
+              <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                th, td { border: 1px solid #333; padding: 8px; text-align: left; }
+                th { background-color: #f0f0f0; font-weight: bold; }
+                .header { text-align: center; margin-bottom: 30px; }
+                .company-title { font-size: 24px; font-weight: bold; color: #d32f2f; }
+                .quote-title { font-size: 20px; font-weight: bold; color: #1976d2; }
+                .info-section { display: inline-block; width: 45%; margin: 10px; padding: 15px; border: 1px solid #ccc; }
+                .total-row { background-color: #f5f5f5; font-weight: bold; }
+                @media print { 
+                  @page { margin: 1cm; }
+                  body { margin: 0; }
+                }
+              </style>
+            </head>
+            <body>
+              ${printContent.innerHTML}
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+        printWindow.close();
+      }
+    }
   };
 
-  const handleExportPDF = () => {
-    // TODO: Implement PDF export
-    console.log('Export PDF');
+  const handleExportPDF = async () => {
+    try {
+      // Tạo PDF với jsPDF (không sử dụng eval)
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      // Cấu hình font và màu sắc
+      pdf.setFont('helvetica');
+      
+      // Header công ty
+      pdf.setFontSize(16);
+      pdf.setTextColor(220, 47, 47); // Red color
+      pdf.text('XƯỞNG SẢN XUẤT CHĂN GA GỐI NỆM JOLIE\'FAM', 20, 20);
+      
+      pdf.setFontSize(10);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('Địa chỉ: Số 551 Linh Nam - Hoàng Mai - Hà Nội', 20, 30);
+      pdf.text('Điện thoại: 0828686866 / Công Minh', 20, 35);
+      pdf.text('MST: 0108652480 / Công ty TNHH Gia Lộc Hùng Phát', 20, 40);
+      pdf.text('Trụ sở: Số 21 Ngõ 562 đường Linh Nam, Phường Linh Nam, Quận Hoàng Mai, Hà Nội', 20, 45);
+      pdf.text('STK Ngân Hàng: MBbank (Ngân hàng quân đội) / 3798686868888 / Phan Văn Phúc', 20, 50);
+      
+      // Tiêu đề báo giá
+      pdf.setFontSize(18);
+      pdf.setTextColor(25, 118, 210); // Blue color
+      pdf.text('BÁO GIÁ SẢN PHẨM', 105, 70, { align: 'center' });
+      
+      pdf.setFontSize(10);
+      pdf.setTextColor(0, 0, 0);
+      const currentDate = new Date();
+      pdf.text(`Hà Nội ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1} năm ${currentDate.getFullYear()}`, 150, 80);
+      
+      // Thông tin khách hàng
+      pdf.setFontSize(12);
+      pdf.setTextColor(25, 118, 210);
+      pdf.text('THÔNG TIN KHÁCH HÀNG:', 20, 100);
+      
+      pdf.setFontSize(10);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(`Tên KH: ${customerName}`, 20, 110);
+      pdf.text(`SĐT: ${phone}`, 20, 115);
+      pdf.text(`EMAIL: ${email}`, 20, 120);
+      pdf.text(`Địa chỉ: ${address}`, 20, 125);
+      
+      // Thông tin báo giá
+      pdf.setFontSize(12);
+      pdf.setTextColor(25, 118, 210);
+      pdf.text('THÔNG TIN BÁO GIÁ:', 110, 100);
+      
+      pdf.setFontSize(10);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(`Số báo giá: ${quote.quoteNumber}`, 110, 110);
+      pdf.text(`Ngày báo giá: ${quote.quoteDate}`, 110, 115);
+      pdf.text(`Ngày hết hạn: ${expiryDate}`, 110, 120);
+      
+      // Bảng sản phẩm
+      let yPos = 145;
+      
+      // Header bảng
+      pdf.setFillColor(255, 235, 59); // Yellow background
+      pdf.rect(20, yPos, 170, 10, 'F');
+      
+      pdf.setFontSize(8);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('STT', 22, yPos + 7);
+      pdf.text('SẢN PHẨM', 35, yPos + 7);
+      pdf.text('QUY CÁCH', 75, yPos + 7);
+      pdf.text('CHẤT LIỆU', 95, yPos + 7);
+      pdf.text('SỐ LƯỢNG', 115, yPos + 7);
+      pdf.text('ĐƠN GIÁ', 135, yPos + 7);
+      pdf.text('THÀNH TIỀN', 155, yPos + 7);
+      
+      yPos += 15;
+      
+      // Dữ liệu sản phẩm
+      items.forEach((item: any, index: number) => {
+        if (yPos > 250) { // Nếu gần hết trang, tạo trang mới
+          pdf.addPage();
+          yPos = 20;
+        }
+        
+        pdf.setFontSize(8);
+        pdf.text((index + 1).toString(), 22, yPos);
+        pdf.text(item.name?.substring(0, 20) || '', 35, yPos);
+        pdf.text(item.specifications?.substring(0, 10) || 'N/A', 75, yPos);
+        pdf.text(item.category?.substring(0, 10) || 'N/A', 95, yPos);
+        pdf.text(item.quantity?.toString() || '0', 115, yPos);
+        pdf.text(formatCurrency(item.price), 135, yPos);
+        pdf.text(formatCurrency(item.total), 155, yPos);
+        
+        yPos += 8;
+      });
+      
+      // Tổng cộng
+      yPos += 10;
+      pdf.setFillColor(245, 245, 245);
+      pdf.rect(20, yPos, 170, 8, 'F');
+      pdf.setFontSize(9);
+      pdf.setTextColor(220, 47, 47);
+      pdf.text('TỔNG GIÁ TRỊ CHƯA BAO GỒM GTGT', 25, yPos + 5);
+      pdf.text(formatCurrency(subtotal), 155, yPos + 5);
+      
+      yPos += 12;
+      pdf.rect(20, yPos, 170, 8, 'F');
+      pdf.text(`GTGT (${vatRate}%)`, 25, yPos + 5);
+      pdf.text(formatCurrency(vatAmount), 155, yPos + 5);
+      
+      yPos += 12;
+      pdf.rect(20, yPos, 170, 8, 'F');
+      pdf.text('TỔNG TIỀN ĐÃ BAO GỒM GTGT', 25, yPos + 5);
+      pdf.text(formatCurrency(totalWithVat), 155, yPos + 5);
+      
+      yPos += 12;
+      pdf.rect(20, yPos, 170, 8, 'F');
+      pdf.text('THANH TOÁN LẦN 1', 25, yPos + 5);
+      pdf.text(formatCurrency(firstPayment), 155, yPos + 5);
+      
+      yPos += 12;
+      pdf.setFillColor(255, 249, 196);
+      pdf.rect(20, yPos, 170, 8, 'F');
+      pdf.setFontSize(10);
+      pdf.text('CÒN LẠI', 25, yPos + 5);
+      pdf.text(formatCurrency(remaining), 155, yPos + 5);
+      
+      // Điều khoản
+      yPos += 20;
+      pdf.setFontSize(9);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('1. Bảng báo giá áp dụng trong vòng 10 ngày', 20, yPos);
+      pdf.text('2. Bảng giá chưa bao gồm cước vận chuyển', 20, yPos + 8);
+      pdf.text('3. Địa Điểm giao Hàng: Thỏa Thuận', 20, yPos + 16);
+      pdf.text('4. Hình thức thanh toán: Đặt cọc trước 30%. 70% còn lại thanh toán khi giao hàng', 20, yPos + 24);
+      
+      // Chữ ký
+      yPos += 40;
+      pdf.setFontSize(10);
+      pdf.text('ĐẠI DIỆN CÔNG TY', 40, yPos);
+      pdf.text('KHÁCH HÀNG', 140, yPos);
+      pdf.text('GIÁM ĐỐC', 40, yPos + 20);
+      pdf.text('Ký tên và đóng dấu xác nhận', 140, yPos + 20);
+      
+      // Lưu file
+      pdf.save(`BaoGia_${quote.quoteNumber}_${new Date().toISOString().split('T')[0]}.pdf`);
+      
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      alert('Có lỗi khi xuất PDF. Vui lòng thử lại.');
+    }
   };
 
   const handleExportExcel = () => {
