@@ -98,16 +98,16 @@ const UserManagement = () => {
       if (currentUserRole === 'admin' || 
           (currentUserRole === 'manager' && selectedRole === 'employee')) {
         
-        // Create user via admin API would need backend endpoint
-        // For now, we'll create invitation
-        const { data, error } = await supabase.auth.admin.createUser({
+        // Create user account using standard signup
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          email_confirm: true,
-          user_metadata: {
-            first_name: firstName,
-            last_name: lastName,
-            phone
+          options: {
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              phone
+            }
           }
         });
 
