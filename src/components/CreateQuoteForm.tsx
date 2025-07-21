@@ -256,7 +256,7 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
         notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${format(data.expiryDate, "dd/MM/yyyy")}`,
         items: JSON.stringify(selectedProducts),
         tenant_id: "default",
-        manager_id: user?.id || null,
+        manager_id: user?.id ? user.id.toString() : null,
       };
 
       const { error } = await supabase
