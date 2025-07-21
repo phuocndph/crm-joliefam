@@ -564,6 +564,9 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
                     <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>Chọn sản phẩm từ bảng giá</DialogTitle>
+                        <p className="text-sm text-muted-foreground">
+                          Chọn sản phẩm từ bảng giá hiện tại để thêm vào báo giá
+                        </p>
                       </DialogHeader>
                       <div className="space-y-4">
                         {products.length > 0 ? (
