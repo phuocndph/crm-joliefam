@@ -843,11 +843,11 @@ const ProductManagement = () => {
                               {formatPrice(product.price)}
                             </TableCell>
                             <TableCell className="text-right font-bold text-primary">
-                              {formatPrice(product.cost_price)}
+                              {product.description ? formatPrice(parseFloat(product.description)) : '-'}
                             </TableCell>
                             <TableCell className="text-sm">
                               <div className="line-clamp-2">
-                                {product.description || '-'}
+                                {product.cost_price ? `Chi tiết: ${product.cost_price}` : '-'}
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
