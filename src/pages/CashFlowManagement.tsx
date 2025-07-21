@@ -25,9 +25,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CreateFinanceRecordForm } from "@/components/CreateFinanceRecordForm";
-import { EditFinanceRecordDialog } from "@/components/EditFinanceRecordDialog";
-import { DeleteFinanceRecordDialog } from "@/components/DeleteFinanceRecordDialog";
+import { CreateExpenseForm } from "@/components/CreateExpenseForm";
+import { EditExpenseDialog } from "@/components/EditExpenseDialog";
+import { DeleteExpenseDialog } from "@/components/DeleteExpenseDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
@@ -47,46 +47,70 @@ const formatSafeDate = (dateValue: string | null | undefined, formatStr: string 
   }
 };
 
-interface FinanceRecord {
+interface Expense {
   id: string;
   amount: number;
-  type: string;
-  description: string | null;
-  date: string;
+  category: string;
+  description: string;
+  expense_date: string;
+  person_name: string | null;
+  expense_code: string;
   created_at: string;
+}
+
+interface Order {
+  id: string;
+  total_amount: number;
+  cost_price: number;
+  profit_before: number;
+  profit_after: number;
+}
+
+interface ProfitStats {
+  totalRevenue: number;
+  totalCostPrice: number;
+  totalExpenses: number;
+  netProfit: number;
 }
 
 export default function CashFlowManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [selectedRecord, setSelectedRecord] = useState<FinanceRecord | null>(null);
-  const [recordToEdit, setRecordToEdit] = useState<FinanceRecord | null>(null);
-  const [recordToDelete, setRecordToDelete] = useState<FinanceRecord | null>(null);
-  const [financeRecords, setFinanceRecords] = useState<FinanceRecord[]>([]);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [profitStats, setProfitStats] = useState<ProfitStats>({
+    totalRevenue: 0,
+    totalCostPrice: 0,
+    totalExpenses: 0,
+    netProfit: 0
+  });
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const filteredRecords = financeRecords.filter(
-    (record) =>
-      record.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.type.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredExpenses = expenses.filter(
+    (expense) =>
+      expense.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.person_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const loadFinanceRecords = async () => {
+  const loadExpenses = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('finance_data')
+        .from('expenses')
         .select('*')
-        .order('date', { ascending: false });
+        .order('expense_date', { ascending: false });
 
       if (error) throw error;
-      setFinanceRecords(data || []);
+      setExpenses(data || []);
     } catch (error) {
-      console.error('Error loading finance records:', error);
+      console.error('Error loading expenses:', error);
       toast({
         title: "Lỗi",
-        description: "Không thể tải dữ liệu dòng tiền",
+        description: "Không thể tải dữ liệu chi phí",
         variant: "destructive",
       });
     } finally {
@@ -94,144 +118,141 @@ export default function CashFlowManagement() {
     }
   };
 
+  const loadProfitStats = async () => {
+    try {
+      // Load orders for revenue and cost price
+      const { data: orders, error: ordersError } = await supabase
+        .from('orders')
+        .select('total_amount, cost_price')
+        .eq('status', 'delivered');
+
+      if (ordersError) throw ordersError;
+
+      // Load expenses
+      const { data: expensesData, error: expensesError } = await supabase
+        .from('expenses')
+        .select('amount');
+
+      if (expensesError) throw expensesError;
+
+      const totalRevenue = orders?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0;
+      const totalCostPrice = orders?.reduce((sum, order) => sum + (order.cost_price || 0), 0) || 0;
+      const totalExpenses = expensesData?.reduce((sum, expense) => sum + expense.amount, 0) || 0;
+      const netProfit = totalRevenue - totalCostPrice - totalExpenses;
+
+      setProfitStats({
+        totalRevenue,
+        totalCostPrice,
+        totalExpenses,
+        netProfit
+      });
+    } catch (error) {
+      console.error('Error loading profit stats:', error);
+    }
+  };
+
   useEffect(() => {
-    loadFinanceRecords();
+    loadExpenses();
+    loadProfitStats();
   }, []);
 
-  const handleCreateRecord = () => {
-    loadFinanceRecords();
+  const handleCreateExpense = () => {
+    loadExpenses();
+    loadProfitStats();
     setShowCreateForm(false);
     toast({
       title: "Thành công",
-      description: "Bản ghi dòng tiền đã được tạo thành công",
+      description: "Chi phí đã được tạo thành công",
     });
   };
 
-  const handleEditRecord = () => {
-    loadFinanceRecords();
-    setRecordToEdit(null);
+  const handleEditExpense = () => {
+    loadExpenses();
+    loadProfitStats();
+    setExpenseToEdit(null);
     toast({
       title: "Thành công",
-      description: "Bản ghi đã được cập nhật",
+      description: "Chi phí đã được cập nhật",
     });
   };
 
-  const handleDeleteRecord = async () => {
-    if (!recordToDelete) return;
+  const handleDeleteExpense = async () => {
+    if (!expenseToDelete) return;
     
     try {
       const { error } = await supabase
-        .from('finance_data')
+        .from('expenses')
         .delete()
-        .eq('id', recordToDelete.id);
+        .eq('id', expenseToDelete.id);
 
       if (error) throw error;
 
-      loadFinanceRecords();
-      setRecordToDelete(null);
+      loadExpenses();
+      loadProfitStats();
+      setExpenseToDelete(null);
       toast({
         title: "Thành công",
-        description: "Bản ghi đã được xóa",
+        description: "Chi phí đã được xóa",
       });
     } catch (error) {
-      console.error('Error deleting record:', error);
+      console.error('Error deleting expense:', error);
       toast({
         title: "Lỗi",
-        description: "Không thể xóa bản ghi",
+        description: "Không thể xóa chi phí",
         variant: "destructive",
       });
     }
   };
 
-  // Calculate stats
-  const currentMonth = new Date();
-  const lastMonth = subMonths(currentMonth, 1);
-  
-  const currentMonthStart = startOfMonth(currentMonth);
-  const currentMonthEnd = endOfMonth(currentMonth);
-  const lastMonthStart = startOfMonth(lastMonth);
-  const lastMonthEnd = endOfMonth(lastMonth);
-
-  const currentMonthRecords = financeRecords.filter(record => {
-    const recordDate = new Date(record.date);
-    return recordDate >= currentMonthStart && recordDate <= currentMonthEnd;
-  });
-
-  const lastMonthRecords = financeRecords.filter(record => {
-    const recordDate = new Date(record.date);
-    return recordDate >= lastMonthStart && recordDate <= lastMonthEnd;
-  });
-
-  const totalIncome = financeRecords.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
-  const totalExpense = financeRecords.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
-  const netFlow = totalIncome - totalExpense;
-
-  const currentMonthIncome = currentMonthRecords.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
-  const currentMonthExpense = currentMonthRecords.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
-  const currentMonthNet = currentMonthIncome - currentMonthExpense;
-
-  const lastMonthIncome = lastMonthRecords.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
-  const lastMonthExpense = lastMonthRecords.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
-  const lastMonthNet = lastMonthIncome - lastMonthExpense;
-
+  // Calculate stats based on profit calculations
   const stats = [
     {
-      title: "Tổng thu nhập",
-      value: `${totalIncome.toLocaleString()} ₫`,
+      title: "Tổng doanh thu",
+      value: `${profitStats.totalRevenue.toLocaleString()} ₫`,
       icon: TrendingUp,
       color: "text-green-600",
       bgColor: "bg-green-50",
-      change: currentMonthIncome > lastMonthIncome ? "tăng" : "giảm",
-      changePercent: lastMonthIncome > 0 ? Math.abs(((currentMonthIncome - lastMonthIncome) / lastMonthIncome) * 100).toFixed(1) : "0",
+      change: "tăng",
+      changePercent: "0",
     },
     {
       title: "Tổng chi phí",
-      value: `${totalExpense.toLocaleString()} ₫`,
+      value: `${profitStats.totalExpenses.toLocaleString()} ₫`,
       icon: TrendingDown,
       color: "text-red-600",
       bgColor: "bg-red-50",
-      change: currentMonthExpense > lastMonthExpense ? "tăng" : "giảm",
-      changePercent: lastMonthExpense > 0 ? Math.abs(((currentMonthExpense - lastMonthExpense) / lastMonthExpense) * 100).toFixed(1) : "0",
+      change: "giảm",
+      changePercent: "0",
     },
     {
-      title: "Dòng tiền ròng",
-      value: `${netFlow.toLocaleString()} ₫`,
+      title: "Giá gốc sản phẩm",
+      value: `${profitStats.totalCostPrice.toLocaleString()} ₫`,
       icon: DollarSign,
-      color: netFlow >= 0 ? "text-green-600" : "text-red-600",
-      bgColor: netFlow >= 0 ? "bg-green-50" : "bg-red-50",
-      change: currentMonthNet > lastMonthNet ? "tăng" : "giảm",
-      changePercent: lastMonthNet !== 0 ? Math.abs(((currentMonthNet - lastMonthNet) / Math.abs(lastMonthNet)) * 100).toFixed(1) : "0",
+      color: "text-blue-600",
+      bgColor: "bg-blue-50",
+      change: "ổn định",
+      changePercent: "0",
     },
     {
-      title: "Tháng này",
-      value: `${currentMonthNet.toLocaleString()} ₫`,
+      title: "Lợi nhuận ròng",
+      value: `${profitStats.netProfit.toLocaleString()} ₫`,
       icon: Calendar,
-      color: currentMonthNet >= 0 ? "text-green-600" : "text-red-600",
-      bgColor: currentMonthNet >= 0 ? "bg-green-50" : "bg-red-50",
-      change: currentMonthNet > lastMonthNet ? "tăng" : "giảm",
-      changePercent: lastMonthNet !== 0 ? Math.abs(((currentMonthNet - lastMonthNet) / Math.abs(lastMonthNet)) * 100).toFixed(1) : "0",
+      color: profitStats.netProfit >= 0 ? "text-green-600" : "text-red-600",
+      bgColor: profitStats.netProfit >= 0 ? "bg-green-50" : "bg-red-50",
+      change: profitStats.netProfit >= 0 ? "tăng" : "giảm",
+      changePercent: "0",
     },
   ];
 
-  const getTypeConfig = (type: string) => {
-    switch (type) {
-      case 'income':
-        return { label: 'Thu nhập', color: 'bg-green-100 text-green-800' };
-      case 'expense':
-        return { label: 'Chi phí', color: 'bg-red-100 text-red-800' };
-      default:
-        return { label: type, color: 'bg-gray-100 text-gray-800' };
-    }
-  };
 
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Quản lý Dòng tiền</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Quản lý Chi phí & Lợi nhuận</h2>
         <div className="flex items-center space-x-2">
           <Button onClick={() => setShowCreateForm(true)} className="gap-2">
             <Plus className="h-4 w-4" />
-            Thêm giao dịch
+            Thêm chi phí
           </Button>
         </div>
       </div>
@@ -262,15 +283,15 @@ export default function CashFlowManagement() {
       {/* Finance Records Table */}
       <Card className="animate-scale-in">
         <CardHeader>
-          <CardTitle>Lịch sử Dòng tiền</CardTitle>
+          <CardTitle>Danh sách Chi phí</CardTitle>
           <CardDescription>
-            Quản lý thu chi và theo dõi dòng tiền doanh nghiệp
+            Quản lý chi phí và tính toán lợi nhuận doanh nghiệp
           </CardDescription>
           <div className="flex items-center space-x-2">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Tìm kiếm giao dịch..."
+                placeholder="Tìm kiếm chi phí..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-8"
@@ -288,8 +309,9 @@ export default function CashFlowManagement() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Ngày</TableHead>
+                  <TableHead>Loại chi phí</TableHead>
+                  <TableHead>Người chi</TableHead>
                   <TableHead>Mô tả</TableHead>
-                  <TableHead>Loại</TableHead>
                   <TableHead>Số tiền</TableHead>
                   <TableHead className="text-right">Thao tác</TableHead>
                 </TableRow>
@@ -297,79 +319,77 @@ export default function CashFlowManagement() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
+                    <TableCell colSpan={6} className="text-center py-8">
                       <div className="flex items-center justify-center">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                         <span className="ml-2">Đang tải...</span>
                       </div>
                     </TableCell>
                   </TableRow>
-                ) : filteredRecords.length === 0 ? (
+                ) : filteredExpenses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
+                    <TableCell colSpan={6} className="text-center py-8">
                       <div className="flex flex-col items-center gap-2">
                         <DollarSign className="h-8 w-8 text-muted-foreground" />
                         <p className="text-muted-foreground">
-                          {searchTerm ? "Không tìm thấy giao dịch nào" : "Chưa có giao dịch nào"}
+                          {searchTerm ? "Không tìm thấy chi phí nào" : "Chưa có chi phí nào"}
                         </p>
                         {!searchTerm && (
                           <Button onClick={() => setShowCreateForm(true)} variant="outline" className="gap-2">
                             <Plus className="h-4 w-4" />
-                            Thêm giao dịch đầu tiên
+                            Thêm chi phí đầu tiên
                           </Button>
                         )}
                       </div>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredRecords.map((record) => {
-                    const typeConfig = getTypeConfig(record.type);
-                    return (
-                      <TableRow key={record.id} className="hover-scale">
-                        <TableCell>{formatSafeDate(record.date)}</TableCell>
-                        <TableCell>
-                          <div className="font-medium">{record.description || "—"}</div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={typeConfig.color}>
-                            {typeConfig.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span className={record.type === 'income' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
-                            {record.type === 'income' ? '+' : '-'}{record.amount.toLocaleString()} ₫
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-8 w-8 p-0">
-                                <span className="sr-only">Open menu</span>
-                                <DollarSign className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-white z-50">
-                              <DropdownMenuItem onClick={() => setSelectedRecord(record)}>
-                                <Eye className="mr-2 h-4 w-4" />
-                                Xem chi tiết
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setRecordToEdit(record)}>
-                                <Edit className="mr-2 h-4 w-4" />
-                                Chỉnh sửa
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                className="text-red-600"
-                                onClick={() => setRecordToDelete(record)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Xóa
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
+                  filteredExpenses.map((expense) => (
+                    <TableRow key={expense.id} className="hover-scale">
+                      <TableCell>{formatSafeDate(expense.expense_date)}</TableCell>
+                      <TableCell>
+                        <Badge className="bg-red-100 text-red-800">
+                          {expense.category}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{expense.person_name || "—"}</div>
+                      </TableCell>
+                      <TableCell>{expense.description || "—"}</TableCell>
+                      <TableCell>
+                        <span className="text-red-600 font-semibold">
+                          -{expense.amount.toLocaleString()} ₫
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Open menu</span>
+                              <DollarSign className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-white z-50">
+                            <DropdownMenuItem onClick={() => setSelectedExpense(expense)}>
+                              <Eye className="mr-2 h-4 w-4" />
+                              Xem chi tiết
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setExpenseToEdit(expense)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Chỉnh sửa
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="text-red-600"
+                              onClick={() => setExpenseToDelete(expense)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Xóa
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
               </TableBody>
             </Table>
@@ -381,72 +401,80 @@ export default function CashFlowManagement() {
       <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Thêm giao dịch mới</DialogTitle>
+            <DialogTitle>Thêm chi phí mới</DialogTitle>
             <DialogDescription>
-              Thêm bản ghi thu chi vào dòng tiền
+              Thêm chi phí vào hệ thống
             </DialogDescription>
           </DialogHeader>
-          <CreateFinanceRecordForm 
+          <CreateExpenseForm 
             onClose={() => setShowCreateForm(false)}
-            onSubmit={handleCreateRecord}
+            onSubmit={handleCreateExpense}
           />
         </DialogContent>
       </Dialog>
 
-      {recordToEdit && (
-        <EditFinanceRecordDialog 
-          record={recordToEdit}
-          open={!!recordToEdit}
-          onOpenChange={(open) => !open && setRecordToEdit(null)}
-          onSubmit={handleEditRecord}
+      {expenseToEdit && (
+        <EditExpenseDialog 
+          expense={expenseToEdit}
+          open={!!expenseToEdit}
+          onOpenChange={(open) => !open && setExpenseToEdit(null)}
+          onSubmit={handleEditExpense}
         />
       )}
 
-      {recordToDelete && (
-        <DeleteFinanceRecordDialog
-          record={recordToDelete}
-          open={!!recordToDelete}
-          onOpenChange={(open) => !open && setRecordToDelete(null)}
-          onConfirm={handleDeleteRecord}
+      {expenseToDelete && (
+        <DeleteExpenseDialog
+          expense={expenseToDelete}
+          open={!!expenseToDelete}
+          onOpenChange={(open) => !open && setExpenseToDelete(null)}
+          onConfirm={handleDeleteExpense}
         />
       )}
 
-      {/* Record Detail Dialog */}
-      {selectedRecord && (
-        <Dialog open={!!selectedRecord} onOpenChange={(open) => !open && setSelectedRecord(null)}>
+      {/* Expense Detail Dialog */}
+      {selectedExpense && (
+        <Dialog open={!!selectedExpense} onOpenChange={(open) => !open && setSelectedExpense(null)}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Chi tiết giao dịch</DialogTitle>
+              <DialogTitle>Chi tiết chi phí</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-gray-500">Ngày giao dịch</label>
-                <p className="text-base">{formatSafeDate(selectedRecord.date)}</p>
+                <label className="text-sm font-medium text-gray-500">Ngày chi phí</label>
+                <p className="text-base">{formatSafeDate(selectedExpense.expense_date)}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-500">Loại giao dịch</label>
+                <label className="text-sm font-medium text-gray-500">Loại chi phí</label>
                 <div className="mt-1">
-                  <Badge className={getTypeConfig(selectedRecord.type).color}>
-                    {getTypeConfig(selectedRecord.type).label}
+                  <Badge className="bg-red-100 text-red-800">
+                    {selectedExpense.category}
                   </Badge>
                 </div>
               </div>
               <div>
+                <label className="text-sm font-medium text-gray-500">Người chi</label>
+                <p className="text-base">{selectedExpense.person_name || "—"}</p>
+              </div>
+              <div>
                 <label className="text-sm font-medium text-gray-500">Số tiền</label>
-                <p className={`text-lg font-semibold ${selectedRecord.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                  {selectedRecord.type === 'income' ? '+' : '-'}{selectedRecord.amount.toLocaleString()} ₫
+                <p className="text-lg font-semibold text-red-600">
+                  -{selectedExpense.amount.toLocaleString()} ₫
                 </p>
               </div>
-              {selectedRecord.description && (
+              {selectedExpense.description && (
                 <div>
                   <label className="text-sm font-medium text-gray-500">Mô tả</label>
-                  <p className="text-base">{selectedRecord.description}</p>
+                  <p className="text-base">{selectedExpense.description}</p>
                 </div>
               )}
               <div className="pt-4 border-t">
                 <div>
+                  <label className="text-sm font-medium text-gray-500">Mã chi phí</label>
+                  <p className="text-base">{selectedExpense.expense_code}</p>
+                </div>
+                <div className="mt-2">
                   <label className="text-sm font-medium text-gray-500">Ngày tạo</label>
-                  <p className="text-base">{formatSafeDate(selectedRecord.created_at, 'dd/MM/yyyy HH:mm')}</p>
+                  <p className="text-base">{formatSafeDate(selectedExpense.created_at, 'dd/MM/yyyy HH:mm')}</p>
                 </div>
               </div>
             </div>

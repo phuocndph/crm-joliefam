@@ -90,6 +90,7 @@ export type Database = {
           expense_date: string
           id: string
           manager_id: string | null
+          person_name: string | null
           tenant_id: string
           updated_at: string
         }
@@ -102,6 +103,7 @@ export type Database = {
           expense_date?: string
           id?: string
           manager_id?: string | null
+          person_name?: string | null
           tenant_id?: string
           updated_at?: string
         }
@@ -114,6 +116,7 @@ export type Database = {
           expense_date?: string
           id?: string
           manager_id?: string | null
+          person_name?: string | null
           tenant_id?: string
           updated_at?: string
         }
