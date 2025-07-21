@@ -573,19 +573,19 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
                 {watchedValues.priceList ? (
                   <ProductSelectionForm 
                     products={products}
-                    onAddProduct={(productData) => {
+                    onAddProduct={(product) => {
                       const newItem: QuoteItem = {
-                        id: productData.product_id || crypto.randomUUID(),
-                        name: productData.name,
-                        sku: products.find(p => p.id === productData.product_id)?.sku || '',
-                        price: productData.unit_price,
-                        quantity: productData.quantity,
-                        total: productData.unit_price * productData.quantity,
+                        id: product.id,
+                        name: product.name,
+                        sku: product.sku || '',
+                        price: product.price || 0,
+                        quantity: 1,
+                        total: product.price || 0,
                       };
                       setSelectedProducts(prev => [...prev, newItem]);
                       toast({
                         title: "Thành công",
-                        description: `Đã thêm ${productData.name} vào báo giá`,
+                        description: `Đã thêm ${product.name} vào báo giá`,
                       });
                     }}
                   />
