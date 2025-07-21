@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
 import { CalendarIcon, Settings, X, Plus, Trash2 } from "lucide-react";
+import { ProductSelectionForm } from './ProductSelectionForm';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -72,9 +73,11 @@ type QuoteFormData = z.infer<typeof quoteFormSchema>;
 interface Product {
   id: string;
   name: string;
-  sku: string;
-  price: number;
-  category?: string;
+  description: string | null;
+  price: number | null;
+  sku: string | null;
+  category: string | null;
+  specifications: string | null;
   in_stock: boolean;
 }
 
@@ -196,10 +199,10 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
       const newItem: QuoteItem = {
         id: product.id,
         name: product.name,
-        sku: product.sku,
-        price: product.price,
+        sku: product.sku || '',
+        price: product.price || 0,
         quantity: 1,
-        total: product.price,
+        total: product.price || 0,
       };
       setSelectedProducts(prev => [...prev, newItem]);
     }
@@ -561,51 +564,32 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
                         Thêm sản phẩm
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                    <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
-                        <DialogTitle>Chọn sản phẩm từ bảng giá</DialogTitle>
+                        <DialogTitle>Thêm sản phẩm vào báo giá</DialogTitle>
                         <p className="text-sm text-muted-foreground">
-                          Chọn sản phẩm từ bảng giá hiện tại để thêm vào báo giá
+                          Tìm kiếm và thêm sản phẩm từ bảng giá hiện tại
                         </p>
                       </DialogHeader>
-                      <div className="space-y-4">
-                        {products.length > 0 ? (
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Tên sản phẩm</TableHead>
-                                <TableHead>SKU</TableHead>
-                                <TableHead>Danh mục</TableHead>
-                                <TableHead>Giá</TableHead>
-                                <TableHead>Hành động</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {products.map((product) => (
-                                <TableRow key={product.id}>
-                                  <TableCell className="font-medium">{product.name}</TableCell>
-                                  <TableCell>{product.sku}</TableCell>
-                                  <TableCell>{product.category || "N/A"}</TableCell>
-                                  <TableCell>{product.price?.toLocaleString()} VNĐ</TableCell>
-                                  <TableCell>
-                                    <Button
-                                      size="sm"
-                                      onClick={() => addProduct(product)}
-                                      className="bg-green-600 hover:bg-green-700"
-                                    >
-                                      Thêm
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        ) : (
-                          <div className="text-center py-8 text-muted-foreground">
-                            {watchedValues.priceList ? "Không có sản phẩm nào trong bảng giá này" : "Vui lòng chọn bảng giá trước"}
-                          </div>
-                        )}
-                      </div>
+                      <ProductSelectionForm 
+                        products={products}
+                        onAddProduct={(productData) => {
+                          const newItem: QuoteItem = {
+                            id: productData.product_id || crypto.randomUUID(),
+                            name: productData.name,
+                            sku: products.find(p => p.id === productData.product_id)?.sku || '',
+                            price: productData.unit_price,
+                            quantity: productData.quantity,
+                            total: productData.unit_price * productData.quantity,
+                          };
+                          setSelectedProducts(prev => [...prev, newItem]);
+                          setShowProductDialog(false);
+                          toast({
+                            title: "Thành công",
+                            description: `Đã thêm ${productData.name} vào báo giá`,
+                          });
+                        }}
+                      />
                     </DialogContent>
                   </Dialog>
                 </div>
