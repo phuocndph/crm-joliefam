@@ -12,6 +12,8 @@ import ProductManagement from "./pages/ProductManagement";
 import QuotesPage from "./pages/QuotesPage";
 import OrderManagement from "./pages/OrderManagement";
 import CashFlowManagement from "./pages/CashFlowManagement";
+import TransactionManagement from "./pages/TransactionManagement";
+import ReportsPage from "./pages/ReportsPage";
 import MainLayout from "./components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
@@ -34,8 +36,8 @@ const App = () => (
             <Route path="quotes" element={<QuotesPage />} />
             <Route path="orders" element={<OrderManagement />} />
             <Route path="cash-flow" element={<CashFlowManagement />} />
-            <Route path="transactions" element={<div className="text-center py-8">Trang Giao dịch đang được xây dựng</div>} />
-            <Route path="reports" element={<div className="text-center py-8">Trang Báo cáo đang được xây dựng</div>} />
+            <Route path="transactions" element={<TransactionManagement />} />
+            <Route path="reports" element={<ReportsPage />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
