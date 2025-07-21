@@ -17,43 +17,103 @@ export type Database = {
       customers: {
         Row: {
           address: string | null
+          addresses: Json | null
+          auto_tags: string[] | null
           company: string | null
           created_at: string
+          customer_code: string | null
           email: string | null
           id: string
+          last_purchase_date: string | null
           manager_id: string | null
           name: string
           notes: string | null
           phone: string | null
+          phones: Json | null
+          purchase_count: number | null
           tags: string[] | null
           tenant_id: string
+          total_spent: number | null
           updated_at: string
         }
         Insert: {
           address?: string | null
+          addresses?: Json | null
+          auto_tags?: string[] | null
           company?: string | null
           created_at?: string
+          customer_code?: string | null
           email?: string | null
           id?: string
+          last_purchase_date?: string | null
           manager_id?: string | null
           name: string
           notes?: string | null
           phone?: string | null
+          phones?: Json | null
+          purchase_count?: number | null
           tags?: string[] | null
           tenant_id?: string
+          total_spent?: number | null
           updated_at?: string
         }
         Update: {
           address?: string | null
+          addresses?: Json | null
+          auto_tags?: string[] | null
           company?: string | null
           created_at?: string
+          customer_code?: string | null
           email?: string | null
           id?: string
+          last_purchase_date?: string | null
           manager_id?: string | null
           name?: string
           notes?: string | null
           phone?: string | null
+          phones?: Json | null
+          purchase_count?: number | null
           tags?: string[] | null
+          tenant_id?: string
+          total_spent?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      expenses: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          description: string
+          expense_code: string
+          expense_date: string
+          id: string
+          manager_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string
+          description: string
+          expense_code: string
+          expense_date?: string
+          id?: string
+          manager_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          description?: string
+          expense_code?: string
+          expense_date?: string
+          id?: string
+          manager_id?: string | null
           tenant_id?: string
           updated_at?: string
         }
@@ -97,39 +157,57 @@ export type Database = {
       }
       orders: {
         Row: {
+          cost_price: number | null
           created_at: string
           customer_id: string | null
+          delivery_date: string | null
           id: string
           items: Json | null
           manager_id: string | null
           notes: string | null
           order_number: string
+          payment_date: string | null
+          payment_status: string | null
+          profit_after: number | null
+          profit_before: number | null
           status: string
           tenant_id: string
           total_amount: number | null
           updated_at: string
         }
         Insert: {
+          cost_price?: number | null
           created_at?: string
           customer_id?: string | null
+          delivery_date?: string | null
           id?: string
           items?: Json | null
           manager_id?: string | null
           notes?: string | null
           order_number: string
+          payment_date?: string | null
+          payment_status?: string | null
+          profit_after?: number | null
+          profit_before?: number | null
           status?: string
           tenant_id?: string
           total_amount?: number | null
           updated_at?: string
         }
         Update: {
+          cost_price?: number | null
           created_at?: string
           customer_id?: string | null
+          delivery_date?: string | null
           id?: string
           items?: Json | null
           manager_id?: string | null
           notes?: string | null
           order_number?: string
+          payment_date?: string | null
+          payment_status?: string | null
+          profit_after?: number | null
+          profit_before?: number | null
           status?: string
           tenant_id?: string
           total_amount?: number | null

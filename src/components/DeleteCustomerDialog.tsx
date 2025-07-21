@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,6 +9,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AlertTriangle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Customer {
   id: string;
@@ -25,6 +27,33 @@ interface DeleteCustomerDialogProps {
 }
 
 export function DeleteCustomerDialog({ customer, open, onOpenChange, onConfirm }: DeleteCustomerDialogProps) {
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleDelete = async () => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("customers")
+        .delete()
+        .eq("id", customer.id);
+
+      if (error) throw error;
+
+      onConfirm();
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error deleting customer:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể xóa khách hàng",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
@@ -70,11 +99,11 @@ export function DeleteCustomerDialog({ customer, open, onOpenChange, onConfirm }
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Hủy
           </Button>
-          <Button variant="destructive" onClick={onConfirm}>
-            Xóa khách hàng
+          <Button variant="destructive" onClick={handleDelete} disabled={loading}>
+            {loading ? "Đang xóa..." : "Xóa khách hàng"}
           </Button>
         </DialogFooter>
       </DialogContent>
