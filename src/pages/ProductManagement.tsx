@@ -810,27 +810,45 @@ const ProductManagement = () => {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Mã SP</TableHead>
-                          <TableHead>Danh mục</TableHead>
-                          <TableHead>Tên SP</TableHead>
-                          <TableHead>Quy cách</TableHead>
-                          <TableHead>Giá gốc</TableHead>
-                          <TableHead>Giá bán</TableHead>
-                          <TableHead>Mô tả</TableHead>
-                          <TableHead className="text-right">Thao tác</TableHead>
+                          <TableHead className="w-24">Mã SP</TableHead>
+                          <TableHead className="w-32">Danh mục</TableHead>
+                          <TableHead className="w-48">Tên SP</TableHead>
+                          <TableHead className="w-32">Quy cách</TableHead>
+                          <TableHead className="w-24 text-right">Giá gốc</TableHead>
+                          <TableHead className="w-24 text-right">Giá bán</TableHead>
+                          <TableHead className="w-48">Mô tả</TableHead>
+                          <TableHead className="w-20 text-right">Thao tác</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredProducts.map((product) => (
                           <TableRow key={product.id}>
-                            <TableCell className="font-medium">{product.sku || '-'}</TableCell>
-                            <TableCell>{product.category || '-'}</TableCell>
-                            <TableCell className="font-medium">{product.name}</TableCell>
-                            <TableCell>{product.specifications || '-'}</TableCell>
-                            <TableCell>{formatPrice(product.cost_price)}</TableCell>
-                            <TableCell>{formatPrice(product.price)}</TableCell>
-                            <TableCell className="max-w-xs truncate">
-                              {product.description || '-'}
+                            <TableCell className="font-mono text-sm">
+                              {product.sku || '-'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {product.category || '-'}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              <div className="line-clamp-2">
+                                {product.name}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <div className="line-clamp-2">
+                                {product.specifications || '-'}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {formatPrice(product.price)}
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-primary">
+                              {product.description ? formatPrice(parseFloat(product.description)) : '-'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <div className="line-clamp-2">
+                                {product.cost_price ? `Chi tiết: ${product.cost_price}` : '-'}
+                              </div>
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
