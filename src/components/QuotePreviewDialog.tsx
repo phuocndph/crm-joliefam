@@ -239,139 +239,121 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
   const handleExportExcel = async () => {
     try {
-      // Import template settings
-      const { getTemplateSettings } = await import('./QuoteTemplateSettings');
-      const templateSettings = getTemplateSettings();
-      
-      // Tạo workbook mới với màu sắc đầy đủ
+      // Tạo workbook mới
       const wb = XLSX.utils.book_new();
-      
-      // Tạo worksheet
       const ws = XLSX.utils.aoa_to_sheet([]);
       
-      // Company header - exactly like the sample
+      // Cấu trúc layout Excel theo yêu cầu
+      const companyInfo = {
+        name: 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT',
+        address: 'Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.',
+        phone: '0828686866',
+        taxCode: '0123456789',
+        bankAccount: 'Ngân hàng TMCP đầu tư và phát triển Việt Nam ( BIDV) – Chi nhánh Hà Nội. / 2110199996'
+      };
+      
+      const currentDate = new Date();
+      const formattedDate = `${currentDate.getDate()}/${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`;
+      
+      // Từ dòng 1-8: Header thông tin công ty
       XLSX.utils.sheet_add_aoa(ws, [
-        [templateSettings.companyTitle], // Row 1: CÔNG TY TNHH GIA LỘC HÙNG PHÁT
-        [`Địa chỉ: ${templateSettings.address}`], // Row 2
-        [`Điện thoại: ${templateSettings.phone}`], // Row 3
-        [`MST: ${templateSettings.taxCode}`], // Row 4
-        [`Trụ sở: ${templateSettings.headquarters}`], // Row 5
-        [`STK: ${templateSettings.bankInfo}`], // Row 6
-        [''], // Row 7: Empty
-        ['BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN'], // Row 8
-        ['', '', '', '', '', `Hà Nội ngày ${new Date().getDate()} tháng ${new Date().getMonth() + 1} năm ${new Date().getFullYear()}`], // Row 9
-        [''], // Row 10: Empty
-        ['THÔNG TIN KHÁCH HÀNG:', '', '', '', '', 'THÔNG TIN BÁO GIÁ:'], // Row 11
-        [`Tên KH: ${customerName}`, '', '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`], // Row 12
-        ['', '', '', '', '', `Ngày báo giá: ${quote.quoteDate || new Date().toISOString().slice(0,10)}`], // Row 13
-        ['', '', '', '', '', `Ngày hết hạn: ${expiryDate || '20/08/2025'}`], // Row 14
-        [''], // Row 15: Empty
-        ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'] // Row 16: Headers
+        [companyInfo.name], // Dòng 1: Merge A1:G1
+        [companyInfo.address], // Dòng 2: Merge A2:G2
+        [`Điện thoại: ${companyInfo.phone}`, '', '', `MST: ${companyInfo.taxCode}`], // Dòng 3
+        [companyInfo.bankAccount], // Dòng 4: Merge A4:G4
+        [''], // Dòng 5: Empty
+        ['BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN'], // Dòng 6: Merge A6:G6
+        [''], // Dòng 7: Empty
+        [`Hà Nội ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1} năm ${currentDate.getFullYear()}`], // Dòng 8: Merge A8:G8
+        [''], // Dòng 9: Empty
+        ['THÔNG TIN KHÁCH HÀNG:', '', '', '', 'THÔNG TIN BÁO GIÁ:'], // Dòng 10
+        [`Tên KH: ${customerName}`, '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`], // Dòng 11
+        ['', '', '', '', `Ngày báo giá: ${formattedDate}`], // Dòng 12
+        ['', '', '', '', `Ngày hết hạn: ${expiryDate || '31/7/2025'}`], // Dòng 13
+        [''], // Dòng 14: Empty
+        // Từ dòng 15: Bảng sản phẩm với header
+        ['STT', 'SẢN PHẨM', 'QUY CÁCH', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'] // Dòng 15: Header
       ], { origin: 'A1' });
       
-      // Add products data starting from row 17
-      let currentRow = 17;
+      // Thêm dữ liệu sản phẩm từ dòng 16
+      let currentRow = 16;
       items.forEach((item: any, index: number) => {
         XLSX.utils.sheet_add_aoa(ws, [[
-          index + 1,
-          item.name || `Bao vế nệm  chăn bông`,
-          item.specifications || '100x200',
-          item.category || '',
-          item.quantity || 1,
-          formatCurrency(item.price || 180000),
-          formatCurrency(item.total || 180000),
-          ''
+          index + 1, // STT
+          item.name || 'Ga chun ks T225 sọc 100x200x15cm',
+          item.specifications || 'Ga may bo chun quanh đệm , vải được tính trừ co theo nhà sản xuất',
+          item.category || 'Vải T225 40% Cotton 35% Polyester 25% Lụa , mật độ sợi 225 sợi / inch vuông . Vải ít nhăn , không xù , không bai màu',
+          item.quantity || 144,
+          item.price || 140000,
+          item.total || (item.quantity * item.price),
+          '' // Ghi chú
         ]], { origin: `A${currentRow}` });
         currentRow++;
       });
       
-      // Add empty row after products
-      currentRow += 1;
-      
-      // Add summary section exactly like the sample
+      // Tổng cộng và tính toán
+      currentRow += 2;
       XLSX.utils.sheet_add_aoa(ws, [
-        ['', '', '', '', '', 'TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', formatCurrency(subtotal)],
-        ['', '', '', '', '', `GTGT (${vatRate}%)`, formatCurrency(vatAmount)],
-        ['', '', '', '', '', 'TỔNG TIỀN ĐÃ BAO GỒM GTGT', formatCurrency(totalWithVat)],
-        ['', '', '', '', '', 'THANH TOÁN LẦN 1', formatCurrency(firstPayment)],
-        ['', '', '', '', '', 'CÒN LẠI', formatCurrency(remaining)]
+        ['', '', '', '', '', 'TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', subtotal],
+        ['', '', '', '', '', `GTGT (${vatRate}%)`, vatAmount],
+        ['', '', '', '', '', 'TỔNG TIỀN ĐÃ BAO GỒM GTGT', totalWithVat],
+        ['', '', '', '', '', 'THANH TOÁN LẦN 1', firstPayment],
+        ['', '', '', '', '', 'CÒN LẠI', remaining]
       ], { origin: `A${currentRow}` });
       
-      // Add terms and conditions
+      // Điều khoản
       currentRow += 7;
       XLSX.utils.sheet_add_aoa(ws, [
-        ['1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.'], 
+        ['1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.'],
         ['2. Thanh toán: 30% trước khi sản xuất, 70% trước khi giao hàng.'],
         ['3. Thời gian giao hàng: 7-10 ngày sau khi sản xuất hoàn tất cọc.'],
         ['4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.']
       ], { origin: `A${currentRow}` });
-      currentRow += 4;
       
-      // Add footer note
-      currentRow += 2;
-      XLSX.utils.sheet_add_aoa(ws, [
-        ['Cảm ơn Quý khách đã tin tướng và đặng sản phẩm của chúng tôi!']
-      ], { origin: `A${currentRow}` });
-      currentRow += 1;
-      
-      // Add signature section
-      currentRow += 2;
+      // Chữ ký
+      currentRow += 6;
       XLSX.utils.sheet_add_aoa(ws, [
         ['ĐẠI DIỆN CÔNG TY', '', '', '', '', 'KHÁCH HÀNG'],
         [''],
-        [''],
-        ['GIÁM ĐỐC', '', '', '', '', 'Ký tên và đóng dấu xác nhận'],
-        ['( Đã ký )']
+        ['GIÁM ĐỐC', '', '', '', '', 'Ký tên và đóng dấu xác nhận']
       ], { origin: `A${currentRow}` });
       
-      // Style the worksheet to match the sample exactly with FULL COLORS
+      // Merge cells theo cấu trúc yêu cầu
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, // A1:G1 - Company name
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }, // A2:G2 - Address
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } }, // A3:C3 - Phone
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 6 } }, // A4:G4 - Bank info
+        { s: { r: 5, c: 0 }, e: { r: 5, c: 6 } }, // A6:G6 - Quote title
+        { s: { r: 7, c: 0 }, e: { r: 7, c: 6 } }, // A8:G8 - Date
+        { s: { r: 9, c: 0 }, e: { r: 9, c: 3 } }, // A10:D10 - Customer info header
+        { s: { r: 10, c: 0 }, e: { r: 10, c: 3 } }, // A11:D11 - Customer name
+      ];
+      
+      // Set column widths theo yêu cầu
+      ws['!cols'] = [
+        { wch: 5 },   // A: STT (width=5)
+        { wch: 25 },  // B: SẢN PHẨM (width=25)
+        { wch: 30 },  // C: QUY CÁCH (width=30)
+        { wch: 35 },  // D: CHẤT LIỆU (width=35)
+        { wch: 12 },  // E: SỐ LƯỢNG (width=12)
+        { wch: 15 },  // F: ĐƠN GIÁ (width=15)
+        { wch: 18 },  // G: THÀNH TIỀN (width=18)
+        { wch: 15 }   // H: Ghi Chú (width=15)
+      ];
+      
+      // Áp dụng formatting chính xác
       const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
       
-      // Merge cells for headers
-      ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Company title row 1
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }, // Address row 2
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 7 } }, // Phone row 3
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 7 } }, // MST row 4
-        { s: { r: 4, c: 0 }, e: { r: 4, c: 7 } }, // Trụ sở row 5
-        { s: { r: 5, c: 0 }, e: { r: 5, c: 7 } }, // STK row 6
-        { s: { r: 7, c: 0 }, e: { r: 7, c: 7 } }, // Quote title row 8
-        { s: { r: 8, c: 5 }, e: { r: 8, c: 7 } }, // Date row 9
-        { s: { r: 10, c: 0 }, e: { r: 10, c: 4 } }, // Customer info header
-        { s: { r: 10, c: 5 }, e: { r: 10, c: 7 } }, // Quote info header
-        { s: { r: 11, c: 0 }, e: { r: 11, c: 4 } }, // Customer name
-        { s: { r: 11, c: 5 }, e: { r: 11, c: 7 } }, // Quote number
-        { s: { r: 12, c: 5 }, e: { r: 12, c: 7 } }, // Quote date
-        { s: { r: 13, c: 5 }, e: { r: 13, c: 7 } }, // Expiry date
-      ];
-      
-      // Set column widths to match sample
-      ws['!cols'] = [
-        { wch: 6 },   // STT
-        { wch: 28 },  // SẢN PHẨM
-        { wch: 15 },  // QUY CÁCH (CM)
-        { wch: 15 },  // CHẤT LIỆU
-        { wch: 12 },  // SỐ LƯỢNG
-        { wch: 15 },  // ĐƠN GIÁ
-        { wch: 18 },  // THÀNH TIỀN
-        { wch: 12 }   // Ghi Chú
-      ];
-      
-      // Set row heights
-      ws['!rows'] = [];
-      for (let i = 0; i <= range.e.r; i++) {
-        ws['!rows'][i] = { hpt: 25 }; // Row height
-      }
-      
-      // Apply cell styles with FULL COLORS như mẫu gốc
       for (let row = 0; row <= range.e.r; row++) {
         for (let col = 0; col <= range.e.c; col++) {
           const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
           if (!ws[cellAddress]) continue;
           
-          // Initialize cell style với border
+          // Base styling với border
           ws[cellAddress].s = {
             alignment: { vertical: "center", wrapText: true },
+            font: { name: "Arial", size: 10 },
             border: {
               top: { style: "thin", color: { rgb: "000000" } },
               bottom: { style: "thin", color: { rgb: "000000" } },
@@ -380,153 +362,104 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             }
           };
           
-          // Style specific rows with MÀUTUYỆT VỜI
+          // Specific styling cho từng section
           if (row === 0) {
-            // Company title - ĐỎ BACKGROUND
+            // Company name - Arial 14pt, bold, căn giữa
             ws[cellAddress].s = {
-              font: { bold: true, size: 14, color: { rgb: "FFFFFF" } },
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 14, bold: true },
               alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "FF0000" } }, // ĐỎ BACKGROUND
-              border: {
-                top: { style: "medium", color: { rgb: "000000" } },
-                bottom: { style: "medium", color: { rgb: "000000" } },
-                left: { style: "medium", color: { rgb: "000000" } },
-                right: { style: "medium", color: { rgb: "000000" } }
-              }
+              fill: { fgColor: { rgb: "E6E6FA" } } // Light purple background
             };
-          } else if (row >= 1 && row <= 5) {
-            // Company info rows - Xám nhạt
+          } else if (row === 1) {
+            // Address - Arial 11pt, căn giữa
             ws[cellAddress].s = {
-              font: { size: 10 },
-              alignment: { horizontal: "left", vertical: "center" },
-              fill: { fgColor: { rgb: "F0F0F0" } }, // Xám nhạt
-              border: {
-                top: { style: "thin", color: { rgb: "000000" } },
-                bottom: { style: "thin", color: { rgb: "000000" } },
-                left: { style: "thin", color: { rgb: "000000" } },
-                right: { style: "thin", color: { rgb: "000000" } }
-              }
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 11 },
+              alignment: { horizontal: "center", vertical: "center" }
+            };
+          } else if (row === 2) {
+            // Phone & Tax - Arial 10pt
+            ws[cellAddress].s = {
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 10 }
+            };
+          } else if (row === 5) {
+            // Quote title - Arial 16pt, bold, căn giữa
+            ws[cellAddress].s = {
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 16, bold: true },
+              alignment: { horizontal: "center", vertical: "center" },
+              fill: { fgColor: { rgb: "ADD8E6" } } // Light blue background
             };
           } else if (row === 7) {
-            // Quote title - XANH BACKGROUND
+            // Date - căn giữa
             ws[cellAddress].s = {
-              font: { bold: true, size: 14, color: { rgb: "FFFFFF" } },
+              ...ws[cellAddress].s,
+              alignment: { horizontal: "center", vertical: "center" }
+            };
+          } else if (row === 14) {
+            // Product table header - Arial 11pt, border đậm
+            ws[cellAddress].s = {
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 11, bold: true },
               alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "0066CC" } }, // XANH BACKGROUND
+              fill: { fgColor: { rgb: "FFFF99" } }, // Yellow background
               border: {
-                top: { style: "medium", color: { rgb: "000000" } },
-                bottom: { style: "medium", color: { rgb: "000000" } },
-                left: { style: "medium", color: { rgb: "000000" } },
-                right: { style: "medium", color: { rgb: "000000" } }
+                top: { style: "thick", color: { rgb: "000000" } },
+                bottom: { style: "thick", color: { rgb: "000000" } },
+                left: { style: "thick", color: { rgb: "000000" } },
+                right: { style: "thick", color: { rgb: "000000" } }
               }
             };
-          } else if (row === 8 && col >= 5) {
-            // Date - Xanh nhạt
+          } else if (row >= 15 && row < 15 + items.length) {
+            // Product data rows
+            if (col === 0 || col === 4) {
+              // STT và SỐ LƯỢNG - căn giữa
+              ws[cellAddress].s = {
+                ...ws[cellAddress].s,
+                alignment: { horizontal: "center", vertical: "center" }
+              };
+            } else if (col === 5 || col === 6) {
+              // ĐƠN GIÁ và THÀNH TIỀN - căn phải, number format
+              ws[cellAddress].s = {
+                ...ws[cellAddress].s,
+                alignment: { horizontal: "right", vertical: "center" },
+                numFmt: "#,##0"
+              };
+            } else if (col === 2 || col === 3) {
+              // QUY CÁCH và CHẤT LIỆU - text wrapping
+              ws[cellAddress].s = {
+                ...ws[cellAddress].s,
+                alignment: { vertical: "center", wrapText: true }
+              };
+            }
+          }
+          
+          // Number formatting cho các cột tiền tệ
+          if ((col === 4 || col === 5 || col === 6) && row >= 15) {
             ws[cellAddress].s = {
-              font: { size: 10 },
-              alignment: { horizontal: "right", vertical: "center" },
-              fill: { fgColor: { rgb: "E6F3FF" } }, // Xanh nhạt
-              border: {
-                top: { style: "thin", color: { rgb: "000000" } },
-                bottom: { style: "thin", color: { rgb: "000000" } },
-                left: { style: "thin", color: { rgb: "000000" } },
-                right: { style: "thin", color: { rgb: "000000" } }
-              }
-            };
-          } else if (row === 10) {
-            // Section headers - XANH LÁ BACKGROUND
-            ws[cellAddress].s = {
-              font: { bold: true, size: 11, color: { rgb: "FFFFFF" } },
-              alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "339933" } }, // XANH LÁ BACKGROUND
-              border: {
-                top: { style: "medium", color: { rgb: "000000" } },
-                bottom: { style: "medium", color: { rgb: "000000" } },
-                left: { style: "medium", color: { rgb: "000000" } },
-                right: { style: "medium", color: { rgb: "000000" } }
-              }
-            };
-          } else if (row >= 11 && row <= 13) {
-            // Customer and quote info - Xanh lá nhạt
-            ws[cellAddress].s = {
-              font: { size: 10 },
-              alignment: { horizontal: "left", vertical: "center" },
-              fill: { fgColor: { rgb: "E6FFE6" } }, // Xanh lá nhạt
-              border: {
-                top: { style: "thin", color: { rgb: "000000" } },
-                bottom: { style: "thin", color: { rgb: "000000" } },
-                left: { style: "thin", color: { rgb: "000000" } },
-                right: { style: "thin", color: { rgb: "000000" } }
-              }
-            };
-          } else if (row === 15) {
-            // Table header - VÀNG BACKGROUND
-            ws[cellAddress].s = {
-              font: { bold: true, size: 10, color: { rgb: "000000" } },
-              alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "FFFF00" } }, // VÀNG BACKGROUND
-              border: {
-                top: { style: "medium", color: { rgb: "000000" } },
-                bottom: { style: "medium", color: { rgb: "000000" } },
-                left: { style: "medium", color: { rgb: "000000" } },
-                right: { style: "medium", color: { rgb: "000000" } }
-              }
-            };
-          } else if (row >= 16 && row < 16 + items.length) {
-            // Product rows - Xen kẽ màu
-            const bgColor = (row % 2 === 0) ? "FFFFFF" : "F9F9F9"; // Trắng và xám nhạt xen kẽ
-            ws[cellAddress].s = {
-              font: { size: 10 },
-              alignment: { vertical: "center", horizontal: col === 0 ? "center" : (col >= 4 ? "right" : "left") },
-              fill: { fgColor: { rgb: bgColor } },
-              border: {
-                top: { style: "thin", color: { rgb: "000000" } },
-                bottom: { style: "thin", color: { rgb: "000000" } },
-                left: { style: "thin", color: { rgb: "000000" } },
-                right: { style: "thin", color: { rgb: "000000" } }
-              }
-            };
-          } else if (row >= currentRow - 10 && row < currentRow - 5) {
-            // Summary section - CAM BACKGROUND
-            ws[cellAddress].s = {
-              font: { bold: true, size: 10, color: { rgb: "000000" } },
-              alignment: { vertical: "center", horizontal: "right" },
-              fill: { fgColor: { rgb: "FFB366" } }, // CAM BACKGROUND
-              border: {
-                top: { style: "thin", color: { rgb: "000000" } },
-                bottom: { style: "thin", color: { rgb: "000000" } },
-                left: { style: "thin", color: { rgb: "000000" } },
-                right: { style: "thin", color: { rgb: "000000" } }
-              }
+              ...ws[cellAddress].s,
+              numFmt: "#,##0"
             };
           }
         }
       }
       
-      // Add logo placeholder at top left - [LOGO] marker
-      XLSX.utils.sheet_add_aoa(ws, [
-        ['[LOGO JOLIE\'FAM]'] // Logo placeholder
-      ], { origin: 'I1' });
-      
-      // Style the logo placeholder
-      if (ws['I1']) {
-        ws['I1'].s = {
-          font: { bold: true, size: 8, color: { rgb: "0066CC" } },
-          alignment: { horizontal: "center", vertical: "center" },
-          fill: { fgColor: { rgb: "E6F3FF" } },
-          border: {
-            top: { style: "thin", color: { rgb: "0066CC" } },
-            bottom: { style: "thin", color: { rgb: "0066CC" } },
-            left: { style: "thin", color: { rgb: "0066CC" } },
-            right: { style: "thin", color: { rgb: "0066CC" } }
-          }
-        };
+      // Row height auto-fit cho text dài
+      ws['!rows'] = [];
+      for (let i = 0; i <= range.e.r; i++) {
+        if (i >= 15 && i < 15 + items.length) {
+          ws['!rows'][i] = { hpt: 40 }; // Taller rows for product data
+        } else {
+          ws['!rows'][i] = { hpt: 25 }; // Standard height
+        }
       }
       
       // Add worksheet to workbook
       XLSX.utils.book_append_sheet(wb, ws, 'Báo Giá');
       
-      // Export file
+      // Export file với WrapText và Merge & Center
       XLSX.writeFile(wb, `BaoGia_${quote.quoteNumber || 'BG-' + new Date().toISOString().split('T')[0]}.xlsx`);
       
     } catch (error) {
