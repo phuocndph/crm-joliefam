@@ -28,53 +28,8 @@ import {
 import { CreateQuoteForm } from "@/components/CreateQuoteForm";
 import { useToast } from "@/hooks/use-toast";
 
-// Mock data for quotes
-const mockQuotes = [
-  {
-    id: "1",
-    quoteNumber: "BG-20250721-001",
-    customerName: "Công ty TNHH ABC",
-    customerEmail: "contact@abc.com",
-    totalAmount: 50000000,
-    status: "draft",
-    quoteDate: "21/07/2025",
-    expiryDate: "20/08/2025",
-    responsible: "Nguyễn Văn A",
-  },
-  {
-    id: "2",
-    quoteNumber: "BG-20250720-002",
-    customerName: "Công ty Cổ phần XYZ",
-    customerEmail: "sales@xyz.com",
-    totalAmount: 75000000,
-    status: "sent",
-    quoteDate: "20/07/2025",
-    expiryDate: "19/08/2025",
-    responsible: "Trần Thị B",
-  },
-  {
-    id: "3",
-    quoteNumber: "BG-20250719-003",
-    customerName: "Doanh nghiệp 123",
-    customerEmail: "info@123.com",
-    totalAmount: 30000000,
-    status: "approved",
-    quoteDate: "19/07/2025",
-    expiryDate: "18/08/2025",
-    responsible: "Lê Văn C",
-  },
-  {
-    id: "4",
-    quoteNumber: "BG-20250718-004",
-    customerName: "Công ty DEF",
-    customerEmail: "contact@def.com",
-    totalAmount: 25000000,
-    status: "expired",
-    quoteDate: "18/07/2025",
-    expiryDate: "17/07/2025",
-    responsible: "Phạm Thị D",
-  },
-];
+// Mock data for quotes - removed, will load from database
+const mockQuotes: any[] = [];
 
 const statusLabels = {
   draft: { label: "Nháp", color: "bg-gray-100 text-gray-800" },
