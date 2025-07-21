@@ -63,13 +63,35 @@ serve(async (req) => {
     const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim())
     console.log('Headers:', headers)
 
-    // Expected headers
-    const expectedHeaders = ['Mã SP', 'Danh mục', 'Tên SP', 'Quy cách', 'Giá gốc', 'Giá bán', 'Mô tả']
+    // Expected headers - support multiple formats
+    const headerMappings = {
+      'Mã SP': ['Mã SP', 'MÃ SP'],
+      'Danh mục': ['Danh mục', 'DANH MỤC SẢN PHẨM', 'DANH MỤC'],
+      'Tên SP': ['Tên SP', 'TÊN SP'],
+      'Quy cách': ['Quy cách', 'QUY CÁCH'],
+      'Giá gốc': ['Giá gốc', 'ĐƠN GIÁ NHÀ', 'GIÁ GỐC'],
+      'Giá bán': ['Giá bán', 'ĐƠN GIÁ BÁN', 'GIÁ BÁN'],
+      'Mô tả': ['Mô tả', 'MÔ TẢ SẢN PHẨM', 'MÔ TẢ']
+    }
     
-    // Validate headers
-    const missingHeaders = expectedHeaders.filter(h => !headers.includes(h))
+    // Find header positions
+    const headerPositions: { [key: string]: number } = {}
+    Object.entries(headerMappings).forEach(([standardName, variations]) => {
+      for (const variation of variations) {
+        const index = headers.findIndex(h => h === variation)
+        if (index !== -1) {
+          headerPositions[standardName] = index
+          break
+        }
+      }
+    })
+
+    // Check if all required headers are found
+    const missingHeaders = Object.keys(headerMappings).filter(h => headerPositions[h] === undefined)
     if (missingHeaders.length > 0) {
-      throw new Error(`Thiếu các cột: ${missingHeaders.join(', ')}. Định dạng yêu cầu: ${expectedHeaders.join(' | ')}`)
+      console.log('Header positions:', headerPositions)
+      console.log('Missing headers:', missingHeaders)
+      throw new Error(`Không tìm thấy các cột: ${missingHeaders.join(', ')}. Headers có sẵn: ${headers.join(', ')}`)
     }
 
     // Parse data rows
@@ -83,10 +105,11 @@ serve(async (req) => {
           tenant_id: 'default'
         }
 
-        headers.forEach((header, index) => {
-          const value = values[index] || ''
+        // Use header positions to map values
+        Object.entries(headerPositions).forEach(([standardName, position]) => {
+          const value = values[position] || ''
           
-          switch (header) {
+          switch (standardName) {
             case 'Mã SP':
               product.sku = value
               break
