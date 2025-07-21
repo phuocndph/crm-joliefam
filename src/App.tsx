@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import UserManagement from "./pages/UserManagement";
+import CustomerManagement from "./pages/CustomerManagement";
 import ProductManagement from "./pages/ProductManagement";
 import QuotesPage from "./pages/QuotesPage";
 import MainLayout from "./components/layout/MainLayout";
@@ -26,7 +27,7 @@ const App = () => (
           <Route path="/" element={<MainLayout />}>
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="user-management" element={<UserManagement />} />
-            <Route path="customers" element={<div className="text-center py-8">Trang Khách hàng đang được xây dựng</div>} />
+            <Route path="customers" element={<CustomerManagement />} />
             <Route path="products" element={<ProductManagement />} />
             <Route path="quotes" element={<QuotesPage />} />
             <Route path="orders" element={<div className="text-center py-8">Trang Đơn hàng đang được xây dựng</div>} />
