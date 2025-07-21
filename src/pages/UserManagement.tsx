@@ -219,11 +219,12 @@ const UserManagement = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Quản lý người dùng</h1>
-          <p className="text-muted-foreground">
-            Vai trò của bạn: <Badge variant={getRoleBadgeVariant(currentUserRole)}>
+          <div className="text-muted-foreground flex items-center gap-2">
+            Vai trò của bạn: 
+            <Badge variant={getRoleBadgeVariant(currentUserRole)}>
               {getRoleDisplayName(currentUserRole)}
             </Badge>
-          </p>
+          </div>
         </div>
       </div>
 
