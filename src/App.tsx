@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import UserManagement from "./pages/UserManagement";
+import ProductManagement from "./pages/ProductManagement";
 import MainLayout from "./components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
@@ -25,7 +26,7 @@ const App = () => (
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="user-management" element={<UserManagement />} />
             <Route path="customers" element={<div className="text-center py-8">Trang Khách hàng đang được xây dựng</div>} />
-            <Route path="products" element={<div className="text-center py-8">Trang Sản phẩm đang được xây dựng</div>} />
+            <Route path="products" element={<ProductManagement />} />
             <Route path="quotes" element={<div className="text-center py-8">Trang Báo giá đang được xây dựng</div>} />
             <Route path="orders" element={<div className="text-center py-8">Trang Đơn hàng đang được xây dựng</div>} />
             <Route path="cash-flow" element={<div className="text-center py-8">Trang Dòng tiền đang được xây dựng</div>} />

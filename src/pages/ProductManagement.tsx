@@ -1,0 +1,639 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useUserRole } from '@/hooks/useUserRole';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { useToast } from '@/hooks/use-toast';
+import { Package, Plus, Edit, Trash2, Search, Filter } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+interface Product {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number | null;
+  cost_price: number | null;
+  sku: string | null;
+  category: string | null;
+  in_stock: boolean;
+  manager_id: string | null;
+  tenant_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const ProductManagement = () => {
+  const [user, setUser] = useState<any>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [createProductLoading, setCreateProductLoading] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [stockFilter, setStockFilter] = useState('');
+  const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
+  const { toast } = useToast();
+
+  // Form state
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+  const [costPrice, setCostPrice] = useState('');
+  const [sku, setSku] = useState('');
+  const [category, setCategory] = useState('');
+  const [inStock, setInStock] = useState(true);
+
+  // Edit form state
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editCostPrice, setEditCostPrice] = useState('');
+  const [editSku, setEditSku] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editInStock, setEditInStock] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (currentUserRole && !roleLoading) {
+      fetchProducts();
+    }
+  }, [currentUserRole, roleLoading]);
+
+  useEffect(() => {
+    filterProducts();
+  }, [products, searchTerm, categoryFilter, stockFilter]);
+
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('products' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setProducts((data as unknown as Product[]) || []);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải danh sách sản phẩm",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterProducts = () => {
+    let filtered = products;
+
+    if (searchTerm) {
+      filtered = filtered.filter(product => 
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    if (categoryFilter) {
+      filtered = filtered.filter(product => product.category === categoryFilter);
+    }
+
+    if (stockFilter) {
+      if (stockFilter === 'in-stock') {
+        filtered = filtered.filter(product => product.in_stock);
+      } else if (stockFilter === 'out-of-stock') {
+        filtered = filtered.filter(product => !product.in_stock);
+      }
+    }
+
+    setFilteredProducts(filtered);
+  };
+
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateProductLoading(true);
+
+    try {
+      const { error } = await (supabase as any)
+        .from('products')
+        .insert({
+          name,
+          description: description || null,
+          price: price ? parseFloat(price) : null,
+          cost_price: costPrice ? parseFloat(costPrice) : null,
+          sku: sku || null,
+          category: category || null,
+          in_stock: inStock,
+          manager_id: user?.id || null,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: "Đã tạo sản phẩm thành công",
+      });
+
+      // Reset form
+      setName('');
+      setDescription('');
+      setPrice('');
+      setCostPrice('');
+      setSku('');
+      setCategory('');
+      setInStock(true);
+      
+      // Refresh products
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Error creating product:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể tạo sản phẩm",
+        variant: "destructive",
+      });
+    } finally {
+      setCreateProductLoading(false);
+    }
+  };
+
+  const handleEditProduct = async () => {
+    if (!editingProduct) return;
+
+    try {
+      const { error } = await (supabase as any)
+        .from('products')
+        .update({
+          name: editName,
+          description: editDescription || null,
+          price: editPrice ? parseFloat(editPrice) : null,
+          cost_price: editCostPrice ? parseFloat(editCostPrice) : null,
+          sku: editSku || null,
+          category: editCategory || null,
+          in_stock: editInStock,
+        })
+        .eq('id', editingProduct.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: "Đã cập nhật sản phẩm thành công",
+      });
+
+      setEditingProduct(null);
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Error updating product:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể cập nhật sản phẩm",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteProduct = async () => {
+    if (!deletingProduct) return;
+
+    try {
+      const { error } = await (supabase as any)
+        .from('products')
+        .delete()
+        .eq('id', deletingProduct.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: "Đã xóa sản phẩm thành công",
+      });
+
+      setDeletingProduct(null);
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Error deleting product:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xóa sản phẩm",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const openEditDialog = (product: Product) => {
+    setEditingProduct(product);
+    setEditName(product.name);
+    setEditDescription(product.description || '');
+    setEditPrice(product.price?.toString() || '');
+    setEditCostPrice(product.cost_price?.toString() || '');
+    setEditSku(product.sku || '');
+    setEditCategory(product.category || '');
+    setEditInStock(product.in_stock);
+  };
+
+  const formatPrice = (price: number | null) => {
+    if (!price) return 'Chưa có giá';
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND'
+    }).format(price);
+  };
+
+  const getUniqueCategories = () => {
+    const categories = products
+      .map(p => p.category)
+      .filter(Boolean)
+      .filter((value, index, self) => self.indexOf(value) === index);
+    return categories;
+  };
+
+  if (roleLoading || loading) {
+    return <div className="flex justify-center items-center h-64">Đang tải...</div>;
+  }
+
+  if (!currentUserRole) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Card className="w-96">
+          <CardHeader>
+            <CardTitle>Vui lòng đăng nhập</CardTitle>
+            <CardDescription>
+              Bạn cần đăng nhập để truy cập trang này
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Quản lý sản phẩm</h1>
+          <p className="text-muted-foreground">
+            Quản lý danh sách sản phẩm và thông tin chi tiết
+          </p>
+        </div>
+      </div>
+
+      {/* Create Product Form */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5" />
+            Thêm sản phẩm mới
+          </CardTitle>
+          <CardDescription>
+            Điền thông tin để tạo sản phẩm mới
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreateProduct} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Tên sản phẩm *</Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sku">Mã SKU</Label>
+                <Input
+                  id="sku"
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="category">Danh mục</Label>
+                <Input
+                  id="category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="price">Giá bán</Label>
+                <Input
+                  id="price"
+                  type="number"
+                  step="0.01"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="costPrice">Giá vốn</Label>
+                <Input
+                  id="costPrice"
+                  type="number"
+                  step="0.01"
+                  value={costPrice}
+                  onChange={(e) => setCostPrice(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="inStock">Còn hàng</Label>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="inStock"
+                    checked={inStock}
+                    onCheckedChange={setInStock}
+                  />
+                  <Label htmlFor="inStock">
+                    {inStock ? 'Còn hàng' : 'Hết hàng'}
+                  </Label>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Mô tả</Label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
+            <Button type="submit" disabled={createProductLoading}>
+              {createProductLoading ? 'Đang tạo...' : 'Tạo sản phẩm'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Search and Filter */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Tìm kiếm và lọc
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="search">Tìm kiếm</Label>
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="search"
+                  placeholder="Tên, SKU, mô tả..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="categoryFilter">Danh mục</Label>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tất cả danh mục" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Tất cả danh mục</SelectItem>
+                  {getUniqueCategories().map((cat) => (
+                    <SelectItem key={cat} value={cat!}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="stockFilter">Tình trạng kho</Label>
+              <Select value={stockFilter} onValueChange={setStockFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tất cả" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Tất cả</SelectItem>
+                  <SelectItem value="in-stock">Còn hàng</SelectItem>
+                  <SelectItem value="out-of-stock">Hết hàng</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setSearchTerm('');
+                  setCategoryFilter('');
+                  setStockFilter('');
+                }}
+              >
+                Xóa bộ lọc
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Products List */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Package className="h-5 w-5" />
+            Danh sách sản phẩm ({filteredProducts.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tên sản phẩm</TableHead>
+                <TableHead>SKU</TableHead>
+                <TableHead>Danh mục</TableHead>
+                <TableHead>Giá bán</TableHead>
+                <TableHead>Giá vốn</TableHead>
+                <TableHead>Tình trạng</TableHead>
+                <TableHead>Ngày tạo</TableHead>
+                <TableHead className="text-right">Thao tác</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredProducts.map((product) => (
+                <TableRow key={product.id}>
+                  <TableCell className="font-medium">
+                    <div>
+                      <div>{product.name}</div>
+                      {product.description && (
+                        <div className="text-sm text-muted-foreground truncate max-w-xs">
+                          {product.description}
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>{product.sku || '-'}</TableCell>
+                  <TableCell>{product.category || '-'}</TableCell>
+                  <TableCell>{formatPrice(product.price)}</TableCell>
+                  <TableCell>{formatPrice(product.cost_price)}</TableCell>
+                  <TableCell>
+                    <Badge variant={product.in_stock ? 'default' : 'destructive'}>
+                      {product.in_stock ? 'Còn hàng' : 'Hết hàng'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {new Date(product.created_at).toLocaleDateString('vi-VN')}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditDialog(product)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeletingProduct(product)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Edit Product Dialog */}
+      <Dialog open={!!editingProduct} onOpenChange={(open) => !open && setEditingProduct(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa sản phẩm</DialogTitle>
+            <DialogDescription>
+              Cập nhật thông tin sản phẩm
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="editName">Tên sản phẩm *</Label>
+                <Input
+                  id="editName"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editSku">Mã SKU</Label>
+                <Input
+                  id="editSku"
+                  value={editSku}
+                  onChange={(e) => setEditSku(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editCategory">Danh mục</Label>
+                <Input
+                  id="editCategory"
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editPrice">Giá bán</Label>
+                <Input
+                  id="editPrice"
+                  type="number"
+                  step="0.01"
+                  value={editPrice}
+                  onChange={(e) => setEditPrice(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editCostPrice">Giá vốn</Label>
+                <Input
+                  id="editCostPrice"
+                  type="number"
+                  step="0.01"
+                  value={editCostPrice}
+                  onChange={(e) => setEditCostPrice(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editInStock">Còn hàng</Label>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="editInStock"
+                    checked={editInStock}
+                    onCheckedChange={setEditInStock}
+                  />
+                  <Label htmlFor="editInStock">
+                    {editInStock ? 'Còn hàng' : 'Hết hàng'}
+                  </Label>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editDescription">Mô tả</Label>
+              <Textarea
+                id="editDescription"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingProduct(null)}>
+              Hủy
+            </Button>
+            <Button onClick={handleEditProduct}>
+              Cập nhật
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Product Dialog */}
+      <Dialog open={!!deletingProduct} onOpenChange={(open) => !open && setDeletingProduct(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xác nhận xóa sản phẩm</DialogTitle>
+            <DialogDescription>
+              Bạn có chắc chắn muốn xóa sản phẩm "{deletingProduct?.name}"? 
+              Hành động này không thể hoàn tác.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingProduct(null)}>
+              Hủy
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteProduct}>
+              Xóa
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default ProductManagement;
