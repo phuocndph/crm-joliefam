@@ -243,7 +243,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const { getTemplateSettings } = await import('./QuoteTemplateSettings');
       const templateSettings = getTemplateSettings();
       
-      // Tạo workbook mới
+      // Tạo workbook mới với màu sắc đầy đủ
       const wb = XLSX.utils.book_new();
       
       // Tạo worksheet
@@ -251,22 +251,22 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       
       // Company header - exactly like the sample
       XLSX.utils.sheet_add_aoa(ws, [
-        [templateSettings.companyTitle],
-        [`Địa chỉ: ${templateSettings.address}`],
-        [`Điện thoại: ${templateSettings.phone}`],
-        [`MST: ${templateSettings.taxCode}`],
-        [`Trụ sở: ${templateSettings.headquarters}`],
-        [`STK: ${templateSettings.bankInfo}`],
-        [''],
-        ['BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN'],
-        ['', '', '', '', '', `Hà Nội ngày ${new Date().getDate()} tháng ${new Date().getMonth() + 1} năm ${new Date().getFullYear()}`],
-        [''],
-        ['THÔNG TIN KHÁCH HÀNG:', '', '', '', '', 'THÔNG TIN BÁO GIÁ:'],
-        [`Tên KH: ${customerName}`, '', '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`],
-        ['', '', '', '', '', `Ngày báo giá: ${quote.quoteDate || new Date().toISOString().slice(0,10)}`],
-        ['', '', '', '', '', `Ngày hết hạn: ${expiryDate || '20/08/2025'}`],
-        [''],
-        ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú']
+        [templateSettings.companyTitle], // Row 1: CÔNG TY TNHH GIA LỘC HÙNG PHÁT
+        [`Địa chỉ: ${templateSettings.address}`], // Row 2
+        [`Điện thoại: ${templateSettings.phone}`], // Row 3
+        [`MST: ${templateSettings.taxCode}`], // Row 4
+        [`Trụ sở: ${templateSettings.headquarters}`], // Row 5
+        [`STK: ${templateSettings.bankInfo}`], // Row 6
+        [''], // Row 7: Empty
+        ['BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN'], // Row 8
+        ['', '', '', '', '', `Hà Nội ngày ${new Date().getDate()} tháng ${new Date().getMonth() + 1} năm ${new Date().getFullYear()}`], // Row 9
+        [''], // Row 10: Empty
+        ['THÔNG TIN KHÁCH HÀNG:', '', '', '', '', 'THÔNG TIN BÁO GIÁ:'], // Row 11
+        [`Tên KH: ${customerName}`, '', '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`], // Row 12
+        ['', '', '', '', '', `Ngày báo giá: ${quote.quoteDate || new Date().toISOString().slice(0,10)}`], // Row 13
+        ['', '', '', '', '', `Ngày hết hạn: ${expiryDate || '20/08/2025'}`], // Row 14
+        [''], // Row 15: Empty
+        ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'] // Row 16: Headers
       ], { origin: 'A1' });
       
       // Add products data starting from row 17
@@ -285,8 +285,10 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         currentRow++;
       });
       
-      // Add summary section exactly like the sample
+      // Add empty row after products
       currentRow += 1;
+      
+      // Add summary section exactly like the sample
       XLSX.utils.sheet_add_aoa(ws, [
         ['', '', '', '', '', 'TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', formatCurrency(subtotal)],
         ['', '', '', '', '', `GTGT (${vatRate}%)`, formatCurrency(vatAmount)],
@@ -322,7 +324,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         ['( Đã ký )']
       ], { origin: `A${currentRow}` });
       
-      // Style the worksheet to match the sample exactly
+      // Style the worksheet to match the sample exactly with FULL COLORS
       const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
       
       // Merge cells for headers
@@ -345,9 +347,9 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       
       // Set column widths to match sample
       ws['!cols'] = [
-        { wch: 5 },   // STT
-        { wch: 25 },  // SẢN PHẨM
-        { wch: 18 },  // QUY CÁCH (CM)
+        { wch: 6 },   // STT
+        { wch: 28 },  // SẢN PHẨM
+        { wch: 15 },  // QUY CÁCH (CM)
         { wch: 15 },  // CHẤT LIỆU
         { wch: 12 },  // SỐ LƯỢNG
         { wch: 15 },  // ĐƠN GIÁ
@@ -355,30 +357,49 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         { wch: 12 }   // Ghi Chú
       ];
       
-      // Apply cell styles
+      // Set row heights
+      ws['!rows'] = [];
+      for (let i = 0; i <= range.e.r; i++) {
+        ws['!rows'][i] = { hpt: 25 }; // Row height
+      }
+      
+      // Apply cell styles with FULL COLORS như mẫu gốc
       for (let row = 0; row <= range.e.r; row++) {
         for (let col = 0; col <= range.e.c; col++) {
           const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
           if (!ws[cellAddress]) continue;
           
-          // Style header rows
+          // Initialize cell style với border
+          ws[cellAddress].s = {
+            alignment: { vertical: "center", wrapText: true },
+            border: {
+              top: { style: "thin", color: { rgb: "000000" } },
+              bottom: { style: "thin", color: { rgb: "000000" } },
+              left: { style: "thin", color: { rgb: "000000" } },
+              right: { style: "thin", color: { rgb: "000000" } }
+            }
+          };
+          
+          // Style specific rows with MÀUTUYỆT VỜI
           if (row === 0) {
+            // Company title - ĐỎ BACKGROUND
             ws[cellAddress].s = {
-              font: { bold: true, size: 16, color: { rgb: "FF0000" } },
+              font: { bold: true, size: 14, color: { rgb: "FFFFFF" } },
               alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "FFFFFF" } }
+              fill: { fgColor: { rgb: "FF0000" } }, // ĐỎ BACKGROUND
+              border: {
+                top: { style: "medium", color: { rgb: "000000" } },
+                bottom: { style: "medium", color: { rgb: "000000" } },
+                left: { style: "medium", color: { rgb: "000000" } },
+                right: { style: "medium", color: { rgb: "000000" } }
+              }
             };
-          } else if (row === 7) {
+          } else if (row >= 1 && row <= 5) {
+            // Company info rows - Xám nhạt
             ws[cellAddress].s = {
-              font: { bold: true, size: 14, color: { rgb: "0000FF" } },
-              alignment: { horizontal: "center", vertical: "center" }
-            };
-          } else if (row === 15) {
-            // Table header
-            ws[cellAddress].s = {
-              font: { bold: true, size: 10 },
-              alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "FFFF99" } },
+              font: { size: 10 },
+              alignment: { horizontal: "left", vertical: "center" },
+              fill: { fgColor: { rgb: "F0F0F0" } }, // Xám nhạt
               border: {
                 top: { style: "thin", color: { rgb: "000000" } },
                 bottom: { style: "thin", color: { rgb: "000000" } },
@@ -386,26 +407,127 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                 right: { style: "thin", color: { rgb: "000000" } }
               }
             };
-          } else if (row >= 16 && row < 16 + items.length) {
-            // Product rows
+          } else if (row === 7) {
+            // Quote title - XANH BACKGROUND
             ws[cellAddress].s = {
+              font: { bold: true, size: 14, color: { rgb: "FFFFFF" } },
+              alignment: { horizontal: "center", vertical: "center" },
+              fill: { fgColor: { rgb: "0066CC" } }, // XANH BACKGROUND
+              border: {
+                top: { style: "medium", color: { rgb: "000000" } },
+                bottom: { style: "medium", color: { rgb: "000000" } },
+                left: { style: "medium", color: { rgb: "000000" } },
+                right: { style: "medium", color: { rgb: "000000" } }
+              }
+            };
+          } else if (row === 8 && col >= 5) {
+            // Date - Xanh nhạt
+            ws[cellAddress].s = {
+              font: { size: 10 },
+              alignment: { horizontal: "right", vertical: "center" },
+              fill: { fgColor: { rgb: "E6F3FF" } }, // Xanh nhạt
               border: {
                 top: { style: "thin", color: { rgb: "000000" } },
                 bottom: { style: "thin", color: { rgb: "000000" } },
                 left: { style: "thin", color: { rgb: "000000" } },
                 right: { style: "thin", color: { rgb: "000000" } }
-              },
-              alignment: { vertical: "center" }
+              }
+            };
+          } else if (row === 10) {
+            // Section headers - XANH LÁ BACKGROUND
+            ws[cellAddress].s = {
+              font: { bold: true, size: 11, color: { rgb: "FFFFFF" } },
+              alignment: { horizontal: "center", vertical: "center" },
+              fill: { fgColor: { rgb: "339933" } }, // XANH LÁ BACKGROUND
+              border: {
+                top: { style: "medium", color: { rgb: "000000" } },
+                bottom: { style: "medium", color: { rgb: "000000" } },
+                left: { style: "medium", color: { rgb: "000000" } },
+                right: { style: "medium", color: { rgb: "000000" } }
+              }
+            };
+          } else if (row >= 11 && row <= 13) {
+            // Customer and quote info - Xanh lá nhạt
+            ws[cellAddress].s = {
+              font: { size: 10 },
+              alignment: { horizontal: "left", vertical: "center" },
+              fill: { fgColor: { rgb: "E6FFE6" } }, // Xanh lá nhạt
+              border: {
+                top: { style: "thin", color: { rgb: "000000" } },
+                bottom: { style: "thin", color: { rgb: "000000" } },
+                left: { style: "thin", color: { rgb: "000000" } },
+                right: { style: "thin", color: { rgb: "000000" } }
+              }
+            };
+          } else if (row === 15) {
+            // Table header - VÀNG BACKGROUND
+            ws[cellAddress].s = {
+              font: { bold: true, size: 10, color: { rgb: "000000" } },
+              alignment: { horizontal: "center", vertical: "center" },
+              fill: { fgColor: { rgb: "FFFF00" } }, // VÀNG BACKGROUND
+              border: {
+                top: { style: "medium", color: { rgb: "000000" } },
+                bottom: { style: "medium", color: { rgb: "000000" } },
+                left: { style: "medium", color: { rgb: "000000" } },
+                right: { style: "medium", color: { rgb: "000000" } }
+              }
+            };
+          } else if (row >= 16 && row < 16 + items.length) {
+            // Product rows - Xen kẽ màu
+            const bgColor = (row % 2 === 0) ? "FFFFFF" : "F9F9F9"; // Trắng và xám nhạt xen kẽ
+            ws[cellAddress].s = {
+              font: { size: 10 },
+              alignment: { vertical: "center", horizontal: col === 0 ? "center" : (col >= 4 ? "right" : "left") },
+              fill: { fgColor: { rgb: bgColor } },
+              border: {
+                top: { style: "thin", color: { rgb: "000000" } },
+                bottom: { style: "thin", color: { rgb: "000000" } },
+                left: { style: "thin", color: { rgb: "000000" } },
+                right: { style: "thin", color: { rgb: "000000" } }
+              }
+            };
+          } else if (row >= currentRow - 10 && row < currentRow - 5) {
+            // Summary section - CAM BACKGROUND
+            ws[cellAddress].s = {
+              font: { bold: true, size: 10, color: { rgb: "000000" } },
+              alignment: { vertical: "center", horizontal: "right" },
+              fill: { fgColor: { rgb: "FFB366" } }, // CAM BACKGROUND
+              border: {
+                top: { style: "thin", color: { rgb: "000000" } },
+                bottom: { style: "thin", color: { rgb: "000000" } },
+                left: { style: "thin", color: { rgb: "000000" } },
+                right: { style: "thin", color: { rgb: "000000" } }
+              }
             };
           }
         }
+      }
+      
+      // Add logo placeholder at top left - [LOGO] marker
+      XLSX.utils.sheet_add_aoa(ws, [
+        ['[LOGO JOLIE\'FAM]'] // Logo placeholder
+      ], { origin: 'I1' });
+      
+      // Style the logo placeholder
+      if (ws['I1']) {
+        ws['I1'].s = {
+          font: { bold: true, size: 8, color: { rgb: "0066CC" } },
+          alignment: { horizontal: "center", vertical: "center" },
+          fill: { fgColor: { rgb: "E6F3FF" } },
+          border: {
+            top: { style: "thin", color: { rgb: "0066CC" } },
+            bottom: { style: "thin", color: { rgb: "0066CC" } },
+            left: { style: "thin", color: { rgb: "0066CC" } },
+            right: { style: "thin", color: { rgb: "0066CC" } }
+          }
+        };
       }
       
       // Add worksheet to workbook
       XLSX.utils.book_append_sheet(wb, ws, 'Báo Giá');
       
       // Export file
-      XLSX.writeFile(wb, `BaoGia_${quote.quoteNumber}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(wb, `BaoGia_${quote.quoteNumber || 'BG-' + new Date().toISOString().split('T')[0]}.xlsx`);
       
     } catch (error) {
       console.error('Error exporting Excel:', error);
@@ -427,7 +549,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             <div className="flex items-center space-x-2">
               <Button variant="outline" onClick={handleExportExcel}>
                 <Download className="w-4 h-4 mr-2" />
-                Xuất Excel với Logo
+                Xuất Excel với Logo & Màu sắc
               </Button>
               <Button variant="outline" onClick={handleExportPDF}>
                 <Download className="w-4 h-4 mr-2" />
@@ -508,117 +630,92 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
             {/* Products table */}
             <div className="mb-8">
-              <div className="relative w-full overflow-auto">
-                <Table className="border-2 border-gray-300 w-full table-fixed">
-                  <TableHeader className="bg-yellow-200">
-                    <TableRow>
-                      <TableHead className="border border-gray-300 text-center font-bold text-black w-12">STT</TableHead>
-                      <TableHead className="border border-gray-300 text-center font-bold text-black w-48">SẢN PHẨM</TableHead>
-                      <TableHead className="border border-gray-300 text-center font-bold text-black w-32">QUY CÁCH (CM)</TableHead>
-                      <TableHead className="border border-gray-300 text-center font-bold text-black w-36">CHẤT LIỆU</TableHead>
-                      <TableHead className="border border-gray-300 text-center font-bold text-black w-20">SỐ LƯỢNG</TableHead>
-                      <TableHead className="border border-gray-300 text-center font-bold text-black w-28">ĐƠN GIÁ</TableHead>
-                      <TableHead className="border border-gray-300 text-center font-bold text-black w-32">THÀNH TIỀN</TableHead>
-                      <TableHead className="border border-gray-300 text-center font-bold text-black w-24">Ghi Chú</TableHead>
+              <Table className="border border-gray-300">
+                <TableHeader>
+                  <TableRow className="bg-yellow-200">
+                    <TableHead className="border border-gray-300 text-center font-bold">STT</TableHead>
+                    <TableHead className="border border-gray-300 text-center font-bold">SẢN PHẨM</TableHead>
+                    <TableHead className="border border-gray-300 text-center font-bold">QUY CÁCH (CM)</TableHead>
+                    <TableHead className="border border-gray-300 text-center font-bold">CHẤT LIỆU</TableHead>
+                    <TableHead className="border border-gray-300 text-center font-bold">SỐ LƯỢNG</TableHead>
+                    <TableHead className="border border-gray-300 text-center font-bold">ĐƠN GIÁ</TableHead>
+                    <TableHead className="border border-gray-300 text-center font-bold">THÀNH TIỀN</TableHead>
+                    <TableHead className="border border-gray-300 text-center font-bold">Ghi Chú</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item: any, index: number) => (
+                    <TableRow key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                      <TableCell className="border border-gray-300 text-center">{index + 1}</TableCell>
+                      <TableCell className="border border-gray-300">{item.name}</TableCell>
+                      <TableCell className="border border-gray-300 text-center">{item.specifications}</TableCell>
+                      <TableCell className="border border-gray-300">{item.category}</TableCell>
+                      <TableCell className="border border-gray-300 text-center">{item.quantity}</TableCell>
+                      <TableCell className="border border-gray-300 text-right">{formatCurrency(item.price)}</TableCell>
+                      <TableCell className="border border-gray-300 text-right font-semibold">{formatCurrency(item.total)}</TableCell>
+                      <TableCell className="border border-gray-300"></TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map((item: any, index: number) => (
-                      <TableRow key={index} className="h-16">
-                        <TableCell className="border border-gray-300 text-center font-medium p-3">{index + 1}</TableCell>
-                        <TableCell className="border border-gray-300 font-medium p-3 leading-relaxed">
-                          <div className="break-words">{item.name}</div>
-                        </TableCell>
-                        <TableCell className="border border-gray-300 text-center p-3">
-                          <div className="break-words">{item.specifications || 'N/A'}</div>
-                        </TableCell>
-                        <TableCell className="border border-gray-300 p-3">
-                          <div className="break-words">{item.category || 'N/A'}</div>
-                        </TableCell>
-                        <TableCell className="border border-gray-300 text-center font-medium p-3">{item.quantity}</TableCell>
-                        <TableCell className="border border-gray-300 text-right font-medium p-3">{formatCurrency(item.price)}</TableCell>
-                        <TableCell className="border border-gray-300 text-right font-bold text-red-600 p-3">{formatCurrency(item.total)}</TableCell>
-                        <TableCell className="border border-gray-300 p-3"></TableCell>
-                      </TableRow>
-                    ))}
-                    
-                    {/* Summary rows */}
-                    <TableRow className="bg-gray-50">
-                      <TableCell colSpan={6} className="border border-gray-300 text-center font-bold text-red-600 p-4">
-                        TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT
-                      </TableCell>
-                      <TableCell className="border border-gray-300 text-right font-bold text-red-600 p-4">
-                        {formatCurrency(subtotal)}
-                      </TableCell>
-                      <TableCell className="border border-gray-300 p-4"></TableCell>
-                    </TableRow>
-                    <TableRow className="bg-gray-50">
-                      <TableCell colSpan={6} className="border border-gray-300 text-center font-bold text-red-600 p-4">
-                        GTGT ({vatRate}%)
-                      </TableCell>
-                      <TableCell className="border border-gray-300 text-right font-bold text-red-600 p-4">
-                        {formatCurrency(vatAmount)}
-                      </TableCell>
-                      <TableCell className="border border-gray-300 p-4"></TableCell>
-                    </TableRow>
-                    <TableRow className="bg-gray-50">
-                      <TableCell colSpan={6} className="border border-gray-300 text-center font-bold text-red-600 p-4">
-                        TỔNG TIỀN ĐÃ BAO GỒM GTGT
-                      </TableCell>
-                      <TableCell className="border border-gray-300 text-right font-bold text-red-600 p-4">
-                        {formatCurrency(totalWithVat)}
-                      </TableCell>
-                      <TableCell className="border border-gray-300 p-4"></TableCell>
-                    </TableRow>
-                    <TableRow className="bg-gray-50">
-                      <TableCell colSpan={6} className="border border-gray-300 text-center font-bold text-red-600 p-4">
-                        THANH TOÁN LẦN 1
-                      </TableCell>
-                      <TableCell className="border border-gray-300 text-right font-bold text-red-600 p-4">
-                        {formatCurrency(firstPayment)}
-                      </TableCell>
-                      <TableCell className="border border-gray-300 p-4"></TableCell>
-                    </TableRow>
-                    <TableRow className="bg-yellow-100">
-                      <TableCell colSpan={6} className="border border-gray-300 text-center font-bold text-red-600 text-lg p-4">
-                        CÒN LẠI
-                      </TableCell>
-                      <TableCell className="border border-gray-300 text-right font-bold text-red-600 text-lg p-4">
-                        {formatCurrency(remaining)}
-                      </TableCell>
-                      <TableCell className="border border-gray-300 p-4"></TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Totals */}
+            <div className="mb-8">
+              <div className="grid grid-cols-2 gap-8">
+                <div></div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center py-2 px-4 bg-orange-100 border border-orange-200 rounded">
+                    <span className="font-semibold">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
+                    <span className="font-bold">{formatCurrency(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 px-4 bg-orange-100 border border-orange-200 rounded">
+                    <span className="font-semibold">GTGT (8%):</span>
+                    <span className="font-bold">{formatCurrency(vatAmount)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 px-4 bg-orange-200 border border-orange-300 rounded">
+                    <span className="font-semibold">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
+                    <span className="font-bold text-lg">{formatCurrency(totalWithVat)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 px-4 bg-orange-100 border border-orange-200 rounded">
+                    <span className="font-semibold">THANH TOÁN LẦN 1:</span>
+                    <span className="font-bold">{formatCurrency(firstPayment)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 px-4 bg-yellow-100 border border-yellow-300 rounded">
+                    <span className="font-semibold">CÒN LẠI:</span>
+                    <span className="font-bold text-lg">{formatCurrency(remaining)}</span>
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Terms and conditions */}
             <div className="mb-8">
-              <div className="text-base space-y-2">
-                <p><strong>1. Bảng báo giá áp dụng trong vòng 10 ngày</strong></p>
-                <p><strong>2. Bảng giá chưa bao gồm cước vận chuyển</strong></p>
-                <p><strong>3. Địa Điểm giao Hàng: Thỏa Thuận</strong></p>
-                <p><strong>4. Hình thức thanh toán: Đặt cọc trước 30%. 70% còn lại thanh toán khi giao hàng và KH nhận kiểm đếm đầy đủ</strong></p>
+              <div className="space-y-2 text-sm">
+                <p>1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.</p>
+                <p>2. Thanh toán: 30% trước khi sản xuất, 70% trước khi giao hàng.</p>
+                <p>3. Thời gian giao hàng: 7-10 ngày sau khi sản xuất hoàn tất cọc.</p>
+                <p>4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.</p>
               </div>
+              
               <div className="mt-6 text-center">
-                <p className="text-blue-600 font-medium italic">
-                  Bảng giá trên là đơn giá chuẩn và cũng là giá tốt nhất công ty chúng tôi dành cho Quý Khách hàng. 
-                  JOLIEFAM rất mong nhận được sự hợp tác và ủng hộ từ Quý Khách hàng.
+                <p className="italic text-blue-600 font-medium">
+                  Cảm ơn Quý khách đã tin tướng và đặng sản phẩm của chúng tôi!
                 </p>
               </div>
             </div>
 
-            {/* Signatures */}
-            <div className="grid grid-cols-2 gap-8">
+            {/* Signature section */}
+            <div className="grid grid-cols-2 gap-12 mt-12">
               <div className="text-center">
-                <h4 className="font-bold mb-16">ĐẠI DIỆN CÔNG TY</h4>
-                <h4 className="font-bold">GIÁM ĐỐC</h4>
-                <p className="text-sm mt-2">( Đã ký )</p>
+                <p className="font-bold mb-8">ĐẠI DIỆN CÔNG TY</p>
+                <div className="mb-8 h-16"></div>
+                <p className="font-bold">GIÁM ĐỐC</p>
+                <p className="text-sm text-gray-600 mt-2">( Đã ký )</p>
               </div>
               <div className="text-center">
-                <h4 className="font-bold mb-16">KHÁCH HÀNG</h4>
-                <div className="h-16 border-b border-gray-400 mb-4"></div>
+                <p className="font-bold mb-8">KHÁCH HÀNG</p>
+                <div className="mb-8 h-16"></div>
                 <p className="text-sm">Ký tên và đóng dấu xác nhận</p>
               </div>
             </div>
