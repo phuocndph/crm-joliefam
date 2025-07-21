@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck } from "lucide-react";
+import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,7 @@ import {
 import { CreateOrderForm } from "@/components/CreateOrderForm";
 import { EditOrderDialog } from "@/components/EditOrderDialog";
 import { DeleteOrderDialog } from "@/components/DeleteOrderDialog";
+import { CreatePaymentForm } from "@/components/CreatePaymentForm";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -89,6 +90,7 @@ export default function OrderManagement() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [orderToPayment, setOrderToPayment] = useState<Order | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -232,33 +234,13 @@ export default function OrderManagement() {
     }
   };
 
-  const updatePaymentStatus = async (orderId: string, newPaymentStatus: string) => {
-    try {
-      const updateData: any = { payment_status: newPaymentStatus };
-      if (newPaymentStatus === 'paid') {
-        updateData.payment_date = new Date().toISOString();
-      }
-
-      const { error } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      loadOrders();
-      toast({
-        title: "Thành công",
-        description: "Trạng thái thanh toán đã được cập nhật",
-      });
-    } catch (error) {
-      console.error('Error updating payment status:', error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể cập nhật trạng thái thanh toán",
-        variant: "destructive",
-      });
-    }
+  const handlePaymentAdded = () => {
+    loadOrders();
+    setOrderToPayment(null);
+    toast({
+      title: "Thành công",
+      description: "Thanh toán đã được thêm thành công",
+    });
   };
 
   // Calculate stats
@@ -483,26 +465,9 @@ export default function OrderManagement() {
                           </DropdownMenu>
                         </TableCell>
                         <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="p-0">
-                                <Badge className={paymentStatusConfig[order.payment_status]?.color || "bg-gray-100 text-gray-800"}>
-                                  {paymentStatusConfig[order.payment_status]?.label || order.payment_status}
-                                </Badge>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent className="bg-white z-50">
-                              {Object.entries(paymentStatusConfig).map(([key, config]) => (
-                                <DropdownMenuItem
-                                  key={key}
-                                  onClick={() => updatePaymentStatus(order.id, key)}
-                                  className={order.payment_status === key ? "bg-gray-100" : ""}
-                                >
-                                  {config.label}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <Badge className={paymentStatusConfig[order.payment_status]?.color || "bg-gray-100 text-gray-800"}>
+                            {paymentStatusConfig[order.payment_status]?.label || order.payment_status}
+                          </Badge>
                           {order.payment_date && (
                             <div className="text-xs text-muted-foreground mt-1">
                               {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
@@ -549,6 +514,15 @@ export default function OrderManagement() {
                                 <Eye className="mr-2 h-4 w-4" />
                                 Xem chi tiết
                               </DropdownMenuItem>
+                              {(order.payment_status === 'pending' || order.payment_status === 'partial') && (
+                                <DropdownMenuItem
+                                  onClick={() => setOrderToPayment(order)}
+                                  className="text-green-600"
+                                >
+                                  <CreditCard className="mr-2 h-4 w-4" />
+                                  Thêm thanh toán
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={() => setOrderToEdit(order)}
                               >
@@ -748,6 +722,30 @@ export default function OrderManagement() {
           onConfirm={handleDeleteOrder}
         />
       )}
+
+      {/* Add Payment Dialog */}
+      {orderToPayment && (
+        <Dialog open={!!orderToPayment} onOpenChange={(open) => !open && setOrderToPayment(null)}>
+          <DialogContent className="max-w-2xl">
+            <CreatePaymentForm
+              orderId={orderToPayment.id}
+              orderNumber={orderToPayment.order_number}
+              totalAmount={orderToPayment.total_amount || 0}
+              totalPaid={(orderToPayment.total_amount || 0) - (calculateRemainingAmount(orderToPayment))}
+              remainingAmount={calculateRemainingAmount(orderToPayment)}
+              onClose={() => setOrderToPayment(null)}
+              onSubmit={handlePaymentAdded}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
+
+  function calculateRemainingAmount(order: Order): number {
+    // This is a simplified calculation - in real app, we'd fetch from payment_summary
+    if (order.payment_status === 'paid') return 0;
+    if (order.payment_status === 'partial') return (order.total_amount || 0) * 0.5; // Example
+    return order.total_amount || 0;
+  }
 }

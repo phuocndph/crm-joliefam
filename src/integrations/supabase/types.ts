@@ -155,6 +155,66 @@ export type Database = {
         }
         Relationships: []
       }
+      order_payments: {
+        Row: {
+          created_at: string
+          id: string
+          installment_number: number | null
+          manager_id: string | null
+          notes: string | null
+          order_id: string
+          payment_amount: number
+          payment_date: string
+          payment_method: string | null
+          payment_type: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          installment_number?: number | null
+          manager_id?: string | null
+          notes?: string | null
+          order_id: string
+          payment_amount: number
+          payment_date?: string
+          payment_method?: string | null
+          payment_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          installment_number?: number | null
+          manager_id?: string | null
+          notes?: string | null
+          order_id?: string
+          payment_amount?: number
+          payment_date?: string
+          payment_method?: string | null
+          payment_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "payment_summary"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           cost_price: number | null
@@ -406,8 +466,13 @@ export type Database = {
           date: string
           description: string | null
           id: string
+          installment_number: number | null
           manager_id: string | null
+          order_id: string | null
+          payment_type: string | null
+          remaining_amount: number | null
           tenant_id: string
+          total_installments: number | null
           type: string
           updated_at: string
         }
@@ -418,8 +483,13 @@ export type Database = {
           date?: string
           description?: string | null
           id?: string
+          installment_number?: number | null
           manager_id?: string | null
+          order_id?: string | null
+          payment_type?: string | null
+          remaining_amount?: number | null
           tenant_id?: string
+          total_installments?: number | null
           type: string
           updated_at?: string
         }
@@ -430,12 +500,32 @@ export type Database = {
           date?: string
           description?: string | null
           id?: string
+          installment_number?: number | null
           manager_id?: string | null
+          order_id?: string | null
+          payment_type?: string | null
+          remaining_amount?: number | null
           tenant_id?: string
+          total_installments?: number | null
           type?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "transactions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "payment_summary"
+            referencedColumns: ["order_id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -463,7 +553,23 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      payment_summary: {
+        Row: {
+          customer_code: string | null
+          customer_name: string | null
+          final_payment_date: string | null
+          first_payment_date: string | null
+          last_payment_date: string | null
+          order_id: string | null
+          order_number: string | null
+          payment_count: number | null
+          payment_status: string | null
+          remaining_amount: number | null
+          total_amount: number | null
+          total_paid: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       get_user_role: {
