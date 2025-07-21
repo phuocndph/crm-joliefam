@@ -811,11 +811,12 @@ const ProductManagement = () => {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Mã SP</TableHead>
-                          <TableHead>Tên sản phẩm</TableHead>
                           <TableHead>Danh mục</TableHead>
-                          <TableHead>Bảng giá</TableHead>
+                          <TableHead>Tên SP</TableHead>
+                          <TableHead>Quy cách</TableHead>
                           <TableHead>Giá gốc</TableHead>
                           <TableHead>Giá bán</TableHead>
+                          <TableHead>Mô tả</TableHead>
                           <TableHead className="text-right">Thao tác</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -823,22 +824,14 @@ const ProductManagement = () => {
                         {filteredProducts.map((product) => (
                           <TableRow key={product.id}>
                             <TableCell className="font-medium">{product.sku || '-'}</TableCell>
-                            <TableCell>
-                              <div>
-                                <div>{product.name}</div>
-                                {product.specifications && (
-                                  <div className="text-sm text-muted-foreground">
-                                    {product.specifications}
-                                  </div>
-                                )}
-                              </div>
-                            </TableCell>
                             <TableCell>{product.category || '-'}</TableCell>
-                            <TableCell>
-                              {priceLists.find(p => p.id === product.price_list_id)?.name || '-'}
-                            </TableCell>
+                            <TableCell className="font-medium">{product.name}</TableCell>
+                            <TableCell>{product.specifications || '-'}</TableCell>
                             <TableCell>{formatPrice(product.cost_price)}</TableCell>
                             <TableCell>{formatPrice(product.price)}</TableCell>
+                            <TableCell className="max-w-xs truncate">
+                              {product.description || '-'}
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Button
