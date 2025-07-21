@@ -240,14 +240,23 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
 
     setIsLoading(true);
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Calculate total
+      const subtotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
+      const vatAmount = watchedValues.includeVAT ? (subtotal * watchedValues.vatRate) / 100 : 0;
+      const calculatedTotal = subtotal + vatAmount;
+      
       const quoteData = {
         quote_number: data.quoteNumber,
         customer_id: null, // Would need customer selection
-        total_amount: total,
+        total_amount: calculatedTotal,
         status: "draft",
         notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${format(data.expiryDate, "dd/MM/yyyy")}`,
         items: JSON.stringify(selectedProducts),
         tenant_id: "default",
+        manager_id: user?.id || null,
       };
 
       const { error } = await supabase
