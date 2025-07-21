@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
-import { useUserStats } from "@/hooks/useUserStats";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { 
   Users, 
   TrendingUp, 
@@ -14,15 +14,43 @@ import {
   BarChart3,
   Calendar,
   Package,
-  CreditCard
+  CreditCard,
+  ArrowUpRight,
+  ArrowDownRight,
+  Activity,
+  Clock
 } from "lucide-react";
+
+interface DashboardStats {
+  totalRevenue: number;
+  totalOrders: number;
+  totalCustomers: number;
+  totalQuotes: number;
+  totalProducts: number;
+  pendingOrders: number;
+  approvedQuotes: number;
+  monthlyRevenue: number;
+  monthlyOrders: number;
+  monthlyCustomers: number;
+}
 
 const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalRevenue: 0,
+    totalOrders: 0,
+    totalCustomers: 0,
+    totalQuotes: 0,
+    totalProducts: 0,
+    pendingOrders: 0,
+    approvedQuotes: 0,
+    monthlyRevenue: 0,
+    monthlyOrders: 0,
+    monthlyCustomers: 0,
+  });
   const navigate = useNavigate();
   const { role: userRole, loading: roleLoading } = useUserRole(user);
-  const { stats: userStats, loading: statsLoading } = useUserStats(userRole);
 
   useEffect(() => {
     // Get current user
@@ -50,6 +78,79 @@ const Dashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  useEffect(() => {
+    if (user && !roleLoading) {
+      loadDashboardStats();
+    }
+  }, [user, userRole, roleLoading]);
+
+  const loadDashboardStats = async () => {
+    try {
+      // Get current month start
+      const currentMonth = new Date();
+      currentMonth.setDate(1);
+      currentMonth.setHours(0, 0, 0, 0);
+
+      // Load all stats in parallel
+      const [
+        ordersResponse,
+        customersResponse,
+        quotesResponse,
+        productsResponse,
+        transactionsResponse
+      ] = await Promise.all([
+        supabase.from('orders').select('total_amount, status, created_at'),
+        supabase.from('customers').select('id, created_at'),
+        supabase.from('quotes').select('total_amount, status, created_at'),
+        supabase.from('products').select('id'),
+        supabase.from('transactions').select('amount, type, created_at')
+      ]);
+
+      const orders = ordersResponse.data || [];
+      const customers = customersResponse.data || [];
+      const quotes = quotesResponse.data || [];
+      const products = productsResponse.data || [];
+      const transactions = transactionsResponse.data || [];
+
+      // Calculate total revenue from completed orders
+      const totalRevenue = orders
+        .filter(order => order.status === 'delivered')
+        .reduce((sum, order) => sum + (order.total_amount || 0), 0);
+
+      // Calculate monthly revenue
+      const monthlyRevenue = orders
+        .filter(order => 
+          order.status === 'delivered' && 
+          new Date(order.created_at) >= currentMonth
+        )
+        .reduce((sum, order) => sum + (order.total_amount || 0), 0);
+
+      // Calculate monthly orders and customers
+      const monthlyOrders = orders.filter(order => 
+        new Date(order.created_at) >= currentMonth
+      ).length;
+
+      const monthlyCustomers = customers.filter(customer => 
+        new Date(customer.created_at) >= currentMonth
+      ).length;
+
+      setStats({
+        totalRevenue,
+        totalOrders: orders.length,
+        totalCustomers: customers.length,
+        totalQuotes: quotes.length,
+        totalProducts: products.length,
+        pendingOrders: orders.filter(order => order.status === 'pending').length,
+        approvedQuotes: quotes.filter(quote => quote.status === 'approved').length,
+        monthlyRevenue,
+        monthlyOrders,
+        monthlyCustomers,
+      });
+    } catch (error) {
+      console.error('Error loading dashboard stats:', error);
+    }
+  };
+
   if (loading || roleLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -58,280 +159,216 @@ const Dashboard = () => {
     );
   }
 
-  // CRM Pro KPI Stats
-  const crmStats = [
+  // Main KPI Cards
+  const mainStats = [
     {
       title: "Tổng doanh thu",
-      value: "2,450,000",
+      value: stats.totalRevenue.toLocaleString("vi-VN"),
       unit: "VNĐ",
-      change: "+12.5%",
-      changeType: "positive",
+      change: stats.monthlyRevenue > 0 ? `+${((stats.monthlyRevenue / Math.max(stats.totalRevenue - stats.monthlyRevenue, 1)) * 100).toFixed(1)}%` : "0%",
+      changeType: stats.monthlyRevenue > 0 ? "positive" : "neutral",
       icon: DollarSign,
-      color: "text-primary",
-      bgColor: "bg-primary/10",
-      description: "so với tháng trước"
+      color: "text-green-600",
+      bgColor: "bg-green-100",
+      description: "từ đơn hàng hoàn thành",
+      link: "/transactions"
     },
     {
       title: "Đơn hàng",
-      value: "156",
+      value: stats.totalOrders.toString(),
       unit: "đơn",
-      change: "+8.2%",
-      changeType: "positive",
+      change: stats.monthlyOrders > 0 ? `+${stats.monthlyOrders}` : "0",
+      changeType: stats.monthlyOrders > 0 ? "positive" : "neutral",
       icon: ShoppingCart,
-      color: "text-success",
-      bgColor: "bg-success/10",
-      description: "tăng trưởng tháng này"
+      color: "text-blue-600",
+      bgColor: "bg-blue-100",
+      description: "đơn mới tháng này",
+      link: "/orders"
     },
     {
       title: "Khách hàng",
-      value: "89",
+      value: stats.totalCustomers.toString(),
       unit: "khách",
-      change: "+15",
-      changeType: "positive",
+      change: stats.monthlyCustomers > 0 ? `+${stats.monthlyCustomers}` : "0",
+      changeType: stats.monthlyCustomers > 0 ? "positive" : "neutral",
       icon: Users,
-      color: "text-accent",
-      bgColor: "bg-accent/10",
-      description: "khách hàng mới"
+      color: "text-purple-600",
+      bgColor: "bg-purple-100",
+      description: "khách mới tháng này",
+      link: "/customers"
     },
     {
       title: "Báo giá",
-      value: "23",
+      value: stats.totalQuotes.toString(),
       unit: "báo giá",
-      change: "+5",
-      changeType: "positive",
+      change: stats.approvedQuotes > 0 ? `${stats.approvedQuotes} được duyệt` : "0 được duyệt",
+      changeType: stats.approvedQuotes > 0 ? "positive" : "neutral",
       icon: FileText,
-      color: "text-warning",
-      bgColor: "bg-warning/10",
-      description: "báo giá đã tạo"
-    }
+      color: "text-orange-600",
+      bgColor: "bg-orange-100",
+      description: "tổng số báo giá",
+      link: "/quotes"
+    },
   ];
 
+  // Quick Action Cards
   const quickActions = [
     {
-      title: "Thêm khách hàng",
-      description: "Tạo hồ sơ khách hàng mới",
-      icon: UserPlus,
-      color: "bg-gradient-primary",
-      action: () => navigate("/customers")
+      title: "Đơn hàng chờ xử lý",
+      value: stats.pendingOrders.toString(),
+      description: "cần được xử lý",
+      icon: Clock,
+      color: "text-yellow-600",
+      bgColor: "bg-yellow-100",
+      action: "Xem đơn hàng",
+      link: "/orders"
     },
     {
-      title: "Tạo báo giá",
-      description: "Soạn báo giá cho khách hàng",
-      icon: FileText,
-      color: "bg-gradient-accent",
-      action: () => navigate("/quotes")
-    },
-    {
-      title: "Quản lý sản phẩm",
-      description: "Cập nhật kho hàng",
+      title: "Sản phẩm",
+      value: stats.totalProducts.toString(),
+      description: "trong kho",
       icon: Package,
-      color: "bg-success",
-      action: () => navigate("/products")
+      color: "text-indigo-600",
+      bgColor: "bg-indigo-100",
+      action: "Quản lý sản phẩm",
+      link: "/products"
     },
     {
-      title: "Xem báo cáo",
-      description: "Phân tích doanh số",
+      title: "Báo cáo",
+      value: "Xem chi tiết",
+      description: "phân tích dữ liệu",
       icon: BarChart3,
-      color: "bg-secondary border border-primary/20",
-      textColor: "text-primary",
-      action: () => navigate("/reports")
-    }
-  ];
-
-  const systemActions = [
-    {
-      title: "Quản lý nhân viên",
-      description: "Phân quyền và quản lý users",
-      icon: Users,
-      color: "bg-destructive",
-      action: () => navigate("/user-management"),
-      roles: ['admin', 'manager']
+      color: "text-cyan-600",
+      bgColor: "bg-cyan-100",
+      action: "Xem báo cáo",
+      link: "/reports"
     },
     {
       title: "Dòng tiền",
-      description: "Theo dõi thu chi",
-      icon: TrendingUp,
-      color: "bg-success",
-      action: () => navigate("/cash-flow"),
-      roles: ['admin', 'manager']
-    },
-    {
-      title: "Giao dịch",
-      description: "Lịch sử thanh toán",
+      value: "Quản lý",
+      description: "thu chi tài chính",
       icon: CreditCard,
-      color: "bg-accent",
-      action: () => navigate("/transactions"),
-      roles: ['admin', 'manager', 'employee']
-    }
+      color: "text-pink-600",
+      bgColor: "bg-pink-100",
+      action: "Xem dòng tiền",
+      link: "/cash-flow"
+    },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Welcome Section */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground mb-2">
-          CRM Pro Dashboard
+      {/* Welcome Header */}
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold text-foreground">
+          Chào mừng trở lại! 👋
         </h1>
         <p className="text-muted-foreground">
-          Chào mừng trở lại, {user?.user_metadata?.first_name || "Admin"}! Tổng quan hoạt động kinh doanh hôm nay.
+          Đây là tổng quan về hoạt động kinh doanh của bạn. Vai trò hiện tại: <span className="font-semibold capitalize">{userRole}</span>
         </p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {crmStats.map((stat, index) => (
-          <Card key={index} className="shadow-brand hover:shadow-crisp transition-all duration-300 border-0 bg-gradient-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {stat.title}
-              </CardTitle>
-              <div className={`p-2.5 rounded-xl ${stat.bgColor}`}>
-                <stat.icon className={`h-5 w-5 ${stat.color}`} />
+      {/* Main KPI Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {mainStats.map((stat, index) => (
+          <Card key={index} className="relative overflow-hidden hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate(stat.link)}>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {stat.title}
+                  </p>
+                  <div className="flex items-baseline space-x-1">
+                    <p className="text-2xl font-bold">{stat.value}</p>
+                    <span className="text-sm text-muted-foreground">{stat.unit}</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <span className={`text-xs font-medium ${
+                      stat.changeType === 'positive' ? 'text-green-600' : 
+                      stat.changeType === 'negative' ? 'text-red-600' : 'text-gray-600'
+                    }`}>
+                      {stat.changeType === 'positive' && <ArrowUpRight className="w-3 h-3 inline mr-1" />}
+                      {stat.changeType === 'negative' && <ArrowDownRight className="w-3 h-3 inline mr-1" />}
+                      {stat.change}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{stat.description}</span>
+                  </div>
+                </div>
+                <div className={`p-3 rounded-full ${stat.bgColor}`}>
+                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-3xl font-bold text-foreground">
-                  {stat.value}
-                </span>
-                <span className="text-sm text-muted-foreground font-medium">
-                  {stat.unit}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {stat.change && (
-                  <span className={stat.changeType === 'positive' ? 'text-success font-medium' : 'text-destructive font-medium'}>
-                    {stat.change}{' '}
-                  </span>
-                )}
-                {stat.description}
-              </p>
             </CardContent>
           </Card>
         ))}
       </div>
 
       {/* Quick Actions */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold text-foreground mb-4">Thao tác nhanh</h2>
+      <div>
+        <h2 className="text-xl font-semibold mb-4">Thao tác nhanh</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {quickActions.map((action, index) => (
-            <Card 
-              key={index} 
-              className="cursor-pointer hover:shadow-accent transition-all duration-300 hover:scale-105 border-0 overflow-hidden"
-              onClick={action.action}
-            >
-              <CardContent className="p-6 text-center">
-                <div className={`w-14 h-14 ${action.color} rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg`}>
-                  <action.icon className={`h-6 w-6 ${action.textColor || 'text-white'}`} />
+            <Card key={index} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`p-2 rounded-lg ${action.bgColor}`}>
+                    <action.icon className={`h-5 w-5 ${action.color}`} />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold">{action.value}</p>
+                  </div>
                 </div>
-                <h4 className="font-semibold text-foreground mb-2">{action.title}</h4>
-                <p className="text-sm text-muted-foreground">{action.description}</p>
+                <div className="space-y-2">
+                  <h3 className="font-medium">{action.title}</h3>
+                  <p className="text-sm text-muted-foreground">{action.description}</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={() => navigate(action.link)}
+                  >
+                    {action.action}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
         </div>
       </div>
 
-      {/* System Management */}
-      {userRole && (
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-foreground mb-4">Quản lý hệ thống</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {systemActions
-              .filter(action => action.roles.includes(userRole))
-              .map((action, index) => (
-                <Card 
-                  key={index} 
-                  className="cursor-pointer hover:shadow-crisp transition-all duration-300 hover:scale-105 border-0"
-                  onClick={action.action}
-                >
-                  <CardContent className="p-6 text-center">
-                    <div className={`w-12 h-12 ${action.color} rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg`}>
-                      <action.icon className="h-6 w-6 text-white" />
-                    </div>
-                    <h4 className="font-semibold text-foreground mb-2">{action.title}</h4>
-                    <p className="text-sm text-muted-foreground">{action.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
+      {/* System Workflow Info */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5" />
+            Quy trình hoạt động
+          </CardTitle>
+          <CardDescription>
+            Hệ thống liên kết các module với nhau để tối ưu quy trình kinh doanh
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <h4 className="font-medium text-blue-600">1. Sản phẩm → Báo giá</h4>
+              <p className="text-sm text-muted-foreground">
+                Tạo báo giá từ danh sách sản phẩm có sẵn với bảng giá tương ứng
+              </p>
+            </div>
+            <div className="space-y-2">
+              <h4 className="font-medium text-green-600">2. Báo giá → Đơn hàng</h4>
+              <p className="text-sm text-muted-foreground">
+                Khi duyệt báo giá, hệ thống tự động tạo đơn hàng và cập nhật thông tin khách hàng
+              </p>
+            </div>
+            <div className="space-y-2">
+              <h4 className="font-medium text-purple-600">3. Đơn hàng → Giao dịch</h4>
+              <p className="text-sm text-muted-foreground">
+                Đơn hàng hoàn thành sẽ tự động tạo giao dịch thu nhập và cập nhật báo cáo
+              </p>
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Recent Activity & Revenue Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="shadow-soft border-0 bg-gradient-card">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg font-semibold">Hoạt động gần đây</CardTitle>
-            <CardDescription>Các thao tác mới nhất trong hệ thống CRM</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {[
-                { action: "Khách hàng ABC Corp đã đặt đơn hàng mới", time: "2 phút trước", icon: ShoppingCart, color: "bg-success/10 text-success" },
-                { action: "Báo giá #QT001 đã được gửi cho khách hàng", time: "15 phút trước", icon: FileText, color: "bg-primary/10 text-primary" },
-                { action: "Sản phẩm laptop Dell được cập nhật", time: "1 giờ trước", icon: Package, color: "bg-accent/10 text-accent" },
-                { action: "Thanh toán đơn hàng #001 hoàn tất", time: "2 giờ trước", icon: CreditCard, color: "bg-warning/10 text-warning" }
-              ].map((activity, index) => (
-                <div key={index} className="flex items-start space-x-3 p-3 rounded-lg bg-white/50 hover:bg-white/80 transition-colors">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${activity.color}`}>
-                    <activity.icon className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      {activity.action}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {activity.time}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-soft border-0 bg-gradient-card">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg font-semibold">Doanh thu tuần này</CardTitle>
-            <CardDescription>Biểu đồ tăng trưởng doanh số</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-foreground mb-1">2,450,000 VNĐ</div>
-                <div className="text-sm text-muted-foreground">
-                  <span className="text-success font-medium">+12.5%</span> so với tuần trước
-                </div>
-              </div>
-              
-              <div className="space-y-3">
-                {[
-                  { day: "T2", amount: "320,000", progress: 65 },
-                  { day: "T3", amount: "450,000", progress: 90 },
-                  { day: "T4", amount: "380,000", progress: 75 },
-                  { day: "T5", amount: "520,000", progress: 100 },
-                  { day: "T6", amount: "420,000", progress: 85 },
-                  { day: "T7", amount: "230,000", progress: 45 },
-                  { day: "CN", amount: "130,000", progress: 25 }
-                ].map((day, index) => (
-                  <div key={index} className="flex items-center gap-3">
-                    <div className="w-8 text-xs font-medium text-muted-foreground">{day.day}</div>
-                    <div className="flex-1 bg-muted rounded-full h-2">
-                      <div 
-                        className="bg-gradient-primary h-2 rounded-full transition-all duration-500" 
-                        style={{ width: `${day.progress}%` }}
-                      />
-                    </div>
-                    <div className="text-xs font-medium text-foreground w-16 text-right">{day.amount}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

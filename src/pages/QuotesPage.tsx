@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from "react";
-import { Plus, Search, Filter, Eye, Edit, Trash2, FileText } from "lucide-react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -29,10 +34,20 @@ import { CreateQuoteForm } from "@/components/CreateQuoteForm";
 import { QuotePreviewDialog } from "@/components/QuotePreviewDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
-
-// Mock data for quotes - removed, will load from database
-const mockQuotes: any[] = [];
+import {
+  Search,
+  Plus,
+  FileText,
+  Eye,
+  Edit,
+  Trash2,
+  Filter,
+  MoreHorizontal,
+  CheckCircle,
+  Clock,
+  XCircle,
+  AlertCircle,
+} from "lucide-react";
 
 const statusLabels = {
   draft: { label: "Nháp", color: "bg-gray-100 text-gray-800" },
@@ -46,45 +61,46 @@ export default function QuotesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
-  const [quotes, setQuotes] = useState(mockQuotes);
+  const [quotes, setQuotes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const filteredQuotes = quotes.filter(
-    (quote) =>
-      quote.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quote.quoteNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quote.customerEmail.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => {
+    loadQuotes();
+  }, []);
 
   const loadQuotes = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('quotes')
-        .select('*')
+        .select(`
+          *,
+          customers (
+            name,
+            email,
+            phone,
+            address,
+            company
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-
-      const formattedQuotes = (data || []).map(quote => {
-        // Parse customer info from notes
-        const notes = quote.notes || '';
-        const customerName = notes.match(/Khách hàng:\s*(.+)/)?.[1] || 'N/A';
-        const customerEmail = notes.match(/Email:\s*(.+)/)?.[1] || 'N/A';
-        
-        return {
-          ...quote, // Keep original quote data for preview
-          id: quote.id,
-          quoteNumber: quote.quote_number,
-          customerName: customerName.trim(),
-          customerEmail: customerEmail.trim(),
-          totalAmount: quote.total_amount || 0,
-          status: quote.status,
-          quoteDate: format(new Date(quote.created_at), 'dd/MM/yyyy'),
-          expiryDate: 'N/A', // Sẽ thêm field này sau
-          responsible: 'N/A', // Sẽ thêm field này sau
-        };
-      });
-
+      
+      const formattedQuotes = data?.map(quote => ({
+        ...quote,
+        customerName: quote.customers?.name || 'Không có tên',
+        customerEmail: quote.customers?.email || '',
+        customerPhone: quote.customers?.phone || '',
+        customerAddress: quote.customers?.address || '',
+        customerCompany: quote.customers?.company || '',
+        quoteDate: quote.created_at,
+        expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        responsible: 'Admin',
+        totalAmount: quote.total_amount || 0
+      })) || [];
+      
       setQuotes(formattedQuotes);
     } catch (error) {
       console.error('Error loading quotes:', error);
@@ -93,61 +109,161 @@ export default function QuotesPage() {
         description: "Không thể tải danh sách báo giá",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadQuotes();
-  }, []);
+  const filteredQuotes = quotes.filter(
+    (quote) =>
+      quote.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      quote.quote_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      quote.status.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleCreateQuote = () => {
-    // Reload quotes from database after successful creation
-    loadQuotes();
     setShowCreateForm(false);
-    
+    loadQuotes();
     toast({
-      title: "Thành công", 
+      title: "Thành công",
       description: "Báo giá đã được tạo thành công",
     });
   };
 
-  const handleDeleteQuote = (quoteId: string) => {
-    setQuotes(quotes.filter(q => q.id !== quoteId));
-    toast({
-      title: "Đã xóa",
-      description: "Báo giá đã được xóa",
-      variant: "destructive",
-    });
+  const handleDeleteQuote = async (quoteId: string) => {
+    try {
+      const { error } = await supabase
+        .from('quotes')
+        .delete()
+        .eq('id', quoteId);
+
+      if (error) throw error;
+
+      setQuotes(quotes.filter((quote) => quote.id !== quoteId));
+      toast({
+        title: "Thành công",
+        description: "Báo giá đã được xóa thành công",
+      });
+    } catch (error) {
+      console.error('Error deleting quote:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể xóa báo giá",
+        variant: "destructive",
+      });
+    }
   };
 
+  const handleApproveQuote = async (quote: any) => {
+    try {
+      // Update quote status to approved
+      const { error: quoteError } = await supabase
+        .from('quotes')
+        .update({ status: 'approved' })
+        .eq('id', quote.id);
+
+      if (quoteError) throw quoteError;
+
+      // Create or update customer
+      let customerId = quote.customer_id;
+      if (!customerId) {
+        const { data: customerData, error: customerError } = await supabase
+          .from('customers')
+          .insert({
+            name: quote.customerName,
+            email: quote.customerEmail || null,
+            phone: quote.customerPhone || null,
+            address: quote.customerAddress || null,
+            company: quote.customerCompany || null,
+          })
+          .select('id')
+          .single();
+
+        if (customerError) throw customerError;
+        customerId = customerData.id;
+      }
+
+      // Create order from approved quote
+      const orderNumber = `ORD-${Date.now()}`;
+      const { error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          order_number: orderNumber,
+          customer_id: customerId,
+          total_amount: quote.total_amount,
+          status: 'pending',
+          items: quote.items,
+          notes: `Được tạo từ báo giá ${quote.quote_number}`,
+        });
+
+      if (orderError) throw orderError;
+
+      loadQuotes();
+      toast({
+        title: "Thành công",
+        description: `Báo giá đã được duyệt và đơn hàng ${orderNumber} đã được tạo`,
+      });
+    } catch (error) {
+      console.error('Error approving quote:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể duyệt báo giá",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRejectQuote = async (quoteId: string) => {
+    try {
+      const { error } = await supabase
+        .from('quotes')
+        .update({ status: 'rejected' })
+        .eq('id', quoteId);
+
+      if (error) throw error;
+
+      loadQuotes();
+      toast({
+        title: "Thành công",
+        description: "Báo giá đã được từ chối",
+      });
+    } catch (error) {
+      console.error('Error rejecting quote:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể từ chối báo giá",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Calculate stats
   const stats = [
     {
       title: "Tổng báo giá",
-      value: quotes.length.toString(),
+      value: quotes.length,
       icon: FileText,
       color: "text-blue-600",
-      bgColor: "bg-blue-50",
     },
     {
       title: "Đã gửi",
-      value: quotes.filter(q => q.status === "sent").length.toString(),
-      icon: FileText,
-      color: "text-green-600",
-      bgColor: "bg-green-50",
+      value: quotes.filter((q) => q.status === "sent").length,
+      icon: Clock,
+      color: "text-yellow-600",
     },
     {
-      title: "Đã duyệt",
-      value: quotes.filter(q => q.status === "approved").length.toString(),
-      icon: FileText,
-      color: "text-purple-600",
-      bgColor: "bg-purple-50",
+      title: "Được duyệt",
+      value: quotes.filter((q) => q.status === "approved").length,
+      icon: CheckCircle,
+      color: "text-green-600",
     },
     {
       title: "Tổng giá trị",
-      value: (quotes.reduce((sum, q) => sum + q.totalAmount, 0) / 1000000).toFixed(0) + "M",
-      icon: FileText,
-      color: "text-orange-600",
-      bgColor: "bg-orange-50",
+      value: `${quotes
+        .reduce((sum, quote) => sum + (quote.total_amount || 0), 0)
+        .toLocaleString("vi-VN")} VNĐ`,
+      icon: AlertCircle,
+      color: "text-purple-600",
     },
   ];
 
@@ -157,7 +273,9 @@ export default function QuotesPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Quản lý Báo giá</h1>
-          <p className="text-muted-foreground">Tạo và quản lý báo giá cho khách hàng</p>
+          <p className="text-muted-foreground">
+            Tạo và quản lý báo giá cho khách hàng
+          </p>
         </div>
         <Button onClick={() => setShowCreateForm(true)} className="gap-2">
           <Plus className="h-4 w-4" />
@@ -170,14 +288,14 @@ export default function QuotesPage() {
         {stats.map((stat, index) => (
           <Card key={index}>
             <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className={`p-2 rounded-lg ${stat.bgColor}`}>
-                  <stat.icon className={`h-4 w-4 ${stat.color}`} />
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {stat.title}
+                  </p>
+                  <p className="text-2xl font-bold">{stat.value}</p>
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                  <p className="text-lg font-bold text-foreground">{stat.value}</p>
-                </div>
+                <stat.icon className={`h-8 w-8 ${stat.color}`} />
               </div>
             </CardContent>
           </Card>
@@ -220,7 +338,13 @@ export default function QuotesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredQuotes.length === 0 ? (
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8">
+                      Đang tải...
+                    </TableCell>
+                  </TableRow>
+                ) : filteredQuotes.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-8">
                       <div className="flex flex-col items-center gap-2">
@@ -240,42 +364,67 @@ export default function QuotesPage() {
                 ) : (
                   filteredQuotes.map((quote) => (
                     <TableRow key={quote.id}>
-                      <TableCell className="font-medium">{quote.quoteNumber}</TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{quote.customerName}</div>
-                          <div className="text-sm text-muted-foreground">{quote.customerEmail}</div>
-                        </div>
+                      <TableCell className="font-medium">
+                        {quote.quote_number || `QUOTE-${quote.id.slice(0, 8)}`}
                       </TableCell>
-                      <TableCell>{quote.totalAmount.toLocaleString()} ₫</TableCell>
+                      <TableCell>{quote.customerName}</TableCell>
                       <TableCell>
-                        <Badge className={statusLabels[quote.status].color}>
-                          {statusLabels[quote.status].label}
+                        {(quote.total_amount || 0).toLocaleString("vi-VN")} VNĐ
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={statusLabels[quote.status]?.color || "bg-gray-100 text-gray-800"}
+                        >
+                          {statusLabels[quote.status]?.label || quote.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{quote.quoteDate}</TableCell>
-                      <TableCell>{quote.expiryDate}</TableCell>
+                      <TableCell>
+                        {new Date(quote.created_at).toLocaleDateString("vi-VN")}
+                      </TableCell>
+                      <TableCell>
+                        {new Date(quote.expiryDate).toLocaleDateString("vi-VN")}
+                      </TableCell>
                       <TableCell>{quote.responsible}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0">
-                              <span className="sr-only">Open menu</span>
-                              <FileText className="h-4 w-4" />
+                              <span className="sr-only">Mở menu</span>
+                              <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setSelectedQuote(quote)}>
+                            <DropdownMenuItem
+                              onClick={() => setSelectedQuote(quote)}
+                            >
                               <Eye className="mr-2 h-4 w-4" />
-                              Xem chi tiết
+                              Xem
                             </DropdownMenuItem>
+                            {quote.status === 'draft' && (
+                              <DropdownMenuItem
+                                onClick={() => handleApproveQuote(quote)}
+                                className="text-green-600"
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Duyệt báo giá
+                              </DropdownMenuItem>
+                            )}
+                            {quote.status === 'draft' && (
+                              <DropdownMenuItem
+                                onClick={() => handleRejectQuote(quote.id)}
+                                className="text-orange-600"
+                              >
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Từ chối
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem>
                               <Edit className="mr-2 h-4 w-4" />
-                              Chỉnh sửa
+                              Sửa
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              className="text-red-600"
+                            <DropdownMenuItem
                               onClick={() => handleDeleteQuote(quote.id)}
+                              className="text-red-600"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Xóa
