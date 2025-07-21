@@ -77,10 +77,12 @@ export default {
 				'gradient-primary': 'var(--gradient-primary)',
 				'gradient-secondary': 'var(--gradient-secondary)',
 				'gradient-hero': 'var(--gradient-hero)',
-				'gradient-card': 'var(--gradient-card)'
+				'gradient-card': 'var(--gradient-card)',
+				'gradient-accent': 'var(--gradient-accent)'
 			},
 			boxShadow: {
 				'brand': 'var(--shadow-brand)',
+				'accent': 'var(--shadow-accent)',
 				'soft': 'var(--shadow-md)',
 				'crisp': 'var(--shadow-lg)',
 				'elegant': 'var(--shadow-xl)'

@@ -2,46 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CRM Enterprise Design System - Professional gradients and modern colors */
+/* CRM Pro Design System - Professional blue gradient with orange accents */
 
 @layer base {
   :root {
     /* Background colors - Clean whites and subtle grays */
     --background: 0 0% 100%;
-    --foreground: 210 11% 15%;
+    --foreground: 215 16% 15%;
 
     /* Card and surfaces - Elevated components */
     --card: 0 0% 100%;
-    --card-foreground: 210 11% 15%;
+    --card-foreground: 215 16% 15%;
 
     /* Popover styling */
     --popover: 0 0% 100%;
-    --popover-foreground: 210 11% 15%;
+    --popover-foreground: 215 16% 15%;
 
-    /* Primary brand colors - Professional blue gradient theme */
-    --primary: 220 100% 50%;
+    /* Primary brand colors - Blue gradient theme for CRM Pro */
+    --primary: 220 91% 48%;
     --primary-foreground: 0 0% 100%;
-    --primary-light: 220 100% 65%;
-    --primary-dark: 220 100% 35%;
+    --primary-light: 220 91% 65%;
+    --primary-dark: 220 91% 35%;
 
-    /* Secondary colors - Supporting the brand */
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 210 11% 15%;
+    /* Secondary colors - Light gray supporting */
+    --secondary: 220 15% 96%;
+    --secondary-foreground: 215 16% 25%;
 
     /* Muted elements */
-    --muted: 210 40% 96%;
+    --muted: 220 15% 96%;
     --muted-foreground: 215 16% 47%;
 
-    /* Accent colors - Call to action elements */
-    --accent: 200 100% 50%;
+    /* Accent colors - Orange for warning/action elements */
+    --accent: 25 95% 53%;
     --accent-foreground: 0 0% 100%;
 
     /* Status colors */
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --success: 142 70% 45%;
+    --success: 142 76% 36%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 100% 50%;
+    --warning: 25 95% 53%;
     --warning-foreground: 0 0% 100%;
 
     /* UI Elements */
@@ -49,18 +49,20 @@
     --input: 220 13% 91%;
     --ring: 220 100% 50%;
 
-    /* Gradients - Modern enterprise look */
-    --gradient-primary: linear-gradient(135deg, hsl(220 100% 50%), hsl(240 100% 60%));
-    --gradient-secondary: linear-gradient(135deg, hsl(200 100% 50%), hsl(220 100% 50%));
-    --gradient-hero: linear-gradient(135deg, hsl(220 100% 50%) 0%, hsl(240 100% 60%) 50%, hsl(200 100% 50%) 100%);
-    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%) 0%, hsl(220 13% 98%) 100%);
+    /* Gradients - CRM Pro blue gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(220 91% 48%) 0%, hsl(235 91% 55%) 100%);
+    --gradient-secondary: linear-gradient(135deg, hsl(220 15% 96%) 0%, hsl(220 15% 92%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(220 91% 48%) 0%, hsl(235 91% 55%) 50%, hsl(210 91% 60%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%) 0%, hsl(220 15% 98%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(25 95% 53%) 0%, hsl(35 95% 55%) 100%);
 
-    /* Shadows - Professional depth */
-    --shadow-sm: 0 1px 2px 0 hsl(220 13% 0% / 0.05);
-    --shadow-md: 0 4px 6px -1px hsl(220 13% 0% / 0.1), 0 2px 4px -1px hsl(220 13% 0% / 0.06);
-    --shadow-lg: 0 10px 15px -3px hsl(220 13% 0% / 0.1), 0 4px 6px -2px hsl(220 13% 0% / 0.05);
-    --shadow-xl: 0 20px 25px -5px hsl(220 13% 0% / 0.1), 0 10px 10px -5px hsl(220 13% 0% / 0.04);
-    --shadow-brand: 0 10px 30px -10px hsl(220 100% 50% / 0.3);
+    /* Shadows - Professional depth with blue tint */
+    --shadow-sm: 0 1px 2px 0 hsl(220 15% 0% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(220 15% 0% / 0.1), 0 2px 4px -1px hsl(220 15% 0% / 0.06);
+    --shadow-lg: 0 10px 15px -3px hsl(220 15% 0% / 0.1), 0 4px 6px -2px hsl(220 15% 0% / 0.05);
+    --shadow-xl: 0 20px 25px -5px hsl(220 15% 0% / 0.1), 0 10px 10px -5px hsl(220 15% 0% / 0.04);
+    --shadow-brand: 0 10px 30px -10px hsl(220 91% 48% / 0.25);
+    --shadow-accent: 0 8px 25px -8px hsl(25 95% 53% / 0.3);
 
     /* Animation values */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
