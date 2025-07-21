@@ -106,6 +106,7 @@ const ProductManagement = () => {
 
   const fetchPriceLists = async () => {
     try {
+      // RLS sẽ tự động filter dữ liệu theo role, không cần thêm filter manual
       const { data, error } = await supabase
         .from('price_lists' as any)
         .select('*')
@@ -125,10 +126,12 @@ const ProductManagement = () => {
 
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('products' as any)
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*');
+
+      // RLS sẽ tự động filter dữ liệu theo role, không cần thêm filter manual
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
       setProducts((data as unknown as Product[]) || []);
