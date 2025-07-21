@@ -255,28 +255,35 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const currentDate = new Date();
       const formattedDate = `${currentDate.getDate()}/${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`;
       
-      // Từ dòng 1-8: Header thông tin công ty
+      // LAYOUT CHÍNH XÁC theo hình mẫu với spacing đúng
       XLSX.utils.sheet_add_aoa(ws, [
-        [companyInfo.name], // Dòng 1: Merge A1:G1
-        [companyInfo.address], // Dòng 2: Merge A2:G2
-        [`Điện thoại: ${companyInfo.phone}`, '', '', `MST: ${companyInfo.taxCode}`], // Dòng 3
-        [companyInfo.bankAccount], // Dòng 4: Merge A4:G4
-        [''], // Dòng 5: Empty
-        ['BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN'], // Dòng 6: Merge A6:G6
-        [''], // Dòng 7: Empty
-        [`Hà Nội ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1} năm ${currentDate.getFullYear()}`], // Dòng 8: Merge A8:G8
-        [''], // Dòng 9: Empty
-        ['THÔNG TIN KHÁCH HÀNG:', '', '', '', 'THÔNG TIN BÁO GIÁ:'], // Dòng 10
-        [`Tên KH: ${customerName}`, '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`], // Dòng 11
-        ['', '', '', '', `Ngày báo giá: ${formattedDate}`], // Dòng 12
-        ['', '', '', '', `Ngày hết hạn: ${expiryDate || '31/7/2025'}`], // Dòng 13
-        [''], // Dòng 14: Empty
-        // Từ dòng 15: Bảng sản phẩm với header
-        ['STT', 'SẢN PHẨM', 'QUY CÁCH', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'] // Dòng 15: Header
+        [companyInfo.name], // Row 1
+        [''], // Row 2: Empty
+        [`Địa chỉ: ${companyInfo.address.replace('Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.', 'Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.')}`], // Row 3
+        [''], // Row 4: Empty
+        [`Điện thoại: ${companyInfo.phone}`, '', '', '', '', `MST: ${companyInfo.taxCode}`], // Row 5
+        [''], // Row 6: Empty  
+        [`Trụ sở: Số 21 Ngõ 562 đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Hà Nội`], // Row 7
+        [`STK: Ngân hàng TMCP đầu tư và phát triển Việt Nam ( BIDV) – Chi nhánh Hà Nội. / 2110199996`], // Row 8
+        [''], // Row 9: Empty
+        ['BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN'], // Row 10
+        [''], // Row 11: Empty
+        [''], // Row 12: Empty
+        [`Hà Nội ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1} năm ${currentDate.getFullYear()}`], // Row 13
+        [''], // Row 14: Empty
+        [''], // Row 15: Empty
+        ['THÔNG TIN KHÁCH HÀNG:', '', '', '', '', 'THÔNG TIN BÁO GIÁ:'], // Row 16
+        [''], // Row 17: Empty
+        [`Tên KH: ${customerName}`, '', '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`], // Row 18
+        ['', '', '', '', '', `Ngày báo giá: ${currentDate.getDate()}/${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`], // Row 19
+        ['', '', '', '', '', `Ngày hết hạn: ${expiryDate || '31/7/2025'}`], // Row 20
+        [''], // Row 21: Empty
+        [''], // Row 22: Empty
+        ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'] // Row 23: Header
       ], { origin: 'A1' });
       
-      // Thêm dữ liệu sản phẩm từ dòng 16
-      let currentRow = 16;
+      // Thêm dữ liệu sản phẩm từ Row 24 (sau header Row 23)
+      let currentRow = 24;
       items.forEach((item: any, index: number) => {
         XLSX.utils.sheet_add_aoa(ws, [[
           index + 1, // STT
