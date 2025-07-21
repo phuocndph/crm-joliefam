@@ -184,7 +184,7 @@ const ProductManagement = () => {
         .insert({
           name: priceListName,
           year: parseInt(priceListYear),
-          status: 'draft',
+          status: 'active',
           manager_id: user?.id || null,
         });
 
