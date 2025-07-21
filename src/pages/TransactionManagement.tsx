@@ -178,8 +178,11 @@ const TransactionManagement = () => {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return amount.toLocaleString("vi-VN") + " VNĐ";
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined || isNaN(Number(amount))) {
+      return "0 VNĐ";
+    }
+    return Number(amount).toLocaleString("vi-VN") + " VNĐ";
   };
 
   const getPaymentStatusColor = (status: string) => {
