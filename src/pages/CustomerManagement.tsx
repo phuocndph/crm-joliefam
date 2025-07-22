@@ -1152,20 +1152,25 @@ export default function CustomerManagement() {
 
       {/* Payment Dialog */}
       <Dialog open={!!orderToPayment} onOpenChange={(open) => !open && setOrderToPayment(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Thêm thanh toán</DialogTitle>
-            <DialogDescription>
-              Thêm thanh toán cho đơn hàng #{orderToPayment?.order_number}
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+          <DialogHeader className="pb-4 border-b">
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-primary" />
+              Thêm thanh toán
+            </DialogTitle>
+            <DialogDescription className="text-base">
+              Thêm thanh toán cho đơn hàng <span className="font-semibold text-primary">#{orderToPayment?.order_number}</span>
             </DialogDescription>
           </DialogHeader>
-          {orderToPayment && (
-            <PaymentWrapper 
-              order={orderToPayment}
-              onClose={() => setOrderToPayment(null)}
-              onSubmit={handlePaymentAdded}
-            />
-          )}
+          <div className="py-4">
+            {orderToPayment && (
+              <PaymentWrapper 
+                order={orderToPayment}
+                onClose={() => setOrderToPayment(null)}
+                onSubmit={handlePaymentAdded}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
