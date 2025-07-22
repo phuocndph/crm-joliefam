@@ -570,7 +570,7 @@ export default function OrderManagement() {
 
       {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <div className="p-6">
             <div className="space-y-6">
               {/* Header */}
@@ -581,8 +581,8 @@ export default function OrderManagement() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <div className={`inline-flex items-center gap-1.5 rounded-full border font-semibold transition-colors text-sm px-2.5 py-1 ${statusConfig[selectedOrder?.status || 'pending']?.color}`}>
-                    <CheckCircle className="w-3 h-3" />
+                  <div className={`inline-flex items-center gap-1.5 rounded-full border font-semibold transition-colors border-transparent text-sm px-2.5 py-1 ${statusConfig[selectedOrder?.status || 'pending']?.color}`}>
+                    {React.createElement(statusConfig[selectedOrder?.status || 'pending']?.icon || CheckCircle, { className: "w-3 h-3" })}
                     <span>{statusConfig[selectedOrder?.status || 'pending']?.label}</span>
                   </div>
                 </div>
@@ -623,7 +623,7 @@ export default function OrderManagement() {
                   <CardContent className="space-y-3 pt-4">
                     <div className="flex justify-between">
                       <span className="font-medium">Số báo giá:</span>
-                      <span className="font-medium">{selectedOrder?.quote_number || selectedOrder?.order_number}</span>
+                      <span className="font-medium">{selectedOrder?.order_number}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="font-medium">Ngày báo giá:</span>
@@ -634,10 +634,7 @@ export default function OrderManagement() {
                     <div className="flex justify-between">
                       <span className="font-medium">Ngày hết hạn:</span>
                       <span className="font-medium">
-                        {selectedOrder?.expires_at ? 
-                          format(new Date(selectedOrder.expires_at), "d/M/yyyy") : 
-                          format(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), "d/M/yyyy")
-                        }
+                        {format(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), "d/M/yyyy")}
                       </span>
                     </div>
                   </CardContent>
