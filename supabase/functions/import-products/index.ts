@@ -65,13 +65,13 @@ serve(async (req) => {
 
     // Expected headers - support multiple formats
     const headerMappings = {
-      'Mã SP': ['Mã SP', 'MÃ SP'],
-      'Danh mục': ['Danh mục', 'DANH MỤC SẢN PHẨM', 'DANH MỤC'],
-      'Tên SP': ['Tên SP', 'TÊN SP'],
-      'Quy cách': ['Quy cách', 'QUY CÁCH'],
-      'Giá gốc': ['Giá gốc', 'ĐƠN GIÁ NHÀ', 'GIÁ GỐC'],
-      'Giá bán': ['Giá bán', 'ĐƠN GIÁ BÁN', 'GIÁ BÁN'],
-      'Mô tả': ['Mô tả', 'MÔ TẢ SẢN PHẨM', 'MÔ TẢ']
+      'Mã SP': ['MÃ SP', 'Mã SP'],
+      'Danh mục': ['DANH MỤC SẢN PHẨM', 'Danh mục', 'DANH MỤC'],
+      'Tên SP': ['TÊN SP', 'Tên SP'],
+      'Quy cách': ['QUY CÁCH', 'Quy cách'],
+      'Giá gốc': ['ĐƠN GIÁ GỐC', 'Giá gốc', 'ĐƠN GIÁ NHÀ', 'GIÁ GỐC'],
+      'Giá bán': ['ĐƠN GIÁ BÁN', 'Giá bán', 'GIÁ BÁN'],
+      'Mô tả': ['MÔ TẢ SẢN PHẨM', 'Mô tả', 'MÔ TẢ']
     }
     
     // Find header positions
