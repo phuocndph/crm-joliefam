@@ -93,64 +93,106 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             extension: 'png',
           });
           
-          // Add logo to worksheet (A1:C4)
+          // Add logo to worksheet (A1:A4)
           worksheet.addImage(logoId, {
             tl: { col: 0, row: 0 },
-            ext: { width: 120, height: 60 }
+            ext: { width: 100, height: 80 }
           });
         }
       } catch (logoError) {
         console.warn('Could not load logo:', logoError);
       }
 
-      // Company header (next to logo)
-      worksheet.mergeCells('D1:H2');
-      const companyCell = worksheet.getCell('D1');
+      // Company header - Row 1 (next to logo)
+      worksheet.mergeCells('B1:H1');
+      const companyCell = worksheet.getCell('B1');
       companyCell.value = 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT';
-      companyCell.font = { bold: true, size: 16, color: { argb: 'FFDC143C' } };
-      companyCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      companyCell.font = { name: 'Times New Roman', bold: true, size: 16, color: { argb: 'FFDC143C' } };
+      companyCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
-      worksheet.mergeCells('D3:H4');
-      const addressCell = worksheet.getCell('D3');
-      addressCell.value = 'Địa chỉ: Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.\nĐiện thoại: 0828686866 | MST: 0123456789';
-      addressCell.font = { size: 10, color: { argb: 'FF666666' } };
-      addressCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      // Company details - Row 2-6
+      worksheet.mergeCells('B2:H2');
+      const addressCell = worksheet.getCell('B2');
+      addressCell.value = 'Địa chỉ: Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.';
+      addressCell.font = { name: 'Times New Roman', size: 10 };
+      addressCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+
+      worksheet.mergeCells('B3:H3');
+      const phoneCell = worksheet.getCell('B3');
+      phoneCell.value = 'Điện thoại: 0828686866';
+      phoneCell.font = { name: 'Times New Roman', size: 10 };
+      phoneCell.alignment = { vertical: 'middle', horizontal: 'left' };
+
+      worksheet.mergeCells('B4:H4');
+      const mstCell = worksheet.getCell('B4');
+      mstCell.value = 'MST: 0123456789';
+      mstCell.font = { name: 'Times New Roman', size: 10 };
+      mstCell.alignment = { vertical: 'middle', horizontal: 'left' };
+
+      worksheet.mergeCells('B5:H5');
+      const officeCell = worksheet.getCell('B5');
+      officeCell.value = 'Trụ sở: Số 21 Ngõ 562 đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Hà Nội';
+      officeCell.font = { name: 'Times New Roman', size: 10 };
+      officeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+
+      worksheet.mergeCells('B6:H6');
+      const bankCell = worksheet.getCell('B6');
+      bankCell.value = 'STK: Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV) – Chi nhánh Hà Nội. / 2110199996';
+      bankCell.font = { name: 'Times New Roman', size: 10 };
+      bankCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+
+      // Empty row
+      let currentRow = 8;
 
       // Quote title
-      worksheet.mergeCells('A6:H7');
-      const titleCell = worksheet.getCell('A6');
+      worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+      const titleCell = worksheet.getCell(`A${currentRow}`);
       titleCell.value = 'BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN';
-      titleCell.font = { bold: true, size: 18, color: { argb: 'FF0066CC' } };
+      titleCell.font = { name: 'Times New Roman', bold: true, size: 18, color: { argb: 'FF0066CC' } };
       titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
+      currentRow += 2;
+
       // Date info
-      worksheet.mergeCells('G8:H8');
-      const dateCell = worksheet.getCell('G8');
+      worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+      const dateCell = worksheet.getCell(`A${currentRow}`);
       dateCell.value = `Hà Nội ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1} năm ${currentDate.getFullYear()}`;
-      dateCell.font = { size: 10 };
-      dateCell.alignment = { horizontal: 'right' };
+      dateCell.font = { name: 'Times New Roman', size: 12, italic: true };
+      dateCell.alignment = { horizontal: 'center' };
+
+      currentRow += 2;
 
       // Customer and Quote info headers
-      let currentRow = 10;
-      
       worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
       const customerHeaderCell = worksheet.getCell(`A${currentRow}`);
       customerHeaderCell.value = 'THÔNG TIN KHÁCH HÀNG:';
-      customerHeaderCell.font = { bold: true, color: { argb: 'FF0066CC' } };
+      customerHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FF0066CC' } };
       customerHeaderCell.fill = {
         type: 'pattern',
         pattern: 'solid',
         fgColor: { argb: 'FFE6F3FF' }
       };
+      customerHeaderCell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
 
       worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
       const quoteHeaderCell = worksheet.getCell(`E${currentRow}`);
       quoteHeaderCell.value = 'THÔNG TIN BÁO GIÁ:';
-      quoteHeaderCell.font = { bold: true, color: { argb: 'FF0066CC' } };
+      quoteHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FF0066CC' } };
       quoteHeaderCell.fill = {
         type: 'pattern',
         pattern: 'solid',
         fgColor: { argb: 'FFE6F3FF' }
+      };
+      quoteHeaderCell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
       };
 
       currentRow++;
@@ -159,34 +201,80 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
       const customerNameCell = worksheet.getCell(`A${currentRow}`);
       customerNameCell.value = `Tên KH: ${customerName}`;
-      customerNameCell.font = { size: 10 };
+      customerNameCell.font = { name: 'Times New Roman', size: 10 };
+      customerNameCell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
 
       worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
       const quoteNumberCell = worksheet.getCell(`E${currentRow}`);
-      quoteNumberCell.value = `Số báo giá: ${quote.quoteNumber}`;
-      quoteNumberCell.font = { size: 10 };
+      quoteNumberCell.value = `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`;
+      quoteNumberCell.font = { name: 'Times New Roman', size: 10 };
+      quoteNumberCell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
 
       currentRow++;
+      
+      // Empty cell for customer side, quote date on right
+      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
+      const emptyCell1 = worksheet.getCell(`A${currentRow}`);
+      emptyCell1.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+
       worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
       const quoteDateCell = worksheet.getCell(`E${currentRow}`);
       quoteDateCell.value = `Ngày báo giá: ${currentDate.getDate()}/${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`;
-      quoteDateCell.font = { size: 10 };
+      quoteDateCell.font = { name: 'Times New Roman', size: 10 };
+      quoteDateCell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
 
       currentRow++;
+      
+      // Empty cell for customer side, expiry date on right
+      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
+      const emptyCell2 = worksheet.getCell(`A${currentRow}`);
+      emptyCell2.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+
       worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
       const expiryDateCell = worksheet.getCell(`E${currentRow}`);
-      expiryDateCell.value = `Ngày hết hạn: ${expiryDate}`;
-      expiryDateCell.font = { size: 10 };
+      expiryDateCell.value = `Ngày hết hạn: ${expiryDate || '31/7/2025'}`;
+      expiryDateCell.font = { name: 'Times New Roman', size: 10 };
+      expiryDateCell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
 
-      currentRow += 3;
+      currentRow += 2;
 
-      // Table headers
+      // Table headers with Times New Roman font
       const headers = ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'];
       
       headers.forEach((header, index) => {
         const cell = worksheet.getCell(`${String.fromCharCode(65 + index)}${currentRow}`);
         cell.value = header;
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FF000000' } };
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
@@ -203,13 +291,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       currentRow++;
 
-      // Quote items
+      // Quote items with Times New Roman font
       items.forEach((item: any, index: number) => {
         const rowData = [
           index + 1,
           item.name || 'Ga chun ks T225 sọc 100x200x15cm',
-          item.specifications || 'Ga may bo chun quanh đệm',
-          item.category || 'Vải T225 40% Cotton 35% Polyester 25% Lụa',
+          item.specifications || 'Ga may bo chun quanh đệm, vải được tính trừ co theo nhà sản xuất',
+          item.category || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu',
           item.quantity || 144,
           item.price || 140000,
           item.total || 20160000,
@@ -219,6 +307,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         rowData.forEach((value, colIndex) => {
           const cell = worksheet.getCell(`${String.fromCharCode(65 + colIndex)}${currentRow}`);
           cell.value = value;
+          cell.font = { name: 'Times New Roman', size: 10 };
           cell.border = {
             top: { style: 'thin' },
             left: { style: 'thin' },
@@ -227,14 +316,14 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           };
           
           if (colIndex === 0 || colIndex === 4) { // STT và Số lượng
-            cell.alignment = { horizontal: 'center' };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
           } else if (colIndex >= 5) { // Đơn giá và Thành tiền
-            cell.alignment = { horizontal: 'right' };
+            cell.alignment = { horizontal: 'right', vertical: 'middle' };
             if (typeof value === 'number') {
               cell.numFmt = '#,##0';
             }
           } else if (colIndex >= 1 && colIndex <= 3) { // Text columns
-            cell.alignment = { wrapText: true };
+            cell.alignment = { wrapText: true, vertical: 'middle' };
           }
         });
         
@@ -243,7 +332,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       currentRow++;
 
-      // Totals section
+      // Totals section with Times New Roman font
       const totalsData = [
         ['TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', formatCurrency(subtotal)],
         [`GTGT (${vatRate}%)`, formatCurrency(vatAmount)],
@@ -256,20 +345,20 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         worksheet.mergeCells(`A${currentRow}:F${currentRow}`);
         const labelCell = worksheet.getCell(`A${currentRow}`);
         labelCell.value = label;
-        labelCell.font = { bold: true };
-        labelCell.alignment = { horizontal: 'right' };
+        labelCell.font = { name: 'Times New Roman', bold: true, size: 11 };
+        labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
 
         const valueCell = worksheet.getCell(`G${currentRow}`);
         valueCell.value = value;
-        valueCell.font = { bold: true, color: { argb: 'FFDC143C' } };
-        valueCell.alignment = { horizontal: 'right' };
+        valueCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFDC143C' } };
+        valueCell.alignment = { horizontal: 'right', vertical: 'middle' };
 
         currentRow++;
       });
 
       currentRow += 2;
 
-      // Terms
+      // Terms with Times New Roman font
       const terms = [
         '1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.',
         '2. Thanh toán: 50% trước khi sản xuất, 50% trước khi giao hàng.',
@@ -281,9 +370,38 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
         const termCell = worksheet.getCell(`A${currentRow}`);
         termCell.value = term;
-        termCell.font = { size: 10 };
+        termCell.font = { name: 'Times New Roman', size: 10 };
         currentRow++;
       });
+
+      currentRow += 2;
+
+      // Signature section
+      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
+      const companySignatureHeaderCell = worksheet.getCell(`A${currentRow}`);
+      companySignatureHeaderCell.value = 'ĐẠI DIỆN CÔNG TY';
+      companySignatureHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12 };
+      companySignatureHeaderCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
+      const customerSignatureHeaderCell = worksheet.getCell(`E${currentRow}`);
+      customerSignatureHeaderCell.value = 'KHÁCH HÀNG';
+      customerSignatureHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12 };
+      customerSignatureHeaderCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      currentRow += 4; // Space for signature
+
+      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
+      const directorCell = worksheet.getCell(`A${currentRow}`);
+      directorCell.value = 'GIÁM ĐỐC';
+      directorCell.font = { name: 'Times New Roman', bold: true, size: 11 };
+      directorCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
+      const customerSignatureCell = worksheet.getCell(`E${currentRow}`);
+      customerSignatureCell.value = 'Ký tên và đóng dấu xác nhận';
+      customerSignatureCell.font = { name: 'Times New Roman', size: 10 };
+      customerSignatureCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
       // Column widths
       worksheet.getColumn(1).width = 8;   // STT
