@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
-import { TrendingUp, TrendingDown, DollarSign, Calendar, Plus, Filter, Search, Eye, Edit, Trash2 } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { TrendingUp, TrendingDown, DollarSign, Plus, Filter, Search, Eye, Edit, Trash2, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -32,7 +32,7 @@ import { EditExpenseDialog } from "@/components/EditExpenseDialog";
 import { DeleteExpenseDialog } from "@/components/DeleteExpenseDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 
 const formatSafeDate = (dateValue: string | null | undefined, formatStr: string = "dd/MM/yyyy") => {
   if (!dateValue) {
@@ -60,19 +60,25 @@ interface Expense {
   created_at: string;
 }
 
-interface Order {
+interface OrderDetail {
   id: string;
+  order_number: string;
   total_amount: number;
   cost_price: number;
   profit_before: number;
   profit_after: number;
+  created_at: string;
+  customers: { name: string } | null;
 }
 
-interface ProfitStats {
+interface CashFlowStats {
   totalRevenue: number;
   totalCostPrice: number;
   totalExpenses: number;
-  netProfit: number;
+  profitBefore: number;
+  profitAfter: number;
+  otherIncome: number;
+  netCashFlow: number;
 }
 
 interface OrderProfitDetail {
@@ -89,33 +95,34 @@ interface OrderProfitDetail {
 
 export default function CashFlowManagement() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterPeriod, setFilterPeriod] = useState("month"); // month, year, custom
+  const [filterPeriod, setFilterPeriod] = useState("month");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString());
+  const [activeTab, setActiveTab] = useState("profit");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  
+  // Data states
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [orders, setOrders] = useState<OrderDetail[]>([]);
   const [orderProfits, setOrderProfits] = useState<OrderProfitDetail[]>([]);
-  const [profitStats, setProfitStats] = useState<ProfitStats>({
+  const [cashFlowStats, setCashFlowStats] = useState<CashFlowStats>({
     totalRevenue: 0,
     totalCostPrice: 0,
     totalExpenses: 0,
-    netProfit: 0
+    profitBefore: 0,
+    profitAfter: 0,
+    otherIncome: 0,
+    netCashFlow: 0
   });
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const filteredExpenses = expenses.filter(
-    (expense) =>
-      expense.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      expense.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      expense.person_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
-  // Get date filter range
-  const getDateRange = () => {
+  // Utility functions
+  const getDateRange = useCallback(() => {
     const year = parseInt(selectedYear);
     const month = parseInt(selectedMonth);
     
@@ -130,11 +137,16 @@ export default function CashFlowManagement() {
         end: endOfMonth(new Date(year, month - 1))
       };
     }
+  }, [selectedYear, selectedMonth, filterPeriod]);
+
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (!amount) return "0đ";
+    return `${amount.toLocaleString()}đ`;
   };
 
-  const loadExpenses = async () => {
+  // Data loading functions
+  const loadExpenses = useCallback(async () => {
     try {
-      setLoading(true);
       const dateRange = getDateRange();
       
       const { data, error } = await supabase
@@ -153,136 +165,106 @@ export default function CashFlowManagement() {
         description: "Không thể tải dữ liệu chi phí",
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [getDateRange, toast]);
 
-  const loadOrderProfits = async () => {
+  const loadOrders = useCallback(async () => {
     try {
       const dateRange = getDateRange();
       
-      // Load delivered orders with customer info
-      const { data: orders, error: ordersError } = await supabase
+      const { data, error } = await supabase
         .from('orders')
         .select(`
-          id, 
-          order_number, 
-          total_amount, 
-          cost_price, 
-          profit_before, 
+          id,
+          order_number,
+          total_amount,
+          cost_price,
+          profit_before,
           profit_after,
           created_at,
           customers(name)
         `)
         .eq('status', 'delivered')
         .gte('created_at', dateRange.start.toISOString())
-        .lte('created_at', dateRange.end.toISOString());
+        .lte('created_at', dateRange.end.toISOString())
+        .order('created_at', { ascending: false });
 
-      if (ordersError) {
-        console.error('Error loading orders:', ordersError);
-        return;
-      }
-
-      // Calculate allocated expenses per order (simplified: total expenses / number of orders)
-      const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
-      const orderCount = orders?.length || 1;
-      const allocatedExpensePerOrder = totalExpenses / orderCount;
-
-      const orderProfitDetails: OrderProfitDetail[] = orders?.map(order => ({
-        id: order.id,
-        order_number: order.order_number,
-        customer_name: order.customers?.name || "Khách hàng",
-        date: order.created_at,
-        total_amount: order.total_amount || 0,
-        cost_price: order.cost_price || 0,
-        profit_before: (order.total_amount || 0) - (order.cost_price || 0),
-        allocated_expenses: allocatedExpensePerOrder,
-        profit_after: (order.total_amount || 0) - (order.cost_price || 0) - allocatedExpensePerOrder
-      })) || [];
-
-      setOrderProfits(orderProfitDetails);
+      if (error) throw error;
+      setOrders(data || []);
     } catch (error) {
-      console.error('Error loading order profits:', error);
+      console.error('Error loading orders:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải dữ liệu đơn hàng",
+        variant: "destructive",
+      });
     }
-  };
+  }, [getDateRange, toast]);
 
-  const loadProfitStats = async () => {
+  const calculateCashFlowStats = useCallback(() => {
+    const totalRevenue = orders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+    const totalCostPrice = orders.reduce((sum, order) => sum + (Number(order.cost_price) || 0), 0);
+    const totalExpenses = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    
+    const profitBefore = totalRevenue - totalCostPrice;
+    const profitAfter = profitBefore - totalExpenses;
+    const otherIncome = 0; // Placeholder for other income sources
+    const netCashFlow = profitAfter + otherIncome;
+
+    setCashFlowStats({
+      totalRevenue,
+      totalCostPrice,
+      totalExpenses,
+      profitBefore,
+      profitAfter,
+      otherIncome,
+      netCashFlow
+    });
+  }, [orders, expenses]);
+
+  const calculateOrderProfits = useCallback(() => {
+    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const orderCount = orders.length || 1;
+    const allocatedExpensePerOrder = totalExpenses / orderCount;
+
+    const orderProfitDetails: OrderProfitDetail[] = orders.map(order => ({
+      id: order.id,
+      order_number: order.order_number,
+      customer_name: order.customers?.name || "Khách hàng",
+      date: order.created_at,
+      total_amount: order.total_amount || 0,
+      cost_price: order.cost_price || 0,
+      profit_before: (order.total_amount || 0) - (order.cost_price || 0),
+      allocated_expenses: allocatedExpensePerOrder,
+      profit_after: (order.total_amount || 0) - (order.cost_price || 0) - allocatedExpensePerOrder
+    }));
+
+    setOrderProfits(orderProfitDetails);
+  }, [orders, expenses]);
+
+  // Load all data
+  const loadAllData = useCallback(async () => {
+    setLoading(true);
     try {
-      const dateRange = getDateRange();
-      
-      // Load orders for revenue and cost price (only delivered orders)
-      const { data: orders, error: ordersError } = await supabase
-        .from('orders')
-        .select('total_amount, cost_price')
-        .eq('status', 'delivered')
-        .gte('created_at', dateRange.start.toISOString())
-        .lte('created_at', dateRange.end.toISOString());
-
-      if (ordersError) {
-        console.error('Error loading orders:', ordersError);
-      }
-
-      // Load expenses in date range
-      const { data: expensesData, error: expensesError } = await supabase
-        .from('expenses')
-        .select('amount')
-        .gte('expense_date', dateRange.start.toISOString())
-        .lte('expense_date', dateRange.end.toISOString());
-
-      if (expensesError) {
-        console.error('Error loading expenses:', expensesError);
-      }
-
-      // Calculate totals with proper null handling
-      const totalRevenue = orders?.reduce((sum, order) => {
-        return sum + (Number(order.total_amount) || 0);
-      }, 0) || 0;
-      
-      const totalCostPrice = orders?.reduce((sum, order) => {
-        return sum + (Number(order.cost_price) || 0);
-      }, 0) || 0;
-      
-      const totalExpenses = expensesData?.reduce((sum, expense) => {
-        return sum + (Number(expense.amount) || 0);
-      }, 0) || 0;
-      
-      // Apply profit formula: Revenue - Cost Price - Expenses = Net Profit
-      const netProfit = totalRevenue - totalCostPrice - totalExpenses;
-
-      console.log('Profit Calculation:', {
-        totalRevenue,
-        totalCostPrice, 
-        totalExpenses,
-        netProfit,
-        dateRange
-      });
-
-      setProfitStats({
-        totalRevenue,
-        totalCostPrice,
-        totalExpenses,
-        netProfit
-      });
-    } catch (error) {
-      console.error('Error loading profit stats:', error);
+      await Promise.all([loadExpenses(), loadOrders()]);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [loadExpenses, loadOrders]);
+
+  // Effects
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
 
   useEffect(() => {
-    loadExpenses();
-    loadProfitStats();
-    loadOrderProfits();
-  }, [selectedYear, selectedMonth, filterPeriod]);
+    calculateCashFlowStats();
+    calculateOrderProfits();
+  }, [calculateCashFlowStats, calculateOrderProfits]);
 
-  useEffect(() => {
-    loadOrderProfits();
-  }, [expenses]);
-
-  const handleCreateExpense = () => {
-    loadExpenses();
-    loadProfitStats();
-    loadOrderProfits();
+  // Event handlers
+  const handleCreateExpense = async () => {
+    await loadAllData();
     setShowCreateForm(false);
     toast({
       title: "Thành công",
@@ -290,10 +272,8 @@ export default function CashFlowManagement() {
     });
   };
 
-  const handleEditExpense = () => {
-    loadExpenses();
-    loadProfitStats();
-    loadOrderProfits();
+  const handleEditExpense = async () => {
+    await loadAllData();
     setExpenseToEdit(null);
     toast({
       title: "Thành công",
@@ -312,9 +292,7 @@ export default function CashFlowManagement() {
 
       if (error) throw error;
 
-      loadExpenses();
-      loadProfitStats();
-      loadOrderProfits();
+      await loadAllData();
       setExpenseToDelete(null);
       toast({
         title: "Thành công",
@@ -330,317 +308,304 @@ export default function CashFlowManagement() {
     }
   };
 
-  // Calculate additional stats
-  const profitBeforeExpenses = profitStats.totalRevenue - profitStats.totalCostPrice;
-  const otherIncome = 0; // Placeholder for other income sources
-  const cashFlow = profitStats.netProfit;
+  // Filter expenses based on search term
+  const filteredExpenses = expenses.filter(
+    (expense) =>
+      expense.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.person_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.expense_code.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-  const stats = [
+  // Cash flow statistics cards
+  const statsCards = [
     {
       title: "Doanh thu",
-      value: `${profitStats.totalRevenue.toLocaleString()}₫`,
+      value: formatCurrency(cashFlowStats.totalRevenue),
       icon: TrendingUp,
-      color: "text-green-600",
-      bgColor: "bg-green-50",
+      color: "text-green-600"
     },
     {
-      title: "Chi phí",
-      value: `${profitStats.totalExpenses.toLocaleString()}₫`,
+      title: "Chi phí", 
+      value: formatCurrency(cashFlowStats.totalExpenses),
       icon: TrendingDown,
-      color: "text-red-600",
-      bgColor: "bg-red-50",
+      color: "text-red-600"
     },
     {
       title: "Lợi nhuận trước",
-      value: `${profitBeforeExpenses.toLocaleString()}₫`,
+      value: formatCurrency(cashFlowStats.profitBefore),
       icon: DollarSign,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50",
+      color: "text-blue-600"
     },
     {
       title: "Lợi nhuận sau",
-      value: `${profitStats.netProfit.toLocaleString()}₫`,
-      icon: Calendar,
-      color: profitStats.netProfit >= 0 ? "text-green-600" : "text-red-600",
-      bgColor: profitStats.netProfit >= 0 ? "bg-green-50" : "bg-red-50",
+      value: formatCurrency(cashFlowStats.profitAfter),
+      icon: DollarSign,
+      color: cashFlowStats.profitAfter >= 0 ? "text-purple-600" : "text-red-600"
     },
     {
       title: "Thu khác",
-      value: `${otherIncome.toLocaleString()}₫`,
+      value: formatCurrency(cashFlowStats.otherIncome),
       icon: TrendingUp,
-      color: "text-purple-600",
-      bgColor: "bg-purple-50",
+      color: "text-green-600"
     },
     {
       title: "Dòng tiền ròng",
-      value: `${cashFlow.toLocaleString()}₫`,
+      value: formatCurrency(cashFlowStats.netCashFlow),
       icon: DollarSign,
-      color: cashFlow >= 0 ? "text-green-600" : "text-red-600",
-      bgColor: cashFlow >= 0 ? "bg-green-50" : "bg-red-50",
-    },
+      color: cashFlowStats.netCashFlow >= 0 ? "text-green-600" : "text-red-600"
+    }
   ];
 
 
   return (
-    <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Quản lý dòng tiền</h2>
-        <Button onClick={() => setShowCreateForm(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Thêm thu chi
-        </Button>
-      </div>
+    <main className="flex-1 container-responsive py-4 lg:py-6">
+      <div className="container mx-auto py-6 space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">Quản lý dòng tiền</h1>
+          <Button onClick={() => setShowCreateForm(true)} className="gap-2">
+            <Plus className="h-4 w-4 mr-2" />
+            Thêm thu chi
+          </Button>
+        </div>
 
-      {/* Time Filter */}
-      <div className="flex items-center gap-4">
-        <Select value={filterPeriod} onValueChange={setFilterPeriod}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-white z-50">
-            <SelectItem value="month">Theo tháng</SelectItem>
-            <SelectItem value="year">Theo năm</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Time Filter */}
+        <Card>
+          <CardContent className="p-6 pt-6">
+            <div className="flex gap-4 items-center">
+              <Select value={filterPeriod} onValueChange={setFilterPeriod}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Chọn khoảng thời gian" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="month">Theo tháng</SelectItem>
+                  <SelectItem value="year">Theo năm</SelectItem>
+                </SelectContent>
+              </Select>
 
-        <Select value={selectedYear} onValueChange={setSelectedYear}>
-          <SelectTrigger className="w-32">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-white z-50">
-            {[2024, 2025, 2026].map(year => (
-              <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[2023, 2024, 2025, 2026].map(year => (
+                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-        {filterPeriod === "month" && (
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-white z-50">
-              {Array.from({length: 12}, (_, i) => (
-                <SelectItem key={i + 1} value={(i + 1).toString()}>
-                  Tháng {i + 1}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </div>
+              {filterPeriod === "month" && (
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({length: 12}, (_, i) => (
+                      <SelectItem key={i + 1} value={(i + 1).toString()}>
+                        Tháng {i + 1}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Stats Cards - 6 cards in 3 columns */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-        {stats.map((stat, index) => (
-          <Card key={index} className="animate-fade-in" style={{ animationDelay: `${index * 0.1}s` }}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className={`h-8 w-8 ${stat.bgColor} rounded-lg flex items-center justify-center`}>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {statsCards.map((stat, index) => (
+            <Card key={index}>
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-2">
                   <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                  <div>
+                    <p className="text-sm text-gray-600">{stat.title}</p>
+                    <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
+                  </div>
                 </div>
-              </div>
-              <div className="text-lg font-bold mb-1">{stat.value}</div>
-              <div className="text-sm text-muted-foreground">{stat.title}</div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
-      {/* Two Section Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Left Section: Expense Management */}
-        <Card className="border-2 border-blue-200 border-dashed">
-          <CardHeader>
-            <CardTitle className="text-center text-blue-600">🔸 Quản lý chi phí</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Tìm kiếm chi phí..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-8"
-                  />
+        {/* Tabs for Expense and Profit Management */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="expenses">Quản lý chi phí</TabsTrigger>
+            <TabsTrigger value="profit">Quản lý lợi nhuận</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="expenses" className="space-y-6">
+            {/* Expense Management Content */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Danh sách chi phí</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Tìm kiếm chi phí..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-8"
+                      />
+                    </div>
+                    <Button variant="outline" className="gap-2">
+                      <Filter className="h-4 w-4" />
+                      Lọc
+                    </Button>
+                  </div>
+
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Mã chi phí</TableHead>
+                          <TableHead>Ngày</TableHead>
+                          <TableHead>Loại</TableHead>
+                          <TableHead>Người chi</TableHead>
+                          <TableHead>Mô tả</TableHead>
+                          <TableHead>Số tiền</TableHead>
+                          <TableHead>Thao tác</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {loading ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-4">Đang tải...</TableCell>
+                          </TableRow>
+                        ) : filteredExpenses.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">
+                              Chưa có chi phí nào trong khoảng thời gian đã chọn
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          filteredExpenses.map((expense) => (
+                            <TableRow key={expense.id}>
+                              <TableCell className="font-medium">{expense.expense_code}</TableCell>
+                              <TableCell>{formatSafeDate(expense.expense_date)}</TableCell>
+                              <TableCell>
+                                <Badge variant="secondary">{expense.category}</Badge>
+                              </TableCell>
+                              <TableCell>{expense.person_name || "—"}</TableCell>
+                              <TableCell className="max-w-xs truncate">{expense.description}</TableCell>
+                              <TableCell className="text-red-600 font-semibold">
+                                -{formatCurrency(expense.amount)}
+                              </TableCell>
+                              <TableCell>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => setSelectedExpense(expense)}>
+                                      <Eye className="mr-2 h-4 w-4" />
+                                      Xem chi tiết
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setExpenseToEdit(expense)}>
+                                      <Edit className="mr-2 h-4 w-4" />
+                                      Chỉnh sửa
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      className="text-red-600"
+                                      onClick={() => setExpenseToDelete(expense)}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Xóa
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
-                <Button variant="outline" className="gap-2">
-                  <Filter className="h-4 w-4" />
-                  Lọc
-                </Button>
-              </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-              <div className="rounded-md border max-h-80 overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs">Ngày</TableHead>
-                      <TableHead className="text-xs">Loại</TableHead>
-                      <TableHead className="text-xs">Người chi</TableHead>
-                      <TableHead className="text-xs">Tiền</TableHead>
-                      <TableHead className="text-xs"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
+          <TabsContent value="profit" className="space-y-6">
+
+            {/* Profit Details Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Chi tiết lợi nhuận</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-4 text-xs">Đang tải...</TableCell>
+                        <TableHead>Đơn hàng</TableHead>
+                        <TableHead>Khách hàng</TableHead>
+                        <TableHead>Ngày</TableHead>
+                        <TableHead>Doanh thu</TableHead>
+                        <TableHead>Giá sản xuất</TableHead>
+                        <TableHead>Lợi nhuận trước</TableHead>
+                        <TableHead>Chi phí phân bổ</TableHead>
+                        <TableHead>Lợi nhuận sau</TableHead>
                       </TableRow>
-                    ) : filteredExpenses.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center py-4 text-xs text-muted-foreground">
-                          Chưa có chi phí nào
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredExpenses.slice(0, 5).map((expense) => (
-                        <TableRow key={expense.id}>
-                          <TableCell className="text-xs">{formatSafeDate(expense.expense_date)}</TableCell>
-                          <TableCell className="text-xs">
-                            <Badge className="bg-red-100 text-red-800 text-xs">
-                              {expense.category}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs">{expense.person_name || "—"}</TableCell>
-                          <TableCell className="text-xs text-red-600 font-semibold">
-                            -{expense.amount.toLocaleString()}₫
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="h-6 w-6 p-0">
-                                  <DollarSign className="h-3 w-3" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="bg-white z-50">
-                                <DropdownMenuItem onClick={() => setSelectedExpense(expense)}>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  Xem
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setExpenseToEdit(expense)}>
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Sửa
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  className="text-red-600"
-                                  onClick={() => setExpenseToDelete(expense)}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Xóa
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                    </TableHeader>
+                    <TableBody>
+                      {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-4">Đang tải...</TableCell>
+                        </TableRow>
+                      ) : orderProfits.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            Chưa có đơn hàng nào trong khoảng thời gian đã chọn
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Right Section: Profit Management */}
-        <Card className="border-2 border-green-200 border-dashed">
-          <CardHeader>
-            <CardTitle className="text-center text-green-600">🔸 Quản lý lợi nhuận</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="text-sm font-semibold text-blue-900 mb-2">Công thức tính Lợi nhuận</h4>
-                <div className="text-xs text-blue-800 space-y-1">
-                  <div className="flex items-center gap-1">
-                    <span className="font-medium">Lợi nhuận ròng</span>
-                    <span>=</span>
-                    <span className="text-green-600 font-medium">Doanh thu</span>
-                    <span>-</span>
-                    <span className="text-blue-600 font-medium">Giá gốc</span>
-                    <span>-</span>
-                    <span className="text-red-600 font-medium">Chi phí</span>
-                  </div>
-                  <div className="text-xs text-blue-600">
-                    = {profitStats.totalRevenue.toLocaleString()}₫ - {profitStats.totalCostPrice.toLocaleString()}₫ - {profitStats.totalExpenses.toLocaleString()}₫ = 
-                    <span className={profitStats.netProfit >= 0 ? "text-green-600 font-bold ml-1" : "text-red-600 font-bold ml-1"}>
-                      {profitStats.netProfit.toLocaleString()}₫
-                    </span>
-                  </div>
+                      ) : (
+                        orderProfits.map((profit) => (
+                          <TableRow 
+                            key={profit.id} 
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => {
+                              // Handle row click if needed
+                            }}
+                          >
+                            <TableCell className="font-medium">{profit.order_number}</TableCell>
+                            <TableCell>{profit.customer_name}</TableCell>
+                            <TableCell>{formatSafeDate(profit.date)}</TableCell>
+                            <TableCell className="text-green-600 font-semibold">
+                              ₫ {profit.total_amount.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-blue-600 font-semibold">
+                              ₫ {profit.cost_price.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-green-600 font-semibold">
+                              ₫ {profit.profit_before.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-red-600 font-semibold">
+                              ₫ {profit.allocated_expenses.toLocaleString()}
+                            </TableCell>
+                            <TableCell className={`font-semibold ${profit.profit_after >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              ₫ {profit.profit_after.toLocaleString()}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
-              </div>
-              
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600 mb-1">
-                  {profitStats.netProfit.toLocaleString()}₫
-                </div>
-                <div className="text-sm text-muted-foreground">Lợi nhuận hiện tại</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
-
-      {/* Profit Details Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Chi tiết lợi nhuận</CardTitle>
-          <CardDescription>Lợi nhuận chi tiết theo từng đơn hàng</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Đơn hàng</TableHead>
-                  <TableHead>Khách hàng</TableHead>
-                  <TableHead>Ngày</TableHead>
-                  <TableHead>Doanh thu</TableHead>
-                  <TableHead>Giá sản xuất</TableHead>
-                  <TableHead>Lợi nhuận trước</TableHead>
-                  <TableHead>Chi phí phân bổ</TableHead>
-                  <TableHead>Lợi nhuận sau</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {orderProfits.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      Chưa có đơn hàng nào trong khoảng thời gian đã chọn
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  orderProfits.map((profit) => (
-                    <TableRow key={profit.id}>
-                      <TableCell className="font-medium">{profit.order_number}</TableCell>
-                      <TableCell>{profit.customer_name}</TableCell>
-                      <TableCell>{formatSafeDate(profit.date)}</TableCell>
-                      <TableCell className="text-green-600 font-semibold">
-                        ₫ {profit.total_amount.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-blue-600 font-semibold">
-                        ₫ {profit.cost_price.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-green-600 font-semibold">
-                        ₫ {profit.profit_before.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-red-600 font-semibold">
-                        ₫ {profit.allocated_expenses.toLocaleString()}
-                      </TableCell>
-                      <TableCell className={`font-semibold ${profit.profit_after >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ₫ {profit.profit_after.toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Dialogs */}
       <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
@@ -726,6 +691,6 @@ export default function CashFlowManagement() {
           </DialogContent>
         </Dialog>
       )}
-    </div>
+    </main>
   );
 }
