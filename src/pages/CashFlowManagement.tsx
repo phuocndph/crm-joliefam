@@ -277,6 +277,12 @@ export default function CashFlowManagement() {
       const orderItems = order.items ? JSON.parse(order.items) : [];
       let totalCostPrice = 0;
 
+      console.log('Calculating cost price for order:', order.order_number, {
+        orderItems,
+        productsCount: products.length,
+        productsIds: products.map(p => p.id).slice(0, 3)
+      });
+
       orderItems.forEach((item: any) => {
         const quantity = item.quantity || 0;
         
@@ -290,8 +296,18 @@ export default function CashFlowManagement() {
         
         const costPrice = product?.cost_price || 0;
         totalCostPrice += quantity * costPrice;
+
+        console.log('Item cost calculation:', {
+          itemId: item.id,
+          itemSku: item.sku,
+          quantity,
+          foundProduct: !!product,
+          productCostPrice: product?.cost_price,
+          itemTotalCost: quantity * costPrice
+        });
       });
 
+      console.log('Total cost price for order:', order.order_number, totalCostPrice);
       return totalCostPrice;
     } catch (error) {
       console.error('Error calculating order cost price:', error);
