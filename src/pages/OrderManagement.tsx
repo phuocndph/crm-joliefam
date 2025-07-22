@@ -582,7 +582,7 @@ export default function OrderManagement() {
                 </div>
                 <div className="text-right">
                   <div className={`inline-flex items-center gap-1.5 rounded-full border font-semibold transition-colors border-transparent text-sm px-2.5 py-1 ${statusConfig[selectedOrder?.status || 'pending']?.color}`}>
-                    {React.createElement(statusConfig[selectedOrder?.status || 'pending']?.icon || CheckCircle, { className: "w-3 h-3" })}
+                    <CheckCircle className="w-3 h-3" />
                     <span>{statusConfig[selectedOrder?.status || 'pending']?.label}</span>
                   </div>
                 </div>
@@ -608,7 +608,7 @@ export default function OrderManagement() {
                     </div>
                     <div>
                       <div className="font-medium mb-1">Địa chỉ:</div>
-                      <div className="text-sm">{selectedOrder?.customers?.address || "Chưa có thông tin"}</div>
+                      <div className="text-sm">{selectedOrder?.customers?.company || "Chưa có thông tin"}</div>
                     </div>
                   </CardContent>
                 </Card>
