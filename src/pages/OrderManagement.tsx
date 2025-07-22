@@ -723,7 +723,18 @@ export default function OrderManagement() {
 
                   {/* Financial Summary */}
                   <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
-                    <h4 className="font-medium mb-3 text-center">Tổng kết tài chính</h4>
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-medium text-center">Tổng kết tài chính</h4>
+                      <Button 
+                        onClick={() => setOrderToPayment(selectedOrder)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        Thêm thanh toán
+                      </Button>
+                    </div>
                     <div className="space-y-2">
                       <div className="flex justify-between items-center py-2 border-b border-red-200">
                         <span className="font-medium">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
