@@ -661,18 +661,39 @@ export default function OrderManagement() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {typeof selectedOrder.items === 'string' ? (
-                        <p>{selectedOrder.items}</p>
-                      ) : Array.isArray(selectedOrder.items) ? (
-                        selectedOrder.items.map((item: any, index: number) => (
-                          <div key={index} className="flex justify-between p-2 border rounded">
-                            <span>{item.name || `Sản phẩm ${index + 1}`}</span>
-                            <span>{item.quantity || 1} x {(item.price || 0).toLocaleString("vi-VN")} VNĐ</span>
-                          </div>
-                        ))
-                      ) : (
-                        <p>Không có thông tin sản phẩm</p>
-                      )}
+                      {(() => {
+                        let itemsToDisplay = selectedOrder.items;
+                        
+                        // Parse JSON string if items is a string
+                        if (typeof selectedOrder.items === 'string') {
+                          try {
+                            itemsToDisplay = JSON.parse(selectedOrder.items);
+                          } catch (error) {
+                            return <p className="text-red-500">Lỗi định dạng dữ liệu sản phẩm</p>;
+                          }
+                        }
+                        
+                        if (Array.isArray(itemsToDisplay)) {
+                          return itemsToDisplay.map((item: any, index: number) => (
+                            <div key={index} className="flex justify-between items-center p-3 border rounded-lg bg-gray-50">
+                              <div className="flex-1">
+                                <div className="font-medium">{item.name || `Sản phẩm ${index + 1}`}</div>
+                                {item.sku && <div className="text-sm text-muted-foreground">SKU: {item.sku}</div>}
+                              </div>
+                              <div className="text-right">
+                                <div className="font-medium">
+                                  {item.quantity || 1} x {(item.price || 0).toLocaleString("vi-VN")} VNĐ
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  Tổng: {((item.quantity || 1) * (item.price || 0)).toLocaleString("vi-VN")} VNĐ
+                                </div>
+                              </div>
+                            </div>
+                          ));
+                        }
+                        
+                        return <p>Không có thông tin sản phẩm</p>;
+                      })()}
                     </div>
                   </CardContent>
                 </Card>
