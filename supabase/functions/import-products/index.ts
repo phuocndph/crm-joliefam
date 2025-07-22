@@ -146,10 +146,13 @@ serve(async (req) => {
       throw new Error('Không tìm thấy sản phẩm hợp lệ trong Google Sheets')
     }
 
-    // Insert products into database
+    // Upsert products into database (insert new or update existing by SKU)
     const { data, error } = await supabase
       .from('products')
-      .insert(products)
+      .upsert(products, { 
+        onConflict: 'sku,price_list_id',
+        ignoreDuplicates: false 
+      })
       .select()
 
     if (error) {
