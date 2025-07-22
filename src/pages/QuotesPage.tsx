@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { CreateQuoteForm } from "@/components/CreateQuoteForm";
 import { QuotePreviewDialog } from "@/components/QuotePreviewDialog";
+import { QuoteSupplementDialog } from "@/components/QuoteSupplementDialog";
 import { QuoteTemplateSettings } from "@/components/QuoteTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -49,6 +50,7 @@ import {
   XCircle,
   AlertCircle,
   Settings,
+  Calculator,
 } from "lucide-react";
 
 const statusLabels = {
@@ -64,6 +66,7 @@ export default function QuotesPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
+  const [supplementQuote, setSupplementQuote] = useState<any>(null);
   const [editingQuote, setEditingQuote] = useState<any>(null);
   const [quotes, setQuotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -443,6 +446,12 @@ export default function QuotesPage() {
                               <Eye className="mr-2 h-4 w-4" />
                               Xem
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setSupplementQuote(quote)}
+                            >
+                              <Calculator className="mr-2 h-4 w-4" />
+                              Báo giá phụ
+                            </DropdownMenuItem>
                             {quote.status === 'draft' && (
                               <DropdownMenuItem
                                 onClick={() => handleApproveQuote(quote)}
@@ -512,6 +521,13 @@ export default function QuotesPage() {
         open={!!selectedQuote}
         onOpenChange={(open) => !open && setSelectedQuote(null)}
         quote={selectedQuote}
+      />
+
+      {/* Quote Supplement Dialog */}
+      <QuoteSupplementDialog 
+        open={!!supplementQuote}
+        onOpenChange={(open) => !open && setSupplementQuote(null)}
+        quote={supplementQuote}
       />
 
       {/* Template Settings Dialog */}
