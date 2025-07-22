@@ -239,51 +239,49 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
   const handleExportExcel = async () => {
     try {
-      // Tạo workbook mới
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet([]);
       
-      // Cấu trúc layout Excel theo yêu cầu
-      const companyInfo = {
-        name: 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT',
-        address: 'Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.',
-        phone: '0828686866',
-        taxCode: '0123456789',
-        bankAccount: 'Ngân hàng TMCP đầu tư và phát triển Việt Nam ( BIDV) – Chi nhánh Hà Nội. / 2110199996'
-      };
-      
       const currentDate = new Date();
-      const formattedDate = `${currentDate.getDate()}/${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`;
+      const day = currentDate.getDate();
+      const month = currentDate.getMonth() + 1;
+      const year = currentDate.getFullYear();
       
-      // LAYOUT CHÍNH XÁC theo hình mẫu với spacing đúng
-      XLSX.utils.sheet_add_aoa(ws, [
-        [companyInfo.name], // Row 1
-        [''], // Row 2: Empty
-        [`Địa chỉ: ${companyInfo.address.replace('Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.', 'Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.')}`], // Row 3
-        [''], // Row 4: Empty
-        [`Điện thoại: ${companyInfo.phone}`, '', '', '', '', `MST: ${companyInfo.taxCode}`], // Row 5
-        [''], // Row 6: Empty  
-        [`Trụ sở: Số 21 Ngõ 562 đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Hà Nội`], // Row 7
-        [`STK: Ngân hàng TMCP đầu tư và phát triển Việt Nam ( BIDV) – Chi nhánh Hà Nội. / 2110199996`], // Row 8
-        [''], // Row 9: Empty
-        ['BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN'], // Row 10
-        [''], // Row 11: Empty
-        [''], // Row 12: Empty
-        [`Hà Nội ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1} năm ${currentDate.getFullYear()}`], // Row 13
-        [''], // Row 14: Empty
-        [''], // Row 15: Empty
-        ['THÔNG TIN KHÁCH HÀNG:', '', '', '', '', 'THÔNG TIN BÁO GIÁ:'], // Row 16
-        [''], // Row 17: Empty
-        [`Tên KH: ${customerName}`, '', '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`], // Row 18
-        ['', '', '', '', '', `Ngày báo giá: ${currentDate.getDate()}/${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`], // Row 19
-        ['', '', '', '', '', `Ngày hết hạn: ${expiryDate || '31/7/2025'}`], // Row 20
-        [''], // Row 21: Empty
-        [''], // Row 22: Empty
-        ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'] // Row 23: Header
-      ], { origin: 'A1' });
+      // CẤU TRÚC EXCEL THEO YÊU CẦU CHUYÊN NGHIỆP
+      const data = [
+        // Row 1: Header chính
+        ['BẢNG BÁO GIÁ', '', '', '', '', '', '', `Hà Nội ngày ${day} tháng ${month} năm ${year}`],
+        
+        // Row 2-3: Empty cho spacing
+        ['', '', '', '', '', '', '', ''],
+        ['', '', '', '', '', '', '', ''],
+        
+        // Row 4-7: Thông tin công ty
+        ['CÔNG TY TNHH GIA LỘC HƯNG PHÁT', '', '', '', '', '', '', ''],
+        ['Địa chỉ: Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.', '', '', '', '', '', '', ''],
+        ['Điện thoại: 0828686866 | Email: info@gialochungphat.com', '', '', '', '', '', '', ''],
+        ['Website: www.gialochungphat.com', '', '', '', '', '', '', ''],
+        
+        // Row 8: Empty
+        ['', '', '', '', '', '', '', ''],
+        
+        // Row 9-12: Thông tin khách hàng và báo giá
+        ['THÔNG TIN KHÁCH HÀNG:', '', '', '', 'THÔNG TIN BÁO GIÁ:', '', '', ''],
+        [`Tên KH: ${customerName}`, '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-' + year + String(month).padStart(2, '0') + String(day).padStart(2, '0') + '-001'}`, '', '', ''],
+        ['', '', '', '', `Ngày báo giá: ${day}/${month}/${year}`, '', '', ''],
+        ['', '', '', '', `Ngày hết hạn: ${expiryDate || '31/12/' + year}`, '', '', ''],
+        
+        // Row 13: Empty
+        ['', '', '', '', '', '', '', ''],
+        
+        // Row 14: Header bảng sản phẩm
+        ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú']
+      ];
       
-      // Thêm dữ liệu sản phẩm từ Row 24 (sau header Row 23)
-      let currentRow = 24;
+      XLSX.utils.sheet_add_aoa(ws, data, { origin: 'A1' });
+      
+      // Thêm dữ liệu sản phẩm từ Row 15 (sau header Row 14)
+      let currentRow = 15;
       items.forEach((item: any, index: number) => {
         XLSX.utils.sheet_add_aoa(ws, [[
           index + 1, // STT
@@ -298,22 +296,22 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         currentRow++;
       });
       
-      // Tổng cộng và tính toán
+      // Tổng cộng và tính toán (merge F:G columns cho labels)
       currentRow += 2;
       XLSX.utils.sheet_add_aoa(ws, [
-        ['', '', '', '', '', 'TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', subtotal],
-        ['', '', '', '', '', `GTGT (${vatRate}%)`, vatAmount],
-        ['', '', '', '', '', 'TỔNG TIỀN ĐÃ BAO GỒM GTGT', totalWithVat],
-        ['', '', '', '', '', 'THANH TOÁN LẦN 1', firstPayment],
-        ['', '', '', '', '', 'CÒN LẠI', remaining]
+        ['', '', '', '', '', 'TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', formatCurrency(subtotal)],
+        ['', '', '', '', '', `GTGT (${vatRate}%)`, formatCurrency(vatAmount)],
+        ['', '', '', '', '', 'TỔNG TIỀN ĐÃ BAO GỒM GTGT', formatCurrency(totalWithVat)],
+        ['', '', '', '', '', 'THANH TOÁN LẦN 1', formatCurrency(firstPayment)],
+        ['', '', '', '', '', 'CÒN LẠI', formatCurrency(remaining)]
       ], { origin: `A${currentRow}` });
       
       // Điều khoản
       currentRow += 7;
       XLSX.utils.sheet_add_aoa(ws, [
         ['1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.'],
-        ['2. Thanh toán: 30% trước khi sản xuất, 70% trước khi giao hàng.'],
-        ['3. Thời gian giao hàng: 7-10 ngày sau khi sản xuất hoàn tất cọc.'],
+        ['2. Thanh toán: 50% trước khi sản xuất, 50% trước khi giao hàng.'],
+        ['3. Thời gian giao hàng: 7-10 ngày làm việc sau khi nhận đặt cọc.'],
         ['4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.']
       ], { origin: `A${currentRow}` });
       
@@ -325,16 +323,22 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         ['GIÁM ĐỐC', '', '', '', '', 'Ký tên và đóng dấu xác nhận']
       ], { origin: `A${currentRow}` });
       
-      // Merge cells theo cấu trúc yêu cầu
+      // MERGE CELLS THEO CẤU TRÚC CHUYÊN NGHIỆP
       ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, // A1:G1 - Company name
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }, // A2:G2 - Address
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } }, // A3:C3 - Phone
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 6 } }, // A4:G4 - Bank info
-        { s: { r: 5, c: 0 }, e: { r: 5, c: 6 } }, // A6:G6 - Quote title
-        { s: { r: 7, c: 0 }, e: { r: 7, c: 6 } }, // A8:G8 - Date
-        { s: { r: 9, c: 0 }, e: { r: 9, c: 3 } }, // A10:D10 - Customer info header
-        { s: { r: 10, c: 0 }, e: { r: 10, c: 3 } }, // A11:D11 - Customer name
+        // Header merge
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, // A1:G1 - Tiêu đề "BẢNG BÁO GIÁ"
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 7 } }, // A4:H4 - Tên công ty
+        { s: { r: 4, c: 0 }, e: { r: 4, c: 7 } }, // A5:H5 - Địa chỉ
+        { s: { r: 5, c: 0 }, e: { r: 5, c: 7 } }, // A6:H6 - Điện thoại
+        { s: { r: 6, c: 0 }, e: { r: 6, c: 7 } }, // A7:H7 - Website
+        
+        // Thông tin khách hàng và báo giá
+        { s: { r: 8, c: 0 }, e: { r: 8, c: 3 } }, // A9:D9 - "THÔNG TIN KHÁCH HÀNG:"
+        { s: { r: 8, c: 4 }, e: { r: 8, c: 7 } }, // E9:H9 - "THÔNG TIN BÁO GIÁ:"
+        { s: { r: 9, c: 0 }, e: { r: 9, c: 3 } }, // A10:D10 - Tên KH
+        { s: { r: 9, c: 4 }, e: { r: 9, c: 7 } }, // E10:H10 - Số báo giá
+        { s: { r: 10, c: 4 }, e: { r: 10, c: 7 } }, // E11:H11 - Ngày báo giá
+        { s: { r: 11, c: 4 }, e: { r: 11, c: 7 } }, // E12:H12 - Ngày hết hạn
       ];
       
       // Set column widths theo yêu cầu
@@ -369,49 +373,51 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             }
           };
           
-          // Specific styling cho từng section
+          // STYLING CHUYÊN NGHIỆP THEO YÊU CẦU
           if (row === 0) {
-            // Company name - Arial 14pt, bold, căn giữa
+            // Row 1: Header "BẢNG BÁO GIÁ" - Blue background
+            ws[cellAddress].s = {
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 18, bold: true, color: { rgb: "FFFFFF" } },
+              alignment: { horizontal: "center", vertical: "center" },
+              fill: { fgColor: { rgb: "4472C4" } } // Blue background #4472C4
+            };
+          } else if (row === 3) {
+            // Row 4: Company name - Bold Arial 14pt
             ws[cellAddress].s = {
               ...ws[cellAddress].s,
               font: { name: "Arial", size: 14, bold: true },
+              alignment: { horizontal: "left", vertical: "center" }
+            };
+          } else if (row === 4 || row === 5 || row === 6) {
+            // Row 5-7: Company info - Arial 10pt
+            ws[cellAddress].s = {
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 10 },
+              alignment: { horizontal: "left", vertical: "center" }
+            };
+          } else if (row === 8 && (col === 0 || col === 4)) {
+            // Row 9: Headers "THÔNG TIN KHÁCH HÀNG" & "THÔNG TIN BÁO GIÁ"
+            ws[cellAddress].s = {
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 12, bold: true },
+              alignment: { horizontal: "left", vertical: "center" },
+              fill: { fgColor: { rgb: "F5F5F5" } } // Light gray background
+            };
+          } else if (row >= 9 && row <= 11) {
+            // Customer & quote info rows
+            ws[cellAddress].s = {
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 10 },
+              alignment: { horizontal: "left", vertical: "center" }
+            };
+          } else if (row === 13) {
+            // Product table header - Yellow background
+            ws[cellAddress].s = {
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 12, bold: true },
               alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "E6E6FA" } } // Light purple background
-            };
-          } else if (row === 1) {
-            // Address - Arial 11pt, căn giữa
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 11 },
-              alignment: { horizontal: "center", vertical: "center" }
-            };
-          } else if (row === 2) {
-            // Phone & Tax - Arial 10pt
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 10 }
-            };
-          } else if (row === 5) {
-            // Quote title - Arial 16pt, bold, căn giữa
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 16, bold: true },
-              alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "ADD8E6" } } // Light blue background
-            };
-          } else if (row === 7) {
-            // Date - căn giữa
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              alignment: { horizontal: "center", vertical: "center" }
-            };
-          } else if (row === 14) {
-            // Product table header - Arial 11pt, border đậm
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 11, bold: true },
-              alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "FFFF99" } }, // Yellow background
+              fill: { fgColor: { rgb: "FFE599" } }, // Yellow background #FFE599
               border: {
                 top: { style: "thick", color: { rgb: "000000" } },
                 bottom: { style: "thick", color: { rgb: "000000" } },
@@ -419,26 +425,41 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                 right: { style: "thick", color: { rgb: "000000" } }
               }
             };
-          } else if (row >= 15 && row < 15 + items.length) {
-            // Product data rows
+          } else if (row >= 14 && row < 14 + items.length) {
+            // Product data rows - Arial 11pt
+            ws[cellAddress].s = {
+              ...ws[cellAddress].s,
+              font: { name: "Arial", size: 11 },
+              border: {
+                top: { style: "thin", color: { rgb: "000000" } },
+                bottom: { style: "thin", color: { rgb: "000000" } },
+                left: { style: "thin", color: { rgb: "000000" } },
+                right: { style: "thin", color: { rgb: "000000" } }
+              }
+            };
+            
             if (col === 0 || col === 4) {
               // STT và SỐ LƯỢNG - căn giữa
-              ws[cellAddress].s = {
-                ...ws[cellAddress].s,
-                alignment: { horizontal: "center", vertical: "center" }
-              };
+              ws[cellAddress].s.alignment = { horizontal: "center", vertical: "center" };
             } else if (col === 5 || col === 6) {
-              // ĐƠN GIÁ và THÀNH TIỀN - căn phải, number format
-              ws[cellAddress].s = {
-                ...ws[cellAddress].s,
-                alignment: { horizontal: "right", vertical: "center" },
-                numFmt: "#,##0"
-              };
+              // ĐƠN GIÁ và THÀNH TIỀN - căn phải
+              ws[cellAddress].s.alignment = { horizontal: "right", vertical: "center" };
+              ws[cellAddress].s.numFmt = "#,##0";
             } else if (col === 2 || col === 3) {
               // QUY CÁCH và CHẤT LIỆU - text wrapping
+              ws[cellAddress].s.alignment = { vertical: "center", wrapText: true };
+            } else {
+              // Other columns - left align
+              ws[cellAddress].s.alignment = { horizontal: "left", vertical: "center", wrapText: true };
+            }
+          } else if (row >= 16 + items.length && row <= 20 + items.length) {
+            // Total calculation rows - Bold red color
+            if (col >= 5) {
               ws[cellAddress].s = {
                 ...ws[cellAddress].s,
-                alignment: { vertical: "center", wrapText: true }
+                font: { name: "Arial", size: 11, bold: true, color: { rgb: "DC3545" } }, // Red color #DC3545
+                alignment: { horizontal: col === 6 ? "right" : "left", vertical: "center" },
+                numFmt: col === 6 ? "#,##0" : "General"
               };
             }
           }
