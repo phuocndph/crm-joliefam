@@ -241,12 +241,16 @@ export default function CustomerManagement() {
     try {
       setLoading(true);
       
-      // Load customers và quotes để tính toán tổng hợp
-      const [customersResult, quotesResult] = await Promise.all([
+      // Load customers, orders và quotes để tính toán tổng hợp
+      const [customersResult, ordersResult, quotesResult] = await Promise.all([
         supabase
           .from('customers')
           .select('*')
           .order('created_at', { ascending: false }),
+        supabase
+          .from('orders')
+          .select('customer_id, total_amount, status, created_at, payment_date')
+          .eq('status', 'delivered'),
         supabase
           .from('quotes')
           .select('id, quote_number, total_amount, status, created_at, notes')
@@ -254,7 +258,29 @@ export default function CustomerManagement() {
       ]);
 
       if (customersResult.error) throw customersResult.error;
+      if (ordersResult.error) throw ordersResult.error;
       if (quotesResult.error) throw quotesResult.error;
+      
+      // Calculate order statistics for each customer
+      const ordersByCustomer = (ordersResult.data || []).reduce((acc, order) => {
+        if (!order.customer_id) return acc;
+        if (!acc[order.customer_id]) {
+          acc[order.customer_id] = {
+            count: 0,
+            totalSpent: 0,
+            lastPurchase: null
+          };
+        }
+        acc[order.customer_id].count += 1;
+        acc[order.customer_id].totalSpent += order.total_amount || 0;
+        
+        const orderDate = new Date(order.payment_date || order.created_at);
+        if (!acc[order.customer_id].lastPurchase || orderDate > new Date(acc[order.customer_id].lastPurchase)) {
+          acc[order.customer_id].lastPurchase = order.payment_date || order.created_at;
+        }
+        
+        return acc;
+      }, {} as Record<string, { count: number; totalSpent: number; lastPurchase: string | null }>);
       
       // Parse JSON fields and ensure proper structure
       const formattedCustomers = customersResult.data?.map(customer => {
@@ -262,6 +288,9 @@ export default function CustomerManagement() {
         const addressesParsed = Array.isArray(customer.addresses) ? customer.addresses as unknown as CustomerAddress[] : [];
         const tagsParsed = Array.isArray(customer.tags) ? customer.tags as string[] : [];
         const autoTagsParsed = Array.isArray(customer.auto_tags) ? customer.auto_tags as string[] : [];
+        
+        // Get order statistics for this customer
+        const orderStats = ordersByCustomer[customer.id] || { count: 0, totalSpent: 0, lastPurchase: null };
         
         // Count quotes for this customer name
         const customerQuotes = quotesResult.data?.filter(quote => {
@@ -276,8 +305,9 @@ export default function CustomerManagement() {
           addresses: addressesParsed,
           tags: tagsParsed,
           auto_tags: autoTagsParsed,
-          purchase_count: customer.purchase_count || 0,
-          total_spent: customer.total_spent || 0,
+          purchase_count: orderStats.count,
+          total_spent: orderStats.totalSpent,
+          last_purchase_date: orderStats.lastPurchase,
           quote_count: customerQuotes.length,
         } as Customer;
       }) || [];
@@ -625,14 +655,14 @@ export default function CustomerManagement() {
                       <TableCell>{customer.company || "-"}</TableCell>
                       <TableCell>
                         <div className="space-y-1">
-                          {customer.purchase_count > 0 ? (
+                          {(customer.purchase_count || 0) > 0 ? (
                             <>
                               <div className="text-sm font-medium text-green-600">
-                                Đã mua {customer.purchase_count} lần
+                                Đã mua {customer.purchase_count || 0} lần
                               </div>
                               {customer.last_purchase_date && (
                                 <div className="text-xs text-muted-foreground">
-                                  {getMonthsSinceLastPurchase(customer.last_purchase_date)} tháng trước
+                                  {getMonthsSinceLastPurchase(customer.last_purchase_date) || 0} tháng trước
                                 </div>
                               )}
                             </>
@@ -642,12 +672,12 @@ export default function CustomerManagement() {
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant={customer.purchase_count > 0 ? "default" : "secondary"}>
-                          {customer.purchase_count}
+                        <Badge variant={(customer.purchase_count || 0) > 0 ? "default" : "secondary"}>
+                          {customer.purchase_count || 0}
                         </Badge>
                       </TableCell>
                       <TableCell className="font-medium">
-                        {customer.total_spent.toLocaleString("vi-VN")} VNĐ
+                        {(customer.total_spent || 0).toLocaleString("vi-VN")} VNĐ
                       </TableCell>
                       <TableCell>
                         {customer.last_purchase_date ? (
