@@ -61,7 +61,7 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupple
 
   const loadProductsData = async () => {
     try {
-      // Parse quote items to get product IDs and price list IDs
+      // Parse quote items to get product IDs or SKUs
       let quoteItems = [];
       try {
         quoteItems = quote.items ? JSON.parse(quote.items) : [];
@@ -70,29 +70,48 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupple
         return;
       }
 
-      // Extract unique product IDs and price list IDs
-      const productIds = quoteItems
-        .map((item: any) => item.product_id)
-        .filter((id: any) => id);
-      
-      const priceListIds = quoteItems
-        .map((item: any) => item.price_list_id)
-        .filter((id: any) => id);
-
-      if (productIds.length === 0) {
+      if (quoteItems.length === 0) {
         setProducts([]);
         return;
       }
 
-      // Fetch products from database with cost_price
-      const { data: productsData, error } = await supabase
-        .from('products')
-        .select('id, cost_price, price_list_id')
-        .in('id', productIds);
+      // Extract unique product IDs (if available) or SKUs for matching
+      const productIds = quoteItems
+        .map((item: any) => item.id)
+        .filter((id: any) => id);
+      
+      const productSkus = quoteItems
+        .map((item: any) => item.sku)
+        .filter((sku: any) => sku);
 
-      if (error) throw error;
+      let productsData = [];
+
+      // Try to fetch by product IDs first
+      if (productIds.length > 0) {
+        const { data: idData, error: idError } = await supabase
+          .from('products')
+          .select('id, sku, cost_price, price_list_id')
+          .in('id', productIds);
+
+        if (!idError && idData && idData.length > 0) {
+          productsData = idData;
+        }
+      }
+
+      // If no data from IDs, try to fetch by SKUs
+      if (productsData.length === 0 && productSkus.length > 0) {
+        const { data: skuData, error: skuError } = await supabase
+          .from('products')
+          .select('id, sku, cost_price, price_list_id')
+          .in('sku', productSkus);
+
+        if (!skuError && skuData) {
+          productsData = skuData;
+        }
+      }
 
       setProducts(productsData || []);
+      console.log('Loaded products data:', productsData);
     } catch (error) {
       console.error('Error loading products data:', error);
       setProducts([]);
@@ -127,7 +146,14 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupple
 
   // Helper function to get cost price from products data
   const getCostPrice = (item: any): number => {
-    const product = products.find(p => p.id === item.product_id);
+    // Try to match by product ID first
+    let product = products.find(p => p.id === item.id);
+    
+    // If not found, try to match by SKU
+    if (!product && item.sku) {
+      product = products.find(p => p.sku === item.sku);
+    }
+    
     return product?.cost_price || 0;
   };
 
