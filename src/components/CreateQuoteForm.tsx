@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Settings, X, Plus, Trash2 } from "lucide-react";
+import { CalendarIcon, Settings, X, Plus, Trash2, Search } from "lucide-react";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -112,6 +112,8 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
   const [selectedProducts, setSelectedProducts] = useState<QuoteItem[]>([]);
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentEditingIndex, setCurrentEditingIndex] = useState<number>(-1);
   const { toast } = useToast();
   
   // Helper function to safely parse dates
@@ -670,7 +672,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-gray-50">
-                        <TableHead className="font-bold text-base min-w-96">Tìm kiếm sản phẩm</TableHead>
+                        <TableHead className="font-bold text-base">Chọn sản phẩm</TableHead>
                         <TableHead className="font-bold text-base min-w-72">Tên sản phẩm</TableHead>
                         <TableHead className="font-bold text-base">Mô tả sản phẩm</TableHead>
                         <TableHead className="font-bold text-base">Quy cách</TableHead>
@@ -683,46 +685,115 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                     <TableBody>
                       {selectedProducts.map((item, index) => (
                         <TableRow key={item.id} className="h-24">
-                          <TableCell className="min-w-96 p-4">
-                            <div className="relative w-full">
-                              <div className="relative">
-                                <Select
-                                  onValueChange={(productId) => {
-                                    const product = products.find(p => p.id === productId);
-                                    if (product) {
-                                      const newProducts = [...selectedProducts];
-                                      newProducts[index] = {
-                                        id: product.id,
-                                        name: product.name,
-                                        sku: product.sku || '',
-                                        price: product.price || 0,
-                                        quantity: item.quantity,
-                                        total: (product.price || 0) * item.quantity,
-                                        description: product.description || '',
-                                        specifications: product.specifications || ''
-                                      };
-                                      setSelectedProducts(newProducts);
-                                    }
-                                  }}
+                          <TableCell className="p-4">
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50 hover:bg-blue-100"
+                                  onClick={() => setCurrentEditingIndex(index)}
                                 >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Tìm kiếm và chọn sản phẩm..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {products.map((product) => (
-                                      <SelectItem key={product.id} value={product.id}>
-                                        <div className="flex flex-col">
-                                          <span className="font-medium">{product.name}</span>
-                                          <span className="text-sm text-muted-foreground">
-                                            SKU: {product.sku} - Giá: {(product.price || 0).toLocaleString()}đ
-                                          </span>
-                                        </div>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
+                                  <Search className="h-4 w-4 text-blue-600" />
+                                  <span className="text-blue-600">
+                                    {item.name ? `${item.name.substring(0, 30)}...` : 'Chọn sản phẩm từ danh sách'}
+                                  </span>
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                                <DialogHeader>
+                                  <DialogTitle className="flex items-center gap-2">
+                                    <Search className="h-5 w-5" />
+                                    Chọn sản phẩm từ danh sách
+                                  </DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  {/* Search Input */}
+                                  <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                                    <Input
+                                      placeholder="Tìm kiếm theo tên, mã sản phẩm..."
+                                      value={searchTerm}
+                                      onChange={(e) => setSearchTerm(e.target.value)}
+                                      className="pl-10 h-12 text-base border-2 focus:border-blue-500"
+                                    />
+                                  </div>
+                                  
+                                  {/* Products Grid */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                                    {products
+                                      .filter(product => 
+                                        !searchTerm || 
+                                        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                        (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase()))
+                                      )
+                                      .map((product) => (
+                                        <Card 
+                                          key={product.id}
+                                          className="cursor-pointer hover:shadow-lg transition-all border-2 hover:border-blue-300"
+                                          onClick={() => {
+                                            const newProducts = [...selectedProducts];
+                                            newProducts[index] = {
+                                              id: product.id,
+                                              name: product.name,
+                                              sku: product.sku || '',
+                                              price: product.price || 0,
+                                              quantity: item.quantity,
+                                              total: (product.price || 0) * item.quantity,
+                                              description: product.description || '',
+                                              specifications: product.specifications || ''
+                                            };
+                                            setSelectedProducts(newProducts);
+                                            setSearchTerm("");
+                                            toast({
+                                              title: "Thành công",
+                                              description: `Đã chọn ${product.name}`,
+                                            });
+                                          }}
+                                        >
+                                          <CardContent className="p-4">
+                                            <div className="space-y-2">
+                                              <h3 className="font-semibold text-lg text-blue-700">{product.name}</h3>
+                                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                                <div>
+                                                  <span className="font-medium text-gray-600">SKU:</span>
+                                                  <p className="text-gray-800">{product.sku || 'N/A'}</p>
+                                                </div>
+                                                <div>
+                                                  <span className="font-medium text-gray-600">Giá:</span>
+                                                  <p className="text-green-600 font-bold">{(product.price || 0).toLocaleString()}đ</p>
+                                                </div>
+                                              </div>
+                                              {product.description && (
+                                                <div>
+                                                  <span className="font-medium text-gray-600">Mô tả:</span>
+                                                  <p className="text-gray-700 text-sm">{product.description}</p>
+                                                </div>
+                                              )}
+                                              {product.specifications && (
+                                                <div>
+                                                  <span className="font-medium text-gray-600">Quy cách:</span>
+                                                  <p className="text-gray-700 text-sm">{product.specifications}</p>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </CardContent>
+                                        </Card>
+                                      ))}
+                                  </div>
+                                  
+                                  {products.filter(product => 
+                                    !searchTerm || 
+                                    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase()))
+                                  ).length === 0 && (
+                                    <div className="text-center py-8 text-gray-500">
+                                      <Search className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                                      <p>Không tìm thấy sản phẩm nào</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </DialogContent>
+                            </Dialog>
                           </TableCell>
                           <TableCell className="min-w-72 p-4">
                             <Input
