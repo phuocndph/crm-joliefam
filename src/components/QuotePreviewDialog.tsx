@@ -613,28 +613,37 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             </div>
 
             <div className="mb-8">
-              <div className="grid grid-cols-2 gap-8">
-                <div></div>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center py-2 px-4 bg-orange-100 border border-orange-200 rounded">
-                    <span className="font-semibold">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
-                    <span className="font-bold">{formatCurrency(subtotal)}</span>
+              <div className="flex justify-end">
+                <div className="w-96 border border-gray-300">
+                  <div className="bg-orange-100 border-b border-gray-300 p-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-base">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
+                      <span className="font-bold text-base" style={{ color: templateSettings.companyTitleColor }}>{formatCurrency(subtotal)}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center py-2 px-4 bg-orange-100 border border-orange-200 rounded">
-                    <span className="font-semibold">GTGT (8%):</span>
-                    <span className="font-bold">{formatCurrency(vatAmount)}</span>
+                  <div className="bg-orange-100 border-b border-gray-300 p-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold">GTGT (8%):</span>
+                      <span className="font-bold" style={{ color: templateSettings.companyTitleColor }}>{formatCurrency(vatAmount)}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center py-2 px-4 bg-orange-200 border border-orange-300 rounded">
-                    <span className="font-semibold">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
-                    <span className="font-bold text-lg">{formatCurrency(totalWithVat)}</span>
+                  <div className="bg-orange-200 border-b border-gray-300 p-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-base">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
+                      <span className="font-bold text-lg" style={{ color: templateSettings.companyTitleColor }}>{formatCurrency(totalWithVat)}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center py-2 px-4 bg-orange-100 border border-orange-200 rounded">
-                    <span className="font-semibold">THANH TOÁN LẦN 1:</span>
-                    <span className="font-bold">{formatCurrency(firstPayment)}</span>
+                  <div className="bg-yellow-100 border-b border-gray-300 p-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold">THANH TOÁN LẦN 1:</span>
+                      <span className="font-bold" style={{ color: templateSettings.companyTitleColor }}>{formatCurrency(firstPayment)}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center py-2 px-4 bg-yellow-100 border border-yellow-300 rounded">
-                    <span className="font-semibold">CÒN LẠI:</span>
-                    <span className="font-bold text-lg">{formatCurrency(remaining)}</span>
+                  <div className="bg-yellow-200 p-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-base">CÒN LẠI:</span>
+                      <span className="font-bold text-lg" style={{ color: templateSettings.companyTitleColor }}>{formatCurrency(remaining)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
