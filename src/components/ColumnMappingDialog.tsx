@@ -113,7 +113,7 @@ export function ColumnMappingDialog({
   const handleImport = async () => {
     // Validate required fields
     const requiredFields = DATABASE_FIELDS.filter(field => field.required);
-    const missingFields = requiredFields.filter(field => !mapping[field.key]);
+    const missingFields = requiredFields.filter(field => !mapping[field.key] || mapping[field.key] === "none");
     
     if (missingFields.length > 0) {
       toast.error(`Các trường bắt buộc chưa được map: ${missingFields.map(f => f.label).join(', ')}`);
@@ -206,14 +206,14 @@ export function ColumnMappingDialog({
                           {field.label} {field.required && <span className="text-destructive">*</span>}
                         </Label>
                         <Select 
-                          value={mapping[field.key] || ""} 
+                          value={mapping[field.key] || "none"} 
                           onValueChange={(value) => setMapping(prev => ({ ...prev, [field.key]: value }))}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Chọn cột từ Google Sheets" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">-- Không map --</SelectItem>
+                            <SelectItem value="none">-- Không map --</SelectItem>
                             {headers.map((header, index) => (
                               <SelectItem key={index} value={index.toString()}>
                                 Cột {index}: {header}

@@ -113,6 +113,7 @@ serve(async (req) => {
         if (columnMapping) {
           // Use custom column mapping from frontend
           Object.entries(columnMapping).forEach(([dbField, columnIndex]) => {
+            if (columnIndex === "none") return; // Skip unmapped fields
             const value = values[parseInt(columnIndex)] || ''
             
             switch (dbField) {
