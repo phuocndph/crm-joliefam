@@ -646,39 +646,164 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                   <Button 
                     type="button" 
                     className="bg-green-600 hover:bg-green-700"
-                    disabled={!watchedValues.priceList}
-                    onClick={() => setShowProductDialog(true)}
+                    onClick={() => {
+                      const newItem: QuoteItem = {
+                        id: `temp-${Date.now()}`,
+                        name: '',
+                        sku: '',
+                        price: 0,
+                        quantity: 1,
+                        total: 0,
+                      };
+                      setSelectedProducts(prev => [...prev, newItem]);
+                    }}
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Thêm sản phẩm
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="p-6">
-                {watchedValues.priceList ? (
-                  <ProductSelectionForm 
-                    products={products}
-                    onAddProduct={(product) => {
-                      const newItem: QuoteItem = {
-                        id: product.id,
-                        name: product.name,
-                        sku: product.sku || '',
-                        price: product.price || 0,
-                        quantity: 1,
-                        total: product.price || 0,
-                      };
-                      setSelectedProducts(prev => [...prev, newItem]);
-                      toast({
-                        title: "Thành công",
-                        description: `Đã thêm ${product.name} vào báo giá`,
-                      });
-                    }}
-                  />
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Vui lòng chọn bảng giá trước để bắt đầu thêm sản phẩm
-                  </div>
-                )}
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="font-bold text-base min-w-96">Tìm kiếm sản phẩm</TableHead>
+                        <TableHead className="font-bold text-base min-w-72">Tên sản phẩm</TableHead>
+                        <TableHead className="font-bold text-base">Mô tả sản phẩm</TableHead>
+                        <TableHead className="font-bold text-base">Quy cách</TableHead>
+                        <TableHead className="font-bold text-base text-right">Đơn giá</TableHead>
+                        <TableHead className="font-bold text-base text-center">Số lượng</TableHead>
+                        <TableHead className="font-bold text-base text-right">Thành tiền</TableHead>
+                        <TableHead className="font-bold text-base text-center">Thao tác</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedProducts.map((item, index) => (
+                        <TableRow key={item.id} className="h-24">
+                          <TableCell className="min-w-96 p-4">
+                            <div className="relative w-full">
+                              <div className="relative">
+                                <Input
+                                  placeholder="Tìm kiếm sản phẩm..."
+                                  className="pl-10 h-10 text-sm border-2 focus:border-blue-500"
+                                />
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="min-w-72 p-4">
+                            <Input
+                              value={item.name}
+                              onChange={(e) => {
+                                const newProducts = [...selectedProducts];
+                                newProducts[index] = { ...item, name: e.target.value };
+                                setSelectedProducts(newProducts);
+                              }}
+                              placeholder="Tên sản phẩm"
+                              className="border-gray-200 focus:border-blue-500 font-medium text-base w-full"
+                            />
+                          </TableCell>
+                          <TableCell className="min-w-40 p-4">
+                            <div className="flex items-center space-x-2">
+                              <Input
+                                placeholder="Mô tả sản phẩm"
+                                className="border-gray-200 focus:border-blue-500 flex-1"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-blue-600 hover:bg-blue-50 p-2"
+                                title="Chỉnh sửa mô tả chi tiết"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                  <path d="M12 20h9"/>
+                                  <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/>
+                                </svg>
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell className="min-w-40 p-4">
+                            <div className="flex items-center space-x-2">
+                              <Input
+                                placeholder="Quy cách"
+                                className="border-gray-200 focus:border-blue-500 flex-1 min-w-32"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-blue-600 hover:bg-blue-50 p-2"
+                                title="Chỉnh sửa quy cách chi tiết"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                  <path d="M12 20h9"/>
+                                  <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/>
+                                </svg>
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell className="p-4">
+                            <Input
+                              type="number"
+                              value={item.price}
+                              onChange={(e) => {
+                                const price = parseFloat(e.target.value) || 0;
+                                const newProducts = [...selectedProducts];
+                                newProducts[index] = { 
+                                  ...item, 
+                                  price, 
+                                  total: price * item.quantity 
+                                };
+                                setSelectedProducts(newProducts);
+                              }}
+                              className="w-32 text-right font-mono text-blue-600 font-semibold border-gray-200 focus:border-blue-500"
+                              min="0"
+                              step="1000"
+                              placeholder="0"
+                            />
+                          </TableCell>
+                          <TableCell className="p-4">
+                            <Input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const quantity = parseInt(e.target.value) || 1;
+                                const newProducts = [...selectedProducts];
+                                newProducts[index] = { 
+                                  ...item, 
+                                  quantity, 
+                                  total: item.price * quantity 
+                                };
+                                setSelectedProducts(newProducts);
+                              }}
+                              className="w-24 h-12 text-center border-2 focus:border-blue-500 text-lg font-semibold"
+                              min="1"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold text-green-600 text-base p-4">
+                            {item.total.toLocaleString()}đ
+                          </TableCell>
+                          <TableCell className="text-center p-4">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:bg-red-50 h-12 w-12"
+                              onClick={() => removeProduct(item.id)}
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {selectedProducts.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
 
