@@ -244,7 +244,8 @@ const ProductManagement = () => {
           description: data.message,
         });
         setGoogleSheetsUrl('');
-        fetchProducts();
+        // Force refresh products to show updated data
+        await fetchProducts();
       } else {
         throw new Error(data.error);
       }
@@ -844,14 +845,14 @@ const ProductManagement = () => {
                               </div>
                             </TableCell>
                             <TableCell className="text-right font-medium">
-                              {formatPrice(product.price)}
+                              {formatPrice(product.cost_price)}
                             </TableCell>
                             <TableCell className="text-right font-bold text-primary">
-                              {product.description ? formatPrice(parseFloat(product.description)) : '-'}
+                              {formatPrice(product.price)}
                             </TableCell>
                             <TableCell className="text-sm">
                               <div className="line-clamp-2">
-                                {product.cost_price ? `Chi tiết: ${product.cost_price}` : '-'}
+                                {product.description || '-'}
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
