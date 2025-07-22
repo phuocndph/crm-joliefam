@@ -651,7 +651,7 @@ export default function CashFlowManagement() {
                             <TableHead>Khách hàng</TableHead>
                             <TableHead>Ngày</TableHead>
                             <TableHead>Doanh thu</TableHead>
-                            <TableHead>Giá gốc</TableHead>
+                            <TableHead>Giá sản xuất</TableHead>
                             <TableHead>Lợi nhuận trước</TableHead>
                             <TableHead>Chi phí phân bổ</TableHead>
                             <TableHead>Lợi nhuận sau</TableHead>
