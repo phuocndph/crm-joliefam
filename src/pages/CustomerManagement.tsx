@@ -70,6 +70,10 @@ interface Customer {
   total_spent: number;
   created_at: string;
   updated_at: string;
+  // Thêm fields cho group data
+  grouped_ids?: string[];
+  order_count?: number;
+  quote_count?: number;
 }
 
 interface CustomerOrder {
@@ -83,6 +87,15 @@ interface CustomerOrder {
   payment_date: string | null;
 }
 
+interface CustomerQuote {
+  id: string;
+  quote_number: string;
+  total_amount: number;
+  status: string;
+  created_at: string;
+  notes: string;
+}
+
 export default function CustomerManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("created_at");
@@ -93,11 +106,60 @@ export default function CustomerManagement() {
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
+  const [customerQuotes, setCustomerQuotes] = useState<CustomerQuote[]>([]);
   const [loading, setLoading] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const { toast } = useToast();
 
-  const filteredCustomers = customers.filter((customer) => {
+  // Group customers by name and aggregate data
+  const groupedCustomers = React.useMemo(() => {
+    const grouped = customers.reduce((acc, customer) => {
+      const key = customer.name.trim().toLowerCase();
+      if (!acc[key]) {
+        acc[key] = {
+          ...customer,
+          grouped_ids: [customer.id],
+          order_count: customer.purchase_count,
+          quote_count: 0,
+        };
+      } else {
+        // Merge data for same name customers
+        acc[key].grouped_ids!.push(customer.id);
+        acc[key].purchase_count += customer.purchase_count;
+        acc[key].total_spent += customer.total_spent;
+        acc[key].order_count! += customer.purchase_count;
+        
+        // Use latest customer data for other fields
+        if (new Date(customer.created_at) > new Date(acc[key].created_at)) {
+          acc[key].customer_code = customer.customer_code;
+          acc[key].email = customer.email;
+          acc[key].phone = customer.phone;
+          acc[key].address = customer.address;
+          acc[key].company = customer.company;
+          acc[key].phones = customer.phones;
+          acc[key].addresses = customer.addresses;
+        }
+        
+        // Merge tags
+        const allTags = [...(acc[key].tags || []), ...(customer.tags || [])];
+        const allAutoTags = [...(acc[key].auto_tags || []), ...(customer.auto_tags || [])];
+        acc[key].tags = [...new Set(allTags)];
+        acc[key].auto_tags = [...new Set(allAutoTags)];
+        
+        // Latest purchase date
+        if (customer.last_purchase_date && 
+            (!acc[key].last_purchase_date || 
+             new Date(customer.last_purchase_date) > new Date(acc[key].last_purchase_date))) {
+          acc[key].last_purchase_date = customer.last_purchase_date;
+        }
+      }
+      return acc;
+    }, {} as Record<string, Customer>);
+    
+    return Object.values(grouped);
+  }, [customers]);
+
+  const filteredCustomers = groupedCustomers.filter((customer) => {
     const matchesSearch = 
       customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -133,19 +195,35 @@ export default function CustomerManagement() {
   const loadCustomers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .order('created_at', { ascending: false });
+      
+      // Load customers và quotes để tính toán tổng hợp
+      const [customersResult, quotesResult] = await Promise.all([
+        supabase
+          .from('customers')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('quotes')
+          .select('id, quote_number, total_amount, status, created_at, notes')
+          .order('created_at', { ascending: false })
+      ]);
 
-      if (error) throw error;
+      if (customersResult.error) throw customersResult.error;
+      if (quotesResult.error) throw quotesResult.error;
       
       // Parse JSON fields and ensure proper structure
-      const formattedCustomers = data?.map(customer => {
+      const formattedCustomers = customersResult.data?.map(customer => {
         const phonesParsed = Array.isArray(customer.phones) ? customer.phones as unknown as CustomerPhone[] : [];
         const addressesParsed = Array.isArray(customer.addresses) ? customer.addresses as unknown as CustomerAddress[] : [];
         const tagsParsed = Array.isArray(customer.tags) ? customer.tags as string[] : [];
         const autoTagsParsed = Array.isArray(customer.auto_tags) ? customer.auto_tags as string[] : [];
+        
+        // Count quotes for this customer name
+        const customerQuotes = quotesResult.data?.filter(quote => {
+          if (!quote.notes) return false;
+          const customerMatch = quote.notes.match(/Khách hàng:\s*(.+)/);
+          return customerMatch && customerMatch[1].trim().toLowerCase() === customer.name.toLowerCase();
+        }) || [];
         
         return {
           ...customer,
@@ -155,6 +233,7 @@ export default function CustomerManagement() {
           auto_tags: autoTagsParsed,
           purchase_count: customer.purchase_count || 0,
           total_spent: customer.total_spent || 0,
+          quote_count: customerQuotes.length,
         } as Customer;
       }) || [];
       
@@ -171,22 +250,43 @@ export default function CustomerManagement() {
     }
   };
 
-  const loadCustomerOrders = async (customerId: string) => {
+  const loadCustomerDetails = async (customer: Customer) => {
     try {
       setOrdersLoading(true);
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id, order_number, total_amount, status, payment_status, created_at, delivery_date, payment_date')
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: false });
+      
+      // Load orders và quotes cho customer này và tất cả customers cùng tên
+      const customerIds = customer.grouped_ids || [customer.id];
+      const customerName = customer.name.trim();
+      
+      const [ordersResult, quotesResult] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('id, order_number, total_amount, status, payment_status, created_at, delivery_date, payment_date')
+          .in('customer_id', customerIds)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('quotes')
+          .select('id, quote_number, total_amount, status, created_at, notes')
+          .order('created_at', { ascending: false })
+      ]);
 
-      if (error) throw error;
-      setCustomerOrders(data || []);
+      if (ordersResult.error) throw ordersResult.error;
+      if (quotesResult.error) throw quotesResult.error;
+      
+      // Filter quotes by customer name from notes
+      const customerQuotes = quotesResult.data?.filter(quote => {
+        if (!quote.notes) return false;
+        const customerMatch = quote.notes.match(/Khách hàng:\s*(.+)/);
+        return customerMatch && customerMatch[1].trim().toLowerCase() === customerName.toLowerCase();
+      }) || [];
+      
+      setCustomerOrders(ordersResult.data || []);
+      setCustomerQuotes(customerQuotes);
     } catch (error) {
-      console.error('Error loading customer orders:', error);
+      console.error('Error loading customer details:', error);
       toast({
         title: "Lỗi",
-        description: "Không thể tải danh sách đơn hàng",
+        description: "Không thể tải chi tiết khách hàng",
         variant: "destructive",
       });
     } finally {
@@ -200,7 +300,7 @@ export default function CustomerManagement() {
 
   useEffect(() => {
     if (selectedCustomer) {
-      loadCustomerOrders(selectedCustomer.id);
+      loadCustomerDetails(selectedCustomer);
     }
   }, [selectedCustomer]);
 
@@ -256,32 +356,32 @@ export default function CustomerManagement() {
     return diffInMonths;
   };
 
-  // Calculate stats
+  // Calculate stats với grouped customers
   const stats = [
     {
       title: "Tổng khách hàng",
-      value: customers.length,
+      value: groupedCustomers.length,
       icon: Users,
       color: "text-blue-600",
       bgColor: "bg-blue-100",
     },
     {
       title: "Khách hàng VIP (KHTT)",
-      value: customers.filter(c => c.auto_tags?.includes("KHTT")).length,
+      value: groupedCustomers.filter(c => c.auto_tags?.includes("KHTT")).length,
       icon: Star,
       color: "text-purple-600",
       bgColor: "bg-purple-100",
     },
     {
       title: "Tổng doanh thu",
-      value: `${customers.reduce((sum, c) => sum + c.total_spent, 0).toLocaleString("vi-VN")} VNĐ`,
+      value: `${groupedCustomers.reduce((sum, c) => sum + c.total_spent, 0).toLocaleString("vi-VN")} VNĐ`,
       icon: DollarSign,
       color: "text-green-600",
       bgColor: "bg-green-100",
     },
     {
       title: "Khách hàng mới (tháng này)",
-      value: customers.filter(c => {
+      value: groupedCustomers.filter(c => {
         const createdDate = new Date(c.created_at);
         const now = new Date();
         return createdDate.getMonth() === now.getMonth() && createdDate.getFullYear() === now.getFullYear();
@@ -711,6 +811,53 @@ export default function CustomerManagement() {
                                   TT: {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
                                 </div>
                               )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Quotes List */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Lịch sử báo giá ({customerQuotes.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {ordersLoading ? (
+                    <div className="text-center py-8">Đang tải báo giá...</div>
+                  ) : customerQuotes.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Khách hàng chưa có báo giá nào
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {customerQuotes.map((quote) => (
+                        <div key={quote.id} className="border rounded-lg p-4">
+                          <div className="flex justify-between items-start">
+                            <div className="space-y-2">
+                              <div className="font-medium">
+                                Báo giá #{quote.quote_number}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                Ngày tạo: {format(new Date(quote.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
+                              </div>
+                              <Badge variant={quote.status === 'approved' ? 'default' : 'secondary'}>
+                                {quote.status === 'draft' ? 'Nháp' :
+                                 quote.status === 'sent' ? 'Đã gửi' :
+                                 quote.status === 'approved' ? 'Đã duyệt' :
+                                 quote.status === 'rejected' ? 'Từ chối' : quote.status}
+                              </Badge>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-lg font-bold">
+                                {(quote.total_amount || 0).toLocaleString("vi-VN")} VNĐ
+                              </div>
                             </div>
                           </div>
                         </div>
