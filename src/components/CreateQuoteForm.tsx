@@ -831,17 +831,42 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                 placeholder="Mô tả sản phẩm"
                                 className="border-gray-200 focus:border-blue-500 flex-1"
                               />
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-blue-600 hover:bg-blue-50 p-2"
-                                title="Chỉnh sửa mô tả chi tiết"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                  <path d="M12 20h9"/>
-                                  <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/>
-                                </svg>
-                              </Button>
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-blue-600 hover:bg-blue-50 p-2"
+                                    title="Chỉnh sửa mô tả chi tiết"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                      <path d="M12 20h9"/>
+                                      <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/>
+                                    </svg>
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-md">
+                                  <DialogHeader>
+                                    <DialogTitle>Chỉnh sửa mô tả sản phẩm</DialogTitle>
+                                  </DialogHeader>
+                                  <div className="space-y-4">
+                                    <div>
+                                      <Label htmlFor={`description-${index}`}>Mô tả chi tiết</Label>
+                                      <Textarea
+                                        id={`description-${index}`}
+                                        value={item.description || ''}
+                                        onChange={(e) => {
+                                          const newProducts = [...selectedProducts];
+                                          newProducts[index] = { ...item, description: e.target.value };
+                                          setSelectedProducts(newProducts);
+                                        }}
+                                        placeholder="Nhập mô tả chi tiết sản phẩm..."
+                                        className="min-h-32 resize-none"
+                                      />
+                                    </div>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
                             </div>
                           </TableCell>
                           <TableCell className="min-w-40 p-4">
@@ -856,17 +881,42 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                 placeholder="Quy cách"
                                 className="border-gray-200 focus:border-blue-500 flex-1 min-w-32"
                               />
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-blue-600 hover:bg-blue-50 p-2"
-                                title="Chỉnh sửa quy cách chi tiết"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                  <path d="M12 20h9"/>
-                                  <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/>
-                                </svg>
-                              </Button>
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-blue-600 hover:bg-blue-50 p-2"
+                                    title="Chỉnh sửa quy cách chi tiết"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                      <path d="M12 20h9"/>
+                                      <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/>
+                                    </svg>
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-md">
+                                  <DialogHeader>
+                                    <DialogTitle>Chỉnh sửa quy cách sản phẩm</DialogTitle>
+                                  </DialogHeader>
+                                  <div className="space-y-4">
+                                    <div>
+                                      <Label htmlFor={`specifications-${index}`}>Quy cách chi tiết</Label>
+                                      <Textarea
+                                        id={`specifications-${index}`}
+                                        value={(item as any).specifications || ''}
+                                        onChange={(e) => {
+                                          const newProducts = [...selectedProducts];
+                                          newProducts[index] = { ...item, specifications: e.target.value };
+                                          setSelectedProducts(newProducts);
+                                        }}
+                                        placeholder="Nhập quy cách chi tiết sản phẩm..."
+                                        className="min-h-32 resize-none"
+                                      />
+                                    </div>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
                             </div>
                           </TableCell>
                           <TableCell className="p-4">
