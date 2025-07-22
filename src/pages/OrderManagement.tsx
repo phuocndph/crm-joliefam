@@ -828,7 +828,10 @@ export default function OrderManagement() {
     </div>
   );
 
-  function calculateRemainingAmount(order: Order): number {
+  function calculateRemainingAmount(order: Order | null): number {
+    // Handle null/undefined order
+    if (!order) return 0;
+    
     // This is a simplified calculation - in real app, we'd fetch from payment_summary
     if (order.payment_status === 'paid') return 0;
     if (order.payment_status === 'partial') return (order.total_amount || 0) * 0.5; // Example
