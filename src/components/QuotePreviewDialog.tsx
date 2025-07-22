@@ -319,9 +319,9 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       items.forEach((item: any, index: number) => {
         const rowData = [
           index + 1,
-          item.name || 'Ga chun ks T225 sọc 100x200x15cm',
+          item.sku || item.name || 'GACLTH-100x10F-S',
           item.specifications || 'Ga may bo chun quanh đệm, vải được tính trừ co theo nhà sản xuất',
-          item.category || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu',
+          item.description || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu',
           item.quantity || 144,
           item.price || 140000,
           item.total || 20160000,
@@ -626,18 +626,20 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                     <TableHead className="border border-gray-300 text-center font-bold">Ghi Chú</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  <TableRow className="bg-white">
-                    <TableCell className="border border-gray-400 text-center">1</TableCell>
-                    <TableCell className="border border-gray-400">Bao ve nem chan bong 100x200</TableCell>
-                    <TableCell className="border border-gray-400 text-sm">Bao may bo chun quanh đệm, vải được tính trừ co theo nhà sản xuất</TableCell>
-                    <TableCell className="border border-gray-400 text-sm">Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu</TableCell>
-                    <TableCell className="border border-gray-400 text-center">1</TableCell>
-                    <TableCell className="border border-gray-400 text-right">180.000</TableCell>
-                    <TableCell className="border border-gray-400 text-right font-semibold">180.000</TableCell>
-                    <TableCell className="border border-gray-400"></TableCell>
-                  </TableRow>
-                </TableBody>
+                 <TableBody>
+                   {items.map((item: any, index: number) => (
+                     <TableRow key={index} className="bg-white">
+                       <TableCell className="border border-gray-400 text-center">{index + 1}</TableCell>
+                       <TableCell className="border border-gray-400">{item.sku || item.name}</TableCell>
+                       <TableCell className="border border-gray-400 text-sm">{item.specifications}</TableCell>
+                       <TableCell className="border border-gray-400 text-sm">{item.description}</TableCell>
+                       <TableCell className="border border-gray-400 text-center">{item.quantity}</TableCell>
+                       <TableCell className="border border-gray-400 text-right">{formatCurrency(item.price)}</TableCell>
+                       <TableCell className="border border-gray-400 text-right font-semibold">{formatCurrency(item.total)}</TableCell>
+                       <TableCell className="border border-gray-400"></TableCell>
+                     </TableRow>
+                   ))}
+                 </TableBody>
               </Table>
             </div>
 
