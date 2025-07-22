@@ -286,6 +286,19 @@ export default function CashFlowManagement() {
       orderItems.forEach((item: any) => {
         const quantity = item.quantity || 0;
         
+        // Debug matching
+        const productById = products.find(p => p.id === item.id);
+        const productBySku = products.find(p => p.sku === item.sku);
+        
+        console.log('Item matching debug:', {
+          itemId: item.id,
+          itemSku: item.sku,
+          productById: productById ? { id: productById.id, sku: productById.sku, cost_price: productById.cost_price } : null,
+          productBySku: productBySku ? { id: productBySku.id, sku: productBySku.sku, cost_price: productBySku.cost_price } : null,
+          availableProductIds: products.map(p => p.id).slice(0, 3),
+          availableProductSkus: products.map(p => p.sku).slice(0, 3)
+        });
+        
         // Try to match by product ID first
         let product = products.find(p => p.id === item.id);
         
