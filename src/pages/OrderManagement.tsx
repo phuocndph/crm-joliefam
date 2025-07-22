@@ -836,7 +836,7 @@ export default function OrderManagement() {
       {/* Add Payment Dialog */}
       {orderToPayment && (
         <Dialog open={!!orderToPayment} onOpenChange={(open) => !open && setOrderToPayment(null)}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <CreatePaymentForm
               orderId={orderToPayment.id}
               orderNumber={orderToPayment.order_number}
