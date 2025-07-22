@@ -538,52 +538,66 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         
         <div className="bg-white" id="quote-preview" style={{ fontFamily: 'Times New Roman, serif' }}>
           <div className="p-8 max-w-5xl mx-auto">
-            <div className="text-center mb-8">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-32 h-20 bg-black rounded flex items-center justify-center overflow-hidden">
-                  <img 
-                    src={templateSettings.logoUrl} 
-                    alt="Company Logo" 
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                <div className="text-right">
-                  <h1 className="text-2xl font-bold mb-2" style={{ color: templateSettings.companyTitleColor }}>
-                    {templateSettings.companyTitle}
-                  </h1>
-                  <p className="text-sm text-gray-600">Hà Nội ngày {currentDate.getDate()} tháng {currentDate.getMonth() + 1} năm {currentDate.getFullYear()}</p>
+            {/* Header Layout như mẫu */}
+            <div className="flex items-start justify-between mb-6">
+              {/* Logo bên trái */}
+              <div className="w-24 h-24">
+                <img 
+                  src={templateSettings.logoUrl} 
+                  alt="Company Logo" 
+                  className="w-full h-full object-contain border border-gray-300"
+                />
+              </div>
+              
+              {/* Thông tin công ty ở giữa */}
+              <div className="flex-1 text-center px-8">
+                <h1 className="text-2xl font-bold mb-3" style={{ color: templateSettings.companyTitleColor }}>
+                  {templateSettings.companyTitle}
+                </h1>
+                <div className="text-sm space-y-1">
+                  <p>Địa chỉ: {templateSettings.address}</p>
+                  <p>Điện thoại: {templateSettings.phone}</p>
+                  <p>MST: {templateSettings.taxCode}</p>
+                  <p>Trụ sở: {templateSettings.headquarters}</p>
+                  <p>STK: {templateSettings.bankInfo}</p>
                 </div>
               </div>
               
-              <div className="text-left text-sm mb-6 space-y-1">
-                <p>Địa chỉ: {templateSettings.address}</p>
-                <p>Điện thoại: {templateSettings.phone}</p>
-                <p>MST: {templateSettings.taxCode}</p>
-                <p>Trụ sở: {templateSettings.headquarters}</p>
-                <p>STK: {templateSettings.bankInfo}</p>
-              </div>
-              
-              <h2 className="text-3xl font-bold mb-8" style={{ color: templateSettings.quoteTitleColor }}>
+              {/* Trống bên phải để cân bằng */}
+              <div className="w-24"></div>
+            </div>
+            
+            {/* Tiêu đề chính */}
+            <div className="text-center mb-4">
+              <h2 className="text-3xl font-bold" style={{ color: templateSettings.quoteTitleColor }}>
                 BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN
               </h2>
             </div>
+            
+            {/* Ngày tháng */}
+            <div className="text-center mb-8">
+              <p className="italic text-base">Hà Nội ngày {currentDate.getDate()} tháng {currentDate.getMonth() + 1} năm {currentDate.getFullYear()}</p>
+            </div>
 
-            <div className="grid grid-cols-2 gap-6 mb-8">
-              <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-                <h3 className="font-bold text-lg mb-4 text-blue-800 border-b border-blue-200 pb-2">
+            {/* Thông tin khách hàng và báo giá - 2 cột như mẫu */}
+            <div className="grid grid-cols-2 gap-8 mb-8">
+              {/* Cột trái - Thông tin khách hàng */}
+              <div>
+                <h3 className="font-bold text-lg mb-4 text-blue-600 border-b border-blue-300 pb-2">
                   THÔNG TIN KHÁCH HÀNG:
                 </h3>
-                <div className="space-y-3 text-base">
-                  <p><strong className="text-gray-900 w-28 inline-block">Tên KH:</strong> {customerName}</p>
+                <div className="space-y-2">
+                  <p><strong>Tên KH:</strong> {customerName}</p>
                 </div>
               </div>
               
-              <div className="bg-green-50 p-6 rounded-lg border border-green-200">
-                <h3 className="font-bold text-lg mb-4 text-green-800 border-b border-green-200 pb-2">
+              {/* Cột phải - Thông tin báo giá */}
+              <div>
+                <h3 className="font-bold text-lg mb-4 text-blue-600 border-b border-blue-300 pb-2">
                   THÔNG TIN BÁO GIÁ:
                 </h3>
-                <div className="space-y-3 text-base">
-                  <p><strong className="text-gray-900 w-28 inline-block">Số báo giá:</strong> {quote.quoteNumber || 'BG-20250717-082'}</p>
+                <div className="space-y-2">
+                  <p><strong>Số báo giá:</strong> {quote.quoteNumber || 'BG-20250717-082'}</p>
                   <p><strong>Ngày báo giá:</strong> {currentDate.toLocaleDateString('vi-VN')}</p>
                   <p><strong>Ngày hết hạn:</strong> {expiryDate}</p>
                 </div>
@@ -619,65 +633,57 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </Table>
             </div>
 
+            {/* Phần tổng tiền với style như mẫu */}
+            <div className="mb-6">
+              <table className="w-full border-collapse">
+                <tbody>
+                  <tr>
+                    <td className="border border-black bg-red-100 p-3 font-bold text-red-600">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT</td>
+                    <td className="border border-black bg-red-100 p-3 text-right font-bold">180.000</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black bg-red-100 p-3 font-bold text-red-600">GTGT (8%)</td>
+                    <td className="border border-black bg-red-100 p-3 text-right font-bold">14.400</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black bg-red-100 p-3 font-bold text-red-600">TỔNG TIỀN ĐÃ BAO GỒM GTGT</td>
+                    <td className="border border-black bg-red-100 p-3 text-right font-bold">194.400</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black bg-red-100 p-3 font-bold text-red-600">THANH TOÁN LẦN 1</td>
+                    <td className="border border-black bg-red-100 p-3 text-right font-bold">58.320</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black bg-red-100 p-3 font-bold text-red-600">CÒN LẠI</td>
+                    <td className="border border-black bg-red-100 p-3 text-right font-bold">136.080</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Điều khoản */}
             <div className="mb-8">
-              <div className="flex justify-end">
-                <div className="w-96">
-                  <div className="bg-orange-100 border border-gray-400 p-4">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
-                      <span className="font-bold">180.000</span>
-                    </div>
-                  </div>
-                  <div className="bg-orange-100 border-x border-b border-gray-400 p-4">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold">GTGT (8%):</span>
-                      <span className="font-bold">14.400</span>
-                    </div>
-                  </div>
-                  <div className="bg-orange-200 border-x border-b border-gray-400 p-4">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
-                      <span className="font-bold">194.400</span>
-                    </div>
-                  </div>
-                  <div className="bg-yellow-100 border-x border-b border-gray-400 p-4">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold">THANH TOÁN LẦN 1:</span>
-                      <span className="font-bold">58.320</span>
-                    </div>
-                  </div>
-                  <div className="bg-yellow-200 border-x border-b border-gray-400 p-4">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold">CÒN LẠI:</span>
-                      <span className="font-bold">136.080</span>
-                    </div>
-                  </div>
-                </div>
+              <div className="space-y-1 text-sm">
+                <p>1. Báo giá có hiệu lực trong 15 ngày kể từ ngày lập.</p>
+                <p>2. Thanh toán: 50% trước khi sản xuất, 50% trước khi giao hàng.</p>
+                <p>3. Thời gian giao hàng: 7-10 ngày làm việc sau khi nhận đặt cọc.</p>
+                <p>4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.</p>
               </div>
             </div>
 
-            <div className="mb-8">
-              <div className="space-y-2 text-sm">
-                {templateSettings.terms.map((term, index) => (
-                  <p key={index}>{index + 1}. {term}</p>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-12 mt-12">
+            {/* Chữ ký - Layout như mẫu */}
+            <div className="grid grid-cols-2 gap-16 mt-16">
               <div className="text-center">
-                <p className="font-bold mb-8">ĐẠI DIỆN CÔNG TY</p>
-                <div className="mb-8 h-16"></div>
-                <p className="font-bold">GIÁM ĐỐC</p>
+                <p className="font-bold text-lg mb-12">ĐẠI DIỆN CÔNG TY</p>
+                <div className="h-16 mb-4"></div>
               </div>
               <div className="text-center">
-                <p className="font-bold mb-8">KHÁCH HÀNG</p>
-                <div className="mb-8 h-16"></div>
-                <p className="text-sm">Ký tên và đóng dấu xác nhận</p>
+                <p className="font-bold text-lg mb-12">KHÁCH HÀNG</p>
+                <div className="h-16 mb-4"></div>
               </div>
             </div>
-
-            {/* Footer Note */}
+            
+            {/* Footer note nếu có */}
             {templateSettings.footerNote && (
               <div className="text-center mt-8 pt-4 border-t border-gray-300">
                 <p className="text-sm italic text-gray-600">{templateSettings.footerNote}</p>
