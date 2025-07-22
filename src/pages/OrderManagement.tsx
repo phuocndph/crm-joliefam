@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -93,6 +94,7 @@ export default function OrderManagement() {
   const [orderToPayment, setOrderToPayment] = useState<Order | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
 
   const filteredOrders = orders.filter((order) => {
@@ -167,6 +169,23 @@ export default function OrderManagement() {
   useEffect(() => {
     loadOrders();
   }, []);
+
+  // Auto-open order detail from URL parameter
+  useEffect(() => {
+    const orderId = searchParams.get('order_id');
+    if (orderId && orders.length > 0) {
+      const order = orders.find(o => o.id === orderId);
+      if (order) {
+        setSelectedOrder(order);
+        // Clear the URL parameter after opening
+        setSearchParams(prev => {
+          const newParams = new URLSearchParams(prev);
+          newParams.delete('order_id');
+          return newParams;
+        });
+      }
+    }
+  }, [orders, searchParams, setSearchParams]);
 
   const handleCreateOrder = () => {
     loadOrders();

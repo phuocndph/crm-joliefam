@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Search, Plus, FileText, Eye, Edit, Trash2, Filter, MoreHorizontal, Users, UserCheck, Building2, Calendar, Phone, MapPin, ShoppingCart, DollarSign, Clock, Star } from "lucide-react";
+import { Search, Plus, FileText, Eye, Edit, Trash2, Filter, MoreHorizontal, Users, UserCheck, Building2, Calendar, Phone, MapPin, ShoppingCart, DollarSign, Clock, Star, ArrowRight, ExternalLink } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -110,6 +111,7 @@ export default function CustomerManagement() {
   const [loading, setLoading] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   // Group customers by name and aggregate data
   const groupedCustomers = React.useMemo(() => {
@@ -771,51 +773,63 @@ export default function CustomerManagement() {
                       Khách hàng chưa có đơn hàng nào
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {customerOrders.map((order) => (
-                        <div key={order.id} className="border rounded-lg p-4">
-                          <div className="flex justify-between items-start">
-                            <div className="space-y-2">
-                              <div className="font-medium">
-                                Đơn hàng #{order.order_number}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                Ngày tạo: {format(new Date(order.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
-                              </div>
-                              {order.delivery_date && (
-                                <div className="text-sm text-muted-foreground">
-                                  Ngày giao: {format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi })}
-                                </div>
-                              )}
-                              <div className="flex gap-2">
-                                <Badge variant={order.status === 'delivered' ? 'default' : 'secondary'}>
-                                  {order.status === 'pending' ? 'Chờ xử lý' :
-                                   order.status === 'processing' ? 'Đang xử lý' :
-                                   order.status === 'shipped' ? 'Đã giao' :
-                                   order.status === 'delivered' ? 'Hoàn thành' :
-                                   order.status === 'cancelled' ? 'Đã hủy' : order.status}
-                                </Badge>
-                                <Badge variant={order.payment_status === 'paid' ? 'default' : 'secondary'}>
-                                  {order.payment_status === 'pending' ? 'Chưa thanh toán' :
-                                   order.payment_status === 'paid' ? 'Đã thanh toán' :
-                                   order.payment_status === 'partial' ? 'Thanh toán 1 phần' : order.payment_status}
-                                </Badge>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-lg font-bold">
-                                {order.total_amount.toLocaleString("vi-VN")} VNĐ
-                              </div>
-                              {order.payment_date && (
-                                <div className="text-sm text-muted-foreground">
-                                  TT: {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                     <div className="space-y-4">
+                       {customerOrders.map((order) => (
+                         <div key={order.id} className="border rounded-lg p-4">
+                           <div className="flex justify-between items-start">
+                             <div className="space-y-2 flex-1">
+                               <div className="font-medium">
+                                 Đơn hàng #{order.order_number}
+                               </div>
+                               <div className="text-sm text-muted-foreground">
+                                 Ngày tạo: {format(new Date(order.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
+                               </div>
+                               {order.delivery_date && (
+                                 <div className="text-sm text-muted-foreground">
+                                   Ngày giao: {format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi })}
+                                 </div>
+                               )}
+                               <div className="flex gap-2">
+                                 <Badge variant={order.status === 'delivered' ? 'default' : 'secondary'}>
+                                   {order.status === 'pending' ? 'Chờ xử lý' :
+                                    order.status === 'processing' ? 'Đang xử lý' :
+                                    order.status === 'shipped' ? 'Đã giao' :
+                                    order.status === 'delivered' ? 'Hoàn thành' :
+                                    order.status === 'cancelled' ? 'Đã hủy' : order.status}
+                                 </Badge>
+                                 <Badge variant={order.payment_status === 'paid' ? 'default' : 'secondary'}>
+                                   {order.payment_status === 'pending' ? 'Chưa thanh toán' :
+                                    order.payment_status === 'paid' ? 'Đã thanh toán' :
+                                    order.payment_status === 'partial' ? 'Thanh toán 1 phần' : order.payment_status}
+                                 </Badge>
+                               </div>
+                             </div>
+                             <div className="text-right space-y-2">
+                               <div className="text-lg font-bold">
+                                 {order.total_amount.toLocaleString("vi-VN")} VNĐ
+                               </div>
+                               {order.payment_date && (
+                                 <div className="text-sm text-muted-foreground">
+                                   TT: {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
+                                 </div>
+                               )}
+                               <Button
+                                 size="sm"
+                                 variant="outline"
+                                 onClick={() => {
+                                   setSelectedCustomer(null);
+                                   navigate(`/orders?order_id=${order.id}`);
+                                 }}
+                                 className="gap-2"
+                               >
+                                 <ExternalLink className="h-3 w-3" />
+                                 Xem chi tiết
+                               </Button>
+                             </div>
+                           </div>
+                         </div>
+                       ))}
+                     </div>
                   )}
                 </CardContent>
               </Card>
