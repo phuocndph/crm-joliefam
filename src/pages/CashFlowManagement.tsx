@@ -420,9 +420,11 @@ export default function CashFlowManagement() {
   }, [orders, loadProductsData]);
 
   useEffect(() => {
-    calculateCashFlowStats();
-    calculateOrderProfits();
-  }, [calculateCashFlowStats, calculateOrderProfits]);
+    if (products.length > 0 || orders.length === 0) {
+      calculateCashFlowStats();
+      calculateOrderProfits();
+    }
+  }, [calculateCashFlowStats, calculateOrderProfits, products]);
 
   // Event handlers
   const handleCreateExpense = async () => {
