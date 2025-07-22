@@ -210,8 +210,8 @@ export default function CashFlowManagement() {
   }, [getDateRange, toast]);
 
   const calculateCashFlowStats = useCallback(() => {
-    // Tính từ đơn hàng đã giao (delivered orders)
-    const deliveredOrders = orders.filter(order => order.total_amount && order.cost_price);
+    // Tính từ đơn hàng đã giao (delivered orders) - chấp nhận cost_price = 0
+    const deliveredOrders = orders.filter(order => order.total_amount > 0);
     
     const totalRevenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
     const totalCostPrice = deliveredOrders.reduce((sum, order) => sum + (Number(order.cost_price) || 0), 0);
@@ -249,12 +249,9 @@ export default function CashFlowManagement() {
   }, [orders, expenses]);
 
   const calculateOrderProfits = useCallback(() => {
-    // Chỉ hiển thị đơn hàng đã giao và có đầy đủ dữ liệu
+    // Hiển thị đơn hàng đã giao có doanh thu - chấp nhận cost_price = 0
     const deliveredOrders = orders.filter(order => 
-      order.total_amount && 
-      order.cost_price &&
-      order.total_amount > 0 &&
-      order.cost_price > 0
+      order.total_amount > 0
     );
 
     const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
