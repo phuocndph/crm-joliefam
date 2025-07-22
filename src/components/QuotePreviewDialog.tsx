@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import * as XLSX from 'xlsx';
+import * as XLSXStyle from 'xlsx-style';
 import { jsPDF } from 'jspdf';
 
 interface QuotePreviewDialogProps {
