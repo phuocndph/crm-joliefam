@@ -824,25 +824,29 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
 
                 {/* Calculation Summary */}
                 <div className="border-t pt-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Tổng giá trị đơn hàng chưa bao gồm GTGT:</span>
-                    <span>{subtotal.toLocaleString()} đ</span>
+                  <div className="flex justify-between text-sm font-medium">
+                    <span>TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
+                    <span>{subtotal.toLocaleString()}</span>
                   </div>
                   {watchedValues.includeVAT && (
                     <>
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between text-sm font-medium">
                         <span>GTGT ({watchedValues.vatRate}%):</span>
-                        <span>{vatAmount.toLocaleString()} đ</span>
+                        <span>{vatAmount.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between text-sm font-medium">
-                        <span>Tổng tiền đã bao gồm GTGT:</span>
-                        <span>{total.toLocaleString()} đ</span>
+                        <span>TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
+                        <span>{total.toLocaleString()}</span>
                       </div>
                     </>
                   )}
+                  <div className="flex justify-between text-sm font-medium">
+                    <span>THANH TOÁN LẦN 1:</span>
+                    <span>{(watchedValues.payment1 || 0).toLocaleString()}</span>
+                  </div>
                   <div className="flex justify-between text-sm font-medium text-blue-600">
-                    <span>Còn lại:</span>
-                    <span>{remaining.toLocaleString()} đ</span>
+                    <span>CÒN LẠI:</span>
+                    <span>{remaining.toLocaleString()}</span>
                   </div>
                 </div>
               </CardContent>
