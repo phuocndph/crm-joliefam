@@ -146,13 +146,21 @@ serve(async (req) => {
       throw new Error('Không tìm thấy sản phẩm hợp lệ trong Google Sheets')
     }
 
-    // Upsert products into database (insert new or update existing by SKU)
+    // Delete existing products for this price list first
+    const { error: deleteError } = await supabase
+      .from('products')
+      .delete()
+      .eq('price_list_id', priceListId)
+
+    if (deleteError) {
+      console.error('Delete error:', deleteError)
+      throw new Error(`Lỗi khi xóa sản phẩm cũ: ${deleteError.message}`)
+    }
+
+    // Insert new products into database
     const { data, error } = await supabase
       .from('products')
-      .upsert(products, { 
-        onConflict: 'sku,price_list_id',
-        ignoreDuplicates: false 
-      })
+      .insert(products)
       .select()
 
     if (error) {
