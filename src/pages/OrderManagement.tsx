@@ -571,235 +571,214 @@ export default function OrderManagement() {
       {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
-          <DialogHeader>
-            <DialogTitle>Chi tiết đơn hàng</DialogTitle>
-            <DialogDescription>
-              Thông tin chi tiết đơn hàng #{selectedOrder?.order_number}
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedOrder && (
+          <div className="p-6">
             <div className="space-y-6">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b pb-4">
+                <div>
+                  <p className="text-gray-600 mt-1">
+                    Mã đơn: <span className="font-medium">{selectedOrder?.order_number}</span>
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div className={`inline-flex items-center gap-1.5 rounded-full border font-semibold transition-colors text-sm px-2.5 py-1 ${statusConfig[selectedOrder?.status || 'pending']?.color}`}>
+                    <CheckCircle className="w-3 h-3" />
+                    <span>{statusConfig[selectedOrder?.status || 'pending']?.label}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Customer and Quote Info Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Thông tin đơn hàng</CardTitle>
+                {/* Customer Info Card */}
+                <Card className="bg-blue-50 border-blue-200">
+                  <CardHeader className="bg-blue-100 border-b border-blue-200">
+                    <CardTitle className="text-2xl font-semibold text-blue-800 text-center">
+                      THÔNG TIN KHÁCH HÀNG:
+                    </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium">Mã đơn hàng:</label>
-                      <p className="text-sm text-muted-foreground">{selectedOrder.order_number}</p>
+                  <CardContent className="space-y-3 pt-4">
+                    <div className="flex justify-between">
+                      <span className="font-medium">Tên KH:</span>
+                      <span className="font-medium">{selectedOrder?.customers?.name || "Khách lẻ"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">SĐT:</span>
+                      <span className="font-medium">{selectedOrder?.customers?.phone || "Chưa có"}</span>
                     </div>
                     <div>
-                      <label className="text-sm font-medium">Khách hàng:</label>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedOrder.customers?.name || "Khách lẻ"}
-                        {selectedOrder.customers?.customer_code && (
-                          <span className="ml-2 text-xs">({selectedOrder.customers.customer_code})</span>
-                        )}
-                      </p>
+                      <div className="font-medium mb-1">Địa chỉ:</div>
+                      <div className="text-sm">{selectedOrder?.customers?.address || "Chưa có thông tin"}</div>
                     </div>
-                    <div>
-                      <label className="text-sm font-medium">Trạng thái:</label>
-                      <Badge className={`ml-2 ${statusConfig[selectedOrder.status]?.color}`}>
-                        {statusConfig[selectedOrder.status]?.label}
-                      </Badge>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Thanh toán:</label>
-                      <Badge className={`ml-2 ${paymentStatusConfig[selectedOrder.payment_status]?.color}`}>
-                        {paymentStatusConfig[selectedOrder.payment_status]?.label}
-                      </Badge>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Ngày tạo:</label>
-                      <p className="text-sm text-muted-foreground">
-                        {format(new Date(selectedOrder.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
-                      </p>
-                    </div>
-                    {selectedOrder.delivery_date && (
-                      <div>
-                        <label className="text-sm font-medium">Hẹn giao hàng:</label>
-                        <p className="text-sm text-muted-foreground">
-                          {format(new Date(selectedOrder.delivery_date), "dd/MM/yyyy", { locale: vi })}
-                        </p>
-                      </div>
-                    )}
-                    {selectedOrder.payment_date && (
-                      <div>
-                        <label className="text-sm font-medium">Ngày thanh toán:</label>
-                        <p className="text-sm text-muted-foreground">
-                          {format(new Date(selectedOrder.payment_date), "dd/MM/yyyy", { locale: vi })}
-                        </p>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Thông tin tài chính</CardTitle>
+                {/* Quote Info Card */}
+                <Card className="bg-green-50 border-green-200">
+                  <CardHeader className="bg-green-100 border-b border-green-200">
+                    <CardTitle className="text-2xl font-semibold text-green-800 text-center">
+                      THÔNG TIN BÁO GIÁ:
+                    </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="text-center p-4 bg-blue-50 rounded-lg">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {(selectedOrder.total_amount || 0).toLocaleString("vi-VN")}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Tổng tiền (VNĐ)</div>
-                      </div>
-                      <div className="text-center p-4 bg-red-50 rounded-lg">
-                        <div className="text-2xl font-bold text-red-600">
-                          {(selectedOrder.cost_price || 0).toLocaleString("vi-VN")}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Giá vốn (VNĐ)</div>
-                      </div>
+                  <CardContent className="space-y-3 pt-4">
+                    <div className="flex justify-between">
+                      <span className="font-medium">Số báo giá:</span>
+                      <span className="font-medium">{selectedOrder?.quote_number || selectedOrder?.order_number}</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
-                        <div className="text-lg font-bold text-green-600">
-                          {(selectedOrder.profit_before || 0).toLocaleString("vi-VN")}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Lợi nhuận trước</div>
-                      </div>
-                      <div className="text-center p-4 bg-purple-50 rounded-lg">
-                        <div className="text-lg font-bold text-purple-600">
-                          {(selectedOrder.profit_after || 0).toLocaleString("vi-VN")}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Lợi nhuận sau</div>
-                      </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Ngày báo giá:</span>
+                      <span className="font-medium">
+                        {format(new Date(selectedOrder?.created_at || new Date()), "d/M/yyyy")}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Ngày hết hạn:</span>
+                      <span className="font-medium">
+                        {selectedOrder?.expires_at ? 
+                          format(new Date(selectedOrder.expires_at), "d/M/yyyy") : 
+                          format(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), "d/M/yyyy")
+                        }
+                      </span>
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Chi tiết đơn hàng</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {/* Products Table */}
-                  <div className="mb-6">
-                    <h4 className="font-medium mb-3">Sản phẩm</h4>
-                    <div className="border rounded-lg overflow-hidden">
-                      <table className="w-full">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="border-b px-4 py-3 text-left text-sm font-medium">STT</th>
-                            <th className="border-b px-4 py-3 text-left text-sm font-medium">Tên sản phẩm</th>
-                            <th className="border-b px-4 py-3 text-left text-sm font-medium">SKU</th>
-                            <th className="border-b px-4 py-3 text-center text-sm font-medium">Số lượng</th>
-                            <th className="border-b px-4 py-3 text-right text-sm font-medium">Đơn giá</th>
-                            <th className="border-b px-4 py-3 text-right text-sm font-medium">Thành tiền</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(() => {
-                            let itemsToDisplay = selectedOrder.items;
-                            
-                            // Parse JSON string if items is a string
-                            if (typeof selectedOrder.items === 'string') {
-                              try {
-                                itemsToDisplay = JSON.parse(selectedOrder.items);
-                              } catch (error) {
-                                return (
-                                  <tr>
-                                    <td colSpan={6} className="px-4 py-8 text-center text-red-500">
-                                      Lỗi định dạng dữ liệu sản phẩm
-                                    </td>
-                                  </tr>
-                                );
-                              }
-                            }
-                            
-                            if (Array.isArray(itemsToDisplay) && itemsToDisplay.length > 0) {
-                              return itemsToDisplay.map((item: any, index: number) => (
-                                <tr key={index} className="border-b last:border-b-0">
-                                  <td className="px-4 py-3 text-center">{index + 1}</td>
-                                  <td className="px-4 py-3 font-medium">{item.name || `Sản phẩm ${index + 1}`}</td>
-                                  <td className="px-4 py-3 text-sm text-muted-foreground">{item.sku || '-'}</td>
-                                  <td className="px-4 py-3 text-center">{item.quantity || 1}</td>
-                                  <td className="px-4 py-3 text-right">{(item.price || 0).toLocaleString("vi-VN")} VNĐ</td>
-                                  <td className="px-4 py-3 text-right font-medium">
-                                    {((item.quantity || 1) * (item.price || 0)).toLocaleString("vi-VN")} VNĐ
-                                  </td>
-                                </tr>
-                              ));
-                            }
-                            
+              {/* Products Table */}
+              <div className="bg-white border rounded-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-yellow-100 border-b">
+                        <th className="text-center py-3 px-2 font-bold text-sm min-w-[50px]">STT</th>
+                        <th className="text-center py-3 px-3 font-bold text-sm min-w-[150px]">SẢN PHẨM</th>
+                        <th className="text-center py-3 px-2 font-bold text-sm min-w-[100px]">QUY CÁCH (CM)</th>
+                        <th className="text-center py-3 px-2 font-bold text-sm min-w-[100px]">CHẤT LIỆU</th>
+                        <th className="text-center py-3 px-2 font-bold text-sm min-w-[80px]">SỐ LƯỢNG</th>
+                        <th className="text-center py-3 px-2 font-bold text-sm min-w-[100px]">ĐƠN GIÁ</th>
+                        <th className="text-center py-3 px-2 font-bold text-sm min-w-[120px]">THÀNH TIỀN</th>
+                        <th className="text-center py-3 px-2 font-bold text-sm min-w-[80px]">Ghi Chú</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        let itemsToDisplay = selectedOrder?.items;
+                        
+                        if (typeof selectedOrder?.items === 'string') {
+                          try {
+                            itemsToDisplay = JSON.parse(selectedOrder.items);
+                          } catch (error) {
                             return (
                               <tr>
-                                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                                  Không có thông tin sản phẩm
+                                <td colSpan={8} className="px-4 py-8 text-center text-red-500">
+                                  Lỗi định dạng dữ liệu sản phẩm
                                 </td>
                               </tr>
                             );
-                          })()}
-                        </tbody>
-                      </table>
+                          }
+                        }
+                        
+                        if (Array.isArray(itemsToDisplay) && itemsToDisplay.length > 0) {
+                          return itemsToDisplay.map((item: any, index: number) => (
+                            <tr key={index} className="border-b">
+                              <td className="py-3 px-2 text-center font-medium">{index + 1}</td>
+                              <td className="py-3 px-3">
+                                <div className="font-medium text-sm">{item.name || `Sản phẩm ${index + 1}`}</div>
+                              </td>
+                              <td className="py-3 px-2 text-center text-sm">{item.specifications || "Thông số kỹ thuật"}</td>
+                              <td className="py-3 px-2 text-center text-sm">{item.material || "Thép"}</td>
+                              <td className="py-3 px-2 text-center">
+                                <span className="font-medium text-sm">{item.quantity || 1}</span>
+                              </td>
+                              <td className="py-3 px-2 text-right">
+                                <span className="font-medium text-sm">{(item.price || 0).toLocaleString()}đ</span>
+                              </td>
+                              <td className="py-3 px-2 text-right">
+                                <span className="font-bold text-sm text-red-600">
+                                  {((item.quantity || 1) * (item.price || 0)).toLocaleString()}đ
+                                </span>
+                              </td>
+                              <td className="py-3 px-2 text-center text-xs text-gray-500">{item.notes || "-"}</td>
+                            </tr>
+                          ));
+                        }
+                        
+                        return (
+                          <tr>
+                            <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                              Không có thông tin sản phẩm
+                            </td>
+                          </tr>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {/* Total Summary */}
+                <div className="border-t bg-gray-50">
+                  <div className="p-4 space-y-3">
+                    <div className="flex justify-between text-sm font-bold">
+                      <span className="text-red-600">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT</span>
+                      <span className="text-red-600">
+                        {Math.round((selectedOrder?.total_amount || 0) / 1.08).toLocaleString()}đ
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold">
+                      <span className="text-red-600">GTGT (8%)</span>
+                      <span className="text-red-600">
+                        {Math.round((selectedOrder?.total_amount || 0) - (selectedOrder?.total_amount || 0) / 1.08).toLocaleString()}đ
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold">
+                      <span className="text-red-600">TỔNG TIỀN ĐÃ BAO GỒM GTGT</span>
+                      <span className="text-red-600">{(selectedOrder?.total_amount || 0).toLocaleString()}đ</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold">
+                      <span className="text-red-600">THANH TOÁN ĐÃ NHẬN</span>
+                      <span className="text-red-600">
+                        {((selectedOrder?.total_amount || 0) - calculateRemainingAmount(selectedOrder)).toLocaleString()}đ
+                      </span>
+                    </div>
+                    <div className="bg-yellow-100 p-3 rounded">
+                      <div className="flex justify-between text-sm font-bold">
+                        <span className="text-red-600">CÒN LẠI</span>
+                        <span className="text-red-600">
+                          {calculateRemainingAmount(selectedOrder).toLocaleString()}đ
+                        </span>
+                      </div>
                     </div>
                   </div>
+                </div>
+                
+                {/* Terms and Conditions */}
+                <div className="bg-white p-4 border-t text-sm">
+                  <p className="font-medium">1. Báng báo giá áp dụng trong vòng 10 ngày</p>
+                  {selectedOrder?.notes && (
+                    <p className="mt-2">Ghi chú: {selectedOrder.notes}</p>
+                  )}
+                </div>
+              </div>
 
-                  {/* Financial Summary */}
-                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-medium text-center">Tổng kết tài chính</h4>
-                      <Button 
-                        onClick={() => setOrderToPayment(selectedOrder)}
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                      >
-                        <CreditCard className="h-4 w-4" />
-                        Thêm thanh toán
-                      </Button>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center py-2 border-b border-red-200">
-                        <span className="font-medium">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
-                        <span className="font-bold text-lg">
-                          {(selectedOrder.total_amount || 0).toLocaleString("vi-VN")} VNĐ
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b border-red-200">
-                        <span className="font-medium">GTGT (0%):</span>
-                        <span className="font-bold text-lg">0 VNĐ</span>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b border-red-200">
-                        <span className="font-medium">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
-                        <span className="font-bold text-lg text-red-600">
-                          {(selectedOrder.total_amount || 0).toLocaleString("vi-VN")} VNĐ
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b border-red-200">
-                        <span className="font-medium">THANH TOÁN ĐÃ NHẬN:</span>
-                        <span className="font-bold text-lg text-green-600">
-                          {((selectedOrder.total_amount || 0) - calculateRemainingAmount(selectedOrder)).toLocaleString("vi-VN")} VNĐ
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center py-2">
-                        <span className="font-medium">CÒN LẠI:</span>
-                        <span className="font-bold text-lg text-purple-600">
-                          {calculateRemainingAmount(selectedOrder).toLocaleString("vi-VN")} VNĐ
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {selectedOrder.notes && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Ghi chú</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">{selectedOrder.notes}</p>
-                  </CardContent>
-                </Card>
-              )}
+              {/* Action Buttons */}
+              <div className="flex justify-end space-x-2 pt-4 border-t">
+                <Button 
+                  onClick={() => setOrderToPayment(selectedOrder)}
+                  variant="default"
+                  className="gap-2"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Thêm thanh toán
+                </Button>
+                <Button 
+                  onClick={() => setSelectedOrder(null)}
+                  variant="outline"
+                >
+                  Đóng
+                </Button>
+              </div>
             </div>
-          )}
+          </div>
         </DialogContent>
       </Dialog>
 
