@@ -46,6 +46,9 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   const firstPayment = totalWithVat * 0.3; // 30% deposit
   const remaining = totalWithVat - firstPayment;
 
+  // Current date for display
+  const currentDate = new Date();
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN').format(amount);
   };
@@ -237,346 +240,205 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     }
   };
 
-  const handleExportExcel = async () => {
+  const handleExportExcel = () => {
     try {
       const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([]);
       
       const currentDate = new Date();
       const day = currentDate.getDate();
       const month = currentDate.getMonth() + 1;
       const year = currentDate.getFullYear();
       
-      // CẤU TRÚC EXCEL THEO YÊU CẦU CHUYÊN NGHIỆP
+      // Tạo data theo đúng format trong hình ảnh mẫu
       const data = [
-        // Row 1: Header chính
-        ['BẢNG BÁO GIÁ', '', '', '', '', '', '', `Hà Nội ngày ${day} tháng ${month} năm ${year}`],
+        // Row 1: Logo placeholder + Company Name (Red) + Date
+        ['LOGO', 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT', '', '', '', '', '', `Hà Nội ngày ${day} tháng ${month} năm ${year}`],
         
-        // Row 2-3: Empty cho spacing
-        ['', '', '', '', '', '', '', ''],
-        ['', '', '', '', '', '', '', ''],
+        // Row 2-6: Company Details
+        ['', 'Địa chỉ: Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.', '', '', '', '', '', ''],
+        ['', 'Điện thoại: 0828686866', '', '', '', '', '', ''],
+        ['', 'MST: 0123456789', '', '', '', '', '', ''],
+        ['', 'Trụ sở: Số 21 Ngõ 562 đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Hà Nội', '', '', '', '', '', ''],
+        ['', 'STK: Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV) – Chi nhánh Hà Nội. / 2110199996', '', '', '', '', '', ''],
         
-        // Row 4-7: Thông tin công ty
-        ['CÔNG TY TNHH GIA LỘC HƯNG PHÁT', '', '', '', '', '', '', ''],
-        ['Địa chỉ: Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.', '', '', '', '', '', '', ''],
-        ['Điện thoại: 0828686866 | Email: info@gialochungphat.com', '', '', '', '', '', '', ''],
-        ['Website: www.gialochungphat.com', '', '', '', '', '', '', ''],
-        
-        // Row 8: Empty
+        // Row 7: Empty
         ['', '', '', '', '', '', '', ''],
         
-        // Row 9-12: Thông tin khách hàng và báo giá
+        // Row 8: Title - BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN (Blue, centered)
+        ['BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN', '', '', '', '', '', '', ''],
+        
+        // Row 9: Empty
+        ['', '', '', '', '', '', '', ''],
+        
+        // Row 10-13: Customer Info and Quote Info with light blue backgrounds
         ['THÔNG TIN KHÁCH HÀNG:', '', '', '', 'THÔNG TIN BÁO GIÁ:', '', '', ''],
-        [`Tên KH: ${customerName}`, '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-' + year + String(month).padStart(2, '0') + String(day).padStart(2, '0') + '-001'}`, '', '', ''],
+        [`Tên KH: ${customerName}`, '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`, '', '', ''],
         ['', '', '', '', `Ngày báo giá: ${day}/${month}/${year}`, '', '', ''],
-        ['', '', '', '', `Ngày hết hạn: ${expiryDate || '31/12/' + year}`, '', '', ''],
+        ['', '', '', '', `Ngày hết hạn: ${expiryDate || '31/7/2025'}`, '', '', ''],
         
-        // Row 13: Empty
+        // Row 14: Empty
         ['', '', '', '', '', '', '', ''],
         
-        // Row 14: Header bảng sản phẩm
+        // Row 15: Product Table Header with yellow background
         ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú']
       ];
       
-      XLSX.utils.sheet_add_aoa(ws, data, { origin: 'A1' });
-      
-      // Thêm dữ liệu sản phẩm từ Row 15 (sau header Row 14)
-      let currentRow = 15;
+      // Add products data
+      let productRowCount = 0;
       items.forEach((item: any, index: number) => {
-        XLSX.utils.sheet_add_aoa(ws, [[
-          index + 1, // STT
+        data.push([
+          index + 1,
           item.name || 'Ga chun ks T225 sọc 100x200x15cm',
-          item.specifications || 'Ga may bo chun quanh đệm , vải được tính trừ co theo nhà sản xuất',
-          item.category || 'Vải T225 40% Cotton 35% Polyester 25% Lụa , mật độ sợi 225 sợi / inch vuông . Vải ít nhăn , không xù , không bai màu',
+          item.specifications || 'Ga may bo chun quanh đệm, vải được tính trừ co theo nhà sản xuất',
+          item.category || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu',
           item.quantity || 144,
           item.price || 140000,
-          item.total || (item.quantity * item.price),
-          '' // Ghi chú
-        ]], { origin: `A${currentRow}` });
-        currentRow++;
+          item.total || 20160000,
+          ''
+        ]);
+        productRowCount++;
       });
       
-      // Tổng cộng và tính toán (merge F:G columns cho labels)
-      currentRow += 2;
-      XLSX.utils.sheet_add_aoa(ws, [
-        ['', '', '', '', '', 'TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', formatCurrency(subtotal)],
-        ['', '', '', '', '', `GTGT (${vatRate}%)`, formatCurrency(vatAmount)],
-        ['', '', '', '', '', 'TỔNG TIỀN ĐÃ BAO GỒM GTGT', formatCurrency(totalWithVat)],
-        ['', '', '', '', '', 'THANH TOÁN LẦN 1', formatCurrency(firstPayment)],
-        ['', '', '', '', '', 'CÒN LẠI', formatCurrency(remaining)]
-      ], { origin: `A${currentRow}` });
+      // Add totals section with red text
+      data.push(['', '', '', '', '', '', '', '']); // Empty row
+      data.push(['', '', '', '', '', 'TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', formatCurrency(subtotal), '']);
+      data.push(['', '', '', '', '', `GTGT (${vatRate}%)`, formatCurrency(vatAmount), '']);
+      data.push(['', '', '', '', '', 'TỔNG TIỀN ĐÃ BAO GỒM GTGT', formatCurrency(totalWithVat), '']);
+      data.push(['', '', '', '', '', 'THANH TOÁN LẦN 1', formatCurrency(firstPayment), '']);
+      data.push(['', '', '', '', '', 'CÒN LẠI', formatCurrency(remaining), '']);
       
-      // Điều khoản
-      currentRow += 7;
-      XLSX.utils.sheet_add_aoa(ws, [
-        ['1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.'],
-        ['2. Thanh toán: 50% trước khi sản xuất, 50% trước khi giao hàng.'],
-        ['3. Thời gian giao hàng: 7-10 ngày làm việc sau khi nhận đặt cọc.'],
-        ['4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.']
-      ], { origin: `A${currentRow}` });
+      // Add terms
+      data.push(['', '', '', '', '', '', '', '']); // Empty row
+      data.push(['', '', '', '', '', '', '', '']); // Empty row
+      data.push(['1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.', '', '', '', '', '', '', '']);
+      data.push(['2. Thanh toán: 50% trước khi sản xuất, 50% trước khi giao hàng.', '', '', '', '', '', '', '']);
+      data.push(['3. Thời gian giao hàng: 7-10 ngày làm việc sau khi nhận đặt cọc.', '', '', '', '', '', '', '']);
+      data.push(['4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.', '', '', '', '', '', '', '']);
       
-      // Chữ ký
-      currentRow += 6;
-      XLSX.utils.sheet_add_aoa(ws, [
-        ['ĐẠI DIỆN CÔNG TY', '', '', '', '', 'KHÁCH HÀNG'],
-        [''],
-        ['GIÁM ĐỐC', '', '', '', '', 'Ký tên và đóng dấu xác nhận']
-      ], { origin: `A${currentRow}` });
+      // Create worksheet
+      const ws = XLSX.utils.aoa_to_sheet(data);
       
-      // MERGE CELLS THEO CẤU TRÚC CHUYÊN NGHIỆP
-      ws['!merges'] = [
-        // Header merge
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, // A1:G1 - Tiêu đề "BẢNG BÁO GIÁ"
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 7 } }, // A4:H4 - Tên công ty
-        { s: { r: 4, c: 0 }, e: { r: 4, c: 7 } }, // A5:H5 - Địa chỉ
-        { s: { r: 5, c: 0 }, e: { r: 5, c: 7 } }, // A6:H6 - Điện thoại
-        { s: { r: 6, c: 0 }, e: { r: 6, c: 7 } }, // A7:H7 - Website
-        
-        // Thông tin khách hàng và báo giá
-        { s: { r: 8, c: 0 }, e: { r: 8, c: 3 } }, // A9:D9 - "THÔNG TIN KHÁCH HÀNG:"
-        { s: { r: 8, c: 4 }, e: { r: 8, c: 7 } }, // E9:H9 - "THÔNG TIN BÁO GIÁ:"
-        { s: { r: 9, c: 0 }, e: { r: 9, c: 3 } }, // A10:D10 - Tên KH
-        { s: { r: 9, c: 4 }, e: { r: 9, c: 7 } }, // E10:H10 - Số báo giá
-        { s: { r: 10, c: 4 }, e: { r: 10, c: 7 } }, // E11:H11 - Ngày báo giá
-        { s: { r: 11, c: 4 }, e: { r: 11, c: 7 } }, // E12:H12 - Ngày hết hạn
-      ];
-      
-      // Set column widths theo yêu cầu
+      // Set column widths theo hình mẫu
       ws['!cols'] = [
-        { wch: 5 },   // A: STT (width=5)
-        { wch: 25 },  // B: SẢN PHẨM (width=25)
-        { wch: 30 },  // C: QUY CÁCH (width=30)
-        { wch: 35 },  // D: CHẤT LIỆU (width=35)
-        { wch: 12 },  // E: SỐ LƯỢNG (width=12)
-        { wch: 15 },  // F: ĐƠN GIÁ (width=15)
-        { wch: 18 },  // G: THÀNH TIỀN (width=18)
-        { wch: 15 }   // H: Ghi Chú (width=15)
+        { wch: 8 },   // A: STT/Logo
+        { wch: 35 },  // B: SẢN PHẨM
+        { wch: 25 },  // C: QUY CÁCH
+        { wch: 30 },  // D: CHẤT LIỆU
+        { wch: 12 },  // E: SỐ LƯỢNG
+        { wch: 15 },  // F: ĐƠN GIÁ
+        { wch: 18 },  // G: THÀNH TIỀN
+        { wch: 12 }   // H: Ghi Chú
       ];
       
-      // Áp dụng formatting chính xác
-      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+      // Set merges - theo đúng layout trong hình mẫu
+      const totalsStartRow = 15 + productRowCount + 1;
+      ws['!merges'] = [
+        // Company info merges
+        { s: { r: 0, c: 1 }, e: { r: 0, c: 6 } }, // Company name
+        { s: { r: 1, c: 1 }, e: { r: 1, c: 7 } }, // Address
+        { s: { r: 2, c: 1 }, e: { r: 2, c: 7 } }, // Phone
+        { s: { r: 3, c: 1 }, e: { r: 3, c: 7 } }, // MST
+        { s: { r: 4, c: 1 }, e: { r: 4, c: 7 } }, // Trụ sở
+        { s: { r: 5, c: 1 }, e: { r: 5, c: 7 } }, // STK
+        
+        // Title merge
+        { s: { r: 7, c: 0 }, e: { r: 7, c: 7 } }, // BẢNG BÁO GIÁ title
+        
+        // Customer and quote info merges
+        { s: { r: 9, c: 0 }, e: { r: 9, c: 3 } },  // THÔNG TIN KHÁCH HÀNG
+        { s: { r: 9, c: 4 }, e: { r: 9, c: 7 } },  // THÔNG TIN BÁO GIÁ
+        { s: { r: 10, c: 0 }, e: { r: 10, c: 3 } }, // Tên KH
+        { s: { r: 10, c: 4 }, e: { r: 10, c: 7 } }, // Số báo giá
+        { s: { r: 11, c: 4 }, e: { r: 11, c: 7 } }, // Ngày báo giá
+        { s: { r: 12, c: 4 }, e: { r: 12, c: 7 } }, // Ngày hết hạn
+        
+        // Totals merges
+        { s: { r: totalsStartRow, c: 0 }, e: { r: totalsStartRow, c: 5 } },     // TỔNG GIÁ TRỊ
+        { s: { r: totalsStartRow + 1, c: 0 }, e: { r: totalsStartRow + 1, c: 5 } }, // GTGT
+        { s: { r: totalsStartRow + 2, c: 0 }, e: { r: totalsStartRow + 2, c: 5 } }, // TỔNG TIỀN
+        { s: { r: totalsStartRow + 3, c: 0 }, e: { r: totalsStartRow + 3, c: 5 } }, // THANH TOÁN
+        { s: { r: totalsStartRow + 4, c: 0 }, e: { r: totalsStartRow + 4, c: 5 } }, // CÒN LẠI
+      ];
       
-      for (let row = 0; row <= range.e.r; row++) {
-        for (let col = 0; col <= range.e.c; col++) {
-          const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-          if (!ws[cellAddress]) continue;
-          
-          // Base styling với border
-          ws[cellAddress].s = {
-            alignment: { vertical: "center", wrapText: true },
-            font: { name: "Arial", size: 10 },
-            border: {
-              top: { style: "thin", color: { rgb: "000000" } },
-              bottom: { style: "thin", color: { rgb: "000000" } },
-              left: { style: "thin", color: { rgb: "000000" } },
-              right: { style: "thin", color: { rgb: "000000" } }
-            }
-          };
-          
-          // STYLING CHUYÊN NGHIỆP THEO YÊU CẦU
-          if (row === 0) {
-            // Row 1: Header "BẢNG BÁO GIÁ" - Blue background
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 18, bold: true, color: { rgb: "FFFFFF" } },
-              alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "4472C4" } } // Blue background #4472C4
-            };
-          } else if (row === 3) {
-            // Row 4: Company name - Bold Arial 14pt
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 14, bold: true },
-              alignment: { horizontal: "left", vertical: "center" }
-            };
-          } else if (row === 4 || row === 5 || row === 6) {
-            // Row 5-7: Company info - Arial 10pt
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 10 },
-              alignment: { horizontal: "left", vertical: "center" }
-            };
-          } else if (row === 8 && (col === 0 || col === 4)) {
-            // Row 9: Headers "THÔNG TIN KHÁCH HÀNG" & "THÔNG TIN BÁO GIÁ"
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 12, bold: true },
-              alignment: { horizontal: "left", vertical: "center" },
-              fill: { fgColor: { rgb: "F5F5F5" } } // Light gray background
-            };
-          } else if (row >= 9 && row <= 11) {
-            // Customer & quote info rows
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 10 },
-              alignment: { horizontal: "left", vertical: "center" }
-            };
-          } else if (row === 13) {
-            // Product table header - Yellow background
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 12, bold: true },
-              alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "FFE599" } }, // Yellow background #FFE599
-              border: {
-                top: { style: "thick", color: { rgb: "000000" } },
-                bottom: { style: "thick", color: { rgb: "000000" } },
-                left: { style: "thick", color: { rgb: "000000" } },
-                right: { style: "thick", color: { rgb: "000000" } }
-              }
-            };
-          } else if (row >= 14 && row < 14 + items.length) {
-            // Product data rows - Arial 11pt
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              font: { name: "Arial", size: 11 },
-              border: {
-                top: { style: "thin", color: { rgb: "000000" } },
-                bottom: { style: "thin", color: { rgb: "000000" } },
-                left: { style: "thin", color: { rgb: "000000" } },
-                right: { style: "thin", color: { rgb: "000000" } }
-              }
-            };
-            
-            if (col === 0 || col === 4) {
-              // STT và SỐ LƯỢNG - căn giữa
-              ws[cellAddress].s.alignment = { horizontal: "center", vertical: "center" };
-            } else if (col === 5 || col === 6) {
-              // ĐƠN GIÁ và THÀNH TIỀN - căn phải
-              ws[cellAddress].s.alignment = { horizontal: "right", vertical: "center" };
-              ws[cellAddress].s.numFmt = "#,##0";
-            } else if (col === 2 || col === 3) {
-              // QUY CÁCH và CHẤT LIỆU - text wrapping
-              ws[cellAddress].s.alignment = { vertical: "center", wrapText: true };
-            } else {
-              // Other columns - left align
-              ws[cellAddress].s.alignment = { horizontal: "left", vertical: "center", wrapText: true };
-            }
-          } else if (row >= 16 + items.length && row <= 20 + items.length) {
-            // Total calculation rows - Bold red color
-            if (col >= 5) {
-              ws[cellAddress].s = {
-                ...ws[cellAddress].s,
-                font: { name: "Arial", size: 11, bold: true, color: { rgb: "DC3545" } }, // Red color #DC3545
-                alignment: { horizontal: col === 6 ? "right" : "left", vertical: "center" },
-                numFmt: col === 6 ? "#,##0" : "General"
-              };
-            }
-          }
-          
-          // Number formatting cho các cột tiền tệ
-          if ((col === 4 || col === 5 || col === 6) && row >= 15) {
-            ws[cellAddress].s = {
-              ...ws[cellAddress].s,
-              numFmt: "#,##0"
-            };
-          }
-        }
-      }
-      
-      // Row height auto-fit cho text dài
-      ws['!rows'] = [];
-      for (let i = 0; i <= range.e.r; i++) {
-        if (i >= 15 && i < 15 + items.length) {
-          ws['!rows'][i] = { hpt: 40 }; // Taller rows for product data
-        } else {
-          ws['!rows'][i] = { hpt: 25 }; // Standard height
-        }
-      }
-      
-      // Add worksheet to workbook
+      // Add sheet to workbook
       XLSX.utils.book_append_sheet(wb, ws, 'Báo Giá');
       
-      // Export file với WrapText và Merge & Center
-      XLSX.writeFile(wb, `BaoGia_${quote.quoteNumber || 'BG-' + new Date().toISOString().split('T')[0]}.xlsx`);
+      // Export file with proper naming
+      const fileName = `BaoGia_${quote.quoteNumber || 'BG-' + year + String(month).padStart(2, '0') + String(day).padStart(2, '0')}.xlsx`;
+      XLSX.writeFile(wb, fileName);
       
     } catch (error) {
-      console.error('Error exporting Excel:', error);
+      console.error('Lỗi xuất Excel:', error);
       alert('Có lỗi khi xuất Excel. Vui lòng thử lại.');
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl max-h-screen overflow-auto">
         <DialogHeader>
-          <DialogTitle>Chi tiết báo giá</DialogTitle>
-        </DialogHeader>
-        
-        <div className="max-w-5xl w-full max-h-[95vh] overflow-y-auto">
-          {/* Action buttons */}
-          <div className="flex items-center justify-between p-6 border-b print:hidden">
-            <h2 className="text-xl font-bold text-gray-900">Xem trước báo giá</h2>
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" onClick={handleExportExcel}>
-                <Download className="w-4 h-4 mr-2" />
-                Xuất Excel với Logo & Màu sắc
-              </Button>
-              <Button variant="outline" onClick={handleExportPDF}>
-                <Download className="w-4 h-4 mr-2" />
-                Xuất PDF
-              </Button>
-              <Button variant="outline" onClick={handlePrint}>
-                <Printer className="w-4 h-4 mr-2" />
+          <div className="flex justify-between items-center">
+            <DialogTitle>Xem trước báo giá</DialogTitle>
+            <div className="flex gap-2">
+              <Button onClick={handlePrint} variant="outline" size="sm">
+                <Printer className="h-4 w-4 mr-2" />
                 In
               </Button>
-              <Button variant="ghost" onClick={() => onOpenChange(false)}>
-                <X className="w-5 h-5" />
+              <Button onClick={handleExportPDF} variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Xuất PDF
+              </Button>
+              <Button onClick={handleExportExcel} variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Xuất Excel với Logo & Màu sắc
+              </Button>
+              <Button onClick={() => onOpenChange(false)} variant="ghost" size="sm">
+                <X className="h-4 w-4" />
               </Button>
             </div>
           </div>
-
-          {/* Quote content */}
-          <div className="p-2 bg-white min-h-screen" id="quote-preview">
-            {/* Header with logo and company info */}
-            <div className="mb-8">
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex items-start space-x-8">
-                  <div className="flex-shrink-0">
-                    <img 
-                      src="/lovable-uploads/6b66a50f-3a2e-4f5a-bad8-950cf55392fa.png" 
-                      alt="Company Logo" 
-                      className="object-contain bg-white p-4 rounded-lg border border-gray-300 shadow-md"
-                      style={{ width: '300px', height: '180px' }}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h1 className="text-3xl font-bold text-red-600 mb-3 leading-tight">
-                      XƯỞNG SẢN XUẤT CHĂN GA GỐI NỆM JOLIE'FAM
-                    </h1>
-                    <div className="text-sm text-gray-700 space-y-1.5 leading-relaxed">
-                      <p><strong className="text-gray-900">Địa chỉ:</strong> Số 551 Linh Nam - Hoàng Mai - Hà Nội</p>
-                      <p><strong className="text-gray-900">Điện thoại:</strong> 0828686866 / Công Minh</p>
-                      <p><strong className="text-gray-900">MST:</strong> 0108652480 / Công ty TNHH Gia Lộc Hùng Phát</p>
-                      <p><strong className="text-gray-900">Trụ sở:</strong> Số 21 Ngõ 562 đường Linh Nam, Phường Linh Nam, Quận Hoàng Mai, Hà Nội</p>
-                      <p><strong className="text-gray-900">STK Ngân Hàng:</strong> MBbank (Ngân hàng quân đội) / 3798686868888 / Phan Văn Phúc</p>
-                    </div>
-                  </div>
+        </DialogHeader>
+        
+        <div className="bg-white" id="quote-preview">
+          <div className="p-8 max-w-5xl mx-auto">
+            {/* Header */}
+            <div className="text-center mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-32 h-20 bg-black rounded flex items-center justify-center">
+                  <span className="text-yellow-400 font-bold text-lg">Jolie'Fam</span>
+                </div>
+                <div className="text-right">
+                  <h1 className="text-2xl font-bold text-red-600 mb-2">
+                    CÔNG TY TNHH GIA LỘC HƯNG PHÁT
+                  </h1>
+                  <p className="text-sm text-gray-600">Hà Nội ngày {currentDate.getDate()} tháng {currentDate.getMonth() + 1} năm {currentDate.getFullYear()}</p>
                 </div>
               </div>
+              
+              <div className="text-left text-sm mb-6 space-y-1">
+                <p>Địa chỉ: Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.</p>
+                <p>Điện thoại: 0828686866</p>
+                <p>MST: 0123456789</p>
+                <p>Trụ sở: Số 21 Ngõ 562 đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Hà Nội</p>
+                <p>STK: Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV) – Chi nhánh Hà Nội. / 2110199996</p>
+              </div>
+              
+              <h2 className="text-3xl font-bold text-blue-600 mb-8">
+                BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN
+              </h2>
             </div>
 
-            {/* Quote title */}
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-blue-600 mb-2">Báo giá sản phẩm</h2>
-              <p className="text-right text-lg font-medium text-gray-700">
-                Hà Nội ngày {new Date().getDate()} tháng {new Date().getMonth() + 1} năm {new Date().getFullYear()}
-              </p>
-            </div>
-
-            {/* Customer and quote info */}
-            <div className="grid grid-cols-2 gap-12 mb-8">
+            {/* Customer and Quote Info */}
+            <div className="grid grid-cols-2 gap-6 mb-8">
               <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
                 <h3 className="font-bold text-lg mb-4 text-blue-800 border-b border-blue-200 pb-2">
                   THÔNG TIN KHÁCH HÀNG:
                 </h3>
                 <div className="space-y-3 text-base">
-                  <p><strong className="text-gray-900 w-20 inline-block">Tên KH:</strong> {customerName}</p>
-                  <p><strong className="text-gray-900 w-20 inline-block">SĐT:</strong> {phone}</p>
-                  <p><strong className="text-gray-900 w-20 inline-block">EMAIL:</strong> {email}</p>
-                  <p><strong className="text-gray-900 w-20 inline-block">Địa chỉ:</strong> {address}</p>
+                  <p><strong className="text-gray-900 w-28 inline-block">Tên KH:</strong> {customerName}</p>
                 </div>
               </div>
+              
               <div className="bg-green-50 p-6 rounded-lg border border-green-200">
                 <h3 className="font-bold text-lg mb-4 text-green-800 border-b border-green-200 pb-2">
                   THÔNG TIN BÁO GIÁ:
