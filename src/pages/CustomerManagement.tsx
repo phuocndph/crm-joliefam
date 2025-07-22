@@ -241,7 +241,7 @@ export default function CustomerManagement() {
     try {
       setLoading(true);
       
-      // Load customers, orders và quotes để tính toán tổng hợp
+      // Load customers và orders để tính toán tổng hợp
       const [customersResult, ordersResult, quotesResult] = await Promise.all([
         supabase
           .from('customers')
@@ -250,7 +250,7 @@ export default function CustomerManagement() {
         supabase
           .from('orders')
           .select('customer_id, total_amount, status, created_at, payment_date')
-          .eq('status', 'delivered'),
+          .neq('status', 'cancelled'),
         supabase
           .from('quotes')
           .select('id, quote_number, total_amount, status, created_at, notes')
@@ -260,6 +260,9 @@ export default function CustomerManagement() {
       if (customersResult.error) throw customersResult.error;
       if (ordersResult.error) throw ordersResult.error;
       if (quotesResult.error) throw quotesResult.error;
+      
+      console.log('Orders data:', ordersResult.data); // Debug log
+      console.log('Customers data:', customersResult.data); // Debug log
       
       // Calculate order statistics for each customer
       const ordersByCustomer = (ordersResult.data || []).reduce((acc, order) => {
@@ -282,6 +285,8 @@ export default function CustomerManagement() {
         return acc;
       }, {} as Record<string, { count: number; totalSpent: number; lastPurchase: string | null }>);
       
+      console.log('Orders by customer:', ordersByCustomer); // Debug log
+      
       // Parse JSON fields and ensure proper structure
       const formattedCustomers = customersResult.data?.map(customer => {
         const phonesParsed = Array.isArray(customer.phones) ? customer.phones as unknown as CustomerPhone[] : [];
@@ -299,17 +304,30 @@ export default function CustomerManagement() {
           return customerMatch && customerMatch[1].trim().toLowerCase() === customer.name.toLowerCase();
         }) || [];
         
-        return {
+        // Update customer with calculated stats
+        const updatedCustomer = {
           ...customer,
           phones: phonesParsed,
           addresses: addressesParsed,
           tags: tagsParsed,
           auto_tags: autoTagsParsed,
-          purchase_count: orderStats.count,
-          total_spent: orderStats.totalSpent,
-          last_purchase_date: orderStats.lastPurchase,
+          purchase_count: Math.max(orderStats.count, customer.purchase_count || 0),
+          total_spent: Math.max(orderStats.totalSpent, customer.total_spent || 0),
+          last_purchase_date: orderStats.lastPurchase || customer.last_purchase_date,
           quote_count: customerQuotes.length,
         } as Customer;
+        
+        console.log(`Customer ${customer.name}:`, {
+          id: customer.id,
+          orderStats,
+          finalStats: {
+            purchase_count: updatedCustomer.purchase_count,
+            total_spent: updatedCustomer.total_spent,
+            last_purchase_date: updatedCustomer.last_purchase_date
+          }
+        }); // Debug log
+        
+        return updatedCustomer;
       }) || [];
       
       setCustomers(formattedCustomers);
