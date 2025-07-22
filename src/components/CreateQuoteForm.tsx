@@ -100,9 +100,10 @@ interface PriceList {
 interface CreateQuoteFormProps {
   onClose?: () => void;
   onSubmit?: () => void;
+  initialData?: any;
 }
 
-export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
+export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteFormProps) {
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -114,16 +115,16 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
   const form = useForm<QuoteFormData>({
     resolver: zodResolver(quoteFormSchema),
     defaultValues: {
-      title: "BẢNG BÁO GIÁ",
-      quoteNumber: `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
-      quoteDate: new Date(),
-      expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      customerName: "",
-      phone: "",
-      email: "",
-      address: "",
+      title: initialData?.title || "BẢNG BÁO GIÁ",
+      quoteNumber: initialData?.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
+      quoteDate: initialData?.created_at ? new Date(initialData.created_at) : new Date(),
+      expiryDate: initialData?.expiryDate ? new Date(initialData.expiryDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      customerName: initialData?.customerName || "",
+      phone: initialData?.customerPhone || "",
+      email: initialData?.customerEmail || "",
+      address: initialData?.customerAddress || "",
       priceList: "",
-      responsible: "",
+      responsible: initialData?.responsible || "",
       includeVAT: false,
       vatRate: 8,
       payment1: 0,
@@ -134,7 +135,19 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
   // Load price lists and products
   useEffect(() => {
     loadPriceLists();
-  }, []);
+    
+    // Load existing data if editing
+    if (initialData) {
+      try {
+        const items = typeof initialData.items === 'string' 
+          ? JSON.parse(initialData.items) 
+          : initialData.items || [];
+        setSelectedProducts(items);
+      } catch (error) {
+        console.error('Error parsing initial items:', error);
+      }
+    }
+  }, [initialData]);
 
   useEffect(() => {
     const selectedPriceList = form.watch("priceList");
@@ -259,16 +272,32 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
         manager_id: user?.id ? user.id.toString() : null,
       };
 
-      const { error } = await supabase
-        .from("quotes")
-        .insert([quoteData]);
+      if (initialData) {
+        // Update existing quote
+        const { error } = await supabase
+          .from("quotes")
+          .update(quoteData)
+          .eq('id', initialData.id);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      toast({
-        title: "Thành công",
-        description: "Báo giá đã được tạo thành công",
-      });
+        toast({
+          title: "Thành công",
+          description: "Báo giá đã được cập nhật thành công",
+        });
+      } else {
+        // Create new quote
+        const { error } = await supabase
+          .from("quotes")
+          .insert([quoteData]);
+
+        if (error) throw error;
+
+        toast({
+          title: "Thành công",
+          description: "Báo giá đã được tạo thành công",
+        });
+      }
 
       onSubmit?.();
     } catch (error) {
@@ -295,7 +324,9 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
       <div className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold text-foreground">Tạo báo giá mới</h1>
+            <h1 className="text-xl font-semibold text-foreground">
+              {initialData ? 'Chỉnh sửa báo giá' : 'Tạo báo giá mới'}
+            </h1>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
@@ -773,8 +804,8 @@ export function CreateQuoteForm({ onClose, onSubmit }: CreateQuoteFormProps) {
               <Button type="button" variant="outline" onClick={onClose}>
                 Hủy
               </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
-                Tạo báo giá
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isLoading}>
+                {initialData ? 'Cập nhật báo giá' : 'Tạo báo giá'}
               </Button>
             </div>
           </form>

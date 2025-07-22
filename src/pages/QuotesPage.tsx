@@ -64,6 +64,7 @@ export default function QuotesPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
+  const [editingQuote, setEditingQuote] = useState<any>(null);
   const [quotes, setQuotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -150,6 +151,15 @@ export default function QuotesPage() {
     toast({
       title: "Thành công",
       description: "Báo giá đã được tạo thành công",
+    });
+  };
+
+  const handleEditQuote = () => {
+    setEditingQuote(null);
+    loadQuotes();
+    toast({
+      title: "Thành công",
+      description: "Báo giá đã được cập nhật thành công",
     });
   };
 
@@ -451,7 +461,9 @@ export default function QuotesPage() {
                                 Từ chối
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setEditingQuote(quote)}
+                            >
                               <Edit className="mr-2 h-4 w-4" />
                               Sửa
                             </DropdownMenuItem>
@@ -480,6 +492,17 @@ export default function QuotesPage() {
           <CreateQuoteForm 
             onClose={() => setShowCreateForm(false)}
             onSubmit={handleCreateQuote}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Quote Dialog */}
+      <Dialog open={!!editingQuote} onOpenChange={(open) => !open && setEditingQuote(null)}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto p-0">
+          <CreateQuoteForm 
+            onClose={() => setEditingQuote(null)}
+            onSubmit={handleEditQuote}
+            initialData={editingQuote}
           />
         </DialogContent>
       </Dialog>
