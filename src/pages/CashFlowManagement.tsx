@@ -181,6 +181,7 @@ export default function CashFlowManagement() {
           cost_price,
           profit_before,
           profit_after,
+          status,
           created_at,
           customers(name)
         `)
@@ -190,6 +191,13 @@ export default function CashFlowManagement() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+      
+      console.log('Loaded orders:', {
+        count: data?.length || 0,
+        dateRange,
+        sampleOrders: data?.slice(0, 2) || []
+      });
+      
       setOrders(data || []);
     } catch (error) {
       console.error('Error loading orders:', error);
@@ -202,14 +210,32 @@ export default function CashFlowManagement() {
   }, [getDateRange, toast]);
 
   const calculateCashFlowStats = useCallback(() => {
-    const totalRevenue = orders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-    const totalCostPrice = orders.reduce((sum, order) => sum + (Number(order.cost_price) || 0), 0);
+    // Tính từ đơn hàng đã giao (delivered orders)
+    const deliveredOrders = orders.filter(order => order.total_amount && order.cost_price);
+    
+    const totalRevenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+    const totalCostPrice = deliveredOrders.reduce((sum, order) => sum + (Number(order.cost_price) || 0), 0);
     const totalExpenses = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
     
+    // Công thức tính lợi nhuận theo yêu cầu:
+    // Lợi nhuận trước = Doanh thu - Chi phí giá gốc (cost_price)
     const profitBefore = totalRevenue - totalCostPrice;
-    const profitAfter = profitBefore - totalExpenses;
-    const otherIncome = 0; // Placeholder for other income sources
+    
+    // Lợi nhuận sau = Doanh thu - Chi phí giá gốc (cost_price) - Chi phí
+    const profitAfter = totalRevenue - totalCostPrice - totalExpenses;
+    
+    const otherIncome = 0; // Thu nhập khác
     const netCashFlow = profitAfter + otherIncome;
+
+    console.log('Cash Flow Stats Calculation:', {
+      deliveredOrdersCount: deliveredOrders.length,
+      totalRevenue,
+      totalCostPrice,
+      totalExpenses,
+      profitBefore,
+      profitAfter,
+      netCashFlow
+    });
 
     setCashFlowStats({
       totalRevenue,
@@ -223,21 +249,48 @@ export default function CashFlowManagement() {
   }, [orders, expenses]);
 
   const calculateOrderProfits = useCallback(() => {
-    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
-    const orderCount = orders.length || 1;
+    // Chỉ hiển thị đơn hàng đã giao và có đầy đủ dữ liệu
+    const deliveredOrders = orders.filter(order => 
+      order.total_amount && 
+      order.cost_price &&
+      order.total_amount > 0 &&
+      order.cost_price > 0
+    );
+
+    const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+    const orderCount = deliveredOrders.length || 1;
     const allocatedExpensePerOrder = totalExpenses / orderCount;
 
-    const orderProfitDetails: OrderProfitDetail[] = orders.map(order => ({
-      id: order.id,
-      order_number: order.order_number,
-      customer_name: order.customers?.name || "Khách hàng",
-      date: order.created_at,
-      total_amount: order.total_amount || 0,
-      cost_price: order.cost_price || 0,
-      profit_before: (order.total_amount || 0) - (order.cost_price || 0),
-      allocated_expenses: allocatedExpensePerOrder,
-      profit_after: (order.total_amount || 0) - (order.cost_price || 0) - allocatedExpensePerOrder
-    }));
+    const orderProfitDetails: OrderProfitDetail[] = deliveredOrders.map(order => {
+      const revenue = Number(order.total_amount) || 0;
+      const costPrice = Number(order.cost_price) || 0;
+      
+      // Công thức theo yêu cầu:
+      // Lợi nhuận trước = Doanh thu - Chi phí giá gốc
+      const profitBefore = revenue - costPrice;
+      
+      // Lợi nhuận sau = Doanh thu - Chi phí giá gốc - Chi phí (phân bổ)
+      const profitAfter = revenue - costPrice - allocatedExpensePerOrder;
+
+      return {
+        id: order.id,
+        order_number: order.order_number,
+        customer_name: order.customers?.name || "Khách hàng",
+        date: order.created_at,
+        total_amount: revenue,
+        cost_price: costPrice,
+        profit_before: profitBefore,
+        allocated_expenses: allocatedExpensePerOrder,
+        profit_after: profitAfter
+      };
+    });
+
+    console.log('Order Profits Calculation:', {
+      deliveredOrdersCount: deliveredOrders.length,
+      totalExpenses,
+      allocatedExpensePerOrder,
+      orderProfitDetails: orderProfitDetails.slice(0, 3) // Log first 3 for debugging
+    });
 
     setOrderProfits(orderProfitDetails);
   }, [orders, expenses]);
@@ -540,67 +593,96 @@ export default function CashFlowManagement() {
             {/* Profit Details Table */}
             <Card>
               <CardHeader>
-                <CardTitle>Chi tiết lợi nhuận</CardTitle>
+                <CardTitle>Chi tiết lợi nhuận theo đơn hàng</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Đơn hàng</TableHead>
-                        <TableHead>Khách hàng</TableHead>
-                        <TableHead>Ngày</TableHead>
-                        <TableHead>Doanh thu</TableHead>
-                        <TableHead>Giá sản xuất</TableHead>
-                        <TableHead>Lợi nhuận trước</TableHead>
-                        <TableHead>Chi phí phân bổ</TableHead>
-                        <TableHead>Lợi nhuận sau</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loading ? (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center py-4">Đang tải...</TableCell>
-                        </TableRow>
-                      ) : orderProfits.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                            Chưa có đơn hàng nào trong khoảng thời gian đã chọn
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        orderProfits.map((profit) => (
-                          <TableRow 
-                            key={profit.id} 
-                            className="cursor-pointer hover:bg-muted/50"
-                            onClick={() => {
-                              // Handle row click if needed
-                            }}
-                          >
-                            <TableCell className="font-medium">{profit.order_number}</TableCell>
-                            <TableCell>{profit.customer_name}</TableCell>
-                            <TableCell>{formatSafeDate(profit.date)}</TableCell>
-                            <TableCell className="text-green-600 font-semibold">
-                              ₫ {profit.total_amount.toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-blue-600 font-semibold">
-                              ₫ {profit.cost_price.toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-green-600 font-semibold">
-                              ₫ {profit.profit_before.toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-red-600 font-semibold">
-                              ₫ {profit.allocated_expenses.toLocaleString()}
-                            </TableCell>
-                            <TableCell className={`font-semibold ${profit.profit_after >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              ₫ {profit.profit_after.toLocaleString()}
-                            </TableCell>
+                {loading ? (
+                  <div className="text-center py-8">
+                    <div className="text-muted-foreground">Đang tải dữ liệu...</div>
+                  </div>
+                ) : orderProfits.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="text-muted-foreground mb-2">
+                      Không có đơn hàng nào trong khoảng thời gian đã chọn
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      Chỉ hiển thị đơn hàng đã giao có đầy đủ dữ liệu doanh thu và giá gốc
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Summary Card */}
+                    <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                      <h4 className="text-sm font-semibold text-blue-900 mb-3">Tổng kết lợi nhuận</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="text-blue-600">Tổng doanh thu:</span>
+                          <div className="font-bold text-green-600">{formatCurrency(cashFlowStats.totalRevenue)}</div>
+                        </div>
+                        <div>
+                          <span className="text-blue-600">Tổng giá gốc:</span>
+                          <div className="font-bold text-blue-600">{formatCurrency(cashFlowStats.totalCostPrice)}</div>
+                        </div>
+                        <div>
+                          <span className="text-blue-600">Lợi nhuận trước:</span>
+                          <div className={`font-bold ${cashFlowStats.profitBefore >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrency(cashFlowStats.profitBefore)}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-blue-600">Lợi nhuận sau:</span>
+                          <div className={`font-bold ${cashFlowStats.profitAfter >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrency(cashFlowStats.profitAfter)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Đơn hàng</TableHead>
+                            <TableHead>Khách hàng</TableHead>
+                            <TableHead>Ngày</TableHead>
+                            <TableHead>Doanh thu</TableHead>
+                            <TableHead>Giá gốc</TableHead>
+                            <TableHead>Lợi nhuận trước</TableHead>
+                            <TableHead>Chi phí phân bổ</TableHead>
+                            <TableHead>Lợi nhuận sau</TableHead>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                        </TableHeader>
+                        <TableBody>
+                          {orderProfits.map((profit) => (
+                            <TableRow 
+                              key={profit.id} 
+                              className="cursor-pointer hover:bg-muted/50"
+                            >
+                              <TableCell className="font-medium">{profit.order_number}</TableCell>
+                              <TableCell>{profit.customer_name}</TableCell>
+                              <TableCell>{formatSafeDate(profit.date)}</TableCell>
+                              <TableCell className="text-green-600 font-semibold">
+                                {formatCurrency(profit.total_amount)}
+                              </TableCell>
+                              <TableCell className="text-blue-600 font-semibold">
+                                {formatCurrency(profit.cost_price)}
+                              </TableCell>
+                              <TableCell className={`font-semibold ${profit.profit_before >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {formatCurrency(profit.profit_before)}
+                              </TableCell>
+                              <TableCell className="text-orange-600 font-semibold">
+                                {formatCurrency(profit.allocated_expenses)}
+                              </TableCell>
+                              <TableCell className={`font-semibold ${profit.profit_after >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {formatCurrency(profit.profit_after)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
