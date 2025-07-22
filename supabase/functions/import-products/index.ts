@@ -74,6 +74,11 @@ serve(async (req) => {
       'Mô tả': ['MÔ TẢ SẢN PHẨM', 'Mô tả', 'MÔ TẢ']
     }
     
+    console.log('Header mappings check:')
+    headers.forEach((header, index) => {
+      console.log(`Column ${index}: "${header}"`)
+    })
+    
     // Find header positions
     const headerPositions: { [key: string]: number } = {}
     Object.entries(headerMappings).forEach(([standardName, variations]) => {
