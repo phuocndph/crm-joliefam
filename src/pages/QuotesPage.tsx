@@ -91,18 +91,38 @@ export default function QuotesPage() {
 
       if (error) throw error;
       
-      const formattedQuotes = data?.map(quote => ({
-        ...quote,
-        customerName: quote.customers?.name || 'Không có tên',
-        customerEmail: quote.customers?.email || '',
-        customerPhone: quote.customers?.phone || '',
-        customerAddress: quote.customers?.address || '',
-        customerCompany: quote.customers?.company || '',
-        quoteDate: quote.created_at,
-        expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        responsible: 'Admin',
-        totalAmount: quote.total_amount || 0
-      })) || [];
+      const formattedQuotes = data?.map(quote => {
+        // Extract customer name from notes if no customer_id
+        let customerName = 'Không có tên';
+        if (quote.customers?.name) {
+          customerName = quote.customers.name;
+        } else if (quote.notes) {
+          const customerMatch = quote.notes.match(/Khách hàng:\s*(.+)/);
+          if (customerMatch && customerMatch[1].trim()) {
+            customerName = customerMatch[1].trim();
+          }
+        }
+
+        // Extract other info from notes
+        const extractFromNotes = (pattern: RegExp) => {
+          if (!quote.notes) return '';
+          const match = quote.notes.match(pattern);
+          return match && match[1].trim() ? match[1].trim() : '';
+        };
+
+        return {
+          ...quote,
+          customerName,
+          customerEmail: quote.customers?.email || extractFromNotes(/Email:\s*(.+)/),
+          customerPhone: quote.customers?.phone || extractFromNotes(/Điện thoại:\s*(.+)/),
+          customerAddress: quote.customers?.address || extractFromNotes(/Địa chỉ:\s*(.+)/),
+          customerCompany: quote.customers?.company || '',
+          quoteDate: quote.created_at,
+          expiryDate: extractFromNotes(/Ngày hết hạn:\s*(.+)/) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          responsible: 'Admin',
+          totalAmount: quote.total_amount || 0
+        };
+      }) || [];
       
       setQuotes(formattedQuotes);
     } catch (error) {
