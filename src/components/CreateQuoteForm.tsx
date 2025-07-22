@@ -301,6 +301,18 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
         status: "draft",
         notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy") : ""}`,
         items: JSON.stringify(selectedProducts),
+        quote_data: JSON.stringify({
+          includeVAT: data.includeVAT,
+          vatRate: data.vatRate,
+          payment1: data.payment1,
+          payment2: data.payment2,
+          quoteNumber: data.quoteNumber,
+          customerName: data.customerName,
+          customerPhone: data.phone,
+          customerEmail: data.email,
+          customerAddress: data.address,
+          expiryDate: data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy") : ""
+        }),
         tenant_id: "default",
         manager_id: user?.id ? user.id.toString() : null,
       };

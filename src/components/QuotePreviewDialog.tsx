@@ -47,7 +47,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   const address = notes.match(/Địa chỉ:\s*(.+)/)?.[1] || '';
   const expiryDate = notes.match(/Ngày hết hạn:\s*(.+)/)?.[1] || '21/08/2025';
 
-  // Parse items với dữ liệu mẫu giống file báo giá
+  // Parse items with real data
   const items = quote.items ? JSON.parse(quote.items) : [
     {
       name: "Bao ve nem chan bong 100x200",
@@ -59,13 +59,19 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     }
   ];
   
-  // Calculate totals giống như trong file
-  const subtotal = 180000;
-  const vatRate = 8;
-  const vatAmount = 14400;
-  const totalWithVat = 194400;
-  const firstPayment = 58320; // 30% của tổng tiền
-  const remaining = 136080;
+  // Parse quote data for VAT and payment info
+  const quoteData = quote.quote_data ? JSON.parse(quote.quote_data) : {};
+  const includeVAT = quoteData.includeVAT || false;
+  const vatRate = quoteData.vatRate || 8;
+  const payment1 = quoteData.payment1 || 0;
+  const payment2 = quoteData.payment2 || 0;
+  
+  // Calculate totals based on items
+  const subtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
+  const vatAmount = includeVAT ? Math.round(subtotal * vatRate / 100) : 0;
+  const totalWithVat = subtotal + vatAmount;
+  const firstPayment = payment1 || Math.round(totalWithVat * 0.3); // Use payment1 or 30% default
+  const remaining = totalWithVat - firstPayment;
 
   // Current date for display
   const currentDate = new Date();
@@ -350,11 +356,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       currentRow++;
 
-      // Totals section with Times New Roman font
+      // Totals section with Times New Roman font - conditional VAT display
       const totalsData = [
         ['TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', formatCurrency(subtotal)],
-        [`GTGT (${vatRate}%)`, formatCurrency(vatAmount)],
-        ['TỔNG TIỀN ĐÃ BAO GỒM GTGT', formatCurrency(totalWithVat)],
+        ...(includeVAT ? [
+          [`GTGT (${vatRate}%)`, formatCurrency(vatAmount)],
+          ['TỔNG TIỀN ĐÃ BAO GỒM GTGT', formatCurrency(totalWithVat)]
+        ] : []),
         ['THANH TOÁN LẦN 1', formatCurrency(firstPayment)],
         ['CÒN LẠI', formatCurrency(remaining)]
       ];
@@ -633,29 +641,33 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </Table>
             </div>
 
-            {/* Phần tổng tiền với style như mẫu */}
+            {/* Phần tổng tiền với style như mẫu - conditional VAT display */}
             <div className="mb-6">
               <table className="w-full border-collapse">
                 <tbody>
                   <tr>
                     <td className="border border-black bg-red-100 p-3 font-bold text-red-600">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT</td>
-                    <td className="border border-black bg-red-100 p-3 text-right font-bold">180.000</td>
+                    <td className="border border-black bg-red-100 p-3 text-right font-bold">{formatCurrency(subtotal)}</td>
                   </tr>
-                  <tr>
-                    <td className="border border-black bg-red-100 p-3 font-bold text-red-600">GTGT (8%)</td>
-                    <td className="border border-black bg-red-100 p-3 text-right font-bold">14.400</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black bg-red-100 p-3 font-bold text-red-600">TỔNG TIỀN ĐÃ BAO GỒM GTGT</td>
-                    <td className="border border-black bg-red-100 p-3 text-right font-bold">194.400</td>
-                  </tr>
+                  {includeVAT && (
+                    <>
+                      <tr>
+                        <td className="border border-black bg-red-100 p-3 font-bold text-red-600">GTGT ({vatRate}%)</td>
+                        <td className="border border-black bg-red-100 p-3 text-right font-bold">{formatCurrency(vatAmount)}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-black bg-red-100 p-3 font-bold text-red-600">TỔNG TIỀN ĐÃ BAO GỒM GTGT</td>
+                        <td className="border border-black bg-red-100 p-3 text-right font-bold">{formatCurrency(totalWithVat)}</td>
+                      </tr>
+                    </>
+                  )}
                   <tr>
                     <td className="border border-black bg-red-100 p-3 font-bold text-red-600">THANH TOÁN LẦN 1</td>
-                    <td className="border border-black bg-red-100 p-3 text-right font-bold">58.320</td>
+                    <td className="border border-black bg-red-100 p-3 text-right font-bold">{formatCurrency(firstPayment)}</td>
                   </tr>
                   <tr>
                     <td className="border border-black bg-red-100 p-3 font-bold text-red-600">CÒN LẠI</td>
-                    <td className="border border-black bg-red-100 p-3 text-right font-bold">136.080</td>
+                    <td className="border border-black bg-red-100 p-3 text-right font-bold">{formatCurrency(remaining)}</td>
                   </tr>
                 </tbody>
               </table>
