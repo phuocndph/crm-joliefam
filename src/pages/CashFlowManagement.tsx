@@ -415,10 +415,15 @@ export default function CashFlowManagement() {
     <main className="flex-1 container-responsive py-4 lg:py-6">
       <div className="container mx-auto py-6 space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold">Quản lý dòng tiền</h1>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Quản lý dòng tiền</h1>
+            <p className="text-muted-foreground mt-1">
+              Theo dõi thu chi, lợi nhuận và dòng tiền của doanh nghiệp
+            </p>
+          </div>
           <Button onClick={() => setShowCreateForm(true)} className="gap-2">
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="h-4 w-4" />
             Thêm thu chi
           </Button>
         </div>
