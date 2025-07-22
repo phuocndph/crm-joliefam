@@ -27,12 +27,14 @@ interface QuoteSupplementDialogProps {
 export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupplementDialogProps) {
   const [templateSettings, setTemplateSettings] = useState<any>({});
   const [searchTerm, setSearchTerm] = useState("");
+  const [products, setProducts] = useState<any[]>([]);
 
   useEffect(() => {
-    if (open) {
+    if (open && quote) {
       loadTemplateSettings();
+      loadProductsData();
     }
-  }, [open]);
+  }, [open, quote]);
 
   const loadTemplateSettings = async () => {
     try {
@@ -54,6 +56,46 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupple
       });
     } catch (error) {
       console.error('Error loading template settings:', error);
+    }
+  };
+
+  const loadProductsData = async () => {
+    try {
+      // Parse quote items to get product IDs and price list IDs
+      let quoteItems = [];
+      try {
+        quoteItems = quote.items ? JSON.parse(quote.items) : [];
+      } catch (error) {
+        console.error('Error parsing quote items:', error);
+        return;
+      }
+
+      // Extract unique product IDs and price list IDs
+      const productIds = quoteItems
+        .map((item: any) => item.product_id)
+        .filter((id: any) => id);
+      
+      const priceListIds = quoteItems
+        .map((item: any) => item.price_list_id)
+        .filter((id: any) => id);
+
+      if (productIds.length === 0) {
+        setProducts([]);
+        return;
+      }
+
+      // Fetch products from database with cost_price
+      const { data: productsData, error } = await supabase
+        .from('products')
+        .select('id, cost_price, price_list_id')
+        .in('id', productIds);
+
+      if (error) throw error;
+
+      setProducts(productsData || []);
+    } catch (error) {
+      console.error('Error loading products data:', error);
+      setProducts([]);
     }
   };
 
@@ -83,11 +125,17 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupple
     item.sku?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Helper function to get cost price from products data
+  const getCostPrice = (item: any): number => {
+    const product = products.find(p => p.id === item.product_id);
+    return product?.cost_price || 0;
+  };
+
   // Calculate totals with cost price and profit
   const calculations = filteredItems.reduce((acc: any, item: any) => {
     const quantity = item.quantity || 0;
     const price = item.price || 0;
-    const costPrice = item.cost_price || 0;
+    const costPrice = getCostPrice(item);
     
     const revenue = quantity * price;
     const totalCost = quantity * costPrice;
@@ -169,7 +217,7 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupple
                 ${filteredItems.map((item: any, index: number) => {
                   const quantity = item.quantity || 0;
                   const price = item.price || 0;
-                  const costPrice = item.cost_price || 0;
+                  const costPrice = getCostPrice(item);
                   const revenue = quantity * price;
                   const totalCost = quantity * costPrice;
                   const profit = revenue - totalCost;
@@ -298,7 +346,7 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupple
                   filteredItems.map((item: any, index: number) => {
                     const quantity = item.quantity || 0;
                     const price = item.price || 0;
-                    const costPrice = item.cost_price || 0;
+                    const costPrice = getCostPrice(item);
                     const revenue = quantity * price;
                     const totalCost = quantity * costPrice;
                     const profit = revenue - totalCost;
