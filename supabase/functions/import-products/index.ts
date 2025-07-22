@@ -28,7 +28,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { googleSheetsUrl, priceListId } = await req.json()
+    const { googleSheetsUrl, priceListId, columnMapping } = await req.json()
 
     console.log('Processing Google Sheets URL:', googleSheetsUrl)
     console.log('Price List ID:', priceListId)
@@ -99,45 +99,76 @@ serve(async (req) => {
       throw new Error(`Không tìm thấy các cột: ${missingHeaders.join(', ')}. Headers có sẵn: ${headers.join(', ')}`)
     }
 
-    // Parse data rows
+    // Parse data rows using column mapping if provided
     const products = []
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split(',').map(v => v.replace(/"/g, '').trim())
       
-      if (values.length >= headers.length && values[0]) { // Skip empty rows
+      if (values.length > 0 && values[0]) { // Skip empty rows
         const product: any = {
           price_list_id: priceListId,
           tenant_id: 'default'
         }
 
-        // Use header positions to map values
-        Object.entries(headerPositions).forEach(([standardName, position]) => {
-          const value = values[position] || ''
-          
-          switch (standardName) {
-            case 'Mã SP':
-              product.sku = value
-              break
-            case 'Danh mục':
-              product.category = value
-              break
-            case 'Tên SP':
-              product.name = value
-              break
-            case 'Quy cách':
-              product.specifications = value
-              break
-            case 'Giá gốc':
-              product.cost_price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
-              break
-            case 'Giá bán':
-              product.price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
-              break
-            case 'Mô tả':
-              product.description = value
-              break
-          }
-        })
+        if (columnMapping) {
+          // Use custom column mapping from frontend
+          Object.entries(columnMapping).forEach(([dbField, columnIndex]) => {
+            const value = values[parseInt(columnIndex)] || ''
+            
+            switch (dbField) {
+              case 'sku':
+                product.sku = value
+                break
+              case 'category':
+                product.category = value
+                break
+              case 'name':
+                product.name = value
+                break
+              case 'specifications':
+                product.specifications = value
+                break
+              case 'cost_price':
+                product.cost_price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                break
+              case 'price':
+                product.price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                break
+              case 'description':
+                product.description = value
+                break
+            }
+          })
+        } else {
+          // Fallback to old header mapping method
+          Object.entries(headerPositions).forEach(([standardName, position]) => {
+            const value = values[position] || ''
+            
+            switch (standardName) {
+              case 'Mã SP':
+                product.sku = value
+                break
+              case 'Danh mục':
+                product.category = value
+                break
+              case 'Tên SP':
+                product.name = value
+                break
+              case 'Quy cách':
+                product.specifications = value
+                break
+              case 'Giá gốc':
+                product.cost_price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                break
+              case 'Giá bán':
+                product.price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                break
+              case 'Mô tả':
+                product.description = value
+                break
+            }
+          })
+        }
 
         if (product.name && product.sku) { // Only add if has required fields
           products.push(product)

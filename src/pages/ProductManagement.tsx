@@ -12,8 +12,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Package, Plus, Edit, Trash2, Search, Filter, FileSpreadsheet, Users, Calendar } from 'lucide-react';
+import { Package, Plus, Edit, Trash2, Search, Filter, FileSpreadsheet, Users, Calendar, Settings } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ColumnMappingDialog } from '@/components/ColumnMappingDialog';
 
 interface Product {
   id: string;
@@ -58,6 +59,7 @@ const ProductManagement = () => {
   const [selectedPriceList, setSelectedPriceList] = useState<string>('');
   const [importLoading, setImportLoading] = useState(false);
   const [googleSheetsUrl, setGoogleSheetsUrl] = useState('');
+  const [showColumnMapping, setShowColumnMapping] = useState(false);
   const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
   const { toast } = useToast();
 
@@ -607,10 +609,12 @@ const ProductManagement = () => {
                     />
                   </div>
                   <Button 
-                    onClick={handleImportFromGoogleSheets}
-                    disabled={importLoading || !googleSheetsUrl}
+                    onClick={() => setShowColumnMapping(true)}
+                    disabled={!googleSheetsUrl}
+                    className="flex items-center gap-2"
                   >
-                    {importLoading ? 'Đang import...' : 'Import Excel'}
+                    <Settings className="h-4 w-4" />
+                    Import với mapping cột
                   </Button>
                   <Button variant="outline">
                     <Users className="h-4 w-4 mr-2" />
@@ -1002,6 +1006,15 @@ const ProductManagement = () => {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Column Mapping Dialog */}
+      <ColumnMappingDialog
+        open={showColumnMapping}
+        onOpenChange={setShowColumnMapping}
+        googleSheetsUrl={googleSheetsUrl}
+        priceListId={selectedPriceList}
+        onImportComplete={fetchProducts}
+      />
     </div>
   );
 };
