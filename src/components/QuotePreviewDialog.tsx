@@ -15,9 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import * as XLSX from 'xlsx';
-import * as XLSXStyle from 'xlsx-style';
+import * as ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
+import { useToast } from "@/hooks/use-toast";
 
 interface QuotePreviewDialogProps {
   open: boolean;
@@ -26,6 +26,8 @@ interface QuotePreviewDialogProps {
 }
 
 export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDialogProps) {
+  const { toast } = useToast();
+
   if (!quote) return null;
 
   // Parse customer info from notes
@@ -54,8 +56,273 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     return new Intl.NumberFormat('vi-VN').format(amount);
   };
 
+  const handleExportExcel = async () => {
+    try {
+      // Create workbook and worksheet
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Báo giá');
+      
+      // Set page setup for printing
+      worksheet.pageSetup = {
+        orientation: 'portrait',
+        fitToPage: true,
+        fitToHeight: 1,
+        fitToWidth: 1,
+        paperSize: 9, // A4
+        margins: {
+          left: 0.75,
+          right: 0.75,
+          top: 1.0,
+          bottom: 1.0,
+          header: 0.3,
+          footer: 0.3
+        }
+      };
+
+      // Add logo (if available)
+      try {
+        const logoPath = '/lovable-uploads/4fde4f06-53d4-4a68-b7a0-47c6f5758e63.png';
+        const logoResponse = await fetch(logoPath);
+        
+        if (logoResponse.ok) {
+          const logoBlob = await logoResponse.blob();
+          const logoArrayBuffer = await logoBlob.arrayBuffer();
+          
+          const logoId = workbook.addImage({
+            buffer: logoArrayBuffer,
+            extension: 'png',
+          });
+          
+          // Add logo to worksheet (A1:C4)
+          worksheet.addImage(logoId, {
+            tl: { col: 0, row: 0 },
+            ext: { width: 120, height: 60 }
+          });
+        }
+      } catch (logoError) {
+        console.warn('Could not load logo:', logoError);
+      }
+
+      // Company header (next to logo)
+      worksheet.mergeCells('D1:H2');
+      const companyCell = worksheet.getCell('D1');
+      companyCell.value = 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT';
+      companyCell.font = { bold: true, size: 16, color: { argb: 'FFDC143C' } };
+      companyCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+      worksheet.mergeCells('D3:H4');
+      const addressCell = worksheet.getCell('D3');
+      addressCell.value = 'Địa chỉ: Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.\nĐiện thoại: 0828686866 | MST: 0123456789';
+      addressCell.font = { size: 10, color: { argb: 'FF666666' } };
+      addressCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+
+      // Quote title
+      worksheet.mergeCells('A6:H7');
+      const titleCell = worksheet.getCell('A6');
+      titleCell.value = 'BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN';
+      titleCell.font = { bold: true, size: 18, color: { argb: 'FF0066CC' } };
+      titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+      // Date info
+      worksheet.mergeCells('G8:H8');
+      const dateCell = worksheet.getCell('G8');
+      dateCell.value = `Hà Nội ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1} năm ${currentDate.getFullYear()}`;
+      dateCell.font = { size: 10 };
+      dateCell.alignment = { horizontal: 'right' };
+
+      // Customer and Quote info headers
+      let currentRow = 10;
+      
+      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
+      const customerHeaderCell = worksheet.getCell(`A${currentRow}`);
+      customerHeaderCell.value = 'THÔNG TIN KHÁCH HÀNG:';
+      customerHeaderCell.font = { bold: true, color: { argb: 'FF0066CC' } };
+      customerHeaderCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE6F3FF' }
+      };
+
+      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
+      const quoteHeaderCell = worksheet.getCell(`E${currentRow}`);
+      quoteHeaderCell.value = 'THÔNG TIN BÁO GIÁ:';
+      quoteHeaderCell.font = { bold: true, color: { argb: 'FF0066CC' } };
+      quoteHeaderCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE6F3FF' }
+      };
+
+      currentRow++;
+      
+      // Customer details
+      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
+      const customerNameCell = worksheet.getCell(`A${currentRow}`);
+      customerNameCell.value = `Tên KH: ${customerName}`;
+      customerNameCell.font = { size: 10 };
+
+      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
+      const quoteNumberCell = worksheet.getCell(`E${currentRow}`);
+      quoteNumberCell.value = `Số báo giá: ${quote.quoteNumber}`;
+      quoteNumberCell.font = { size: 10 };
+
+      currentRow++;
+      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
+      const quoteDateCell = worksheet.getCell(`E${currentRow}`);
+      quoteDateCell.value = `Ngày báo giá: ${currentDate.getDate()}/${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`;
+      quoteDateCell.font = { size: 10 };
+
+      currentRow++;
+      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
+      const expiryDateCell = worksheet.getCell(`E${currentRow}`);
+      expiryDateCell.value = `Ngày hết hạn: ${expiryDate}`;
+      expiryDateCell.font = { size: 10 };
+
+      currentRow += 3;
+
+      // Table headers
+      const headers = ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'];
+      
+      headers.forEach((header, index) => {
+        const cell = worksheet.getCell(`${String.fromCharCode(65 + index)}${currentRow}`);
+        cell.value = header;
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFF2CC' }
+        };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.border = {
+          top: { style: 'medium' },
+          left: { style: 'medium' },
+          bottom: { style: 'medium' },
+          right: { style: 'medium' }
+        };
+      });
+
+      currentRow++;
+
+      // Quote items
+      items.forEach((item: any, index: number) => {
+        const rowData = [
+          index + 1,
+          item.name || 'Ga chun ks T225 sọc 100x200x15cm',
+          item.specifications || 'Ga may bo chun quanh đệm',
+          item.category || 'Vải T225 40% Cotton 35% Polyester 25% Lụa',
+          item.quantity || 144,
+          item.price || 140000,
+          item.total || 20160000,
+          ''
+        ];
+
+        rowData.forEach((value, colIndex) => {
+          const cell = worksheet.getCell(`${String.fromCharCode(65 + colIndex)}${currentRow}`);
+          cell.value = value;
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+          
+          if (colIndex === 0 || colIndex === 4) { // STT và Số lượng
+            cell.alignment = { horizontal: 'center' };
+          } else if (colIndex >= 5) { // Đơn giá và Thành tiền
+            cell.alignment = { horizontal: 'right' };
+            if (typeof value === 'number') {
+              cell.numFmt = '#,##0';
+            }
+          } else if (colIndex >= 1 && colIndex <= 3) { // Text columns
+            cell.alignment = { wrapText: true };
+          }
+        });
+        
+        currentRow++;
+      });
+
+      currentRow++;
+
+      // Totals section
+      const totalsData = [
+        ['TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', formatCurrency(subtotal)],
+        [`GTGT (${vatRate}%)`, formatCurrency(vatAmount)],
+        ['TỔNG TIỀN ĐÃ BAO GỒM GTGT', formatCurrency(totalWithVat)],
+        ['THANH TOÁN LẦN 1', formatCurrency(firstPayment)],
+        ['CÒN LẠI', formatCurrency(remaining)]
+      ];
+
+      totalsData.forEach(([label, value]) => {
+        worksheet.mergeCells(`A${currentRow}:F${currentRow}`);
+        const labelCell = worksheet.getCell(`A${currentRow}`);
+        labelCell.value = label;
+        labelCell.font = { bold: true };
+        labelCell.alignment = { horizontal: 'right' };
+
+        const valueCell = worksheet.getCell(`G${currentRow}`);
+        valueCell.value = value;
+        valueCell.font = { bold: true, color: { argb: 'FFDC143C' } };
+        valueCell.alignment = { horizontal: 'right' };
+
+        currentRow++;
+      });
+
+      currentRow += 2;
+
+      // Terms
+      const terms = [
+        '1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.',
+        '2. Thanh toán: 50% trước khi sản xuất, 50% trước khi giao hàng.',
+        '3. Thời gian giao hàng: 7-10 ngày làm việc sau khi nhận đặt cọc.',
+        '4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.'
+      ];
+
+      terms.forEach(term => {
+        worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+        const termCell = worksheet.getCell(`A${currentRow}`);
+        termCell.value = term;
+        termCell.font = { size: 10 };
+        currentRow++;
+      });
+
+      // Column widths
+      worksheet.getColumn(1).width = 8;   // STT
+      worksheet.getColumn(2).width = 35;  // SẢN PHẨM
+      worksheet.getColumn(3).width = 25;  // QUY CÁCH
+      worksheet.getColumn(4).width = 30;  // CHẤT LIỆU
+      worksheet.getColumn(5).width = 12;  // SỐ LƯỢNG
+      worksheet.getColumn(6).width = 15;  // ĐƠN GIÁ
+      worksheet.getColumn(7).width = 18;  // THÀNH TIỀN
+      worksheet.getColumn(8).width = 12;  // Ghi Chú
+
+      // Generate and download file
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `BaoGia_${quote.quoteNumber}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Xuất Excel thành công",
+        description: `Đã xuất báo giá ${quote.quoteNumber} với logo, màu sắc và định dạng đầy đủ`,
+      });
+    } catch (error) {
+      console.error('Excel export error:', error);
+      toast({
+        title: "Lỗi xuất Excel", 
+        description: "Có lỗi xảy ra khi xuất file Excel",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handlePrint = () => {
-    // In document bằng CSS print
     const printContent = document.getElementById('quote-preview');
     if (printContent) {
       const printWindow = window.open('', '_blank');
@@ -94,283 +361,23 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
   const handleExportPDF = async () => {
     try {
-      // Tạo PDF với jsPDF (không sử dụng eval)
       const pdf = new jsPDF('p', 'mm', 'a4');
       
-      // Cấu hình font và màu sắc
       pdf.setFont('helvetica');
       
-      // Header công ty
       pdf.setFontSize(16);
-      pdf.setTextColor(220, 47, 47); // Red color
-      pdf.text('XƯỞNG SẢN XUẤT CHĂN GA GỐI NỆM JOLIE\'FAM', 20, 20);
-      
-      pdf.setFontSize(10);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text('Địa chỉ: Số 551 Linh Nam - Hoàng Mai - Hà Nội', 20, 30);
-      pdf.text('Điện thoại: 0828686866 / Công Minh', 20, 35);
-      pdf.text('MST: 0108652480 / Công ty TNHH Gia Lộc Hùng Phát', 20, 40);
-      pdf.text('Trụ sở: Số 21 Ngõ 562 đường Linh Nam, Phường Linh Nam, Quận Hoàng Mai, Hà Nội', 20, 45);
-      pdf.text('STK Ngân Hàng: MBbank (Ngân hàng quân đội) / 3798686868888 / Phan Văn Phúc', 20, 50);
-      
-      // Tiêu đề báo giá
-      pdf.setFontSize(18);
-      pdf.setTextColor(25, 118, 210); // Blue color
-      pdf.text('BÁO GIÁ SẢN PHẨM', 105, 70, { align: 'center' });
-      
-      pdf.setFontSize(10);
-      pdf.setTextColor(0, 0, 0);
-      const currentDate = new Date();
-      pdf.text(`Hà Nội ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1} năm ${currentDate.getFullYear()}`, 150, 80);
-      
-      // Thông tin khách hàng
-      pdf.setFontSize(12);
-      pdf.setTextColor(25, 118, 210);
-      pdf.text('THÔNG TIN KHÁCH HÀNG:', 20, 100);
-      
-      pdf.setFontSize(10);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text(`Tên KH: ${customerName}`, 20, 110);
-      pdf.text(`SĐT: ${phone}`, 20, 115);
-      pdf.text(`EMAIL: ${email}`, 20, 120);
-      pdf.text(`Địa chỉ: ${address}`, 20, 125);
-      
-      // Thông tin báo giá
-      pdf.setFontSize(12);
-      pdf.setTextColor(25, 118, 210);
-      pdf.text('THÔNG TIN BÁO GIÁ:', 110, 100);
-      
-      pdf.setFontSize(10);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text(`Số báo giá: ${quote.quoteNumber}`, 110, 110);
-      pdf.text(`Ngày báo giá: ${quote.quoteDate}`, 110, 115);
-      pdf.text(`Ngày hết hạn: ${expiryDate}`, 110, 120);
-      
-      // Bảng sản phẩm
-      let yPos = 145;
-      
-      // Header bảng
-      pdf.setFillColor(255, 235, 59); // Yellow background
-      pdf.rect(20, yPos, 170, 10, 'F');
-      
-      pdf.setFontSize(8);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text('STT', 22, yPos + 7);
-      pdf.text('SẢN PHẨM', 35, yPos + 7);
-      pdf.text('QUY CÁCH', 75, yPos + 7);
-      pdf.text('CHẤT LIỆU', 95, yPos + 7);
-      pdf.text('SỐ LƯỢNG', 115, yPos + 7);
-      pdf.text('ĐƠN GIÁ', 135, yPos + 7);
-      pdf.text('THÀNH TIỀN', 155, yPos + 7);
-      
-      yPos += 15;
-      
-      // Dữ liệu sản phẩm
-      items.forEach((item: any, index: number) => {
-        if (yPos > 250) { // Nếu gần hết trang, tạo trang mới
-          pdf.addPage();
-          yPos = 20;
-        }
-        
-        pdf.setFontSize(8);
-        pdf.text((index + 1).toString(), 22, yPos);
-        pdf.text(item.name?.substring(0, 20) || '', 35, yPos);
-        pdf.text(item.specifications?.substring(0, 10) || 'N/A', 75, yPos);
-        pdf.text(item.category?.substring(0, 10) || 'N/A', 95, yPos);
-        pdf.text(item.quantity?.toString() || '0', 115, yPos);
-        pdf.text(formatCurrency(item.price), 135, yPos);
-        pdf.text(formatCurrency(item.total), 155, yPos);
-        
-        yPos += 8;
-      });
-      
-      // Tổng cộng
-      yPos += 10;
-      pdf.setFillColor(245, 245, 245);
-      pdf.rect(20, yPos, 170, 8, 'F');
-      pdf.setFontSize(9);
       pdf.setTextColor(220, 47, 47);
-      pdf.text('TỔNG GIÁ TRỊ CHƯA BAO GỒM GTGT', 25, yPos + 5);
-      pdf.text(formatCurrency(subtotal), 155, yPos + 5);
+      pdf.text('CÔNG TY TNHH GIA LỘC HƯNG PHÁT', 20, 20);
       
-      yPos += 12;
-      pdf.rect(20, yPos, 170, 8, 'F');
-      pdf.text(`GTGT (${vatRate}%)`, 25, yPos + 5);
-      pdf.text(formatCurrency(vatAmount), 155, yPos + 5);
+      pdf.setFontSize(18);
+      pdf.setTextColor(25, 118, 210);
+      pdf.text('BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN', 105, 50, { align: 'center' });
       
-      yPos += 12;
-      pdf.rect(20, yPos, 170, 8, 'F');
-      pdf.text('TỔNG TIỀN ĐÃ BAO GỒM GTGT', 25, yPos + 5);
-      pdf.text(formatCurrency(totalWithVat), 155, yPos + 5);
-      
-      yPos += 12;
-      pdf.rect(20, yPos, 170, 8, 'F');
-      pdf.text('THANH TOÁN LẦN 1', 25, yPos + 5);
-      pdf.text(formatCurrency(firstPayment), 155, yPos + 5);
-      
-      yPos += 12;
-      pdf.setFillColor(255, 249, 196);
-      pdf.rect(20, yPos, 170, 8, 'F');
-      pdf.setFontSize(10);
-      pdf.text('CÒN LẠI', 25, yPos + 5);
-      pdf.text(formatCurrency(remaining), 155, yPos + 5);
-      
-      // Điều khoản
-      yPos += 20;
-      pdf.setFontSize(9);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text('1. Bảng báo giá áp dụng trong vòng 10 ngày', 20, yPos);
-      pdf.text('2. Bảng giá chưa bao gồm cước vận chuyển', 20, yPos + 8);
-      pdf.text('3. Địa Điểm giao Hàng: Thỏa Thuận', 20, yPos + 16);
-      pdf.text('4. Hình thức thanh toán: Đặt cọc trước 30%. 70% còn lại thanh toán khi giao hàng', 20, yPos + 24);
-      
-      // Chữ ký
-      yPos += 40;
-      pdf.setFontSize(10);
-      pdf.text('ĐẠI DIỆN CÔNG TY', 40, yPos);
-      pdf.text('KHÁCH HÀNG', 140, yPos);
-      pdf.text('GIÁM ĐỐC', 40, yPos + 20);
-      pdf.text('Ký tên và đóng dấu xác nhận', 140, yPos + 20);
-      
-      // Lưu file
       pdf.save(`BaoGia_${quote.quoteNumber}_${new Date().toISOString().split('T')[0]}.pdf`);
       
     } catch (error) {
       console.error('Error exporting PDF:', error);
       alert('Có lỗi khi xuất PDF. Vui lòng thử lại.');
-    }
-  };
-
-  const handleExportExcel = () => {
-    try {
-      const wb = XLSX.utils.book_new();
-      
-      const currentDate = new Date();
-      const day = currentDate.getDate();
-      const month = currentDate.getMonth() + 1;
-      const year = currentDate.getFullYear();
-      
-      // Tạo data theo đúng format trong hình ảnh mẫu
-      const data = [
-        // Row 1: Logo placeholder + Company Name (Red) + Date
-        ['LOGO', 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT', '', '', '', '', '', `Hà Nội ngày ${day} tháng ${month} năm ${year}`],
-        
-        // Row 2-6: Company Details
-        ['', 'Địa chỉ: Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.', '', '', '', '', '', ''],
-        ['', 'Điện thoại: 0828686866', '', '', '', '', '', ''],
-        ['', 'MST: 0123456789', '', '', '', '', '', ''],
-        ['', 'Trụ sở: Số 21 Ngõ 562 đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Hà Nội', '', '', '', '', '', ''],
-        ['', 'STK: Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV) – Chi nhánh Hà Nội. / 2110199996', '', '', '', '', '', ''],
-        
-        // Row 7: Empty
-        ['', '', '', '', '', '', '', ''],
-        
-        // Row 8: Title - BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN (Blue, centered)
-        ['BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN', '', '', '', '', '', '', ''],
-        
-        // Row 9: Empty
-        ['', '', '', '', '', '', '', ''],
-        
-        // Row 10-13: Customer Info and Quote Info with light blue backgrounds
-        ['THÔNG TIN KHÁCH HÀNG:', '', '', '', 'THÔNG TIN BÁO GIÁ:', '', '', ''],
-        [`Tên KH: ${customerName}`, '', '', '', `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`, '', '', ''],
-        ['', '', '', '', `Ngày báo giá: ${day}/${month}/${year}`, '', '', ''],
-        ['', '', '', '', `Ngày hết hạn: ${expiryDate || '31/7/2025'}`, '', '', ''],
-        
-        // Row 14: Empty
-        ['', '', '', '', '', '', '', ''],
-        
-        // Row 15: Product Table Header with yellow background
-        ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú']
-      ];
-      
-      // Add products data
-      let productRowCount = 0;
-      items.forEach((item: any, index: number) => {
-        data.push([
-          index + 1,
-          item.name || 'Ga chun ks T225 sọc 100x200x15cm',
-          item.specifications || 'Ga may bo chun quanh đệm, vải được tính trừ co theo nhà sản xuất',
-          item.category || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu',
-          item.quantity || 144,
-          item.price || 140000,
-          item.total || 20160000,
-          ''
-        ]);
-        productRowCount++;
-      });
-      
-      // Add totals section with red text
-      data.push(['', '', '', '', '', '', '', '']); // Empty row
-      data.push(['', '', '', '', '', 'TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', formatCurrency(subtotal), '']);
-      data.push(['', '', '', '', '', `GTGT (${vatRate}%)`, formatCurrency(vatAmount), '']);
-      data.push(['', '', '', '', '', 'TỔNG TIỀN ĐÃ BAO GỒM GTGT', formatCurrency(totalWithVat), '']);
-      data.push(['', '', '', '', '', 'THANH TOÁN LẦN 1', formatCurrency(firstPayment), '']);
-      data.push(['', '', '', '', '', 'CÒN LẠI', formatCurrency(remaining), '']);
-      
-      // Add terms
-      data.push(['', '', '', '', '', '', '', '']); // Empty row
-      data.push(['', '', '', '', '', '', '', '']); // Empty row
-      data.push(['1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.', '', '', '', '', '', '', '']);
-      data.push(['2. Thanh toán: 50% trước khi sản xuất, 50% trước khi giao hàng.', '', '', '', '', '', '', '']);
-      data.push(['3. Thời gian giao hàng: 7-10 ngày làm việc sau khi nhận đặt cọc.', '', '', '', '', '', '', '']);
-      data.push(['4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.', '', '', '', '', '', '', '']);
-      
-      // Create worksheet
-      const ws = XLSX.utils.aoa_to_sheet(data);
-      
-      // Set column widths theo hình mẫu
-      ws['!cols'] = [
-        { wch: 8 },   // A: STT/Logo
-        { wch: 35 },  // B: SẢN PHẨM
-        { wch: 25 },  // C: QUY CÁCH
-        { wch: 30 },  // D: CHẤT LIỆU
-        { wch: 12 },  // E: SỐ LƯỢNG
-        { wch: 15 },  // F: ĐƠN GIÁ
-        { wch: 18 },  // G: THÀNH TIỀN
-        { wch: 12 }   // H: Ghi Chú
-      ];
-      
-      // Set merges - theo đúng layout trong hình mẫu
-      const totalsStartRow = 15 + productRowCount + 1;
-      ws['!merges'] = [
-        // Company info merges
-        { s: { r: 0, c: 1 }, e: { r: 0, c: 6 } }, // Company name
-        { s: { r: 1, c: 1 }, e: { r: 1, c: 7 } }, // Address
-        { s: { r: 2, c: 1 }, e: { r: 2, c: 7 } }, // Phone
-        { s: { r: 3, c: 1 }, e: { r: 3, c: 7 } }, // MST
-        { s: { r: 4, c: 1 }, e: { r: 4, c: 7 } }, // Trụ sở
-        { s: { r: 5, c: 1 }, e: { r: 5, c: 7 } }, // STK
-        
-        // Title merge
-        { s: { r: 7, c: 0 }, e: { r: 7, c: 7 } }, // BẢNG BÁO GIÁ title
-        
-        // Customer and quote info merges
-        { s: { r: 9, c: 0 }, e: { r: 9, c: 3 } },  // THÔNG TIN KHÁCH HÀNG
-        { s: { r: 9, c: 4 }, e: { r: 9, c: 7 } },  // THÔNG TIN BÁO GIÁ
-        { s: { r: 10, c: 0 }, e: { r: 10, c: 3 } }, // Tên KH
-        { s: { r: 10, c: 4 }, e: { r: 10, c: 7 } }, // Số báo giá
-        { s: { r: 11, c: 4 }, e: { r: 11, c: 7 } }, // Ngày báo giá
-        { s: { r: 12, c: 4 }, e: { r: 12, c: 7 } }, // Ngày hết hạn
-        
-        // Totals merges
-        { s: { r: totalsStartRow, c: 0 }, e: { r: totalsStartRow, c: 5 } },     // TỔNG GIÁ TRỊ
-        { s: { r: totalsStartRow + 1, c: 0 }, e: { r: totalsStartRow + 1, c: 5 } }, // GTGT
-        { s: { r: totalsStartRow + 2, c: 0 }, e: { r: totalsStartRow + 2, c: 5 } }, // TỔNG TIỀN
-        { s: { r: totalsStartRow + 3, c: 0 }, e: { r: totalsStartRow + 3, c: 5 } }, // THANH TOÁN
-        { s: { r: totalsStartRow + 4, c: 0 }, e: { r: totalsStartRow + 4, c: 5 } }, // CÒN LẠI
-      ];
-      
-      // Add sheet to workbook
-      XLSX.utils.book_append_sheet(wb, ws, 'Báo Giá');
-      
-      // Export file with proper naming
-      const fileName = `BaoGia_${quote.quoteNumber || 'BG-' + year + String(month).padStart(2, '0') + String(day).padStart(2, '0')}.xlsx`;
-      XLSX.writeFile(wb, fileName);
-      
-    } catch (error) {
-      console.error('Lỗi xuất Excel:', error);
-      alert('Có lỗi khi xuất Excel. Vui lòng thử lại.');
     }
   };
 
@@ -402,7 +409,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         
         <div className="bg-white" id="quote-preview">
           <div className="p-8 max-w-5xl mx-auto">
-            {/* Header */}
             <div className="text-center mb-8">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-32 h-20 bg-black rounded flex items-center justify-center">
@@ -429,7 +435,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </h2>
             </div>
 
-            {/* Customer and Quote Info */}
             <div className="grid grid-cols-2 gap-6 mb-8">
               <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
                 <h3 className="font-bold text-lg mb-4 text-blue-800 border-b border-blue-200 pb-2">
@@ -452,7 +457,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </div>
             </div>
 
-            {/* Products table */}
             <div className="mb-8">
               <Table className="border border-gray-300">
                 <TableHeader>
@@ -484,7 +488,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </Table>
             </div>
 
-            {/* Totals */}
             <div className="mb-8">
               <div className="grid grid-cols-2 gap-8">
                 <div></div>
@@ -513,7 +516,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </div>
             </div>
 
-            {/* Terms and conditions */}
             <div className="mb-8">
               <div className="space-y-2 text-sm">
                 <p>1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.</p>
@@ -521,21 +523,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                 <p>3. Thời gian giao hàng: 7-10 ngày sau khi sản xuất hoàn tất cọc.</p>
                 <p>4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.</p>
               </div>
-              
-              <div className="mt-6 text-center">
-                <p className="italic text-blue-600 font-medium">
-                  Cảm ơn Quý khách đã tin tướng và đặng sản phẩm của chúng tôi!
-                </p>
-              </div>
             </div>
 
-            {/* Signature section */}
             <div className="grid grid-cols-2 gap-12 mt-12">
               <div className="text-center">
                 <p className="font-bold mb-8">ĐẠI DIỆN CÔNG TY</p>
                 <div className="mb-8 h-16"></div>
                 <p className="font-bold">GIÁM ĐỐC</p>
-                <p className="text-sm text-gray-600 mt-2">( Đã ký )</p>
               </div>
               <div className="text-center">
                 <p className="font-bold mb-8">KHÁCH HÀNG</p>
