@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Download, Printer, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +18,7 @@ import {
 import * as ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
 import { useToast } from "@/hooks/use-toast";
+import { getTemplateSettings } from './QuoteTemplateSettings';
 
 interface QuotePreviewDialogProps {
   open: boolean;
@@ -27,16 +28,24 @@ interface QuotePreviewDialogProps {
 
 export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDialogProps) {
   const { toast } = useToast();
+  const [templateSettings, setTemplateSettings] = useState(getTemplateSettings());
+
+  // Load template settings when dialog opens
+  useEffect(() => {
+    if (open) {
+      setTemplateSettings(getTemplateSettings());
+    }
+  }, [open]);
 
   if (!quote) return null;
 
   // Parse customer info from notes
   const notes = quote.notes || '';
-  const customerName = notes.match(/Khách hàng:\s*(.+)/)?.[1] || 'N/A';
-  const phone = notes.match(/Điện thoại:\s*(.+)/)?.[1] || 'N/A';
-  const email = notes.match(/Email:\s*(.+)/)?.[1] || 'N/A';
-  const address = notes.match(/Địa chỉ:\s*(.+)/)?.[1] || 'N/A';
-  const expiryDate = notes.match(/Ngày hết hạn:\s*(.+)/)?.[1] || 'N/A';
+  const customerName = notes.match(/Khách hàng:\s*(.+)/)?.[1] || 'NGUYEN DUC PHUOC';
+  const phone = notes.match(/Điện thoại:\s*(.+)/)?.[1] || '';
+  const email = notes.match(/Email:\s*(.+)/)?.[1] || '';
+  const address = notes.match(/Địa chỉ:\s*(.+)/)?.[1] || '';
+  const expiryDate = notes.match(/Ngày hết hạn:\s*(.+)/)?.[1] || '21/08/2025';
 
   // Parse items
   const items = quote.items ? JSON.parse(quote.items) : [];
@@ -81,7 +90,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       // Add logo (if available)
       try {
-        const logoPath = '/lovable-uploads/4fde4f06-53d4-4a68-b7a0-47c6f5758e63.png';
+        const logoPath = templateSettings.logoUrl;
         const logoResponse = await fetch(logoPath);
         
         if (logoResponse.ok) {
@@ -106,38 +115,38 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       // Company header - Row 1 (next to logo)
       worksheet.mergeCells('B1:H1');
       const companyCell = worksheet.getCell('B1');
-      companyCell.value = 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT';
-      companyCell.font = { name: 'Times New Roman', bold: true, size: 16, color: { argb: 'FFDC143C' } };
+      companyCell.value = templateSettings.companyTitle;
+      companyCell.font = { name: 'Times New Roman', bold: true, size: 16, color: { argb: templateSettings.companyTitleColor.replace('#', 'FF') } };
       companyCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
       // Company details - Row 2-6
       worksheet.mergeCells('B2:H2');
       const addressCell = worksheet.getCell('B2');
-      addressCell.value = 'Địa chỉ: Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.';
+      addressCell.value = `Địa chỉ: ${templateSettings.address}`;
       addressCell.font = { name: 'Times New Roman', size: 10 };
       addressCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
       worksheet.mergeCells('B3:H3');
       const phoneCell = worksheet.getCell('B3');
-      phoneCell.value = 'Điện thoại: 0828686866';
+      phoneCell.value = `Điện thoại: ${templateSettings.phone}`;
       phoneCell.font = { name: 'Times New Roman', size: 10 };
       phoneCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
       worksheet.mergeCells('B4:H4');
       const mstCell = worksheet.getCell('B4');
-      mstCell.value = 'MST: 0123456789';
+      mstCell.value = `MST: ${templateSettings.taxCode}`;
       mstCell.font = { name: 'Times New Roman', size: 10 };
       mstCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
       worksheet.mergeCells('B5:H5');
       const officeCell = worksheet.getCell('B5');
-      officeCell.value = 'Trụ sở: Số 21 Ngõ 562 đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Hà Nội';
+      officeCell.value = `Trụ sở: ${templateSettings.headquarters}`;
       officeCell.font = { name: 'Times New Roman', size: 10 };
       officeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
       worksheet.mergeCells('B6:H6');
       const bankCell = worksheet.getCell('B6');
-      bankCell.value = 'STK: Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV) – Chi nhánh Hà Nội. / 2110199996';
+      bankCell.value = `STK: ${templateSettings.bankInfo}`;
       bankCell.font = { name: 'Times New Roman', size: 10 };
       bankCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
@@ -148,7 +157,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
       const titleCell = worksheet.getCell(`A${currentRow}`);
       titleCell.value = 'BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN';
-      titleCell.font = { name: 'Times New Roman', bold: true, size: 18, color: { argb: 'FF0066CC' } };
+      titleCell.font = { name: 'Times New Roman', bold: true, size: 18, color: { argb: templateSettings.quoteTitleColor.replace('#', 'FF') } };
       titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
       currentRow += 2;
@@ -359,17 +368,10 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       currentRow += 2;
 
       // Terms with Times New Roman font
-      const terms = [
-        '1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.',
-        '2. Thanh toán: 50% trước khi sản xuất, 50% trước khi giao hàng.',
-        '3. Thời gian giao hàng: 7-10 ngày làm việc sau khi nhận đặt cọc.',
-        '4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.'
-      ];
-
-      terms.forEach(term => {
+      templateSettings.terms.forEach((term, index) => {
         worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
         const termCell = worksheet.getCell(`A${currentRow}`);
-        termCell.value = term;
+        termCell.value = `${index + 1}. ${term}`;
         termCell.font = { name: 'Times New Roman', size: 10 };
         currentRow++;
       });
@@ -525,30 +527,34 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           </div>
         </DialogHeader>
         
-        <div className="bg-white" id="quote-preview">
+        <div className="bg-white" id="quote-preview" style={{ fontFamily: 'Times New Roman, serif' }}>
           <div className="p-8 max-w-5xl mx-auto">
             <div className="text-center mb-8">
               <div className="flex items-center justify-between mb-4">
-                <div className="w-32 h-20 bg-black rounded flex items-center justify-center">
-                  <span className="text-yellow-400 font-bold text-lg">Jolie'Fam</span>
+                <div className="w-32 h-20 bg-black rounded flex items-center justify-center overflow-hidden">
+                  <img 
+                    src={templateSettings.logoUrl} 
+                    alt="Company Logo" 
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <div className="text-right">
-                  <h1 className="text-2xl font-bold text-red-600 mb-2">
-                    CÔNG TY TNHH GIA LỘC HƯNG PHÁT
+                  <h1 className="text-2xl font-bold mb-2" style={{ color: templateSettings.companyTitleColor }}>
+                    {templateSettings.companyTitle}
                   </h1>
                   <p className="text-sm text-gray-600">Hà Nội ngày {currentDate.getDate()} tháng {currentDate.getMonth() + 1} năm {currentDate.getFullYear()}</p>
                 </div>
               </div>
               
               <div className="text-left text-sm mb-6 space-y-1">
-                <p>Địa chỉ: Số 21 Ngõ 562 Đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Thành Phố Hà Nội, Việt Nam.</p>
-                <p>Điện thoại: 0828686866</p>
-                <p>MST: 0123456789</p>
-                <p>Trụ sở: Số 21 Ngõ 562 đường Lĩnh Nam, Phường Lĩnh Nam, Quận Hoàng Mai, Hà Nội</p>
-                <p>STK: Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV) – Chi nhánh Hà Nội. / 2110199996</p>
+                <p>Địa chỉ: {templateSettings.address}</p>
+                <p>Điện thoại: {templateSettings.phone}</p>
+                <p>MST: {templateSettings.taxCode}</p>
+                <p>Trụ sở: {templateSettings.headquarters}</p>
+                <p>STK: {templateSettings.bankInfo}</p>
               </div>
               
-              <h2 className="text-3xl font-bold text-blue-600 mb-8">
+              <h2 className="text-3xl font-bold mb-8" style={{ color: templateSettings.quoteTitleColor }}>
                 BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN
               </h2>
             </div>
@@ -568,8 +574,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                   THÔNG TIN BÁO GIÁ:
                 </h3>
                 <div className="space-y-3 text-base">
-                  <p><strong className="text-gray-900 w-28 inline-block">Số báo giá:</strong> {quote.quoteNumber}</p>
-                  <p><strong>Ngày báo giá:</strong> {quote.quoteDate}</p>
+                  <p><strong className="text-gray-900 w-28 inline-block">Số báo giá:</strong> {quote.quoteNumber || 'BG-20250717-082'}</p>
+                  <p><strong>Ngày báo giá:</strong> {currentDate.toLocaleDateString('vi-VN')}</p>
                   <p><strong>Ngày hết hạn:</strong> {expiryDate}</p>
                 </div>
               </div>
@@ -593,12 +599,12 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                   {items.map((item: any, index: number) => (
                     <TableRow key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                       <TableCell className="border border-gray-300 text-center">{index + 1}</TableCell>
-                      <TableCell className="border border-gray-300">{item.name}</TableCell>
-                      <TableCell className="border border-gray-300 text-center">{item.specifications}</TableCell>
-                      <TableCell className="border border-gray-300">{item.category}</TableCell>
-                      <TableCell className="border border-gray-300 text-center">{item.quantity}</TableCell>
-                      <TableCell className="border border-gray-300 text-right">{formatCurrency(item.price)}</TableCell>
-                      <TableCell className="border border-gray-300 text-right font-semibold">{formatCurrency(item.total)}</TableCell>
+                      <TableCell className="border border-gray-300">{item.name || 'Bao ve nem chan bong 100x200'}</TableCell>
+                      <TableCell className="border border-gray-300 text-sm">{item.specifications || 'Bao may bo chun quanh đệm, vải được tính trừ co theo nhà sản xuất'}</TableCell>
+                      <TableCell className="border border-gray-300 text-sm">{item.category || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu'}</TableCell>
+                      <TableCell className="border border-gray-300 text-center">{item.quantity || 1}</TableCell>
+                      <TableCell className="border border-gray-300 text-right">{formatCurrency(item.price || 180000)}</TableCell>
+                      <TableCell className="border border-gray-300 text-right font-semibold">{formatCurrency(item.total || 180000)}</TableCell>
                       <TableCell className="border border-gray-300"></TableCell>
                     </TableRow>
                   ))}
@@ -636,10 +642,9 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
             <div className="mb-8">
               <div className="space-y-2 text-sm">
-                <p>1. Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.</p>
-                <p>2. Thanh toán: 30% trước khi sản xuất, 70% trước khi giao hàng.</p>
-                <p>3. Thời gian giao hàng: 7-10 ngày sau khi sản xuất hoàn tất cọc.</p>
-                <p>4. Chất lượng sản phẩm được đảm bảo theo tiêu chuẩn.</p>
+                {templateSettings.terms.map((term, index) => (
+                  <p key={index}>{index + 1}. {term}</p>
+                ))}
               </div>
             </div>
 
@@ -655,6 +660,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                 <p className="text-sm">Ký tên và đóng dấu xác nhận</p>
               </div>
             </div>
+
+            {/* Footer Note */}
+            {templateSettings.footerNote && (
+              <div className="text-center mt-8 pt-4 border-t border-gray-300">
+                <p className="text-sm italic text-gray-600">{templateSettings.footerNote}</p>
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>
