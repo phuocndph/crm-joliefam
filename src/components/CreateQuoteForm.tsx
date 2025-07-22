@@ -828,14 +828,18 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                     <span>Tổng giá trị đơn hàng chưa bao gồm GTGT:</span>
                     <span>{subtotal.toLocaleString()} đ</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span>GTGT ({watchedValues.vatRate}%):</span>
-                    <span>{vatAmount.toLocaleString()} đ</span>
-                  </div>
-                  <div className="flex justify-between text-sm font-medium">
-                    <span>Tổng tiền đã bao gồm GTGT:</span>
-                    <span>{total.toLocaleString()} đ</span>
-                  </div>
+                  {watchedValues.includeVAT && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span>GTGT ({watchedValues.vatRate}%):</span>
+                        <span>{vatAmount.toLocaleString()} đ</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-medium">
+                        <span>Tổng tiền đã bao gồm GTGT:</span>
+                        <span>{total.toLocaleString()} đ</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between text-sm font-medium text-blue-600">
                     <span>Còn lại:</span>
                     <span>{remaining.toLocaleString()} đ</span>
