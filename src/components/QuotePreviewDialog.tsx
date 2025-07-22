@@ -630,7 +630,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                    {items.map((item: any, index: number) => (
                      <TableRow key={index} className="bg-white">
                        <TableCell className="border border-gray-400 text-center">{index + 1}</TableCell>
-                       <TableCell className="border border-gray-400">{item.sku || item.name}</TableCell>
+                       <TableCell className="border border-gray-400">{item.name || item.sku}</TableCell>
                        <TableCell className="border border-gray-400 text-sm">{item.specifications}</TableCell>
                        <TableCell className="border border-gray-400 text-sm">{item.description}</TableCell>
                        <TableCell className="border border-gray-400 text-center">{item.quantity}</TableCell>
