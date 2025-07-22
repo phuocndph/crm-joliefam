@@ -75,10 +75,16 @@ interface Product {
   name: string;
   description: string | null;
   price: number | null;
+  cost_price: number | null;
   sku: string | null;
   category: string | null;
   specifications: string | null;
   in_stock: boolean;
+  manager_id: string | null;
+  tenant_id: string;
+  price_list_id: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface QuoteItem {
@@ -223,7 +229,11 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
         .order("name");
 
       if (error) throw error;
-      setProducts(data || []);
+      
+      // Explicit typing and debugging
+      const products = (data as unknown as Product[]) || [];
+      console.log('Loaded products with descriptions:', products.map(p => ({ id: p.id, name: p.name, description: p.description })));
+      setProducts(products);
     } catch (error) {
       console.error("Error loading products:", error);
       toast({
@@ -731,6 +741,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                           key={product.id}
                                           className="cursor-pointer hover:shadow-lg transition-all border-2 hover:border-blue-300"
                                           onClick={() => {
+                                            console.log('Selected product data:', product);
                                             const newProducts = [...selectedProducts];
                                             newProducts[index] = {
                                               id: product.id,
@@ -742,6 +753,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                               description: product.description || '',
                                               specifications: product.specifications || ''
                                             };
+                                            console.log('New product item:', newProducts[index]);
                                             setSelectedProducts(newProducts);
                                             setSearchTerm("");
                                             toast({
