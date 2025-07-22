@@ -88,6 +88,8 @@ interface QuoteItem {
   price: number;
   quantity: number;
   total: number;
+  description?: string;
+  specifications?: string;
 }
 
 interface PriceList {
@@ -684,10 +686,41 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                           <TableCell className="min-w-96 p-4">
                             <div className="relative w-full">
                               <div className="relative">
-                                <Input
-                                  placeholder="Tìm kiếm sản phẩm..."
-                                  className="pl-10 h-10 text-sm border-2 focus:border-blue-500"
-                                />
+                                <Select
+                                  onValueChange={(productId) => {
+                                    const product = products.find(p => p.id === productId);
+                                    if (product) {
+                                      const newProducts = [...selectedProducts];
+                                      newProducts[index] = {
+                                        id: product.id,
+                                        name: product.name,
+                                        sku: product.sku || '',
+                                        price: product.price || 0,
+                                        quantity: item.quantity,
+                                        total: (product.price || 0) * item.quantity,
+                                        description: product.description || '',
+                                        specifications: product.specifications || ''
+                                      };
+                                      setSelectedProducts(newProducts);
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Tìm kiếm và chọn sản phẩm..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {products.map((product) => (
+                                      <SelectItem key={product.id} value={product.id}>
+                                        <div className="flex flex-col">
+                                          <span className="font-medium">{product.name}</span>
+                                          <span className="text-sm text-muted-foreground">
+                                            SKU: {product.sku} - Giá: {(product.price || 0).toLocaleString()}đ
+                                          </span>
+                                        </div>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </div>
                             </div>
                           </TableCell>
@@ -706,6 +739,12 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                           <TableCell className="min-w-40 p-4">
                             <div className="flex items-center space-x-2">
                               <Input
+                                value={(item as any).description || ''}
+                                onChange={(e) => {
+                                  const newProducts = [...selectedProducts];
+                                  newProducts[index] = { ...item, description: e.target.value };
+                                  setSelectedProducts(newProducts);
+                                }}
                                 placeholder="Mô tả sản phẩm"
                                 className="border-gray-200 focus:border-blue-500 flex-1"
                               />
@@ -725,6 +764,12 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                           <TableCell className="min-w-40 p-4">
                             <div className="flex items-center space-x-2">
                               <Input
+                                value={(item as any).specifications || ''}
+                                onChange={(e) => {
+                                  const newProducts = [...selectedProducts];
+                                  newProducts[index] = { ...item, specifications: e.target.value };
+                                  setSelectedProducts(newProducts);
+                                }}
                                 placeholder="Quy cách"
                                 className="border-gray-200 focus:border-blue-500 flex-1 min-w-32"
                               />
@@ -807,58 +852,6 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
               </CardContent>
             </Card>
 
-            {/* Danh sách sản phẩm đã chọn */}
-            {selectedProducts.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Sản phẩm đã chọn</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Tên sản phẩm</TableHead>
-                        <TableHead>SKU</TableHead>
-                        <TableHead>Đơn giá</TableHead>
-                        <TableHead>Số lượng</TableHead>
-                        <TableHead>Thành tiền</TableHead>
-                        <TableHead>Hành động</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedProducts.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.name}</TableCell>
-                          <TableCell>{item.sku}</TableCell>
-                          <TableCell>{item.price.toLocaleString()} VNĐ</TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 0)}
-                              className="w-20"
-                            />
-                          </TableCell>
-                          <TableCell className="font-semibold">
-                            {item.total.toLocaleString()} VNĐ
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => removeProduct(item.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            )}
 
             {/* Tổng kết thanh toán */}
             <Card>
