@@ -112,13 +112,46 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   
+  // Helper function to safely parse dates
+  const parseDate = (dateString: string): Date => {
+    // Try different date formats
+    const formats = [
+      // ISO format
+      () => new Date(dateString),
+      // Vietnamese dd/MM/yyyy format
+      () => {
+        const parts = dateString.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (parts) {
+          return new Date(parseInt(parts[3]), parseInt(parts[2]) - 1, parseInt(parts[1]));
+        }
+        return null;
+      },
+      // Other common formats can be added here
+    ];
+
+    for (const formatFn of formats) {
+      try {
+        const date = formatFn();
+        if (date && !isNaN(date.getTime())) {
+          return date;
+        }
+      } catch (error) {
+        // Continue to next format
+      }
+    }
+
+    // If all parsing fails, return a default date
+    console.warn('Unable to parse date:', dateString);
+    return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  };
+  
   const form = useForm<QuoteFormData>({
     resolver: zodResolver(quoteFormSchema),
     defaultValues: {
       title: initialData?.title || "BẢNG BÁO GIÁ",
       quoteNumber: initialData?.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
       quoteDate: initialData?.created_at ? new Date(initialData.created_at) : new Date(),
-      expiryDate: initialData?.expiryDate ? new Date(initialData.expiryDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      expiryDate: initialData?.expiryDate ? parseDate(initialData.expiryDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       customerName: initialData?.customerName || "",
       phone: initialData?.customerPhone || "",
       email: initialData?.customerEmail || "",
@@ -266,7 +299,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
         customer_id: null, // Would need customer selection
         total_amount: calculatedTotal,
         status: "draft",
-        notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${format(data.expiryDate, "dd/MM/yyyy")}`,
+        notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy") : ""}`,
         items: JSON.stringify(selectedProducts),
         tenant_id: "default",
         manager_id: user?.id ? user.id.toString() : null,
