@@ -315,18 +315,6 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
         status: "draft",
         notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy") : ""}`,
         items: JSON.stringify(selectedProducts),
-        quote_data: JSON.stringify({
-          includeVAT: data.includeVAT,
-          vatRate: data.vatRate,
-          payment1: data.payment1,
-          payment2: data.payment2,
-          quoteNumber: data.quoteNumber,
-          customerName: data.customerName,
-          customerPhone: data.phone,
-          customerEmail: data.email,
-          customerAddress: data.address,
-          expiryDate: data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy") : ""
-        }),
         tenant_id: "default",
         manager_id: user?.id ? user.id.toString() : null,
       };
@@ -762,33 +750,35 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                             });
                                           }}
                                         >
-                                          <CardContent className="p-4">
-                                            <div className="space-y-2">
-                                              <h3 className="font-semibold text-lg text-blue-700">{product.name}</h3>
-                                              <div className="grid grid-cols-2 gap-2 text-sm">
-                                                <div>
-                                                  <span className="font-medium text-gray-600">SKU:</span>
-                                                  <p className="text-gray-800">{product.sku || 'N/A'}</p>
-                                                </div>
-                                                <div>
-                                                  <span className="font-medium text-gray-600">Giá:</span>
-                                                  <p className="text-green-600 font-bold">{(product.price || 0).toLocaleString()}đ</p>
-                                                </div>
-                                              </div>
-                                              {product.description && (
-                                                <div>
-                                                  <span className="font-medium text-gray-600">Mô tả:</span>
-                                                  <p className="text-gray-700 text-sm">{product.description}</p>
-                                                </div>
-                                              )}
-                                              {product.specifications && (
-                                                <div>
-                                                  <span className="font-medium text-gray-600">Quy cách:</span>
-                                                  <p className="text-gray-700 text-sm">{product.specifications}</p>
-                                                </div>
-                                              )}
-                                            </div>
-                                          </CardContent>
+                                           <CardContent className="p-4">
+                                             <div className="space-y-2">
+                                               <div className="flex items-center justify-between">
+                                                 <h3 className="font-bold text-xl text-blue-800">{product.sku || 'NO-SKU'}</h3>
+                                                 <p className="text-green-600 font-bold text-lg">{(product.price || 0).toLocaleString()}đ</p>
+                                               </div>
+                                               <p className="text-gray-700 font-medium">{product.name}</p>
+                                               <div className="grid grid-cols-1 gap-2 text-sm">
+                                                 {product.category && (
+                                                   <div>
+                                                     <span className="font-medium text-gray-600">Danh mục:</span>
+                                                     <span className="text-gray-800 ml-1">{product.category}</span>
+                                                   </div>
+                                                 )}
+                                               </div>
+                                               {product.description && (
+                                                 <div>
+                                                   <span className="font-medium text-gray-600">Mô tả:</span>
+                                                   <p className="text-gray-700 text-sm">{product.description}</p>
+                                                 </div>
+                                               )}
+                                               {product.specifications && (
+                                                 <div>
+                                                   <span className="font-medium text-gray-600">Quy cách:</span>
+                                                   <p className="text-gray-700 text-sm">{product.specifications}</p>
+                                                 </div>
+                                               )}
+                                             </div>
+                                           </CardContent>
                                         </Card>
                                       ))}
                                   </div>
