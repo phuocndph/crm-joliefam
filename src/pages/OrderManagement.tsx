@@ -654,50 +654,109 @@ export default function OrderManagement() {
                 </Card>
               </div>
 
-              {selectedOrder.items && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Sản phẩm</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {(() => {
-                        let itemsToDisplay = selectedOrder.items;
-                        
-                        // Parse JSON string if items is a string
-                        if (typeof selectedOrder.items === 'string') {
-                          try {
-                            itemsToDisplay = JSON.parse(selectedOrder.items);
-                          } catch (error) {
-                            return <p className="text-red-500">Lỗi định dạng dữ liệu sản phẩm</p>;
-                          }
-                        }
-                        
-                        if (Array.isArray(itemsToDisplay)) {
-                          return itemsToDisplay.map((item: any, index: number) => (
-                            <div key={index} className="flex justify-between items-center p-3 border rounded-lg bg-gray-50">
-                              <div className="flex-1">
-                                <div className="font-medium">{item.name || `Sản phẩm ${index + 1}`}</div>
-                                {item.sku && <div className="text-sm text-muted-foreground">SKU: {item.sku}</div>}
-                              </div>
-                              <div className="text-right">
-                                <div className="font-medium">
-                                  {item.quantity || 1} x {(item.price || 0).toLocaleString("vi-VN")} VNĐ
-                                </div>
-                                <div className="text-sm text-muted-foreground">
-                                  Tổng: {((item.quantity || 1) * (item.price || 0)).toLocaleString("vi-VN")} VNĐ
-                                </div>
-                              </div>
-                            </div>
-                          ));
-                        }
-                        
-                        return <p>Không có thông tin sản phẩm</p>;
-                      })()}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Chi tiết đơn hàng</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {/* Products Table */}
+                  <div className="mb-6">
+                    <h4 className="font-medium mb-3">Sản phẩm</h4>
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="border-b px-4 py-3 text-left text-sm font-medium">STT</th>
+                            <th className="border-b px-4 py-3 text-left text-sm font-medium">Tên sản phẩm</th>
+                            <th className="border-b px-4 py-3 text-left text-sm font-medium">SKU</th>
+                            <th className="border-b px-4 py-3 text-center text-sm font-medium">Số lượng</th>
+                            <th className="border-b px-4 py-3 text-right text-sm font-medium">Đơn giá</th>
+                            <th className="border-b px-4 py-3 text-right text-sm font-medium">Thành tiền</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            let itemsToDisplay = selectedOrder.items;
+                            
+                            // Parse JSON string if items is a string
+                            if (typeof selectedOrder.items === 'string') {
+                              try {
+                                itemsToDisplay = JSON.parse(selectedOrder.items);
+                              } catch (error) {
+                                return (
+                                  <tr>
+                                    <td colSpan={6} className="px-4 py-8 text-center text-red-500">
+                                      Lỗi định dạng dữ liệu sản phẩm
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                            }
+                            
+                            if (Array.isArray(itemsToDisplay) && itemsToDisplay.length > 0) {
+                              return itemsToDisplay.map((item: any, index: number) => (
+                                <tr key={index} className="border-b last:border-b-0">
+                                  <td className="px-4 py-3 text-center">{index + 1}</td>
+                                  <td className="px-4 py-3 font-medium">{item.name || `Sản phẩm ${index + 1}`}</td>
+                                  <td className="px-4 py-3 text-sm text-muted-foreground">{item.sku || '-'}</td>
+                                  <td className="px-4 py-3 text-center">{item.quantity || 1}</td>
+                                  <td className="px-4 py-3 text-right">{(item.price || 0).toLocaleString("vi-VN")} VNĐ</td>
+                                  <td className="px-4 py-3 text-right font-medium">
+                                    {((item.quantity || 1) * (item.price || 0)).toLocaleString("vi-VN")} VNĐ
+                                  </td>
+                                </tr>
+                              ));
+                            }
+                            
+                            return (
+                              <tr>
+                                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                                  Không có thông tin sản phẩm
+                                </td>
+                              </tr>
+                            );
+                          })()}
+                        </tbody>
+                      </table>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                  </div>
+
+                  {/* Financial Summary */}
+                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
+                    <h4 className="font-medium mb-3 text-center">Tổng kết tài chính</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center py-2 border-b border-red-200">
+                        <span className="font-medium">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
+                        <span className="font-bold text-lg">
+                          {(selectedOrder.total_amount || 0).toLocaleString("vi-VN")} VNĐ
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center py-2 border-b border-red-200">
+                        <span className="font-medium">GTGT (0%):</span>
+                        <span className="font-bold text-lg">0 VNĐ</span>
+                      </div>
+                      <div className="flex justify-between items-center py-2 border-b border-red-200">
+                        <span className="font-medium">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
+                        <span className="font-bold text-lg text-red-600">
+                          {(selectedOrder.total_amount || 0).toLocaleString("vi-VN")} VNĐ
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center py-2 border-b border-red-200">
+                        <span className="font-medium">THANH TOÁN ĐÃ NHẬN:</span>
+                        <span className="font-bold text-lg text-green-600">
+                          {((selectedOrder.total_amount || 0) - calculateRemainingAmount(selectedOrder)).toLocaleString("vi-VN")} VNĐ
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center py-2">
+                        <span className="font-medium">CÒN LẠI:</span>
+                        <span className="font-bold text-lg text-purple-600">
+                          {calculateRemainingAmount(selectedOrder).toLocaleString("vi-VN")} VNĐ
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               {selectedOrder.notes && (
                 <Card>
