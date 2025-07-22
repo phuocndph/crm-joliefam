@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Search, Plus, FileText, Eye, Edit, Trash2, Filter, MoreHorizontal, Users, UserCheck, Building2, Calendar, Phone, MapPin, ShoppingCart, DollarSign, Clock, Star, ArrowRight, ExternalLink } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Search, Plus, FileText, Eye, Edit, Trash2, Filter, MoreHorizontal, Users, UserCheck, Building2, Calendar, Phone, MapPin, ShoppingCart, DollarSign, Clock, Star, ArrowRight, ExternalLink, CreditCard } from "lucide-react";
+import { CreatePaymentForm } from "@/components/CreatePaymentForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +97,48 @@ interface CustomerQuote {
   notes: string;
 }
 
+// Component wrapper để tính toán payment info
+function PaymentWrapper({ order, onClose, onSubmit }: { order: any, onClose: () => void, onSubmit: () => void }) {
+  const [paymentInfo, setPaymentInfo] = useState<{totalPaid: number, remainingAmount: number} | null>(null);
+  
+  useEffect(() => {
+    const fetchPaymentInfo = async () => {
+      try {
+        const { data } = await supabase
+          .from('order_payments')
+          .select('payment_amount')
+          .eq('order_id', order.id);
+        
+        const totalPaid = data?.reduce((sum, payment) => sum + (payment.payment_amount || 0), 0) || 0;
+        const remainingAmount = (order.total_amount || 0) - totalPaid;
+        
+        setPaymentInfo({ totalPaid, remainingAmount });
+      } catch (error) {
+        console.error('Error fetching payment info:', error);
+        setPaymentInfo({ totalPaid: 0, remainingAmount: order.total_amount || 0 });
+      }
+    };
+    
+    fetchPaymentInfo();
+  }, [order.id, order.total_amount]);
+  
+  if (!paymentInfo) {
+    return <div className="text-center py-4">Đang tải thông tin thanh toán...</div>;
+  }
+  
+  return (
+    <CreatePaymentForm
+      orderId={order.id}
+      orderNumber={order.order_number}
+      totalAmount={order.total_amount || 0}
+      totalPaid={paymentInfo.totalPaid}
+      remainingAmount={paymentInfo.remainingAmount}
+      onClose={onClose}
+      onSubmit={onSubmit}
+    />
+  );
+}
+
 export default function CustomerManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("created_at");
@@ -110,8 +152,9 @@ export default function CustomerManagement() {
   const [customerQuotes, setCustomerQuotes] = useState<CustomerQuote[]>([]);
   const [loading, setLoading] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState<any>(null);
+  const [orderToPayment, setOrderToPayment] = useState<any>(null);
   const { toast } = useToast();
-  const navigate = useNavigate();
 
   // Group customers by name and aggregate data
   const groupedCustomers = React.useMemo(() => {
@@ -331,6 +374,32 @@ export default function CustomerManagement() {
       title: "Thành công",
       description: "Khách hàng đã được xóa thành công",
     });
+  };
+
+  const handlePaymentAdded = () => {
+    toast({
+      title: "Thành công",
+      description: "Thanh toán đã được thêm thành công",
+    });
+    setOrderToPayment(null);
+    // Reload customer details if there's a selected customer
+    if (selectedCustomer) {
+      loadCustomerDetails(selectedCustomer);
+    }
+  };
+
+  const calculateRemainingAmount = async (orderId: string, totalAmount: number) => {
+    try {
+      const { data } = await supabase
+        .from('order_payments')
+        .select('payment_amount')
+        .eq('order_id', orderId);
+      
+      const totalPaid = data?.reduce((sum, payment) => sum + (payment.payment_amount || 0), 0) || 0;
+      return totalAmount - totalPaid;
+    } catch {
+      return totalAmount;
+    }
   };
 
   const getCustomerTags = (customer: Customer) => {
@@ -813,18 +882,26 @@ export default function CustomerManagement() {
                                    TT: {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
                                  </div>
                                )}
-                               <Button
-                                 size="sm"
-                                 variant="outline"
-                                 onClick={() => {
-                                   setSelectedCustomer(null);
-                                   navigate(`/orders?order_id=${order.id}`);
-                                 }}
-                                 className="gap-2"
-                               >
-                                 <ExternalLink className="h-3 w-3" />
-                                 Xem chi tiết
-                               </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    // Load order details
+                                    const { data, error } = await supabase
+                                      .from('orders')
+                                      .select('*')
+                                      .eq('id', order.id)
+                                      .single();
+                                    
+                                    if (!error && data) {
+                                      setSelectedOrderDetail(data);
+                                    }
+                                  }}
+                                  className="gap-2"
+                                >
+                                  <Eye className="h-3 w-3" />
+                                  Xem chi tiết
+                                </Button>
                              </div>
                            </div>
                          </div>
@@ -914,6 +991,183 @@ export default function CustomerManagement() {
           onConfirm={handleDeleteCustomer}
         />
       )}
+
+      {/* Order Detail Dialog */}
+      <Dialog open={!!selectedOrderDetail} onOpenChange={(open) => !open && setSelectedOrderDetail(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Chi tiết đơn hàng</DialogTitle>
+            <DialogDescription>
+              Thông tin chi tiết đơn hàng #{selectedOrderDetail?.order_number}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedOrderDetail && (
+            <div className="space-y-6">
+              {/* Order Info */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Thông tin đơn hàng</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium">Mã đơn hàng:</label>
+                      <p className="text-sm text-muted-foreground">{selectedOrderDetail.order_number}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Trạng thái:</label>
+                      <Badge className="ml-2">
+                        {selectedOrderDetail.status === 'pending' ? 'Chờ xử lý' :
+                         selectedOrderDetail.status === 'processing' ? 'Đang xử lý' :
+                         selectedOrderDetail.status === 'shipped' ? 'Đã giao' :
+                         selectedOrderDetail.status === 'delivered' ? 'Hoàn thành' :
+                         selectedOrderDetail.status === 'cancelled' ? 'Đã hủy' : selectedOrderDetail.status}
+                      </Badge>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Thanh toán:</label>
+                      <Badge className="ml-2">
+                        {selectedOrderDetail.payment_status === 'pending' ? 'Chưa thanh toán' :
+                         selectedOrderDetail.payment_status === 'paid' ? 'Đã thanh toán' :
+                         selectedOrderDetail.payment_status === 'partial' ? 'Thanh toán 1 phần' : selectedOrderDetail.payment_status}
+                      </Badge>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Ngày tạo:</label>
+                      <p className="text-sm text-muted-foreground">
+                        {format(new Date(selectedOrderDetail.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Products Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Sản phẩm</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">STT</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Tên sản phẩm</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">SKU</th>
+                          <th className="px-4 py-3 text-center text-sm font-medium text-gray-900">Số lượng</th>
+                          <th className="px-4 py-3 text-right text-sm font-medium text-gray-900">Đơn giá</th>
+                          <th className="px-4 py-3 text-right text-sm font-medium text-gray-900">Thành tiền</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {(() => {
+                          let itemsToDisplay = selectedOrderDetail.items;
+                          
+                          if (typeof selectedOrderDetail.items === 'string') {
+                            try {
+                              itemsToDisplay = JSON.parse(selectedOrderDetail.items);
+                            } catch (error) {
+                              return (
+                                <tr>
+                                  <td colSpan={6} className="px-4 py-8 text-center text-red-500">
+                                    Lỗi định dạng dữ liệu sản phẩm
+                                  </td>
+                                </tr>
+                              );
+                            }
+                          }
+                          
+                          if (Array.isArray(itemsToDisplay) && itemsToDisplay.length > 0) {
+                            return itemsToDisplay.map((item: any, index: number) => (
+                              <tr key={index} className="border-b last:border-b-0">
+                                <td className="px-4 py-3 text-center">{index + 1}</td>
+                                <td className="px-4 py-3 font-medium">{item.name || `Sản phẩm ${index + 1}`}</td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground">{item.sku || '-'}</td>
+                                <td className="px-4 py-3 text-center">{item.quantity || 1}</td>
+                                <td className="px-4 py-3 text-right">{(item.price || 0).toLocaleString("vi-VN")} VNĐ</td>
+                                <td className="px-4 py-3 text-right font-medium">
+                                  {((item.quantity || 1) * (item.price || 0)).toLocaleString("vi-VN")} VNĐ
+                                </td>
+                              </tr>
+                            ));
+                          }
+                          
+                          return (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                                Không có thông tin sản phẩm
+                              </td>
+                            </tr>
+                          );
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Financial Summary */}
+              <Card>
+                <CardContent className="p-6">
+                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-medium text-center">Tổng kết tài chính</h4>
+                      <Button 
+                        onClick={() => setOrderToPayment(selectedOrderDetail)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        Thêm thanh toán
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center py-2 border-b border-red-200">
+                        <span className="font-medium">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
+                        <span className="font-bold text-lg">
+                          {(selectedOrderDetail.total_amount || 0).toLocaleString("vi-VN")} VNĐ
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center py-2 border-b border-red-200">
+                        <span className="font-medium">GTGT (0%):</span>
+                        <span className="font-bold text-lg">0 VNĐ</span>
+                      </div>
+                      <div className="flex justify-between items-center py-2 border-b border-red-200">
+                        <span className="font-medium">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
+                        <span className="font-bold text-lg text-red-600">
+                          {(selectedOrderDetail.total_amount || 0).toLocaleString("vi-VN")} VNĐ
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Dialog */}
+      <Dialog open={!!orderToPayment} onOpenChange={(open) => !open && setOrderToPayment(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Thêm thanh toán</DialogTitle>
+            <DialogDescription>
+              Thêm thanh toán cho đơn hàng #{orderToPayment?.order_number}
+            </DialogDescription>
+          </DialogHeader>
+          {orderToPayment && (
+            <PaymentWrapper 
+              order={orderToPayment}
+              onClose={() => setOrderToPayment(null)}
+              onSubmit={handlePaymentAdded}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
