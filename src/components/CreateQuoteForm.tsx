@@ -810,7 +810,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                           <TableCell className="min-w-40 p-4">
                             <div className="flex items-center space-x-2">
                               <Input
-                                value={(item as any).description || ''}
+                                value={item.description || ''}
                                 onChange={(e) => {
                                   const newProducts = [...selectedProducts];
                                   newProducts[index] = { ...item, description: e.target.value };
