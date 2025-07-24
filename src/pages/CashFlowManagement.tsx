@@ -108,7 +108,6 @@ export default function CashFlowManagement() {
   // Data states
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [orders, setOrders] = useState<OrderDetail[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
   const [orderProfits, setOrderProfits] = useState<OrderProfitDetail[]>([]);
   const [cashFlowStats, setCashFlowStats] = useState<CashFlowStats>({
     totalRevenue: 0,
@@ -212,149 +211,22 @@ export default function CashFlowManagement() {
     }
   }, [getDateRange, toast]);
 
-  const loadProductsData = useCallback(async () => {
-    try {
-      // Get all order items from orders
-      const allOrderItems = orders.flatMap(order => {
-        try {
-          return order.items ? JSON.parse(order.items) : [];
-        } catch {
-          return [];
-        }
-      });
-
-      if (allOrderItems.length === 0) {
-        setProducts([]);
-        return;
-      }
-
-      // Extract unique product IDs and SKUs
-      const productIds = allOrderItems
-        .map((item: any) => item.id)
-        .filter((id: any) => id);
-      
-      const productSkus = allOrderItems
-        .map((item: any) => item.sku)
-        .filter((sku: any) => sku);
-
-      let productsData = [];
-
-      // Try to fetch by product IDs first
-      if (productIds.length > 0) {
-        const { data: idData, error: idError } = await supabase
-          .from('products')
-          .select('id, sku, cost_price, price_list_id')
-          .in('id', productIds);
-
-        if (!idError && idData && idData.length > 0) {
-          productsData = idData;
-        }
-      }
-
-      // If no data from IDs, try to fetch by SKUs
-      if (productsData.length === 0 && productSkus.length > 0) {
-        const { data: skuData, error: skuError } = await supabase
-          .from('products')
-          .select('id, sku, cost_price, price_list_id')
-          .in('sku', productSkus);
-
-        if (!skuError && skuData) {
-          productsData = skuData;
-        }
-      }
-
-      setProducts(productsData || []);
-      console.log('Loaded products data for cash flow:', productsData);
-    } catch (error) {
-      console.error('Error loading products data:', error);
-      setProducts([]);
-    }
-  }, [orders]);
-
-  // Helper function to get cost price from products data for an order
-  const getOrderCostPrice = useCallback((order: OrderDetail): number => {
-    try {
-      const orderItems = order.items ? JSON.parse(order.items) : [];
-      let totalCostPrice = 0;
-
-      console.log('Calculating cost price for order:', order.order_number, {
-        orderItems,
-        productsCount: products.length,
-        productsIds: products.map(p => p.id).slice(0, 3)
-      });
-
-      orderItems.forEach((item: any) => {
-        const quantity = item.quantity || 0;
-        
-        // Debug matching
-        const productById = products.find(p => p.id === item.id);
-        const productBySku = products.find(p => p.sku === item.sku);
-        
-        console.log('Item matching debug:', {
-          itemId: item.id,
-          itemSku: item.sku,
-          productById: productById ? { id: productById.id, sku: productById.sku, cost_price: productById.cost_price } : null,
-          productBySku: productBySku ? { id: productBySku.id, sku: productBySku.sku, cost_price: productBySku.cost_price } : null,
-          availableProductIds: products.map(p => p.id).slice(0, 3),
-          availableProductSkus: products.map(p => p.sku).slice(0, 3)
-        });
-        
-        // Try to match by product ID first
-        let product = products.find(p => p.id === item.id);
-        
-        // If not found, try to match by SKU
-        if (!product && item.sku) {
-          product = products.find(p => p.sku === item.sku);
-        }
-        
-        const costPrice = product?.cost_price || 0;
-        totalCostPrice += quantity * costPrice;
-
-        console.log('Item cost calculation:', {
-          itemId: item.id,
-          itemSku: item.sku,
-          quantity,
-          foundProduct: !!product,
-          productCostPrice: product?.cost_price,
-          itemTotalCost: quantity * costPrice
-        });
-      });
-
-      console.log('Total cost price for order:', order.order_number, totalCostPrice);
-      return totalCostPrice;
-    } catch (error) {
-      console.error('Error calculating order cost price:', error);
-      return Number(order.cost_price) || 0;
-    }
-  }, [products]);
-
   const calculateCashFlowStats = useCallback(() => {
-    // Tính từ đơn hàng đã giao (delivered orders) - sử dụng cost_price từ products
+    // Tính từ đơn hàng đã giao (delivered orders) - sử dụng cost_price từ database
     const deliveredOrders = orders.filter(order => order.total_amount > 0);
     
     const totalRevenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-    const totalCostPrice = deliveredOrders.reduce((sum, order) => sum + getOrderCostPrice(order), 0);
+    const totalCostPrice = deliveredOrders.reduce((sum, order) => sum + (Number(order.cost_price) || 0), 0);
     const totalExpenses = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
     
-    // Công thức tính lợi nhuận theo yêu cầu:
-    // Lợi nhuận trước = Doanh thu - Chi phí giá gốc (cost_price)
+    // Lợi nhuận trước = Doanh thu - Chi phí giá gốc
     const profitBefore = totalRevenue - totalCostPrice;
     
-    // Lợi nhuận sau = Doanh thu - Chi phí giá gốc (cost_price) - Chi phí
+    // Lợi nhuận sau = Doanh thu - Chi phí giá gốc - Chi phí
     const profitAfter = totalRevenue - totalCostPrice - totalExpenses;
     
     const otherIncome = 0; // Thu nhập khác
     const netCashFlow = profitAfter + otherIncome;
-
-    console.log('Cash Flow Stats Calculation:', {
-      deliveredOrdersCount: deliveredOrders.length,
-      totalRevenue,
-      totalCostPrice,
-      totalExpenses,
-      profitBefore,
-      profitAfter,
-      netCashFlow
-    });
 
     setCashFlowStats({
       totalRevenue,
@@ -368,10 +240,8 @@ export default function CashFlowManagement() {
   }, [orders, expenses]);
 
   const calculateOrderProfits = useCallback(() => {
-    // Hiển thị đơn hàng đã giao có doanh thu - chấp nhận cost_price = 0
-    const deliveredOrders = orders.filter(order => 
-      order.total_amount > 0
-    );
+    // Hiển thị đơn hàng đã giao có doanh thu
+    const deliveredOrders = orders.filter(order => order.total_amount > 0);
 
     const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
     const orderCount = deliveredOrders.length || 1;
@@ -379,13 +249,12 @@ export default function CashFlowManagement() {
 
     const orderProfitDetails: OrderProfitDetail[] = deliveredOrders.map(order => {
       const revenue = Number(order.total_amount) || 0;
-      const costPrice = getOrderCostPrice(order); // Sử dụng cost_price từ products
+      const costPrice = Number(order.cost_price) || 0;
       
-      // Công thức theo yêu cầu:
       // Lợi nhuận trước = Doanh thu - Chi phí giá gốc
       const profitBefore = revenue - costPrice;
       
-      // Lợi nhuận sau = Doanh thu - Chi phí giá gốc - Chi phí (phân bổ)
+      // Lợi nhuận sau = Doanh thu - Chi phí giá gốc - Chi phí phân bổ
       const profitAfter = revenue - costPrice - allocatedExpensePerOrder;
 
       return {
@@ -399,13 +268,6 @@ export default function CashFlowManagement() {
         allocated_expenses: allocatedExpensePerOrder,
         profit_after: profitAfter
       };
-    });
-
-    console.log('Order Profits Calculation:', {
-      deliveredOrdersCount: deliveredOrders.length,
-      totalExpenses,
-      allocatedExpensePerOrder,
-      orderProfitDetails: orderProfitDetails.slice(0, 3) // Log first 3 for debugging
     });
 
     setOrderProfits(orderProfitDetails);
@@ -427,17 +289,9 @@ export default function CashFlowManagement() {
   }, [loadAllData]);
 
   useEffect(() => {
-    if (orders.length > 0) {
-      loadProductsData();
-    }
-  }, [orders, loadProductsData]);
-
-  useEffect(() => {
-    if (products.length > 0 || orders.length === 0) {
-      calculateCashFlowStats();
-      calculateOrderProfits();
-    }
-  }, [calculateCashFlowStats, calculateOrderProfits, products]);
+    calculateCashFlowStats();
+    calculateOrderProfits();
+  }, [calculateCashFlowStats, calculateOrderProfits]);
 
   // Event handlers
   const handleCreateExpense = async () => {
