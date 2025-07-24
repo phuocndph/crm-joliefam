@@ -121,7 +121,6 @@ export default function CashFlowManagement() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-
   // Utility functions
   const getDateRange = useCallback(() => {
     const year = parseInt(selectedYear);
@@ -193,13 +192,6 @@ export default function CashFlowManagement() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      console.log('Loaded orders:', {
-        count: data?.length || 0,
-        dateRange,
-        sampleOrders: data?.slice(0, 2) || []
-      });
-      
       setOrders(data || []);
     } catch (error) {
       console.error('Error loading orders:', error);
@@ -388,7 +380,6 @@ export default function CashFlowManagement() {
     }
   ];
 
-
   return (
     <main className="flex-1 container-responsive py-4 lg:py-6">
       <div className="container mx-auto py-6 space-y-6">
@@ -572,7 +563,6 @@ export default function CashFlowManagement() {
           </TabsContent>
 
           <TabsContent value="profit" className="space-y-6">
-
             {/* Profit Details Table */}
             <Card>
               <CardHeader>
@@ -745,11 +735,11 @@ export default function CashFlowManagement() {
               <div className="pt-4 border-t">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Mã chi phí</label>
-                  <p className="text-base">{selectedExpense.expense_code}</p>
+                  <p className="text-base font-mono">{selectedExpense.expense_code}</p>
                 </div>
                 <div className="mt-2">
                   <label className="text-sm font-medium text-gray-500">Ngày tạo</label>
-                  <p className="text-base">{formatSafeDate(selectedExpense.created_at, 'dd/MM/yyyy HH:mm')}</p>
+                  <p className="text-base">{formatSafeDate(selectedExpense.created_at)}</p>
                 </div>
               </div>
             </div>
