@@ -94,46 +94,54 @@ export function AppSidebar() {
 
   return (
     <Sidebar
-      className={`transition-all duration-300 ${collapsed ? "w-16" : "w-64"} border-r bg-sidebar shadow-soft`}
+      className={`transition-all duration-300 ${collapsed ? "w-16" : "w-72"} border-r bg-sidebar`}
       collapsible="icon"
     >
-      <SidebarContent className="py-4">
-        <SidebarGroup>
-          <SidebarGroupLabel className={`text-sidebar-foreground font-semibold ${collapsed ? 'sr-only' : ''}`}>
-            CRM Pro Navigation
-          </SidebarGroupLabel>
-          
-          <SidebarGroupContent className="mt-4">
-            <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton 
-                    asChild 
-                    className={`mb-1 ${getNavCls(isActive(item.url))}`}
-                    tooltip={collapsed ? item.title : undefined}
-                  >
-                    <NavLink 
-                      to={item.url} 
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200"
+      <SidebarContent className="p-0">
+        {/* Header */}
+        <div className={`px-6 py-6 border-b ${collapsed ? 'px-3' : ''}`}>
+          {!collapsed && (
+            <h2 className="text-lg font-bold text-sidebar-foreground">
+              CRM Pro Navigation
+            </h2>
+          )}
+        </div>
+
+        {/* Navigation Menu */}
+        <div className="px-3 py-4">
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu className="space-y-1">
+                {menuItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton 
+                      asChild 
+                      className={`${getNavCls(isActive(item.url))} h-auto p-0`}
+                      tooltip={collapsed ? item.title : undefined}
                     >
-                      <item.icon className="h-5 w-5 flex-shrink-0" />
-                      {!collapsed && (
-                        <div className="flex-1 min-w-0">
-                          <span className="font-medium text-sm block truncate">
-                            {item.title}
-                          </span>
-                          <span className="text-xs opacity-70 block truncate">
-                            {item.description}
-                          </span>
-                        </div>
-                      )}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                      <NavLink 
+                        to={item.url} 
+                        className="flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group"
+                      >
+                        <item.icon className="h-5 w-5 flex-shrink-0" />
+                        {!collapsed && (
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm text-sidebar-foreground group-hover:text-sidebar-accent-foreground">
+                              {item.title}
+                            </div>
+                            <div className="text-xs text-sidebar-foreground/60 group-hover:text-sidebar-accent-foreground/70 mt-0.5">
+                              {item.description}
+                            </div>
+                          </div>
+                        )}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </div>
       </SidebarContent>
     </Sidebar>
   );
