@@ -434,13 +434,16 @@ const ProductManagement = () => {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Quản lý sản phẩm</h1>
-          <p className="text-muted-foreground">
-            Quản lý bảng giá và sản phẩm
-          </p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-gradient-subtle rounded-lg border p-6 shadow-soft">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold text-foreground">Quản lý sản phẩm</h1>
+            <p className="text-muted-foreground">
+              Quản lý bảng giá và sản phẩm
+            </p>
+          </div>
         </div>
       </div>
 

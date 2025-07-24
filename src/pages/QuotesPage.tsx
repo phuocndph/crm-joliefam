@@ -306,26 +306,28 @@ export default function QuotesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Quản lý Báo giá</h1>
-          <p className="text-muted-foreground">
-            Tạo và quản lý báo giá cho khách hàng
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={() => setShowTemplateSettings(true)} 
-            className="gap-2"
-          >
-            <Settings className="h-4 w-4" />
-            Cài đặt Template
-          </Button>
-          <Button onClick={() => setShowCreateForm(true)} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Tạo báo giá mới
-          </Button>
+      <div className="bg-gradient-subtle rounded-lg border p-6 shadow-soft">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold text-foreground">Quản lý Báo giá</h1>
+            <p className="text-muted-foreground">
+              Tạo và quản lý báo giá cho khách hàng
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowTemplateSettings(true)} 
+              className="gap-2"
+            >
+              <Settings className="h-4 w-4" />
+              Cài đặt Template
+            </Button>
+            <Button onClick={() => setShowCreateForm(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Tạo báo giá mới
+            </Button>
+          </div>
         </div>
       </div>
 
