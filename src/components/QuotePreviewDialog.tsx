@@ -522,8 +522,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       // Quote info
       pdf.setFontSize(12);
       pdf.setTextColor(0, 0, 0);
-      pdf.text(`Số báo giá: ${quote.quoteNumber}`, 20, yPos);
-      pdf.text(`Ngày tạo: ${currentDate.toLocaleDateString('vi-VN')}`, 20, yPos + 8);
+      pdf.text(`Số báo giá: ${quote.quote_number || 'N/A'}`, 20, yPos);
+      pdf.text(`Ngày tạo: ${new Date(quote.created_at).toLocaleDateString('vi-VN')}`, 20, yPos + 8);
       yPos += 20;
       
       // Customer info
