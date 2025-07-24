@@ -63,6 +63,7 @@ interface Expense {
 interface OrderDetail {
   id: string;
   order_number: string;
+  display_order_number?: string;
   total_amount: number;
   cost_price: number;
   profit_before: number;
@@ -177,6 +178,7 @@ export default function CashFlowManagement() {
         .select(`
           id,
           order_number,
+          display_order_number,
           total_amount,
           cost_price,
           profit_before,
@@ -203,13 +205,71 @@ export default function CashFlowManagement() {
     }
   }, [getDateRange, toast]);
 
-  const calculateCashFlowStats = useCallback(() => {
-    // Tính từ đơn hàng đã giao (delivered orders) - sử dụng cost_price từ database
+  const calculateCashFlowStats = useCallback(async () => {
+    // Tính từ đơn hàng đã giao (delivered orders) - tính giá gốc thực tế
     const deliveredOrders = orders.filter(order => order.total_amount > 0);
     
     const totalRevenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-    const totalCostPrice = deliveredOrders.reduce((sum, order) => sum + (Number(order.cost_price) || 0), 0);
     const totalExpenses = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    
+    // Tính tổng giá gốc thực tế từ từng đơn hàng
+    let totalCostPrice = 0;
+    
+    for (const order of deliveredOrders) {
+      let orderCostPrice = Number(order.cost_price) || 0;
+      
+      // Nếu cost_price trong order bằng 0, tính từ product data
+      if (orderCostPrice === 0 && order.items) {
+        try {
+          const orderItems = JSON.parse(order.items);
+          
+          // Lấy tất cả product IDs và SKUs từ order items
+          const productIds = orderItems.map((item: any) => item.id).filter((id: any) => id);
+          const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
+
+          let productsData: any[] = [];
+
+          // Lấy dữ liệu sản phẩm từ database
+          if (productIds.length > 0) {
+            const { data: idData } = await supabase
+              .from('products')
+              .select('id, sku, cost_price')
+              .in('id', productIds);
+            if (idData) productsData = idData;
+          }
+
+          if (productsData.length === 0 && productSkus.length > 0) {
+            const { data: skuData } = await supabase
+              .from('products')
+              .select('id, sku, cost_price')
+              .in('sku', productSkus);
+            if (skuData) productsData = skuData;
+          }
+
+          // Tính cost price từ order items
+          orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+            const quantity = item.quantity || 0;
+            let costPrice = 0;
+
+            // Tìm cost price từ products data
+            let product = productsData.find(p => p.id === item.id);
+            if (!product && item.sku) {
+              product = productsData.find(p => p.sku === item.sku);
+            }
+            
+            if (product) {
+              costPrice = Number(product.cost_price) || 0;
+            }
+
+            return sum + (quantity * costPrice);
+          }, 0);
+        } catch (error) {
+          console.error('Error calculating cost price for order:', order.id, error);
+        }
+      }
+      
+      totalCostPrice += orderCostPrice;
+    }
     
     // Lợi nhuận trước = Doanh thu - Chi phí giá gốc
     const profitBefore = totalRevenue - totalCostPrice;
@@ -302,7 +362,7 @@ export default function CashFlowManagement() {
 
       return {
         id: order.id,
-        order_number: order.order_number,
+        order_number: order.display_order_number || order.order_number,
         customer_name: order.customers?.name || "Khách hàng",
         date: order.created_at,
         total_amount: revenue,
