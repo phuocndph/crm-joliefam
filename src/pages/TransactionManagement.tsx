@@ -533,7 +533,7 @@ const TransactionManagement = () => {
 
       {/* Payment Form Dialog */}
       <Dialog open={showPaymentForm} onOpenChange={setShowPaymentForm}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Thêm Thanh toán - {selectedOrder?.order_number}</DialogTitle>
             <DialogDescription>
