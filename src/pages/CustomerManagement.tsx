@@ -600,7 +600,6 @@ export default function CustomerManagement() {
                   <TableHead>Mã KH</TableHead>
                   <TableHead>Tên khách hàng</TableHead>
                   <TableHead>Liên hệ</TableHead>
-                  <TableHead>Công ty</TableHead>
                   <TableHead>Tình trạng</TableHead>
                   <TableHead>Số lần mua</TableHead>
                   <TableHead>Tổng tiền</TableHead>
@@ -611,13 +610,13 @@ export default function CustomerManagement() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={8} className="text-center py-8">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : sortedCustomers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={8} className="text-center py-8">
                       <div className="flex flex-col items-center gap-2">
                         <Users className="h-8 w-8 text-muted-foreground" />
                         <p className="text-muted-foreground">
@@ -670,8 +669,7 @@ export default function CustomerManagement() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>{customer.company || "-"}</TableCell>
-                      <TableCell>
+                       <TableCell>
                         <div className="space-y-1">
                           {(customer.purchase_count || 0) > 0 ? (
                             <>
