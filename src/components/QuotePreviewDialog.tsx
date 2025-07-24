@@ -499,102 +499,300 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   const handleExportPDF = async () => {
     try {
       const pdf = new jsPDF('p', 'mm', 'a4');
-      let yPos = 20;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 15;
+      let yPos = margin;
       
-      pdf.setFont('helvetica');
-      
-      // Header
-      pdf.setFontSize(16);
-      pdf.setTextColor(220, 47, 47);
-      pdf.text('CÔNG TY TNHH GIA LỘC HƯNG PHÁT', 20, yPos);
-      pdf.setFontSize(10);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text('Địa chỉ: Số 49 đường Đông Quan, Phường Đông Vệ, Thành phố Thanh Hóa', 20, yPos + 8);
-      pdf.text('Điện thoại: 0975.888.999', 20, yPos + 16);
-      yPos += 30;
-      
-      // Title
-      pdf.setFontSize(18);
-      pdf.setTextColor(25, 118, 210);
-      pdf.text('BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN', 105, yPos, { align: 'center' });
-      yPos += 15;
-      
-      // Quote info
-      pdf.setFontSize(12);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text(`Số báo giá: ${quote.quote_number || 'N/A'}`, 20, yPos);
-      pdf.text(`Ngày tạo: ${new Date(quote.created_at).toLocaleDateString('vi-VN')}`, 20, yPos + 8);
-      yPos += 20;
-      
-      // Customer info
-      pdf.text(`Khách hàng: ${customerName}`, 20, yPos);
-      if (phone) pdf.text(`Điện thoại: ${phone}`, 20, yPos + 8);
-      if (address) pdf.text(`Địa chỉ: ${address}`, 20, yPos + 16);
-      yPos += 30;
-      
-      // Table header
-      pdf.setFontSize(10);
-      pdf.setFillColor(240, 240, 240);
-      pdf.rect(20, yPos, 170, 8, 'F');
-      pdf.text('STT', 22, yPos + 5);
-      pdf.text('SẢN PHẨM', 32, yPos + 5);
-      pdf.text('SỐ LƯỢNG', 90, yPos + 5);
-      pdf.text('ĐƠN GIÁ', 120, yPos + 5);
-      pdf.text('THÀNH TIỀN', 150, yPos + 5);
-      yPos += 10;
-      
-      // Table rows
-      items.forEach((item, index) => {
-        if (yPos > 250) {
+      // Helper function to add new page if needed
+      const checkNewPage = (requiredSpace: number = 10) => {
+        if (yPos + requiredSpace > pageHeight - margin) {
           pdf.addPage();
-          yPos = 20;
+          yPos = margin;
+          return true;
+        }
+        return false;
+      };
+      
+      // Helper function to draw line
+      const drawLine = (y: number, startX: number = margin, endX: number = pageWidth - margin) => {
+        pdf.setDrawColor(0, 0, 0);
+        pdf.setLineWidth(0.1);
+        pdf.line(startX, y, endX, y);
+      };
+      
+      // Helper function to wrap text
+      const wrapText = (text: string, maxWidth: number, fontSize: number = 10) => {
+        pdf.setFontSize(fontSize);
+        const words = text.split(' ');
+        const lines: string[] = [];
+        let currentLine = '';
+        
+        for (const word of words) {
+          const testLine = currentLine + (currentLine ? ' ' : '') + word;
+          const textWidth = pdf.getTextWidth(testLine);
+          
+          if (textWidth > maxWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
         }
         
-        pdf.text(`${index + 1}`, 22, yPos);
-        const productName = item.name.length > 30 ? item.name.substring(0, 30) + '...' : item.name;
-        pdf.text(productName, 32, yPos);
-        pdf.text(item.quantity.toString(), 90, yPos);
-        pdf.text(formatCurrency(item.price), 120, yPos);
-        pdf.text(formatCurrency(item.total), 150, yPos);
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+        
+        return lines;
+      };
+      
+      // HEADER SECTION
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(16);
+      pdf.setTextColor(220, 47, 47);
+      pdf.text('CÔNG TY TNHH GIA LỘC HƯNG PHÁT', pageWidth / 2, yPos, { align: 'center' });
+      yPos += 8;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('Địa chỉ: Số 49 đường Đông Quan, Phường Đông Vệ, Thành phố Thanh Hóa', pageWidth / 2, yPos, { align: 'center' });
+      yPos += 5;
+      pdf.text('Điện thoại: 0975.888.999', pageWidth / 2, yPos, { align: 'center' });
+      yPos += 12;
+      
+      // Horizontal line
+      drawLine(yPos);
+      yPos += 8;
+      
+      // TITLE
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(18);
+      pdf.setTextColor(25, 118, 210);
+      pdf.text('BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN', pageWidth / 2, yPos, { align: 'center' });
+      yPos += 15;
+      
+      // QUOTE INFORMATION
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(11);
+      pdf.setTextColor(0, 0, 0);
+      
+      const quoteNumber = quote.quote_number || 'N/A';
+      const createdDate = new Date(quote.created_at).toLocaleDateString('vi-VN');
+      
+      pdf.text(`Số báo giá: ${quoteNumber}`, margin, yPos);
+      pdf.text(`Ngày tạo: ${createdDate}`, pageWidth - margin, yPos, { align: 'right' });
+      yPos += 8;
+      
+      if (expiryDate) {
+        pdf.text(`Ngày hết hạn: ${expiryDate}`, pageWidth - margin, yPos, { align: 'right' });
         yPos += 8;
+      }
+      yPos += 5;
+      
+      // CUSTOMER INFORMATION BOX
+      checkNewPage(30);
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.3);
+      pdf.rect(margin, yPos, pageWidth - 2 * margin, 25);
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(11);
+      pdf.text('THÔNG TIN KHÁCH HÀNG', margin + 3, yPos + 6);
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      let customerY = yPos + 12;
+      
+      if (customerName) {
+        pdf.text(`Khách hàng: ${customerName}`, margin + 3, customerY);
+        customerY += 5;
+      }
+      
+      if (phone || email) {
+        const contactInfo = [phone && `SĐT: ${phone}`, email && `Email: ${email}`].filter(Boolean).join(' - ');
+        pdf.text(contactInfo, margin + 3, customerY);
+        customerY += 5;
+      }
+      
+      if (address) {
+        const addressLines = wrapText(`Địa chỉ: ${address}`, pageWidth - 2 * margin - 6, 10);
+        addressLines.forEach((line) => {
+          pdf.text(line, margin + 3, customerY);
+          customerY += 4;
+        });
+      }
+      
+      yPos += 30;
+      
+      // ITEMS TABLE
+      checkNewPage(40);
+      const tableStartY = yPos;
+      const colWidths = [15, 60, 25, 25, 25, 30]; // STT, Sản phẩm, Quy cách, Số lượng, Đơn giá, Thành tiền
+      const colX = [margin];
+      for (let i = 1; i < colWidths.length; i++) {
+        colX.push(colX[i - 1] + colWidths[i - 1]);
+      }
+      
+      // Table header
+      pdf.setFillColor(240, 240, 240);
+      pdf.rect(margin, yPos, pageWidth - 2 * margin, 8, 'F');
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.1);
+      
+      // Header borders
+      for (let i = 0; i <= colWidths.length; i++) {
+        const x = i === 0 ? margin : colX[i - 1] + colWidths[i - 1];
+        pdf.line(x, yPos, x, yPos + 8);
+      }
+      drawLine(yPos);
+      drawLine(yPos + 8);
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.setTextColor(0, 0, 0);
+      
+      const headers = ['STT', 'SẢN PHẨM', 'QUY CÁCH', 'SL', 'ĐƠN GIÁ', 'THÀNH TIỀN'];
+      headers.forEach((header, index) => {
+        const centerX = colX[index] + colWidths[index] / 2;
+        pdf.text(header, centerX, yPos + 5.5, { align: 'center' });
       });
       
-      // Total
-      yPos += 5;
-      pdf.setFillColor(245, 245, 245);
-      pdf.rect(20, yPos, 170, 8, 'F');
-      pdf.setFontSize(12);
-      pdf.text('TỔNG CỘNG:', 120, yPos + 5);
-      pdf.text(formatCurrency(subtotal), 150, yPos + 5);
-      
-      // Terms
-      yPos += 20;
-      pdf.setFontSize(10);
-      pdf.text('ĐIỀU KIỆN & ĐIỀU KHOẢN:', 20, yPos);
       yPos += 8;
-      pdf.text('- Báo giá có hiệu lực trong 30 ngày', 20, yPos);
-      pdf.text('- Thanh toán: 50% đặt cọc, 50% trước khi giao hàng', 20, yPos + 6);
-      pdf.text('- Thời gian giao hàng: 7-10 ngày làm việc', 20, yPos + 12);
       
-      // Signature
-      yPos += 30;
-      pdf.text('ĐẠI DIỆN CÔNG TY', 30, yPos);
-      pdf.text('KHÁCH HÀNG', 130, yPos);
-      pdf.text('GIÁM ĐỐC', 30, yPos + 20);
-      pdf.text('Ký tên và đóng dấu xác nhận', 130, yPos + 20);
+      // Table rows
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
       
-      pdf.save(`BaoGia_${quote.quoteNumber}_${new Date().toISOString().split('T')[0]}.pdf`);
+      items.forEach((item, index) => {
+        const rowHeight = Math.max(8, Math.ceil(item.name.length / 25) * 4 + 4);
+        
+        checkNewPage(rowHeight + 5);
+        
+        // Row background (alternating)
+        if (index % 2 === 1) {
+          pdf.setFillColor(248, 248, 248);
+          pdf.rect(margin, yPos, pageWidth - 2 * margin, rowHeight, 'F');
+        }
+        
+        // Row borders
+        for (let i = 0; i <= colWidths.length; i++) {
+          const x = i === 0 ? margin : colX[i - 1] + colWidths[i - 1];
+          pdf.line(x, yPos, x, yPos + rowHeight);
+        }
+        drawLine(yPos + rowHeight);
+        
+        // Cell content
+        const cellY = yPos + rowHeight / 2 + 1.5;
+        
+        // STT
+        pdf.text((index + 1).toString(), colX[0] + colWidths[0] / 2, cellY, { align: 'center' });
+        
+        // Sản phẩm (with text wrapping)
+        const productLines = wrapText(item.name, colWidths[1] - 4, 9);
+        productLines.forEach((line, lineIndex) => {
+          pdf.text(line, colX[1] + 2, yPos + 6 + lineIndex * 4);
+        });
+        
+        // Quy cách
+        const specs = item.specifications || '';
+        if (specs) {
+          const specLines = wrapText(specs, colWidths[2] - 4, 8);
+          pdf.setFontSize(8);
+          specLines.forEach((line, lineIndex) => {
+            pdf.text(line, colX[2] + 2, yPos + 6 + lineIndex * 3);
+          });
+          pdf.setFontSize(9);
+        }
+        
+        // Số lượng
+        pdf.text(item.quantity.toString(), colX[3] + colWidths[3] / 2, cellY, { align: 'center' });
+        
+        // Đơn giá
+        pdf.text(formatCurrency(item.price), colX[4] + colWidths[4] - 2, cellY, { align: 'right' });
+        
+        // Thành tiền
+        pdf.text(formatCurrency(item.total), colX[5] + colWidths[5] - 2, cellY, { align: 'right' });
+        
+        yPos += rowHeight;
+      });
+      
+      // Table footer border
+      drawLine(yPos, margin, pageWidth - margin);
+      yPos += 3;
+      
+      // TOTAL SECTION
+      pdf.setFillColor(240, 240, 240);
+      pdf.rect(colX[4], yPos, colWidths[4] + colWidths[5], 8, 'F');
+      pdf.setDrawColor(0, 0, 0);
+      pdf.rect(colX[4], yPos, colWidths[4] + colWidths[5], 8);
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(11);
+      pdf.text('TỔNG CỘNG:', colX[4] + 2, yPos + 5.5);
+      pdf.text(formatCurrency(subtotal), colX[5] + colWidths[5] - 2, yPos + 5.5, { align: 'right' });
+      yPos += 15;
+      
+      // TERMS AND CONDITIONS
+      checkNewPage(35);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(11);
+      pdf.text('ĐIỀU KIỆN & ĐIỀU KHOẢN:', margin, yPos);
+      yPos += 8;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      const terms = [
+        '• Báo giá có hiệu lực trong 30 ngày kể từ ngày lập',
+        '• Thanh toán: 50% đặt cọc, 50% trước khi giao hàng', 
+        '• Thời gian giao hàng: 7-10 ngày làm việc sau khi nhận đặt cọc',
+        '• Giá đã bao gồm VAT 10%',
+        '• Công ty chịu trách nhiệm bảo hành sản phẩm trong 12 tháng'
+      ];
+      
+      terms.forEach((term) => {
+        pdf.text(term, margin, yPos);
+        yPos += 5;
+      });
+      yPos += 10;
+      
+      // SIGNATURE SECTION
+      checkNewPage(25);
+      drawLine(yPos - 2);
+      yPos += 5;
+      
+      const signatureY = yPos;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(11);
+      
+      // Company signature
+      pdf.text('ĐẠI DIỆN CÔNG TY', margin + 40, signatureY, { align: 'center' });
+      pdf.text('KHÁCH HÀNG', pageWidth - margin - 40, signatureY, { align: 'center' });
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.text('(Ký và ghi rõ họ tên)', margin + 40, signatureY + 20, { align: 'center' });
+      pdf.text('(Ký và đóng dấu xác nhận)', pageWidth - margin - 40, signatureY + 20, { align: 'center' });
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(10);
+      pdf.text('GIÁM ĐỐC', margin + 40, signatureY + 30, { align: 'center' });
+      
+      // Save PDF
+      const fileName = `BaoGia_${quoteNumber}_${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
       
       toast({
         title: "Xuất PDF thành công",
-        description: `Đã xuất báo giá ${quote.quoteNumber} thành file PDF`,
+        description: `Đã xuất báo giá ${quoteNumber} thành file PDF chuyên nghiệp`,
       });
       
     } catch (error) {
       console.error('Error exporting PDF:', error);
       toast({
         title: "Lỗi xuất PDF",
-        description: "Có lỗi xảy ra khi xuất file PDF",
+        description: "Có lỗi xảy ra khi xuất file PDF. Vui lòng thử lại.",
         variant: "destructive",
       });
     }
