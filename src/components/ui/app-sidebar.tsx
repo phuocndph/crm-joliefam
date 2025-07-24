@@ -89,7 +89,7 @@ export function AppSidebar() {
   const isActive = (path: string) => currentPath === path;
   const getNavCls = (isActive: boolean) =>
     isActive 
-      ? "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground shadow-brand" 
+      ? "bg-primary text-white hover:bg-primary hover:text-white shadow-brand" 
       : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors";
 
   return (
@@ -126,10 +126,10 @@ export function AppSidebar() {
                         <item.icon className="h-5 w-5 flex-shrink-0" />
                         {!collapsed && (
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm text-sidebar-foreground group-hover:text-sidebar-accent-foreground">
+                            <div className={`font-medium text-sm ${isActive(item.url) ? 'text-white' : 'text-sidebar-foreground group-hover:text-sidebar-accent-foreground'}`}>
                               {item.title}
                             </div>
-                            <div className="text-xs text-sidebar-foreground/60 group-hover:text-sidebar-accent-foreground/70 mt-0.5">
+                            <div className={`text-xs mt-0.5 ${isActive(item.url) ? 'text-white/80' : 'text-sidebar-foreground/60 group-hover:text-sidebar-accent-foreground/70'}`}>
                               {item.description}
                             </div>
                           </div>
