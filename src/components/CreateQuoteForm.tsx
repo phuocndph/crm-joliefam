@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Settings, X, Plus, Trash2, Search } from "lucide-react";
+import { CalendarIcon, Settings, X, Plus, Trash2, Search, MoreVertical, Edit } from "lucide-react";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Popover,
   PopoverContent,
@@ -554,17 +560,90 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Người phụ trách</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Chọn người phụ trách" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="manager1">Nguyễn Văn A</SelectItem>
-                            <SelectItem value="manager2">Trần Thị B</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Chọn người phụ trách" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="manager1">Nguyễn Văn A</SelectItem>
+                                <SelectItem value="manager2">Trần Thị B</SelectItem>
+                                <SelectItem value="manager3">Lê Văn C</SelectItem>
+                                <SelectItem value="manager4">Phạm Thị D</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="icon">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => {
+                                // Logic thêm người phụ trách mới
+                                const newName = prompt("Nhập tên người phụ trách mới:");
+                                if (newName) {
+                                  toast({
+                                    title: "Thành công",
+                                    description: `Đã thêm ${newName} vào danh sách`,
+                                  });
+                                }
+                              }}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Thêm mới
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => {
+                                // Logic sửa người phụ trách
+                                if (field.value) {
+                                  const newName = prompt("Nhập tên mới:", "Tên hiện tại");
+                                  if (newName) {
+                                    toast({
+                                      title: "Thành công", 
+                                      description: "Đã cập nhật tên người phụ trách",
+                                    });
+                                  }
+                                } else {
+                                  toast({
+                                    title: "Lỗi",
+                                    description: "Vui lòng chọn người phụ trách trước khi sửa",
+                                    variant: "destructive"
+                                  });
+                                }
+                              }}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Sửa
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  // Logic xóa người phụ trách
+                                  if (field.value) {
+                                    if (confirm("Bạn có chắc chắn muốn xóa người phụ trách này?")) {
+                                      field.onChange("");
+                                      toast({
+                                        title: "Thành công",
+                                        description: "Đã xóa người phụ trách",
+                                      });
+                                    }
+                                  } else {
+                                    toast({
+                                      title: "Lỗi", 
+                                      description: "Không có người phụ trách nào để xóa",
+                                      variant: "destructive"
+                                    });
+                                  }
+                                }}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Xóa
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
