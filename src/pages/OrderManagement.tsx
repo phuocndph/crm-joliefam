@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard } from "lucide-react";
+import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,14 +37,17 @@ import { CreateOrderForm } from "@/components/CreateOrderForm";
 import { EditOrderDialog } from "@/components/EditOrderDialog";
 import { DeleteOrderDialog } from "@/components/DeleteOrderDialog";
 import { CreatePaymentForm } from "@/components/CreatePaymentForm";
+import { EditOrderNumberDialog } from "@/components/EditOrderNumberDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import { formatOrderNumber } from "@/lib/orderUtils";
 
 interface Order {
   id: string;
   order_number: string;
+  display_order_number?: string;
   customer_id: string | null;
   total_amount: number | null;
   cost_price: number | null;
@@ -92,6 +95,7 @@ export default function OrderManagement() {
   const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [orderToPayment, setOrderToPayment] = useState<Order | null>(null);
+  const [orderToEditNumber, setOrderToEditNumber] = useState<Order | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -445,7 +449,17 @@ export default function OrderManagement() {
                     return (
                       <TableRow key={order.id}>
                         <TableCell className="font-medium">
-                          {order.order_number}
+                          <div className="flex items-center gap-2">
+                            <span>{formatOrderNumber(order)}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setOrderToEditNumber(order)}
+                              className="h-6 w-6 p-0 opacity-50 hover:opacity-100"
+                            >
+                              <Edit3 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div>
@@ -824,6 +838,21 @@ export default function OrderManagement() {
             />
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Edit Order Number Dialog */}
+      {orderToEditNumber && (
+        <EditOrderNumberDialog
+          orderId={orderToEditNumber.id}
+          currentOrderNumber={orderToEditNumber.order_number}
+          currentDisplayNumber={orderToEditNumber.display_order_number}
+          open={!!orderToEditNumber}
+          onOpenChange={(open) => !open && setOrderToEditNumber(null)}
+          onSuccess={() => {
+            loadOrders();
+            setOrderToEditNumber(null);
+          }}
+        />
       )}
     </div>
   );
