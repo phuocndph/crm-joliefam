@@ -390,13 +390,31 @@ export default function CashFlowManagement() {
 
   // Effects
   useEffect(() => {
-    loadAllData();
-  }, [loadAllData]);
+    const controller = new AbortController();
+    
+    const loadData = async () => {
+      try {
+        await loadAllData();
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error('Error loading data:', error);
+        }
+      }
+    };
+    
+    loadData();
+    
+    return () => {
+      controller.abort();
+    };
+  }, [selectedYear, selectedMonth, filterPeriod]);
 
   useEffect(() => {
-    calculateCashFlowStats();
-    calculateOrderProfits();
-  }, [calculateCashFlowStats, calculateOrderProfits]);
+    if (orders.length > 0 || expenses.length > 0) {
+      calculateCashFlowStats();
+      calculateOrderProfits();
+    }
+  }, [orders, expenses]);
 
   // Event handlers
   const handleCreateExpense = async () => {
