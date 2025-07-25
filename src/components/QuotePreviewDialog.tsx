@@ -191,23 +191,11 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const customerHeaderCell = worksheet.getCell(`A${currentRow}`);
       customerHeaderCell.value = 'THÔNG TIN KHÁCH HÀNG:';
       customerHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FF0066CC' } };
-      customerHeaderCell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
 
       worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
       const quoteHeaderCell = worksheet.getCell(`E${currentRow}`);
       quoteHeaderCell.value = 'THÔNG TIN BÁO GIÁ:';
       quoteHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FF0066CC' } };
-      quoteHeaderCell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
 
       currentRow++;
       
@@ -216,69 +204,33 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const customerNameCell = worksheet.getCell(`A${currentRow}`);
       customerNameCell.value = `Tên KH: ${customerName}`;
       customerNameCell.font = { name: 'Times New Roman', size: 10 };
-      customerNameCell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
 
       worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
       const quoteNumberCell = worksheet.getCell(`E${currentRow}`);
       quoteNumberCell.value = `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`;
       quoteNumberCell.font = { name: 'Times New Roman', size: 10 };
-      quoteNumberCell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
 
       currentRow++;
       
       // Empty cell for customer side, quote date on right
       worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
       const emptyCell1 = worksheet.getCell(`A${currentRow}`);
-      emptyCell1.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
 
       worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
       const quoteDateCell = worksheet.getCell(`E${currentRow}`);
       quoteDateCell.value = `Ngày báo giá: ${currentDate.getDate()}/${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`;
       quoteDateCell.font = { name: 'Times New Roman', size: 10 };
-      quoteDateCell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
 
       currentRow++;
       
       // Empty cell for customer side, expiry date on right
       worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
       const emptyCell2 = worksheet.getCell(`A${currentRow}`);
-      emptyCell2.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
 
       worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
       const expiryDateCell = worksheet.getCell(`E${currentRow}`);
       expiryDateCell.value = `Ngày hết hạn: ${expiryDate || '31/7/2025'}`;
       expiryDateCell.font = { name: 'Times New Roman', size: 10 };
-      expiryDateCell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
 
       currentRow += 2;
 
