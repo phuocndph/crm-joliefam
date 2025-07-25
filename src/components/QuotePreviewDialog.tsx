@@ -271,8 +271,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       items.forEach((item: any, index: number) => {
         const rowData = [
           index + 1,
-          item.sku || item.name || 'GACLTH-100x10F-S',
-          item.specifications || 'Ga may bo chun quanh đệm, vải được tính trừ co theo nhà sản xuất',
+          item.name || item.sku || '', // Sử dụng tên sản phẩm thay vì SKU
+          item.specifications || '', // Để trống nếu không có specifications
           item.description || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu',
           item.quantity || 144,
           item.price || 140000,
