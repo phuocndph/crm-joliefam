@@ -73,11 +73,11 @@ interface Order {
 }
 
 const statusConfig = {
-  pending: { label: "Chờ xử lý", color: "bg-yellow-100 text-yellow-800", icon: Clock },
-  processing: { label: "Đang xử lý", color: "bg-blue-100 text-blue-800", icon: AlertCircle },
-  shipped: { label: "Đã giao", color: "bg-green-100 text-green-800", icon: Truck },
-  delivered: { label: "Hoàn thành", color: "bg-green-100 text-green-800", icon: CheckCircle },
-  cancelled: { label: "Đã hủy", color: "bg-red-100 text-red-800", icon: XCircle },
+  pending: { label: "Chờ xử lý", color: "bg-yellow-100 text-yellow-800 hover:bg-yellow-600 hover:text-white", icon: Clock },
+  processing: { label: "Đang xử lý", color: "bg-blue-100 text-blue-800 hover:bg-blue-600 hover:text-white", icon: AlertCircle },
+  shipped: { label: "Đã giao", color: "bg-green-100 text-green-800 hover:bg-green-600 hover:text-white", icon: Truck },
+  delivered: { label: "Hoàn thành", color: "bg-green-100 text-green-800 hover:bg-green-600 hover:text-white", icon: CheckCircle },
+  cancelled: { label: "Đã hủy", color: "bg-red-100 text-red-800 hover:bg-red-600 hover:text-white", icon: XCircle },
 };
 
 const paymentStatusConfig = {
@@ -335,6 +335,22 @@ export default function OrderManagement() {
     },
   ];
 
+  const getDefaultDeliveryDate = (createdAt: string) => {
+    const orderDate = new Date(createdAt);
+    const deliveryDate = new Date(orderDate);
+    deliveryDate.setDate(orderDate.getDate() + 4);
+    return deliveryDate.toISOString().split('T')[0];
+  };
+
+  const isDeliveryDateNear = (deliveryDate: string | null, status: string) => {
+    if (!deliveryDate || status === 'delivered' || status === 'shipped') return false;
+    const delivery = new Date(deliveryDate);
+    const today = new Date();
+    const diffTime = delivery.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays <= 2;
+  };
+
   const getDaysUntilDelivery = (deliveryDate: string) => {
     const today = new Date();
     const delivery = new Date(deliveryDate);
@@ -480,7 +496,8 @@ export default function OrderManagement() {
                   </TableRow>
                 ) : (
                   sortedOrders.map((order: any) => {
-                    const daysUntilDelivery = order.delivery_date ? getDaysUntilDelivery(order.delivery_date) : null;
+                    const deliveryDate = order.delivery_date || getDefaultDeliveryDate(order.created_at);
+                    const daysUntilDelivery = getDaysUntilDelivery(deliveryDate);
                     
                     return (
                       <TableRow key={order.id}>
@@ -514,10 +531,54 @@ export default function OrderManagement() {
                           {(order.total_amount || 0).toLocaleString("vi-VN")} VNĐ
                         </TableCell>
                         <TableCell>
-                          {order.delivery_date ? (
-                            <div>
-                              <div className="text-sm">
-                                {format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi })}
+                          {order.status === 'delivered' || order.status === 'shipped' ? (
+                            <div className="text-center">
+                              <Badge className="bg-green-100 text-green-800">
+                                Đã giao
+                              </Badge>
+                            </div>
+                          ) : (
+                            <div 
+                              className="cursor-pointer hover:text-blue-600" 
+                              onClick={async () => {
+                                const currentDate = order.delivery_date || getDefaultDeliveryDate(order.created_at);
+                                const newDate = prompt("Chỉnh sửa ngày hẹn giao (YYYY-MM-DD):", 
+                                  format(new Date(currentDate), "yyyy-MM-dd"));
+                                if (newDate) {
+                                  try {
+                                    await supabase
+                                      .from('orders')
+                                      .update({ delivery_date: new Date(newDate).toISOString() })
+                                      .eq('id', order.id);
+                                    
+                                    // Update local state instead of reloading
+                                    setOrders(prevOrders => 
+                                      prevOrders.map(o => 
+                                        o.id === order.id 
+                                          ? { ...o, delivery_date: new Date(newDate).toISOString() }
+                                          : o
+                                      )
+                                    );
+                                    
+                                    toast({
+                                      title: "Thành công",
+                                      description: "Ngày hẹn giao đã được cập nhật",
+                                    });
+                                  } catch (error) {
+                                    toast({
+                                      title: "Lỗi",
+                                      description: "Không thể cập nhật ngày hẹn giao",
+                                      variant: "destructive",
+                                    });
+                                  }
+                                }
+                              }}
+                            >
+                              <div className={`text-sm ${isDeliveryDateNear(order.delivery_date, order.status) ? 'text-red-600 font-bold' : ''}`}>
+                                {order.delivery_date ? 
+                                  format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi }) :
+                                  format(new Date(getDefaultDeliveryDate(order.created_at)), "dd/MM/yyyy", { locale: vi })
+                                }
                               </div>
                               {daysUntilDelivery !== null && (
                                 <div className={`text-xs ${
@@ -530,9 +591,10 @@ export default function OrderManagement() {
                                    `Còn ${daysUntilDelivery} ngày`}
                                 </div>
                               )}
+                              <div className="text-xs text-muted-foreground">
+                                Click để sửa
+                              </div>
                             </div>
-                          ) : (
-                            <span className="text-muted-foreground">Chưa hẹn</span>
                           )}
                         </TableCell>
                         <TableCell>
