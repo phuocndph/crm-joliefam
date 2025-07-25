@@ -62,30 +62,43 @@ const EmployeePermissionManagement = () => {
 
   const fetchEmployees = async () => {
     try {
-      const { data, error } = await supabase
+      console.log('Fetching employees...');
+      
+      // Lấy tất cả profiles
+      const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (profilesError) {
+        console.error('Profiles error:', profilesError);
+        throw profilesError;
+      }
 
-      const employeesWithRoles = await Promise.all((data || []).map(async (profile) => {
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', profile.user_id);
-        
-        return {
-          ...profile,
-          user_roles: roleData || []
-        };
+      // Lấy user_roles để filter employees
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id, role')
+        .eq('role', 'employee');
+
+      if (rolesError) {
+        console.error('Roles error:', rolesError);
+        throw rolesError;
+      }
+
+      console.log('Profiles data:', profilesData);
+      console.log('Roles data:', rolesData);
+
+      // Filter chỉ lấy những profile có role employee
+      const employeeUserIds = rolesData?.map(r => r.user_id) || [];
+      const employeeProfiles = (profilesData || []).filter(profile => 
+        employeeUserIds.includes(profile.user_id)
+      ).map(profile => ({
+        ...profile,
+        user_roles: [{ role: 'employee' }]
       }));
 
-      // Chỉ lấy nhân viên
-      const employeeProfiles = employeesWithRoles.filter(profile => 
-        profile.user_roles?.some(role => role.role === 'employee')
-      );
-
+      console.log('Employee profiles:', employeeProfiles);
       setEmployees(employeeProfiles);
     } catch (error) {
       console.error('Error fetching employees:', error);
