@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Download, Printer, X } from "lucide-react";
+import { Download, Printer, X, Calculator } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,7 +19,10 @@ import {
 import * as ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
 import { useToast } from "@/hooks/use-toast";
+import { useUserRole } from "@/hooks/useUserRole";
+import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { getTemplateSettings } from './QuoteTemplateSettings';
+import { QuoteSupplementDialog } from './QuoteSupplementDialog';
 
 interface QuotePreviewDialogProps {
   open: boolean;
@@ -27,8 +31,18 @@ interface QuotePreviewDialogProps {
 }
 
 export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDialogProps) {
+  const [showSupplement, setShowSupplement] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const { toast } = useToast();
+  const { role: userRole } = useUserRole(user);
+  const { hasPermission } = useEmployeePermissions(user, userRole);
   const [templateSettings, setTemplateSettings] = useState(getTemplateSettings());
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+  }, []);
 
   // Load template settings when dialog opens
   useEffect(() => {
@@ -774,6 +788,16 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                 <Download className="h-4 w-4 mr-2" />
                 Xuất Excel với Logo & Màu sắc
               </Button>
+              {hasPermission('quote_supplement') && (
+                <Button 
+                  onClick={() => setShowSupplement(true)} 
+                  variant="outline" 
+                  size="sm"
+                >
+                  <Calculator className="h-4 w-4 mr-2" />
+                  Báo giá phụ
+                </Button>
+              )}
               <Button onClick={() => onOpenChange(false)} variant="ghost" size="sm">
                 <X className="h-4 w-4" />
               </Button>
@@ -943,6 +967,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           </div>
         </div>
       </DialogContent>
+      
+      {/* Quote Supplement Dialog */}
+      <QuoteSupplementDialog
+        open={showSupplement}
+        onOpenChange={setShowSupplement}
+        quote={quote}
+      />
     </Dialog>
   );
 }

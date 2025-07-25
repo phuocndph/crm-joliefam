@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { User, UserPlus, Users, Shield, Edit, Trash2, Eye, RefreshCw, UserCheck } from 'lucide-react';
 import EditUserDialog from '@/components/EditUserDialog';
 import DeleteUserDialog from '@/components/DeleteUserDialog';
+import EmployeePermissionManagement from '@/components/EmployeePermissionManagement';
 
 interface Profile {
   id: string;
@@ -568,6 +569,9 @@ const UserManagement = () => {
           setSelectedUsers([]);
         }}
       />
+
+      {/* Employee Permission Management */}
+      <EmployeePermissionManagement />
     </div>
   );
 };

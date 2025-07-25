@@ -10,6 +10,10 @@ import {
   Settings
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/useUserRole";
+import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 
 import {
   Sidebar,
@@ -28,55 +32,64 @@ const menuItems = [
     title: "Dashboard", 
     url: "/dashboard", 
     icon: Home,
-    description: "Tổng quan & thống kê"
+    description: "Tổng quan & thống kê",
+    permission: "dashboard" as const
   },
   { 
     title: "Khách hàng", 
     url: "/customers", 
     icon: Users,
-    description: "Quản lý danh sách khách hàng"
+    description: "Quản lý danh sách khách hàng",
+    permission: "customers" as const
   },
   { 
     title: "Sản phẩm", 
     url: "/products", 
     icon: Package,
-    description: "Quản lý kho hàng và giá"
+    description: "Quản lý kho hàng và giá",
+    permission: "products" as const
   },
   { 
     title: "Báo giá", 
     url: "/quotes", 
     icon: FileText,
-    description: "Tạo và quản lý báo giá"
+    description: "Tạo và quản lý báo giá",
+    permission: "quotes" as const
   },
   { 
     title: "Đơn hàng", 
     url: "/orders", 
     icon: ShoppingCart,
-    description: "Xử lý và theo dõi đơn hàng"
+    description: "Xử lý và theo dõi đơn hàng",
+    permission: "orders" as const
   },
   { 
     title: "Dòng tiền", 
     url: "/cash-flow", 
     icon: TrendingUp,
-    description: "Quản lý thu chi"
+    description: "Quản lý thu chi",
+    permission: "cash_flow" as const
   },
   { 
     title: "Giao dịch", 
     url: "/transactions", 
     icon: CreditCard,
-    description: "Lịch sử thanh toán"
+    description: "Lịch sử thanh toán",
+    permission: "transactions" as const
   },
   { 
     title: "Báo cáo", 
     url: "/reports", 
     icon: BarChart3,
-    description: "Thống kê và phân tích"
+    description: "Thống kê và phân tích",
+    permission: "reports" as const
   },
   { 
     title: "Quản lý nhân viên", 
     url: "/user-management", 
     icon: Settings,
-    description: "Phân quyền users"
+    description: "Phân quyền users",
+    permission: "user_management" as const
   }
 ];
 
@@ -85,12 +98,27 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const location = useLocation();
   const currentPath = location.pathname;
+  
+  const [user, setUser] = useState<any>(null);
+  const { role: userRole } = useUserRole(user);
+  const { hasPermission } = useEmployeePermissions(user, userRole);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+  }, []);
 
   const isActive = (path: string) => currentPath === path;
   const getNavCls = (isActive: boolean) =>
     isActive 
       ? "bg-primary text-white hover:bg-primary hover:text-white shadow-brand" 
       : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors";
+
+  // Filter menu items based on user permissions
+  const filteredMenuItems = menuItems.filter(item => 
+    hasPermission(item.permission)
+  );
 
   return (
     <Sidebar
@@ -112,7 +140,7 @@ export function AppSidebar() {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu className="space-y-1">
-                {menuItems.map((item) => (
+                {filteredMenuItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton 
                       asChild 
