@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -13,6 +14,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
+import { format } from "date-fns";
 
 interface Order {
   id: string;
@@ -21,6 +23,8 @@ interface Order {
   status: string;
   notes: string | null;
   total_amount: number | null;
+  delivery_date: string | null;
+  created_at: string;
   customers?: {
     name: string;
   } | null;
@@ -45,6 +49,20 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(order.status);
   const [notes, setNotes] = useState(order.notes || "");
+  
+  // Tính ngày mặc định (4 ngày từ ngày tạo đơn)
+  const getDefaultDeliveryDate = () => {
+    const createdDate = new Date(order.created_at);
+    const defaultDate = new Date(createdDate);
+    defaultDate.setDate(createdDate.getDate() + 4);
+    return format(defaultDate, 'yyyy-MM-dd');
+  };
+  
+  const [deliveryDate, setDeliveryDate] = useState(
+    order.delivery_date 
+      ? format(new Date(order.delivery_date), 'yyyy-MM-dd')
+      : getDefaultDeliveryDate()
+  );
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,6 +73,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
       const orderData = {
         status,
         notes: notes.trim() || null,
+        delivery_date: deliveryDate ? new Date(deliveryDate).toISOString() : null,
       };
 
       const { error } = await supabase
@@ -123,6 +142,16 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-delivery-date">Ngày hẹn giao hàng</Label>
+            <Input
+              id="edit-delivery-date"
+              type="date"
+              value={deliveryDate}
+              onChange={(e) => setDeliveryDate(e.target.value)}
+            />
           </div>
 
           <div className="space-y-2">

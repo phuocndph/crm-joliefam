@@ -507,28 +507,32 @@ export default function OrderManagement() {
                             </div>
                           )}
                         </TableCell>
-                        <TableCell>
-                          {order.delivery_date ? (
-                            <div>
-                              <div className="text-sm">
-                                {format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi })}
-                              </div>
-                              {daysUntilDelivery !== null && (
-                                <div className={`text-xs ${
-                                  daysUntilDelivery < 0 ? 'text-red-600' : 
-                                  daysUntilDelivery === 0 ? 'text-orange-600' :
-                                  daysUntilDelivery <= 3 ? 'text-yellow-600' : 'text-green-600'
-                                }`}>
-                                  {daysUntilDelivery < 0 ? `Trễ ${Math.abs(daysUntilDelivery)} ngày` :
-                                   daysUntilDelivery === 0 ? 'Hôm nay' :
-                                   `Còn ${daysUntilDelivery} ngày`}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">Chưa hẹn</span>
-                          )}
-                        </TableCell>
+                         <TableCell>
+                           {order.status === 'delivered' || order.status === 'shipped' ? (
+                             <Badge className="bg-green-100 text-green-800">
+                               Đã giao
+                             </Badge>
+                           ) : order.delivery_date ? (
+                             <div>
+                               <div className="text-sm">
+                                 {format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi })}
+                               </div>
+                               {daysUntilDelivery !== null && (
+                                 <div className={`text-xs ${
+                                   daysUntilDelivery < 0 ? 'text-red-600' : 
+                                   daysUntilDelivery === 0 ? 'text-red-600' :
+                                   daysUntilDelivery <= 2 ? 'text-red-600' : 'text-green-600'
+                                 }`}>
+                                   {daysUntilDelivery < 0 ? `Trễ ${Math.abs(daysUntilDelivery)} ngày` :
+                                    daysUntilDelivery === 0 ? 'Hôm nay' :
+                                    `Còn ${daysUntilDelivery} ngày`}
+                                 </div>
+                               )}
+                             </div>
+                           ) : (
+                             <span className="text-muted-foreground">Chưa hẹn</span>
+                           )}
+                         </TableCell>
                         <TableCell>
                           {format(new Date(order.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
                         </TableCell>
