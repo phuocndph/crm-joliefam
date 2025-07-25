@@ -268,7 +268,15 @@ export default function OrderManagement() {
         }
       }
 
-      loadOrders();
+      // Update local state instead of reloading
+      setOrders(prevOrders => 
+        prevOrders.map(o => 
+          o.id === orderId 
+            ? { ...o, ...updateData }
+            : o
+        )
+      );
+
       toast({
         title: "Thành công",
         description: "Trạng thái đơn hàng đã được cập nhật",
@@ -586,7 +594,16 @@ export default function OrderManagement() {
                                     .from('orders')
                                     .update({ delivered_date: new Date(newDate).toISOString() })
                                     .eq('id', order.id);
-                                  loadOrders();
+                                  
+                                  // Update local state instead of reloading
+                                  setOrders(prevOrders => 
+                                    prevOrders.map(o => 
+                                      o.id === order.id 
+                                        ? { ...o, delivered_date: new Date(newDate).toISOString() }
+                                        : o
+                                    )
+                                  );
+                                  
                                   toast({
                                     title: "Thành công",
                                     description: "Ngày giao hàng đã được cập nhật",
@@ -622,7 +639,16 @@ export default function OrderManagement() {
                                     .from('orders')
                                     .update({ notes: newNote })
                                     .eq('id', order.id);
-                                  loadOrders();
+                                  
+                                  // Update local state instead of reloading
+                                  setOrders(prevOrders => 
+                                    prevOrders.map(o => 
+                                      o.id === order.id 
+                                        ? { ...o, notes: newNote }
+                                        : o
+                                    )
+                                  );
+                                  
                                   toast({
                                     title: "Thành công",
                                     description: "Ghi chú đã được cập nhật",
@@ -637,7 +663,7 @@ export default function OrderManagement() {
                               }
                             }}
                           >
-                            <div className="text-sm max-w-32 truncate">
+                            <div className="text-sm break-words max-w-xs">
                               {order.notes || "Thêm ghi chú..."}
                             </div>
                             <div className="text-xs text-muted-foreground">
