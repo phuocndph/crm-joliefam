@@ -161,7 +161,7 @@
   }
   
   .table-row-hover:hover {
-    @apply bg-muted/60;
+    @apply bg-primary text-primary-foreground;
   }
 
   .dropdown-item-hover {
