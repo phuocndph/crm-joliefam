@@ -57,6 +57,7 @@ interface Order {
   payment_status: string;
   payment_date: string | null;
   delivery_date: string | null;
+  delivered_date: string | null;
   notes: string | null;
   items: any;
   created_at: string;
@@ -157,7 +158,25 @@ export default function OrderManagement() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setOrders(data || []);
+      
+      // Add payment amounts from order_payments
+      const ordersWithPayments = await Promise.all(
+        (data || []).map(async (order) => {
+          const { data: payments } = await supabase
+            .from('order_payments')
+            .select('payment_amount')
+            .eq('order_id', order.id);
+          
+          const totalPaid = payments?.reduce((sum, payment) => sum + payment.payment_amount, 0) || 0;
+          
+          return {
+            ...order,
+            total_paid: totalPaid
+          };
+        })
+      );
+      
+      setOrders(ordersWithPayments);
     } catch (error) {
       console.error('Error loading orders:', error);
       toast({
@@ -220,9 +239,16 @@ export default function OrderManagement() {
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
+      const updateData: any = { status: newStatus };
+      
+      // If order is delivered or shipped, set delivered_date
+      if (newStatus === 'delivered' || newStatus === 'shipped') {
+        updateData.delivered_date = new Date().toISOString();
+      }
+      
       const { error } = await supabase
         .from('orders')
-        .update({ status: newStatus })
+        .update(updateData)
         .eq('id', orderId);
 
       if (error) throw error;
@@ -407,25 +433,27 @@ export default function OrderManagement() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Mã đơn hàng</TableHead>
-                  <TableHead>Khách hàng</TableHead>
-                  <TableHead>Giá trị</TableHead>
-                  <TableHead>Trạng thái đơn</TableHead>
+                  <TableHead>Ngày tạo đơn</TableHead>
+                  <TableHead>Tên khách hàng</TableHead>
+                  <TableHead>Giá trị đơn hàng</TableHead>
+                  <TableHead>Ngày hẹn trả</TableHead>
+                  <TableHead>Tình trạng đơn</TableHead>
                   <TableHead>Thanh toán</TableHead>
-                  <TableHead>Hẹn giao hàng</TableHead>
-                  <TableHead>Ngày tạo</TableHead>
+                  <TableHead>Ngày giao hàng</TableHead>
+                  <TableHead>Ghi chú</TableHead>
                   <TableHead className="text-right">Thao tác</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={10} className="text-center py-8">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : sortedOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={10} className="text-center py-8">
                       <div className="flex flex-col items-center gap-2">
                         <Package className="h-8 w-8 text-muted-foreground" />
                         <p className="text-muted-foreground">
@@ -443,7 +471,7 @@ export default function OrderManagement() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sortedOrders.map((order) => {
+                  sortedOrders.map((order: any) => {
                     const daysUntilDelivery = order.delivery_date ? getDaysUntilDelivery(order.delivery_date) : null;
                     
                     return (
@@ -462,6 +490,9 @@ export default function OrderManagement() {
                           </div>
                         </TableCell>
                         <TableCell>
+                          {format(new Date(order.created_at), "dd/MM/yyyy", { locale: vi })}
+                        </TableCell>
+                        <TableCell>
                           <div>
                             <div className="font-medium">
                               {order.customers?.name || "Khách lẻ"}
@@ -473,6 +504,28 @@ export default function OrderManagement() {
                         </TableCell>
                         <TableCell className="font-medium">
                           {(order.total_amount || 0).toLocaleString("vi-VN")} VNĐ
+                        </TableCell>
+                        <TableCell>
+                          {order.delivery_date ? (
+                            <div>
+                              <div className="text-sm">
+                                {format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi })}
+                              </div>
+                              {daysUntilDelivery !== null && (
+                                <div className={`text-xs ${
+                                  daysUntilDelivery < 0 ? 'text-red-600' : 
+                                  daysUntilDelivery === 0 ? 'text-red-600' :
+                                  daysUntilDelivery <= 2 ? 'text-red-600' : 'text-green-600'
+                                }`}>
+                                  {daysUntilDelivery < 0 ? `Trễ ${Math.abs(daysUntilDelivery)} ngày` :
+                                   daysUntilDelivery === 0 ? 'Hôm nay' :
+                                   `Còn ${daysUntilDelivery} ngày`}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">Chưa hẹn</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <DropdownMenu>
@@ -498,43 +551,99 @@ export default function OrderManagement() {
                           </DropdownMenu>
                         </TableCell>
                         <TableCell>
-                          <Badge className={paymentStatusConfig[order.payment_status]?.color || "bg-gray-100 text-gray-800"}>
-                            {paymentStatusConfig[order.payment_status]?.label || order.payment_status}
-                          </Badge>
-                          {order.payment_date && (
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
+                          {order.payment_status === 'partial' && order.total_paid ? (
+                            <div>
+                              <Badge className="bg-yellow-100 text-yellow-800">
+                                Đã thanh toán {order.total_paid.toLocaleString("vi-VN")} VNĐ
+                              </Badge>
+                              {order.payment_date && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div>
+                              <Badge className={paymentStatusConfig[order.payment_status]?.color || "bg-gray-100 text-gray-800"}>
+                                {paymentStatusConfig[order.payment_status]?.label || order.payment_status}
+                              </Badge>
+                              {order.payment_date && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
+                                </div>
+                              )}
                             </div>
                           )}
                         </TableCell>
-                         <TableCell>
-                           {order.status === 'delivered' || order.status === 'shipped' ? (
-                             <Badge className="bg-green-100 text-green-800">
-                               Đã giao
-                             </Badge>
-                           ) : order.delivery_date ? (
-                             <div>
-                               <div className="text-sm">
-                                 {format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi })}
-                               </div>
-                               {daysUntilDelivery !== null && (
-                                 <div className={`text-xs ${
-                                   daysUntilDelivery < 0 ? 'text-red-600' : 
-                                   daysUntilDelivery === 0 ? 'text-red-600' :
-                                   daysUntilDelivery <= 2 ? 'text-red-600' : 'text-green-600'
-                                 }`}>
-                                   {daysUntilDelivery < 0 ? `Trễ ${Math.abs(daysUntilDelivery)} ngày` :
-                                    daysUntilDelivery === 0 ? 'Hôm nay' :
-                                    `Còn ${daysUntilDelivery} ngày`}
-                                 </div>
-                               )}
-                             </div>
-                           ) : (
-                             <span className="text-muted-foreground">Chưa hẹn</span>
-                           )}
-                         </TableCell>
                         <TableCell>
-                          {format(new Date(order.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
+                          {order.delivered_date ? (
+                            <div className="cursor-pointer" onClick={async () => {
+                              const newDate = prompt("Chỉnh sửa ngày giao hàng (YYYY-MM-DD):", 
+                                format(new Date(order.delivered_date), "yyyy-MM-dd"));
+                              if (newDate) {
+                                try {
+                                  await supabase
+                                    .from('orders')
+                                    .update({ delivered_date: new Date(newDate).toISOString() })
+                                    .eq('id', order.id);
+                                  loadOrders();
+                                  toast({
+                                    title: "Thành công",
+                                    description: "Ngày giao hàng đã được cập nhật",
+                                  });
+                                } catch (error) {
+                                  toast({
+                                    title: "Lỗi",
+                                    description: "Không thể cập nhật ngày giao hàng",
+                                    variant: "destructive",
+                                  });
+                                }
+                              }
+                            }}>
+                              <div className="text-sm hover:text-blue-600">
+                                {format(new Date(order.delivered_date), "dd/MM/yyyy", { locale: vi })}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Click để sửa
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">Chưa giao</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div 
+                            className="cursor-pointer hover:text-blue-600" 
+                            onClick={async () => {
+                              const newNote = prompt("Chỉnh sửa ghi chú:", order.notes || "");
+                              if (newNote !== null) {
+                                try {
+                                  await supabase
+                                    .from('orders')
+                                    .update({ notes: newNote })
+                                    .eq('id', order.id);
+                                  loadOrders();
+                                  toast({
+                                    title: "Thành công",
+                                    description: "Ghi chú đã được cập nhật",
+                                  });
+                                } catch (error) {
+                                  toast({
+                                    title: "Lỗi",
+                                    description: "Không thể cập nhật ghi chú",
+                                    variant: "destructive",
+                                  });
+                                }
+                              }
+                            }}
+                          >
+                            <div className="text-sm max-w-32 truncate">
+                              {order.notes || "Thêm ghi chú..."}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Click để sửa
+                            </div>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <DropdownMenu>

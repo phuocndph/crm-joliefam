@@ -253,6 +253,7 @@ export type Database = {
           cost_price: number | null
           created_at: string
           customer_id: string | null
+          delivered_date: string | null
           delivery_date: string | null
           display_order_number: string | null
           id: string
@@ -273,6 +274,7 @@ export type Database = {
           cost_price?: number | null
           created_at?: string
           customer_id?: string | null
+          delivered_date?: string | null
           delivery_date?: string | null
           display_order_number?: string | null
           id?: string
@@ -293,6 +295,7 @@ export type Database = {
           cost_price?: number | null
           created_at?: string
           customer_id?: string | null
+          delivered_date?: string | null
           delivery_date?: string | null
           display_order_number?: string | null
           id?: string
