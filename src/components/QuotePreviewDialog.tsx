@@ -87,6 +87,16 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const worksheet = workbook.addWorksheet('Báo giá');
       
       // Set page setup for printing
+      // Set column widths first
+      worksheet.getColumn('A').width = 7.14;
+      worksheet.getColumn('B').width = 22.86;
+      worksheet.getColumn('C').width = 42;
+      worksheet.getColumn('D').width = 52.85;
+      worksheet.getColumn('E').width = 12.86;
+      worksheet.getColumn('F').width = 12.86;
+      worksheet.getColumn('G').width = 17.29;
+      worksheet.getColumn('H').width = 18.14;
+
       worksheet.pageSetup = {
         orientation: 'portrait',
         fitToPage: true,
@@ -164,16 +174,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       bankCell.value = `STK: ${templateSettings.bankInfo}`;
       bankCell.font = { name: 'Times New Roman', size: 10 };
       bankCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-
-      // Set column widths
-      worksheet.getColumn('A').width = 7.14;
-      worksheet.getColumn('B').width = 22.86;
-      worksheet.getColumn('C').width = 42;
-      worksheet.getColumn('D').width = 52.85;
-      worksheet.getColumn('E').width = 12.86;
-      worksheet.getColumn('F').width = 12.86;
-      worksheet.getColumn('G').width = 17.29;
-      worksheet.getColumn('H').width = 18.14;
 
       // Empty row
       let currentRow = 8;
@@ -388,16 +388,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       customerSignatureCell.value = 'Ký tên và đóng dấu xác nhận';
       customerSignatureCell.font = { name: 'Times New Roman', size: 10 };
       customerSignatureCell.alignment = { horizontal: 'center', vertical: 'middle' };
-
-      // Column widths
-      worksheet.getColumn(1).width = 8;   // STT
-      worksheet.getColumn(2).width = 35;  // SẢN PHẨM
-      worksheet.getColumn(3).width = 25;  // QUY CÁCH
-      worksheet.getColumn(4).width = 30;  // CHẤT LIỆU
-      worksheet.getColumn(5).width = 12;  // SỐ LƯỢNG
-      worksheet.getColumn(6).width = 15;  // ĐƠN GIÁ
-      worksheet.getColumn(7).width = 18;  // THÀNH TIỀN
-      worksheet.getColumn(8).width = 12;  // Ghi Chú
 
       // Generate and download file
       const buffer = await workbook.xlsx.writeBuffer();
