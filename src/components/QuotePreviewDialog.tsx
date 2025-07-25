@@ -128,39 +128,39 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       }
 
       // Company header - Row 1 (next to logo)
-      worksheet.mergeCells('B1:H1');
-      const companyCell = worksheet.getCell('B1');
+      worksheet.mergeCells('C1:H1');
+      const companyCell = worksheet.getCell('C1');
       companyCell.value = templateSettings.companyTitle;
       companyCell.font = { name: 'Times New Roman', bold: true, size: 16, color: { argb: templateSettings.companyTitleColor.replace('#', 'FF') } };
       companyCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
       // Company details - Row 2-6
-      worksheet.mergeCells('B2:H2');
-      const addressCell = worksheet.getCell('B2');
+      worksheet.mergeCells('C2:H2');
+      const addressCell = worksheet.getCell('C2');
       addressCell.value = `Địa chỉ: ${templateSettings.address}`;
       addressCell.font = { name: 'Times New Roman', size: 10 };
       addressCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
-      worksheet.mergeCells('B3:H3');
-      const phoneCell = worksheet.getCell('B3');
+      worksheet.mergeCells('C3:H3');
+      const phoneCell = worksheet.getCell('C3');
       phoneCell.value = `Điện thoại: ${templateSettings.phone}`;
       phoneCell.font = { name: 'Times New Roman', size: 10 };
       phoneCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
-      worksheet.mergeCells('B4:H4');
-      const mstCell = worksheet.getCell('B4');
+      worksheet.mergeCells('C4:H4');
+      const mstCell = worksheet.getCell('C4');
       mstCell.value = `MST: ${templateSettings.taxCode}`;
       mstCell.font = { name: 'Times New Roman', size: 10 };
       mstCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
-      worksheet.mergeCells('B5:H5');
-      const officeCell = worksheet.getCell('B5');
+      worksheet.mergeCells('C5:H5');
+      const officeCell = worksheet.getCell('C5');
       officeCell.value = `Trụ sở: ${templateSettings.headquarters}`;
       officeCell.font = { name: 'Times New Roman', size: 10 };
       officeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
-      worksheet.mergeCells('B6:H6');
-      const bankCell = worksheet.getCell('B6');
+      worksheet.mergeCells('C6:H6');
+      const bankCell = worksheet.getCell('C6');
       bankCell.value = `STK: ${templateSettings.bankInfo}`;
       bankCell.font = { name: 'Times New Roman', size: 10 };
       bankCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
@@ -191,11 +191,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const customerHeaderCell = worksheet.getCell(`A${currentRow}`);
       customerHeaderCell.value = 'THÔNG TIN KHÁCH HÀNG:';
       customerHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FF0066CC' } };
-      customerHeaderCell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE6F3FF' }
-      };
       customerHeaderCell.border = {
         top: { style: 'thin' },
         left: { style: 'thin' },
@@ -207,11 +202,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const quoteHeaderCell = worksheet.getCell(`E${currentRow}`);
       quoteHeaderCell.value = 'THÔNG TIN BÁO GIÁ:';
       quoteHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FF0066CC' } };
-      quoteHeaderCell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE6F3FF' }
-      };
       quoteHeaderCell.border = {
         top: { style: 'thin' },
         left: { style: 'thin' },
@@ -372,12 +362,24 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         const labelCell = worksheet.getCell(`A${currentRow}`);
         labelCell.value = label;
         labelCell.font = { name: 'Times New Roman', bold: true, size: 11 };
-        labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
+        labelCell.alignment = { horizontal: 'left', vertical: 'middle' };
+        labelCell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
 
         const valueCell = worksheet.getCell(`G${currentRow}`);
         valueCell.value = value;
         valueCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFDC143C' } };
         valueCell.alignment = { horizontal: 'right', vertical: 'middle' };
+        valueCell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
 
         currentRow++;
       });
