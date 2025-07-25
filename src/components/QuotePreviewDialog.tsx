@@ -165,6 +165,16 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       bankCell.font = { name: 'Times New Roman', size: 10 };
       bankCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
+      // Set column widths
+      worksheet.getColumn('A').width = 7.14;
+      worksheet.getColumn('B').width = 22.86;
+      worksheet.getColumn('C').width = 42;
+      worksheet.getColumn('D').width = 52.85;
+      worksheet.getColumn('E').width = 12.86;
+      worksheet.getColumn('F').width = 12.86;
+      worksheet.getColumn('G').width = 17.29;
+      worksheet.getColumn('H').width = 18.14;
+
       // Empty row
       let currentRow = 8;
 
@@ -292,6 +302,9 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             cell.alignment = { wrapText: true, vertical: 'middle' };
           }
         });
+        
+        // Set row height for product content
+        worksheet.getRow(currentRow).height = 48.75;
         
         currentRow++;
       });
