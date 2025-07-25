@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3 } from "lucide-react";
+import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +78,8 @@ const statusConfig = {
   shipped: { label: "Đã giao", color: "bg-green-100 text-green-800 hover:bg-green-600 hover:text-white", icon: Truck },
   delivered: { label: "Hoàn thành", color: "bg-green-100 text-green-800 hover:bg-green-600 hover:text-white", icon: CheckCircle },
   cancelled: { label: "Đã hủy", color: "bg-red-100 text-red-800 hover:bg-red-600 hover:text-white", icon: XCircle },
+  self_delivered: { label: "Đã giao tự thu tiền", color: "bg-purple-100 text-purple-800 hover:bg-purple-600 hover:text-white", icon: Truck },
+  returned: { label: "Hoàn Hàng", color: "bg-orange-100 text-orange-800 hover:bg-orange-600 hover:text-white", icon: RotateCcw },
 };
 
 const paymentStatusConfig = {
@@ -435,6 +437,8 @@ export default function OrderManagement() {
                   <SelectItem value="shipped">Đã giao</SelectItem>
                   <SelectItem value="delivered">Hoàn thành</SelectItem>
                   <SelectItem value="cancelled">Đã hủy</SelectItem>
+                  <SelectItem value="self_delivered">Đã giao tự thu tiền</SelectItem>
+                  <SelectItem value="returned">Hoàn Hàng</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={paymentFilter} onValueChange={setPaymentFilter}>
@@ -531,10 +535,22 @@ export default function OrderManagement() {
                           {(order.total_amount || 0).toLocaleString("vi-VN")} VNĐ
                         </TableCell>
                         <TableCell>
-                          {order.status === 'delivered' || order.status === 'shipped' ? (
+                          {order.status === 'delivered' || order.status === 'shipped' || order.status === 'self_delivered' ? (
                             <div className="text-center">
                               <Badge className="bg-green-100 text-green-800">
                                 Đã giao
+                              </Badge>
+                            </div>
+                          ) : order.status === 'cancelled' ? (
+                            <div className="text-center">
+                              <Badge className="bg-red-100 text-red-800">
+                                Đã hủy
+                              </Badge>
+                            </div>
+                          ) : order.status === 'returned' ? (
+                            <div className="text-center">
+                              <Badge className="bg-orange-100 text-orange-800">
+                                Hoàn hàng
                               </Badge>
                             </div>
                           ) : (
@@ -626,22 +642,12 @@ export default function OrderManagement() {
                               <Badge className="bg-yellow-100 text-yellow-800">
                                 Đã thanh toán {order.total_paid.toLocaleString("vi-VN")} VNĐ
                               </Badge>
-                              {order.payment_date && (
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
-                                </div>
-                              )}
                             </div>
                           ) : (
                             <div>
                               <Badge className={paymentStatusConfig[order.payment_status]?.color || "bg-gray-100 text-gray-800"}>
                                 {paymentStatusConfig[order.payment_status]?.label || order.payment_status}
                               </Badge>
-                              {order.payment_date && (
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
-                                </div>
-                              )}
                             </div>
                           )}
                         </TableCell>
