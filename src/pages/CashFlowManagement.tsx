@@ -646,7 +646,7 @@ export default function CashFlowManagement() {
                           </TableRow>
                         ) : (
                           filteredExpenses.map((expense) => (
-                            <TableRow key={expense.id}>
+                            <TableRow key={expense.id} className="hover:bg-muted/60 transition-colors">
                               <TableCell className="font-medium">{expense.expense_code}</TableCell>
                               <TableCell>{formatSafeDate(expense.expense_date)}</TableCell>
                               <TableCell>
@@ -665,16 +665,22 @@ export default function CashFlowManagement() {
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => setSelectedExpense(expense)}>
+                                    <DropdownMenuItem 
+                                      onClick={() => setSelectedExpense(expense)}
+                                      className="hover:bg-primary hover:text-primary-foreground transition-colors"
+                                    >
                                       <Eye className="mr-2 h-4 w-4" />
                                       Xem chi tiết
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => setExpenseToEdit(expense)}>
+                                    <DropdownMenuItem 
+                                      onClick={() => setExpenseToEdit(expense)}
+                                      className="hover:bg-primary hover:text-primary-foreground transition-colors"
+                                    >
                                       <Edit className="mr-2 h-4 w-4" />
                                       Chỉnh sửa
                                     </DropdownMenuItem>
                                     <DropdownMenuItem 
-                                      className="text-red-600"
+                                      className="text-red-600 hover:bg-red-600 hover:text-white transition-colors"
                                       onClick={() => setExpenseToDelete(expense)}
                                     >
                                       <Trash2 className="mr-2 h-4 w-4" />
@@ -761,7 +767,7 @@ export default function CashFlowManagement() {
                           {orderProfits.map((profit) => (
                             <TableRow 
                               key={profit.id} 
-                              className="cursor-pointer hover:bg-muted/50"
+                              className="cursor-pointer hover:bg-muted/60 transition-colors"
                             >
                               <TableCell className="font-medium">{getOrderDisplayNumber(profit)}</TableCell>
                               <TableCell>{profit.customer_name}</TableCell>

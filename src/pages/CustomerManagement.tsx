@@ -399,8 +399,8 @@ export default function CustomerManagement() {
     }
   }, [selectedCustomer]);
 
-  const handleCreateCustomer = () => {
-    loadCustomers();
+  const handleCreateCustomer = async () => {
+    await loadCustomers();
     setShowCreateForm(false);
     toast({
       title: "Thành công",
@@ -408,8 +408,8 @@ export default function CustomerManagement() {
     });
   };
 
-  const handleEditCustomer = () => {
-    loadCustomers();
+  const handleEditCustomer = async () => {
+    await loadCustomers();
     setCustomerToEdit(null);
     toast({
       title: "Thành công",
@@ -417,8 +417,8 @@ export default function CustomerManagement() {
     });
   };
 
-  const handleDeleteCustomer = () => {
-    loadCustomers();
+  const handleDeleteCustomer = async () => {
+    await loadCustomers();
     setCustomerToDelete(null);
     toast({
       title: "Thành công",
@@ -635,7 +635,7 @@ export default function CustomerManagement() {
                   </TableRow>
                 ) : (
                   sortedCustomers.map((customer) => (
-                    <TableRow key={customer.id}>
+                    <TableRow key={customer.id} className="hover:bg-muted/60 transition-colors">
                       <TableCell className="font-medium">
                         {customer.customer_code || `KH-${customer.id.slice(0, 8)}`}
                       </TableCell>
@@ -717,19 +717,21 @@ export default function CustomerManagement() {
                           <DropdownMenuContent align="end" className="bg-white z-50">
                             <DropdownMenuItem
                               onClick={() => setSelectedCustomer(customer)}
+                              className="hover:bg-primary hover:text-primary-foreground transition-colors"
                             >
                               <Eye className="mr-2 h-4 w-4" />
                               Xem chi tiết
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => setCustomerToEdit(customer)}
+                              className="hover:bg-primary hover:text-primary-foreground transition-colors"
                             >
                               <Edit className="mr-2 h-4 w-4" />
                               Sửa
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => setCustomerToDelete(customer)}
-                              className="text-red-600"
+                              className="text-red-600 hover:bg-red-600 hover:text-white transition-colors"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Xóa

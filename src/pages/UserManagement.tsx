@@ -155,7 +155,7 @@ const UserManagement = () => {
         setSelectedRole('employee');
         
         // Refresh profiles
-        fetchProfiles();
+        await fetchProfiles();
         setSelectedUsers([]);
       } else {
         throw new Error('Không có quyền tạo tài khoản này');
@@ -255,7 +255,7 @@ const UserManagement = () => {
       });
 
       setSelectedUsers([]);
-      fetchProfiles();
+      await fetchProfiles();
     } catch (error: any) {
       console.error('Error deleting users:', error);
       toast({
@@ -473,7 +473,7 @@ const UserManagement = () => {
                   const isSelected = selectedUsers.includes(profile.user_id);
                   
                   return (
-                    <TableRow key={profile.id} className={isSelected ? 'bg-muted/50' : ''}>
+                    <TableRow key={profile.id} className={`${isSelected ? 'bg-muted/50' : ''} hover:bg-muted/60 transition-colors`}>
                       <TableCell>
                         <Checkbox
                           checked={isSelected}

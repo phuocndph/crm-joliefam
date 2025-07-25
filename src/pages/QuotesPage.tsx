@@ -148,18 +148,18 @@ export default function QuotesPage() {
       quote.status.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleCreateQuote = () => {
+  const handleCreateQuote = async () => {
     setShowCreateForm(false);
-    loadQuotes();
+    await loadQuotes();
     toast({
       title: "Thành công",
       description: "Báo giá đã được tạo thành công",
     });
   };
 
-  const handleEditQuote = () => {
+  const handleEditQuote = async () => {
     setEditingQuote(null);
-    loadQuotes();
+    await loadQuotes();
     toast({
       title: "Thành công",
       description: "Báo giá đã được cập nhật thành công",
@@ -234,7 +234,7 @@ export default function QuotesPage() {
 
       if (orderError) throw orderError;
 
-      loadQuotes();
+      await loadQuotes();
       toast({
         title: "Thành công",
         description: `Báo giá đã được duyệt và đơn hàng ${orderNumber} đã được tạo`,
@@ -258,7 +258,7 @@ export default function QuotesPage() {
 
       if (error) throw error;
 
-      loadQuotes();
+      await loadQuotes();
       toast({
         title: "Thành công",
         description: "Báo giá đã được từ chối",
@@ -411,7 +411,7 @@ export default function QuotesPage() {
                   </TableRow>
                 ) : (
                   filteredQuotes.map((quote) => (
-                    <TableRow key={quote.id}>
+                    <TableRow key={quote.id} className="hover:bg-muted/60 transition-colors">
                       <TableCell className="font-medium">
                         {quote.quote_number || `QUOTE-${quote.id.slice(0, 8)}`}
                       </TableCell>
@@ -444,12 +444,14 @@ export default function QuotesPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() => setSelectedQuote(quote)}
+                              className="hover:bg-primary hover:text-primary-foreground transition-colors"
                             >
                               <Eye className="mr-2 h-4 w-4" />
                               Xem
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => setSupplementQuote(quote)}
+                              className="hover:bg-primary hover:text-primary-foreground transition-colors"
                             >
                               <Calculator className="mr-2 h-4 w-4" />
                               Báo giá phụ
@@ -457,7 +459,7 @@ export default function QuotesPage() {
                             {quote.status === 'draft' && (
                               <DropdownMenuItem
                                 onClick={() => handleApproveQuote(quote)}
-                                className="text-green-600"
+                                className="text-green-600 hover:bg-green-600 hover:text-white transition-colors"
                               >
                                 <CheckCircle className="mr-2 h-4 w-4" />
                                 Duyệt báo giá
@@ -466,7 +468,7 @@ export default function QuotesPage() {
                             {quote.status === 'draft' && (
                               <DropdownMenuItem
                                 onClick={() => handleRejectQuote(quote.id)}
-                                className="text-orange-600"
+                                className="text-orange-600 hover:bg-orange-600 hover:text-white transition-colors"
                               >
                                 <XCircle className="mr-2 h-4 w-4" />
                                 Từ chối
@@ -474,13 +476,14 @@ export default function QuotesPage() {
                             )}
                             <DropdownMenuItem
                               onClick={() => setEditingQuote(quote)}
+                              className="hover:bg-primary hover:text-primary-foreground transition-colors"
                             >
                               <Edit className="mr-2 h-4 w-4" />
                               Sửa
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleDeleteQuote(quote.id)}
-                              className="text-red-600"
+                              className="text-red-600 hover:bg-red-600 hover:text-white transition-colors"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Xóa

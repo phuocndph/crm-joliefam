@@ -68,6 +68,10 @@
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-spring: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 
+    /* Hover states - Improved contrast */
+    --hover-overlay: 220 15% 0%;
+    --hover-opacity: 0.05;
+
     --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
@@ -133,5 +137,38 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Improved hover states for better contrast */
+  .hover-contrast {
+    @apply transition-smooth;
+  }
+  
+  .hover-contrast:hover {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .button-hover {
+    @apply transition-smooth;
+  }
+  
+  .button-hover:hover {
+    @apply shadow-md scale-[1.02];
+  }
+
+  .table-row-hover {
+    @apply transition-smooth;
+  }
+  
+  .table-row-hover:hover {
+    @apply bg-muted/60;
+  }
+
+  .dropdown-item-hover {
+    @apply transition-smooth;
+  }
+  
+  .dropdown-item-hover:hover {
+    @apply bg-primary text-primary-foreground;
   }
 }
