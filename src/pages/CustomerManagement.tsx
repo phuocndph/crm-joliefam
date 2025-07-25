@@ -81,6 +81,7 @@ interface Customer {
 interface CustomerOrder {
   id: string;
   order_number: string;
+  display_order_number?: string;
   total_amount: number;
   status: string;
   payment_status: string;
@@ -355,7 +356,7 @@ export default function CustomerManagement() {
       const [ordersResult, quotesResult] = await Promise.all([
         supabase
           .from('orders')
-          .select('id, order_number, total_amount, status, payment_status, created_at, delivery_date, payment_date')
+          .select('id, order_number, display_order_number, total_amount, status, payment_status, created_at, delivery_date, payment_date')
           .in('customer_id', customerIds)
           .order('created_at', { ascending: false }),
         supabase
