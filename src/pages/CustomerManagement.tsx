@@ -40,6 +40,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format, formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
+import { getOrderDisplayNumber } from "@/lib/orderUtils";
 
 interface CustomerPhone {
   number: string;
@@ -129,7 +130,7 @@ function PaymentWrapper({ order, onClose, onSubmit }: { order: any, onClose: () 
   return (
     <CreatePaymentForm
       orderId={order.id}
-      orderNumber={order.order_number}
+      orderNumber={getOrderDisplayNumber(order)}
       totalAmount={order.total_amount || 0}
       totalPaid={paymentInfo.totalPaid}
       remainingAmount={paymentInfo.remainingAmount}
@@ -894,7 +895,7 @@ export default function CustomerManagement() {
                            <div className="flex justify-between items-start">
                              <div className="space-y-2 flex-1">
                                <div className="font-medium">
-                                 Đơn hàng #{order.order_number}
+                                 Đơn hàng #{getOrderDisplayNumber(order)}
                                </div>
                                <div className="text-sm text-muted-foreground">
                                  Ngày tạo: {format(new Date(order.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
@@ -1044,7 +1045,7 @@ export default function CustomerManagement() {
           <DialogHeader>
             <DialogTitle>Chi tiết đơn hàng</DialogTitle>
             <DialogDescription>
-              Thông tin chi tiết đơn hàng #{selectedOrderDetail?.order_number}
+              Thông tin chi tiết đơn hàng #{selectedOrderDetail ? getOrderDisplayNumber(selectedOrderDetail) : ''}
             </DialogDescription>
           </DialogHeader>
           
@@ -1059,7 +1060,7 @@ export default function CustomerManagement() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium">Mã đơn hàng:</label>
-                      <p className="text-sm text-muted-foreground">{selectedOrderDetail.order_number}</p>
+                      <p className="text-sm text-muted-foreground">{getOrderDisplayNumber(selectedOrderDetail)}</p>
                     </div>
                     <div>
                       <label className="text-sm font-medium">Trạng thái:</label>
@@ -1205,7 +1206,7 @@ export default function CustomerManagement() {
               Thêm thanh toán
             </DialogTitle>
             <DialogDescription className="text-base">
-              Thêm thanh toán cho đơn hàng <span className="font-semibold text-primary">#{orderToPayment?.order_number}</span>
+              Thêm thanh toán cho đơn hàng <span className="font-semibold text-primary">#{orderToPayment ? getOrderDisplayNumber(orderToPayment) : ''}</span>
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">

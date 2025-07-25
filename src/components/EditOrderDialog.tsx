@@ -12,10 +12,12 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { getOrderDisplayNumber } from "@/lib/orderUtils";
 
 interface Order {
   id: string;
   order_number: string;
+  display_order_number?: string;
   status: string;
   notes: string | null;
   total_amount: number | null;
@@ -68,7 +70,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
           amount: order.total_amount,
           type: 'income',
           category: 'sales',
-          description: `Thanh toán đơn hàng ${order.order_number}`,
+          description: `Thanh toán đơn hàng ${getOrderDisplayNumber(order)}`,
           date: new Date().toISOString(),
           tenant_id: 'default',
         });
@@ -93,7 +95,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
         <DialogHeader>
           <DialogTitle>Chỉnh sửa đơn hàng</DialogTitle>
           <DialogDescription>
-            Cập nhật trạng thái và ghi chú cho đơn hàng #{order.order_number}
+            Cập nhật trạng thái và ghi chú cho đơn hàng #{getOrderDisplayNumber(order)}
           </DialogDescription>
         </DialogHeader>
         
@@ -101,7 +103,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
           <div className="space-y-2">
             <Label>Thông tin đơn hàng</Label>
             <div className="text-sm space-y-1">
-              <p><strong>Số đơn hàng:</strong> {order.order_number}</p>
+              <p><strong>Số đơn hàng:</strong> {getOrderDisplayNumber(order)}</p>
               <p><strong>Khách hàng:</strong> {order.customers?.name || "Khách lẻ"}</p>
               <p><strong>Giá trị:</strong> {order.total_amount?.toLocaleString()} ₫</p>
             </div>

@@ -42,7 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { formatOrderNumber } from "@/lib/orderUtils";
+import { getOrderDisplayNumber } from "@/lib/orderUtils";
 
 interface Order {
   id: string;
@@ -103,7 +103,7 @@ export default function OrderManagement() {
 
   const filteredOrders = orders.filter((order) => {
     const matchesSearch = 
-      order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -118,7 +118,7 @@ export default function OrderManagement() {
   const sortedOrders = [...filteredOrders].sort((a, b) => {
     switch (sortBy) {
       case "order_number":
-        return a.order_number.localeCompare(b.order_number);
+        return getOrderDisplayNumber(a).localeCompare(getOrderDisplayNumber(b));
       case "customer_name":
         return (a.customers?.name || "").localeCompare(b.customers?.name || "");
       case "total_amount":
@@ -235,7 +235,7 @@ export default function OrderManagement() {
             amount: order.total_amount,
             type: 'income',
             category: 'sales',
-            description: `Thanh toán đơn hàng ${order.order_number}`,
+            description: `Thanh toán đơn hàng ${getOrderDisplayNumber(order)}`,
             date: new Date().toISOString(),
             tenant_id: 'default',
           });
@@ -450,7 +450,7 @@ export default function OrderManagement() {
                       <TableRow key={order.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
-                            <span>{formatOrderNumber(order)}</span>
+                            <span>{getOrderDisplayNumber(order)}</span>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -591,7 +591,7 @@ export default function OrderManagement() {
               <div className="flex items-center justify-between border-b pb-4">
                 <div>
                   <p className="text-gray-600 mt-1">
-                    Mã đơn: <span className="font-medium">{selectedOrder?.order_number}</span>
+                    Mã đơn: <span className="font-medium">{selectedOrder ? getOrderDisplayNumber(selectedOrder) : ''}</span>
                   </p>
                 </div>
                 <div className="text-right">
@@ -637,7 +637,7 @@ export default function OrderManagement() {
                   <CardContent className="space-y-3 pt-4">
                     <div className="flex justify-between">
                       <span className="font-medium">Số báo giá:</span>
-                      <span className="font-medium">{selectedOrder?.order_number}</span>
+                      <span className="font-medium">{selectedOrder ? getOrderDisplayNumber(selectedOrder) : ''}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="font-medium">Ngày báo giá:</span>
@@ -829,7 +829,7 @@ export default function OrderManagement() {
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <CreatePaymentForm
               orderId={orderToPayment.id}
-              orderNumber={orderToPayment.order_number}
+              orderNumber={getOrderDisplayNumber(orderToPayment)}
               totalAmount={orderToPayment.total_amount || 0}
               totalPaid={(orderToPayment.total_amount || 0) - (calculateRemainingAmount(orderToPayment))}
               remainingAmount={calculateRemainingAmount(orderToPayment)}

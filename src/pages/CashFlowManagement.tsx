@@ -33,6 +33,7 @@ import { DeleteExpenseDialog } from "@/components/DeleteExpenseDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
+import { getOrderDisplayNumber } from "@/lib/orderUtils";
 
 const formatSafeDate = (dateValue: string | null | undefined, formatStr: string = "dd/MM/yyyy") => {
   if (!dateValue) {
@@ -762,7 +763,7 @@ export default function CashFlowManagement() {
                               key={profit.id} 
                               className="cursor-pointer hover:bg-muted/50"
                             >
-                              <TableCell className="font-medium">{profit.order_number}</TableCell>
+                              <TableCell className="font-medium">{getOrderDisplayNumber(profit)}</TableCell>
                               <TableCell>{profit.customer_name}</TableCell>
                               <TableCell>{formatSafeDate(profit.date)}</TableCell>
                               <TableCell className="text-green-600 font-semibold">

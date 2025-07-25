@@ -11,7 +11,7 @@ import { Search, DollarSign, Clock, CheckCircle, AlertCircle, Eye, Plus, Edit } 
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { CreatePaymentForm } from "@/components/CreatePaymentForm";
-import { formatOrderNumber } from "@/lib/orderUtils";
+import { getOrderDisplayNumber } from "@/lib/orderUtils";
 
 interface Order {
   id: string;
@@ -174,10 +174,8 @@ const TransactionManagement = () => {
 
   // Filter orders based on search and status
   const filteredOrders = orders.filter(order => {
-    const displayOrderNumber = formatOrderNumber(order);
     const matchesSearch = 
-      displayOrderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase());
     
@@ -394,7 +392,7 @@ const TransactionManagement = () => {
                     
                     return (
                       <TableRow key={order.id}>
-                        <TableCell className="font-medium">{formatOrderNumber(order)}</TableCell>
+                        <TableCell className="font-medium">{getOrderDisplayNumber(order)}</TableCell>
                         <TableCell>
                           <div>
                             <p className="font-medium">{order.customers?.name}</p>
@@ -468,7 +466,7 @@ const TransactionManagement = () => {
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Chi tiết Thanh toán - {selectedOrder && formatOrderNumber(selectedOrder)}</DialogTitle>
+            <DialogTitle>Chi tiết Thanh toán - {selectedOrder && getOrderDisplayNumber(selectedOrder)}</DialogTitle>
             <DialogDescription>
               Lịch sử thanh toán của đơn hàng
             </DialogDescription>
@@ -539,7 +537,7 @@ const TransactionManagement = () => {
       <Dialog open={showPaymentForm} onOpenChange={setShowPaymentForm}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Thêm Thanh toán - {selectedOrder && formatOrderNumber(selectedOrder)}</DialogTitle>
+            <DialogTitle>Thêm Thanh toán - {selectedOrder && getOrderDisplayNumber(selectedOrder)}</DialogTitle>
             <DialogDescription>
               Thêm khoản thanh toán mới cho đơn hàng
             </DialogDescription>
@@ -548,7 +546,7 @@ const TransactionManagement = () => {
           {selectedOrder && (
             <CreatePaymentForm
               orderId={selectedOrder.id}
-              orderNumber={selectedOrder.order_number}
+              orderNumber={getOrderDisplayNumber(selectedOrder)}
               totalAmount={selectedOrder.total_amount}
               totalPaid={calculatePaidAmount(selectedOrder.id)}
               remainingAmount={calculateRemainingAmount(selectedOrder)}

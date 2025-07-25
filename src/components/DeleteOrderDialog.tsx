@@ -9,10 +9,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AlertTriangle } from "lucide-react";
+import { getOrderDisplayNumber } from "@/lib/orderUtils";
 
 interface Order {
   id: string;
   order_number: string;
+  display_order_number?: string;
   total_amount: number | null;
   customers?: {
     name: string;
@@ -49,7 +51,7 @@ export function DeleteOrderDialog({ order, open, onOpenChange, onConfirm }: Dele
             <div className="space-y-2">
               <div>
                 <span className="text-sm font-medium text-gray-500">Số đơn hàng:</span>
-                <span className="ml-2 text-sm">{order.order_number}</span>
+                <span className="ml-2 text-sm">{getOrderDisplayNumber(order)}</span>
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-500">Khách hàng:</span>
