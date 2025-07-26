@@ -173,6 +173,44 @@ export function CreatePaymentForm({
     form.reset(defaultValues);
   };
 
+  const deleteAllPayments = async () => {
+    setLoading(true);
+    try {
+      // Delete all payments for this order
+      const { error: paymentError } = await supabase
+        .from("order_payments")
+        .delete()
+        .eq("order_id", orderId);
+
+      if (paymentError) throw paymentError;
+
+      // Delete all related transactions
+      const { error: transactionError } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("order_id", orderId)
+        .eq("category", "order_payment");
+
+      if (transactionError) throw transactionError;
+
+      toast({
+        title: "Thành công",
+        description: "Đã xóa tất cả thanh toán trước đó",
+      });
+
+      onSubmit(); // Refresh data
+    } catch (error: any) {
+      console.error("Error deleting payments:", error);
+      toast({
+        title: "Lỗi", 
+        description: error.message || "Không thể xóa thanh toán",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return amount.toLocaleString("vi-VN") + " VNĐ";
   };
@@ -431,9 +469,21 @@ export function CreatePaymentForm({
           </Card>
 
           <div className="flex justify-between items-center pt-4">
-            <Button type="button" variant="outline" onClick={resetForm}>
-              Đặt lại
-            </Button>
+            <div className="flex space-x-2">
+              <Button type="button" variant="outline" onClick={resetForm}>
+                Đặt lại
+              </Button>
+              {totalPaid > 0 && (
+                <Button 
+                  type="button" 
+                  variant="destructive" 
+                  onClick={deleteAllPayments}
+                  disabled={loading}
+                >
+                  {loading ? "Đang xóa..." : "Xóa tất cả thanh toán"}
+                </Button>
+              )}
+            </div>
             <div className="flex space-x-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Hủy
