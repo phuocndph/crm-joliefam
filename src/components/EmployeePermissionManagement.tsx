@@ -163,29 +163,14 @@ const EmployeePermissionManagement = () => {
 
     setSaving(true);
     try {
-      // Delete existing permissions first
-      await supabase
-        .from('employee_permissions')
-        .delete()
-        .eq('user_id', selectedEmployee.user_id);
+      const { error } = await supabase.functions.invoke('save-employee-permissions', {
+        body: {
+          userId: selectedEmployee.user_id,
+          permissions: permissions
+        }
+      });
 
-      // Insert only enabled permissions
-      const enabledPermissions = permissions
-        .filter(p => p.enabled)
-        .map(permission => ({
-          user_id: selectedEmployee.user_id,
-          permission_type: permission.permission_type,
-          enabled: true,
-          created_by: user?.id
-        }));
-
-      if (enabledPermissions.length > 0) {
-        const { error } = await supabase
-          .from('employee_permissions')
-          .insert(enabledPermissions);
-
-        if (error) throw error;
-      }
+      if (error) throw error;
 
       toast({
         title: "Thành công",
