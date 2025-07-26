@@ -35,6 +35,8 @@ import { QuotePreviewDialog } from "@/components/QuotePreviewDialog";
 import { QuoteSupplementDialog } from "@/components/QuoteSupplementDialog";
 import { QuoteTemplateSettings } from "@/components/QuoteTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
+import { useUserRole } from "@/hooks/useUserRole";
+import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Search,
@@ -62,6 +64,7 @@ const statusLabels = {
 };
 
 export default function QuotesPage() {
+  const [user, setUser] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
@@ -71,6 +74,14 @@ export default function QuotesPage() {
   const [quotes, setQuotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { role: userRole } = useUserRole(user);
+  const { hasPermission } = useEmployeePermissions(user, userRole);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+  }, []);
 
   useEffect(() => {
     loadQuotes();
@@ -449,13 +460,15 @@ export default function QuotesPage() {
                               <Eye className="mr-2 h-4 w-4" />
                               Xem
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setSupplementQuote(quote)}
-                              className="hover:bg-primary hover:text-primary-foreground transition-colors"
-                            >
-                              <Calculator className="mr-2 h-4 w-4" />
-                              Báo giá phụ
-                            </DropdownMenuItem>
+                            {hasPermission('quote_supplement') && (
+                              <DropdownMenuItem
+                                onClick={() => setSupplementQuote(quote)}
+                                className="hover:bg-primary hover:text-primary-foreground transition-colors"
+                              >
+                                <Calculator className="mr-2 h-4 w-4" />
+                                Báo giá phụ
+                              </DropdownMenuItem>
+                            )}
                             {quote.status === 'draft' && (
                               <DropdownMenuItem
                                 onClick={() => handleApproveQuote(quote)}

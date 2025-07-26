@@ -18,6 +18,11 @@ interface Profile {
   first_name: string | null;
   last_name: string | null;
   user_roles?: { role: string }[];
+  manager_info?: {
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+  };
 }
 
 interface Permission {
@@ -75,10 +80,10 @@ const EmployeePermissionManagement = () => {
         throw profilesError;
       }
 
-      // Lấy user_roles để filter employees
+      // Lấy user_roles để filter employees với thông tin manager
       const { data: rolesData, error: rolesError } = await supabase
         .from('user_roles')
-        .select('user_id, role')
+        .select('user_id, role, assigned_by')
         .eq('role', 'employee');
 
       if (rolesError) {
@@ -86,17 +91,35 @@ const EmployeePermissionManagement = () => {
         throw rolesError;
       }
 
+      // Lấy thông tin manager cho employees
+      const managerIds = rolesData?.map(r => r.assigned_by).filter(Boolean) || [];
+      const { data: managersData } = await supabase
+        .from('profiles')
+        .select('user_id, email, first_name, last_name')
+        .in('user_id', managerIds);
+
       console.log('Profiles data:', profilesData);
       console.log('Roles data:', rolesData);
+      console.log('Managers data:', managersData);
 
-      // Filter chỉ lấy những profile có role employee
+      // Filter và map employee profiles với thông tin manager
       const employeeUserIds = rolesData?.map(r => r.user_id) || [];
       const employeeProfiles = (profilesData || []).filter(profile => 
         employeeUserIds.includes(profile.user_id)
-      ).map(profile => ({
-        ...profile,
-        user_roles: [{ role: 'employee' }]
-      }));
+      ).map(profile => {
+        const roleInfo = rolesData?.find(r => r.user_id === profile.user_id);
+        const managerInfo = managersData?.find(m => m.user_id === roleInfo?.assigned_by);
+        
+        return {
+          ...profile,
+          user_roles: [{ role: 'employee' }],
+          manager_info: managerInfo ? {
+            email: managerInfo.email,
+            first_name: managerInfo.first_name,
+            last_name: managerInfo.last_name
+          } : undefined
+        };
+      });
 
       console.log('Employee profiles:', employeeProfiles);
       setEmployees(employeeProfiles);
@@ -254,6 +277,11 @@ const EmployeePermissionManagement = () => {
                   }
                 </div>
                 <div className="text-xs text-muted-foreground">{employee.email}</div>
+                {employee.manager_info && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Quản lý: {employee.manager_info.first_name} {employee.manager_info.last_name}
+                  </div>
+                )}
                 <Badge variant="secondary" className="mt-1 text-xs">
                   Nhân viên
                 </Badge>
