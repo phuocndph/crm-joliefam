@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -296,11 +297,10 @@ export function CreatePaymentForm({
                 <FormItem>
                   <FormLabel>Số tiền thanh toán *</FormLabel>
                   <FormControl>
-                    <Input 
-                      type="number" 
+                    <CurrencyInput 
                       placeholder="0" 
-                      {...field}
-                      onChange={(e) => field.onChange(Number(e.target.value))}
+                      value={field.value}
+                      onChange={field.onChange}
                     />
                   </FormControl>
                   <FormMessage />
