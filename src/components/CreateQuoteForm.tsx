@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
@@ -1110,10 +1111,9 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                       <FormItem>
                         <FormLabel>Thanh toán lần 1 (VNĐ)</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          <CurrencyInput
+                            value={field.value}
+                            onChange={field.onChange}
                             placeholder="0"
                           />
                         </FormControl>
@@ -1129,10 +1129,9 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                       <FormItem>
                         <FormLabel>Thanh toán lần 2 (VNĐ)</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          <CurrencyInput
+                            value={field.value}
+                            onChange={field.onChange}
                             placeholder="0"
                           />
                         </FormControl>

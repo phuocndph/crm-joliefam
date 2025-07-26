@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,14 +20,14 @@ interface CreateFinanceRecordFormProps {
 export function CreateFinanceRecordForm({ onClose, onSubmit }: CreateFinanceRecordFormProps) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    amount: "",
+    amount: 0,
     type: "",
     description: "",
   });
   const [date, setDate] = useState<Date>(new Date());
   const { toast } = useToast();
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -42,7 +43,7 @@ export function CreateFinanceRecordForm({ onClose, onSubmit }: CreateFinanceReco
       return;
     }
 
-    const amount = parseFloat(formData.amount);
+    const amount = formData.amount;
     if (isNaN(amount) || amount <= 0) {
       toast({
         title: "Lỗi",
@@ -89,15 +90,11 @@ export function CreateFinanceRecordForm({ onClose, onSubmit }: CreateFinanceReco
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="amount">Số tiền *</Label>
-          <Input
+          <CurrencyInput
             id="amount"
-            type="number"
             value={formData.amount}
-            onChange={(e) => handleInputChange("amount", e.target.value)}
+            onChange={(value) => handleInputChange("amount", value)}
             placeholder="0"
-            min="0"
-            step="1000"
-            required
           />
         </div>
         <div className="space-y-2">

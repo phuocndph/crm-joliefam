@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -36,14 +37,14 @@ interface EditFinanceRecordDialogProps {
 export function EditFinanceRecordDialog({ record, open, onOpenChange, onSubmit }: EditFinanceRecordDialogProps) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    amount: record.amount.toString(),
+    amount: record.amount,
     type: record.type,
     description: record.description || "",
   });
   const [date, setDate] = useState<Date>(new Date(record.date));
   const { toast } = useToast();
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -59,7 +60,7 @@ export function EditFinanceRecordDialog({ record, open, onOpenChange, onSubmit }
       return;
     }
 
-    const amount = parseFloat(formData.amount);
+    const amount = formData.amount;
     if (isNaN(amount) || amount <= 0) {
       toast({
         title: "Lỗi",
@@ -111,15 +112,11 @@ export function EditFinanceRecordDialog({ record, open, onOpenChange, onSubmit }
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="edit-amount">Số tiền *</Label>
-              <Input
+              <CurrencyInput
                 id="edit-amount"
-                type="number"
                 value={formData.amount}
-                onChange={(e) => handleInputChange("amount", e.target.value)}
+                onChange={(value) => handleInputChange("amount", value)}
                 placeholder="0"
-                min="0"
-                step="1000"
-                required
               />
             </div>
             <div className="space-y-2">

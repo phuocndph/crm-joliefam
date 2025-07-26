@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -30,7 +31,7 @@ export function EditExpenseDialog({ expense, open, onOpenChange, onSubmit }: Edi
   const [formData, setFormData] = useState({
     category: "",
     person_name: "",
-    amount: "",
+    amount: 0,
     description: "",
     expense_date: ""
   });
@@ -41,7 +42,7 @@ export function EditExpenseDialog({ expense, open, onOpenChange, onSubmit }: Edi
       setFormData({
         category: expense.category,
         person_name: expense.person_name || "",
-        amount: expense.amount.toString(),
+        amount: expense.amount,
         description: expense.description || "",
         expense_date: expense.expense_date.split('T')[0]
       });
@@ -67,7 +68,7 @@ export function EditExpenseDialog({ expense, open, onOpenChange, onSubmit }: Edi
         .update({
           category: formData.category,
           person_name: formData.person_name || null,
-          amount: parseFloat(formData.amount),
+          amount: formData.amount,
           description: formData.description || null,
           expense_date: formData.expense_date
         })
@@ -94,7 +95,7 @@ export function EditExpenseDialog({ expense, open, onOpenChange, onSubmit }: Edi
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -147,15 +148,11 @@ export function EditExpenseDialog({ expense, open, onOpenChange, onSubmit }: Edi
 
             <div className="space-y-2">
               <Label htmlFor="amount">Số tiền *</Label>
-              <Input
+              <CurrencyInput
                 id="amount"
-                type="number"
                 placeholder="0"
                 value={formData.amount}
-                onChange={(e) => handleInputChange('amount', e.target.value)}
-                required
-                min="0"
-                step="1000"
+                onChange={(value) => handleInputChange('amount', value)}
               />
             </div>
           </div>

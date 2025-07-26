@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -16,7 +17,7 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
   const [formData, setFormData] = useState({
     category: "",
     person_name: "",
-    amount: "",
+    amount: 0,
     description: "",
     expense_date: new Date().toISOString().split('T')[0]
   });
@@ -43,7 +44,7 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
         .insert({
           category: formData.category,
           person_name: formData.person_name || null,
-          amount: parseFloat(formData.amount),
+          amount: formData.amount,
           description: formData.description || null,
           expense_date: formData.expense_date,
           expense_code: expenseCode
@@ -70,7 +71,7 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -114,15 +115,11 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
 
         <div className="space-y-2">
           <Label htmlFor="amount">Số tiền *</Label>
-          <Input
+          <CurrencyInput
             id="amount"
-            type="number"
             placeholder="0"
             value={formData.amount}
-            onChange={(e) => handleInputChange('amount', e.target.value)}
-            required
-            min="0"
-            step="1000"
+            onChange={(value) => handleInputChange('amount', value)}
           />
         </div>
       </div>
