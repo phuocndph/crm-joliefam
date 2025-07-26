@@ -68,13 +68,30 @@ serve(async (req) => {
       // Don't throw here, user is already created
     }
 
-    // Assign role
+    // Get current user making the request
+    const authHeader = req.headers.get('authorization');
+    let currentUserId = null;
+    
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+      currentUserId = user?.id;
+    }
+
+    // Assign role with assigned_by for employees
+    const roleData: any = {
+      user_id: userData.user.id,
+      role
+    };
+
+    // If creating an employee and current user is a manager, set assigned_by
+    if (role === 'employee' && currentUserId) {
+      roleData.assigned_by = currentUserId;
+    }
+
     const { error: roleError } = await supabaseAdmin
       .from('user_roles')
-      .insert({
-        user_id: userData.user.id,
-        role
-      });
+      .insert(roleData);
 
     if (roleError) {
       console.error('Role assignment error:', roleError);

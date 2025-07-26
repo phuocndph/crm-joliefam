@@ -163,21 +163,29 @@ const EmployeePermissionManagement = () => {
 
     setSaving(true);
     try {
-      // Update permissions
-      const updates = permissions.map(permission => ({
-        user_id: selectedEmployee.user_id,
-        permission_type: permission.permission_type,
-        enabled: permission.enabled,
-        created_by: user?.id
-      }));
-
-      const { error } = await supabase
+      // Delete existing permissions first
+      await supabase
         .from('employee_permissions')
-        .upsert(updates, { 
-          onConflict: 'user_id,permission_type'
-        });
+        .delete()
+        .eq('user_id', selectedEmployee.user_id);
 
-      if (error) throw error;
+      // Insert only enabled permissions
+      const enabledPermissions = permissions
+        .filter(p => p.enabled)
+        .map(permission => ({
+          user_id: selectedEmployee.user_id,
+          permission_type: permission.permission_type,
+          enabled: true,
+          created_by: user?.id
+        }));
+
+      if (enabledPermissions.length > 0) {
+        const { error } = await supabase
+          .from('employee_permissions')
+          .insert(enabledPermissions);
+
+        if (error) throw error;
+      }
 
       toast({
         title: "Thành công",
