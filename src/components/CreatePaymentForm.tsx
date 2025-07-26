@@ -73,7 +73,7 @@ export function CreatePaymentForm({
     resolver: zodResolver(paymentFormSchema),
     defaultValues: {
       paymentAmount: remainingAmount,
-      paymentType: remainingAmount === totalAmount ? "full" : totalPaid === 0 ? "deposit" : "installment",
+      paymentType: remainingAmount === totalAmount ? "full" : totalPaid === 0 ? "deposit" : "payment_2",
       paymentMethod: "cash",
       paymentDate: new Date(),
       installmentNumber: 1,
@@ -88,12 +88,12 @@ export function CreatePaymentForm({
   React.useEffect(() => {
     if (watchedPaymentAmount === totalAmount) {
       form.setValue("paymentType", "full");
-    } else if (watchedPaymentAmount === remainingAmount && totalPaid > 0) {
-      form.setValue("paymentType", "final");
     } else if (totalPaid === 0 && watchedPaymentAmount < totalAmount) {
       form.setValue("paymentType", "deposit");
-    } else {
-      form.setValue("paymentType", "installment");
+    } else if (totalPaid > 0 && watchedPaymentAmount < remainingAmount) {
+      form.setValue("paymentType", "payment_2");
+    } else if (totalPaid > 0 && watchedPaymentAmount === remainingAmount) {
+      form.setValue("paymentType", "payment_3");
     }
   }, [watchedPaymentAmount, totalAmount, remainingAmount, totalPaid, form]);
 
@@ -152,11 +152,22 @@ export function CreatePaymentForm({
   const getPaymentTypeLabel = (type: string) => {
     switch (type) {
       case 'deposit': return 'Đặt cọc';
-      case 'installment': return 'Trả góp';
-      case 'final': return 'Thanh toán cuối';
+      case 'payment_2': return 'Thanh toán lần 2';
+      case 'payment_3': return 'Thanh toán lần 3';
       case 'full': return 'Thanh toán toàn bộ';
       default: return type;
     }
+  };
+
+  const resetForm = () => {
+    form.reset({
+      paymentAmount: remainingAmount,
+      paymentType: remainingAmount === totalAmount ? "full" : totalPaid === 0 ? "deposit" : "payment_2",
+      paymentMethod: "cash",
+      paymentDate: new Date(),
+      installmentNumber: 1,
+      notes: "",
+    });
   };
 
   const formatCurrency = (amount: number) => {
@@ -275,8 +286,8 @@ export function CreatePaymentForm({
                     </FormControl>
                     <SelectContent className="bg-white z-50">
                       <SelectItem value="deposit">Đặt cọc</SelectItem>
-                      <SelectItem value="installment">Trả góp</SelectItem>
-                      <SelectItem value="final">Thanh toán cuối</SelectItem>
+                      <SelectItem value="payment_2">Thanh toán lần 2</SelectItem>
+                      <SelectItem value="payment_3">Thanh toán lần 3</SelectItem>
                       <SelectItem value="full">Thanh toán toàn bộ</SelectItem>
                     </SelectContent>
                   </Select>
@@ -416,13 +427,18 @@ export function CreatePaymentForm({
             </CardContent>
           </Card>
 
-          <div className="flex justify-end space-x-2 pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Hủy
+          <div className="flex justify-between items-center pt-4">
+            <Button type="button" variant="outline" onClick={resetForm}>
+              Đặt lại
             </Button>
-            <Button type="submit" disabled={loading || !watchedPaymentAmount || watchedPaymentAmount > remainingAmount}>
-              {loading ? "Đang lưu..." : "Thêm thanh toán"}
-            </Button>
+            <div className="flex space-x-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Hủy
+              </Button>
+              <Button type="submit" disabled={loading || !watchedPaymentAmount || watchedPaymentAmount > remainingAmount}>
+                {loading ? "Đang lưu..." : "Thêm thanh toán"}
+              </Button>
+            </div>
           </div>
         </form>
       </Form>
