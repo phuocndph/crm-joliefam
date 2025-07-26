@@ -161,21 +161,16 @@ export function CreatePaymentForm({
 
   const resetForm = () => {
     const defaultValues = {
-      paymentAmount: remainingAmount,
-      paymentType: remainingAmount === totalAmount ? "full" : totalPaid === 0 ? "deposit" : "payment_2",
+      paymentAmount: 0,
+      paymentType: "deposit",
       paymentMethod: "cash",
       paymentDate: new Date(),
       installmentNumber: 1,
       notes: "",
     };
     
-    // Reset form with new values
+    // Reset form completely
     form.reset(defaultValues);
-    
-    // Force update form values
-    Object.keys(defaultValues).forEach(key => {
-      form.setValue(key as keyof PaymentFormData, defaultValues[key as keyof typeof defaultValues]);
-    });
   };
 
   const formatCurrency = (amount: number) => {
