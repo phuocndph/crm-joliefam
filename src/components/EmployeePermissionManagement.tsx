@@ -121,7 +121,16 @@ const EmployeePermissionManagement = () => {
 
       if (error) throw error;
 
-      setPermissions((data || []) as Permission[]);
+      // Tạo tất cả các permission với giá trị mặc định nếu chưa có
+      const allPermissions: Permission[] = Object.keys(permissionLabels).map(permissionType => {
+        const existingPermission = (data || []).find(p => p.permission_type === permissionType);
+        return {
+          permission_type: permissionType as PermissionType,
+          enabled: existingPermission?.enabled || false
+        };
+      });
+
+      setPermissions(allPermissions);
     } catch (error) {
       console.error('Error fetching permissions:', error);
       toast({
@@ -133,13 +142,20 @@ const EmployeePermissionManagement = () => {
   };
 
   const updatePermission = (permissionType: PermissionType, enabled: boolean) => {
-    setPermissions(prev => 
-      prev.map(p => 
-        p.permission_type === permissionType 
-          ? { ...p, enabled }
-          : p
-      )
-    );
+    setPermissions(prev => {
+      const existingIndex = prev.findIndex(p => p.permission_type === permissionType);
+      if (existingIndex >= 0) {
+        // Cập nhật permission hiện có
+        return prev.map(p => 
+          p.permission_type === permissionType 
+            ? { ...p, enabled }
+            : p
+        );
+      } else {
+        // Tạo permission mới nếu chưa có
+        return [...prev, { permission_type: permissionType, enabled }];
+      }
+    });
   };
 
   const savePermissions = async () => {
