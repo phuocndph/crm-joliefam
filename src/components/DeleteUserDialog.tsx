@@ -58,28 +58,19 @@ const DeleteUserDialog = ({ open, onOpenChange, profile, currentUserRole, onUser
 
     setLoading(true);
     try {
-      // Delete user roles first
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', profile.user_id);
+      // Call edge function to delete user
+      const { error } = await supabase.functions.invoke('delete-user', {
+        body: { userId: profile.user_id }
+      });
 
-      if (roleError) throw roleError;
-
-      // Delete profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('user_id', profile.user_id);
-
-      if (profileError) throw profileError;
-
-      // Delete auth user (this requires admin privileges)
-      const { error: authError } = await supabase.auth.admin.deleteUser(profile.user_id);
-      
-      if (authError) {
-        console.warn('Could not delete auth user:', authError);
-        // Continue anyway as the profile and roles are deleted
+      if (error) {
+        console.error('Error deleting user:', error);
+        toast({
+          title: "Lỗi",
+          description: "Không thể xóa người dùng",
+          variant: "destructive",
+        });
+        return;
       }
 
       toast({
