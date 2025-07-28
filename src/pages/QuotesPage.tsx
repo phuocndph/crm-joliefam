@@ -122,15 +122,15 @@ export default function QuotesPage() {
         const extractFromNotes = (pattern: RegExp) => {
           if (!quote.notes) return '';
           const match = quote.notes.match(pattern);
-          return match && match[1].trim() ? match[1].trim() : '';
+          return match && match[1] ? match[1].trim() : '';
         };
 
         return {
           ...quote,
           customerName,
-          customerEmail: quote.customers?.email || extractFromNotes(/Email:\s*(.+)/),
-          customerPhone: quote.customers?.phone || extractFromNotes(/Điện thoại:\s*(.+)/),
-          customerAddress: quote.customers?.address || extractFromNotes(/Địa chỉ:\s*(.+)/),
+          customerEmail: quote.customers?.email || extractFromNotes(/Email:\s*([^\n\r]+)/),
+          customerPhone: quote.customers?.phone || extractFromNotes(/Điện thoại:\s*([^\n\r]+)/),
+          customerAddress: quote.customers?.address || extractFromNotes(/Địa chỉ:\s*([^\n\r]+)/),
           customerCompany: quote.customers?.company || '',
           quoteDate: quote.created_at,
           expiryDate: extractFromNotes(/Ngày hết hạn:\s*(.+)/) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
