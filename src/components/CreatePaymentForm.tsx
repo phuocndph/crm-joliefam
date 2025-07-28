@@ -194,6 +194,17 @@ export function CreatePaymentForm({
 
       if (transactionError) throw transactionError;
 
+      // Update order payment status to pending after deleting all payments
+      const { error: orderUpdateError } = await supabase
+        .from("orders")
+        .update({ 
+          payment_status: "pending",
+          payment_date: null 
+        })
+        .eq("id", orderId);
+
+      if (orderUpdateError) throw orderUpdateError;
+
       toast({
         title: "Thành công",
         description: "Đã xóa tất cả thanh toán trước đó",
