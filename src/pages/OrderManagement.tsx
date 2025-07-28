@@ -772,6 +772,7 @@ export default function OrderManagement() {
                               <DropdownMenuItem
                                 onClick={() => setOrderToDelete(order)}
                                 className="text-red-600"
+                                disabled={order.status !== "cancelled"}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Xóa
