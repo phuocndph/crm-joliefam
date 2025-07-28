@@ -130,7 +130,15 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
   const { toast } = useToast();
   
   // Helper function to safely parse dates
-  const parseDate = (dateString: string): Date => {
+  const parseDate = (dateString: string | Date): Date => {
+    if (!dateString) {
+      return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    }
+
+    if (dateString instanceof Date) {
+      return dateString;
+    }
+
     // Try different date formats
     const formats = [
       // ISO format
@@ -143,7 +151,17 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
         }
         return null;
       },
-      // Other common formats can be added here
+      // Extract from notes format (Ngày hết hạn: dd/MM/yyyy)
+      () => {
+        const match = dateString.match(/Ngày hết hạn:\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
+        if (match) {
+          const parts = match[1].match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (parts) {
+            return new Date(parseInt(parts[3]), parseInt(parts[2]) - 1, parseInt(parts[1]));
+          }
+        }
+        return null;
+      },
     ];
 
     for (const formatFn of formats) {
@@ -168,7 +186,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
       title: initialData?.title || "BẢNG BÁO GIÁ",
       quoteNumber: initialData?.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
       quoteDate: initialData?.created_at ? new Date(initialData.created_at) : new Date(),
-      expiryDate: initialData?.expiryDate ? parseDate(initialData.expiryDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      expiryDate: initialData ? parseDate(initialData.expiryDate || initialData.notes) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       customerName: initialData?.customerName || "",
       phone: initialData?.customerPhone || "",
       email: initialData?.customerEmail || "",
@@ -185,19 +203,40 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
   // Load price lists and products
   useEffect(() => {
     loadPriceLists();
-    
-    // Load existing data if editing
+  }, []);
+
+  // Update form when initialData changes
+  useEffect(() => {
     if (initialData) {
       try {
+        // Parse items
         const items = typeof initialData.items === 'string' 
           ? JSON.parse(initialData.items) 
           : initialData.items || [];
         setSelectedProducts(items);
+
+        // Reset form with new data
+        form.reset({
+          title: initialData.title || "BẢNG BÁO GIÁ",
+          quoteNumber: initialData.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
+          quoteDate: initialData.created_at ? new Date(initialData.created_at) : new Date(),
+          expiryDate: parseDate(initialData.expiryDate || initialData.notes),
+          customerName: initialData.customerName || "",
+          phone: initialData.customerPhone || "",
+          email: initialData.customerEmail || "",
+          address: initialData.customerAddress || "",
+          priceList: "",
+          responsible: initialData.responsible || "",
+          includeVAT: false,
+          vatRate: 8,
+          payment1: 0,
+          payment2: 0,
+        });
       } catch (error) {
-        console.error('Error parsing initial items:', error);
+        console.error('Error parsing initial data:', error);
       }
     }
-  }, [initialData]);
+  }, [initialData, form]);
 
   useEffect(() => {
     const selectedPriceList = form.watch("priceList");
