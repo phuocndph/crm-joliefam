@@ -38,6 +38,7 @@ import { EditOrderDialog } from "@/components/EditOrderDialog";
 import { DeleteOrderDialog } from "@/components/DeleteOrderDialog";
 import { CreatePaymentForm } from "@/components/CreatePaymentForm";
 import { EditOrderNumberDialog } from "@/components/EditOrderNumberDialog";
+import { InlineOrderEditTable } from "@/components/InlineOrderEditTable";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -456,337 +457,62 @@ export default function OrderManagement() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Mã đơn hàng</TableHead>
-                  <TableHead>Ngày tạo đơn</TableHead>
-                  <TableHead>Tên khách hàng</TableHead>
-                  <TableHead>Giá trị đơn hàng</TableHead>
-                  <TableHead>Ngày hẹn trả</TableHead>
-                  <TableHead>Tình trạng đơn</TableHead>
-                  <TableHead>Thanh toán</TableHead>
-                  <TableHead>Ngày giao hàng</TableHead>
-                  <TableHead>Ghi chú</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8">
-                      Đang tải...
-                    </TableCell>
-                  </TableRow>
-                ) : sortedOrders.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8">
-                      <div className="flex flex-col items-center gap-2">
-                        <Package className="h-8 w-8 text-muted-foreground" />
-                        <p className="text-muted-foreground">
-                          {searchTerm || statusFilter !== "all" || paymentFilter !== "all" 
-                            ? "Không tìm thấy đơn hàng nào" 
-                            : "Chưa có đơn hàng nào"}
-                        </p>
-                        {!searchTerm && statusFilter === "all" && paymentFilter === "all" && (
-                          <Button onClick={() => setShowCreateForm(true)} variant="outline" className="gap-2">
-                            <Plus className="h-4 w-4" />
-                            Tạo đơn hàng đầu tiên
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  sortedOrders.map((order: any) => {
-                    const deliveryDate = order.delivery_date || getDefaultDeliveryDate(order.created_at);
-                    const daysUntilDelivery = getDaysUntilDelivery(deliveryDate);
-                    
-                    return (
-                      <TableRow key={order.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <span>{getOrderDisplayNumber(order)}</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setOrderToEditNumber(order)}
-                              className="h-6 w-6 p-0 opacity-50 hover:opacity-100"
-                            >
-                              <Edit3 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {format(new Date(order.created_at), "dd/MM/yyyy", { locale: vi })}
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">
-                              {order.customers?.name || "Khách lẻ"}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {order.customers?.customer_code || order.customers?.phone || order.customers?.email}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {(order.total_amount || 0).toLocaleString("vi-VN")} VNĐ
-                        </TableCell>
-                        <TableCell>
-                          {order.status === 'delivered' || order.status === 'shipped' || order.status === 'self_delivered' ? (
-                            <div className="text-center">
-                              <Badge className="bg-green-100 text-green-800">
-                                Đã giao
-                              </Badge>
-                            </div>
-                          ) : order.status === 'cancelled' ? (
-                            <div className="text-center">
-                              <Badge className="bg-red-100 text-red-800">
-                                Đã hủy
-                              </Badge>
-                            </div>
-                          ) : order.status === 'returned' ? (
-                            <div className="text-center">
-                              <Badge className="bg-orange-100 text-orange-800">
-                                Hoàn hàng
-                              </Badge>
-                            </div>
-                          ) : (
-                            <div 
-                              className="cursor-pointer hover:text-blue-600" 
-                              onClick={async () => {
-                                const currentDate = order.delivery_date || getDefaultDeliveryDate(order.created_at);
-                                const newDate = prompt("Chỉnh sửa ngày hẹn giao (YYYY-MM-DD):", 
-                                  format(new Date(currentDate), "yyyy-MM-dd"));
-                                if (newDate) {
-                                  try {
-                                    await supabase
-                                      .from('orders')
-                                      .update({ delivery_date: new Date(newDate).toISOString() })
-                                      .eq('id', order.id);
-                                    
-                                    // Update local state instead of reloading
-                                    setOrders(prevOrders => 
-                                      prevOrders.map(o => 
-                                        o.id === order.id 
-                                          ? { ...o, delivery_date: new Date(newDate).toISOString() }
-                                          : o
-                                      )
-                                    );
-                                    
-                                    toast({
-                                      title: "Thành công",
-                                      description: "Ngày hẹn giao đã được cập nhật",
-                                    });
-                                  } catch (error) {
-                                    toast({
-                                      title: "Lỗi",
-                                      description: "Không thể cập nhật ngày hẹn giao",
-                                      variant: "destructive",
-                                    });
-                                  }
-                                }
-                              }}
-                            >
-                              <div className={`text-sm ${isDeliveryDateNear(order.delivery_date, order.status) ? 'text-red-600 font-bold' : ''}`}>
-                                {order.delivery_date ? 
-                                  format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi }) :
-                                  format(new Date(getDefaultDeliveryDate(order.created_at)), "dd/MM/yyyy", { locale: vi })
-                                }
-                              </div>
-                              {daysUntilDelivery !== null && (
-                                <div className={`text-xs ${
-                                  daysUntilDelivery < 0 ? 'text-red-600' : 
-                                  daysUntilDelivery === 0 ? 'text-red-600' :
-                                  daysUntilDelivery <= 2 ? 'text-red-600' : 'text-green-600'
-                                }`}>
-                                  {daysUntilDelivery < 0 ? `Trễ ${Math.abs(daysUntilDelivery)} ngày` :
-                                   daysUntilDelivery === 0 ? 'Hôm nay' :
-                                   `Còn ${daysUntilDelivery} ngày`}
-                                </div>
-                              )}
-                              <div className="text-xs text-muted-foreground">
-                                Click để sửa
-                              </div>
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="p-0">
-                                <Badge className={statusConfig[order.status]?.color || "bg-gray-100 text-gray-800"}>
-                                  {statusConfig[order.status]?.label || order.status}
-                                </Badge>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent className="bg-white z-50">
-                              {Object.entries(statusConfig).map(([key, config]) => (
-                                <DropdownMenuItem
-                                  key={key}
-                                  onClick={() => updateOrderStatus(order.id, key)}
-                                  className={order.status === key ? "bg-gray-100" : ""}
-                                >
-                                  <config.icon className="mr-2 h-4 w-4" />
-                                  {config.label}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                        <TableCell>
-                          {order.payment_status === 'partial' && order.total_paid ? (
-                            <div>
-                              <Badge className="bg-yellow-100 text-yellow-800">
-                                Đã thanh toán {order.total_paid.toLocaleString("vi-VN")} VNĐ
-                              </Badge>
-                            </div>
-                          ) : (
-                            <div>
-                              <Badge className={paymentStatusConfig[order.payment_status]?.color || "bg-gray-100 text-gray-800"}>
-                                {paymentStatusConfig[order.payment_status]?.label || order.payment_status}
-                              </Badge>
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {order.delivered_date ? (
-                            <div className="cursor-pointer" onClick={async () => {
-                              const newDate = prompt("Chỉnh sửa ngày giao hàng (YYYY-MM-DD):", 
-                                format(new Date(order.delivered_date), "yyyy-MM-dd"));
-                              if (newDate) {
-                                try {
-                                  await supabase
-                                    .from('orders')
-                                    .update({ delivered_date: new Date(newDate).toISOString() })
-                                    .eq('id', order.id);
-                                  
-                                  // Update local state instead of reloading
-                                  setOrders(prevOrders => 
-                                    prevOrders.map(o => 
-                                      o.id === order.id 
-                                        ? { ...o, delivered_date: new Date(newDate).toISOString() }
-                                        : o
-                                    )
-                                  );
-                                  
-                                  toast({
-                                    title: "Thành công",
-                                    description: "Ngày giao hàng đã được cập nhật",
-                                  });
-                                } catch (error) {
-                                  toast({
-                                    title: "Lỗi",
-                                    description: "Không thể cập nhật ngày giao hàng",
-                                    variant: "destructive",
-                                  });
-                                }
-                              }
-                            }}>
-                              <div className="text-sm hover:text-blue-600">
-                                {format(new Date(order.delivered_date), "dd/MM/yyyy", { locale: vi })}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                Click để sửa
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">Chưa giao</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div 
-                            className="cursor-pointer hover:text-blue-600" 
-                            onClick={async () => {
-                              const newNote = prompt("Chỉnh sửa ghi chú:", order.notes || "");
-                              if (newNote !== null) {
-                                try {
-                                  await supabase
-                                    .from('orders')
-                                    .update({ notes: newNote })
-                                    .eq('id', order.id);
-                                  
-                                  // Update local state instead of reloading
-                                  setOrders(prevOrders => 
-                                    prevOrders.map(o => 
-                                      o.id === order.id 
-                                        ? { ...o, notes: newNote }
-                                        : o
-                                    )
-                                  );
-                                  
-                                  toast({
-                                    title: "Thành công",
-                                    description: "Ghi chú đã được cập nhật",
-                                  });
-                                } catch (error) {
-                                  toast({
-                                    title: "Lỗi",
-                                    description: "Không thể cập nhật ghi chú",
-                                    variant: "destructive",
-                                  });
-                                }
-                              }
-                            }}
-                          >
-                            <div className="text-sm break-words max-w-xs">
-                              {order.notes || "Thêm ghi chú..."}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Click để sửa
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-8 w-8 p-0">
-                                <span className="sr-only">Mở menu</span>
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-white z-50">
-                              <DropdownMenuItem
-                                onClick={() => setSelectedOrder(order)}
-                              >
-                                <Eye className="mr-2 h-4 w-4" />
-                                Xem chi tiết
-                              </DropdownMenuItem>
-                              {(order.payment_status === 'pending' || order.payment_status === 'partial') && (
-                                <DropdownMenuItem
-                                  onClick={() => setOrderToPayment(order)}
-                                  className="text-green-600"
-                                >
-                                  <CreditCard className="mr-2 h-4 w-4" />
-                                  Thêm thanh toán
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem
-                                onClick={() => setOrderToEdit(order)}
-                              >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Sửa
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => setOrderToDelete(order)}
-                                className="text-red-600"
-                                disabled={order.status !== "cancelled"}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Xóa
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <span>Đang tải...</span>
+            </div>
+          ) : sortedOrders.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-8">
+              <Package className="h-8 w-8 text-muted-foreground" />
+              <p className="text-muted-foreground">
+                {searchTerm || statusFilter !== "all" || paymentFilter !== "all" 
+                  ? "Không tìm thấy đơn hàng nào" 
+                  : "Chưa có đơn hàng nào"}
+              </p>
+              {!searchTerm && statusFilter === "all" && paymentFilter === "all" && (
+                <Button onClick={() => setShowCreateForm(true)} variant="outline" className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Tạo đơn hàng đầu tiên
+                </Button>
+              )}
+            </div>
+          ) : (
+            <InlineOrderEditTable 
+              orders={sortedOrders}
+              onOrderUpdate={async (orderId: string, updates: Partial<Order>) => {
+                try {
+                  const { error } = await supabase
+                    .from('orders')
+                    .update(updates)
+                    .eq('id', orderId);
+
+                  if (error) throw error;
+
+                  // Update local state
+                  setOrders(prevOrders => 
+                    prevOrders.map(o => 
+                      o.id === orderId 
+                        ? { ...o, ...updates }
+                        : o
+                    )
+                  );
+
+                  toast({
+                    title: "Thành công",
+                    description: "Đơn hàng đã được cập nhật",
+                  });
+                } catch (error) {
+                  console.error('Error updating order:', error);
+                  toast({
+                    title: "Lỗi",
+                    description: "Không thể cập nhật đơn hàng",
+                    variant: "destructive",
+                  });
+                  throw error;
+                }
+              }}
+            />
+          )}
         </CardContent>
       </Card>
 
