@@ -24,7 +24,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
@@ -111,9 +111,28 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
     return `${amount.toLocaleString("vi-VN")} VNĐ`;
   };
 
-  const formatDate = (date: string | null) => {
-    if (!date) return "Chưa đặt";
-    return format(new Date(date), "dd/MM/yyyy", { locale: vi });
+  const formatDateWithCountdown = (date: string | null) => {
+    if (!date) return { text: "Chưa đặt", isUrgent: false };
+    
+    const deliveryDate = new Date(date);
+    const today = new Date();
+    const daysLeft = differenceInDays(deliveryDate, today);
+    
+    let text = format(deliveryDate, "dd/MM/yyyy", { locale: vi });
+    
+    if (daysLeft < 0) {
+      text += ` (Quá hạn ${Math.abs(daysLeft)} ngày)`;
+      return { text, isUrgent: true };
+    } else if (daysLeft === 0) {
+      text += " (Hôm nay)";
+      return { text, isUrgent: true };
+    } else if (daysLeft <= 2) {
+      text += ` (Còn ${daysLeft} ngày)`;
+      return { text, isUrgent: true };
+    } else {
+      text += ` (Còn ${daysLeft} ngày)`;
+      return { text, isUrgent: false };
+    }
   };
 
   const getCellContent = (order: Order, field: string) => {
@@ -172,22 +191,24 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
 
         case "delivery_date":
           return (
-            <Popover open={true} onOpenChange={(open) => !open && handleCancel()}>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    setSelectedDate(date);
-                    if (date) {
-                      handleSave(order.id, field);
-                    }
-                  }}
-                  initialFocus
-                  className="p-3 pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
+            <div className="relative">
+              <Popover open={true} onOpenChange={(open) => !open && handleCancel()}>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      setSelectedDate(date);
+                      if (date) {
+                        handleSave(order.id, field);
+                      }
+                    }}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           );
 
         case "order_number":
@@ -260,12 +281,18 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
         );
 
       case "delivery_date":
+        const dateInfo = formatDateWithCountdown(order.delivery_date);
         return (
           <div 
             className="cursor-pointer"
             onClick={() => handleCellEdit(order.id, field, order.delivery_date)}
           >
-            <span className="text-sm">{formatDate(order.delivery_date)}</span>
+            <span className={cn(
+              "text-sm",
+              dateInfo.isUrgent && "text-red-600 font-semibold"
+            )}>
+              {dateInfo.text}
+            </span>
           </div>
         );
 
