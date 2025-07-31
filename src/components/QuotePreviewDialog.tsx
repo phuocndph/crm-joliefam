@@ -827,7 +827,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             {/* Header Layout */}
             <div className="flex items-start gap-8 mb-6">
               {/* Logo bên trái - to hơn */}
-              <div className="w-32 h-32">
+              <div className="w-40 h-40">
                 <img 
                   src={templateSettings.logoUrl} 
                   alt="Company Logo" 
