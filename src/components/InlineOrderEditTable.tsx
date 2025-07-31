@@ -225,58 +225,48 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
       }
     }
 
-    // Display mode
+    // Display mode - optimized for single click editing
     switch (field) {
       case "status":
         const statusInfo = statusConfig[order.status as keyof typeof statusConfig];
         return (
-          <div 
-            className="flex items-center gap-2 cursor-pointer group"
+          <Badge 
+            className={`${statusInfo?.color} cursor-pointer hover:opacity-80 transition-opacity`}
             onClick={() => handleCellEdit(order.id, field, order.status)}
           >
-            <Badge className={statusInfo?.color}>
-              {statusInfo?.label || order.status}
-            </Badge>
-            <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
+            {statusInfo?.label || order.status}
+          </Badge>
         );
 
       case "payment_status":
         const paymentInfo = paymentStatusConfig[order.payment_status as keyof typeof paymentStatusConfig];
         return (
-          <div 
-            className="flex items-center gap-2 cursor-pointer group"
+          <Badge 
+            className={`${paymentInfo?.color} cursor-pointer hover:opacity-80 transition-opacity`}
             onClick={() => handleCellEdit(order.id, field, order.payment_status)}
           >
-            <Badge className={paymentInfo?.color}>
-              {paymentInfo?.label || order.payment_status}
-            </Badge>
-            <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
+            {paymentInfo?.label || order.payment_status}
+          </Badge>
         );
 
       case "delivery_date":
         return (
-          <div 
-            className="flex items-center gap-2 cursor-pointer group"
+          <span 
+            className="text-sm cursor-pointer hover:bg-muted px-2 py-1 rounded transition-colors"
             onClick={() => handleCellEdit(order.id, field, order.delivery_date)}
           >
-            <span className="text-sm">{formatDate(order.delivery_date)}</span>
-            <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
+            {formatDate(order.delivery_date)}
+          </span>
         );
 
       case "notes":
         return (
-          <div 
-            className="flex items-center gap-2 cursor-pointer group"
+          <span 
+            className="text-sm truncate max-w-32 cursor-pointer hover:bg-muted px-2 py-1 rounded transition-colors text-muted-foreground"
             onClick={() => handleCellEdit(order.id, field, order.notes)}
           >
-            <span className="text-sm truncate max-w-32">
-              {order.notes || "Thêm ghi chú..."}
-            </span>
-            <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
+            {order.notes || "Thêm ghi chú..."}
+          </span>
         );
 
       default:
