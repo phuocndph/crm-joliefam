@@ -307,17 +307,17 @@ const UserManagement = () => {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="space-y-1">
           <h1 className="text-3xl font-bold">Quản lý người dùng</h1>
-          <div className="text-muted-foreground flex items-center gap-2">
+          <div className="text-muted-foreground flex flex-wrap items-center gap-2">
             Vai trò của bạn: 
             <Badge variant={getRoleBadgeVariant(currentUserRole)}>
               {getRoleDisplayName(currentUserRole)}
             </Badge>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {selectedUsers.length > 0 && (
             <Button
               variant="destructive"
