@@ -100,6 +100,7 @@ export default function OrderManagement() {
   const [orderToPayment, setOrderToPayment] = useState<Order | null>(null);
   const [orderToEditNumber, setOrderToEditNumber] = useState<Order | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
@@ -554,42 +555,13 @@ export default function OrderManagement() {
                               </Badge>
                             </div>
                           ) : (
-                            <div 
-                              className="cursor-pointer hover:text-blue-600" 
-                              onClick={async () => {
-                                const currentDate = order.delivery_date || getDefaultDeliveryDate(order.created_at);
-                                const newDate = prompt("Chỉnh sửa ngày hẹn giao (YYYY-MM-DD):", 
-                                  format(new Date(currentDate), "yyyy-MM-dd"));
-                                if (newDate) {
-                                  try {
-                                    await supabase
-                                      .from('orders')
-                                      .update({ delivery_date: new Date(newDate).toISOString() })
-                                      .eq('id', order.id);
-                                    
-                                    // Update local state instead of reloading
-                                    setOrders(prevOrders => 
-                                      prevOrders.map(o => 
-                                        o.id === order.id 
-                                          ? { ...o, delivery_date: new Date(newDate).toISOString() }
-                                          : o
-                                      )
-                                    );
-                                    
-                                    toast({
-                                      title: "Thành công",
-                                      description: "Ngày hẹn giao đã được cập nhật",
-                                    });
-                                  } catch (error) {
-                                    toast({
-                                      title: "Lỗi",
-                                      description: "Không thể cập nhật ngày hẹn giao",
-                                      variant: "destructive",
-                                    });
-                                  }
-                                }
-                              }}
-                            >
+                             <div 
+                               className="cursor-pointer hover:text-blue-600" 
+                               onClick={() => {
+                                 setSelectedOrder(order);
+                                 setEditDialogOpen(true);
+                               }}
+                             >
                               <div className={`text-sm ${isDeliveryDateNear(order.delivery_date, order.status) ? 'text-red-600 font-bold' : ''}`}>
                                 {order.delivery_date ? 
                                   format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi }) :
@@ -1059,6 +1031,20 @@ export default function OrderManagement() {
           onSuccess={() => {
             loadOrders();
             setOrderToEditNumber(null);
+          }}
+        />
+      )}
+
+      {/* Edit Order Dialog - Beautiful Date Picker */}
+      {selectedOrder && editDialogOpen && (
+        <EditOrderDialog
+          order={selectedOrder}
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          onSubmit={() => {
+            loadOrders();
+            setEditDialogOpen(false);
+            setSelectedOrder(null);
           }}
         />
       )}
