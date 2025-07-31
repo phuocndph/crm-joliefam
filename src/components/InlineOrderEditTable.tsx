@@ -206,6 +206,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
                     }
                   }}
                   initialFocus
+                  locale={vi}
                   className="p-3 pointer-events-auto"
                 />
               </PopoverContent>
