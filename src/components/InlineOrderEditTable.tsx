@@ -81,11 +81,14 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
     }
   };
 
-  const handleSave = async (orderId: string, field: string) => {
+  const handleSave = async (orderId: string, field: string, dateValue?: Date) => {
     try {
       let valueToSave = editValue;
-      if (field === "delivery_date" && selectedDate) {
-        valueToSave = selectedDate.toISOString().split('T')[0];
+      if (field === "delivery_date") {
+        const dateToUse = dateValue || selectedDate;
+        if (dateToUse) {
+          valueToSave = dateToUse.toISOString().split('T')[0];
+        }
       }
       
       // Map order_number field to display_order_number in database
@@ -202,7 +205,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
                   onSelect={(date) => {
                     setSelectedDate(date);
                     if (date) {
-                      handleSave(order.id, field);
+                      handleSave(order.id, field, date);
                     }
                   }}
                   initialFocus
