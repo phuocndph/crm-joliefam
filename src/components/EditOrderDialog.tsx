@@ -11,10 +11,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { format } from "date-fns";
+import { vi } from "date-fns/locale";
+import { CalendarIcon, Package, User, DollarSign } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Order {
   id: string;
@@ -58,10 +67,10 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
     return format(defaultDate, 'yyyy-MM-dd');
   };
   
-  const [deliveryDate, setDeliveryDate] = useState(
+  const [deliveryDate, setDeliveryDate] = useState<Date | undefined>(
     order.delivery_date 
-      ? format(new Date(order.delivery_date), 'yyyy-MM-dd')
-      : getDefaultDeliveryDate()
+      ? new Date(order.delivery_date)
+      : new Date(getDefaultDeliveryDate())
   );
   const { toast } = useToast();
 
@@ -73,7 +82,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
       const orderData = {
         status,
         notes: notes.trim() || null,
-        delivery_date: deliveryDate ? new Date(deliveryDate).toISOString() : null,
+        delivery_date: deliveryDate ? deliveryDate.toISOString() : null,
       };
 
       const { error } = await supabase
@@ -110,21 +119,44 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Chỉnh sửa đơn hàng</DialogTitle>
-          <DialogDescription>
-            Cập nhật trạng thái và ghi chú cho đơn hàng #{getOrderDisplayNumber(order)}
+      <DialogContent className="max-w-lg">
+        <DialogHeader className="text-center pb-4">
+          <DialogTitle className="text-xl font-semibold flex items-center justify-center gap-2">
+            <Package className="h-5 w-5 text-primary" />
+            Chỉnh sửa đơn hàng
+          </DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            Cập nhật thông tin cho đơn hàng #{getOrderDisplayNumber(order)}
           </DialogDescription>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label>Thông tin đơn hàng</Label>
-            <div className="text-sm space-y-1">
-              <p><strong>Số đơn hàng:</strong> {getOrderDisplayNumber(order)}</p>
-              <p><strong>Khách hàng:</strong> {order.customers?.name || "Khách lẻ"}</p>
-              <p><strong>Giá trị:</strong> {order.total_amount?.toLocaleString()} ₫</p>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="bg-muted/30 rounded-lg p-4 space-y-3">
+            <Label className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+              Thông tin đơn hàng
+            </Label>
+            <div className="grid grid-cols-1 gap-3">
+              <div className="flex items-center gap-3 p-2 bg-background rounded-md">
+                <Package className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Số đơn hàng</p>
+                  <p className="text-sm text-muted-foreground">{getOrderDisplayNumber(order)}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-2 bg-background rounded-md">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Khách hàng</p>
+                  <p className="text-sm text-muted-foreground">{order.customers?.name || "Khách lẻ"}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-2 bg-background rounded-md">
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Giá trị đơn hàng</p>
+                  <p className="text-sm text-muted-foreground font-semibold">{order.total_amount?.toLocaleString()} ₫</p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -146,12 +178,33 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
 
           <div className="space-y-2">
             <Label htmlFor="edit-delivery-date">Ngày hẹn giao hàng</Label>
-            <Input
-              id="edit-delivery-date"
-              type="date"
-              value={deliveryDate}
-              onChange={(e) => setDeliveryDate(e.target.value)}
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !deliveryDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {deliveryDate ? (
+                    format(deliveryDate, "dd/MM/yyyy", { locale: vi })
+                  ) : (
+                    <span>Chọn ngày giao hàng</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={deliveryDate}
+                  onSelect={setDeliveryDate}
+                  initialFocus
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div className="space-y-2">
