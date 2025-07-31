@@ -75,14 +75,31 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   
   // Parse quote data for VAT and payment info
   const quoteData = quote.quote_data ? JSON.parse(quote.quote_data) : {};
-  const includeVAT = quoteData.includeVAT || false;
-  const vatRate = quoteData.vatRate || 8;
-  const payment1 = quoteData.payment1 || 0;
-  const payment2 = quoteData.payment2 || 0;
   
   // Calculate totals based on items
   const subtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
-  const vatAmount = includeVAT ? Math.round(subtotal * vatRate / 100) : 0;
+  
+  // Auto-detect VAT: check if there's a difference between subtotal and total_amount
+  // indicating VAT has been included
+  const quoteTotalAmount = quote.total_amount || subtotal;
+  const hasVAT = quoteTotalAmount > subtotal;
+  const includeVAT = quoteData.includeVAT || hasVAT;
+  const vatRate = quoteData.vatRate || 8;
+  
+  // Calculate VAT amount based on whether VAT is included
+  let vatAmount = 0;
+  if (includeVAT) {
+    if (hasVAT && quoteTotalAmount > subtotal) {
+      // VAT amount is the difference between total and subtotal
+      vatAmount = quoteTotalAmount - subtotal;
+    } else {
+      // Calculate VAT from subtotal
+      vatAmount = Math.round(subtotal * vatRate / 100);
+    }
+  }
+  
+  const payment1 = quoteData.payment1 || 0;
+  const payment2 = quoteData.payment2 || 0;
   const totalWithVat = subtotal + vatAmount;
   const firstPayment = payment1 || Math.round(totalWithVat * 0.3); // Use payment1 or 30% default
   const remaining = totalWithVat - firstPayment;
