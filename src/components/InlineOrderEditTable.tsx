@@ -88,7 +88,10 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
         valueToSave = selectedDate.toISOString().split('T')[0];
       }
       
-      await onOrderUpdate(orderId, { [field]: valueToSave });
+      // Map order_number field to display_order_number in database
+      const fieldToUpdate = field === "order_number" ? "display_order_number" : field;
+      
+      await onOrderUpdate(orderId, { [fieldToUpdate]: valueToSave });
       setEditingCell(null);
       setEditValue("");
       setSelectedDate(undefined);
@@ -202,6 +205,24 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
             </div>
           );
 
+        case "order_number":
+          return (
+            <div className="flex items-center gap-2">
+              <Input
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                className="w-40"
+                placeholder="Nhập mã đơn hàng..."
+              />
+              <Button size="sm" variant="ghost" onClick={() => handleSave(order.id, field)}>
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleCancel}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          );
+
         case "notes":
           return (
             <div className="flex items-center gap-2">
@@ -266,6 +287,17 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
           </div>
         );
 
+      case "order_number":
+        return (
+          <div 
+            className="flex items-center gap-2 cursor-pointer group"
+            onClick={() => handleCellEdit(order.id, field, getOrderDisplayNumber(order))}
+          >
+            <span className="text-sm font-medium">{getOrderDisplayNumber(order)}</span>
+            <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        );
+
       case "notes":
         return (
           <div 
@@ -303,7 +335,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
           {orders.map((order) => (
             <TableRow key={order.id} className="hover:bg-muted/50">
               <TableCell className="font-medium">
-                {getOrderDisplayNumber(order)}
+                {getCellContent(order, "order_number")}
               </TableCell>
               <TableCell>
                 {format(new Date(order.created_at), "dd/MM/yyyy", { locale: vi })}
