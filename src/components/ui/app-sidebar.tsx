@@ -122,24 +122,24 @@ export function AppSidebar() {
 
   return (
     <Sidebar
-      className={`transition-all duration-300 ${collapsed ? "w-16" : "w-72"} border-r bg-sidebar`}
+      className={`transition-all duration-300 ${collapsed ? "w-14" : "w-64"} border-r bg-sidebar`}
       collapsible="icon"
     >
       <SidebarContent className="p-0">
         {/* Header */}
-        <div className={`px-6 py-6 border-b ${collapsed ? 'px-3' : ''}`}>
+        <div className={`px-4 py-4 border-b ${collapsed ? 'px-2' : ''}`}>
           {!collapsed && (
-            <h2 className="text-lg font-bold text-sidebar-foreground">
-              CRM Pro Navigation
+            <h2 className="text-base font-semibold text-sidebar-foreground truncate">
+              CRM Pro
             </h2>
           )}
         </div>
 
         {/* Navigation Menu */}
-        <div className="px-3 py-4">
+        <div className="px-2 py-2">
           <SidebarGroup>
             <SidebarGroupContent>
-              <SidebarMenu className="space-y-1">
+              <SidebarMenu className="space-y-0.5">
                 {filteredMenuItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton 
@@ -149,15 +149,15 @@ export function AppSidebar() {
                     >
                       <NavLink 
                         to={item.url} 
-                        className="flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group"
+                        className="flex items-center gap-2 px-2 py-2 rounded-md transition-all duration-200 group"
                       >
-                        <item.icon className="h-5 w-5 flex-shrink-0" />
+                        <item.icon className="h-4 w-4 flex-shrink-0" />
                         {!collapsed && (
                           <div className="flex-1 min-w-0">
-                            <div className={`font-medium text-sm ${isActive(item.url) ? 'text-white' : 'text-sidebar-foreground group-hover:text-sidebar-accent-foreground'}`}>
+                            <div className={`font-medium text-sm truncate ${isActive(item.url) ? 'text-white' : 'text-sidebar-foreground group-hover:text-sidebar-accent-foreground'}`}>
                               {item.title}
                             </div>
-                            <div className={`text-xs mt-0.5 ${isActive(item.url) ? 'text-white/80' : 'text-sidebar-foreground/60 group-hover:text-sidebar-accent-foreground/70'}`}>
+                            <div className={`text-xs truncate ${isActive(item.url) ? 'text-white/80' : 'text-sidebar-foreground/60 group-hover:text-sidebar-accent-foreground/70'}`}>
                               {item.description}
                             </div>
                           </div>
