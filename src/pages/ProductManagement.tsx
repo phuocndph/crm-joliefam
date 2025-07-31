@@ -561,73 +561,105 @@ const ProductManagement = () => {
         </TabsContent>
 
         <TabsContent value="products" className="space-y-6">
-          {/* Price List Selection */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Chọn bảng giá để xem sản phẩm:</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4">
+          {/* Price List Selection & Stats */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Chọn bảng giá để xem sản phẩm</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <Select value={selectedPriceList} onValueChange={setSelectedPriceList}>
-                  <SelectTrigger className="w-96">
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Chọn bảng giá..." />
                   </SelectTrigger>
                   <SelectContent>
                     {priceLists.map((priceList) => (
                       <SelectItem key={priceList.id} value={priceList.id}>
-                        {priceList.name} ({priceList.year}) - {priceList.status === 'active' ? 'Đang sử dụng' : priceList.status === 'draft' ? 'Nháp' : 'Không hoạt động'}
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-medium">{priceList.name}</span>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span>({priceList.year})</span>
+                            <Badge variant={priceList.status === 'active' ? 'default' : 'secondary'} className="text-xs">
+                              {priceList.status === 'active' ? 'Đang dùng' : 'Nháp'}
+                            </Badge>
+                          </div>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <div className="text-sm text-muted-foreground">
-                  Hiện thi: {filteredProducts.length}/0 sản phẩm (Trang 1/0)
-                  <br />
-                  Từ bảng giá: {priceLists.find(p => p.id === selectedPriceList)?.name || 'Chưa chọn'}
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Thống kê sản phẩm</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Tổng sản phẩm:</span>
+                  <span className="font-bold text-primary">{filteredProducts.length}</span>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Còn hàng:</span>
+                  <span className="font-medium text-success">{filteredProducts.filter(p => p.in_stock).length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Hết hàng:</span>
+                  <span className="font-medium text-warning">{filteredProducts.filter(p => !p.in_stock).length}</span>
+                </div>
+                {selectedPriceList && (
+                  <div className="pt-2 border-t">
+                    <span className="text-xs text-muted-foreground">
+                      Bảng giá: {priceLists.find(p => p.id === selectedPriceList)?.name}
+                    </span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
-          {/* Import from Google Sheets */}
+          {/* Import and Actions */}
           {selectedPriceList && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileSpreadsheet className="h-5 w-5" />
-                  Import từ Google Sheets
+                  Import & Quản lý
                 </CardTitle>
                 <CardDescription>
-                  Định dạng yêu cầu: Mã SP | Danh mục | Tên SP | Quy cách | Giá gốc | Giá bán | Mô tả
-                  <br />
-                  <strong>Lưu ý:</strong> Google Sheets phải được chia sẻ công khai hoặc có quyền truy cập
+                  Import sản phẩm từ Google Sheets hoặc thêm thủ công
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex gap-4">
+                <div className="flex flex-col md:flex-row gap-4">
                   <div className="flex-1">
                     <Input
-                      placeholder="Nhập link Google Sheets..."
+                      placeholder="Nhập link Google Sheets để import..."
                       value={googleSheetsUrl}
                       onChange={(e) => setGoogleSheetsUrl(e.target.value)}
                     />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Định dạng: Mã SP | Danh mục | Tên SP | Quy cách | Giá gốc | Giá bán | Mô tả
+                    </p>
                   </div>
-                  <Button 
-                    onClick={() => setShowColumnMapping(true)}
-                    disabled={!googleSheetsUrl}
-                    className="flex items-center gap-2"
-                  >
-                    <Settings className="h-4 w-4" />
-                    Import với mapping cột
-                  </Button>
-                  <Button variant="outline">
-                    <Users className="h-4 w-4 mr-2" />
-                    Quản lý nhân viên
-                  </Button>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Thêm sản phẩm
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={() => setShowColumnMapping(true)}
+                      disabled={!googleSheetsUrl}
+                      variant="outline"
+                      className="flex items-center gap-2"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Import
+                    </Button>
+                    <Button
+                      onClick={() => document.getElementById('create-product-form')?.scrollIntoView({ behavior: 'smooth' })}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Thêm SP
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -636,7 +668,7 @@ const ProductManagement = () => {
           {selectedPriceList && (
             <>
               {/* Create Product Form */}
-              <Card>
+              <Card id="create-product-form">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Plus className="h-5 w-5" />
@@ -648,7 +680,7 @@ const ProductManagement = () => {
                 </CardHeader>
                 <CardContent>
                   <form onSubmit={handleCreateProduct} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="sku">Mã SP *</Label>
                         <Input
@@ -656,6 +688,7 @@ const ProductManagement = () => {
                           value={sku}
                           onChange={(e) => setSku(e.target.value)}
                           required
+                          placeholder="VD: SP001"
                         />
                       </div>
                       <div className="space-y-2">
@@ -665,6 +698,7 @@ const ProductManagement = () => {
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           required
+                          placeholder="Tên sản phẩm"
                         />
                       </div>
                       <div className="space-y-2">
@@ -673,6 +707,7 @@ const ProductManagement = () => {
                           id="category"
                           value={category}
                           onChange={(e) => setCategory(e.target.value)}
+                          placeholder="Danh mục"
                         />
                       </div>
                       <div className="space-y-2">
@@ -681,27 +716,45 @@ const ProductManagement = () => {
                           id="specifications"
                           value={specifications}
                           onChange={(e) => setSpecifications(e.target.value)}
+                          placeholder="Quy cách"
                         />
                       </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="costPrice">Giá gốc</Label>
+                        <Label htmlFor="costPrice">Giá gốc (VND)</Label>
                         <Input
                           id="costPrice"
                           type="number"
-                          step="0.01"
+                          step="1000"
                           value={costPrice}
                           onChange={(e) => setCostPrice(e.target.value)}
+                          placeholder="0"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="price">Giá bán</Label>
+                        <Label htmlFor="price">Giá bán (VND)</Label>
                         <Input
                           id="price"
                           type="number"
-                          step="0.01"
+                          step="1000"
                           value={price}
                           onChange={(e) => setPrice(e.target.value)}
+                          placeholder="0"
                         />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="inStock">Tình trạng</Label>
+                        <div className="flex items-center space-x-2 h-10">
+                          <Switch
+                            id="inStock"
+                            checked={inStock}
+                            onCheckedChange={setInStock}
+                          />
+                          <Label htmlFor="inStock" className="text-sm">
+                            {inStock ? 'Còn hàng' : 'Hết hàng'}
+                          </Label>
+                        </div>
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -710,25 +763,31 @@ const ProductManagement = () => {
                         id="description"
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        rows={3}
+                        rows={2}
+                        placeholder="Mô tả chi tiết sản phẩm..."
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="inStock">Còn hàng</Label>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="inStock"
-                          checked={inStock}
-                          onCheckedChange={setInStock}
-                        />
-                        <Label htmlFor="inStock">
-                          {inStock ? 'Còn hàng' : 'Hết hàng'}
-                        </Label>
-                      </div>
+                    <div className="flex gap-2">
+                      <Button type="submit" disabled={createProductLoading}>
+                        {createProductLoading ? 'Đang tạo...' : 'Tạo sản phẩm'}
+                      </Button>
+                      <Button 
+                        type="button" 
+                        variant="outline"
+                        onClick={() => {
+                          setName('');
+                          setDescription('');
+                          setPrice('');
+                          setCostPrice('');
+                          setSku('');
+                          setCategory('');
+                          setSpecifications('');
+                          setInStock(true);
+                        }}
+                      >
+                        Xóa form
+                      </Button>
                     </div>
-                    <Button type="submit" disabled={createProductLoading}>
-                      {createProductLoading ? 'Đang tạo...' : 'Tạo sản phẩm'}
-                    </Button>
                   </form>
                 </CardContent>
               </Card>
@@ -737,7 +796,7 @@ const ProductManagement = () => {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Filter className="h-5 w-5" />
+                    <Search className="h-5 w-5" />
                     Tìm kiếm và lọc
                   </CardTitle>
                 </CardHeader>
@@ -749,7 +808,7 @@ const ProductManagement = () => {
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="search"
-                          placeholder="Tìm kiếm sản phẩm..."
+                          placeholder="Tìm sản phẩm, mã SP..."
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
                           className="pl-8"
@@ -757,7 +816,7 @@ const ProductManagement = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>Tất cả danh mục</Label>
+                      <Label>Danh mục</Label>
                       <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                         <SelectTrigger>
                           <SelectValue placeholder="Tất cả danh mục" />
@@ -773,10 +832,10 @@ const ProductManagement = () => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Tình trạng kho</Label>
+                      <Label>Tình trạng</Label>
                       <Select value={stockFilter} onValueChange={setStockFilter}>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Tất cả" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">Tất cả</SelectItem>
@@ -793,6 +852,7 @@ const ProductManagement = () => {
                           setCategoryFilter('all');
                           setStockFilter('all');
                         }}
+                        className="w-full"
                       >
                         Xóa bộ lọc
                       </Button>
@@ -804,82 +864,106 @@ const ProductManagement = () => {
               {/* Products List */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Package className="h-5 w-5" />
-                    Danh sách sản phẩm ({filteredProducts.length})
+                  <CardTitle className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-5 w-5" />
+                      Danh sách sản phẩm
+                    </div>
+                    <Badge variant="outline" className="text-sm">
+                      {filteredProducts.length} sản phẩm
+                    </Badge>
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-0">
                   {filteredProducts.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      Không có sản phẩm nào trong bảng giá "{priceLists.find(p => p.id === selectedPriceList)?.name}"
+                    <div className="text-center py-12 px-6 text-muted-foreground">
+                      <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p className="text-lg font-medium mb-2">Không có sản phẩm</p>
+                      <p className="text-sm">
+                        {selectedPriceList 
+                          ? `Không có sản phẩm nào trong bảng giá "${priceLists.find(p => p.id === selectedPriceList)?.name}"`
+                          : "Vui lòng chọn bảng giá để xem sản phẩm"
+                        }
+                      </p>
                     </div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-24">Mã SP</TableHead>
-                          <TableHead className="w-32">Danh mục</TableHead>
-                          <TableHead className="w-48">Tên SP</TableHead>
-                          <TableHead className="w-32">Quy cách</TableHead>
-                          <TableHead className="w-24 text-right">Giá gốc</TableHead>
-                          <TableHead className="w-24 text-right">Giá bán</TableHead>
-                          <TableHead className="w-48">Mô tả</TableHead>
-                          <TableHead className="w-20 text-right">Thao tác</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredProducts.map((product) => (
-                          <TableRow key={product.id}>
-                            <TableCell className="font-mono text-sm">
-                              {product.sku || '-'}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {product.category || '-'}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              <div className="line-clamp-2">
-                                {product.name}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              <div className="line-clamp-2">
-                                {product.specifications || '-'}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatPrice(product.cost_price)}
-                            </TableCell>
-                            <TableCell className="text-right font-bold text-primary">
-                              {formatPrice(product.price)}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              <div className="line-clamp-2">
-                                {product.description || '-'}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => openEditDialog(product)}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setDeletingProduct(product)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-b bg-muted/50">
+                            <TableHead className="w-20 font-semibold">Mã SP</TableHead>
+                            <TableHead className="w-24 font-semibold">Danh mục</TableHead>
+                            <TableHead className="w-48 font-semibold">Tên sản phẩm</TableHead>
+                            <TableHead className="w-32 font-semibold">Quy cách</TableHead>
+                            <TableHead className="w-24 text-right font-semibold">Giá gốc</TableHead>
+                            <TableHead className="w-24 text-right font-semibold">Giá bán</TableHead>
+                            <TableHead className="w-16 text-center font-semibold">Kho</TableHead>
+                            <TableHead className="w-48 font-semibold">Mô tả</TableHead>
+                            <TableHead className="w-20 text-center font-semibold">Thao tác</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredProducts.map((product) => (
+                            <TableRow key={product.id} className="hover:bg-muted/30 transition-colors">
+                              <TableCell className="font-mono text-sm font-medium">
+                                {product.sku || '-'}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className="text-xs">
+                                  {product.category || 'Chưa phân loại'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                <div className="line-clamp-2 max-w-48">
+                                  {product.name}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                <div className="line-clamp-1 max-w-32">
+                                  {product.specifications || '-'}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-medium text-muted-foreground">
+                                {product.cost_price ? formatPrice(product.cost_price) : '-'}
+                              </TableCell>
+                              <TableCell className="text-right font-bold text-primary">
+                                {product.price ? formatPrice(product.price) : '-'}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge variant={product.in_stock ? 'default' : 'destructive'} className="text-xs">
+                                  {product.in_stock ? 'Còn' : 'Hết'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                <div className="line-clamp-2 max-w-48">
+                                  {product.description || '-'}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <div className="flex justify-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openEditDialog(product)}
+                                    className="h-8 w-8 p-0"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setDeletingProduct(product)}
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>
