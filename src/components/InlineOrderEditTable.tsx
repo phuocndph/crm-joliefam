@@ -117,8 +117,11 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
   const formatDateWithCountdown = (date: string | null) => {
     if (!date) return { text: "Chưa đặt", isUrgent: false };
     
-    const deliveryDate = new Date(date);
+    // Tạo Date từ string và reset về đầu ngày để tránh lệch timezone
+    const deliveryDate = new Date(date + 'T00:00:00');
     const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset về đầu ngày
+    
     const daysLeft = differenceInDays(deliveryDate, today);
     
     let text = format(deliveryDate, "dd/MM/yyyy", { locale: vi });
