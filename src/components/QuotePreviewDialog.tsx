@@ -824,10 +824,10 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         
         <div className="bg-white" id="quote-preview" style={{ fontFamily: 'Times New Roman, serif' }}>
           <div className="p-8 max-w-5xl mx-auto">
-            {/* Header Layout như mẫu */}
-            <div className="flex items-start justify-between mb-6">
-              {/* Logo bên trái */}
-              <div className="w-24 h-24">
+            {/* Header Layout */}
+            <div className="flex items-start gap-8 mb-6">
+              {/* Logo bên trái - to hơn */}
+              <div className="w-32 h-32">
                 <img 
                   src={templateSettings.logoUrl} 
                   alt="Company Logo" 
@@ -835,8 +835,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                 />
               </div>
               
-              {/* Thông tin công ty ở giữa */}
-              <div className="flex-1 text-center px-8">
+              {/* Thông tin công ty bên trái */}
+              <div className="flex-1 text-left">
                 <h1 className="text-2xl font-bold mb-3" style={{ color: templateSettings.companyTitleColor }}>
                   {templateSettings.companyTitle}
                 </h1>
@@ -848,9 +848,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                   <p>STK: {templateSettings.bankInfo}</p>
                 </div>
               </div>
-              
-              {/* Trống bên phải để cân bằng */}
-              <div className="w-24"></div>
             </div>
             
             {/* Tiêu đề chính */}
