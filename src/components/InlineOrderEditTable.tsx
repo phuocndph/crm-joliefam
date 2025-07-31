@@ -124,85 +124,70 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
       switch (field) {
         case "status":
           return (
-            <div className="flex items-center gap-2">
-              <Select value={editValue} onValueChange={setEditValue}>
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(statusConfig).map(([key, config]) => (
-                    <SelectItem key={key} value={key}>
-                      {config.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button size="sm" variant="ghost" onClick={() => handleSave(order.id, field)}>
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button size="sm" variant="ghost" onClick={handleCancel}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            <Select 
+              open={true} 
+              value={editValue} 
+              onValueChange={(value) => {
+                setEditValue(value);
+                handleSave(order.id, field);
+              }}
+              onOpenChange={(open) => !open && handleCancel()}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(statusConfig).map(([key, config]) => (
+                  <SelectItem key={key} value={key}>
+                    {config.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           );
 
         case "payment_status":
           return (
-            <div className="flex items-center gap-2">
-              <Select value={editValue} onValueChange={setEditValue}>
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(paymentStatusConfig).map(([key, config]) => (
-                    <SelectItem key={key} value={key}>
-                      {config.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button size="sm" variant="ghost" onClick={() => handleSave(order.id, field)}>
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button size="sm" variant="ghost" onClick={handleCancel}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            <Select 
+              open={true} 
+              value={editValue} 
+              onValueChange={(value) => {
+                setEditValue(value);
+                handleSave(order.id, field);
+              }}
+              onOpenChange={(open) => !open && handleCancel()}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(paymentStatusConfig).map(([key, config]) => (
+                  <SelectItem key={key} value={key}>
+                    {config.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           );
 
         case "delivery_date":
           return (
-            <div className="flex items-center gap-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-40 justify-start text-left font-normal",
-                      !selectedDate && "text-muted-foreground"
-                    )}
-                  >
-                    <Calendar className="mr-2 h-4 w-4" />
-                    {selectedDate ? format(selectedDate, "dd/MM/yyyy", { locale: vi }) : "Chọn ngày"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarComponent
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={setSelectedDate}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-              <Button size="sm" variant="ghost" onClick={() => handleSave(order.id, field)}>
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button size="sm" variant="ghost" onClick={handleCancel}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            <Popover open={true} onOpenChange={(open) => !open && handleCancel()}>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => {
+                    setSelectedDate(date);
+                    if (date) {
+                      handleSave(order.id, field);
+                    }
+                  }}
+                  initialFocus
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
           );
 
         case "order_number":
@@ -252,13 +237,12 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
         const statusInfo = statusConfig[order.status as keyof typeof statusConfig];
         return (
           <div 
-            className="flex items-center gap-2 cursor-pointer group"
+            className="cursor-pointer"
             onClick={() => handleCellEdit(order.id, field, order.status)}
           >
             <Badge className={statusInfo?.color}>
               {statusInfo?.label || order.status}
             </Badge>
-            <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         );
 
@@ -266,48 +250,44 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
         const paymentInfo = paymentStatusConfig[order.payment_status as keyof typeof paymentStatusConfig];
         return (
           <div 
-            className="flex items-center gap-2 cursor-pointer group"
+            className="cursor-pointer"
             onClick={() => handleCellEdit(order.id, field, order.payment_status)}
           >
             <Badge className={paymentInfo?.color}>
               {paymentInfo?.label || order.payment_status}
             </Badge>
-            <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         );
 
       case "delivery_date":
         return (
           <div 
-            className="flex items-center gap-2 cursor-pointer group"
+            className="cursor-pointer"
             onClick={() => handleCellEdit(order.id, field, order.delivery_date)}
           >
             <span className="text-sm">{formatDate(order.delivery_date)}</span>
-            <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         );
 
       case "order_number":
         return (
           <div 
-            className="flex items-center gap-2 cursor-pointer group"
+            className="cursor-pointer"
             onClick={() => handleCellEdit(order.id, field, getOrderDisplayNumber(order))}
           >
             <span className="text-sm font-medium">{getOrderDisplayNumber(order)}</span>
-            <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         );
 
       case "notes":
         return (
           <div 
-            className="flex items-center gap-2 cursor-pointer group"
+            className="cursor-pointer"
             onClick={() => handleCellEdit(order.id, field, order.notes)}
           >
             <span className="text-sm truncate max-w-32">
               {order.notes || "Thêm ghi chú..."}
             </span>
-            <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         );
 
