@@ -232,16 +232,16 @@ const ReportsPage = () => {
 
   // Order status data
   const orderStatusData = [
-    { name: "Đã giao", value: completedOrders, color: "#22c55e" },
-    { name: "Đang xử lý", value: pendingOrders, color: "#f59e0b" },
-    { name: "Khác", value: totalOrders - completedOrders - pendingOrders, color: "#6b7280" }
+    { name: "Đã giao", value: completedOrders, color: "hsl(var(--success))" },
+    { name: "Đang xử lý", value: pendingOrders, color: "hsl(var(--warning))" },
+    { name: "Khác", value: totalOrders - completedOrders - pendingOrders, color: "hsl(var(--muted-foreground))" }
   ].filter(item => item.value > 0);
 
   // Payment status data
   const paymentStatusData = [
-    { name: "Đã thanh toán", value: paidOrders, color: "hsl(var(--chart-1))" },
-    { name: "Chờ thanh toán", value: unpaidOrders, color: "hsl(var(--chart-2))" },
-    { name: "Thanh toán một phần", value: partialPaidOrders, color: "hsl(var(--chart-3))" }
+    { name: "Đã thanh toán", value: paidOrders, color: "hsl(var(--success))" },
+    { name: "Chờ thanh toán", value: unpaidOrders, color: "hsl(var(--warning))" },
+    { name: "Thanh toán một phần", value: partialPaidOrders, color: "hsl(var(--primary))" }
   ].filter(item => item.value > 0);
 
   // Top products by sales
