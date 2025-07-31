@@ -191,24 +191,25 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
 
         case "delivery_date":
           return (
-            <div className="relative">
-              <Popover open={true} onOpenChange={(open) => !open && handleCancel()}>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarComponent
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => {
-                      setSelectedDate(date);
-                      if (date) {
-                        handleSave(order.id, field);
-                      }
-                    }}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+            <Popover open={true} onOpenChange={(open) => !open && handleCancel()}>
+              <PopoverTrigger asChild>
+                <div className="w-40" />
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 bg-white z-50" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => {
+                    setSelectedDate(date);
+                    if (date) {
+                      handleSave(order.id, field);
+                    }
+                  }}
+                  initialFocus
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
           );
 
         case "order_number":
