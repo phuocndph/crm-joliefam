@@ -395,9 +395,11 @@ const CustomerCare = () => {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="max-w-xs truncate">
-                            {customer.notes || "Không có ghi chú"}
-                          </TableCell>
+                           <TableCell className="max-w-xs">
+                             <div className="whitespace-pre-wrap text-sm break-words">
+                               {customer.notes || "Không có ghi chú"}
+                             </div>
+                           </TableCell>
                           <TableCell>
                             {customer.last_purchase_date ? (
                               <div className="text-sm">
