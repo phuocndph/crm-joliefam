@@ -74,6 +74,48 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_predictions: {
+        Row: {
+          confidence_score: number | null
+          created_at: string
+          customer_id: string
+          factors: Json | null
+          id: string
+          manager_id: string | null
+          prediction_type: string
+          prediction_value: number
+          tenant_id: string
+          updated_at: string
+          valid_until: string
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string
+          customer_id: string
+          factors?: Json | null
+          id?: string
+          manager_id?: string | null
+          prediction_type: string
+          prediction_value: number
+          tenant_id?: string
+          updated_at?: string
+          valid_until: string
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string
+          customer_id?: string
+          factors?: Json | null
+          id?: string
+          manager_id?: string | null
+          prediction_type?: string
+          prediction_value?: number
+          tenant_id?: string
+          updated_at?: string
+          valid_until?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           address: string | null

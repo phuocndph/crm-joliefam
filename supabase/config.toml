@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.ai-customer-suggestions]
 verify_jwt = true
+
+[functions.predictive-analytics]
+verify_jwt = true
