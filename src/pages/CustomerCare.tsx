@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus, Edit, Trash2 } from "lucide-react";
 import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
-import { EditCustomerDialog } from "@/components/EditCustomerDialog";
+import EditCustomerCareDialog from "@/components/EditCustomerCareDialog";
 import { DeleteCustomerDialog } from "@/components/DeleteCustomerDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -470,11 +470,11 @@ const CustomerCare = () => {
 
       {/* Edit Dialog */}
       {selectedCustomer && (
-        <EditCustomerDialog
+        <EditCustomerCareDialog
           customer={selectedCustomer}
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
-          onSubmit={handleEditSubmit}
+          onSuccess={handleEditSubmit}
         />
       )}
 
