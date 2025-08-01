@@ -244,7 +244,6 @@ export default function CashFlowManagement() {
           items,
           customers(name)
         `)
-        .eq('status', 'delivered')
         .gte('created_at', dateRange.start.toISOString())
         .lte('created_at', dateRange.end.toISOString())
         .order('created_at', { ascending: false });
