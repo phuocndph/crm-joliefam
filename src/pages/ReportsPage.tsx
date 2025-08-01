@@ -445,66 +445,272 @@ const ReportsPage = () => {
               </Card>
             </div>
 
-            {/* Charts */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {/* Enhanced Charts with better visibility and data tables */}
+            <div className="space-y-6">
+              {/* Revenue Growth Chart with Data Table */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Biểu đồ doanh thu tăng trưởng</CardTitle>
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    📈 Biểu đồ doanh thu tăng trưởng 12 tháng
+                  </CardTitle>
+                  <CardDescription>Theo dõi xu hướng doanh thu, chi phí và lợi nhuận theo tháng</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={monthlyData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.3} />
-                        <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <Tooltip 
-                          contentStyle={{
-                            backgroundColor: "hsl(var(--background))",
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: "8px"
-                          }}
-                          formatter={(value: number) => [formatCurrency(value), ""]}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="revenue" 
-                          stroke="#22c55e" 
-                          strokeWidth={2}
-                          dot={{ fill: '#22c55e', strokeWidth: 2, r: 6 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2">
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.2} />
+                            <XAxis 
+                              dataKey="month" 
+                              stroke="hsl(var(--foreground))" 
+                              fontSize={14}
+                              fontWeight="500"
+                              tick={{ fill: "hsl(var(--foreground))" }}
+                            />
+                            <YAxis 
+                              stroke="hsl(var(--foreground))" 
+                              fontSize={14}
+                              fontWeight="500"
+                              tick={{ fill: "hsl(var(--foreground))" }}
+                              tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`}
+                            />
+                            <Tooltip 
+                              contentStyle={{
+                                backgroundColor: "hsl(var(--background))",
+                                border: "2px solid hsl(var(--border))",
+                                borderRadius: "12px",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                                fontSize: "14px",
+                                fontWeight: "500"
+                              }}
+                              formatter={(value: number, name: string) => [
+                                formatCurrency(value), 
+                                name === "revenue" ? "Doanh thu" : name === "expenses" ? "Chi phí" : "Lợi nhuận"
+                              ]}
+                              labelStyle={{ color: "hsl(var(--foreground))", fontWeight: "600" }}
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="revenue" 
+                              stroke="hsl(var(--primary))" 
+                              strokeWidth={4}
+                              dot={{ fill: "hsl(var(--primary))", strokeWidth: 2, r: 6 }}
+                              activeDot={{ r: 8, stroke: "hsl(var(--primary))", strokeWidth: 3, fill: "white" }}
+                              name="Doanh thu"
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="expenses" 
+                              stroke="hsl(var(--destructive))" 
+                              strokeWidth={3}
+                              dot={{ fill: "hsl(var(--destructive))", strokeWidth: 2, r: 5 }}
+                              activeDot={{ r: 7, stroke: "hsl(var(--destructive))", strokeWidth: 2, fill: "white" }}
+                              name="Chi phí"
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="profit" 
+                              stroke="#10b981" 
+                              strokeWidth={3}
+                              dot={{ fill: "#10b981", strokeWidth: 2, r: 5 }}
+                              activeDot={{ r: 7, stroke: "#10b981", strokeWidth: 2, fill: "white" }}
+                              name="Lợi nhuận"
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                    
+                    {/* Data Table */}
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-sm text-muted-foreground flex items-center gap-2">
+                        📊 Chi tiết 6 tháng gần nhất
+                      </h4>
+                      <div className="max-h-80 overflow-y-auto space-y-2">
+                        {monthlyData.slice(-6).map((data, index) => (
+                          <div key={index} className="bg-muted/30 rounded-lg p-3 space-y-2 border">
+                            <div className="font-medium text-sm text-center">{data.month}</div>
+                            <div className="space-y-1 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">💰 Doanh thu:</span>
+                                <span className="font-medium text-primary">{formatCurrency(data.revenue)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">💸 Chi phí:</span>
+                                <span className="font-medium text-destructive">{formatCurrency(data.expenses)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">📈 Lợi nhuận:</span>
+                                <span className="font-medium text-green-600">{formatCurrency(data.profit)}</span>
+                              </div>
+                              <div className="flex justify-between border-t pt-1">
+                                <span className="text-muted-foreground">🛒 Đơn hàng:</span>
+                                <span className="font-medium">{data.orders}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Legend */}
+                  <div className="flex flex-wrap gap-6 mt-4 pt-4 border-t bg-muted/20 rounded-lg p-3">
+                    <div className="text-sm font-medium text-muted-foreground mb-2 w-full">Chú thích biểu đồ:</div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-primary"></div>
+                      <span className="text-sm font-medium">Doanh thu (VND)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-destructive"></div>
+                      <span className="text-sm font-medium">Chi phí (VND)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-green-500"></div>
+                      <span className="text-sm font-medium">Lợi nhuận (VND)</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Trạng thái thanh toán</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RechartsPieChart>
-                        <Pie
-                          data={paymentStatusData}
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={100}
-                          dataKey="value"
-                          label={({ name, value }) => `${name}: ${value}`}
-                        >
-                          {paymentStatusData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </RechartsPieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
+              {/* Charts Grid */}
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                {/* Order Status Chart with Data Table */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                      📦 Phân bổ trạng thái đơn hàng
+                    </CardTitle>
+                    <CardDescription>Tỷ lệ các trạng thái đơn hàng trong kỳ báo cáo</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RechartsPieChart>
+                            <Pie
+                              data={orderStatusData}
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              innerRadius={40}
+                              fill="#8884d8"
+                              dataKey="value"
+                              label={({ name, percent }) => `${name}\n${(percent * 100).toFixed(1)}%`}
+                            >
+                              {orderStatusData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              formatter={(value: number) => [value, "đơn hàng"]}
+                              contentStyle={{
+                                backgroundColor: "hsl(var(--background))",
+                                border: "2px solid hsl(var(--border))",
+                                borderRadius: "8px",
+                                fontSize: "14px"
+                              }}
+                            />
+                          </RechartsPieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      
+                      {/* Order Status Data Table */}
+                      <div className="space-y-2 bg-muted/20 rounded-lg p-3">
+                        <h4 className="font-semibold text-sm text-muted-foreground flex items-center gap-2">
+                          📋 Chi tiết số lượng
+                        </h4>
+                        {orderStatusData.map((item, index) => (
+                          <div key={index} className="flex justify-between items-center p-2 bg-background rounded border">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                              <span className="text-sm font-medium">{item.name}</span>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-bold">{item.value} đơn</div>
+                              <div className="text-xs text-muted-foreground">
+                                {((item.value / totalOrders) * 100).toFixed(1)}%
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="pt-2 border-t text-xs text-muted-foreground text-center">
+                          Tổng: {totalOrders} đơn hàng
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Payment Status Chart */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                      💳 Tình trạng thanh toán
+                    </CardTitle>
+                    <CardDescription>Phân bổ tình trạng thanh toán đơn hàng</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RechartsPieChart>
+                            <Pie
+                              data={paymentStatusData}
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              innerRadius={40}
+                              fill="#8884d8"
+                              dataKey="value"
+                              label={({ name, percent }) => `${name}\n${(percent * 100).toFixed(1)}%`}
+                            >
+                              {paymentStatusData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              formatter={(value: number) => [value, "đơn hàng"]}
+                              contentStyle={{
+                                backgroundColor: "hsl(var(--background))",
+                                border: "2px solid hsl(var(--border))",
+                                borderRadius: "8px",
+                                fontSize: "14px"
+                              }}
+                            />
+                          </RechartsPieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      
+                      {/* Payment Status Data Table */}
+                      <div className="space-y-2 bg-muted/20 rounded-lg p-3">
+                        <h4 className="font-semibold text-sm text-muted-foreground flex items-center gap-2">
+                          💰 Chi tiết thanh toán
+                        </h4>
+                        {paymentStatusData.map((item, index) => (
+                          <div key={index} className="flex justify-between items-center p-2 bg-background rounded border">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                              <span className="text-sm font-medium">{item.name}</span>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-bold">{item.value} đơn</div>
+                              <div className="text-xs text-muted-foreground">
+                                {((item.value / totalOrders) * 100).toFixed(1)}%
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="pt-2 border-t text-xs text-muted-foreground text-center">
+                          Tổng: {totalOrders} đơn hàng
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </TabsContent>
 
