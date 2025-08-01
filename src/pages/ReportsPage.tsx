@@ -135,7 +135,18 @@ const ReportsPage = () => {
     return true;
   });
 
-  const filteredCustomers = customers.filter(c => {
+  // Remove duplicate customers by email/phone, keep the one with highest purchase_count
+  const uniqueCustomers = customers.reduce((acc, customer) => {
+    const key = `${customer.email}-${customer.phone}`;
+    if (!acc[key] || acc[key].purchase_count < customer.purchase_count) {
+      acc[key] = customer;
+    }
+    return acc;
+  }, {} as Record<string, typeof customers[0]>);
+  
+  const deduplicatedCustomers = Object.values(uniqueCustomers);
+  
+  const filteredCustomers = deduplicatedCustomers.filter(c => {
     const customerDate = new Date(c.created_at);
     if (dateRange?.from && customerDate < dateRange.from) return false;
     if (dateRange?.to && customerDate > dateRange.to) return false;
@@ -178,7 +189,7 @@ const ReportsPage = () => {
 
   // Customer metrics
   const newCustomers = filteredCustomers.length;
-  const totalCustomers = customers.length;
+  const totalCustomers = deduplicatedCustomers.length;
   
   // Debug customer data
   console.log('Customer Debug:', {
