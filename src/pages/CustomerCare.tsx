@@ -20,6 +20,7 @@ const CustomerCare = () => {
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedSource, setSelectedSource] = useState("all");
   const [customers, setCustomers] = useState<any[]>([]);
+  const [assignees, setAssignees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -29,13 +30,15 @@ const CustomerCare = () => {
   const fetchCustomers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      // Fetch customers
+      const { data: customersData, error: customersError } = await supabase
         .from('customers')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching customers:', error);
+      if (customersError) {
+        console.error('Error fetching customers:', customersError);
         toast({
           title: "Lỗi",
           description: "Không thể tải danh sách khách hàng",
@@ -44,7 +47,19 @@ const CustomerCare = () => {
         return;
       }
 
-      setCustomers(data || []);
+      // Fetch assignees using raw query to bypass type restrictions
+      const { data: assigneesData, error: assigneesError } = await supabase
+        .from('assignees' as any)
+        .select('id, name');
+
+      if (!assigneesError && assigneesData) {
+        setAssignees(assigneesData);
+      } else {
+        console.log('Could not fetch assignees:', assigneesError);
+        setAssignees([]);
+      }
+
+      setCustomers(customersData || []);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -287,15 +302,18 @@ const CustomerCare = () => {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {customer.manager_id ? (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                Đã phân công
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                                Chưa phân công
-                              </Badge>
-                            )}
+                            {(() => {
+                              const assignee = assignees.find(a => a.id === customer.manager_id);
+                              return assignee ? (
+                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                  {assignee.name}
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                  Chưa phân công
+                                </Badge>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary">
