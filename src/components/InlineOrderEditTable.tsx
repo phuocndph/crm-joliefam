@@ -265,19 +265,22 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder }: I
 
         case "notes":
           return (
-            <div className="flex items-center gap-2">
-              <Input
+            <div className="flex items-start gap-2">
+              <textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                className="w-40"
+                className="w-48 min-h-[60px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 placeholder="Nhập ghi chú..."
+                rows={3}
               />
-              <Button size="sm" variant="ghost" onClick={() => handleSave(order.id, field)}>
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button size="sm" variant="ghost" onClick={handleCancel}>
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex flex-col gap-1">
+                <Button size="sm" variant="ghost" onClick={() => handleSave(order.id, field)}>
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleCancel}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           );
 
@@ -346,9 +349,9 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder }: I
             className="cursor-pointer"
             onClick={() => handleCellEdit(order.id, field, order.notes)}
           >
-            <span className="text-sm truncate max-w-32">
+            <div className="text-sm whitespace-pre-wrap break-words max-w-48 leading-relaxed">
               {order.notes || "Thêm ghi chú..."}
-            </span>
+            </div>
           </div>
         );
 
