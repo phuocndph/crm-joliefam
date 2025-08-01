@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import {
   Table,
   TableBody,
@@ -32,7 +33,8 @@ import { EditExpenseDialog } from "@/components/EditExpenseDialog";
 import { DeleteExpenseDialog } from "@/components/DeleteExpenseDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { format, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subYears } from "date-fns";
+import { DateRange } from "react-day-picker";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 
 const formatSafeDate = (dateValue: string | null | undefined, formatStr: string = "dd/MM/yyyy") => {
@@ -101,6 +103,10 @@ export default function CashFlowManagement() {
   const [filterPeriod, setFilterPeriod] = useState("month");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString());
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date())
+  });
   const [activeTab, setActiveTab] = useState("profit");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
@@ -123,8 +129,47 @@ export default function CashFlowManagement() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  // Quick date ranges
+  const quickDateRanges = [
+    {
+      label: "Hôm nay",
+      range: {
+        from: new Date(),
+        to: new Date()
+      }
+    },
+    {
+      label: "Từ trước đến nay",
+      range: {
+        from: subYears(new Date(), 10),
+        to: new Date()
+      }
+    },
+    {
+      label: "Tháng này",
+      range: {
+        from: startOfMonth(new Date()),
+        to: endOfMonth(new Date())
+      }
+    },
+    {
+      label: "Năm này",
+      range: {
+        from: startOfYear(new Date()),
+        to: endOfYear(new Date())
+      }
+    }
+  ];
+
   // Utility functions
   const getDateRange = useCallback(() => {
+    if (dateRange?.from && dateRange?.to) {
+      return {
+        start: dateRange.from,
+        end: dateRange.to
+      };
+    }
+    
     const year = parseInt(selectedYear);
     const month = parseInt(selectedMonth);
     
@@ -139,7 +184,7 @@ export default function CashFlowManagement() {
         end: endOfMonth(new Date(year, month - 1))
       };
     }
-  }, [selectedYear, selectedMonth, filterPeriod]);
+  }, [dateRange, selectedYear, selectedMonth, filterPeriod]);
 
   const formatCurrency = (amount: number | null | undefined) => {
     if (!amount) return "0đ";
@@ -408,7 +453,7 @@ export default function CashFlowManagement() {
     return () => {
       controller.abort();
     };
-  }, [selectedYear, selectedMonth, filterPeriod]);
+  }, [selectedYear, selectedMonth, filterPeriod, dateRange]);
 
   useEffect(() => {
     if (orders.length > 0 || expenses.length > 0) {
@@ -532,42 +577,73 @@ export default function CashFlowManagement() {
         {/* Time Filter */}
         <Card>
           <CardContent className="p-6 pt-6">
-            <div className="flex gap-4 items-center">
-              <Select value={filterPeriod} onValueChange={setFilterPeriod}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Chọn khoảng thời gian" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="month">Theo tháng</SelectItem>
-                  <SelectItem value="year">Theo năm</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={selectedYear} onValueChange={setSelectedYear}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[2023, 2024, 2025, 2026].map(year => (
-                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {filterPeriod === "month" && (
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+              <div className="flex items-center space-x-3">
+                <Select onValueChange={(value) => {
+                  const selectedRange = quickDateRanges.find(range => range.label === value);
+                  if (selectedRange) {
+                    setDateRange(selectedRange.range);
+                  }
+                }}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Chọn khoảng thời gian" />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({length: 12}, (_, i) => (
-                      <SelectItem key={i + 1} value={(i + 1).toString()}>
-                        Tháng {i + 1}
+                    {quickDateRanges.map((range, index) => (
+                      <SelectItem 
+                        key={index} 
+                        value={range.label}
+                      >
+                        {range.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              )}
+                
+                <DatePickerWithRange
+                  date={dateRange}
+                  setDate={setDateRange}
+                  className="w-auto"
+                />
+              </div>
+              
+              <div className="flex gap-4 items-center">
+                <Select value={filterPeriod} onValueChange={setFilterPeriod}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Chọn khoảng thời gian" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="month">Theo tháng</SelectItem>
+                    <SelectItem value="year">Theo năm</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={selectedYear} onValueChange={setSelectedYear}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[2023, 2024, 2025, 2026].map(year => (
+                      <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {filterPeriod === "month" && (
+                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({length: 12}, (_, i) => (
+                        <SelectItem key={i + 1} value={(i + 1).toString()}>
+                          Tháng {i + 1}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
