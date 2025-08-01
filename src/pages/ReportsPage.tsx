@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Cell, LineChart, Line, Pie } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Cell, LineChart, Line, Pie, AreaChart, Area } from "recharts";
 import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear, differenceInDays, startOfDay, endOfDay } from "date-fns";
 import { vi } from "date-fns/locale";
 import { DateRange } from "react-day-picker";
@@ -910,13 +910,16 @@ const ReportsPage = () => {
           </TabsContent>
 
           <TabsContent value="customers" className="space-y-6">
+            {/* Customer Metrics Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Khách hàng mới</CardTitle>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    👥 Khách hàng mới
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{newCustomers}</div>
+                  <div className="text-2xl font-bold text-primary">{newCustomers}</div>
                   <p className="text-xs text-muted-foreground">
                     Trong kỳ báo cáo
                   </p>
@@ -924,10 +927,12 @@ const ReportsPage = () => {
               </Card>
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Tổng khách hàng</CardTitle>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    🏢 Tổng khách hàng
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{totalCustomers}</div>
+                  <div className="text-2xl font-bold text-success">{totalCustomers}</div>
                   <p className="text-xs text-muted-foreground">
                     Tích lũy
                   </p>
@@ -935,16 +940,143 @@ const ReportsPage = () => {
               </Card>
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Giá trị trung bình</CardTitle>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    💰 Giá trị trung bình
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(averageOrderValue)}</div>
+                  <div className="text-2xl font-bold text-warning">{formatCurrency(averageOrderValue)}</div>
                   <p className="text-xs text-muted-foreground">
-                    Mỗi khách hàng
+                    Mỗi đơn hàng
                   </p>
                 </CardContent>
               </Card>
             </div>
+
+            {/* Customer Growth Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                  📈 Tăng trưởng khách hàng
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Biểu đồ thể hiện xu hướng tăng trưởng số lượng khách hàng theo thời gian
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <ResponsiveContainer width="100%" height={350}>
+                    <AreaChart data={monthlyData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
+                      <XAxis 
+                        dataKey="month" 
+                        fontSize={12}
+                        stroke="hsl(var(--foreground))"
+                      />
+                      <YAxis 
+                        fontSize={12}
+                        stroke="hsl(var(--foreground))"
+                      />
+                      <Tooltip 
+                        formatter={(value: number, name: string) => [
+                          value,
+                          name === "orders" ? "📦 Đơn hàng" : "✅ Hoàn thành"
+                        ]}
+                        labelFormatter={(label) => `📅 ${label}`}
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--background))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                          fontSize: "14px"
+                        }}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="orders" 
+                        stroke="hsl(var(--primary))" 
+                        fill="hsl(var(--primary))" 
+                        fillOpacity={0.2}
+                        name="orders"
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="completed" 
+                        stroke="hsl(var(--success))" 
+                        fill="hsl(var(--success))" 
+                        fillOpacity={0.3}
+                        name="completed"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  
+                  {/* Legend */}
+                  <div className="flex flex-wrap items-center justify-center gap-6 p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-primary rounded opacity-60"></div>
+                      <span className="text-sm font-medium">📦 Tổng đơn hàng</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-success rounded opacity-60"></div>
+                      <span className="text-sm font-medium">✅ Đơn hoàn thành</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Customer Performance Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  📊 Hiệu suất khách hàng theo tháng
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Bảng chi tiết thống kê đơn hàng và tỷ lệ hoàn thành theo từng tháng
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left p-3 font-semibold">📅 Tháng</th>
+                        <th className="text-right p-3 font-semibold">📦 Tổng đơn</th>
+                        <th className="text-right p-3 font-semibold">✅ Hoàn thành</th>
+                        <th className="text-right p-3 font-semibold">📈 Tỷ lệ (%)</th>
+                        <th className="text-right p-3 font-semibold">💰 Doanh thu</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlyData.slice(-6).map((data, index) => {
+                        const completionRate = data.orders > 0 ? ((data.completed / data.orders) * 100).toFixed(1) : '0';
+                        return (
+                          <tr key={data.month} className="border-b border-border/50 hover:bg-muted/30">
+                            <td className="p-3 font-medium">{data.month}</td>
+                            <td className="text-right p-3 font-mono">{data.orders}</td>
+                            <td className="text-right p-3 font-mono text-success">{data.completed}</td>
+                            <td className="text-right p-3 font-mono">
+                              <span className={`${Number(completionRate) >= 80 ? 'text-success' : Number(completionRate) >= 60 ? 'text-warning' : 'text-destructive'}`}>
+                                {completionRate}%
+                              </span>
+                            </td>
+                            <td className="text-right p-3 font-mono font-semibold text-primary">
+                              {formatCurrency(data.revenue)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {monthlyData.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <div className="text-4xl mb-2">👥</div>
+                    <p>Không có dữ liệu khách hàng trong kỳ báo cáo này</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="products" className="space-y-6">
