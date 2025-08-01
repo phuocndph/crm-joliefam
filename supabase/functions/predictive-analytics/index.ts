@@ -65,10 +65,13 @@ serve(async (req) => {
     const predictions = []
 
     for (const predictionType of prediction_types) {
+      console.log(`Generating prediction for type: ${predictionType}`)
+      
       const prediction = await generatePrediction(customer, orders || [], predictionType, geminiApiKey)
+      console.log(`Generated prediction:`, prediction)
       
       // Save prediction to database
-      const { error: insertError } = await supabaseClient
+      const { data: insertData, error: insertError } = await supabaseClient
         .from('customer_predictions')
         .upsert({
           customer_id,
@@ -83,12 +86,17 @@ serve(async (req) => {
           onConflict: 'customer_id,prediction_type'
         })
 
-      if (!insertError) {
-        predictions.push({
-          type: predictionType,
-          ...prediction
-        })
+      if (insertError) {
+        console.error(`Failed to insert prediction for ${predictionType}:`, insertError)
+      } else {
+        console.log(`Successfully inserted prediction for ${predictionType}`)
       }
+
+      // Always add to predictions array regardless of database insert status
+      predictions.push({
+        type: predictionType,
+        ...prediction
+      })
     }
 
     return new Response(
