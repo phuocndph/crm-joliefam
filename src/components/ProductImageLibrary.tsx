@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, Folder, Image, Trash2, Plus, FolderOpen } from 'lucide-react';
+import { Upload, Folder, Image, Trash2, Plus, FolderOpen, Edit2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface ProductImage {
@@ -36,6 +36,10 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
   const [uploadCategory, setUploadCategory] = useState(selectedCategory || '');
   const [newCategory, setNewCategory] = useState('');
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [showRenameCategoryDialog, setShowRenameCategoryDialog] = useState(false);
+  const [categoryToRename, setCategoryToRename] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [renamingCategory, setRenamingCategory] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -228,6 +232,65 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
     }
   };
 
+  const handleRenameCategory = async () => {
+    if (!categoryToRename || !newCategoryName) return;
+
+    setRenamingCategory(true);
+
+    try {
+      const sanitizedNewName = sanitizeFolderName(newCategoryName);
+      
+      // Get all files in the old category
+      const filesToMove = images.filter(img => img.category === categoryToRename);
+      
+      // Move each file to the new category folder
+      for (const file of filesToMove) {
+        const fileName = file.name;
+        const newPath = `${sanitizedNewName}/${fileName}`;
+        
+        // Download the file
+        const { data: fileData } = await supabase.storage
+          .from('product-images')
+          .download(file.fullPath);
+
+        if (fileData) {
+          // Upload to new location
+          const { error: uploadError } = await supabase.storage
+            .from('product-images')
+            .upload(newPath, fileData);
+
+          if (uploadError) throw uploadError;
+
+          // Delete old file
+          const { error: deleteError } = await supabase.storage
+            .from('product-images')
+            .remove([file.fullPath]);
+
+          if (deleteError) throw deleteError;
+        }
+      }
+
+      toast({
+        title: "Thành công",
+        description: `Đã đổi tên thư mục từ "${categoryToRename}" thành "${sanitizedNewName}"`,
+      });
+
+      setShowRenameCategoryDialog(false);
+      setCategoryToRename('');
+      setNewCategoryName('');
+      fetchImages();
+    } catch (error) {
+      console.error('Error renaming category:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể đổi tên thư mục",
+        variant: "destructive",
+      });
+    } finally {
+      setRenamingCategory(false);
+    }
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -260,7 +323,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
         </Button>
       </div>
 
-      {/* Category Filter */}
+      {/* Category Filter with Rename Option */}
       <div className="flex items-center gap-4">
         <Label htmlFor="category-filter">Thư mục:</Label>
         <Select value={selectedCategoryFilter} onValueChange={setSelectedCategoryFilter}>
@@ -279,6 +342,20 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
             ))}
           </SelectContent>
         </Select>
+        {selectedCategoryFilter !== 'all' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setCategoryToRename(selectedCategoryFilter);
+              setNewCategoryName(selectedCategoryFilter);
+              setShowRenameCategoryDialog(true);
+            }}
+          >
+            <Edit2 className="h-4 w-4 mr-1" />
+            Sửa tên
+          </Button>
+        )}
         <Badge variant="secondary">
           {filteredImages.length} hình ảnh
         </Badge>
@@ -420,6 +497,47 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowUploadDialog(false)}>
               Hủy
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Category Dialog */}
+      <Dialog open={showRenameCategoryDialog} onOpenChange={setShowRenameCategoryDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sửa tên thư mục</DialogTitle>
+            <DialogDescription>
+              Đổi tên thư mục "{categoryToRename}" và di chuyển tất cả hình ảnh
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rename-category">Tên thư mục mới</Label>
+              <Input
+                id="rename-category"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="Nhập tên thư mục mới"
+                disabled={renamingCategory}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowRenameCategoryDialog(false)}
+              disabled={renamingCategory}
+            >
+              Hủy
+            </Button>
+            <Button 
+              onClick={handleRenameCategory}
+              disabled={renamingCategory || !newCategoryName || newCategoryName === categoryToRename}
+            >
+              {renamingCategory ? "Đang đổi tên..." : "Đổi tên"}
             </Button>
           </DialogFooter>
         </DialogContent>
