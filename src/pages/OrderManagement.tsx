@@ -481,9 +481,37 @@ export default function OrderManagement() {
               orders={sortedOrders}
               onOrderUpdate={async (orderId: string, updates: Partial<Order>) => {
                 try {
+                  const updateData: any = { ...updates };
+                  
+                  // Handle special cases for status changes
+                  if (updates.status) {
+                    if (updates.status === 'delivered' || updates.status === 'shipped') {
+                      updateData.delivered_date = new Date().toISOString();
+                    }
+                    
+                    // Create transaction for delivered orders
+                    if (updates.status === 'delivered') {
+                      const order = orders.find(o => o.id === orderId);
+                      if (order?.total_amount) {
+                        const { error: transactionError } = await supabase
+                          .from('transactions')
+                          .insert({
+                            type: 'income',
+                            amount: order.total_amount,
+                            description: `Hoàn thành đơn hàng ${getOrderDisplayNumber(order)}`,
+                            order_id: orderId,
+                            category: 'order_completion',
+                            date: new Date().toISOString()
+                          });
+                        
+                        if (transactionError) console.error('Error creating transaction:', transactionError);
+                      }
+                    }
+                  }
+
                   const { error } = await supabase
                     .from('orders')
-                    .update(updates)
+                    .update(updateData)
                     .eq('id', orderId);
 
                   if (error) throw error;
@@ -492,7 +520,7 @@ export default function OrderManagement() {
                   setOrders(prevOrders => 
                     prevOrders.map(o => 
                       o.id === orderId 
-                        ? { ...o, ...updates }
+                        ? { ...o, ...updateData }
                         : o
                     )
                   );
@@ -508,9 +536,9 @@ export default function OrderManagement() {
                     description: "Không thể cập nhật đơn hàng",
                     variant: "destructive",
                   });
-                  throw error;
                 }
               }}
+              onDeleteOrder={(order) => setOrderToDelete(order)}
             />
           )}
         </CardContent>

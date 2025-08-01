@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Check, X, Edit3, Calendar, DollarSign } from "lucide-react";
+import { Check, X, Edit3, Calendar, DollarSign, Trash2, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -35,21 +41,32 @@ interface Order {
   display_order_number?: string;
   customer_id: string | null;
   total_amount: number | null;
+  cost_price: number | null;
+  profit_before: number | null;
+  profit_after: number | null;
   status: string;
   payment_status: string;
+  payment_date: string | null;
   delivery_date: string | null;
+  delivered_date: string | null;
   notes: string | null;
+  items: any;
   created_at: string;
+  updated_at: string;
   customers?: {
+    id: string;
+    customer_code: string | null;
     name: string;
     email: string | null;
     phone: string | null;
+    company: string | null;
   } | null;
 }
 
 interface InlineOrderEditTableProps {
   orders: Order[];
   onOrderUpdate: (orderId: string, updates: Partial<Order>) => Promise<void>;
+  onDeleteOrder: (order: Order) => void;
 }
 
 const statusConfig = {
@@ -68,7 +85,7 @@ const paymentStatusConfig = {
   paid: { label: "Đã thanh toán", color: "bg-green-100 text-green-800" },
 };
 
-export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditTableProps) {
+export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder }: InlineOrderEditTableProps) {
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>("");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
@@ -351,6 +368,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
             <TableHead>Tình trạng đơn</TableHead>
             <TableHead>Thanh toán</TableHead>
             <TableHead>Ghi chú</TableHead>
+            <TableHead className="w-[70px]">Hành động</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -387,6 +405,25 @@ export function InlineOrderEditTable({ orders, onOrderUpdate }: InlineOrderEditT
               </TableCell>
               <TableCell>
                 {getCellContent(order, "notes")}
+              </TableCell>
+              <TableCell>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="h-8 w-8 p-0">
+                      <span className="sr-only">Mở menu</span>
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem 
+                      onClick={() => onDeleteOrder(order)}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Xóa đơn hàng
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </TableCell>
             </TableRow>
           ))}
