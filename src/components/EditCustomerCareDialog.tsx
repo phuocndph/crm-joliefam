@@ -84,22 +84,22 @@ const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: Edi
     }
   }, [open]);
 
-  // Initialize form with customer data
+  // Initialize form with customer data - wait for assignees to load first
   useEffect(() => {
-    if (customer && open) {
+    if (customer && open && !loadingAssignees) {
       setFormData({
         customerName: customer.name || "",
         assignedTo: customer.manager_id || "",
         source: customer.tags && customer.tags.length > 0 ? customer.tags[0] : "",
         currentStatus: (customer as any).current_status || "waiting-payment",
-        followUpType: "first-contact", // Default since we don't store this currently
-        closingScore: "", // Default since we don't store this currently
-        nextAction: "", // Default since we don't store this currently
+        followUpType: (customer as any).follow_up_type || "first-contact",
+        closingScore: (customer as any).closing_score || "",
+        nextAction: (customer as any).next_action || "",
         notes: customer.notes || ""
       });
       setLastUpdateDate(new Date(customer.updated_at));
     }
-  }, [customer, open]);
+  }, [customer, open, loadingAssignees]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
