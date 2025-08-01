@@ -156,6 +156,7 @@ export default function CustomerManagement() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState<any>(null);
   const [orderToPayment, setOrderToPayment] = useState<any>(null);
+  const [payments, setPayments] = useState<any[]>([]);
   const { toast } = useToast();
 
   // Group customers by name and aggregate data
@@ -353,7 +354,7 @@ export default function CustomerManagement() {
       const customerIds = customer.grouped_ids || [customer.id];
       const customerName = customer.name.trim();
       
-      const [ordersResult, quotesResult] = await Promise.all([
+      const [ordersResult, quotesResult, paymentsResult] = await Promise.all([
         supabase
           .from('orders')
           .select('id, order_number, display_order_number, total_amount, status, payment_status, created_at, delivery_date, payment_date')
@@ -362,11 +363,16 @@ export default function CustomerManagement() {
         supabase
           .from('quotes')
           .select('id, quote_number, total_amount, status, created_at, notes')
-          .order('created_at', { ascending: false })
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('order_payments')
+          .select('*')
+          .order('payment_date', { ascending: false })
       ]);
 
       if (ordersResult.error) throw ordersResult.error;
       if (quotesResult.error) throw quotesResult.error;
+      if (paymentsResult.error) throw paymentsResult.error;
       
       // Filter quotes by customer name from notes
       const customerQuotes = quotesResult.data?.filter(quote => {
@@ -377,6 +383,7 @@ export default function CustomerManagement() {
       
       setCustomerOrders(ordersResult.data || []);
       setCustomerQuotes(customerQuotes);
+      setPayments(paymentsResult.data || []);
     } catch (error) {
       console.error('Error loading customer details:', error);
       toast({
@@ -1190,6 +1197,70 @@ export default function CustomerManagement() {
                         <span className="font-bold text-lg text-red-600">
                           {(selectedOrderDetail.total_amount || 0).toLocaleString("vi-VN")} VNĐ
                         </span>
+                      </div>
+                      
+                      {/* Payment Status Information */}
+                      <div className="pt-2 border-t border-red-300">
+                        <div className="flex justify-between items-center py-2">
+                          <span className="font-medium">Trạng thái thanh toán:</span>
+                          <span className={`font-bold px-2 py-1 rounded text-sm ${
+                            selectedOrderDetail.payment_status === 'paid' 
+                              ? 'bg-green-100 text-green-800' 
+                              : selectedOrderDetail.payment_status === 'partial'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {selectedOrderDetail.payment_status === 'paid' 
+                              ? 'Đã thanh toán' 
+                              : selectedOrderDetail.payment_status === 'partial'
+                              ? 'Thanh toán một phần'
+                              : 'Chưa thanh toán'
+                            }
+                          </span>
+                        </div>
+                        
+                        {/* Calculate total paid and remaining */}
+                        {(() => {
+                          const orderPayments = payments.filter(p => p.order_id === selectedOrderDetail.id);
+                          const totalPaid = orderPayments.reduce((sum, payment) => sum + payment.payment_amount, 0);
+                          const remaining = (selectedOrderDetail.total_amount || 0) - totalPaid;
+                          
+                          return (
+                            <>
+                              <div className="flex justify-between items-center py-2">
+                                <span className="font-medium">Số tiền đã thanh toán:</span>
+                                <span className="font-bold text-green-600">
+                                  {totalPaid.toLocaleString("vi-VN")} VNĐ
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center py-2">
+                                <span className="font-medium">Số tiền còn lại:</span>
+                                <span className={`font-bold ${remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                  {remaining.toLocaleString("vi-VN")} VNĐ
+                                </span>
+                              </div>
+                              
+                              {/* Payment History */}
+                              {orderPayments.length > 0 && (
+                                <div className="pt-2 border-t border-red-300">
+                                  <h5 className="font-medium mb-2">Lịch sử thanh toán:</h5>
+                                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                                    {orderPayments.map((payment, index) => (
+                                      <div key={payment.id} className="flex justify-between items-center text-sm bg-white/50 p-2 rounded">
+                                        <span>
+                                          Lần {index + 1}: {new Date(payment.payment_date).toLocaleDateString('vi-VN')}
+                                        </span>
+                                        <span className="font-medium">
+                                          {payment.payment_amount.toLocaleString("vi-VN")} VNĐ
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
