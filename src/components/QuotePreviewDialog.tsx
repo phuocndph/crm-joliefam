@@ -486,265 +486,392 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
   const handleExportPDF = async () => {
     try {
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 20;
-      let yPos = margin;
-      
+      // Create a more compatible PDF approach for Vietnamese
+      const printContent = document.getElementById('quote-preview');
+      if (!printContent) {
+        toast({
+          title: "Lỗi",
+          description: "Không tìm thấy nội dung báo giá",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Get template settings
       const templateSettings = getTemplateSettings();
       
-      // Set Vietnamese font support
-      pdf.setFont('helvetica');
-      
-      // Header Section with light background
-      pdf.setFillColor(240, 245, 255);
-      pdf.rect(0, 0, pageWidth, 60, 'F');
-      
-      // Company Logo (left side)
-      if (templateSettings.logoUrl) {
-        try {
-          // Create image element to check if logo loads
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-            img.src = templateSettings.logoUrl;
-          });
-          pdf.addImage(templateSettings.logoUrl, 'PNG', margin, margin, 40, 30);
-        } catch (error) {
-          console.warn('Logo không thể tải:', error);
-          // Fallback: Draw a simple rectangle placeholder
-          pdf.setFillColor(200, 200, 200);
-          pdf.rect(margin, margin, 40, 30, 'F');
-          pdf.setFontSize(10);
-          pdf.setTextColor(100, 100, 100);
-          pdf.text('LOGO', margin + 20, margin + 18, { align: 'center' });
-        }
-      }
-      
-      // Company Info (right side)
-      const companyInfoX = pageWidth - margin - 80;
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(16);
-      pdf.setTextColor(30, 64, 175);
-      const companyName = templateSettings.companyName || 'CÔNG TY ABC';
-      pdf.text(companyName, companyInfoX, margin + 10);
-      
-      pdf.setFontSize(10);
-      pdf.setTextColor(100, 100, 100);
-      pdf.setFont('helvetica', 'normal');
-      const companyAddress = templateSettings.address || 'Địa chỉ công ty';
-      const companyPhone = templateSettings.phone || '0123456789';
-      pdf.text(companyAddress, companyInfoX, margin + 20);
-      pdf.text(`ĐT: ${companyPhone}`, companyInfoX, margin + 28);
-      
-      yPos = 75;
-      
-      // Quote Title with blue background
-      pdf.setFillColor(30, 64, 175);
-      pdf.rect(0, yPos - 5, pageWidth, 15, 'F');
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(14);
-      pdf.setTextColor(255, 255, 255);
-      const quoteTitle = `BẢNG BÁO GIÁ SỐ: ${quote.quote_number || 'N/A'}`;
-      pdf.text(quoteTitle, pageWidth / 2, yPos + 3, { align: 'center' });
-      
-      yPos += 25;
-      
-      // Customer & Quote Info in two columns
-      const colWidth = (pageWidth - 2 * margin) / 2 - 5;
-      
-      // Customer Info (Left)
-      pdf.setFillColor(248, 250, 252);
-      pdf.rect(margin, yPos, colWidth, 40, 'F');
-      pdf.setDrawColor(200, 200, 200);
-      pdf.rect(margin, yPos, colWidth, 40);
-      
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(10);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text('THÔNG TIN KHÁCH HÀNG', margin + 5, yPos + 8);
-      
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(9);
-      
-      pdf.text(`Tên: ${customerName}`, margin + 5, yPos + 16);
-      pdf.text(`SĐT: ${phone}`, margin + 5, yPos + 23);
-      pdf.text(`Địa chỉ: ${address}`, margin + 5, yPos + 30);
-      
-      // Quote Info (Right)
-      const rightColX = margin + colWidth + 10;
-      pdf.setFillColor(248, 250, 252);
-      pdf.rect(rightColX, yPos, colWidth, 40, 'F');
-      pdf.rect(rightColX, yPos, colWidth, 40);
-      
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('THÔNG TIN BÁO GIÁ', rightColX + 5, yPos + 8);
-      
-      pdf.setFont('helvetica', 'normal');
-      const quoteDate = new Date(quote.created_at).toLocaleDateString('vi-VN');
-      const validUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN');
-      
-      pdf.text(`Ngày tạo: ${quoteDate}`, rightColX + 5, yPos + 16);
-      pdf.text(`Hiệu lực đến: ${validUntil}`, rightColX + 5, yPos + 23);
-      pdf.text(`Trạng thái: ${quote.status || 'draft'}`, rightColX + 5, yPos + 30);
-      
-      yPos += 55;
-      
-      // Products Table Header
-      pdf.setFillColor(59, 130, 246);
-      const tableY = yPos;
-      const tableColWidths = [15, 75, 25, 25, 30, 30]; // STT, Tên SP, SL, ĐVT, Giá, Thành tiền
-      let currentX = margin;
-      
-      // Table header background
-      pdf.rect(margin, tableY, pageWidth - 2 * margin, 12, 'F');
-      
-      // Table headers
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(9);
-      pdf.setTextColor(255, 255, 255);
-      
-      const tableHeaders = ['STT', 'TÊN SẢN PHẨM', 'SL', 'ĐVT', 'ĐƠN GIÁ', 'THÀNH TIỀN'];
-      tableHeaders.forEach((header, index) => {
-        pdf.text(header, currentX + tableColWidths[index] / 2, tableY + 7, { align: 'center' });
-        currentX += tableColWidths[index];
-      });
-      
-      yPos += 12;
-      
-      // Table content using parsed items
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(8);
-      pdf.setTextColor(0, 0, 0);
-      
-      let pdfTotalAmount = 0;
-      
-      items.forEach((item, index) => {
-        if (yPos > pageHeight - 50) {
-          pdf.addPage();
-          yPos = margin;
-        }
-        
-        const quantity = parseFloat(item.quantity) || 0;
-        const unitPrice = parseFloat(item.price) || 0;
-        const itemTotal = quantity * unitPrice;
-        pdfTotalAmount += itemTotal;
-        
-        // Alternate row background
-        if (index % 2 === 1) {
-          pdf.setFillColor(250, 250, 250);
-          pdf.rect(margin, yPos, pageWidth - 2 * margin, 10, 'F');
-        }
-        
-        currentX = margin;
-        const rowData = [
-          (index + 1).toString(),
-          item.name || 'N/A',
-          quantity.toString(),
-          'cái',
-          unitPrice.toLocaleString('vi-VN') + ' VNĐ',
-          itemTotal.toLocaleString('vi-VN') + ' VNĐ'
-        ];
-        
-        rowData.forEach((data, colIndex) => {
-          const maxWidth = tableColWidths[colIndex] - 2;
-          const textLines = pdf.splitTextToSize(data, maxWidth);
-          
-          if (colIndex === 0 || colIndex === 2 || colIndex === 4 || colIndex === 5) {
-            // Center align for STT, SL, Giá, Thành tiền
-            pdf.text(textLines[0], currentX + tableColWidths[colIndex] / 2, yPos + 6, { align: 'center' });
-          } else {
-            // Left align for Tên SP, ĐVT
-            pdf.text(textLines[0], currentX + 2, yPos + 6);
-          }
-          currentX += tableColWidths[colIndex];
+      // Create a clean print version
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        toast({
+          title: "Lỗi", 
+          description: "Không thể mở cửa sổ in",
+          variant: "destructive",
         });
-        
-        // Draw row border
-        pdf.setDrawColor(220, 220, 220);
-        pdf.line(margin, yPos + 10, pageWidth - margin, yPos + 10);
-        
-        yPos += 10;
-      });
-      
-      // Total Section
-      yPos += 10;
-      pdf.setFillColor(240, 245, 255);
-      pdf.rect(margin, yPos, pageWidth - 2 * margin, 35, 'F');
-      
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(10);
-      pdf.setTextColor(30, 64, 175);
-      
-      const pdfVatAmount = pdfTotalAmount * 0.1; // 10% VAT
-      const pdfFinalTotal = pdfTotalAmount + pdfVatAmount;
-      
-      pdf.text(`Tạm tính: ${pdfTotalAmount.toLocaleString('vi-VN')} VNĐ`, pageWidth - margin - 60, yPos + 8);
-      pdf.text(`VAT (10%): ${pdfVatAmount.toLocaleString('vi-VN')} VNĐ`, pageWidth - margin - 60, yPos + 16);
-      pdf.text(`TỔNG CỘNG: ${pdfFinalTotal.toLocaleString('vi-VN')} VNĐ`, pageWidth - margin - 60, yPos + 24);
-      
-      yPos += 45;
-      
-      // Terms and Conditions
-      if (templateSettings.terms && templateSettings.terms.length > 0) {
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(10);
-        pdf.setTextColor(0, 0, 0);
-        pdf.text('ĐIỀU KHOẢN & ĐIỀU KIỆN:', margin, yPos);
-        
-        yPos += 8;
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(9);
-        
-        templateSettings.terms.forEach((term, index) => {
-          if (term.trim()) {
-            const termText = `${index + 1}. ${term}`;
-            const lines = pdf.splitTextToSize(termText, pageWidth - 2 * margin);
-            lines.forEach(line => {
-              if (yPos > pageHeight - 30) {
-                pdf.addPage();
-                yPos = margin;
+        return;
+      }
+
+      // Create clean HTML content for printing/PDF
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Báo giá ${quote.quote_number}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+            
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            
+            body {
+              font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              font-size: 13px;
+              line-height: 1.4;
+              color: #333;
+              background: white;
+              margin: 0;
+              padding: 20px;
+            }
+            
+            .header {
+              background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+              color: white;
+              padding: 25px;
+              margin: -20px -20px 30px -20px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+            
+            .company-info {
+              flex: 1;
+            }
+            
+            .company-name {
+              font-size: 24px;
+              font-weight: 700;
+              margin-bottom: 5px;
+            }
+            
+            .company-details {
+              font-size: 12px;
+              opacity: 0.9;
+            }
+            
+            .logo-section {
+              width: 80px;
+              height: 60px;
+              background: rgba(255,255,255,0.1);
+              border-radius: 8px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 10px;
+            }
+            
+            .quote-title {
+              text-align: center;
+              background: #f8fafc;
+              padding: 15px;
+              margin: 20px 0;
+              border-radius: 8px;
+              border-left: 4px solid #3b82f6;
+            }
+            
+            .quote-number {
+              font-size: 20px;
+              font-weight: 600;
+              color: #1e40af;
+            }
+            
+            .info-section {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 20px;
+              margin: 30px 0;
+            }
+            
+            .info-box {
+              background: #f8fafc;
+              padding: 20px;
+              border-radius: 8px;
+              border: 1px solid #e2e8f0;
+            }
+            
+            .info-title {
+              font-weight: 600;
+              color: #1e40af;
+              margin-bottom: 10px;
+              font-size: 14px;
+            }
+            
+            .info-item {
+              margin: 5px 0;
+              font-size: 12px;
+            }
+            
+            .table-container {
+              margin: 30px 0;
+              border-radius: 8px;
+              overflow: hidden;
+              border: 1px solid #e2e8f0;
+            }
+            
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              background: white;
+            }
+            
+            th {
+              background: #1e40af;
+              color: white;
+              padding: 12px 8px;
+              text-align: center;
+              font-weight: 600;
+              font-size: 12px;
+            }
+            
+            td {
+              padding: 12px 8px;
+              border-bottom: 1px solid #e2e8f0;
+              font-size: 12px;
+            }
+            
+            tr:nth-child(even) {
+              background: #f8fafc;
+            }
+            
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .font-medium { font-weight: 500; }
+            
+            .total-section {
+              margin: 20px 0;
+              text-align: right;
+            }
+            
+            .total-row {
+              display: grid;
+              grid-template-columns: 1fr auto;
+              gap: 20px;
+              margin: 5px 0;
+              padding: 5px 0;
+            }
+            
+            .total-label {
+              font-weight: 500;
+            }
+            
+            .total-amount {
+              font-weight: 600;
+              min-width: 120px;
+            }
+            
+            .final-total {
+              background: #1e40af;
+              color: white;
+              padding: 10px;
+              border-radius: 6px;
+              font-size: 16px;
+              font-weight: 700;
+            }
+            
+            .terms {
+              margin: 30px 0;
+              background: #f8fafc;
+              padding: 20px;
+              border-radius: 8px;
+              border-left: 4px solid #059669;
+            }
+            
+            .terms-title {
+              font-weight: 600;
+              color: #059669;
+              margin-bottom: 10px;
+            }
+            
+            .terms li {
+              margin: 8px 0;
+              font-size: 12px;
+            }
+            
+            .signature-section {
+              margin-top: 40px;
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 40px;
+            }
+            
+            .signature-box {
+              text-align: center;
+              padding: 20px;
+            }
+            
+            .signature-title {
+              font-weight: 600;
+              margin-bottom: 40px;
+              color: #1e40af;
+            }
+            
+            .signature-line {
+              border-bottom: 1px solid #333;
+              margin: 10px 0;
+              height: 40px;
+            }
+            
+            .signature-note {
+              font-size: 11px;
+              color: #666;
+              margin-top: 5px;
+            }
+            
+            @media print {
+              body { 
+                margin: 0; 
+                padding: 15px; 
+                font-size: 12px;
               }
-              pdf.text(line, margin, yPos);
-              yPos += 5;
-            });
-          }
-        });
-      }
-      
-      // Footer note
-      if (templateSettings.footerNote) {
-        yPos = pageHeight - 50;
-        pdf.setFont('helvetica', 'italic');
-        pdf.setFontSize(8);
-        pdf.setTextColor(100, 100, 100);
-        pdf.text(templateSettings.footerNote, pageWidth / 2, yPos, { align: 'center' });
-      }
-      
-      // Signature section
-      yPos = pageHeight - 35;
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(9);
-      pdf.setTextColor(0, 0, 0);
-      
-      const pdfSignatureY = yPos;
-      pdf.text('Người báo giá', margin + 40, pdfSignatureY, { align: 'center' });
-      pdf.text('Khách hàng', pageWidth - margin - 40, pdfSignatureY, { align: 'center' });
-      
-      pdf.text('(Ký tên & đóng dấu)', margin + 40, pdfSignatureY + 15, { align: 'center' });
-      pdf.text('(Ký tên & đóng dấu)', pageWidth - margin - 40, pdfSignatureY + 15, { align: 'center' });
-      
-      // Save PDF
-      const fileName = `BaoGia_${quote.quote_number || 'quote'}_${new Date().toISOString().split('T')[0]}.pdf`;
-      pdf.save(fileName);
-      
+              .header { 
+                margin: -15px -15px 20px -15px; 
+                padding: 20px;
+              }
+              @page { 
+                margin: 1cm; 
+                size: A4;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="company-info">
+              <div class="company-name">${templateSettings.companyName || 'CÔNG TY ABC'}</div>
+              <div class="company-details">
+                ${templateSettings.address || 'Địa chỉ công ty'}<br>
+                ĐT: ${templateSettings.phone || '0123456789'} | Email: contact@company.com
+              </div>
+            </div>
+            <div class="logo-section">
+              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 70px; max-height: 50px;" alt="Logo">` : 'LOGO'}
+            </div>
+          </div>
+
+          <div class="quote-title">
+            <div class="quote-number">BẢNG BÁO GIÁ SỐ: ${quote.quote_number || 'N/A'}</div>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+              Ngày tạo: ${new Date(quote.created_at).toLocaleDateString('vi-VN')}
+            </div>
+          </div>
+
+          <div class="info-section">
+            <div class="info-box">
+              <div class="info-title">THÔNG TIN KHÁCH HÀNG</div>
+              <div class="info-item"><strong>Tên:</strong> ${customerName}</div>
+              <div class="info-item"><strong>Số điện thoại:</strong> ${phone}</div>
+              <div class="info-item"><strong>Địa chỉ:</strong> ${address}</div>
+              <div class="info-item"><strong>Email:</strong> ${email}</div>
+            </div>
+            
+            <div class="info-box">
+              <div class="info-title">THÔNG TIN BÁO GIÁ</div>
+              <div class="info-item"><strong>Mã báo giá:</strong> ${quote.quote_number}</div>
+              <div class="info-item"><strong>Ngày tạo:</strong> ${new Date(quote.created_at).toLocaleDateString('vi-VN')}</div>
+              <div class="info-item"><strong>Hiệu lực đến:</strong> ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN')}</div>
+              <div class="info-item"><strong>Trạng thái:</strong> ${quote.status || 'Draft'}</div>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 8%">STT</th>
+                  <th style="width: 40%">TÊN SẢN PHẨM/DỊCH VỤ</th>
+                  <th style="width: 12%">SỐ LƯỢNG</th>
+                  <th style="width: 10%">ĐƠN VỊ</th>
+                  <th style="width: 15%">ĐƠN GIÁ</th>
+                  <th style="width: 15%">THÀNH TIỀN</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map((item, index) => `
+                  <tr>
+                    <td class="text-center">${index + 1}</td>
+                    <td>${item.name}</td>
+                    <td class="text-center">${item.quantity}</td>
+                    <td class="text-center">cái</td>
+                    <td class="text-right">${parseFloat(item.price).toLocaleString('vi-VN')} VNĐ</td>
+                    <td class="text-right font-medium">${(parseFloat(item.price) * parseFloat(item.quantity)).toLocaleString('vi-VN')} VNĐ</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="total-section">
+            <div class="total-row">
+              <div class="total-label">Tạm tính:</div>
+              <div class="total-amount">${subtotal.toLocaleString('vi-VN')} VNĐ</div>
+            </div>
+            <div class="total-row">
+              <div class="total-label">VAT (10%):</div>
+              <div class="total-amount">${(subtotal * 0.1).toLocaleString('vi-VN')} VNĐ</div>
+            </div>
+            <div class="total-row final-total">
+              <div>TỔNG CỘNG:</div>
+              <div>${(subtotal * 1.1).toLocaleString('vi-VN')} VNĐ</div>
+            </div>
+          </div>
+
+          ${templateSettings.terms && templateSettings.terms.length > 0 ? `
+            <div class="terms">
+              <div class="terms-title">ĐIỀU KHOẢN & ĐIỀU KIỆN</div>
+              <ul>
+                ${templateSettings.terms.map(term => term.trim() ? `<li>${term}</li>` : '').join('')}
+              </ul>
+            </div>
+          ` : ''}
+
+          <div class="signature-section">
+            <div class="signature-box">
+              <div class="signature-title">ĐẠI DIỆN CÔNG TY</div>
+              <div class="signature-line"></div>
+              <div class="signature-note">(Ký tên & đóng dấu)</div>
+            </div>
+            <div class="signature-box">
+              <div class="signature-title">KHÁCH HÀNG</div>
+              <div class="signature-line"></div>
+              <div class="signature-note">(Ký tên xác nhận)</div>
+            </div>
+          </div>
+
+          ${templateSettings.footerNote ? `
+            <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #666; font-style: italic;">
+              ${templateSettings.footerNote}
+            </div>
+          ` : ''}
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+
+      // Wait for content to load then trigger print dialog
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+        }, 500);
+      };
+
       toast({
-        title: "Xuất PDF thành công",
-        description: `Đã xuất báo giá ${quote.quote_number || 'N/A'} thành file PDF chuyên nghiệp`,
+        title: "Thành công",
+        description: "Đã mở cửa sổ in. Chọn 'Save as PDF' để xuất file PDF.",
       });
       
     } catch (error) {
