@@ -646,18 +646,9 @@ export default function CustomerManagement() {
                       <TableCell className="font-medium">
                         {customer.customer_code || `KH-${customer.id.slice(0, 8)}`}
                       </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{customer.name}</div>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {getCustomerTags(customer).map((tag, index) => (
-                              <Badge key={index} className={`text-xs ${getTagColor(tag)}`}>
-                                {tag}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      </TableCell>
+                       <TableCell>
+                         <div className="font-medium">{customer.name}</div>
+                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           {customer.phones?.length > 0 ? (
