@@ -98,9 +98,9 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder }: I
     }
   };
 
-  const handleSave = async (orderId: string, field: string, dateValue?: Date) => {
+  const handleSave = async (orderId: string, field: string, dateValue?: Date, newValue?: any) => {
     try {
-      let valueToSave = editValue;
+      let valueToSave = newValue !== undefined ? newValue : editValue;
       if (field === "delivery_date") {
         const dateToUse = dateValue || selectedDate;
         if (dateToUse) {
@@ -110,6 +110,8 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder }: I
       
       // Map order_number field to display_order_number in database
       const fieldToUpdate = field === "order_number" ? "display_order_number" : field;
+      
+      console.log('handleSave - field:', field, 'valueToSave:', valueToSave);
       
       await onOrderUpdate(orderId, { [fieldToUpdate]: valueToSave });
       setEditingCell(null);
@@ -178,7 +180,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder }: I
               value={editValue} 
               onValueChange={(value) => {
                 setEditValue(value);
-                handleSave(order.id, field);
+                handleSave(order.id, field, undefined, value);
               }}
               onOpenChange={(open) => !open && handleCancel()}
             >
@@ -202,7 +204,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder }: I
               value={editValue} 
               onValueChange={(value) => {
                 setEditValue(value);
-                handleSave(order.id, field);
+                handleSave(order.id, field, undefined, value);
               }}
               onOpenChange={(open) => !open && handleCancel()}
             >
