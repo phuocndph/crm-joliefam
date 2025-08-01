@@ -91,7 +91,7 @@ const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: Edi
         customerName: customer.name || "",
         assignedTo: customer.manager_id || "",
         source: customer.tags && customer.tags.length > 0 ? customer.tags[0] : "",
-        currentStatus: "new", // Default since we don't store this currently
+        currentStatus: (customer as any).current_status || "waiting-payment",
         followUpType: "first-contact", // Default since we don't store this currently
         closingScore: "", // Default since we don't store this currently
         nextAction: "", // Default since we don't store this currently
@@ -150,6 +150,7 @@ const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: Edi
           notes: formData.notes,
           manager_id: formData.assignedTo,
           tags: formData.source ? [formData.source] : null,
+          current_status: formData.currentStatus,
         })
         .eq('id', customer.id);
 
