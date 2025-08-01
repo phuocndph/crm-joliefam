@@ -224,20 +224,16 @@ const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: Edi
                 required
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={loadingAssignees ? "Đang tải..." : "Chọn người phụ trách"} />
+                  <SelectValue placeholder={loadingAssignees ? "Đang tải..." : assignees.length === 0 ? "Chưa có người phụ trách" : "Chọn người phụ trách"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {loadingAssignees ? (
-                    <SelectItem value="" disabled>Đang tải...</SelectItem>
-                  ) : assignees.length === 0 ? (
-                    <SelectItem value="" disabled>Chưa có người phụ trách</SelectItem>
-                  ) : (
+                  {!loadingAssignees && assignees.length > 0 ? (
                     assignees.map((assignee) => (
                       <SelectItem key={assignee.id} value={assignee.id}>
                         {assignee.name}
                       </SelectItem>
                     ))
-                  )}
+                  ) : null}
                 </SelectContent>
               </Select>
             </div>
