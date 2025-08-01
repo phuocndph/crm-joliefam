@@ -184,14 +184,16 @@ const CustomerCare = () => {
 
                 <Select value={selectedSource} onValueChange={setSelectedSource}>
                   <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Tất cả" />
+                    <SelectValue placeholder="Tất cả nguồn" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tất cả</SelectItem>
+                    <SelectItem value="all">Tất cả nguồn</SelectItem>
+                    <SelectItem value="zalo">Zalo</SelectItem>
+                    <SelectItem value="facebook">Facebook</SelectItem>
                     <SelectItem value="website">Website</SelectItem>
-                    <SelectItem value="social">Mạng xã hội</SelectItem>
+                    <SelectItem value="phone">Điện thoại</SelectItem>
                     <SelectItem value="referral">Giới thiệu</SelectItem>
-                    <SelectItem value="ads">Quảng cáo</SelectItem>
+                    <SelectItem value="walk-in">Ghé thăm trực tiếp</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -291,12 +293,29 @@ const CustomerCare = () => {
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary">
-                              {customer.tags && customer.tags.length > 0 ? customer.tags[0] : "Chưa xác định"}
+                              {customer.tags && customer.tags.length > 0 ? (
+                                customer.tags[0] === 'zalo' ? 'Zalo' :
+                                customer.tags[0] === 'facebook' ? 'Facebook' :
+                                customer.tags[0] === 'website' ? 'Website' :
+                                customer.tags[0] === 'phone' ? 'Điện thoại' :
+                                customer.tags[0] === 'referral' ? 'Giới thiệu' :
+                                customer.tags[0] === 'walk-in' ? 'Ghé thăm trực tiếp' :
+                                customer.tags[0]
+                              ) : "Chưa xác định"}
                             </Badge>
                           </TableCell>
                           <TableCell>
                             <Badge variant="default">
-                              Mới
+                              {customer.current_status === 'waiting-payment' && 'Chờ thanh toán tiền'}
+                              {customer.current_status === 'waiting-deposit' && 'Chờ thanh toán cọc'}
+                              {customer.current_status === 'sent-sample' && 'Đã gửi mẫu'}
+                              {customer.current_status === 'sent-quote' && 'Đã gửi báo giá'}
+                              {customer.current_status === 'waiting-response' && 'Chờ phản hồi khách hàng'}
+                              {customer.current_status === 'ordered' && 'Đã đặt hàng'}
+                              {customer.current_status === 'paid' && 'Đã thanh toán xong'}
+                              {customer.current_status === 'see-notes' && 'Xem ở ghi chú'}
+                              {customer.current_status === 'no-response' && 'Khách không phản hồi'}
+                              {!customer.current_status && 'Chờ thanh toán tiền'}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
