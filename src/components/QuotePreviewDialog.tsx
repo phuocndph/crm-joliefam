@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Download, Printer, X, Calculator } from "lucide-react";
+import { Download, Printer, X, Calculator, FileDown } from "lucide-react";
+import html2canvas from 'html2canvas';
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -563,14 +564,20 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             }
             
             .logo-section {
-              width: 80px;
-              height: 60px;
+              width: 120px;
+              height: 80px;
               background: rgba(255,255,255,0.1);
               border-radius: 8px;
               display: flex;
               align-items: center;
               justify-content: center;
-              font-size: 10px;
+              font-size: 12px;
+            }
+            
+            .logo-section img {
+              max-width: 110px;
+              max-height: 70px;
+              object-fit: contain;
             }
             
             .quote-title {
@@ -884,6 +891,191 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     }
   };
 
+  const handleDirectSavePDF = async () => {
+    try {
+      toast({
+        title: "Đang tạo PDF...",
+        description: "Vui lòng đợi trong giây lát",
+      });
+
+      // Create temporary container with the same styling
+      const tempContainer = document.createElement('div');
+      tempContainer.style.position = 'absolute';
+      tempContainer.style.left = '-9999px';
+      tempContainer.style.top = '0';
+      tempContainer.style.width = '210mm'; // A4 width
+      tempContainer.style.background = 'white';
+      tempContainer.style.fontFamily = 'Inter, sans-serif';
+      tempContainer.style.padding = '20px';
+      
+      // Get template settings
+      const templateSettings = getTemplateSettings();
+      
+      tempContainer.innerHTML = `
+        <div style="width: 100%; background: white; font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.4; color: #333;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 25px; margin: -20px -20px 30px -20px; display: flex; justify-content: space-between; align-items: center; border-radius: 8px;">
+            <div style="flex: 1;">
+              <div style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">${templateSettings.companyName || 'CÔNG TY ABC'}</div>
+              <div style="font-size: 12px; opacity: 0.9;">
+                ${templateSettings.address || 'Địa chỉ công ty'}<br>
+                ĐT: ${templateSettings.phone || '0123456789'} | Email: contact@company.com
+              </div>
+            </div>
+            <div style="width: 120px; height: 80px; background: rgba(255,255,255,0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 110px; max-height: 70px; object-fit: contain;" alt="Logo">` : '<div style="font-size: 12px; text-align: center;">LOGO</div>'}
+            </div>
+          </div>
+
+          <div style="text-align: center; background: #f8fafc; padding: 15px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #3b82f6;">
+            <div style="font-size: 20px; font-weight: 600; color: #1e40af;">BẢNG BÁO GIÁ SỐ: ${quote.quote_number || 'N/A'}</div>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+              Ngày tạo: ${new Date(quote.created_at).toLocaleDateString('vi-VN')}
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 30px 0;">
+            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
+              <div style="font-weight: 600; color: #1e40af; margin-bottom: 10px; font-size: 14px;">THÔNG TIN KHÁCH HÀNG</div>
+              <div style="margin: 5px 0; font-size: 12px;"><strong>Tên:</strong> ${customerName}</div>
+              <div style="margin: 5px 0; font-size: 12px;"><strong>Số điện thoại:</strong> ${phone}</div>
+              <div style="margin: 5px 0; font-size: 12px;"><strong>Địa chỉ:</strong> ${address}</div>
+              <div style="margin: 5px 0; font-size: 12px;"><strong>Email:</strong> ${email}</div>
+            </div>
+            
+            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
+              <div style="font-weight: 600; color: #1e40af; margin-bottom: 10px; font-size: 14px;">THÔNG TIN BÁO GIÁ</div>
+              <div style="margin: 5px 0; font-size: 12px;"><strong>Mã báo giá:</strong> ${quote.quote_number}</div>
+              <div style="margin: 5px 0; font-size: 12px;"><strong>Ngày tạo:</strong> ${new Date(quote.created_at).toLocaleDateString('vi-VN')}</div>
+              <div style="margin: 5px 0; font-size: 12px;"><strong>Hiệu lực đến:</strong> ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN')}</div>
+              <div style="margin: 5px 0; font-size: 12px;"><strong>Trạng thái:</strong> ${quote.status || 'Draft'}</div>
+            </div>
+          </div>
+
+          <div style="margin: 30px 0; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+            <table style="width: 100%; border-collapse: collapse; background: white;">
+              <thead>
+                <tr>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 8%;">STT</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 40%;">TÊN SẢN PHẨM/DỊCH VỤ</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 12%;">SỐ LƯỢNG</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 10%;">ĐƠN VỊ</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 15%;">ĐƠN GIÁ</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 15%;">THÀNH TIỀN</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map((item, index) => `
+                  <tr style="${index % 2 === 1 ? 'background: #f8fafc;' : ''}">
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: center;">${index + 1}</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${item.name}</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: center;">${item.quantity}</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: center;">cái</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: right;">${parseFloat(item.price).toLocaleString('vi-VN')} VNĐ</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: right; font-weight: 500;">${(parseFloat(item.price) * parseFloat(item.quantity)).toLocaleString('vi-VN')} VNĐ</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div style="margin: 20px 0; text-align: right;">
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 5px 0;">
+              <div style="font-weight: 500;">Tạm tính:</div>
+              <div style="font-weight: 600; min-width: 120px;">${subtotal.toLocaleString('vi-VN')} VNĐ</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 5px 0;">
+              <div style="font-weight: 500;">VAT (10%):</div>
+              <div style="font-weight: 600; min-width: 120px;">${(subtotal * 0.1).toLocaleString('vi-VN')} VNĐ</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 10px; background: #1e40af; color: white; border-radius: 6px; font-size: 16px; font-weight: 700;">
+              <div>TỔNG CỘNG:</div>
+              <div>${(subtotal * 1.1).toLocaleString('vi-VN')} VNĐ</div>
+            </div>
+          </div>
+
+          ${templateSettings.terms && templateSettings.terms.length > 0 ? `
+            <div style="margin: 30px 0; background: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #059669;">
+              <div style="font-weight: 600; color: #059669; margin-bottom: 10px;">ĐIỀU KHOẢN & ĐIỀU KIỆN</div>
+              <ul style="margin: 0; padding-left: 20px;">
+                ${templateSettings.terms.map(term => term.trim() ? `<li style="margin: 8px 0; font-size: 12px;">${term}</li>` : '').join('')}
+              </ul>
+            </div>
+          ` : ''}
+
+          <div style="margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+            <div style="text-align: center; padding: 20px;">
+              <div style="font-weight: 600; margin-bottom: 40px; color: #1e40af;">ĐẠI DIỆN CÔNG TY</div>
+              <div style="border-bottom: 1px solid #333; margin: 10px 0; height: 40px;"></div>
+              <div style="font-size: 11px; color: #666; margin-top: 5px;">(Ký tên & đóng dấu)</div>
+            </div>
+            <div style="text-align: center; padding: 20px;">
+              <div style="font-weight: 600; margin-bottom: 40px; color: #1e40af;">KHÁCH HÀNG</div>
+              <div style="border-bottom: 1px solid #333; margin: 10px 0; height: 40px;"></div>
+              <div style="font-size: 11px; color: #666; margin-top: 5px;">(Ký tên xác nhận)</div>
+            </div>
+          </div>
+
+          ${templateSettings.footerNote ? `
+            <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #666; font-style: italic;">
+              ${templateSettings.footerNote}
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      document.body.appendChild(tempContainer);
+
+      // Wait for images to load
+      const images = tempContainer.querySelectorAll('img');
+      await Promise.all(Array.from(images).map(img => {
+        return new Promise((resolve) => {
+          if (img.complete) {
+            resolve(true);
+          } else {
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(true);
+          }
+        });
+      }));
+
+      // Generate canvas
+      const canvas = await html2canvas(tempContainer, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: 794, // A4 width in pixels at 96 DPI
+        height: 1123, // A4 height in pixels at 96 DPI
+      });
+
+      // Remove temporary container
+      document.body.removeChild(tempContainer);
+
+      // Convert to PDF
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgData = canvas.toDataURL('image/png');
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, 210, 297); // A4 size in mm
+      
+      // Save PDF
+      const fileName = `BaoGia_${quote.quote_number || 'quote'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
+
+      toast({
+        title: "Lưu PDF thành công",
+        description: `Đã lưu báo giá ${quote.quote_number || 'N/A'} thành file PDF`,
+      });
+
+    } catch (error) {
+      console.error('Error saving PDF:', error);
+      toast({
+        title: "Lỗi lưu PDF",
+        description: "Có lỗi xảy ra khi lưu file PDF. Vui lòng thử lại.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl max-h-screen overflow-auto">
@@ -897,11 +1089,15 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </Button>
               <Button onClick={handleExportPDF} variant="outline" size="sm">
                 <Download className="h-4 w-4 mr-2" />
-                Xuất PDF
+                Xuất PDF (Print)
+              </Button>
+              <Button onClick={handleDirectSavePDF} variant="default" size="sm">
+                <FileDown className="h-4 w-4 mr-2" />
+                Lưu PDF trực tiếp
               </Button>
               <Button onClick={handleExportExcel} variant="outline" size="sm">
                 <Download className="h-4 w-4 mr-2" />
-                Xuất Excel với Logo & Màu sắc
+                Xuất Excel
               </Button>
               {hasPermission('quote_supplement') && (
                 <Button 
