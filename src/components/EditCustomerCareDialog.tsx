@@ -25,6 +25,11 @@ interface Customer {
   updated_at: string;
 }
 
+interface Assignee {
+  id: string;
+  name: string;
+}
+
 interface EditCustomerCareDialogProps {
   customer: Customer;
   open: boolean;
@@ -35,6 +40,8 @@ interface EditCustomerCareDialogProps {
 const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: EditCustomerCareDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [lastUpdateDate, setLastUpdateDate] = useState<Date>();
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
+  const [loadingAssignees, setLoadingAssignees] = useState(false);
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -47,6 +54,35 @@ const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: Edi
     nextAction: "",
     notes: ""
   });
+
+  // Fetch assignees
+  const fetchAssignees = async () => {
+    setLoadingAssignees(true);
+    try {
+      const { data, error } = await supabase
+        .from('assignees' as any)
+        .select('id, name')
+        .order('name');
+
+      if (error) {
+        console.error('Error fetching assignees:', error);
+        return;
+      }
+
+      setAssignees((data as any) || []);
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoadingAssignees(false);
+    }
+  };
+
+  // Load assignees when dialog opens
+  useEffect(() => {
+    if (open) {
+      fetchAssignees();
+    }
+  }, [open]);
 
   // Initialize form with customer data
   useEffect(() => {
@@ -188,14 +224,20 @@ const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: Edi
                 required
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Chọn người phụ trách" />
+                  <SelectValue placeholder={loadingAssignees ? "Đang tải..." : "Chọn người phụ trách"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="manager1">Manager 1</SelectItem>
-                  <SelectItem value="manager2">Manager 2</SelectItem>
-                  <SelectItem value="employee1">Nhân viên 1</SelectItem>
-                  <SelectItem value="employee2">Nhân viên 2</SelectItem>
+                  {loadingAssignees ? (
+                    <SelectItem value="" disabled>Đang tải...</SelectItem>
+                  ) : assignees.length === 0 ? (
+                    <SelectItem value="" disabled>Chưa có người phụ trách</SelectItem>
+                  ) : (
+                    assignees.map((assignee) => (
+                      <SelectItem key={assignee.id} value={assignee.id}>
+                        {assignee.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
