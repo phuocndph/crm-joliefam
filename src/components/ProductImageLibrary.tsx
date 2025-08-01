@@ -55,42 +55,74 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
 
   const fetchImages = async () => {
     try {
+      // Get all files recursively from the bucket
       const { data, error } = await supabase.storage
         .from('product-images')
-        .list('', { limit: 1000 });
+        .list('', { 
+          limit: 1000, 
+          offset: 0,
+          sortBy: { column: 'name', order: 'asc' }
+        });
 
       if (error) throw error;
 
+      // Get files from all subdirectories
+      const allFiles: ProductImage[] = [];
+      const categories: string[] = [];
+
       if (data) {
-        const imagePromises = data
-          .filter(file => file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i))
-          .map(async (file) => {
-            const { data: urlData } = supabase.storage
-              .from('product-images')
-              .getPublicUrl(file.name);
+        // First get top-level files
+        const topLevelFiles = data.filter(item => item.name && item.name.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+        
+        for (const file of topLevelFiles) {
+          const { data: urlData } = supabase.storage
+            .from('product-images')
+            .getPublicUrl(file.name);
 
-            // Extract category from file path
-            const pathParts = file.name.split('/');
-            const category = pathParts.length > 1 ? pathParts[0] : 'Không phân loại';
-
-            return {
-              id: file.id || file.name,
-              name: file.name,
-              url: urlData.publicUrl,
-              fullPath: file.name,
-              category,
-              size: file.metadata?.size || 0,
-              uploaded_at: file.created_at || file.updated_at || '',
-            };
+          allFiles.push({
+            id: file.id || file.name,
+            name: file.name,
+            url: urlData.publicUrl,
+            fullPath: file.name,
+            category: 'Không phân loại',
+            size: file.metadata?.size || 0,
+            uploaded_at: file.created_at || file.updated_at || '',
           });
+        }
 
-        const imageList = await Promise.all(imagePromises);
-        setImages(imageList);
+        // Then get files from subdirectories
+        const directories = data.filter(item => !item.name.includes('.'));
+        
+        for (const dir of directories) {
+          categories.push(dir.name);
+          
+          const { data: subFiles } = await supabase.storage
+            .from('product-images')
+            .list(dir.name, { limit: 1000 });
 
-        // Extract unique categories
-        const uniqueCategories = [...new Set(imageList.map(img => img.category))];
-        setCategories(uniqueCategories);
+          if (subFiles) {
+            for (const file of subFiles.filter(f => f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i))) {
+              const fullPath = `${dir.name}/${file.name}`;
+              const { data: urlData } = supabase.storage
+                .from('product-images')
+                .getPublicUrl(fullPath);
+
+              allFiles.push({
+                id: file.id || fullPath,
+                name: file.name,
+                url: urlData.publicUrl,
+                fullPath: fullPath,
+                category: dir.name,
+                size: file.metadata?.size || 0,
+                uploaded_at: file.created_at || file.updated_at || '',
+              });
+            }
+          }
+        }
       }
+
+      setImages(allFiles);
+      setCategories([...new Set(categories)]);
     } catch (error) {
       console.error('Error fetching images:', error);
       toast({
