@@ -384,10 +384,24 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         <div className="flex-1 overflow-auto">
           <div className="bg-white" id="quote-preview" style={{ fontFamily: 'Times New Roman, serif' }}>
             <div className="p-8 max-w-5xl mx-auto">
-              {/* Header Layout - Logo và thông tin công ty ngang hàng */}
+              {/* Header Layout - Thông tin công ty bên trái, Logo bên phải */}
               <div className="mb-8">
                 <div className="flex items-start gap-8 mb-6">
-                  {/* Logo Container - To hơn, ngang với thông tin công ty */}
+                  {/* Thông tin công ty - Kéo dài bên trái */}
+                  <div className="flex-1">
+                    <h1 className="text-2xl font-bold mb-3" style={{ color: '#1a365d' }}>
+                      {templateSettings.companyTitle || 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT'}
+                    </h1>
+                    
+                    <div className="space-y-1 text-sm leading-relaxed">
+                      <p><span className="font-medium text-gray-700">Địa chỉ:</span> {templateSettings.address || 'Số 21 Ngõ 562 Đường Linh Nam, Hoàng Mai, Hà Nội'}</p>
+                      <p><span className="font-medium text-gray-700">Điện thoại:</span> {templateSettings.phone || '0828686866'}</p>
+                      <p><span className="font-medium text-gray-700">MST:</span> {templateSettings.taxCode || '0108652480'}</p>
+                      <p><span className="font-medium text-gray-700">STK:</span> {templateSettings.bankInfo || 'Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV) - Chi nhánh Hà Nội: 21101999996'}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Logo Container - Bên phải */}
                   <div className="w-32 h-24 flex-shrink-0">
                     <img 
                       src={templateSettings.logoUrl} 
@@ -408,23 +422,11 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                       </div>
                     </div>
                   </div>
-                  
-                  {/* Thông tin công ty - Ngang với logo */}
-                  <div className="flex-1">
-                    <h1 className="text-2xl font-bold mb-3" style={{ color: '#1a365d' }}>
-                      {templateSettings.companyTitle || 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT'}
-                    </h1>
-                    
-                    <div className="space-y-1 text-sm leading-relaxed">
-                      <p><span className="font-medium text-gray-700">Địa chỉ:</span> {templateSettings.address || 'Số 21 Ngõ 562 Đường Linh Nam, Hoàng Mai, Hà Nội'}</p>
-                      <p><span className="font-medium text-gray-700">Điện thoại:</span> {templateSettings.phone || '0828686866'}</p>
-                      <p><span className="font-medium text-gray-700">MST:</span> {templateSettings.taxCode || '0108652480'}</p>
-                      <p><span className="font-medium text-gray-700">STK:</span> {templateSettings.bankInfo || 'Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV) - Chi nhánh Hà Nội: 21101999996'}</p>
-                    </div>
-                  </div>
-                  
-                  {/* Thông tin báo giá - Khung bên phải */}
-                  <div className="w-80 flex-shrink-0">
+                </div>
+                
+                {/* Khung Bảng báo giá - Xuống dưới và căn giữa */}
+                <div className="flex justify-center">
+                  <div className="w-80">
                     <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-6 shadow-lg">
                       <h2 className="text-xl font-bold mb-4 text-center" style={{ color: '#1a365d' }}>
                         BẢNG BÁO GIÁ
