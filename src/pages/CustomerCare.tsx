@@ -262,14 +262,15 @@ const CustomerCare = () => {
                       <TableHead>Lịch Sử Mua</TableHead>
                       <TableHead>Tổng Đơn/Giá Trị</TableHead>
                       <TableHead>Ghi Chú</TableHead>
+                      <TableHead>Hành Động Tiếp Theo</TableHead>
                       <TableHead>Trạng Thái Mua Hàng</TableHead>
                       <TableHead>Thao Tác</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={12} className="text-center py-12">
+                       <TableRow>
+                         <TableCell colSpan={13} className="text-center py-12">
                           <div className="flex items-center justify-center">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                             <span className="ml-2">Đang tải...</span>
@@ -277,8 +278,8 @@ const CustomerCare = () => {
                         </TableCell>
                       </TableRow>
                     ) : customers.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={12} className="text-center py-12">
+                       <TableRow>
+                         <TableCell colSpan={13} className="text-center py-12">
                           <div className="flex flex-col items-center gap-2">
                             <Users className="h-12 w-12 text-muted-foreground" />
                             <p className="text-muted-foreground font-medium">
@@ -317,12 +318,16 @@ const CustomerCare = () => {
                           <TableCell>
                             <div className="space-y-1">
                               <div className="font-medium">{customer.name}</div>
-                              <div className="text-sm text-muted-foreground">
-                                {customer.email || "Chưa có email"}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                {customer.phone || "Chưa có SĐT"}
-                              </div>
+                              {customer.email && (
+                                <div className="text-sm text-muted-foreground">
+                                  {customer.email}
+                                </div>
+                              )}
+                              {customer.phone && (
+                                <div className="text-sm text-muted-foreground">
+                                  {customer.phone}
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -416,12 +421,47 @@ const CustomerCare = () => {
                               )}
                             </div>
                           </TableCell>
-                           <TableCell className="max-w-xs">
-                             <div className="whitespace-pre-wrap text-sm break-words">
-                               {customer.notes || "Không có ghi chú"}
-                             </div>
+                            <TableCell className="max-w-xs">
+                              <div className="whitespace-pre-wrap text-sm break-words">
+                                {customer.notes || "Không có ghi chú"}
+                              </div>
+                            </TableCell>
+                           <TableCell>
+                             {(() => {
+                               const status = customer.current_status || 'waiting-payment';
+                               const getNextAction = (status: string) => {
+                                 switch (status) {
+                                   case 'waiting-payment':
+                                     return { text: 'Gọi xác nhận thanh toán', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                                   case 'waiting-deposit':
+                                     return { text: 'Follow up tiền cọc', className: 'bg-orange-50 text-orange-700 border-orange-200' };
+                                   case 'sent-sample':
+                                     return { text: 'Gọi hỏi feedback mẫu', className: 'bg-blue-50 text-blue-700 border-blue-200' };
+                                   case 'sent-quote':
+                                     return { text: 'Follow up báo giá', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+                                   case 'waiting-response':
+                                     return { text: 'Chờ phản hồi khách', className: 'bg-purple-50 text-purple-700 border-purple-200' };
+                                   case 'ordered':
+                                     return { text: 'Theo dõi đơn hàng', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+                                   case 'paid':
+                                     return { text: 'Chăm sóc sau bán', className: 'bg-green-50 text-green-700 border-green-200' };
+                                   case 'see-notes':
+                                     return { text: 'Xem ghi chú chi tiết', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
+                                   case 'no-response':
+                                     return { text: 'Thử liên hệ lại', className: 'bg-red-50 text-red-700 border-red-200' };
+                                   default:
+                                     return { text: 'Liên hệ tư vấn', className: 'bg-gray-50 text-gray-600 border-gray-200' };
+                                 }
+                               };
+                               const config = getNextAction(status);
+                               return (
+                                 <Badge variant="outline" className={config.className}>
+                                   {config.text}
+                                 </Badge>
+                               );
+                             })()}
                            </TableCell>
-                          <TableCell>
+                           <TableCell>
                             {customer.last_purchase_date ? (
                               <div className="text-sm">
                                 <div className="text-green-600 font-medium">Đã mua hàng</div>
