@@ -191,10 +191,10 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
       phone: initialData?.customerPhone || "",
       email: initialData?.customerEmail || "",
       address: initialData?.customerAddress || "",
-      priceList: "",
+      priceList: initialData?.price_list_id || "",
       responsible: initialData?.responsible || "",
-      includeVAT: false,
-      vatRate: 8,
+      includeVAT: initialData?.include_vat || false,
+      vatRate: initialData?.vat_rate || 8,
       payment1: 0,
       payment2: 0,
     },
@@ -225,10 +225,10 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
           phone: initialData.customerPhone || "",
           email: initialData.customerEmail || "",
           address: initialData.customerAddress || "",
-          priceList: "",
+          priceList: initialData.price_list_id || "",
           responsible: initialData.responsible || "",
-          includeVAT: false,
-          vatRate: 8,
+          includeVAT: initialData.include_vat || false,
+          vatRate: initialData.vat_rate || 8,
           payment1: 0,
           payment2: 0,
         });
@@ -358,6 +358,11 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
         quote_number: data.quoteNumber,
         customer_id: null, // Would need customer selection
         total_amount: calculatedTotal,
+        subtotal: subtotal,
+        vat_amount: vatAmount,
+        include_vat: data.includeVAT,
+        vat_rate: data.vatRate,
+        price_list_id: data.priceList || null,
         status: "draft",
         notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy") : ""}`,
         items: JSON.stringify(selectedProducts),
@@ -373,6 +378,29 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
           .eq('id', initialData.id);
 
         if (error) throw error;
+
+        // Sync with related orders if quote is approved and an order exists
+        if (initialData.status === 'approved') {
+          const { data: relatedOrders, error: orderError } = await supabase
+            .from("orders")
+            .select("id")
+            .eq("notes", `Tạo từ báo giá: ${data.quoteNumber}`);
+
+          if (!orderError && relatedOrders && relatedOrders.length > 0) {
+            // Update the related order with the same data
+            const orderUpdateData = {
+              items: JSON.stringify(selectedProducts),
+              total_amount: calculatedTotal,
+              cost_price: 0, // Would need to calculate from products
+              notes: `Tạo từ báo giá: ${data.quoteNumber}\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
+            };
+
+            await supabase
+              .from("orders")
+              .update(orderUpdateData)
+              .eq('id', relatedOrders[0].id);
+          }
+        }
 
         toast({
           title: "Thành công",

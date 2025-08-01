@@ -452,40 +452,55 @@ export type Database = {
           created_at: string
           customer_id: string | null
           id: string
+          include_vat: boolean | null
           items: Json | null
           manager_id: string | null
           notes: string | null
+          price_list_id: string | null
           quote_number: string
           status: string
+          subtotal: number | null
           tenant_id: string
           total_amount: number | null
           updated_at: string
+          vat_amount: number | null
+          vat_rate: number | null
         }
         Insert: {
           created_at?: string
           customer_id?: string | null
           id?: string
+          include_vat?: boolean | null
           items?: Json | null
           manager_id?: string | null
           notes?: string | null
+          price_list_id?: string | null
           quote_number: string
           status?: string
+          subtotal?: number | null
           tenant_id?: string
           total_amount?: number | null
           updated_at?: string
+          vat_amount?: number | null
+          vat_rate?: number | null
         }
         Update: {
           created_at?: string
           customer_id?: string | null
           id?: string
+          include_vat?: boolean | null
           items?: Json | null
           manager_id?: string | null
           notes?: string | null
+          price_list_id?: string | null
           quote_number?: string
           status?: string
+          subtotal?: number | null
           tenant_id?: string
           total_amount?: number | null
           updated_at?: string
+          vat_amount?: number | null
+          vat_rate?: number | null
         }
         Relationships: [
           {
