@@ -47,15 +47,11 @@ const CreateAssigneeForm = ({ onSuccess }: CreateAssigneeFormProps) => {
         return;
       }
 
-      // For simplicity, we'll just create a profile with the name
-      // In a real implementation, you might want to store this in a separate table
+      // For simplicity, we'll create an assignee record
       const { data, error } = await supabase
-        .from('profiles')
+        .from('assignees' as any)
         .insert({
-          first_name: formData.name,
-          last_name: '',
-          email: `${formData.name.toLowerCase().replace(/\s+/g, '')}@temp.com`, // Temporary email
-          user_id: crypto.randomUUID(), // Temporary UUID
+          name: formData.name.trim(),
         });
 
       if (error) {
