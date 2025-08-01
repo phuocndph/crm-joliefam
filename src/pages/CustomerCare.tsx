@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus } from "lucide-react";
+import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
 
 const CustomerCare = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -56,10 +57,7 @@ const CustomerCare = () => {
                   Danh Sách Khách Hàng
                 </CardTitle>
                 <div className="flex items-center gap-2">
-                  <Button className="flex items-center gap-2">
-                    <UserPlus className="h-4 w-4" />
-                    Thêm Khách Hàng
-                  </Button>
+                  <CreateCustomerCareForm />
                   <Select value="assignee">
                     <SelectTrigger className="w-48">
                       <SelectValue placeholder="Chọn người phụ trách" />
