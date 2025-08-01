@@ -969,23 +969,27 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             <table style="width: 100%; border-collapse: collapse; background: white;">
               <thead>
                 <tr>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 8%;">STT</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 40%;">TÊN SẢN PHẨM/DỊCH VỤ</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 12%;">SỐ LƯỢNG</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 10%;">ĐƠN VỊ</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 15%;">ĐƠN GIÁ</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 15%;">THÀNH TIỀN</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 5%;">STT</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 20%;">SẢN PHẨM</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 15%;">QUY CÁCH</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 20%;">CHẤT LƯỢNG</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 8%;">SỐ LƯỢNG</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 12%;">ĐƠN GIÁ</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 12%;">THÀNH TIỀN</th>
+                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 8%;">GHI CHÚ</th>
                 </tr>
               </thead>
               <tbody>
                 ${items.map((item, index) => `
                   <tr style="${index % 2 === 1 ? 'background: #f8fafc;' : ''}">
                     <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: center;">${index + 1}</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${item.name}</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${item.name || item.sku || ''}</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${item.specifications || ''}</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${item.category || item.description || ''}</td>
                     <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: center;">${item.quantity}</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: center;">cái</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: right;">${parseFloat(item.price).toLocaleString('vi-VN')} VNĐ</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: right; font-weight: 500;">${(parseFloat(item.price) * parseFloat(item.quantity)).toLocaleString('vi-VN')} VNĐ</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: right;">${parseFloat(item.price).toLocaleString('vi-VN')}</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: right; font-weight: 500;">${(parseFloat(item.price) * parseFloat(item.quantity)).toLocaleString('vi-VN')}</td>
+                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${item.notes || ''}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -994,16 +998,26 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
           <div style="margin: 20px 0; text-align: right;">
             <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 5px 0;">
-              <div style="font-weight: 500;">Tạm tính:</div>
-              <div style="font-weight: 600; min-width: 120px;">${subtotal.toLocaleString('vi-VN')} VNĐ</div>
+              <div style="font-weight: 500;">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</div>
+              <div style="font-weight: 600; min-width: 120px;">${subtotal.toLocaleString('vi-VN')}</div>
             </div>
+            ${includeVAT ? `
+              <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 5px 0;">
+                <div style="font-weight: 500;">GTGT (${vatRate}%):</div>
+                <div style="font-weight: 600; min-width: 120px;">${vatAmount.toLocaleString('vi-VN')}</div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 5px 0;">
+                <div style="font-weight: 500;">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</div>
+                <div style="font-weight: 600; min-width: 120px;">${totalWithVat.toLocaleString('vi-VN')}</div>
+              </div>
+            ` : ''}
             <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 5px 0;">
-              <div style="font-weight: 500;">VAT (10%):</div>
-              <div style="font-weight: 600; min-width: 120px;">${(subtotal * 0.1).toLocaleString('vi-VN')} VNĐ</div>
+              <div style="font-weight: 500;">THANH TOÁN LẦN 1:</div>
+              <div style="font-weight: 600; min-width: 120px;">${firstPayment.toLocaleString('vi-VN')}</div>
             </div>
             <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 10px; background: #1e40af; color: white; border-radius: 6px; font-size: 16px; font-weight: 700;">
-              <div>TỔNG CỘNG:</div>
-              <div>${(subtotal * 1.1).toLocaleString('vi-VN')} VNĐ</div>
+              <div>CÒN LẠI:</div>
+              <div>${remaining.toLocaleString('vi-VN')}</div>
             </div>
           </div>
 
