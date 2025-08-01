@@ -33,6 +33,9 @@ interface QuotePreviewDialogProps {
 
 export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDialogProps) {
   const [showSupplement, setShowSupplement] = useState(false);
+  const [showTemplateSettings, setShowTemplateSettings] = useState(false);
+  const [showQuoteSupplementDialog, setShowQuoteSupplementDialog] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [user, setUser] = useState<any>(null);
   const { toast } = useToast();
   const { role: userRole } = useUserRole(user);
@@ -906,6 +909,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   };
 
   const handleDirectSavePDF = async () => {
+    setIsExporting(true);
     try {
       toast({
         title: "Đang tạo PDF...",
@@ -1103,50 +1107,82 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         description: "Có lỗi xảy ra khi lưu file PDF. Vui lòng thử lại.",
         variant: "destructive",
       });
+    } finally {
+      setIsExporting(false);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-screen overflow-auto">
-        <DialogHeader>
-          <div className="flex justify-between items-center">
-            <DialogTitle>Xem trước báo giá</DialogTitle>
-            <div className="flex gap-2">
-              <Button onClick={handlePrint} variant="outline" size="sm">
-                <Printer className="h-4 w-4 mr-2" />
-                In
+      <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0 pb-4 border-b">
+          <DialogTitle className="text-xl font-semibold text-primary">
+            Xem trước báo giá #{quote?.quote_number || 'N/A'}
+          </DialogTitle>
+        </DialogHeader>
+        
+        {/* Enhanced Toolbar */}
+        <div className="flex-shrink-0 bg-muted/30 rounded-lg p-3 mb-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            {/* Primary Actions */}
+            <div className="flex flex-wrap gap-2">
+              <Button 
+                onClick={handleDirectSavePDF} 
+                variant="default" 
+                size="sm"
+                disabled={isExporting}
+                className="font-medium"
+              >
+                <FileDown className="w-4 h-4 mr-2" />
+                {isExporting ? "Đang xuất..." : "Lưu PDF"}
               </Button>
-              <Button onClick={handleExportPDF} variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Xuất PDF (Print)
+              <Button 
+                onClick={handlePrint} 
+                variant="secondary" 
+                size="sm"
+                className="font-medium"
+              >
+                <Printer className="w-4 h-4 mr-2" />
+                In báo giá
               </Button>
-              <Button onClick={handleDirectSavePDF} variant="default" size="sm">
-                <FileDown className="h-4 w-4 mr-2" />
-                Lưu PDF trực tiếp
-              </Button>
+            </div>
+
+            {/* Secondary Actions */}
+            <div className="flex flex-wrap gap-2 sm:ml-auto">
               <Button onClick={handleExportExcel} variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Xuất Excel
+                <Download className="w-4 h-4 mr-2" />
+                Excel
               </Button>
+              
+              {userRole === 'admin' && (
+                <Button onClick={() => setShowTemplateSettings(true)} variant="outline" size="sm">
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Cài đặt
+                </Button>
+              )}
+              
               {hasPermission('quote_supplement') && (
                 <Button 
-                  onClick={() => setShowSupplement(true)} 
+                  onClick={() => setShowQuoteSupplementDialog(true)} 
                   variant="outline" 
                   size="sm"
                 >
-                  <Calculator className="h-4 w-4 mr-2" />
-                  Báo giá phụ
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Phụ lục
                 </Button>
               )}
-              <Button onClick={() => onOpenChange(false)} variant="ghost" size="sm">
-                <X className="h-4 w-4" />
-              </Button>
             </div>
           </div>
-        </DialogHeader>
+        </div>
         
-        <div className="bg-white" id="quote-preview" style={{ fontFamily: 'Times New Roman, serif' }}>
+        {/* Preview Content - Scrollable */}
+        <div className="flex-1 overflow-auto">
+          <div className="bg-white" id="quote-preview" style={{ fontFamily: 'Times New Roman, serif' }}>
           <div className="p-8 max-w-5xl mx-auto">
             {/* Header Layout */}
             <div className="flex items-start gap-8 mb-6">
@@ -1303,15 +1339,18 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </div>
             )}
           </div>
+          </div>
         </div>
       </DialogContent>
-      
-      {/* Quote Supplement Dialog */}
-      <QuoteSupplementDialog
-        open={showSupplement}
-        onOpenChange={setShowSupplement}
-        quote={quote}
-      />
+
+      {/* Dialogs */}
+      {showQuoteSupplementDialog && (
+        <QuoteSupplementDialog
+          open={showQuoteSupplementDialog}
+          onOpenChange={setShowQuoteSupplementDialog}
+          quote={quote}
+        />
+      )}
     </Dialog>
   );
 }
