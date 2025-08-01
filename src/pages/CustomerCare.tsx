@@ -25,6 +25,7 @@ const CustomerCare = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState("customers");
   const { toast } = useToast();
 
   const fetchCustomers = async () => {
@@ -105,6 +106,11 @@ const CustomerCare = () => {
     });
   };
 
+  const handleStatusClick = (status: string) => {
+    setSelectedStatus(status);
+    setActiveTab("customers");
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -118,7 +124,7 @@ const CustomerCare = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <Tabs defaultValue="customers" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="customers" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -284,8 +290,26 @@ const CustomerCare = () => {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ) : (
-                      customers.map((customer, index) => (
+                     ) : (
+                       customers
+                         .filter(customer => {
+                           // Filter by search term
+                           const matchesSearch = searchTerm === "" || 
+                             customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                             (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                             (customer.phone && customer.phone.includes(searchTerm));
+                           
+                           // Filter by status
+                           const matchesStatus = selectedStatus === "all" || 
+                             (customer.current_status || 'waiting-payment') === selectedStatus;
+                           
+                           // Filter by source
+                           const matchesSource = selectedSource === "all" ||
+                             (customer.tags && customer.tags.includes(selectedSource));
+                           
+                           return matchesSearch && matchesStatus && matchesSource;
+                         })
+                         .map((customer, index) => (
                         <TableRow key={customer.id}>
                           <TableCell>
                             <input type="checkbox" className="rounded" />
@@ -515,23 +539,27 @@ const CustomerCare = () => {
 
                     const total = customers.length;
 
-                    return Object.entries(statusCounts).map(([status, count]) => {
-                      const percentage = total > 0 ? ((Number(count) / total) * 100).toFixed(1) : '0';
-                      return (
-                        <div key={status} className="flex items-center justify-between p-3 rounded-lg border">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-4 h-4 rounded-full ${statusColors[status as keyof typeof statusColors] || 'bg-gray-500'}`}></div>
-                            <span className="font-medium">
-                              {statusLabels[status as keyof typeof statusLabels] || status}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold">{String(count)}</span>
-                            <span className="text-sm text-muted-foreground">({percentage}%)</span>
-                          </div>
-                        </div>
-                      );
-                    });
+                     return Object.entries(statusCounts).map(([status, count]) => {
+                       const percentage = total > 0 ? ((Number(count) / total) * 100).toFixed(1) : '0';
+                       return (
+                         <div 
+                           key={status} 
+                           className="flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
+                           onClick={() => handleStatusClick(status)}
+                         >
+                           <div className="flex items-center gap-3">
+                             <div className={`w-4 h-4 rounded-full ${statusColors[status as keyof typeof statusColors] || 'bg-gray-500'}`}></div>
+                             <span className="font-medium">
+                               {statusLabels[status as keyof typeof statusLabels] || status}
+                             </span>
+                           </div>
+                           <div className="flex items-center gap-2">
+                             <span className="font-bold">{String(count)}</span>
+                             <span className="text-sm text-muted-foreground">({percentage}%)</span>
+                           </div>
+                         </div>
+                       );
+                     });
                   })()}
                 </div>
               </CardContent>
@@ -620,7 +648,11 @@ const CustomerCare = () => {
                   return statusDetails.map(({ key, label, color, icon }) => {
                     const count = statusCounts[key] || 0;
                     return (
-                      <Card key={key} className={`${color} border-2`}>
+                      <Card 
+                        key={key} 
+                        className={`${color} border-2 cursor-pointer hover:shadow-md transition-shadow`}
+                        onClick={() => handleStatusClick(key)}
+                      >
                         <CardContent className="p-4 text-center">
                           <div className="text-2xl mb-2">{icon}</div>
                           <div className="text-2xl font-bold mb-1">{count}</div>
