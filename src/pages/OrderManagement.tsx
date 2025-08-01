@@ -517,13 +517,16 @@ export default function OrderManagement() {
                   if (error) throw error;
 
                   // Update local state
-                  setOrders(prevOrders => 
-                    prevOrders.map(o => 
+                  console.log('Before update - orderId:', orderId, 'updateData:', updateData);
+                  setOrders(prevOrders => {
+                    const newOrders = prevOrders.map(o => 
                       o.id === orderId 
                         ? { ...o, ...updateData }
                         : o
-                    )
-                  );
+                    );
+                    console.log('Updated orders:', newOrders.find(o => o.id === orderId));
+                    return newOrders;
+                  });
 
                   toast({
                     title: "Thành công",
