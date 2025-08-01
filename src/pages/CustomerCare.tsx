@@ -13,6 +13,7 @@ import EditCustomerCareDialog from "@/components/EditCustomerCareDialog";
 import { DeleteCustomerDialog } from "@/components/DeleteCustomerDialog";
 import AISettingsForm from "@/components/AISettingsForm";
 import AINextActionCell from "@/components/AINextActionCell";
+import PredictiveAnalyticsCell from "@/components/PredictiveAnalyticsCell";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -265,6 +266,7 @@ const CustomerCare = () => {
                       <TableHead>Tổng Đơn/Giá Trị</TableHead>
                       <TableHead>Ghi Chú</TableHead>
                       <TableHead>Hành Động Tiếp Theo</TableHead>
+                      <TableHead>AI Predictions</TableHead>
                       <TableHead>Trạng Thái Mua Hàng</TableHead>
                       <TableHead>Thao Tác</TableHead>
                     </TableRow>
@@ -432,6 +434,9 @@ const CustomerCare = () => {
                              <AINextActionCell customer={customer} />
                            </TableCell>
                            <TableCell>
+                             <PredictiveAnalyticsCell customer={customer} />
+                           </TableCell>
+                           <TableCell>
                             {customer.last_purchase_date ? (
                               <div className="text-sm">
                                 <div className="text-green-600 font-medium">Đã mua hàng</div>
@@ -444,7 +449,7 @@ const CustomerCare = () => {
                                 Chưa có đơn hàng
                               </div>
                             )}
-                          </TableCell>
+                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <Button 
