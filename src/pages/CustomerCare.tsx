@@ -252,49 +252,45 @@ const CustomerCare = () => {
               <div className="border rounded-lg">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">
-                        <input type="checkbox" className="rounded" />
-                      </TableHead>
-                      <TableHead>Khách Hàng</TableHead>
-                      <TableHead>Phụ Trách</TableHead>
-                      <TableHead>Nguồn</TableHead>
-                      <TableHead>Trạng Thái</TableHead>
-                      <TableHead>Thời Gian</TableHead>
-                      <TableHead>Ngày Cập Nhật</TableHead>
-                      <TableHead>Lịch Sử Mua</TableHead>
-                      <TableHead>Tổng Đơn/Giá Trị</TableHead>
-                      <TableHead>Ghi Chú</TableHead>
-                      <TableHead>Hành Động Tiếp Theo</TableHead>
-                      <TableHead>AI Predictions</TableHead>
-                      <TableHead>Trạng Thái Mua Hàng</TableHead>
-                      <TableHead>Thao Tác</TableHead>
-                    </TableRow>
+                     <TableRow>
+                       <TableHead className="w-12">
+                         <input type="checkbox" className="rounded" />
+                       </TableHead>
+                       <TableHead>Khách Hàng</TableHead>
+                       <TableHead>Phụ Trách</TableHead>
+                       <TableHead>Nguồn</TableHead>
+                       <TableHead>Trạng Thái</TableHead>
+                       <TableHead>Lịch Sử Mua</TableHead>
+                       <TableHead>Ghi Chú</TableHead>
+                       <TableHead>Hành Động Tiếp Theo</TableHead>
+                       <TableHead>Trạng Thái Mua Hàng</TableHead>
+                       <TableHead>Thao Tác</TableHead>
+                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {loading ? (
-                       <TableRow>
-                         <TableCell colSpan={13} className="text-center py-12">
-                          <div className="flex items-center justify-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                            <span className="ml-2">Đang tải...</span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : customers.length === 0 ? (
-                       <TableRow>
-                         <TableCell colSpan={13} className="text-center py-12">
-                          <div className="flex flex-col items-center gap-2">
-                            <Users className="h-12 w-12 text-muted-foreground" />
-                            <p className="text-muted-foreground font-medium">
-                              Không có khách hàng nào
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              Hãy thêm khách hàng đầu tiên của bạn
-                            </p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                     {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={10} className="text-center py-12">
+                           <div className="flex items-center justify-center">
+                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                             <span className="ml-2">Đang tải...</span>
+                           </div>
+                         </TableCell>
+                       </TableRow>
+                     ) : customers.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={10} className="text-center py-12">
+                           <div className="flex flex-col items-center gap-2">
+                             <Users className="h-12 w-12 text-muted-foreground" />
+                             <p className="text-muted-foreground font-medium">
+                               Không có khách hàng nào
+                             </p>
+                             <p className="text-sm text-muted-foreground">
+                               Hãy thêm khách hàng đầu tiên của bạn
+                             </p>
+                           </div>
+                         </TableCell>
+                       </TableRow>
                      ) : (
                        customers
                          .filter(customer => {
@@ -396,46 +392,25 @@ const CustomerCare = () => {
                               );
                             })()}
                           </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {format(new Date(customer.created_at), 'dd/MM/yyyy HH:mm')}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {format(new Date(customer.updated_at), 'dd/MM/yyyy HH:mm')}
-                          </TableCell>
-                          <TableCell>
-                            {customer.auto_tags && customer.auto_tags.length > 0 ? (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                {customer.auto_tags[0]}
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">
-                                Liên hệ lần đầu
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-center">
-                              <Badge variant="secondary">
-                                {customer.purchase_count > 0 ? `${customer.purchase_count} đơn` : "0 đơn"}
-                              </Badge>
-                              {customer.total_spent > 0 && (
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(customer.total_spent)}
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-                            <TableCell className="max-w-xs">
-                              <div className="whitespace-pre-wrap text-sm break-words">
-                                {customer.notes || "Không có ghi chú"}
-                              </div>
+                           <TableCell>
+                             {customer.auto_tags && customer.auto_tags.length > 0 ? (
+                               <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                 {customer.auto_tags[0]}
+                               </Badge>
+                             ) : (
+                               <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">
+                                 Liên hệ lần đầu
+                               </Badge>
+                             )}
+                           </TableCell>
+                             <TableCell className="max-w-xs">
+                               <div className="whitespace-pre-wrap text-sm break-words">
+                                 {customer.notes || "Không có ghi chú"}
+                               </div>
+                             </TableCell>
+                            <TableCell>
+                              <AINextActionCell customer={customer} />
                             </TableCell>
-                           <TableCell>
-                             <AINextActionCell customer={customer} />
-                           </TableCell>
-                           <TableCell>
-                             <PredictiveAnalyticsCell customer={customer} />
-                           </TableCell>
                            <TableCell>
                             {customer.last_purchase_date ? (
                               <div className="text-sm">
