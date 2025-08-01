@@ -33,7 +33,7 @@ import { EditExpenseDialog } from "@/components/EditExpenseDialog";
 import { DeleteExpenseDialog } from "@/components/DeleteExpenseDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subYears } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subYears, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 
@@ -134,8 +134,8 @@ export default function CashFlowManagement() {
     {
       label: "Hôm nay",
       range: {
-        from: new Date(),
-        to: new Date()
+        from: startOfDay(new Date()),
+        to: endOfDay(new Date())
       }
     },
     {
