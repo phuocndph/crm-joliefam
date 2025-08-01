@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus, Edit, Trash2 } from "lucide-react";
 import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
+import CreateAssigneeForm from "@/components/CreateAssigneeForm";
 import EditCustomerCareDialog from "@/components/EditCustomerCareDialog";
 import { DeleteCustomerDialog } from "@/components/DeleteCustomerDialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -133,6 +134,7 @@ const CustomerCare = () => {
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   <CreateCustomerCareForm onSuccess={handleCustomerAdded} />
+                  <CreateAssigneeForm onSuccess={handleCustomerAdded} />
                   <Select value="assignee">
                     <SelectTrigger className="w-48">
                       <SelectValue placeholder="Chọn người phụ trách" />
