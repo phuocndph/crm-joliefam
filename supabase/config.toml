@@ -2,3 +2,6 @@ project_id = "kmxfljxsmnozvvgypdei"
 
 [functions.create-user]
 verify_jwt = true
+
+[functions.ai-customer-suggestions]
+verify_jwt = true

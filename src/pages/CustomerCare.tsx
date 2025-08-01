@@ -11,6 +11,8 @@ import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
 import CreateAssigneeForm from "@/components/CreateAssigneeForm";
 import EditCustomerCareDialog from "@/components/EditCustomerCareDialog";
 import { DeleteCustomerDialog } from "@/components/DeleteCustomerDialog";
+import AISettingsForm from "@/components/AISettingsForm";
+import AINextActionCell from "@/components/AINextActionCell";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -427,39 +429,7 @@ const CustomerCare = () => {
                               </div>
                             </TableCell>
                            <TableCell>
-                             {(() => {
-                               const status = customer.current_status || 'waiting-payment';
-                               const getNextAction = (status: string) => {
-                                 switch (status) {
-                                   case 'waiting-payment':
-                                     return { text: 'Gọi xác nhận thanh toán', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
-                                   case 'waiting-deposit':
-                                     return { text: 'Follow up tiền cọc', className: 'bg-orange-50 text-orange-700 border-orange-200' };
-                                   case 'sent-sample':
-                                     return { text: 'Gọi hỏi feedback mẫu', className: 'bg-blue-50 text-blue-700 border-blue-200' };
-                                   case 'sent-quote':
-                                     return { text: 'Follow up báo giá', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
-                                   case 'waiting-response':
-                                     return { text: 'Chờ phản hồi khách', className: 'bg-purple-50 text-purple-700 border-purple-200' };
-                                   case 'ordered':
-                                     return { text: 'Theo dõi đơn hàng', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-                                   case 'paid':
-                                     return { text: 'Chăm sóc sau bán', className: 'bg-green-50 text-green-700 border-green-200' };
-                                   case 'see-notes':
-                                     return { text: 'Xem ghi chú chi tiết', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
-                                   case 'no-response':
-                                     return { text: 'Thử liên hệ lại', className: 'bg-red-50 text-red-700 border-red-200' };
-                                   default:
-                                     return { text: 'Liên hệ tư vấn', className: 'bg-gray-50 text-gray-600 border-gray-200' };
-                                 }
-                               };
-                               const config = getNextAction(status);
-                               return (
-                                 <Badge variant="outline" className={config.className}>
-                                   {config.text}
-                                 </Badge>
-                               );
-                             })()}
+                             <AINextActionCell customer={customer} />
                            </TableCell>
                            <TableCell>
                             {customer.last_purchase_date ? (
@@ -762,40 +732,7 @@ const CustomerCare = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium mb-2">Tự động phân loại khách hàng</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Sử dụng AI để tự động phân loại và gán điểm cho khách hàng mới
-                  </p>
-                  <div className="flex items-center space-x-2">
-                    <input type="checkbox" id="auto-classify" className="rounded" />
-                    <label htmlFor="auto-classify">Bật tự động phân loại</label>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-medium mb-2">Gợi ý tương tác</h3>
-                  <p className="text-muted-foreground mb-4">
-                    AI sẽ gợi ý thời điểm và cách thức tương tác tối ưu với khách hàng
-                  </p>
-                  <div className="flex items-center space-x-2">
-                    <input type="checkbox" id="interaction-suggestions" className="rounded" />
-                    <label htmlFor="interaction-suggestions">Bật gợi ý tương tác</label>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-medium mb-2">Phân tích cảm xúc</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Phân tích cảm xúc từ tin nhắn và cuộc gọi để hiểu rõ hơn về khách hàng
-                  </p>
-                  <div className="flex items-center space-x-2">
-                    <input type="checkbox" id="sentiment-analysis" className="rounded" />
-                    <label htmlFor="sentiment-analysis">Bật phân tích cảm xúc</label>
-                  </div>
-                </div>
-              </div>
+              <AISettingsForm />
             </CardContent>
           </Card>
         </TabsContent>

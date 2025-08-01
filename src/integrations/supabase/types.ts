@@ -14,6 +14,66 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_settings: {
+        Row: {
+          created_at: string
+          id: string
+          manager_id: string | null
+          setting_name: string
+          setting_value: boolean
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          manager_id?: string | null
+          setting_name: string
+          setting_value?: boolean
+          tenant_id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          manager_id?: string | null
+          setting_name?: string
+          setting_value?: boolean
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      assignees: {
+        Row: {
+          created_at: string
+          id: string
+          manager_id: string | null
+          name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          manager_id?: string | null
+          name: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          manager_id?: string | null
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           address: string | null
@@ -21,6 +81,7 @@ export type Database = {
           auto_tags: string[] | null
           company: string | null
           created_at: string
+          current_status: string | null
           customer_code: string | null
           email: string | null
           id: string
@@ -42,6 +103,7 @@ export type Database = {
           auto_tags?: string[] | null
           company?: string | null
           created_at?: string
+          current_status?: string | null
           customer_code?: string | null
           email?: string | null
           id?: string
@@ -63,6 +125,7 @@ export type Database = {
           auto_tags?: string[] | null
           company?: string | null
           created_at?: string
+          current_status?: string | null
           customer_code?: string | null
           email?: string | null
           id?: string
