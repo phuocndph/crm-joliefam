@@ -14,9 +14,22 @@ serve(async (req) => {
   try {
     const { customer_id, prediction_types = ['purchase_probability', 'churn_risk', 'optimal_contact_time'] } = await req.json()
 
+    // Get authorization header
+    const authHeader = req.headers.get('authorization')
+    if (!authHeader) {
+      throw new Error('No authorization header')
+    }
+
     const supabaseClient = createClient(
       'https://kmxfljxsmnozvvgypdei.supabase.co',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: {
+            authorization: authHeader,
+          },
+        },
+      }
     )
 
     const geminiApiKey = Deno.env.get('GOOGLE_GEMINI_API_KEY')
@@ -24,15 +37,22 @@ serve(async (req) => {
       throw new Error('Google Gemini API key not configured')
     }
 
-    // Get customer data
+    console.log('Looking for customer:', customer_id)
+
+    // Get customer data with proper authentication
     const { data: customer, error: customerError } = await supabaseClient
       .from('customers')
       .select('*')
       .eq('id', customer_id)
-      .single()
+      .maybeSingle()
 
-    if (customerError || !customer) {
-      throw new Error('Customer not found')
+    if (customerError) {
+      console.error('Customer query error:', customerError)
+      throw new Error(`Database error: ${customerError.message}`)
+    }
+
+    if (!customer) {
+      throw new Error(`Customer with id ${customer_id} not found`)
     }
 
     // Get customer order history if available
