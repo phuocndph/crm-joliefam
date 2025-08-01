@@ -368,13 +368,20 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
                 type="file"
                 multiple
                 accept="image/*"
-                onChange={(e) => {
-                  if (e.target.files) {
-                    handleFileUpload(e.target.files);
-                  }
-                }}
                 disabled={uploading}
               />
+              <Button
+                onClick={() => {
+                  const input = document.getElementById('images') as HTMLInputElement;
+                  if (input && input.files) {
+                    handleFileUpload(input.files);
+                  }
+                }}
+                disabled={uploading || (!uploadCategory && !showNewCategoryInput) || (showNewCategoryInput && !newCategory)}
+                className="w-full"
+              >
+                {uploading ? "Đang tải lên..." : "Tải lên hình ảnh"}
+              </Button>
             </div>
           </div>
 
