@@ -135,7 +135,7 @@ const CustomerCare = () => {
                 <div className="flex items-center gap-2">
                   <CreateCustomerCareForm onSuccess={handleCustomerAdded} />
                   <CreateAssigneeForm onSuccess={handleCustomerAdded} />
-                  <Select value="assignee">
+                  <Select defaultValue="all">
                     <SelectTrigger className="w-48">
                       <SelectValue placeholder="Chọn người phụ trách" />
                     </SelectTrigger>
