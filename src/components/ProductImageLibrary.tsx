@@ -16,6 +16,7 @@ interface ProductImage {
   url: string;
   fullPath: string;
   category: string;
+  displayCategory?: string; // Tên hiển thị gốc của thư mục
   size: number;
   uploaded_at: string;
 }
@@ -28,7 +29,7 @@ interface ProductImageLibraryProps {
 const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLibraryProps) => {
   const [images, setImages] = useState<ProductImage[]>([]);
   const [filteredImages, setFilteredImages] = useState<ProductImage[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<{safeName: string, displayName: string}[]>([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -40,6 +41,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
   const [categoryToRename, setCategoryToRename] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [renamingCategory, setRenamingCategory] = useState(false);
+  const [categoryDisplayNames, setCategoryDisplayNames] = useState<{[key: string]: string}>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -72,7 +74,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
 
       // Get files from all subdirectories
       const allFiles: ProductImage[] = [];
-      const categories: string[] = [];
+      const categoryMap: {[key: string]: string} = {};
 
       if (data) {
         // First get top-level files
@@ -89,6 +91,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
             url: urlData.publicUrl,
             fullPath: file.name,
             category: 'Không phân loại',
+            displayCategory: 'Không phân loại',
             size: file.metadata?.size || 0,
             uploaded_at: file.created_at || file.updated_at || '',
           });
@@ -98,7 +101,12 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
         const directories = data.filter(item => !item.name.includes('.'));
         
         for (const dir of directories) {
-          categories.push(dir.name);
+          // Try to get display name from localStorage or use folder name
+          const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
+          const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
+          const displayName = displayNamesMap[dir.name] || dir.name;
+          
+          categoryMap[dir.name] = displayName;
           
           const { data: subFiles } = await supabase.storage
             .from('product-images')
@@ -117,6 +125,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
                 url: urlData.publicUrl,
                 fullPath: fullPath,
                 category: dir.name,
+                displayCategory: displayName,
                 size: file.metadata?.size || 0,
                 uploaded_at: file.created_at || file.updated_at || '',
               });
@@ -126,7 +135,14 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
       }
 
       setImages(allFiles);
-      setCategories([...new Set(categories)]);
+      setCategoryDisplayNames(categoryMap);
+      
+      // Set categories with both safe name and display name
+      const uniqueCategories = Object.keys(categoryMap).map(safeName => ({
+        safeName,
+        displayName: categoryMap[safeName]
+      }));
+      setCategories(uniqueCategories);
     } catch (error) {
       console.error('Error fetching images:', error);
       toast({
@@ -169,11 +185,18 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
     }
 
     setUploading(true);
+    
+    const sanitizedCategory = sanitizeFolderName(category);
+    
+    // Save display name to localStorage
+    const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
+    const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
+    displayNamesMap[sanitizedCategory] = category; // Save original name as display name
+    localStorage.setItem('categoryDisplayNames', JSON.stringify(displayNamesMap));
 
     try {
       const uploadPromises = Array.from(files).map(async (file) => {
         const fileExt = file.name.split('.').pop();
-        const sanitizedCategory = sanitizeFolderName(category);
         const fileName = `${sanitizedCategory}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
@@ -352,10 +375,10 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
           <SelectContent>
             <SelectItem value="all">Tất cả thư mục</SelectItem>
             {categories.map((category) => (
-              <SelectItem key={category} value={category}>
+              <SelectItem key={category.safeName} value={category.safeName}>
                 <div className="flex items-center gap-2">
                   <Folder className="h-4 w-4" />
-                  {category}
+                  {category.displayName}
                 </div>
               </SelectItem>
             ))}
@@ -367,7 +390,8 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
             size="sm"
             onClick={() => {
               setCategoryToRename(selectedCategoryFilter);
-              setNewCategoryName(selectedCategoryFilter);
+              const displayName = categoryDisplayNames[selectedCategoryFilter] || selectedCategoryFilter;
+              setNewCategoryName(displayName);
               setShowRenameCategoryDialog(true);
             }}
           >
@@ -425,7 +449,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
           <p className="text-muted-foreground">
             {selectedCategoryFilter === 'all' 
               ? 'Chưa có hình ảnh nào trong thư viện'
-              : `Chưa có hình ảnh nào trong thư mục "${selectedCategoryFilter}"`
+              : `Chưa có hình ảnh nào trong thư mục "${categoryDisplayNames[selectedCategoryFilter] || selectedCategoryFilter}"`
             }
           </p>
         </div>
@@ -458,10 +482,10 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map((category) => (
-                      <SelectItem key={category} value={category}>
+                      <SelectItem key={category.safeName} value={category.safeName}>
                         <div className="flex items-center gap-2">
                           <Folder className="h-4 w-4" />
-                          {category}
+                          {category.displayName}
                         </div>
                       </SelectItem>
                     ))}
@@ -527,7 +551,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
           <DialogHeader>
             <DialogTitle>Sửa tên thư mục</DialogTitle>
             <DialogDescription>
-              Đổi tên thư mục "{categoryToRename}" và di chuyển tất cả hình ảnh
+              Đổi tên thư mục "{categoryDisplayNames[categoryToRename] || categoryToRename}" và di chuyển tất cả hình ảnh
             </DialogDescription>
           </DialogHeader>
 
