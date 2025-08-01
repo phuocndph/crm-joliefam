@@ -396,24 +396,53 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
 
         // Sync with related orders if quote is approved and an order exists
         if (initialData.status === 'approved') {
-          const { data: relatedOrders, error: orderError } = await supabase
+          // Try multiple ways to find the related order
+          let relatedOrders = null;
+          
+          // First try to find by quote number in notes
+          const { data: ordersByNotes, error: notesError } = await supabase
             .from("orders")
             .select("id")
-            .eq("notes", `Tạo từ báo giá: ${data.quoteNumber}`);
+            .ilike("notes", `%${data.quoteNumber}%`);
+          
+          if (!notesError && ordersByNotes && ordersByNotes.length > 0) {
+            relatedOrders = ordersByNotes;
+          } else {
+            // If not found by notes, try to find by customer and similar total amount  
+            const { data: ordersByCustomer, error: customerError } = await supabase
+              .from("orders")
+              .select("id, total_amount")
+              .eq("customer_id", initialData.customer_id)
+              .gte("total_amount", calculatedTotal - 1000)
+              .lte("total_amount", calculatedTotal + 1000);
+            
+            if (!customerError && ordersByCustomer && ordersByCustomer.length > 0) {
+              relatedOrders = ordersByCustomer;
+            }
+          }
 
-          if (!orderError && relatedOrders && relatedOrders.length > 0) {
+          if (relatedOrders && relatedOrders.length > 0) {
             // Update the related order with the same data
             const orderUpdateData = {
               items: JSON.stringify(selectedProducts),
               total_amount: calculatedTotal,
-              cost_price: 0, // Would need to calculate from products
-              notes: `Tạo từ báo giá: ${data.quoteNumber}\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
+              cost_price: 0,
+              notes: `Cập nhật từ báo giá: ${data.quoteNumber}\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
             };
 
-            await supabase
+            const { error: updateError } = await supabase
               .from("orders")
               .update(orderUpdateData)
               .eq('id', relatedOrders[0].id);
+              
+            if (updateError) {
+              console.error("Error updating related order:", updateError);
+            } else {
+              toast({
+                title: "Thành công", 
+                description: "Đã cập nhật cả báo giá và đơn hàng liên quan",
+              });
+            }
           }
         }
 
