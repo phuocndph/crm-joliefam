@@ -353,18 +353,39 @@ const CustomerCare = () => {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="default">
-                              {customer.current_status === 'waiting-payment' && 'Chờ thanh toán tiền'}
-                              {customer.current_status === 'waiting-deposit' && 'Chờ thanh toán cọc'}
-                              {customer.current_status === 'sent-sample' && 'Đã gửi mẫu'}
-                              {customer.current_status === 'sent-quote' && 'Đã gửi báo giá'}
-                              {customer.current_status === 'waiting-response' && 'Chờ phản hồi khách hàng'}
-                              {customer.current_status === 'ordered' && 'Đã đặt hàng'}
-                              {customer.current_status === 'paid' && 'Đã thanh toán xong'}
-                              {customer.current_status === 'see-notes' && 'Xem ở ghi chú'}
-                              {customer.current_status === 'no-response' && 'Khách không phản hồi'}
-                              {!customer.current_status && 'Chờ thanh toán tiền'}
-                            </Badge>
+                            {(() => {
+                              const status = customer.current_status || 'waiting-payment';
+                              const getStatusConfig = (status: string) => {
+                                switch (status) {
+                                  case 'waiting-payment':
+                                    return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                                  case 'waiting-deposit':
+                                    return { text: 'Chờ thanh toán cọc', className: 'bg-orange-50 text-orange-700 border-orange-200' };
+                                  case 'sent-sample':
+                                    return { text: 'Đã gửi mẫu', className: 'bg-blue-50 text-blue-700 border-blue-200' };
+                                  case 'sent-quote':
+                                    return { text: 'Đã gửi báo giá', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+                                  case 'waiting-response':
+                                    return { text: 'Chờ phản hồi khách hàng', className: 'bg-purple-50 text-purple-700 border-purple-200' };
+                                  case 'ordered':
+                                    return { text: 'Đã đặt hàng', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+                                  case 'paid':
+                                    return { text: 'Đã thanh toán xong', className: 'bg-green-50 text-green-700 border-green-200' };
+                                  case 'see-notes':
+                                    return { text: 'Xem ở ghi chú', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
+                                  case 'no-response':
+                                    return { text: 'Khách không phản hồi', className: 'bg-red-50 text-red-700 border-red-200' };
+                                  default:
+                                    return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                                }
+                              };
+                              const config = getStatusConfig(status);
+                              return (
+                                <Badge variant="outline" className={config.className}>
+                                  {config.text}
+                                </Badge>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {format(new Date(customer.created_at), 'dd/MM/yyyy HH:mm')}
