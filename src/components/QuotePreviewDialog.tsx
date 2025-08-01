@@ -383,68 +383,46 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         {/* Preview Content - Scrollable */}
         <div className="flex-1 overflow-auto">
           <div className="bg-white" id="quote-preview" style={{ fontFamily: 'Times New Roman, serif' }}>
-            <div className="p-8 max-w-5xl mx-auto">
-              {/* Header Layout - Thông tin công ty bên trái, Logo bên phải */}
-              <div className="mb-8">
-                <div className="flex items-start gap-8 mb-6">
-                  {/* Thông tin công ty - Kéo dài bên trái */}
-                  <div className="flex-1">
-                    <h1 className="text-2xl font-bold mb-3" style={{ color: '#1a365d' }}>
-                      {templateSettings.companyTitle || 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT'}
-                    </h1>
-                    
-                    <div className="space-y-1 text-sm leading-relaxed">
-                      <p><span className="font-medium text-gray-700">Địa chỉ:</span> {templateSettings.address || 'Số 21 Ngõ 562 Đường Linh Nam, Hoàng Mai, Hà Nội'}</p>
-                      <p><span className="font-medium text-gray-700">Điện thoại:</span> {templateSettings.phone || '0828686866'}</p>
-                      <p><span className="font-medium text-gray-700">MST:</span> {templateSettings.taxCode || '0108652480'}</p>
-                      <p><span className="font-medium text-gray-700">STK:</span> {templateSettings.bankInfo || 'Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV) - Chi nhánh Hà Nội: 21101999996'}</p>
+            <div className="p-4 max-w-4xl mx-auto">
+              
+              {/* Header theo phong cách Excel đơn giản */}
+              <div className="mb-4">
+                {/* Logo và tên công ty trên cùng một hàng */}
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-start gap-3">
+                    <div className="w-20 h-16 flex-shrink-0 border border-black">
+                      <img 
+                        src={templateSettings.logoUrl} 
+                        alt="Logo"
+                        className="w-full h-full object-contain p-1"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                      <div className="w-full h-full border border-black flex items-center justify-center bg-white text-xs" style={{ display: templateSettings.logoUrl ? 'none' : 'flex' }}>
+                        LOGO
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <h1 className="text-lg font-bold uppercase mb-1">
+                        {templateSettings.companyTitle || 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT'}
+                      </h1>
+                      <div className="text-xs space-y-0.5">
+                        <p>Địa chỉ: {templateSettings.address || 'Số 21 Ngõ 562 Đường Linh Nam, Hoàng Mai, Hà Nội'}</p>
+                        <p>Điện thoại: {templateSettings.phone || '0828686866'} - MST: {templateSettings.taxCode || '0108652480'}</p>
+                        <p>STK: {templateSettings.bankInfo || 'Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV)'}</p>
+                      </div>
                     </div>
                   </div>
                   
-                  {/* Logo Container - Bên phải */}
-                  <div className="w-32 h-24 flex-shrink-0">
-                    <img 
-                      src={templateSettings.logoUrl} 
-                      alt="Company Logo" 
-                      className="w-full h-full object-contain border border-gray-300 rounded-sm p-2"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        const nextElement = e.currentTarget.nextElementSibling as HTMLElement;
-                        if (nextElement) {
-                          nextElement.style.display = 'flex';
-                        }
-                      }}
-                    />
-                    <div className="w-32 h-24 bg-gradient-to-br from-slate-100 to-slate-200 border border-gray-300 rounded-sm flex items-center justify-center text-xs text-gray-500 font-medium" style={{ display: 'none' }}>
-                      <div className="text-center">
-                        <div className="text-lg font-bold">LOGO</div>
-                        <div className="text-xs">CÔNG TY</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Khung Bảng báo giá - Xuống dưới và căn giữa */}
-                <div className="flex justify-center">
-                  <div className="w-80">
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-6 shadow-lg">
-                      <h2 className="text-xl font-bold mb-4 text-center" style={{ color: '#1a365d' }}>
-                        BẢNG BÁO GIÁ
-                      </h2>
-                      <div className="space-y-3 text-sm">
-                        <div className="flex justify-between">
-                          <span className="font-medium text-gray-700">Số báo giá:</span> 
-                          <span className="font-bold text-blue-700">{quote.quote_number || 'BG-20250728-569'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="font-medium text-gray-700">Ngày tạo:</span> 
-                          <span className="font-semibold">{new Date(quote.created_at || new Date()).toLocaleDateString('vi-VN')}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="font-medium text-gray-700">Hết hạn:</span> 
-                          <span className="font-semibold">{expiryDate}</span>
-                        </div>
-                      </div>
+                  {/* Thông tin báo giá trong khung đơn giản */}
+                  <div className="border-2 border-black p-3 min-w-[200px]">
+                    <h3 className="text-sm font-bold text-center mb-2 uppercase">BẢNG BÁO GIÁ</h3>
+                    <div className="text-xs space-y-1">
+                      <div>Số: <span className="font-bold">{quote.quote_number || 'BG-001'}</span></div>
+                      <div>Ngày: <span className="font-bold">{new Date(quote.created_at || new Date()).toLocaleDateString('vi-VN')}</span></div>
+                      <div>Hết hạn: <span className="font-bold">{expiryDate}</span></div>
                     </div>
                   </div>
                 </div>
