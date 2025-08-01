@@ -20,12 +20,12 @@ const AINextActionCell = ({ customer }: AINextActionCellProps) => {
     checkAISettings();
   }, []);
 
-  // Generate AI suggestion when component mounts if AI is enabled
+  // Initialize with static suggestion instead of auto-generating AI suggestion
   useEffect(() => {
-    if (aiEnabled && !suggestion) {
-      generateAISuggestion();
+    if (!suggestion) {
+      setSuggestion(getStaticSuggestion(customer.current_status));
     }
-  }, [aiEnabled]);
+  }, [customer.current_status]);
 
   const checkAISettings = async () => {
     try {
