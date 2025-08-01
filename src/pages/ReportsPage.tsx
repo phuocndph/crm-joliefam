@@ -948,20 +948,124 @@ const ReportsPage = () => {
           </TabsContent>
 
           <TabsContent value="products" className="space-y-6">
+            {/* Top Products Chart */}
             <Card>
               <CardHeader>
-                <CardTitle>Top sản phẩm bán chạy</CardTitle>
+                <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                  📊 Top sản phẩm bán chạy
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Biểu đồ thể hiện doanh thu và số lượng bán của các sản phẩm hàng đầu trong kỳ báo cáo
+                </p>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={topProducts}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                    <YAxis />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                    <Bar dataKey="revenue" fill="#3b82f6" name="Doanh thu" />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="space-y-6">
+                  {/* Chart */}
+                  <ResponsiveContainer width="100%" height={450}>
+                    <BarChart 
+                      data={topProducts} 
+                      margin={{ top: 20, right: 30, left: 40, bottom: 80 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
+                      <XAxis 
+                        dataKey="name" 
+                        angle={-45} 
+                        textAnchor="end" 
+                        height={120}
+                        fontSize={12}
+                        stroke="hsl(var(--foreground))"
+                        interval={0}
+                      />
+                      <YAxis 
+                        fontSize={12}
+                        stroke="hsl(var(--foreground))"
+                        tickFormatter={(value) => formatCurrency(value)}
+                      />
+                      <Tooltip 
+                        formatter={(value: number, name: string) => [
+                          name === "revenue" ? formatCurrency(value) : value,
+                          name === "revenue" ? "💰 Doanh thu" : "📦 Số lượng bán"
+                        ]}
+                        labelFormatter={(label) => `🏷️ ${label}`}
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--background))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                          fontSize: "14px"
+                        }}
+                      />
+                      <Bar 
+                        dataKey="revenue" 
+                        fill="hsl(var(--primary))" 
+                        name="revenue"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  
+                  {/* Legend */}
+                  <div className="flex flex-wrap items-center justify-center gap-6 p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-primary rounded"></div>
+                      <span className="text-sm font-medium">💰 Doanh thu (VND)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">📊 Sắp xếp theo doanh thu giảm dần</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Detailed Data Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  📋 Bảng chi tiết sản phẩm bán chạy
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Thông tin chi tiết về số lượng và doanh thu của từng sản phẩm
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left p-3 font-semibold">🏷️ Tên sản phẩm</th>
+                        <th className="text-right p-3 font-semibold">📦 Số lượng bán</th>
+                        <th className="text-right p-3 font-semibold">💰 Doanh thu</th>
+                        <th className="text-right p-3 font-semibold">💵 Giá trung bình</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topProducts.map((product: any, index) => (
+                        <tr key={product.name} className="border-b border-border/50 hover:bg-muted/30">
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">{index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : "📦"}</span>
+                              <span className="font-medium">{product.name}</span>
+                            </div>
+                          </td>
+                          <td className="text-right p-3 font-mono">{product.quantity?.toLocaleString() || 0}</td>
+                          <td className="text-right p-3 font-mono font-semibold text-primary">
+                            {formatCurrency(product.revenue || 0)}
+                          </td>
+                          <td className="text-right p-3 font-mono">
+                            {product.quantity > 0 ? formatCurrency((product.revenue || 0) / product.quantity) : "0"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {topProducts.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <div className="text-4xl mb-2">📦</div>
+                    <p>Không có dữ liệu sản phẩm trong kỳ báo cáo này</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
