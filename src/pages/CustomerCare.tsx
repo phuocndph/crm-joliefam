@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus, Edit, Trash2 } from "lucide-react";
+import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus, Edit, Trash2, TrendingUp } from "lucide-react";
 import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
 import CreateAssigneeForm from "@/components/CreateAssigneeForm";
 import EditCustomerCareDialog from "@/components/EditCustomerCareDialog";
@@ -418,47 +418,197 @@ const CustomerCare = () => {
 
         {/* Statistics Tab */}
         <TabsContent value="statistics" className="space-y-4">
+          {/* Overview Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold">{customers.length}</div>
+                <p className="text-sm text-muted-foreground">Tổng khách hàng</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold">
+                  {customers.filter(c => {
+                    const createdDate = new Date(c.created_at);
+                    const today = new Date();
+                    const diffTime = Math.abs(today.getTime() - createdDate.getTime());
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    return diffDays <= 30;
+                  }).length}
+                </div>
+                <p className="text-sm text-muted-foreground">Khách hàng mới (30 ngày)</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold">
+                  {customers.filter(c => c.manager_id).length}
+                </div>
+                <p className="text-sm text-muted-foreground">Đã phân công</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold">
+                  {customers.filter(c => !c.manager_id).length}
+                </div>
+                <p className="text-sm text-muted-foreground">Chưa phân công</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Status Statistics */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Status Distribution Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Phân Bố Trạng Thái Khách Hàng
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {(() => {
+                    const statusCounts = customers.reduce((acc, customer) => {
+                      const status = customer.current_status || 'waiting-payment';
+                      acc[status] = (acc[status] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>);
+
+                    const statusLabels = {
+                      'waiting-payment': 'Chờ thanh toán',
+                      'contacted': 'Đã liên hệ',
+                      'negotiating': 'Đang đàm phán',
+                      'closed-deal': 'Đã chốt deal',
+                      'lost': 'Mất khách',
+                      'follow-up': 'Theo dõi',
+                    };
+
+                    const statusColors = {
+                      'waiting-payment': 'bg-yellow-500',
+                      'contacted': 'bg-blue-500',
+                      'negotiating': 'bg-purple-500',
+                      'closed-deal': 'bg-green-500',
+                      'lost': 'bg-red-500',
+                      'follow-up': 'bg-orange-500',
+                    };
+
+                    const total = customers.length;
+
+                    return Object.entries(statusCounts).map(([status, count]) => {
+                      const percentage = total > 0 ? ((Number(count) / total) * 100).toFixed(1) : '0';
+                      return (
+                        <div key={status} className="flex items-center justify-between p-3 rounded-lg border">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-4 h-4 rounded-full ${statusColors[status as keyof typeof statusColors] || 'bg-gray-500'}`}></div>
+                            <span className="font-medium">
+                              {statusLabels[status as keyof typeof statusLabels] || status}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold">{String(count)}</span>
+                            <span className="text-sm text-muted-foreground">({percentage}%)</span>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Assignee Distribution */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Phân Bố Theo Nhân Viên Phụ Trách
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {(() => {
+                    const assigneeCounts = customers.reduce((acc, customer) => {
+                      const assigneeId = customer.manager_id;
+                      if (assigneeId) {
+                        const assignee = assignees.find(a => a.id === assigneeId);
+                        const assigneeName = assignee?.name || 'Không xác định';
+                        acc[assigneeName] = (acc[assigneeName] || 0) + 1;
+                      } else {
+                        acc['Chưa phân công'] = (acc['Chưa phân công'] || 0) + 1;
+                      }
+                      return acc;
+                    }, {} as Record<string, number>);
+
+                    const total = customers.length;
+
+                     return Object.entries(assigneeCounts)
+                       .sort(([, a], [, b]) => Number(b) - Number(a))
+                       .map(([assignee, count], index) => {
+                         const percentage = total > 0 ? ((Number(count) / total) * 100).toFixed(1) : '0';
+                         const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-gray-500'];
+                         const colorClass = colors[index % colors.length];
+                         
+                         return (
+                           <div key={assignee} className="flex items-center justify-between p-3 rounded-lg border">
+                             <div className="flex items-center gap-3">
+                               <div className={`w-4 h-4 rounded-full ${colorClass}`}></div>
+                               <span className="font-medium">{String(assignee)}</span>
+                             </div>
+                             <div className="flex items-center gap-2">
+                               <span className="font-bold">{String(count)}</span>
+                               <span className="text-sm text-muted-foreground">({percentage}%)</span>
+                             </div>
+                           </div>
+                         );
+                       });
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Detailed Status Breakdown */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Thống Kê Chăm Sóc Khách Hàng
+                <TrendingUp className="h-5 w-5" />
+                Chi Tiết Trạng Thái Khách Hàng
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold">{customers.length}</div>
-                    <p className="text-sm text-muted-foreground">Tổng khách hàng</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold">
-                      {customers.filter(c => {
-                        const createdDate = new Date(c.created_at);
-                        const today = new Date();
-                        const diffTime = Math.abs(today.getTime() - createdDate.getTime());
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        return diffDays <= 30;
-                      }).length}
-                    </div>
-                    <p className="text-sm text-muted-foreground">Khách hàng mới (30 ngày)</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold">0%</div>
-                    <p className="text-sm text-muted-foreground">Tỷ lệ chuyển đổi</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold">0</div>
-                    <p className="text-sm text-muted-foreground">Tương tác trung bình</p>
-                  </CardContent>
-                </Card>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {(() => {
+                  const statusCounts = customers.reduce((acc, customer) => {
+                    const status = customer.current_status || 'waiting-payment';
+                    acc[status] = (acc[status] || 0) + 1;
+                    return acc;
+                  }, {} as Record<string, number>);
+
+                  const statusDetails = [
+                    { key: 'waiting-payment', label: 'Chờ thanh toán', color: 'border-yellow-200 bg-yellow-50', icon: '💰' },
+                    { key: 'contacted', label: 'Đã liên hệ', color: 'border-blue-200 bg-blue-50', icon: '📞' },
+                    { key: 'negotiating', label: 'Đang đàm phán', color: 'border-purple-200 bg-purple-50', icon: '💬' },
+                    { key: 'closed-deal', label: 'Đã chốt deal', color: 'border-green-200 bg-green-50', icon: '✅' },
+                    { key: 'lost', label: 'Mất khách', color: 'border-red-200 bg-red-50', icon: '❌' },
+                    { key: 'follow-up', label: 'Theo dõi', color: 'border-orange-200 bg-orange-50', icon: '👀' },
+                  ];
+
+                  return statusDetails.map(({ key, label, color, icon }) => {
+                    const count = statusCounts[key] || 0;
+                    return (
+                      <Card key={key} className={`${color} border-2`}>
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl mb-2">{icon}</div>
+                          <div className="text-2xl font-bold mb-1">{count}</div>
+                          <p className="text-sm font-medium">{label}</p>
+                        </CardContent>
+                      </Card>
+                    );
+                  });
+                })()}
               </div>
             </CardContent>
           </Card>
