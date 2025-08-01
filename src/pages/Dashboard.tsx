@@ -100,7 +100,7 @@ const Dashboard = () => {
         transactionsResponse
       ] = await Promise.all([
         supabase.from('orders').select('total_amount, status, created_at'),
-        supabase.from('customers').select('id, created_at'),
+        supabase.from('customers').select('*'),
         supabase.from('quotes').select('total_amount, status, created_at'),
         supabase.from('products').select('id'),
         supabase.from('transactions').select('amount, type, created_at')
@@ -111,6 +111,17 @@ const Dashboard = () => {
       const quotes = quotesResponse.data || [];
       const products = productsResponse.data || [];
       const transactions = transactionsResponse.data || [];
+
+      // Remove duplicate customers by email/phone, keep the one with highest purchase_count
+      const uniqueCustomers = customers.reduce((acc, customer) => {
+        const key = `${customer.email}-${customer.phone}`;
+        if (!acc[key] || acc[key].purchase_count < customer.purchase_count) {
+          acc[key] = customer;
+        }
+        return acc;
+      }, {} as Record<string, typeof customers[0]>);
+      
+      const deduplicatedCustomers = Object.values(uniqueCustomers);
 
       // Calculate total revenue from completed orders
       const totalRevenue = orders
@@ -130,14 +141,14 @@ const Dashboard = () => {
         new Date(order.created_at) >= currentMonth
       ).length;
 
-      const monthlyCustomers = customers.filter(customer => 
+      const monthlyCustomers = deduplicatedCustomers.filter(customer => 
         new Date(customer.created_at) >= currentMonth
       ).length;
 
       setStats({
         totalRevenue,
         totalOrders: orders.length,
-        totalCustomers: customers.length,
+        totalCustomers: deduplicatedCustomers.length,
         totalQuotes: quotes.length,
         totalProducts: products.length,
         pendingOrders: orders.filter(order => order.status === 'pending').length,
