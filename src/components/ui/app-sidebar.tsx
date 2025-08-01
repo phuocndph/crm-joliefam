@@ -7,7 +7,8 @@ import {
   TrendingUp, 
   CreditCard, 
   BarChart3,
-  Settings
+  Settings,
+  UserCheck
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -40,6 +41,13 @@ const menuItems = [
     url: "/customers", 
     icon: Users,
     description: "Quản lý danh sách khách hàng",
+    permission: "customers" as const
+  },
+  { 
+    title: "Chăm sóc KH", 
+    url: "/customer-care", 
+    icon: UserCheck,
+    description: "Hệ thống chăm sóc khách hàng",
     permission: "customers" as const
   },
   { 
