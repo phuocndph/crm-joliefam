@@ -238,10 +238,10 @@ const CustomerCare = () => {
                       <TableHead>Trạng Thái</TableHead>
                       <TableHead>Thời Gian</TableHead>
                       <TableHead>Ngày Cập Nhật</TableHead>
-                      <TableHead>Theo Dõi</TableHead>
-                      <TableHead>Điểm</TableHead>
+                      <TableHead>Lịch Sử Mua</TableHead>
+                      <TableHead>Tổng Đơn/Giá Trị</TableHead>
                       <TableHead>Ghi Chú</TableHead>
-                      <TableHead>Hành Động</TableHead>
+                      <TableHead>Trạng Thái Mua Hàng</TableHead>
                       <TableHead>Thao Tác</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -287,9 +287,15 @@ const CustomerCare = () => {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">
-                              {customer.manager_id ? "Đã phân công" : "Chưa phân công"}
-                            </Badge>
+                            {customer.manager_id ? (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                Đã phân công
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                Chưa phân công
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary">
@@ -325,24 +331,44 @@ const CustomerCare = () => {
                             {format(new Date(customer.updated_at), 'dd/MM/yyyy HH:mm')}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">
-                              Theo dõi
-                            </Badge>
+                            {customer.auto_tags && customer.auto_tags.length > 0 ? (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                {customer.auto_tags[0]}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">
+                                Liên hệ lần đầu
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             <div className="text-center">
                               <Badge variant="secondary">
-                                -/5
+                                {customer.purchase_count > 0 ? `${customer.purchase_count} đơn` : "0 đơn"}
                               </Badge>
+                              {customer.total_spent > 0 && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(customer.total_spent)}
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="max-w-xs truncate">
                             {customer.notes || "Không có ghi chú"}
                           </TableCell>
                           <TableCell>
-                            <div className="text-sm text-muted-foreground">
-                              Chưa có hành động
-                            </div>
+                            {customer.last_purchase_date ? (
+                              <div className="text-sm">
+                                <div className="text-green-600 font-medium">Đã mua hàng</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {format(new Date(customer.last_purchase_date), 'dd/MM/yyyy')}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-sm text-muted-foreground">
+                                Chưa có đơn hàng
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
