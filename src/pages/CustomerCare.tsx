@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,13 +6,53 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus } from "lucide-react";
+import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus, Edit, Trash2 } from "lucide-react";
 import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 
 const CustomerCare = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedSource, setSelectedSource] = useState("all");
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  const fetchCustomers = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching customers:', error);
+        toast({
+          title: "Lỗi",
+          description: "Không thể tải danh sách khách hàng",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setCustomers(data || []);
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCustomers();
+  }, []);
+
+  const handleCustomerAdded = () => {
+    fetchCustomers(); // Refresh the list when a new customer is added
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -57,7 +97,7 @@ const CustomerCare = () => {
                   Danh Sách Khách Hàng
                 </CardTitle>
                 <div className="flex items-center gap-2">
-                  <CreateCustomerCareForm />
+                  <CreateCustomerCareForm onSuccess={handleCustomerAdded} />
                   <Select value="assignee">
                     <SelectTrigger className="w-48">
                       <SelectValue placeholder="Chọn người phụ trách" />
@@ -72,7 +112,7 @@ const CustomerCare = () => {
 
               {/* Total customers */}
               <p className="text-sm text-muted-foreground">
-                Tổng: <span className="font-medium">0 khách hàng</span>
+                Tổng: <span className="font-medium">{customers.length} khách hàng</span>
               </p>
 
               {/* Filters */}
@@ -165,19 +205,100 @@ const CustomerCare = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    <TableRow>
-                      <TableCell colSpan={12} className="text-center py-12">
-                        <div className="flex flex-col items-center gap-2">
-                          <Users className="h-12 w-12 text-muted-foreground" />
-                          <p className="text-muted-foreground font-medium">
-                            Không có khách hàng nào
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            phù hợp với bộ lọc hiện tại
-                          </p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={12} className="text-center py-12">
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                            <span className="ml-2">Đang tải...</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : customers.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={12} className="text-center py-12">
+                          <div className="flex flex-col items-center gap-2">
+                            <Users className="h-12 w-12 text-muted-foreground" />
+                            <p className="text-muted-foreground font-medium">
+                              Không có khách hàng nào
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              Hãy thêm khách hàng đầu tiên của bạn
+                            </p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      customers.map((customer, index) => (
+                        <TableRow key={customer.id}>
+                          <TableCell>
+                            <input type="checkbox" className="rounded" />
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <div className="font-medium">{customer.name}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {customer.email || "Chưa có email"}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {customer.phone || "Chưa có SĐT"}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {customer.manager_id ? "Đã phân công" : "Chưa phân công"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              {customer.tags && customer.tags.length > 0 ? customer.tags[0] : "Chưa xác định"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="default">
+                              Mới
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {format(new Date(customer.created_at), 'dd/MM/yyyy HH:mm')}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {format(new Date(customer.updated_at), 'dd/MM/yyyy HH:mm')}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              Theo dõi
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-center">
+                              <Badge variant="secondary">
+                                -/5
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell className="max-w-xs truncate">
+                            {customer.notes || "Không có ghi chú"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm text-muted-foreground">
+                              Chưa có hành động
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Button variant="ghost" size="sm">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="sm">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>
@@ -198,14 +319,22 @@ const CustomerCare = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="p-4">
-                    <div className="text-2xl font-bold">0</div>
+                    <div className="text-2xl font-bold">{customers.length}</div>
                     <p className="text-sm text-muted-foreground">Tổng khách hàng</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4">
-                    <div className="text-2xl font-bold">0</div>
-                    <p className="text-sm text-muted-foreground">Khách hàng mới</p>
+                    <div className="text-2xl font-bold">
+                      {customers.filter(c => {
+                        const createdDate = new Date(c.created_at);
+                        const today = new Date();
+                        const diffTime = Math.abs(today.getTime() - createdDate.getTime());
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        return diffDays <= 30;
+                      }).length}
+                    </div>
+                    <p className="text-sm text-muted-foreground">Khách hàng mới (30 ngày)</p>
                   </CardContent>
                 </Card>
                 <Card>
