@@ -332,22 +332,11 @@ const ReportsPage = () => {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Báo cáo & Thống kê</h1>
         <div className="flex items-center space-x-3">
-          <Select value={`${format(dateRange?.from || new Date(), "MMM yyyy", { locale: vi })}`}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Chọn tháng" />
-            </SelectTrigger>
-            <SelectContent>
-              {quickDateRanges.map((range, index) => (
-                <SelectItem 
-                  key={index} 
-                  value={range.label}
-                  onClick={() => setDateRange(range.range)}
-                >
-                  {range.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <DatePickerWithRange 
+            date={dateRange}
+            setDate={setDateRange}
+            className="w-auto"
+          />
           <Button variant="outline" onClick={exportReport}>
             <Download className="w-4 h-4 mr-2" />
             Export PDF
