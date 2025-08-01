@@ -390,7 +390,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                 {/* Logo và tên công ty trên cùng một hàng */}
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-start gap-3">
-                    <div className="w-20 h-16 flex-shrink-0 border border-black">
+                    <div className="w-24 h-20 flex-shrink-0 border border-black">
                       <img 
                         src={templateSettings.logoUrl} 
                         alt="Logo"
@@ -494,38 +494,41 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
               {/* Enhanced Totals Section */}
               <div className="mb-8">
-                <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-6 border border-blue-200 shadow-sm">
-                  <h3 className="text-lg font-bold mb-4 text-blue-800 border-b border-blue-300 pb-2">
-                    TỔNG KẾT GIÁ TRỊ
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center py-2 border-b border-blue-200">
-                      <span className="font-medium text-gray-700">Tổng giá trị chưa bao gồm GTGT:</span>
-                      <span className="font-bold text-lg text-blue-700">{formatCurrency(subtotal)} VNĐ</span>
-                    </div>
-                    {includeVAT && (
-                      <>
-                        <div className="flex justify-between items-center py-2 border-b border-blue-200">
-                          <span className="font-medium text-gray-700">GTGT ({vatRate}%):</span>
-                          <span className="font-bold text-lg text-blue-700">{formatCurrency(vatAmount)} VNĐ</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-blue-200">
-                          <span className="font-medium text-gray-700">Tổng tiền đã bao gồm GTGT:</span>
-                          <span className="font-bold text-xl text-blue-800">{formatCurrency(totalWithVat)} VNĐ</span>
-                        </div>
-                      </>
-                    )}
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-4">
-                      <div className="flex justify-between items-center py-1">
-                        <span className="font-medium text-amber-800">Thanh toán lần 1 (30%):</span>
-                        <span className="font-bold text-lg text-amber-700">{formatCurrency(firstPayment)} VNĐ</span>
-                      </div>
-                      <div className="flex justify-between items-center py-1">
-                        <span className="font-medium text-amber-800">Còn lại:</span>
-                        <span className="font-bold text-lg text-amber-700">{formatCurrency(remaining)} VNĐ</span>
-                      </div>
-                    </div>
-                  </div>
+                <div className="border border-black">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="border border-black p-2 text-left font-bold">TỔNG KẾT GIÁ TRỊ</th>
+                        <th className="border border-black p-2 text-right font-bold">SỐ TIỀN (VNĐ)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="border border-black p-2">Tổng giá trị chưa bao gồm GTGT:</td>
+                        <td className="border border-black p-2 text-right font-bold">{formatCurrency(subtotal)}</td>
+                      </tr>
+                      {includeVAT && (
+                        <>
+                          <tr>
+                            <td className="border border-black p-2">GTGT ({vatRate}%):</td>
+                            <td className="border border-black p-2 text-right font-bold">{formatCurrency(vatAmount)}</td>
+                          </tr>
+                          <tr className="bg-gray-100">
+                            <td className="border border-black p-2 font-bold">Tổng tiền đã bao gồm GTGT:</td>
+                            <td className="border border-black p-2 text-right font-bold text-lg">{formatCurrency(totalWithVat)}</td>
+                          </tr>
+                        </>
+                      )}
+                      <tr>
+                        <td className="border border-black p-2">Thanh toán lần 1 (30%):</td>
+                        <td className="border border-black p-2 text-right font-bold">{formatCurrency(firstPayment)}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-black p-2">Còn lại:</td>
+                        <td className="border border-black p-2 text-right font-bold">{formatCurrency(remaining)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
