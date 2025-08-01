@@ -492,6 +492,19 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const margin = 15;
       let yPos = margin;
       
+      // Get template settings
+      const templateSettings = getTemplateSettings();
+      
+      // Helper function to convert hex to RGB
+      const hexToRgb = (hex: string) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+          r: parseInt(result[1], 16),
+          g: parseInt(result[2], 16),
+          b: parseInt(result[3], 16)
+        } : { r: 37, g: 99, b: 235 };
+      };
+      
       // Helper function to add new page if needed
       const checkNewPage = (requiredSpace: number = 10) => {
         if (yPos + requiredSpace > pageHeight - margin) {
@@ -509,142 +522,134 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         pdf.line(startX, y, endX, y);
       };
       
-      // Helper function to wrap text
-      const wrapText = (text: string, maxWidth: number, fontSize: number = 10) => {
-        pdf.setFontSize(fontSize);
-        const words = text.split(' ');
-        const lines: string[] = [];
-        let currentLine = '';
-        
-        for (const word of words) {
-          const testLine = currentLine + (currentLine ? ' ' : '') + word;
-          const textWidth = pdf.getTextWidth(testLine);
-          
-          if (textWidth > maxWidth && currentLine) {
-            lines.push(currentLine);
-            currentLine = word;
-          } else {
-            currentLine = testLine;
-          }
-        }
-        
-        if (currentLine) {
-          lines.push(currentLine);
-        }
-        
-        return lines;
-      };
+      // Header background
+      pdf.setFillColor(245, 247, 250);
+      pdf.rect(0, 0, pageWidth, 55, 'F');
       
-      // HEADER SECTION
+      // Company Logo
+      if (templateSettings.logoUrl) {
+        try {
+          pdf.addImage(templateSettings.logoUrl, 'JPEG', margin, yPos, 35, 25);
+        } catch (error) {
+          console.warn('Could not add logo to PDF:', error);
+        }
+      }
+      
+      // Company Name - Right aligned
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(20);
+      const quoteColorRgb = hexToRgb(templateSettings.quoteTitleColor || '#2563eb');
+      pdf.setTextColor(quoteColorRgb.r, quoteColorRgb.g, quoteColorRgb.b);
+      
+      const companyName = templateSettings.companyName || 'CÔNG TY TNHH ABC';
+      pdf.text(companyName, pageWidth - margin, yPos + 15, { align: 'right' });
+      
+      // Company subtitle
+      pdf.setFontSize(11);
+      pdf.setTextColor(100, 100, 100);
+      const subtitle = templateSettings.companyTitle || 'DỊCH VỤ CHUYÊN NGHIỆP';
+      pdf.text(subtitle, pageWidth - margin, yPos + 25, { align: 'right' });
+      
+      yPos = 65;
+      
+      // Quote Title - Centered with background
+      pdf.setFillColor(66, 139, 202);
+      pdf.rect(0, yPos - 3, pageWidth, 18, 'F');
+      
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(16);
-      pdf.setTextColor(220, 47, 47);
-      pdf.text('CÔNG TY TNHH GIA LỘC HƯNG PHÁT', pageWidth / 2, yPos, { align: 'center' });
-      yPos += 8;
+      pdf.setTextColor(255, 255, 255);
+      const quoteTitle = `BÁO GIÁ SỐ: ${quote.quote_number || 'N/A'}`;
+      pdf.text(quoteTitle, pageWidth / 2, yPos + 6, { align: 'center' });
+      
+      yPos += 25;
+      
+      // Two-column layout
+      const leftColumnX = margin;
+      const rightColumnX = pageWidth / 2 + 5;
+      const columnWidth = (pageWidth / 2) - 10;
+      
+      // Company Information (Left Column)
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(11);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('THÔNG TIN CÔNG TY', leftColumnX, yPos);
       
       pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(10);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text('Địa chỉ: Số 49 đường Đông Quan, Phường Đông Vệ, Thành phố Thanh Hóa', pageWidth / 2, yPos, { align: 'center' });
-      yPos += 5;
-      pdf.text('Điện thoại: 0975.888.999', pageWidth / 2, yPos, { align: 'center' });
-      yPos += 12;
+      pdf.setFontSize(9);
       
-      // Horizontal line
-      drawLine(yPos);
-      yPos += 8;
+      const companyDetails = [
+        templateSettings.address || 'Địa chỉ công ty',
+        `ĐT: ${templateSettings.phone || 'Số điện thoại'}`,
+        `Email: ${templateSettings.phone || 'email@company.com'}`,
+        `MST: ${templateSettings.taxCode || 'Mã số thuế'}`,
+        `Trụ sở: ${templateSettings.headquarters || 'Trụ sở chính'}`,
+        `NH: ${templateSettings.bankInfo || 'Ngân hàng'}`,
+        `STK: ${templateSettings.bankInfo || 'Số tài khoản'}`
+      ];
       
-      // TITLE
+      const customerInfoY = yPos + 6;
+      companyDetails.forEach((detail, index) => {
+        const lines = pdf.splitTextToSize(detail, columnWidth);
+        lines.forEach((line, lineIndex) => {
+          pdf.text(line, leftColumnX, customerInfoY + (index * 5) + (lineIndex * 4));
+        });
+      });
+      
+      // Customer Information (Right Column)
       pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(18);
-      pdf.setTextColor(25, 118, 210);
-      pdf.text('BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN', pageWidth / 2, yPos, { align: 'center' });
+      pdf.setFontSize(11);
+      pdf.text('THÔNG TIN KHÁCH HÀNG', rightColumnX, yPos);
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      
+      const customerDetails = [
+        `Tên: ${customerName || 'N/A'}`,
+        `Công ty: ${quote.customer?.company || 'N/A'}`,
+        `ĐT: ${phone || 'N/A'}`,
+        `Email: ${email || 'N/A'}`,
+        `Địa chỉ: ${address || 'N/A'}`
+      ];
+      
+      customerDetails.forEach((detail, index) => {
+        const lines = pdf.splitTextToSize(detail, columnWidth);
+        lines.forEach((line, lineIndex) => {
+          pdf.text(line, rightColumnX, customerInfoY + (index * 5) + (lineIndex * 4));
+        });
+      });
+      
+      yPos += Math.max(companyDetails.length * 5, customerDetails.length * 5) + 15;
+      
+      // Products Table with modern styling
+      checkNewPage(40);
+      pdf.setFillColor(52, 73, 94);
+      pdf.rect(margin - 2, yPos - 3, pageWidth - 2 * margin + 4, 12, 'F');
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(11);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text('CHI TIẾT SẢN PHẨM/DỊCH VỤ', margin, yPos + 4);
+      
       yPos += 15;
       
-      // QUOTE INFORMATION
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(11);
-      pdf.setTextColor(0, 0, 0);
-      
-      const quoteNumber = quote.quote_number || 'N/A';
-      const createdDate = new Date(quote.created_at).toLocaleDateString('vi-VN');
-      
-      pdf.text(`Số báo giá: ${quoteNumber}`, margin, yPos);
-      pdf.text(`Ngày tạo: ${createdDate}`, pageWidth - margin, yPos, { align: 'right' });
-      yPos += 8;
-      
-      if (expiryDate) {
-        pdf.text(`Ngày hết hạn: ${expiryDate}`, pageWidth - margin, yPos, { align: 'right' });
-        yPos += 8;
-      }
-      yPos += 5;
-      
-      // CUSTOMER INFORMATION BOX
-      checkNewPage(30);
-      pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(0.3);
-      pdf.rect(margin, yPos, pageWidth - 2 * margin, 25);
-      
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(11);
-      pdf.text('THÔNG TIN KHÁCH HÀNG', margin + 3, yPos + 6);
-      
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(10);
-      let customerY = yPos + 12;
-      
-      if (customerName) {
-        pdf.text(`Khách hàng: ${customerName}`, margin + 3, customerY);
-        customerY += 5;
-      }
-      
-      if (phone || email) {
-        const contactInfo = [phone && `SĐT: ${phone}`, email && `Email: ${email}`].filter(Boolean).join(' - ');
-        pdf.text(contactInfo, margin + 3, customerY);
-        customerY += 5;
-      }
-      
-      if (address) {
-        const addressLines = wrapText(`Địa chỉ: ${address}`, pageWidth - 2 * margin - 6, 10);
-        addressLines.forEach((line) => {
-          pdf.text(line, margin + 3, customerY);
-          customerY += 4;
-        });
-      }
-      
-      yPos += 30;
-      
-      // ITEMS TABLE
-      checkNewPage(40);
-      const tableStartY = yPos;
-      const colWidths = [15, 60, 25, 25, 25, 30]; // STT, Sản phẩm, Quy cách, Số lượng, Đơn giá, Thành tiền
-      const colX = [margin];
-      for (let i = 1; i < colWidths.length; i++) {
-        colX.push(colX[i - 1] + colWidths[i - 1]);
-      }
-      
-      // Table header
-      pdf.setFillColor(240, 240, 240);
-      pdf.rect(margin, yPos, pageWidth - 2 * margin, 8, 'F');
-      pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(0.1);
-      
-      // Header borders
-      for (let i = 0; i <= colWidths.length; i++) {
-        const x = i === 0 ? margin : colX[i - 1] + colWidths[i - 1];
-        pdf.line(x, yPos, x, yPos + 8);
-      }
-      drawLine(yPos);
-      drawLine(yPos + 8);
+      // Table headers
+      pdf.setFillColor(236, 240, 241);
+      pdf.rect(margin - 2, yPos - 5, pageWidth - 2 * margin + 4, 10, 'F');
       
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(9);
       pdf.setTextColor(0, 0, 0);
       
-      const headers = ['STT', 'SẢN PHẨM', 'QUY CÁCH', 'SL', 'ĐƠN GIÁ', 'THÀNH TIỀN'];
+      const colWidths = [12, 65, 18, 18, 25, 27];
+      const colX = [margin];
+      for (let i = 1; i < colWidths.length; i++) {
+        colX.push(colX[i - 1] + colWidths[i - 1]);
+      }
+      
+      const headers = ['STT', 'Tên sản phẩm/Dịch vụ', 'ĐVT', 'SL', 'Đơn giá', 'Thành tiền'];
       headers.forEach((header, index) => {
-        const centerX = colX[index] + colWidths[index] / 2;
-        pdf.text(header, centerX, yPos + 5.5, { align: 'center' });
+        pdf.text(header, colX[index] + 1, yPos);
       });
       
       yPos += 8;
@@ -678,7 +683,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         pdf.text((index + 1).toString(), colX[0] + colWidths[0] / 2, cellY, { align: 'center' });
         
         // Sản phẩm (with text wrapping)
-        const productLines = wrapText(item.name, colWidths[1] - 4, 9);
+        const productLines = pdf.splitTextToSize(item.name, colWidths[1] - 4);
         productLines.forEach((line, lineIndex) => {
           pdf.text(line, colX[1] + 2, yPos + 6 + lineIndex * 4);
         });
@@ -686,7 +691,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         // Quy cách
         const specs = item.specifications || '';
         if (specs) {
-          const specLines = wrapText(specs, colWidths[2] - 4, 8);
+          const specLines = pdf.splitTextToSize(specs, colWidths[2] - 4);
           pdf.setFontSize(8);
           specLines.forEach((line, lineIndex) => {
             pdf.text(line, colX[2] + 2, yPos + 6 + lineIndex * 3);
@@ -768,12 +773,12 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       pdf.text('GIÁM ĐỐC', margin + 40, signatureY + 30, { align: 'center' });
       
       // Save PDF
-      const fileName = `BaoGia_${quoteNumber}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileName = `BaoGia_${quote.quote_number || 'quote'}_${new Date().toISOString().split('T')[0]}.pdf`;
       pdf.save(fileName);
       
       toast({
         title: "Xuất PDF thành công",
-        description: `Đã xuất báo giá ${quoteNumber} thành file PDF chuyên nghiệp`,
+        description: `Đã xuất báo giá ${quote.quote_number || 'N/A'} thành file PDF chuyên nghiệp`,
       });
       
     } catch (error) {
