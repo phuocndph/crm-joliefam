@@ -235,11 +235,21 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
   const handleRenameCategory = async () => {
     if (!categoryToRename || !newCategoryName) return;
 
+    const sanitizedNewName = sanitizeFolderName(newCategoryName);
+    
+    // Check if new name is the same as old name
+    if (sanitizedNewName === categoryToRename) {
+      toast({
+        title: "Thông báo",
+        description: "Tên thư mục mới giống tên cũ",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setRenamingCategory(true);
 
     try {
-      const sanitizedNewName = sanitizeFolderName(newCategoryName);
-      
       // Get all files in the old category
       const filesToMove = images.filter(img => img.category === categoryToRename);
       
@@ -254,19 +264,28 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
           .download(file.fullPath);
 
         if (fileData) {
-          // Upload to new location
+          // Upload to new location with upsert: true to overwrite if exists
           const { error: uploadError } = await supabase.storage
             .from('product-images')
-            .upload(newPath, fileData);
+            .upload(newPath, fileData, {
+              upsert: true,
+              cacheControl: '3600'
+            });
 
-          if (uploadError) throw uploadError;
+          if (uploadError) {
+            console.error('Upload error:', uploadError);
+            throw uploadError;
+          }
 
-          // Delete old file
+          // Delete old file after successful upload
           const { error: deleteError } = await supabase.storage
             .from('product-images')
             .remove([file.fullPath]);
 
-          if (deleteError) throw deleteError;
+          if (deleteError) {
+            console.error('Delete error:', deleteError);
+            // Continue with other files even if delete fails
+          }
         }
       }
 
