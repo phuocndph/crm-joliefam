@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus, Edit, Trash2 } from "lucide-react";
 import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
+import { EditCustomerDialog } from "@/components/EditCustomerDialog";
+import { DeleteCustomerDialog } from "@/components/DeleteCustomerDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -18,6 +20,9 @@ const CustomerCare = () => {
   const [selectedSource, setSelectedSource] = useState("all");
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const { toast } = useToast();
 
   const fetchCustomers = async () => {
@@ -52,6 +57,36 @@ const CustomerCare = () => {
 
   const handleCustomerAdded = () => {
     fetchCustomers(); // Refresh the list when a new customer is added
+  };
+
+  const handleEditCustomer = (customer: any) => {
+    setSelectedCustomer(customer);
+    setEditDialogOpen(true);
+  };
+
+  const handleDeleteCustomer = (customer: any) => {
+    setSelectedCustomer(customer);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleEditSubmit = () => {
+    setEditDialogOpen(false);
+    setSelectedCustomer(null);
+    fetchCustomers(); // Refresh the list
+    toast({
+      title: "Thành công",
+      description: "Đã cập nhật thông tin khách hàng",
+    });
+  };
+
+  const handleDeleteConfirm = () => {
+    setDeleteDialogOpen(false);
+    setSelectedCustomer(null);
+    fetchCustomers(); // Refresh the list
+    toast({
+      title: "Thành công",
+      description: "Đã xóa khách hàng",
+    });
   };
 
   return (
@@ -288,10 +323,18 @@ const CustomerCare = () => {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
-                              <Button variant="ghost" size="sm">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleEditCustomer(customer)}
+                              >
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button variant="ghost" size="sm">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleDeleteCustomer(customer)}
+                              >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
@@ -424,6 +467,26 @@ const CustomerCare = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Dialog */}
+      {selectedCustomer && (
+        <EditCustomerDialog
+          customer={selectedCustomer}
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          onSubmit={handleEditSubmit}
+        />
+      )}
+
+      {/* Delete Dialog */}
+      {selectedCustomer && (
+        <DeleteCustomerDialog
+          customer={selectedCustomer}
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          onConfirm={handleDeleteConfirm}
+        />
+      )}
     </div>
   );
 };
