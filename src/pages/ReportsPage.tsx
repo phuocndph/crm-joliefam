@@ -179,6 +179,14 @@ const ReportsPage = () => {
   // Customer metrics
   const newCustomers = filteredCustomers.length;
   const totalCustomers = customers.length;
+  
+  // Debug customer data
+  console.log('Customer Debug:', {
+    allCustomers: customers.length,
+    filteredCustomers: filteredCustomers.length,
+    dateRange,
+    customerDates: customers.map(c => ({ name: c.name, created_at: c.created_at }))
+  });
   const averageOrderValue = totalOrders > 0 ? totalOrderRevenue / totalOrders : 0;
   const averageDailyRevenue = dateRange?.from && dateRange?.to ? 
     totalOrderRevenue / Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1) : 0;
