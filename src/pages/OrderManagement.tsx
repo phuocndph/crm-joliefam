@@ -542,6 +542,7 @@ export default function OrderManagement() {
                 }
               }}
               onDeleteOrder={(order) => setOrderToDelete(order)}
+              onViewOrderDetail={(order) => setSelectedOrder(order)}
             />
           )}
         </CardContent>
