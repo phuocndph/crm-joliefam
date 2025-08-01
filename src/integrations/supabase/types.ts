@@ -467,6 +467,8 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          image_url: string | null
+          images: Json | null
           in_stock: boolean | null
           manager_id: string | null
           name: string
@@ -483,6 +485,8 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          image_url?: string | null
+          images?: Json | null
           in_stock?: boolean | null
           manager_id?: string | null
           name: string
@@ -499,6 +503,8 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          image_url?: string | null
+          images?: Json | null
           in_stock?: boolean | null
           manager_id?: string | null
           name?: string

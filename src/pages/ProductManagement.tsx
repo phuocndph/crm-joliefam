@@ -12,9 +12,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Package, Plus, Edit, Trash2, Search, Filter, FileSpreadsheet, Users, Calendar, Settings } from 'lucide-react';
+import { Package, Plus, Edit, Trash2, Search, Filter, FileSpreadsheet, Users, Calendar, Settings, Image } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ColumnMappingDialog } from '@/components/ColumnMappingDialog';
+import ProductImageLibrary from '@/components/ProductImageLibrary';
 
 interface Product {
   id: string;
@@ -29,6 +30,8 @@ interface Product {
   manager_id: string | null;
   tenant_id: string;
   price_list_id: string | null;
+  image_url: string | null;
+  images: any[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -457,6 +460,10 @@ const ProductManagement = () => {
             <FileSpreadsheet className="h-4 w-4" />
             Bảng giá
           </TabsTrigger>
+          <TabsTrigger value="image-library" className="flex items-center gap-2">
+            <Image className="h-4 w-4" />
+            Thư viện hình ảnh
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="price-lists" className="space-y-6">
@@ -556,6 +563,22 @@ const ProductManagement = () => {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="image-library" className="space-y-6">
+          <Card>
+            <CardContent className="p-6">
+              <ProductImageLibrary 
+                onSelectImage={(imageUrl) => {
+                  navigator.clipboard.writeText(imageUrl);
+                  toast({
+                    title: "Đã sao chép",
+                    description: "Đường dẫn hình ảnh đã được sao chép vào clipboard",
+                  });
+                }}
+              />
             </CardContent>
           </Card>
         </TabsContent>
