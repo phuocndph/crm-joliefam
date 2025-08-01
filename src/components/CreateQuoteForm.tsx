@@ -242,8 +242,23 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
     const selectedPriceList = form.watch("priceList");
     if (selectedPriceList) {
       loadProducts(selectedPriceList);
+    } else {
+      // Clear products if no price list is selected
+      setProducts([]);
+      setSelectedProducts([]);
     }
   }, [form.watch("priceList")]);
+
+  // Filter selected products when products change
+  useEffect(() => {
+    if (products.length > 0) {
+      setSelectedProducts(prevSelected => 
+        prevSelected.filter(selectedItem => 
+          products.some(product => product.id === selectedItem.id)
+        )
+      );
+    }
+  }, [products]);
 
   const loadPriceLists = async () => {
     try {
