@@ -111,6 +111,14 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
     }
   };
 
+  const sanitizeFolderName = (name: string) => {
+    return name
+      .replace(/[^\w\-_.]/g, '_') // Replace special chars with underscore
+      .replace(/\s+/g, '_') // Replace spaces with underscore
+      .replace(/_+/g, '_') // Replace multiple underscores with single
+      .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+  };
+
   const handleFileUpload = async (files: FileList) => {
     if (!files.length) return;
 
@@ -129,7 +137,8 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
     try {
       const uploadPromises = Array.from(files).map(async (file) => {
         const fileExt = file.name.split('.').pop();
-        const fileName = `${category}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const sanitizedCategory = sanitizeFolderName(category);
+        const fileName = `${sanitizedCategory}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from('product-images')
