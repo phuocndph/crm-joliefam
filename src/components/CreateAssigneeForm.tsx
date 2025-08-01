@@ -1,25 +1,95 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface CreateAssigneeFormProps {
   onSuccess?: () => void;
 }
 
+interface Assignee {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
 const CreateAssigneeForm = ({ onSuccess }: CreateAssigneeFormProps) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
+  const [loadingAssignees, setLoadingAssignees] = useState(false);
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
     name: ""
   });
+
+  const fetchAssignees = async () => {
+    setLoadingAssignees(true);
+    try {
+      const { data, error } = await supabase
+        .from('assignees' as any)
+        .select('id, name, created_at')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching assignees:', error);
+        return;
+      }
+
+      setAssignees((data as any) || []);
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoadingAssignees(false);
+    }
+  };
+
+  const handleDeleteAssignee = async (id: string, name: string) => {
+    try {
+      const { error } = await supabase
+        .from('assignees' as any)
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting assignee:', error);
+        toast({
+          title: "Lỗi",
+          description: "Không thể xóa người phụ trách. Vui lòng thử lại.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Thành công",
+        description: `Đã xóa người phụ trách "${name}" thành công!`,
+      });
+
+      // Refresh the list
+      fetchAssignees();
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Lỗi",
+        description: "Đã có lỗi xảy ra. Vui lòng thử lại.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (open) {
+      fetchAssignees();
+    }
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +144,8 @@ const CreateAssigneeForm = ({ onSuccess }: CreateAssigneeFormProps) => {
         name: ""
       });
       
-      setOpen(false);
+      // Refresh assignees list
+      fetchAssignees();
       onSuccess?.();
 
     } catch (error) {
@@ -104,35 +175,82 @@ const CreateAssigneeForm = ({ onSuccess }: CreateAssigneeFormProps) => {
           Thêm Người Phụ Trách
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Thêm Người Phụ Trách Mới</DialogTitle>
+          <DialogTitle>Quản Lý Người Phụ Trách</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Tên Người Phụ Trách */}
+        <div className="space-y-6">
+          {/* Form thêm mới */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">
+                Tên người phụ trách mới <span className="text-red-500">*</span>
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  placeholder="Nguyễn Văn A"
+                  required
+                />
+                <Button type="submit" disabled={loading} className="shrink-0">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  {loading ? "Đang thêm..." : "Thêm"}
+                </Button>
+              </div>
+            </div>
+          </form>
+
+          {/* Danh sách người phụ trách */}
           <div className="space-y-2">
-            <Label htmlFor="name">
-              Tên Người Phụ Trách <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => handleInputChange('name', e.target.value)}
-              placeholder="Nguyễn Văn A"
-              required
-            />
+            <Label>Danh sách người phụ trách hiện có</Label>
+            {loadingAssignees ? (
+              <div className="text-center py-4 text-muted-foreground">Đang tải...</div>
+            ) : assignees.length === 0 ? (
+              <div className="text-center py-4 text-muted-foreground">Chưa có người phụ trách nào</div>
+            ) : (
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tên</TableHead>
+                      <TableHead>Ngày tạo</TableHead>
+                      <TableHead className="w-20">Thao tác</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {assignees.map((assignee) => (
+                      <TableRow key={assignee.id}>
+                        <TableCell className="font-medium">{assignee.name}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {new Date(assignee.created_at).toLocaleDateString('vi-VN')}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteAssignee(assignee.id, assignee.name)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </div>
 
-          <div className="flex justify-end gap-2 pt-4">
+          <div className="flex justify-end">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Hủy
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Đang thêm..." : "Thêm Người Phụ Trách"}
+              Đóng
             </Button>
           </div>
-        </form>
+        </div>
       </DialogContent>
     </Dialog>
   );
