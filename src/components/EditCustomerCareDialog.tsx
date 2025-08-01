@@ -276,13 +276,15 @@ const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: Edi
                   <SelectValue placeholder="Chọn tình trạng" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="new">Mới</SelectItem>
-                  <SelectItem value="contacted">Đã liên hệ</SelectItem>
-                  <SelectItem value="interested">Quan tâm</SelectItem>
-                  <SelectItem value="quoted">Đã báo giá</SelectItem>
-                  <SelectItem value="negotiating">Đang đàm phán</SelectItem>
-                  <SelectItem value="closed-won">Thành công</SelectItem>
-                  <SelectItem value="closed-lost">Thất bại</SelectItem>
+                  <SelectItem value="waiting-payment">Chờ thanh toán tiền</SelectItem>
+                  <SelectItem value="waiting-deposit">Chờ thanh toán cọc</SelectItem>
+                  <SelectItem value="sent-sample">Đã gửi mẫu</SelectItem>
+                  <SelectItem value="sent-quote">Đã gửi báo giá</SelectItem>
+                  <SelectItem value="waiting-response">Chờ phản hồi khách hàng</SelectItem>
+                  <SelectItem value="ordered">Đã đặt hàng</SelectItem>
+                  <SelectItem value="paid">Đã thanh toán xong</SelectItem>
+                  <SelectItem value="see-notes">Xem ở ghi chú</SelectItem>
+                  <SelectItem value="no-response">Khách không phản hồi</SelectItem>
                 </SelectContent>
               </Select>
             </div>
