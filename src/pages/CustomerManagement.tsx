@@ -314,9 +314,9 @@ export default function CustomerManagement() {
           addresses: addressesParsed,
           tags: tagsParsed,
           auto_tags: autoTagsParsed,
-          purchase_count: Math.max(orderStats.count, customer.purchase_count || 0),
-          total_spent: Math.max(orderStats.totalSpent, customer.total_spent || 0),
-          last_purchase_date: orderStats.lastPurchase || customer.last_purchase_date,
+          purchase_count: orderStats.count,
+          total_spent: orderStats.totalSpent,
+          last_purchase_date: orderStats.lastPurchase,
           quote_count: customerQuotes.length,
         } as Customer;
         
