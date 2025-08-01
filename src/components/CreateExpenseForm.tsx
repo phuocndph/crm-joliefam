@@ -39,6 +39,9 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
     try {
       const expenseCode = `CP-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Math.floor(Math.random() * 1000)}`;
       
+      // Get current user session to set manager_id
+      const { data: { user } } = await supabase.auth.getUser();
+      
       const { error } = await supabase
         .from('expenses')
         .insert({
@@ -47,7 +50,8 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
           amount: formData.amount,
           description: formData.description || null,
           expense_date: formData.expense_date,
-          expense_code: expenseCode
+          expense_code: expenseCode,
+          manager_id: user?.id
         });
 
       if (error) throw error;
