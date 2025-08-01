@@ -60,6 +60,31 @@ const CreateCustomerCareForm = ({ onSuccess }: CreateCustomerCareFormProps) => {
         return;
       }
 
+      // Check for duplicate customer name
+      const { data: existingCustomers, error: checkError } = await supabase
+        .from('customers')
+        .select('id, name')
+        .ilike('name', formData.customerName.trim());
+
+      if (checkError) {
+        console.error('Error checking duplicate:', checkError);
+        toast({
+          title: "Lỗi",
+          description: "Không thể kiểm tra tên khách hàng",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (existingCustomers && existingCustomers.length > 0) {
+        toast({
+          title: "Lỗi",
+          description: "Tên khách hàng đã tồn tại, vui lòng chọn tên khác",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Create customer record
       const { data, error } = await supabase
         .from('customers')
