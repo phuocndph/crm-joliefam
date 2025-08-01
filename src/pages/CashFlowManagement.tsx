@@ -592,6 +592,10 @@ export default function CashFlowManagement() {
                   const selectedRange = quickDateRanges.find(range => range.label === value);
                   if (selectedRange) {
                     setDateRange(selectedRange.range);
+                    // Reset year/month filters when using date range
+                    setFilterPeriod("month");
+                    setSelectedYear(new Date().getFullYear().toString());
+                    setSelectedMonth((new Date().getMonth() + 1).toString());
                   }
                 }}>
                   <SelectTrigger className="w-48">
@@ -611,13 +615,25 @@ export default function CashFlowManagement() {
                 
                 <DatePickerWithRange
                   date={dateRange}
-                  setDate={setDateRange}
+                  setDate={(date) => {
+                    setDateRange(date);
+                    // Reset year/month filters when using custom date range
+                    if (date?.from && date?.to) {
+                      setFilterPeriod("month");
+                      setSelectedYear(new Date().getFullYear().toString());
+                      setSelectedMonth((new Date().getMonth() + 1).toString());
+                    }
+                  }}
                   className="w-auto"
                 />
               </div>
               
               <div className="flex gap-4 items-center">
-                <Select value={filterPeriod} onValueChange={setFilterPeriod}>
+                <Select value={filterPeriod} onValueChange={(value) => {
+                  setFilterPeriod(value);
+                  // Reset date range when using year/month filters
+                  setDateRange(undefined);
+                }}>
                   <SelectTrigger className="w-40">
                     <SelectValue placeholder="Chọn khoảng thời gian" />
                   </SelectTrigger>
@@ -627,7 +643,11 @@ export default function CashFlowManagement() {
                   </SelectContent>
                 </Select>
 
-                <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <Select value={selectedYear} onValueChange={(value) => {
+                  setSelectedYear(value);
+                  // Reset date range when using year/month filters
+                  setDateRange(undefined);
+                }}>
                   <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
@@ -639,7 +659,11 @@ export default function CashFlowManagement() {
                 </Select>
 
                 {filterPeriod === "month" && (
-                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <Select value={selectedMonth} onValueChange={(value) => {
+                    setSelectedMonth(value);
+                    // Reset date range when using year/month filters
+                    setDateRange(undefined);
+                  }}>
                     <SelectTrigger className="w-32">
                       <SelectValue />
                     </SelectTrigger>
