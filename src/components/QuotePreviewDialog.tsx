@@ -764,7 +764,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </div>
             </div>
             <div class="logo-section">
-              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 70px; max-height: 50px;" alt="Logo">` : 'LOGO'}
+              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 120px; max-height: 80px;" alt="Logo">` : 'LOGO'}
             </div>
           </div>
 
@@ -797,23 +797,27 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             <table>
               <thead>
                 <tr>
-                  <th style="width: 8%">STT</th>
-                  <th style="width: 40%">TÊN SẢN PHẨM/DỊCH VỤ</th>
-                  <th style="width: 12%">SỐ LƯỢNG</th>
-                  <th style="width: 10%">ĐƠN VỊ</th>
-                  <th style="width: 15%">ĐƠN GIÁ</th>
-                  <th style="width: 15%">THÀNH TIỀN</th>
+                  <th style="width: 5%">STT</th>
+                  <th style="width: 20%">SẢN PHẨM</th>
+                  <th style="width: 15%">QUY CÁCH</th>
+                  <th style="width: 20%">CHẤT LƯỢNG</th>
+                  <th style="width: 8%">SỐ LƯỢNG</th>
+                  <th style="width: 12%">ĐƠN GIÁ</th>
+                  <th style="width: 12%">THÀNH TIỀN</th>
+                  <th style="width: 8%">GHI CHÚ</th>
                 </tr>
               </thead>
               <tbody>
                 ${items.map((item, index) => `
                   <tr>
                     <td class="text-center">${index + 1}</td>
-                    <td>${item.name}</td>
+                    <td>${item.name || item.sku || ''}</td>
+                    <td>${item.specifications || ''}</td>
+                    <td>${item.category || item.description || ''}</td>
                     <td class="text-center">${item.quantity}</td>
-                    <td class="text-center">cái</td>
-                    <td class="text-right">${parseFloat(item.price).toLocaleString('vi-VN')} VNĐ</td>
-                    <td class="text-right font-medium">${(parseFloat(item.price) * parseFloat(item.quantity)).toLocaleString('vi-VN')} VNĐ</td>
+                    <td class="text-right">${parseFloat(item.price).toLocaleString('vi-VN')}</td>
+                    <td class="text-right font-medium">${(parseFloat(item.price) * parseFloat(item.quantity)).toLocaleString('vi-VN')}</td>
+                    <td>${item.notes || ''}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -822,16 +826,26 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
           <div class="total-section">
             <div class="total-row">
-              <div class="total-label">Tạm tính:</div>
-              <div class="total-amount">${subtotal.toLocaleString('vi-VN')} VNĐ</div>
+              <div class="total-label">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</div>
+              <div class="total-amount">${subtotal.toLocaleString('vi-VN')}</div>
             </div>
+            ${includeVAT ? `
+              <div class="total-row">
+                <div class="total-label">GTGT (${vatRate}%):</div>
+                <div class="total-amount">${vatAmount.toLocaleString('vi-VN')}</div>
+              </div>
+              <div class="total-row">
+                <div class="total-label">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</div>
+                <div class="total-amount">${totalWithVat.toLocaleString('vi-VN')}</div>
+              </div>
+            ` : ''}
             <div class="total-row">
-              <div class="total-label">VAT (10%):</div>
-              <div class="total-amount">${(subtotal * 0.1).toLocaleString('vi-VN')} VNĐ</div>
+              <div class="total-label">THANH TOÁN LẦN 1:</div>
+              <div class="total-amount">${firstPayment.toLocaleString('vi-VN')}</div>
             </div>
             <div class="total-row final-total">
-              <div>TỔNG CỘNG:</div>
-              <div>${(subtotal * 1.1).toLocaleString('vi-VN')} VNĐ</div>
+              <div>CÒN LẠI:</div>
+              <div>${remaining.toLocaleString('vi-VN')}</div>
             </div>
           </div>
 
