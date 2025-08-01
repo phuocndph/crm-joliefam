@@ -165,8 +165,8 @@ export default function CashFlowManagement() {
   const getDateRange = useCallback(() => {
     if (dateRange?.from && dateRange?.to) {
       return {
-        start: dateRange.from,
-        end: dateRange.to
+        start: startOfDay(dateRange.from),
+        end: endOfDay(dateRange.to)
       };
     }
     
@@ -196,6 +196,11 @@ export default function CashFlowManagement() {
     try {
       const dateRange = getDateRange();
       
+      console.log('Loading expenses with date range:', {
+        start: dateRange.start.toISOString(),
+        end: dateRange.end.toISOString()
+      });
+      
       const { data, error } = await supabase
         .from('expenses')
         .select('*')
@@ -218,6 +223,11 @@ export default function CashFlowManagement() {
   const loadOrders = useCallback(async () => {
     try {
       const dateRange = getDateRange();
+      
+      console.log('Loading orders with date range:', {
+        start: dateRange.start.toISOString(),
+        end: dateRange.end.toISOString()
+      });
       
       const { data, error } = await supabase
         .from('orders')
