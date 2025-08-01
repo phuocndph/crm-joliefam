@@ -926,125 +926,125 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const templateSettings = getTemplateSettings();
       
       tempContainer.innerHTML = `
-        <div style="width: 100%; background: white; font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.4; color: #333;">
-          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 25px; margin: -20px -20px 30px -20px; display: flex; justify-content: space-between; align-items: center; border-radius: 8px;">
+        <div style="width: 100%; background: white; font-family: 'Inter', sans-serif; font-size: 11px; line-height: 1.3; color: #333;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 15px; margin: -20px -20px 20px -20px; display: flex; justify-content: space-between; align-items: center; border-radius: 8px;">
             <div style="flex: 1;">
-              <div style="font-size: 24px; font-weight: 700; margin-bottom: 5px;">${templateSettings.companyName || 'CÔNG TY ABC'}</div>
-              <div style="font-size: 12px; opacity: 0.9;">
+              <div style="font-size: 18px; font-weight: 700; margin-bottom: 3px;">${templateSettings.companyName || 'CÔNG TY ABC'}</div>
+              <div style="font-size: 10px; opacity: 0.9;">
                 ${templateSettings.address || 'Địa chỉ công ty'}<br>
                 ĐT: ${templateSettings.phone || '0123456789'} | Email: contact@company.com
               </div>
             </div>
-            <div style="width: 120px; height: 80px; background: rgba(255,255,255,0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 110px; max-height: 70px; object-fit: contain;" alt="Logo">` : '<div style="font-size: 12px; text-align: center;">LOGO</div>'}
+            <div style="width: 100px; height: 60px; background: rgba(255,255,255,0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 90px; max-height: 50px; object-fit: contain;" alt="Logo">` : '<div style="font-size: 10px; text-align: center;">LOGO</div>'}
             </div>
           </div>
 
-          <div style="text-align: center; background: #f8fafc; padding: 15px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #3b82f6;">
-            <div style="font-size: 20px; font-weight: 600; color: #1e40af;">BẢNG BÁO GIÁ SỐ: ${quote.quote_number || 'N/A'}</div>
-            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+          <div style="text-align: center; background: #f8fafc; padding: 10px; margin: 15px 0; border-radius: 8px; border-left: 4px solid #3b82f6;">
+            <div style="font-size: 16px; font-weight: 600; color: #1e40af;">BẢNG BÁO GIÁ SỐ: ${quote.quote_number || 'N/A'}</div>
+            <div style="font-size: 10px; color: #666; margin-top: 3px;">
               Ngày tạo: ${new Date(quote.created_at).toLocaleDateString('vi-VN')}
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 30px 0;">
-            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
-              <div style="font-weight: 600; color: #1e40af; margin-bottom: 10px; font-size: 14px;">THÔNG TIN KHÁCH HÀNG</div>
-              <div style="margin: 5px 0; font-size: 12px;"><strong>Tên:</strong> ${customerName}</div>
-              <div style="margin: 5px 0; font-size: 12px;"><strong>Số điện thoại:</strong> ${phone}</div>
-              <div style="margin: 5px 0; font-size: 12px;"><strong>Địa chỉ:</strong> ${address}</div>
-              <div style="margin: 5px 0; font-size: 12px;"><strong>Email:</strong> ${email}</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0;">
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+              <div style="font-weight: 600; color: #1e40af; margin-bottom: 8px; font-size: 12px;">THÔNG TIN KHÁCH HÀNG</div>
+              <div style="margin: 3px 0; font-size: 10px;"><strong>Tên:</strong> ${customerName}</div>
+              <div style="margin: 3px 0; font-size: 10px;"><strong>Số điện thoại:</strong> ${phone}</div>
+              <div style="margin: 3px 0; font-size: 10px;"><strong>Địa chỉ:</strong> ${address}</div>
+              <div style="margin: 3px 0; font-size: 10px;"><strong>Email:</strong> ${email}</div>
             </div>
             
-            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
-              <div style="font-weight: 600; color: #1e40af; margin-bottom: 10px; font-size: 14px;">THÔNG TIN BÁO GIÁ</div>
-              <div style="margin: 5px 0; font-size: 12px;"><strong>Mã báo giá:</strong> ${quote.quote_number}</div>
-              <div style="margin: 5px 0; font-size: 12px;"><strong>Ngày tạo:</strong> ${new Date(quote.created_at).toLocaleDateString('vi-VN')}</div>
-              <div style="margin: 5px 0; font-size: 12px;"><strong>Hiệu lực đến:</strong> ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN')}</div>
-              <div style="margin: 5px 0; font-size: 12px;"><strong>Trạng thái:</strong> ${quote.status || 'Draft'}</div>
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+              <div style="font-weight: 600; color: #1e40af; margin-bottom: 8px; font-size: 12px;">THÔNG TIN BÁO GIÁ</div>
+              <div style="margin: 3px 0; font-size: 10px;"><strong>Mã báo giá:</strong> ${quote.quote_number}</div>
+              <div style="margin: 3px 0; font-size: 10px;"><strong>Ngày tạo:</strong> ${new Date(quote.created_at).toLocaleDateString('vi-VN')}</div>
+              <div style="margin: 3px 0; font-size: 10px;"><strong>Hiệu lực đến:</strong> ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN')}</div>
+              <div style="margin: 3px 0; font-size: 10px;"><strong>Trạng thái:</strong> ${quote.status || 'Draft'}</div>
             </div>
           </div>
 
-          <div style="margin: 30px 0; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+          <div style="margin: 20px 0; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
             <table style="width: 100%; border-collapse: collapse; background: white;">
               <thead>
                 <tr>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 5%;">STT</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 20%;">SẢN PHẨM</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 15%;">QUY CÁCH</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 20%;">CHẤT LƯỢNG</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 8%;">SỐ LƯỢNG</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 12%;">ĐƠN GIÁ</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 12%;">THÀNH TIỀN</th>
-                  <th style="background: #1e40af; color: white; padding: 12px 8px; text-align: center; font-weight: 600; font-size: 12px; width: 8%;">GHI CHÚ</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 5%;">STT</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 20%;">SẢN PHẨM</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 15%;">QUY CÁCH</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 20%;">CHẤT LƯỢNG</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 8%;">SỐ LƯỢNG</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 12%;">ĐƠN GIÁ</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 12%;">THÀNH TIỀN</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 8%;">GHI CHÚ</th>
                 </tr>
               </thead>
               <tbody>
                 ${items.map((item, index) => `
                   <tr style="${index % 2 === 1 ? 'background: #f8fafc;' : ''}">
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: center;">${index + 1}</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${item.name || item.sku || ''}</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${item.specifications || ''}</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${item.category || item.description || ''}</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: center;">${item.quantity}</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: right;">${parseFloat(item.price).toLocaleString('vi-VN')}</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: right; font-weight: 500;">${(parseFloat(item.price) * parseFloat(item.quantity)).toLocaleString('vi-VN')}</td>
-                    <td style="padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${item.notes || ''}</td>
+                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: center;">${index + 1}</td>
+                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.name || item.sku || ''}</td>
+                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.specifications || ''}</td>
+                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.category || item.description || ''}</td>
+                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: center;">${item.quantity}</td>
+                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: right;">${parseFloat(item.price).toLocaleString('vi-VN')}</td>
+                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: right; font-weight: 500;">${(parseFloat(item.price) * parseFloat(item.quantity)).toLocaleString('vi-VN')}</td>
+                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.notes || ''}</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
           </div>
 
-          <div style="margin: 20px 0; text-align: right;">
-            <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 5px 0;">
-              <div style="font-weight: 500;">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</div>
-              <div style="font-weight: 600; min-width: 120px;">${subtotal.toLocaleString('vi-VN')}</div>
+          <div style="margin: 15px 0; text-align: right;">
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin: 3px 0; padding: 3px 0;">
+              <div style="font-weight: 500; font-size: 11px;">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</div>
+              <div style="font-weight: 600; min-width: 100px; font-size: 11px;">${subtotal.toLocaleString('vi-VN')}</div>
             </div>
             ${includeVAT ? `
-              <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 5px 0;">
-                <div style="font-weight: 500;">GTGT (${vatRate}%):</div>
-                <div style="font-weight: 600; min-width: 120px;">${vatAmount.toLocaleString('vi-VN')}</div>
+              <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin: 3px 0; padding: 3px 0;">
+                <div style="font-weight: 500; font-size: 11px;">GTGT (${vatRate}%):</div>
+                <div style="font-weight: 600; min-width: 100px; font-size: 11px;">${vatAmount.toLocaleString('vi-VN')}</div>
               </div>
-              <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 5px 0;">
-                <div style="font-weight: 500;">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</div>
-                <div style="font-weight: 600; min-width: 120px;">${totalWithVat.toLocaleString('vi-VN')}</div>
+              <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin: 3px 0; padding: 3px 0;">
+                <div style="font-weight: 500; font-size: 11px;">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</div>
+                <div style="font-weight: 600; min-width: 100px; font-size: 11px;">${totalWithVat.toLocaleString('vi-VN')}</div>
               </div>
             ` : ''}
-            <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 5px 0;">
-              <div style="font-weight: 500;">THANH TOÁN LẦN 1:</div>
-              <div style="font-weight: 600; min-width: 120px;">${firstPayment.toLocaleString('vi-VN')}</div>
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin: 3px 0; padding: 3px 0;">
+              <div style="font-weight: 500; font-size: 11px;">THANH TOÁN LẦN 1:</div>
+              <div style="font-weight: 600; min-width: 100px; font-size: 11px;">${firstPayment.toLocaleString('vi-VN')}</div>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr auto; gap: 20px; margin: 5px 0; padding: 10px; background: #1e40af; color: white; border-radius: 6px; font-size: 16px; font-weight: 700;">
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin: 3px 0; padding: 8px; background: #1e40af; color: white; border-radius: 6px; font-size: 12px; font-weight: 700;">
               <div>CÒN LẠI:</div>
               <div>${remaining.toLocaleString('vi-VN')}</div>
             </div>
           </div>
 
           ${templateSettings.terms && templateSettings.terms.length > 0 ? `
-            <div style="margin: 30px 0; background: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #059669;">
-              <div style="font-weight: 600; color: #059669; margin-bottom: 10px;">ĐIỀU KHOẢN & ĐIỀU KIỆN</div>
-              <ul style="margin: 0; padding-left: 20px;">
-                ${templateSettings.terms.map(term => term.trim() ? `<li style="margin: 8px 0; font-size: 12px;">${term}</li>` : '').join('')}
+            <div style="margin: 20px 0; background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #059669;">
+              <div style="font-weight: 600; color: #059669; margin-bottom: 8px; font-size: 12px;">ĐIỀU KHOẢN & ĐIỀU KIỆN</div>
+              <ul style="margin: 0; padding-left: 15px;">
+                ${templateSettings.terms.map(term => term.trim() ? `<li style="margin: 4px 0; font-size: 10px;">${term}</li>` : '').join('')}
               </ul>
             </div>
           ` : ''}
 
-          <div style="margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
-            <div style="text-align: center; padding: 20px;">
-              <div style="font-weight: 600; margin-bottom: 40px; color: #1e40af;">ĐẠI DIỆN CÔNG TY</div>
-              <div style="border-bottom: 1px solid #333; margin: 10px 0; height: 40px;"></div>
-              <div style="font-size: 11px; color: #666; margin-top: 5px;">(Ký tên & đóng dấu)</div>
+          <div style="margin-top: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+            <div style="text-align: center; padding: 15px;">
+              <div style="font-weight: 600; margin-bottom: 25px; color: #1e40af; font-size: 12px;">ĐẠI DIỆN CÔNG TY</div>
+              <div style="border-bottom: 1px solid #333; margin: 8px 0; height: 25px;"></div>
+              <div style="font-size: 9px; color: #666; margin-top: 3px;">(Ký tên & đóng dấu)</div>
             </div>
-            <div style="text-align: center; padding: 20px;">
-              <div style="font-weight: 600; margin-bottom: 40px; color: #1e40af;">KHÁCH HÀNG</div>
-              <div style="border-bottom: 1px solid #333; margin: 10px 0; height: 40px;"></div>
-              <div style="font-size: 11px; color: #666; margin-top: 5px;">(Ký tên xác nhận)</div>
+            <div style="text-align: center; padding: 15px;">
+              <div style="font-weight: 600; margin-bottom: 25px; color: #1e40af; font-size: 12px;">KHÁCH HÀNG</div>
+              <div style="border-bottom: 1px solid #333; margin: 8px 0; height: 25px;"></div>
+              <div style="font-size: 9px; color: #666; margin-top: 3px;">(Ký tên xác nhận)</div>
             </div>
           </div>
 
           ${templateSettings.footerNote ? `
-            <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #666; font-style: italic;">
+            <div style="text-align: center; margin-top: 15px; font-size: 9px; color: #666; font-style: italic;">
               ${templateSettings.footerNote}
             </div>
           ` : ''}
@@ -1066,14 +1066,16 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         });
       }));
 
-      // Generate canvas
+      // Generate canvas with adjusted size for better fit
       const canvas = await html2canvas(tempContainer, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
         width: 794, // A4 width in pixels at 96 DPI
         height: 1123, // A4 height in pixels at 96 DPI
+        scrollX: 0,
+        scrollY: 0,
       });
 
       // Remove temporary container
