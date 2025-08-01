@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Cell, LineChart, Line, Pie } from "recharts";
-import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear, differenceInDays } from "date-fns";
+import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear, differenceInDays, startOfDay, endOfDay } from "date-fns";
 import { vi } from "date-fns/locale";
 import { DateRange } from "react-day-picker";
 
@@ -314,6 +314,14 @@ const ReportsPage = () => {
 
   const quickDateRanges = [
     {
+      label: "Hôm nay",
+      range: { from: startOfDay(new Date()), to: endOfDay(new Date()) }
+    },
+    {
+      label: "Từ trước đến nay",
+      range: { from: new Date(2020, 0, 1), to: endOfDay(new Date()) }
+    },
+    {
       label: "Tháng này",
       range: { from: startOfMonth(new Date()), to: endOfMonth(new Date()) }
     },
@@ -332,6 +340,22 @@ const ReportsPage = () => {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Báo cáo & Thống kê</h1>
         <div className="flex items-center space-x-3">
+          <Select>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Chọn khoảng thời gian" />
+            </SelectTrigger>
+            <SelectContent>
+              {quickDateRanges.map((range, index) => (
+                <SelectItem 
+                  key={index} 
+                  value={range.label}
+                  onClick={() => setDateRange(range.range)}
+                >
+                  {range.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <DatePickerWithRange 
             date={dateRange}
             setDate={setDateRange}

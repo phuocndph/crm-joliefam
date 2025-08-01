@@ -1,6 +1,6 @@
 import * as React from "react"
 import { CalendarIcon } from "lucide-react"
-import { format, startOfDay, endOfDay } from "date-fns"
+import { format } from "date-fns"
 import { vi } from "date-fns/locale"
 import { DateRange } from "react-day-picker"
 
@@ -24,41 +24,8 @@ export function DatePickerWithRange({
   date,
   setDate,
 }: DatePickerWithRangeProps) {
-  const handleToday = () => {
-    const today = new Date();
-    setDate({
-      from: startOfDay(today),
-      to: endOfDay(today)
-    });
-  };
-
-  const handleFromBeginning = () => {
-    setDate({
-      from: new Date(2020, 0, 1), // Start from Jan 1, 2020
-      to: endOfDay(new Date())
-    });
-  };
-
   return (
     <div className={cn("grid gap-2", className)}>
-      <div className="flex gap-2 mb-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleToday}
-          className="text-xs"
-        >
-          Hôm nay
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleFromBeginning}
-          className="text-xs"
-        >
-          Từ trước đến nay
-        </Button>
-      </div>
       <Popover>
         <PopoverTrigger asChild>
           <Button
@@ -85,26 +52,6 @@ export function DatePickerWithRange({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
-          <div className="p-3 border-b border-border">
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleToday}
-                className="justify-start"
-              >
-                Hôm nay
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleFromBeginning}
-                className="justify-start"
-              >
-                Từ trước đến nay
-              </Button>
-            </div>
-          </div>
           <Calendar
             initialFocus
             mode="range"
