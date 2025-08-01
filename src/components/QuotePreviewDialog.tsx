@@ -384,54 +384,64 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         <div className="flex-1 overflow-auto">
           <div className="bg-white" id="quote-preview" style={{ fontFamily: 'Times New Roman, serif' }}>
             <div className="p-8 max-w-5xl mx-auto">
-              {/* Professional Header */}
+              {/* Header Layout - Logo và thông tin công ty ngang hàng */}
               <div className="mb-8">
-                <div className="flex items-start justify-between gap-8 mb-6">
-                  {/* Company Info Section */}
-                  <div className="flex-1">
-                    {/* Logo Container - Optimized size */}
-                    <div className="w-24 h-16 mb-4 flex items-center">
-                      <img 
-                        src={templateSettings.logoUrl} 
-                        alt="Company Logo" 
-                        className="max-w-full max-h-full object-contain border border-gray-200 rounded-sm p-1"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                          const nextElement = e.currentTarget.nextElementSibling as HTMLElement;
-                          if (nextElement) {
-                            nextElement.style.display = 'flex';
-                          }
-                        }}
-                      />
-                      <div className="w-24 h-16 bg-gradient-to-br from-slate-100 to-slate-200 border border-gray-200 rounded-sm flex items-center justify-center text-xs text-gray-500 font-medium" style={{ display: 'none' }}>
-                        LOGO
+                <div className="flex items-start gap-8 mb-6">
+                  {/* Logo Container - To hơn, ngang với thông tin công ty */}
+                  <div className="w-32 h-24 flex-shrink-0">
+                    <img 
+                      src={templateSettings.logoUrl} 
+                      alt="Company Logo" 
+                      className="w-full h-full object-contain border border-gray-300 rounded-sm p-2"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const nextElement = e.currentTarget.nextElementSibling as HTMLElement;
+                        if (nextElement) {
+                          nextElement.style.display = 'flex';
+                        }
+                      }}
+                    />
+                    <div className="w-32 h-24 bg-gradient-to-br from-slate-100 to-slate-200 border border-gray-300 rounded-sm flex items-center justify-center text-xs text-gray-500 font-medium" style={{ display: 'none' }}>
+                      <div className="text-center">
+                        <div className="text-lg font-bold">LOGO</div>
+                        <div className="text-xs">CÔNG TY</div>
                       </div>
-                    </div>
-                    
-                    {/* Company Title */}
-                    <h1 className="text-2xl font-bold mb-3" style={{ color: '#1a365d' }}>
-                      {templateSettings.companyTitle || 'CÔNG TY TNHH ABC'}
-                    </h1>
-                    
-                    {/* Company Details */}
-                    <div className="space-y-1 text-sm leading-relaxed">
-                      <p><span className="font-medium text-gray-700">Địa chỉ:</span> {templateSettings.address || 'Địa chỉ công ty'}</p>
-                      <p><span className="font-medium text-gray-700">Điện thoại:</span> {templateSettings.phone || '0123456789'}</p>
-                      <p><span className="font-medium text-gray-700">MST:</span> {templateSettings.taxCode || '0123456789'}</p>
-                      <p><span className="font-medium text-gray-700">STK:</span> {templateSettings.bankInfo || 'Thông tin ngân hàng'}</p>
                     </div>
                   </div>
                   
-                  {/* Quote Title Section */}
-                  <div className="flex-1 text-right">
-                    <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-l-4 border-blue-600 p-6 rounded-lg shadow-sm">
-                      <h2 className="text-xl font-bold mb-2" style={{ color: '#1a365d' }}>
+                  {/* Thông tin công ty - Ngang với logo */}
+                  <div className="flex-1">
+                    <h1 className="text-2xl font-bold mb-3" style={{ color: '#1a365d' }}>
+                      {templateSettings.companyTitle || 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT'}
+                    </h1>
+                    
+                    <div className="space-y-1 text-sm leading-relaxed">
+                      <p><span className="font-medium text-gray-700">Địa chỉ:</span> {templateSettings.address || 'Số 21 Ngõ 562 Đường Linh Nam, Hoàng Mai, Hà Nội'}</p>
+                      <p><span className="font-medium text-gray-700">Điện thoại:</span> {templateSettings.phone || '0828686866'}</p>
+                      <p><span className="font-medium text-gray-700">MST:</span> {templateSettings.taxCode || '0108652480'}</p>
+                      <p><span className="font-medium text-gray-700">STK:</span> {templateSettings.bankInfo || 'Ngân hàng TMCP đầu tư và phát triển Việt Nam (BIDV) - Chi nhánh Hà Nội: 21101999996'}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Thông tin báo giá - Khung bên phải */}
+                  <div className="w-80 flex-shrink-0">
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-6 shadow-lg">
+                      <h2 className="text-xl font-bold mb-4 text-center" style={{ color: '#1a365d' }}>
                         BẢNG BÁO GIÁ
                       </h2>
-                      <div className="space-y-2 text-sm">
-                        <p><span className="font-medium text-gray-700">Số báo giá:</span> <span className="font-bold text-blue-700">{quote.quote_number || 'BG-001'}</span></p>
-                        <p><span className="font-medium text-gray-700">Ngày tạo:</span> {new Date(quote.created_at || new Date()).toLocaleDateString('vi-VN')}</p>
-                        <p><span className="font-medium text-gray-700">Hết hạn:</span> {expiryDate}</p>
+                      <div className="space-y-3 text-sm">
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-700">Số báo giá:</span> 
+                          <span className="font-bold text-blue-700">{quote.quote_number || 'BG-20250728-569'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-700">Ngày tạo:</span> 
+                          <span className="font-semibold">{new Date(quote.created_at || new Date()).toLocaleDateString('vi-VN')}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-700">Hết hạn:</span> 
+                          <span className="font-semibold">{expiryDate}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
