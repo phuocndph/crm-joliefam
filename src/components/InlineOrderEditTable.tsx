@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Check, X, Edit3, Calendar, DollarSign, Trash2, MoreHorizontal } from "lucide-react";
+import { Check, X, Edit3, Calendar, DollarSign, Trash2, MoreHorizontal, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +67,7 @@ interface InlineOrderEditTableProps {
   orders: Order[];
   onOrderUpdate: (orderId: string, updates: Partial<Order>) => Promise<void>;
   onDeleteOrder: (order: Order) => void;
+  onViewOrderDetail?: (order: Order) => void;
 }
 
 const statusConfig = {
@@ -85,7 +86,7 @@ const paymentStatusConfig = {
   paid: { label: "Đã thanh toán", color: "bg-green-100 text-green-800" },
 };
 
-export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder }: InlineOrderEditTableProps) {
+export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onViewOrderDetail }: InlineOrderEditTableProps) {
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>("");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
@@ -420,6 +421,15 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder }: I
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    {onViewOrderDetail && (
+                      <DropdownMenuItem 
+                        onClick={() => onViewOrderDetail(order)}
+                        className="text-blue-600 hover:text-blue-900"
+                      >
+                        <Eye className="mr-2 h-4 w-4" />
+                        Xem chi tiết
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem 
                       onClick={() => onDeleteOrder(order)}
                       className="text-red-600 hover:text-red-900"
