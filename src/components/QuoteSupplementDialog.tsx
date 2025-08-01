@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { FileDown, Printer, FileSpreadsheet, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { getTemplateSettings } from "./QuoteTemplateSettings";
 
 interface QuoteSupplementDialogProps {
   open: boolean;
@@ -38,24 +39,13 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupple
 
   const loadTemplateSettings = async () => {
     try {
-      const { data } = await supabase
-        .from('quotes')
-        .select('*')
-        .limit(1)
-        .single();
-      
-      setTemplateSettings({
-        companyName: "CÔNG TY TNHH ABC",
-        companyAddress: "123 Đường ABC, Quận 1, TP.HCM",
-        companyPhone: "028 1234 5678",
-        companyEmail: "info@company.com",
-        companyTax: "0123456789",
-        companyBank: "Ngân hàng Vietcombank - Chi nhánh ABC",
-        companyAccount: "0123456789",
-        ...data
-      });
+      // Get template settings from QuoteTemplateSettings
+      const settings = getTemplateSettings();
+      setTemplateSettings(settings);
     } catch (error) {
       console.error('Error loading template settings:', error);
+      // Fallback to default settings if error occurs
+      setTemplateSettings(getTemplateSettings());
     }
   };
 
