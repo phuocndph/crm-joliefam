@@ -59,6 +59,7 @@ export function DatePickerWithRange({
             selected={date}
             onSelect={setDate}
             numberOfMonths={2}
+            locale={vi}
             className="pointer-events-auto"
           />
         </PopoverContent>
