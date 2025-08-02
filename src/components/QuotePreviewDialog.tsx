@@ -130,7 +130,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       worksheet.getColumn('E').width = 12.86;
       worksheet.getColumn('F').width = 12.86;
       worksheet.getColumn('G').width = 17.29;
-      worksheet.getColumn('H').width = 18;  // Cột hình ảnh
+      worksheet.getColumn('H').width = 19.71;  // Cột hình ảnh
       worksheet.getColumn('I').width = 18.14;
 
       worksheet.pageSetup = {
@@ -368,7 +368,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         }
         
         // Set row height for product content
-        worksheet.getRow(currentRow).height = 48.75;
+        worksheet.getRow(currentRow).height = 84.75;
         
         currentRow++;
       }
