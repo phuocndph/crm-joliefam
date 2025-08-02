@@ -117,8 +117,96 @@ serve(async (req) => {
         }
       );
 
+    } else if (action === 'sync_all_orders') {
+      // Sync all orders that don't have tracking yet
+      const { data: ordersWithoutTracking, error: ordersError } = await supabaseClient
+        .from('orders')
+        .select(`
+          id, 
+          order_number, 
+          display_order_number,
+          customers(name, phone, company)
+        `)
+        .is('ghn_tracking', null); // Orders without GHN tracking
+
+      if (ordersError) {
+        throw ordersError;
+      }
+
+      const results = [];
+      
+      for (const order of ordersWithoutTracking) {
+        // For each order without tracking, we would need a GHN order code
+        // Since we can't automatically know the GHN code, we'll create placeholder records
+        // that can be updated later with actual GHN codes
+        
+        try {
+          const placeholderData = {
+            order_id: order.id,
+            ghn_order_code: `PENDING_${order.order_number}`, // Placeholder
+            ghn_status: 'unknown',
+            ghn_status_text: 'Chưa có mã GHN',
+            customer_name: order.customers?.name || 'Chưa có thông tin',
+            customer_phone: order.customers?.phone || '',
+            customer_address: order.customers?.company || 'Chưa có địa chỉ',
+            package_weight: 0,
+            created_date: new Date().toISOString(),
+            expected_delivery_date: new Date().toISOString(),
+            delivered_date: null,
+            cod_amount: 0,
+            tracking_url: '',
+            raw_data: { status: 'placeholder', order_id: order.id },
+            tenant_id: 'default'
+          };
+
+          const { error: insertError } = await supabaseClient
+            .from('ghn_tracking')
+            .insert(placeholderData);
+
+          if (insertError) {
+            console.error(`Error creating placeholder for order ${order.id}:`, insertError);
+            results.push({
+              orderId: order.id,
+              orderNumber: order.display_order_number || order.order_number,
+              status: 'error',
+              message: insertError.message,
+              updated: false
+            });
+          } else {
+            results.push({
+              orderId: order.id,
+              orderNumber: order.display_order_number || order.order_number,
+              status: 'placeholder_created',
+              message: 'Đã tạo bản ghi chờ cập nhật mã GHN',
+              updated: true
+            });
+          }
+        } catch (error) {
+          console.error(`Error processing order ${order.id}:`, error);
+          results.push({
+            orderId: order.id,
+            orderNumber: order.display_order_number || order.order_number,
+            status: 'error',
+            message: error.message,
+            updated: false
+          });
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: `Đã xử lý ${ordersWithoutTracking.length} đơn hàng`,
+          results 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200 
+        }
+      );
+
     } else if (action === 'bulk_sync') {
-      // Sync multiple orders from database
+      // Sync multiple orders from database that already have tracking
       const { data: orders, error: ordersError } = await supabaseClient
         .from('orders')
         .select('id, order_number, display_order_number, ghn_tracking(*)')
@@ -134,6 +222,19 @@ serve(async (req) => {
       for (const order of orders) {
         if (order.ghn_tracking && order.ghn_tracking.length > 0) {
           const tracking = order.ghn_tracking[0];
+          
+          // Skip placeholder records
+          if (tracking.ghn_order_code.startsWith('PENDING_')) {
+            results.push({
+              orderId: order.id,
+              orderCode: tracking.ghn_order_code,
+              status: 'skipped',
+              message: 'Chờ cập nhật mã GHN thực',
+              updated: false
+            });
+            continue;
+          }
+          
           try {
             const ghnResponse = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
               method: 'POST',

@@ -151,6 +151,43 @@ export default function GHNTrackingPage() {
     }
   };
 
+  const handleSyncAllOrders = async () => {
+    const isConfirmed = window.confirm(
+      "Bạn có muốn đồng bộ tất cả đơn hàng từ hệ thống vào GHN tracking không? " +
+      "Điều này sẽ tạo bản ghi chờ cho các đơn hàng chưa có mã GHN."
+    );
+    
+    if (!isConfirmed) return;
+
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+        body: { action: 'sync_all_orders' }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Thành công",
+          description: `${data.message}. ${data.results.filter(r => r.updated).length} đơn hàng đã được xử lý.`,
+        });
+        await loadTrackingRecords();
+      } else {
+        throw new Error(data.error || 'Sync all orders failed');
+      }
+    } catch (error) {
+      console.error('Error syncing all orders:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể đồng bộ tất cả đơn hàng",
+        variant: "destructive",
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colorMap = {
       'ready_to_pick': 'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -284,13 +321,21 @@ export default function GHNTrackingPage() {
             <Download className="h-4 w-4" />
             Xuất Excel
           </Button>
+          <Button onClick={handleSyncAllOrders} disabled={syncing} variant="secondary" size="sm" className="gap-2">
+            {syncing ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Truck className="h-4 w-4" />
+            )}
+            Đồng bộ tất cả đơn hàng
+          </Button>
           <Button onClick={handleBulkSync} disabled={syncing} size="sm" className="gap-2">
             {syncing ? (
               <RefreshCw className="h-4 w-4 animate-spin" />
             ) : (
               <Package className="h-4 w-4" />
             )}
-            Đồng bộ tất cả
+            Cập nhật trạng thái
           </Button>
         </div>
       </div>
