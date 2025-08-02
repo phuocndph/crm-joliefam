@@ -11,6 +11,7 @@ import { format } from "date-fns";
 
 interface GHNOrder {
   orderCode: string;
+  orderNumber: string;
   status: string;
   statusText: string;
   customerName: string;
@@ -112,19 +113,36 @@ export default function GHNTrackingPage() {
 
   const getStatusColor = (status: string) => {
     const colorMap = {
-      'ready_to_pick': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'picking': 'bg-yellow-200 text-yellow-900 border-yellow-300',
-      'storing': 'bg-orange-100 text-orange-800 border-orange-200',
-      'transporting': 'bg-blue-100 text-blue-800 border-blue-200',
-      'delivering': 'bg-purple-100 text-purple-800 border-purple-200',
-      'delivered': 'bg-green-100 text-green-800 border-green-200',
-      'cancel': 'bg-red-100 text-red-800 border-red-200',
-      'delivery_fail': 'bg-red-100 text-red-800 border-red-200',
-      'returning': 'bg-pink-100 text-pink-800 border-pink-200',
-      'return_transporting': 'bg-orange-200 text-orange-900 border-orange-300',
-      'returned': 'bg-gray-100 text-gray-800 border-gray-200'
+      'ready_to_pick': 'bg-green-100 text-green-800 border-green-200', // Sẵn sàng lấy hàng
+      'picking': 'bg-yellow-100 text-yellow-800 border-yellow-200', // Đang lấy hàng
+      'storing': 'bg-orange-100 text-orange-800 border-orange-200', // Đang lưu kho
+      'transporting': 'bg-blue-100 text-blue-800 border-blue-200', // Đang vận chuyển
+      'delivering': 'bg-purple-100 text-purple-800 border-purple-200', // Đang giao hàng
+      'delivered': 'bg-green-200 text-green-900 border-green-300', // Đã giao hàng
+      'cancel': 'bg-red-100 text-red-800 border-red-200', // Đã hủy
+      'delivery_fail': 'bg-red-100 text-red-800 border-red-200', // Giao hàng thất bại
+      'returning': 'bg-pink-100 text-pink-800 border-pink-200', // Đang trả hàng
+      'return_transporting': 'bg-orange-200 text-orange-900 border-orange-300', // Đang vận chuyển trả hàng
+      'returned': 'bg-gray-200 text-gray-800 border-gray-300' // Hoàn hàng thành công
     };
     return colorMap[status] || 'bg-gray-100 text-gray-800 border-gray-200';
+  };
+
+  const getRowColor = (status: string) => {
+    const colorMap = {
+      'ready_to_pick': 'bg-green-50', // Sẵn sàng lấy hàng
+      'picking': 'bg-yellow-50', // Đang lấy hàng  
+      'storing': 'bg-orange-50', // Đang lưu kho
+      'transporting': 'bg-blue-50', // Đang vận chuyển
+      'delivering': 'bg-purple-50', // Đang giao hàng
+      'delivered': 'bg-green-100', // Đã giao hàng
+      'cancel': 'bg-red-50', // Đã hủy
+      'delivery_fail': 'bg-red-50', // Giao hàng thất bại
+      'returning': 'bg-pink-50', // Đang trả hàng
+      'return_transporting': 'bg-orange-100', // Đang vận chuyển trả hàng
+      'returned': 'bg-gray-100' // Hoàn hàng thành công
+    };
+    return colorMap[status] || '';
   };
 
   const formatWeight = (weight: number) => {
@@ -146,18 +164,20 @@ export default function GHNTrackingPage() {
 
   const filteredOrders = orders.filter(order =>
     order.orderCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    order.orderNumber.includes(searchTerm) ||
     order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     order.customerPhone.includes(searchTerm)
   );
 
   const exportToCSV = () => {
     const headers = [
-      'Mã GHN', 'Trạng thái', 'Tên khách hàng', 'Số điện thoại', 'Địa chỉ', 
-      'Cân nặng', 'Ngày tạo', 'Ngày dự kiến giao', 'Ngày giao thành công', 'COD'
+      'Mã GHN', 'Mã đơn hàng', 'Trạng thái', 'Tên khách hàng', 'Số điện thoại', 'Địa chỉ', 
+      'Cân nặng', 'Ngày tạo', 'Ngày dự kiến giao', 'Ngày giao thành công', 'COD thu hộ'
     ];
     
     const csvData = filteredOrders.map(order => [
       order.orderCode,
+      order.orderNumber,
       order.statusText,
       order.customerName,
       order.customerPhone,
@@ -165,7 +185,7 @@ export default function GHNTrackingPage() {
       formatWeight(order.weight),
       formatDate(order.createdDate),
       formatDate(order.expectedDeliveryTime),
-      order.deliveredDate ? formatDate(order.deliveredDate) : 'Chưa giao',
+      order.deliveredDate ? formatDate(order.deliveredDate) : 'Chưa giao đến khách',
       formatCOD(order.codAmount)
     ]);
 
@@ -265,7 +285,7 @@ export default function GHNTrackingPage() {
             <div className="flex items-center gap-2">
               <Search className="h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Tìm kiếm theo mã đơn, tên khách hàng, SĐT..."
+                placeholder="Tìm kiếm theo mã GHN, mã đơn hàng, tên khách hàng, SĐT..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-80"
@@ -293,23 +313,30 @@ export default function GHNTrackingPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="min-w-[120px]">Mã GHN</TableHead>
-                    <TableHead className="min-w-[120px]">Trạng thái</TableHead>
-                    <TableHead className="min-w-[150px]">Khách hàng</TableHead>
-                    <TableHead className="min-w-[120px]">SĐT</TableHead>
+                    <TableHead className="min-w-[100px]">Mã đơn hàng</TableHead>
+                    <TableHead className="min-w-[140px]">Trạng thái đơn hàng</TableHead>
+                    <TableHead className="min-w-[150px]">Tên khách hàng</TableHead>
+                    <TableHead className="min-w-[120px]">Số điện thoại</TableHead>
                     <TableHead className="min-w-[200px]">Địa chỉ</TableHead>
-                    <TableHead className="min-w-[80px]">Cân nặng</TableHead>
-                    <TableHead className="min-w-[120px]">Ngày tạo</TableHead>
-                    <TableHead className="min-w-[120px]">Dự kiến giao</TableHead>
-                    <TableHead className="min-w-[120px]">Đã giao</TableHead>
-                    <TableHead className="min-w-[100px]">COD</TableHead>
-                    <TableHead className="min-w-[80px]">Thao tác</TableHead>
+                    <TableHead className="min-w-[100px]">Cân nặng đơn hàng</TableHead>
+                    <TableHead className="min-w-[100px]">Ngày tạo đơn</TableHead>
+                    <TableHead className="min-w-[100px]">Ngày dự kiến giao</TableHead>
+                    <TableHead className="min-w-[120px]">Ngày giao thành công</TableHead>
+                    <TableHead className="min-w-[100px]">COD thu hộ đơn</TableHead>
+                    <TableHead className="min-w-[80px]">Tra cứu đơn</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredOrders.map((order) => (
-                    <TableRow key={order.orderCode}>
+                    <TableRow 
+                      key={order.orderCode}
+                      className={`${getRowColor(order.status)} hover:bg-opacity-80 transition-colors`}
+                    >
                       <TableCell className="font-mono font-medium text-sm">
                         {order.orderCode}
+                      </TableCell>
+                      <TableCell className="font-medium text-center">
+                        {order.orderNumber || '-'}
                       </TableCell>
                       <TableCell>
                         <Badge className={getStatusColor(order.status)}>
@@ -336,7 +363,7 @@ export default function GHNTrackingPage() {
                             {formatDate(order.deliveredDate)}
                           </span>
                         ) : (
-                          <span className="text-gray-500 text-sm">Chưa giao</span>
+                          <span className="text-gray-500 text-sm">Chưa giao đến khách</span>
                         )}
                       </TableCell>
                       <TableCell className="font-medium text-sm">
@@ -347,9 +374,9 @@ export default function GHNTrackingPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => window.open(order.trackingUrl, '_blank')}
-                          className="gap-1"
+                          className="gap-1 text-blue-600 hover:text-blue-800"
                         >
-                          <ExternalLink className="h-3 w-3" />
+                          Tra cứu
                         </Button>
                       </TableCell>
                     </TableRow>

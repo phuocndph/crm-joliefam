@@ -120,20 +120,27 @@ serve(async (req) => {
       console.log(`Successfully fetched ${allOrders.length} orders from GHN`);
 
       // Transform data for frontend
-      const transformedOrders = allOrders.map(order => ({
-        orderCode: order.order_code,
-        status: order.status,
-        statusText: getStatusText(order.status),
-        customerName: order.to_name,
-        customerPhone: order.to_phone,
-        customerAddress: `${order.to_address}${order.to_ward_name ? ', ' + order.to_ward_name : ''}${order.to_district_name ? ', ' + order.to_district_name : ''}${order.to_province_name ? ', ' + order.to_province_name : ''}`,
-        weight: order.weight,
-        createdDate: order.created_date,
-        expectedDeliveryTime: order.expected_delivery_time,
-        deliveredDate: order.delivered_date,
-        codAmount: order.cod_amount,
-        trackingUrl: `https://tracking.ghn.dev/?order_code=${order.order_code}`
-      }));
+      const transformedOrders = allOrders.map(order => {
+        // Extract order number from customer name (e.g., "hà thu _3203 hoan" → "3203")
+        const orderNumberMatch = order.to_name.match(/_(\d+)/);
+        const extractedOrderNumber = orderNumberMatch ? orderNumberMatch[1] : '';
+        
+        return {
+          orderCode: order.order_code,
+          orderNumber: extractedOrderNumber,
+          status: order.status,
+          statusText: getStatusText(order.status),
+          customerName: order.to_name,
+          customerPhone: order.to_phone,
+          customerAddress: `${order.to_address}${order.to_ward_name ? ', ' + order.to_ward_name : ''}${order.to_district_name ? ', ' + order.to_district_name : ''}${order.to_province_name ? ', ' + order.to_province_name : ''}`,
+          weight: order.weight,
+          createdDate: order.created_date,
+          expectedDeliveryTime: order.expected_delivery_time,
+          deliveredDate: order.delivered_date,
+          codAmount: order.cod_amount,
+          trackingUrl: `https://donhang.ghn.vn/?order_code=${order.order_code}`
+        };
+      });
 
       return new Response(
         JSON.stringify({ 
@@ -177,8 +184,14 @@ serve(async (req) => {
       }
 
       const order = data.data;
+      
+      // Extract order number from customer name
+      const orderNumberMatch = order.to_name.match(/_(\d+)/);
+      const extractedOrderNumber = orderNumberMatch ? orderNumberMatch[1] : '';
+      
       const transformedOrder = {
         orderCode: order.order_code,
+        orderNumber: extractedOrderNumber,
         status: order.status,
         statusText: getStatusText(order.status),
         customerName: order.to_name,
@@ -189,7 +202,7 @@ serve(async (req) => {
         expectedDeliveryTime: order.expected_delivery_time,
         deliveredDate: order.delivered_date,
         codAmount: order.cod_amount,
-        trackingUrl: `https://tracking.ghn.dev/?order_code=${order.order_code}`
+        trackingUrl: `https://donhang.ghn.vn/?order_code=${order.order_code}`
       };
 
       return new Response(
@@ -223,13 +236,13 @@ serve(async (req) => {
 
 function getStatusText(status: string): string {
   const statusMap: { [key: string]: string } = {
-    'ready_to_pick': 'Chờ lấy hàng',
+    'ready_to_pick': 'Sẵn sàng lấy hàng',
     'picking': 'Đang lấy hàng',
     'cancel': 'Đã hủy',
     'money_collect_picking': 'Đang thu tiền người gửi',
     'picked': 'Đã lấy hàng',
-    'storing': 'Hàng nhập kho',
-    'transporting': 'Đang luân chuyển',
+    'storing': 'Đang lưu kho',
+    'transporting': 'Đang vận chuyển',
     'sorting': 'Đang phân loại',
     'delivering': 'Đang giao hàng',
     'money_collect_delivering': 'Đang thu tiền người nhận',
@@ -237,11 +250,11 @@ function getStatusText(status: string): string {
     'delivery_fail': 'Giao hàng thất bại',
     'waiting_to_return': 'Đang chờ trả hàng',
     'return': 'Trả hàng',
-    'return_transporting': 'Đang luân chuyển trả hàng',
+    'return_transporting': 'Đang vận chuyển trả hàng',
     'return_sorting': 'Đang phân loại trả hàng',
     'returning': 'Đang trả hàng',
     'return_fail': 'Trả hàng thất bại',
-    'returned': 'Đã trả hàng',
+    'returned': 'Hoàn hàng thành công',
     'exception': 'Đơn hàng ngoại lệ',
     'damage': 'Hàng bị hư hỏng',
     'lost': 'Hàng bị thất lạc'
