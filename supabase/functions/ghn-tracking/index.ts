@@ -442,7 +442,18 @@ serve(async (req) => {
           }
         } catch (error) {
           console.error('Error fetching orders from GHN:', error);
-          throw error; // Re-throw to see the actual error
+          // Return error response instead of throwing
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: `Lỗi khi lấy dữ liệu từ GHN: ${error.message}`,
+              details: error.message
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 400 
+            }
+          );
         }
       }
 
