@@ -271,44 +271,44 @@ export default function GHNTrackingPage() {
               <p className="text-sm mt-1">Bấm "Lấy tất cả đơn từ GHN" để bắt đầu</p>
             </div>
           ) : (
-            <div className="overflow-x-auto border border-gray-300 rounded-lg">
-              <Table className="w-full">
+            <div className="overflow-x-auto border-2 border-gray-400 rounded-lg">
+              <Table className="w-full border-collapse" style={{ borderSpacing: 0 }}>
                 <TableHeader>
-                  <TableRow className="bg-yellow-400 hover:bg-yellow-400">
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                  <TableRow style={{ backgroundColor: '#FBBF24' }} className="hover:bg-yellow-400">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       MÃ GHN
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       MÃ ĐƠN HÀNG
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       TRẠNG THÁI ĐƠN HÀNG
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       TÊN KHÁCH HÀNG
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       SỐ ĐIỆN THOẠI
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       ĐỊA CHỈ
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       CÂN NẶNG ĐƠN HÀNG
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       NGÀY TẠO ĐƠN
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       NGÀY DỰ KIẾN GIAO
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       NGÀY GIAO THÀNH CÔNG
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black border-r border-gray-400 py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       COD THU HỘ
                     </TableHead>
-                    <TableHead className="font-bold text-center text-black py-3 px-2 text-sm">
+                    <TableHead style={{ backgroundColor: '#FBBF24', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
                       TRA CỨU ĐƠN
                     </TableHead>
                   </TableRow>
