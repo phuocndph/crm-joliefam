@@ -1006,19 +1006,13 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                             />
                           </TableCell>
                           <TableCell className="p-4">
-                            <Dialog open={showImageLibrary && currentImageEditingIndex === index} onOpenChange={(open) => {
-                              setShowImageLibrary(open);
-                              if (!open) setCurrentImageEditingIndex(-1);
-                            }}>
+                            <Dialog>
                               <DialogTrigger asChild>
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   className="h-16 w-20 border-2 border-dashed border-gray-300 hover:border-blue-500 flex flex-col items-center justify-center gap-1"
-                                  onClick={() => {
-                                    setCurrentImageEditingIndex(index);
-                                    setShowImageLibrary(true);
-                                  }}
+                                  type="button"
                                 >
                                   {item.selectedImage ? (
                                     <img 
@@ -1047,8 +1041,13 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                         selectedImage: imageUrl 
                                       };
                                       setSelectedProducts(newProducts);
-                                      setShowImageLibrary(false);
-                                      setCurrentImageEditingIndex(-1);
+                                      
+                                      // Đóng dialog bằng cách trigger close
+                                      const closeButton = document.querySelector('[data-state="open"] button[aria-label="Close"]') as HTMLButtonElement;
+                                      if (closeButton) {
+                                        closeButton.click();
+                                      }
+                                      
                                       toast({
                                         title: "Thành công",
                                         description: "Đã chọn hình ảnh cho sản phẩm",
