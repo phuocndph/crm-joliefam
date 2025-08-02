@@ -131,6 +131,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
   const [currentEditingIndex, setCurrentEditingIndex] = useState<number>(-1);
   const [showImageLibrary, setShowImageLibrary] = useState(false);
   const [currentImageEditingIndex, setCurrentImageEditingIndex] = useState<number>(-1);
+  const [imageDialogOpen, setImageDialogOpen] = useState<{[key: number]: boolean}>({});
   const { toast } = useToast();
   
   // Helper function to safely parse dates
@@ -1006,7 +1007,15 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                             />
                           </TableCell>
                           <TableCell className="p-4">
-                            <Dialog>
+                            <Dialog 
+                              open={imageDialogOpen[index] || false} 
+                              onOpenChange={(open) => {
+                                setImageDialogOpen(prev => ({
+                                  ...prev,
+                                  [index]: open
+                                }));
+                              }}
+                            >
                               <DialogTrigger asChild>
                                 <Button
                                   variant="outline"
@@ -1043,13 +1052,11 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                       };
                                       setSelectedProducts(newProducts);
                                       
-                                      // Đóng dialog bằng cách trigger close - cải thiện cách đóng
-                                      setTimeout(() => {
-                                        const dialogOverlay = document.querySelector('[data-radix-dialog-overlay]');
-                                        if (dialogOverlay) {
-                                          (dialogOverlay as HTMLElement).click();
-                                        }
-                                      }, 100);
+                                      // Đóng dialog ngay lập tức
+                                      setImageDialogOpen(prev => ({
+                                        ...prev,
+                                        [index]: false
+                                      }));
                                       
                                       toast({
                                         title: "Thành công",
