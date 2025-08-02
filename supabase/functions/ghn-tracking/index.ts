@@ -397,6 +397,8 @@ serve(async (req) => {
 
       while (hasMore) {
         try {
+          console.log(`Fetching orders from GHN - offset: ${offset}, limit: ${limit}`);
+          
           const ghnResponse = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/list`, {
             method: 'POST',
             headers: {
@@ -405,22 +407,28 @@ serve(async (req) => {
             },
             body: JSON.stringify({
               offset: offset,
-              limit: limit,
-              status: null // Get all statuses
+              limit: limit
             })
           });
 
+          console.log(`GHN API Response Status: ${ghnResponse.status}`);
+
           if (!ghnResponse.ok) {
+            const errorText = await ghnResponse.text();
+            console.error(`GHN API error: ${ghnResponse.status} - ${errorText}`);
             throw new Error(`GHN API error: ${ghnResponse.statusText}`);
           }
 
           const ghnData = await ghnResponse.json();
+          console.log(`GHN API Response:`, JSON.stringify(ghnData, null, 2));
           
           if (ghnData.code !== 200) {
+            console.error(`GHN API error: ${ghnData.message}`);
             throw new Error(`GHN API error: ${ghnData.message}`);
           }
 
-          const orders = ghnData.data.orders || [];
+          const orders = ghnData.data?.orders || ghnData.data || [];
+          console.log(`Found ${orders.length} orders in this batch`);
           allOrders.push(...orders);
           
           // Check if we have more data
@@ -428,13 +436,13 @@ serve(async (req) => {
           offset += limit;
           
           // Safety break to avoid infinite loop
-          if (offset > 1000) {
+          if (offset > 500) { // Reduced limit for safety
             console.log('Reached maximum offset limit');
             break;
           }
         } catch (error) {
           console.error('Error fetching orders from GHN:', error);
-          break;
+          throw error; // Re-throw to see the actual error
         }
       }
 
