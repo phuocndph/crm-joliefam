@@ -851,36 +851,156 @@ const ReportsPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Doanh thu gốc</CardTitle>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    💰 Doanh thu thực tế
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-green-600">{formatCurrency(totalOrderRevenue)}</div>
+                  <div className="text-2xl font-bold text-green-600">
+                    {formatCurrency((() => {
+                      // Chỉ tính từ đơn hàng đã giao có doanh thu
+                      const deliveredOrders = filteredOrders.filter(order => 
+                        order.status === "delivered" && order.total_amount > 0
+                      );
+                      return deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+                    })())}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Từ {filteredOrders.filter(o => o.status === "delivered").length} đơn đã giao
+                  </p>
                 </CardContent>
               </Card>
+              
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Giá vốn</CardTitle>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    🏭 Giá vốn thực tế
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-blue-600">{formatCurrency(totalCostPrice)}</div>
+                  <div className="text-2xl font-bold text-orange-600">
+                    {formatCurrency((() => {
+                      // Tính giá vốn thực tế như trong Cash Flow Management
+                      const deliveredOrders = filteredOrders.filter(order => 
+                        order.status === "delivered" && order.total_amount > 0
+                      );
+                      
+                      let totalCostPriceReal = 0;
+                      deliveredOrders.forEach(order => {
+                        let orderCostPrice = Number(order.cost_price) || 0;
+                        
+                        // Nếu cost_price trong order bằng 0, tính từ product data
+                        if (orderCostPrice === 0 && order.items) {
+                          try {
+                            const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items);
+                            const orderItems = JSON.parse(itemsStr);
+                            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+                              const quantity = item.quantity || 0;
+                              // Tìm product để lấy cost_price
+                              const product = products.find(p => p.id === item.id || p.sku === item.sku);
+                              const costPrice = product ? Number(product.cost_price) || 0 : 0;
+                              return sum + (quantity * costPrice);
+                            }, 0);
+                          } catch (error) {
+                            console.error('Error calculating cost price for order:', order.id, error);
+                          }
+                        }
+                        totalCostPriceReal += orderCostPrice;
+                      });
+                      
+                      return totalCostPriceReal;
+                    })())}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Chi phí giá gốc hàng bán
+                  </p>
                 </CardContent>
               </Card>
+              
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Chi phí</CardTitle>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    💵 Chi phí vận hành
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-red-600">{formatCurrency(totalExpensesAmount)}</div>
+                  <p className="text-xs text-muted-foreground">
+                    Tổng chi phí trong kỳ
+                  </p>
                 </CardContent>
               </Card>
+              
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Lợi nhuận ròng</CardTitle>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    📊 Lợi nhuận ròng
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className={`text-2xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatCurrency(netProfit)}
+                  <div className={`text-2xl font-bold ${(() => {
+                    const deliveredOrders = filteredOrders.filter(order => 
+                      order.status === "delivered" && order.total_amount > 0
+                    );
+                    
+                    const revenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+                    
+                    let totalCostPriceReal = 0;
+                    deliveredOrders.forEach(order => {
+                      let orderCostPrice = Number(order.cost_price) || 0;
+                        if (orderCostPrice === 0 && order.items) {
+                          try {
+                            const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items);
+                            const orderItems = JSON.parse(itemsStr);
+                          orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+                            const quantity = item.quantity || 0;
+                            const product = products.find(p => p.id === item.id || p.sku === item.sku);
+                            const costPrice = product ? Number(product.cost_price) || 0 : 0;
+                            return sum + (quantity * costPrice);
+                          }, 0);
+                        } catch (error) {
+                          console.error('Error calculating cost price for order:', order.id, error);
+                        }
+                      }
+                      totalCostPriceReal += orderCostPrice;
+                    });
+                    
+                    const netProfitReal = revenue - totalCostPriceReal - totalExpensesAmount;
+                    return netProfitReal >= 0 ? 'text-green-600' : 'text-red-600';
+                  })()}`}>
+                    {formatCurrency((() => {
+                      const deliveredOrders = filteredOrders.filter(order => 
+                        order.status === "delivered" && order.total_amount > 0
+                      );
+                      
+                      const revenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+                      
+                      let totalCostPriceReal = 0;
+                      deliveredOrders.forEach(order => {
+                        let orderCostPrice = Number(order.cost_price) || 0;
+                        if (orderCostPrice === 0 && order.items) {
+                          try {
+                            const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items);
+                            const orderItems = JSON.parse(itemsStr);
+                            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+                              const quantity = item.quantity || 0;
+                              const product = products.find(p => p.id === item.id || p.sku === item.sku);
+                              const costPrice = product ? Number(product.cost_price) || 0 : 0;
+                              return sum + (quantity * costPrice);
+                            }, 0);
+                          } catch (error) {
+                            console.error('Error calculating cost price for order:', order.id, error);
+                          }
+                        }
+                        totalCostPriceReal += orderCostPrice;
+                      });
+                      
+                      return revenue - totalCostPriceReal - totalExpensesAmount;
+                    })())}
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Sau trừ giá vốn & chi phí
+                  </p>
                 </CardContent>
               </Card>
             </div>
