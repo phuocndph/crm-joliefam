@@ -14,8 +14,8 @@ import { DateRange } from "react-day-picker";
 
 const ReportsPage = () => {
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: startOfMonth(new Date()),
-    to: endOfMonth(new Date())
+    from: new Date(2020, 0, 1),
+    to: endOfDay(new Date())
   });
   const [activeTab, setActiveTab] = useState("overview");
 
