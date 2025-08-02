@@ -880,42 +880,36 @@ const ReportsPage = () => {
                 <CardContent>
                   <div className="text-2xl font-bold text-orange-600">
                     {formatCurrency((() => {
-                      // Ưu tiên sử dụng cost_price có sẵn trong đơn hàng (giá sản xuất)
-                      const deliveredOrders = filteredOrders.filter(order => 
-                        order.status === "delivered" && order.total_amount > 0
+                      // Lấy giá vốn từ tất cả đơn hàng có dữ liệu trong kỳ báo cáo
+                      const ordersWithData = filteredOrders.filter(order => 
+                        Number(order.total_amount) > 0
                       );
                       
-                      // Đơn giản hóa: chủ yếu sử dụng cost_price từ đơn hàng
-                      let totalCostPriceReal = deliveredOrders.reduce((sum, order) => {
-                        return sum + (Number(order.cost_price) || 0);
+                      console.log('Cost Price Debug:', {
+                        totalOrders: filteredOrders.length,
+                        ordersWithData: ordersWithData.length,
+                        sampleOrders: ordersWithData.slice(0, 3).map(o => ({
+                          id: o.id,
+                          order_number: o.order_number,
+                          cost_price: o.cost_price,
+                          total_amount: o.total_amount,
+                          status: o.status
+                        }))
+                      });
+                      
+                      // Tính tổng giá vốn từ cost_price có sẵn
+                      let totalCostPriceReal = ordersWithData.reduce((sum, order) => {
+                        const costPrice = Number(order.cost_price) || 0;
+                        return sum + costPrice;
                       }, 0);
                       
-                      // Chỉ tính từ products nếu cần thiết và cost_price = 0
-                      if (totalCostPriceReal === 0) {
-                        deliveredOrders.forEach(order => {
-                          if (order.items) {
-                            try {
-                              const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items);
-                              const orderItems = JSON.parse(itemsStr);
-                              const orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                                const quantity = item.quantity || 0;
-                                const product = products.find(p => p.id === item.id || p.sku === item.sku);
-                                const costPrice = product ? Number(product.cost_price) || 0 : 0;
-                                return sum + (quantity * costPrice);
-                              }, 0);
-                              totalCostPriceReal += orderCostPrice;
-                            } catch (error) {
-                              console.error('Error calculating cost price for order:', order.id, error);
-                            }
-                          }
-                        });
-                      }
+                      console.log('Total Cost Price Real:', totalCostPriceReal);
                       
                       return totalCostPriceReal;
                     })())}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Giá sản xuất từ đơn hàng
+                    Giá vốn từ {filteredOrders.filter(o => Number(o.total_amount) > 0).length} đơn hàng
                   </p>
                 </CardContent>
               </Card>
@@ -942,14 +936,12 @@ const ReportsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className={`text-2xl font-bold ${(() => {
-                    const deliveredOrders = filteredOrders.filter(order => 
-                      order.status === "delivered" && order.total_amount > 0
+                    const ordersWithData = filteredOrders.filter(order => 
+                      Number(order.total_amount) > 0
                     );
                     
-                    const revenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-                    
-                    // Ưu tiên sử dụng cost_price có sẵn trong đơn hàng (giá sản xuất)
-                    let totalCostPriceReal = deliveredOrders.reduce((sum, order) => {
+                    const revenue = ordersWithData.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+                    const totalCostPriceReal = ordersWithData.reduce((sum, order) => {
                       return sum + (Number(order.cost_price) || 0);
                     }, 0);
                     
@@ -957,14 +949,12 @@ const ReportsPage = () => {
                     return netProfitReal >= 0 ? 'text-green-600' : 'text-red-600';
                   })()}`}>
                     {formatCurrency((() => {
-                      const deliveredOrders = filteredOrders.filter(order => 
-                        order.status === "delivered" && order.total_amount > 0
+                      const ordersWithData = filteredOrders.filter(order => 
+                        Number(order.total_amount) > 0
                       );
                       
-                      const revenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-                      
-                      // Ưu tiên sử dụng cost_price có sẵn trong đơn hàng (giá sản xuất)
-                      let totalCostPriceReal = deliveredOrders.reduce((sum, order) => {
+                      const revenue = ordersWithData.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+                      const totalCostPriceReal = ordersWithData.reduce((sum, order) => {
                         return sum + (Number(order.cost_price) || 0);
                       }, 0);
                       
@@ -972,7 +962,7 @@ const ReportsPage = () => {
                     })())}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Doanh thu - Giá sản xuất - Chi phí
+                    Doanh thu - Giá vốn - Chi phí
                   </p>
                 </CardContent>
               </Card>
