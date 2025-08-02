@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -67,6 +68,7 @@ function formatCurrency(amount?: number): string {
 export default function GHNTrackingPage() {
   const [trackingData, setTrackingData] = useState<GHNTrackingData[]>([]);
   const [orderCodeInput, setOrderCodeInput] = useState('');
+  const [isMultipleMode, setIsMultipleMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const { role } = useUserRole(user);
@@ -109,38 +111,69 @@ export default function GHNTrackingPage() {
   };
 
   const addOrderTracking = async () => {
-    const orderCode = orderCodeInput.trim();
-    if (!orderCode || !user) return;
+    const input = orderCodeInput.trim();
+    if (!input || !user) return;
 
-    // Check if already exists
-    const existingOrder = trackingData.find(item => item.ghn_order_code === orderCode);
-    if (existingOrder) {
-      toast.error('Mã đơn hàng đã tồn tại trong hệ thống');
+    // Parse multiple order codes (separated by comma, semicolon, or newline)
+    const orderCodes = input
+      .split(/[,;\n]/)
+      .map(code => code.trim())
+      .filter(code => code.length > 0);
+
+    if (orderCodes.length === 0) return;
+
+    // Check for duplicates
+    const duplicates = orderCodes.filter(code => 
+      trackingData.some(item => item.ghn_order_code === code)
+    );
+
+    if (duplicates.length > 0) {
+      toast.error(`Các mã đơn hàng đã tồn tại: ${duplicates.join(', ')}`);
       return;
     }
 
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-        body: {
-          action: 'save_tracking',
-          orderCode: orderCode,
-          userId: user.id,
-          managerId: user.id
-        }
-      });
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
 
-      if (error) {
-        throw error;
+      for (const orderCode of orderCodes) {
+        try {
+          const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+            body: {
+              action: 'save_tracking',
+              orderCode: orderCode,
+              userId: user.id,
+              managerId: user.id
+            }
+          });
+
+          if (error) {
+            throw error;
+          }
+
+          if (data.success) {
+            successCount++;
+          } else {
+            errorCount++;
+            errors.push(`${orderCode}: ${data.error}`);
+          }
+        } catch (error: any) {
+          errorCount++;
+          errors.push(`${orderCode}: ${error.message || 'Lỗi không xác định'}`);
+        }
       }
 
-      if (data.success) {
-        toast.success(data.message);
+      if (successCount > 0) {
+        toast.success(`Đã thêm thành công ${successCount} đơn hàng`);
         setOrderCodeInput('');
-        await loadTrackingData(); // Reload data
-      } else {
-        toast.error(data.error || 'Lỗi thêm tracking');
+        await loadTrackingData();
+      }
+
+      if (errorCount > 0) {
+        toast.error(`${errorCount} đơn hàng thất bại. Chi tiết: ${errors.join('; ')}`);
       }
     } catch (error: any) {
       console.error('Error adding tracking:', error);
@@ -286,37 +319,87 @@ export default function GHNTrackingPage() {
           <CardTitle>Theo dõi đơn hàng GHN</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-4 mb-6">
-            <Input
-              placeholder="Nhập mã đơn hàng GHN"
-              value={orderCodeInput}
-              onChange={(e) => setOrderCodeInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addOrderTracking()}
-              className="max-w-xs"
-            />
-            <Button
-              onClick={addOrderTracking}
-              disabled={loading || !orderCodeInput.trim()}
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-              Thêm tracking
-            </Button>
-            <Button
-              onClick={updateAllTracking}
-              disabled={loading || trackingData.length === 0}
-              variant="outline"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              Cập nhật tất cả
-            </Button>
-            <Button
-              onClick={importAllOrdersFromGHN}
-              disabled={loading}
-              variant="secondary"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
-              Import từ GHN
-            </Button>
+          <div className="space-y-4 mb-6">
+            <div className="flex items-center gap-2">
+              <Button
+                variant={!isMultipleMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIsMultipleMode(false)}
+              >
+                Đơn lẻ
+              </Button>
+              <Button
+                variant={isMultipleMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIsMultipleMode(true)}
+              >
+                Nhiều đơn
+              </Button>
+            </div>
+
+            {!isMultipleMode ? (
+              <div className="flex gap-4">
+                <Input
+                  placeholder="Nhập mã đơn hàng GHN"
+                  value={orderCodeInput}
+                  onChange={(e) => setOrderCodeInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && addOrderTracking()}
+                  className="max-w-xs"
+                />
+                <Button
+                  onClick={addOrderTracking}
+                  disabled={loading || !orderCodeInput.trim()}
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                  Thêm tracking
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Textarea
+                  placeholder="Nhập nhiều mã đơn hàng (mỗi mã một dòng hoặc ngăn cách bằng dấu phẩy)"
+                  value={orderCodeInput}
+                  onChange={(e) => setOrderCodeInput(e.target.value)}
+                  rows={4}
+                  className="resize-none"
+                />
+                <div className="flex gap-4">
+                  <Button
+                    onClick={addOrderTracking}
+                    disabled={loading || !orderCodeInput.trim()}
+                  >
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                    Thêm tất cả
+                  </Button>
+                  <Button
+                    onClick={() => setOrderCodeInput('')}
+                    variant="outline"
+                    disabled={loading}
+                  >
+                    Xóa
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-4">
+              <Button
+                onClick={updateAllTracking}
+                disabled={loading || trackingData.length === 0}
+                variant="outline"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                Cập nhật tất cả
+              </Button>
+              <Button
+                onClick={importAllOrdersFromGHN}
+                disabled={loading}
+                variant="secondary"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+                Import từ GHN
+              </Button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
