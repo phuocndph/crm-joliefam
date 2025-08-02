@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
+import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
+import * as XLSX from 'xlsx';
 
 interface GHNTrackingData {
   id: string;
@@ -71,6 +73,14 @@ export default function GHNTrackingPage() {
   const [isMultipleMode, setIsMultipleMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [filters, setFilters] = useState<FilterState>({
+    searchText: '',
+    status: '',
+    codMin: '',
+    codMax: '',
+    weightMin: '',
+    weightMax: ''
+  });
   const { role } = useUserRole(user);
 
   // Get current user
@@ -312,8 +322,137 @@ export default function GHNTrackingPage() {
     }
   };
 
+  // Filter logic
+  const filteredData = useMemo(() => {
+    return trackingData.filter(item => {
+      // Search text filter
+      if (filters.searchText) {
+        const searchText = filters.searchText.toLowerCase();
+        const matchesGhnCode = item.ghn_order_code?.toLowerCase().includes(searchText);
+        const matchesInternalCode = item.internal_order_code?.toLowerCase().includes(searchText);
+        const matchesCustomerName = item.customer_name?.toLowerCase().includes(searchText);
+        
+        if (!matchesGhnCode && !matchesInternalCode && !matchesCustomerName) {
+          return false;
+        }
+      }
+
+      // Status filter
+      if (filters.status && item.ghn_status !== filters.status) {
+        return false;
+      }
+
+      // COD range filter
+      const codAmount = item.cod_amount || 0;
+      const codMin = filters.codMin ? parseFloat(filters.codMin) : 0;
+      const codMax = filters.codMax ? parseFloat(filters.codMax) : Infinity;
+      if (codAmount < codMin || codAmount > codMax) {
+        return false;
+      }
+
+      // Weight range filter
+      const weight = (item.package_weight || 0) / 1000; // Convert to kg
+      const weightMin = filters.weightMin ? parseFloat(filters.weightMin) : 0;
+      const weightMax = filters.weightMax ? parseFloat(filters.weightMax) : Infinity;
+      if (weight < weightMin || weight > weightMax) {
+        return false;
+      }
+
+      // Date range filters
+      const checkDateRange = (dateStr?: string, dateRange?: any) => {
+        if (!dateRange?.from) return true;
+        if (!dateStr) return false;
+        
+        const itemDate = new Date(dateStr);
+        const fromDate = new Date(dateRange.from);
+        const toDate = dateRange.to ? new Date(dateRange.to) : fromDate;
+        
+        return itemDate >= fromDate && itemDate <= toDate;
+      };
+
+      if (!checkDateRange(item.created_date, filters.createdDateRange)) return false;
+      if (!checkDateRange(item.expected_delivery_date, filters.expectedDateRange)) return false;
+      if (!checkDateRange(item.delivered_date, filters.deliveredDateRange)) return false;
+
+      return true;
+    });
+  }, [trackingData, filters]);
+
+  // Export function
+  const handleExport = useCallback(() => {
+    const exportData = filteredData.map((item, index) => ({
+      'STT': index + 1,
+      'Mã GHN': item.ghn_order_code,
+      'Mã đơn hàng': item.internal_order_code || '',
+      'Trạng thái': item.ghn_status_text || item.ghn_status || '',
+      'Tên khách hàng': item.customer_name,
+      'Số điện thoại': item.customer_phone || '',
+      'Địa chỉ': item.customer_address || '',
+      'Trọng lượng (kg)': item.package_weight ? (item.package_weight / 1000).toFixed(2) : '',
+      'Ngày tạo đơn': formatDate(item.created_date),
+      'Ngày dự kiến giao': formatDate(item.expected_delivery_date),
+      'Ngày giao thành công': formatDate(item.delivered_date),
+      'COD thu hộ (₫)': item.cod_amount || 0,
+      'Link tra cứu': item.tracking_url || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'GHN Tracking');
+    
+    const fileName = `ghn-tracking-${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+    toast.success(`Đã xuất ${filteredData.length} đơn hàng ra file Excel`);
+  }, [filteredData]);
+
+  // Quick filter handlers
+  const handleQuickFilter = useCallback((type: 'today' | 'thisWeek' | 'lateDelivery') => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    
+    switch (type) {
+      case 'today':
+        setFilters(prev => ({
+          ...prev,
+          createdDateRange: { from: startOfDay, to: today }
+        }));
+        break;
+      
+      case 'thisWeek':
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay());
+        setFilters(prev => ({
+          ...prev,
+          createdDateRange: { from: startOfWeek, to: today }
+        }));
+        break;
+      
+      case 'lateDelivery':
+        setFilters(prev => ({
+          ...prev,
+          status: '',
+          expectedDateRange: { from: new Date('2020-01-01'), to: startOfDay }
+        }));
+        break;
+    }
+  }, []);
+
+  const handleFiltersChange = useCallback((newFilters: FilterState) => {
+    setFilters(newFilters);
+  }, []);
+
   return (
     <div className="container mx-auto py-6 space-y-6">
+      {/* Filter Component */}
+      <GHNTrackingFilters
+        onFiltersChange={handleFiltersChange}
+        filteredCount={filteredData.length}
+        totalCount={trackingData.length}
+        onExport={handleExport}
+        onQuickFilter={handleQuickFilter}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle>Theo dõi đơn hàng GHN</CardTitle>
@@ -423,14 +562,14 @@ export default function GHNTrackingPage() {
                 </tr>
               </thead>
               <tbody>
-                {trackingData.length === 0 ? (
+                {filteredData.length === 0 ? (
                   <tr>
                     <td colSpan={14} className="border border-gray-300 px-3 py-4 text-center text-gray-500">
-                      Chưa có dữ liệu tracking
+                      {trackingData.length === 0 ? 'Chưa có dữ liệu tracking' : 'Không tìm thấy kết quả phù hợp với bộ lọc'}
                     </td>
                   </tr>
                 ) : (
-                  trackingData.map((item, index) => (
+                  filteredData.map((item, index) => (
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="border border-gray-300 px-3 py-2 text-sm">{index + 1}</td>
                       <td className="border border-gray-300 px-3 py-2 text-sm font-mono">{item.ghn_order_code}</td>
@@ -482,7 +621,11 @@ export default function GHNTrackingPage() {
 
           {trackingData.length > 0 && (
             <div className="mt-4 text-sm text-gray-500">
-              Tổng cộng: {trackingData.length} đơn hàng đang được theo dõi
+              {filteredData.length !== trackingData.length ? (
+                `Hiển thị ${filteredData.length} / ${trackingData.length} đơn hàng`
+              ) : (
+                `Tổng cộng: ${trackingData.length} đơn hàng đang được theo dõi`
+              )}
             </div>
           )}
         </CardContent>
