@@ -75,7 +75,7 @@ export default function GHNTrackingPage() {
   const [user, setUser] = useState<User | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
-    status: '',
+    status: 'all',
     codMin: '',
     codMax: '',
     weightMin: '',
@@ -338,7 +338,7 @@ export default function GHNTrackingPage() {
       }
 
       // Status filter
-      if (filters.status && item.ghn_status !== filters.status) {
+      if (filters.status && filters.status !== 'all' && item.ghn_status !== filters.status) {
         return false;
       }
 

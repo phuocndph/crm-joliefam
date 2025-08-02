@@ -39,7 +39,7 @@ interface GHNTrackingFiltersProps {
 }
 
 const statusOptions = [
-  { value: '', label: 'Tất cả trạng thái' },
+  { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'delivered', label: 'Đã giao hàng' },
   { value: 'delivering', label: 'Đang giao hàng' },
   { value: 'storing', label: 'Đang lưu kho' },
@@ -64,7 +64,7 @@ export function GHNTrackingFilters({
   const [isOpen, setIsOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
-    status: '',
+    status: 'all',
     codMin: '',
     codMax: '',
     weightMin: '',
@@ -80,7 +80,7 @@ export function GHNTrackingFilters({
   const clearAllFilters = () => {
     const clearedFilters: FilterState = {
       searchText: '',
-      status: '',
+      status: 'all',
       codMin: '',
       codMax: '',
       weightMin: '',
@@ -93,7 +93,7 @@ export function GHNTrackingFilters({
   const getActiveFilterCount = () => {
     let count = 0;
     if (filters.searchText) count++;
-    if (filters.status) count++;
+    if (filters.status && filters.status !== 'all') count++;
     if (filters.createdDateRange) count++;
     if (filters.expectedDateRange) count++;
     if (filters.deliveredDateRange) count++;
@@ -298,12 +298,12 @@ export function GHNTrackingFilters({
                       />
                     </Badge>
                   )}
-                  {filters.status && (
+                  {filters.status && filters.status !== 'all' && (
                     <Badge variant="secondary" className="flex items-center gap-1">
                       Trạng thái: {statusOptions.find(s => s.value === filters.status)?.label}
                       <X 
                         className="h-3 w-3 cursor-pointer" 
-                        onClick={() => updateFilters({ status: '' })}
+                        onClick={() => updateFilters({ status: 'all' })}
                       />
                     </Badge>
                   )}
