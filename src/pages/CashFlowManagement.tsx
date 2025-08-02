@@ -104,8 +104,8 @@ export default function CashFlowManagement() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString());
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: startOfMonth(new Date()),
-    to: endOfMonth(new Date())
+    from: subYears(new Date(), 10),
+    to: new Date()
   });
   const [activeTab, setActiveTab] = useState("profit");
   const [showCreateForm, setShowCreateForm] = useState(false);
