@@ -75,11 +75,7 @@ export default function GHNTrackingPage() {
   const [user, setUser] = useState<User | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
-    status: 'all',
-    codMin: '',
-    codMax: '',
-    weightMin: '',
-    weightMax: ''
+    status: 'all'
   });
   const { role } = useUserRole(user);
 
@@ -322,7 +318,7 @@ export default function GHNTrackingPage() {
     }
   };
 
-  // Filter logic
+  // Filter logic - simplified to only search and status
   const filteredData = useMemo(() => {
     return trackingData.filter(item => {
       // Search text filter
@@ -342,101 +338,9 @@ export default function GHNTrackingPage() {
         return false;
       }
 
-      // COD range filter
-      const codAmount = item.cod_amount || 0;
-      const codMin = filters.codMin ? parseFloat(filters.codMin) : 0;
-      const codMax = filters.codMax ? parseFloat(filters.codMax) : Infinity;
-      if (codAmount < codMin || codAmount > codMax) {
-        return false;
-      }
-
-      // Weight range filter
-      const weight = (item.package_weight || 0) / 1000; // Convert to kg
-      const weightMin = filters.weightMin ? parseFloat(filters.weightMin) : 0;
-      const weightMax = filters.weightMax ? parseFloat(filters.weightMax) : Infinity;
-      if (weight < weightMin || weight > weightMax) {
-        return false;
-      }
-
-      // Date range filters
-      const checkDateRange = (dateStr?: string, dateRange?: any) => {
-        if (!dateRange?.from) return true;
-        if (!dateStr) return false;
-        
-        const itemDate = new Date(dateStr);
-        const fromDate = new Date(dateRange.from);
-        const toDate = dateRange.to ? new Date(dateRange.to) : fromDate;
-        
-        return itemDate >= fromDate && itemDate <= toDate;
-      };
-
-      if (!checkDateRange(item.created_date, filters.createdDateRange)) return false;
-      if (!checkDateRange(item.expected_delivery_date, filters.expectedDateRange)) return false;
-      if (!checkDateRange(item.delivered_date, filters.deliveredDateRange)) return false;
-
       return true;
     });
   }, [trackingData, filters]);
-
-  // Export function
-  const handleExport = useCallback(() => {
-    const exportData = filteredData.map((item, index) => ({
-      'STT': index + 1,
-      'Mã GHN': item.ghn_order_code,
-      'Mã đơn hàng': item.internal_order_code || '',
-      'Trạng thái': item.ghn_status_text || item.ghn_status || '',
-      'Tên khách hàng': item.customer_name,
-      'Số điện thoại': item.customer_phone || '',
-      'Địa chỉ': item.customer_address || '',
-      'Trọng lượng (kg)': item.package_weight ? (item.package_weight / 1000).toFixed(2) : '',
-      'Ngày tạo đơn': formatDate(item.created_date),
-      'Ngày dự kiến giao': formatDate(item.expected_delivery_date),
-      'Ngày giao thành công': formatDate(item.delivered_date),
-      'COD thu hộ (₫)': item.cod_amount || 0,
-      'Link tra cứu': item.tracking_url || ''
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'GHN Tracking');
-    
-    const fileName = `ghn-tracking-${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(wb, fileName);
-    
-    toast.success(`Đã xuất ${filteredData.length} đơn hàng ra file Excel`);
-  }, [filteredData]);
-
-  // Quick filter handlers
-  const handleQuickFilter = useCallback((type: 'today' | 'thisWeek' | 'lateDelivery') => {
-    const today = new Date();
-    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    
-    switch (type) {
-      case 'today':
-        setFilters(prev => ({
-          ...prev,
-          createdDateRange: { from: startOfDay, to: today }
-        }));
-        break;
-      
-      case 'thisWeek':
-        const startOfWeek = new Date(today);
-        startOfWeek.setDate(today.getDate() - today.getDay());
-        setFilters(prev => ({
-          ...prev,
-          createdDateRange: { from: startOfWeek, to: today }
-        }));
-        break;
-      
-      case 'lateDelivery':
-        setFilters(prev => ({
-          ...prev,
-          status: '',
-          expectedDateRange: { from: new Date('2020-01-01'), to: startOfDay }
-        }));
-        break;
-    }
-  }, []);
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
@@ -449,8 +353,6 @@ export default function GHNTrackingPage() {
         onFiltersChange={handleFiltersChange}
         filteredCount={filteredData.length}
         totalCount={trackingData.length}
-        onExport={handleExport}
-        onQuickFilter={handleQuickFilter}
       />
 
       <Card>
