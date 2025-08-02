@@ -101,10 +101,16 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
         const directories = data.filter(item => !item.name.includes('.'));
         
         for (const dir of directories) {
-          // Try to get display name from localStorage or use folder name
-          const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
-          const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
-          const displayName = displayNamesMap[dir.name] || dir.name;
+          // Try to get display name from localStorage or decode folder name
+          let displayName = dir.name;
+          try {
+            const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
+            const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
+            displayName = displayNamesMap[dir.name] || decodeURIComponent(dir.name).replace(/_/g, ' ');
+          } catch (error) {
+            // If decoding fails, try to convert underscores to spaces
+            displayName = dir.name.replace(/_/g, ' ');
+          }
           
           categoryMap[dir.name] = displayName;
           
@@ -188,11 +194,15 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
     
     const sanitizedCategory = sanitizeFolderName(category);
     
-    // Save display name to localStorage
-    const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
-    const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
-    displayNamesMap[sanitizedCategory] = category; // Save original name as display name
-    localStorage.setItem('categoryDisplayNames', JSON.stringify(displayNamesMap));
+    // Save display name to localStorage with proper encoding
+    try {
+      const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
+      const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
+      displayNamesMap[sanitizedCategory] = category; // Save original name as display name
+      localStorage.setItem('categoryDisplayNames', JSON.stringify(displayNamesMap));
+    } catch (error) {
+      console.error('Error saving category display names:', error);
+    }
 
     try {
       const uploadPromises = Array.from(files).map(async (file) => {
