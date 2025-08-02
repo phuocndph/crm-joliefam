@@ -39,7 +39,10 @@ serve(async (req) => {
       throw new Error('GHN API key not configured');
     }
 
-    const { action, orderCode, orderId, orderCodes } = await req.json();
+    const requestBody = await req.json();
+    console.log('Request body:', JSON.stringify(requestBody));
+    const { action, orderCode, orderId, orderCodes } = requestBody;
+    console.log(`Processing action: ${action}`);
 
     if (action === 'track') {
       // Track single order by GHN order code
@@ -559,7 +562,8 @@ serve(async (req) => {
       );
     }
 
-    throw new Error('Invalid action specified');
+    console.error(`Invalid action specified: ${action}`);
+    throw new Error(`Invalid action specified: ${action}`);
 
   } catch (error) {
     console.error('GHN Tracking Error:', error);
