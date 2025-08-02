@@ -39,7 +39,7 @@ serve(async (req) => {
       throw new Error('GHN API key not configured');
     }
 
-    const { action, orderCode, orderId } = await req.json();
+    const { action, orderCode, orderId, orderCodes } = await req.json();
 
     if (action === 'track') {
       // Track single order by GHN order code
@@ -118,40 +118,20 @@ serve(async (req) => {
       );
 
     } else if (action === 'sync_from_ghn') {
-      // Sync data directly from GHN API using customer names that contain order codes
-      // Extract GHN order codes from customer names (pattern: customer_name_XXXX)
-      
-      const { data: customers, error: customersError } = await supabaseClient
-        .from('customers')
-        .select('id, name')
-        .like('name', '%_%');
-
-      if (customersError) {
-        throw customersError;
+      // Sync data from GHN API using provided order codes
+      if (!orderCodes || !Array.isArray(orderCodes)) {
+        throw new Error('orderCodes array is required');
       }
 
       const results = [];
       
-      for (const customer of customers) {
-        // Extract GHN order code from customer name (e.g., "hà thu _3203 hoan" -> "3203")
-        const nameMatch = customer.name.match(/_(\d+)/);
-        if (!nameMatch) continue;
-        
-        const ghnOrderCode = nameMatch[1];
-        
+      for (const ghnOrderCode of orderCodes) {
         try {
           // Check if tracking record already exists
           const { data: existingTracking } = await supabaseClient
             .from('ghn_tracking')
             .select('id')
             .eq('ghn_order_code', ghnOrderCode)
-            .maybeSingle();
-
-          // Get order info for this customer if exists
-          const { data: orderData } = await supabaseClient
-            .from('orders')
-            .select('id')
-            .eq('customer_id', customer.id)
             .maybeSingle();
 
           // Fetch data from GHN API
@@ -168,7 +148,6 @@ serve(async (req) => {
 
           if (!ghnResponse.ok) {
             results.push({
-              customerName: customer.name,
               ghnOrderCode,
               status: 'error',
               message: `GHN API error: ${ghnResponse.statusText}`,
@@ -181,7 +160,6 @@ serve(async (req) => {
           
           if (ghnData.code !== 200) {
             results.push({
-              customerName: customer.name,
               ghnOrderCode,
               status: 'error', 
               message: `GHN API error: ${ghnData.message}`,
@@ -193,7 +171,7 @@ serve(async (req) => {
           const trackingData = ghnData.data;
           
           const trackingRecord = {
-            order_id: orderData?.id || null,
+            order_id: null, // No order linking for independent sync
             ghn_order_code: trackingData.order_code,
             ghn_status: trackingData.status,
             ghn_status_text: getStatusText(trackingData.status),
@@ -220,7 +198,6 @@ serve(async (req) => {
             if (updateError) {
               console.error(`Error updating tracking ${ghnOrderCode}:`, updateError);
               results.push({
-                customerName: customer.name,
                 ghnOrderCode,
                 status: 'error',
                 message: updateError.message,
@@ -228,7 +205,6 @@ serve(async (req) => {
               });
             } else {
               results.push({
-                customerName: customer.name,
                 ghnOrderCode,
                 status: 'updated',
                 message: 'Đã cập nhật thông tin tracking',
@@ -244,7 +220,6 @@ serve(async (req) => {
             if (insertError) {
               console.error(`Error creating tracking ${ghnOrderCode}:`, insertError);
               results.push({
-                customerName: customer.name,
                 ghnOrderCode,
                 status: 'error',
                 message: insertError.message,
@@ -252,7 +227,6 @@ serve(async (req) => {
               });
             } else {
               results.push({
-                customerName: customer.name,
                 ghnOrderCode,
                 status: 'created',
                 message: 'Đã tạo bản ghi tracking mới',
@@ -262,9 +236,8 @@ serve(async (req) => {
           }
           
         } catch (error) {
-          console.error(`Error processing customer ${customer.name}:`, error);
+          console.error(`Error processing order code ${ghnOrderCode}:`, error);
           results.push({
-            customerName: customer.name,
             ghnOrderCode,
             status: 'error',
             message: error.message,
@@ -276,7 +249,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: `Đã xử lý ${customers.length} khách hàng, đồng bộ thành công ${results.filter(r => r.updated).length} đơn hàng`,
+          message: `Đã xử lý ${orderCodes.length} mã đơn hàng, đồng bộ thành công ${results.filter(r => r.updated).length} đơn hàng`,
           results 
         }),
         { 
