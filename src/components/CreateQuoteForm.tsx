@@ -1006,7 +1006,10 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                             />
                           </TableCell>
                           <TableCell className="p-4">
-                            <Dialog>
+                            <Dialog open={showImageLibrary && currentImageEditingIndex === index} onOpenChange={(open) => {
+                              setShowImageLibrary(open);
+                              if (!open) setCurrentImageEditingIndex(-1);
+                            }}>
                               <DialogTrigger asChild>
                                 <Button
                                   variant="outline"
@@ -1036,21 +1039,24 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                   <DialogTitle>Chọn hình ảnh sản phẩm</DialogTitle>
                                 </DialogHeader>
                                 <div className="h-[70vh] overflow-y-auto">
-                                  <ProductImageLibrary 
-                                    onSelectImage={(imageUrl) => {
-                                      const newProducts = [...selectedProducts];
-                                      newProducts[currentImageEditingIndex] = { 
-                                        ...newProducts[currentImageEditingIndex], 
-                                        selectedImage: imageUrl 
-                                      };
-                                      setSelectedProducts(newProducts);
-                                      setShowImageLibrary(false);
-                                      toast({
-                                        title: "Thành công",
-                                        description: "Đã chọn hình ảnh cho sản phẩm",
-                                      });
-                                    }}
-                                  />
+                                  {currentImageEditingIndex === index && (
+                                    <ProductImageLibrary 
+                                      onSelectImage={(imageUrl) => {
+                                        const newProducts = [...selectedProducts];
+                                        newProducts[index] = { 
+                                          ...newProducts[index], 
+                                          selectedImage: imageUrl 
+                                        };
+                                        setSelectedProducts(newProducts);
+                                        setShowImageLibrary(false);
+                                        setCurrentImageEditingIndex(-1);
+                                        toast({
+                                          title: "Thành công",
+                                          description: "Đã chọn hình ảnh cho sản phẩm",
+                                        });
+                                      }}
+                                    />
+                                  )}
                                 </div>
                               </DialogContent>
                             </Dialog>
