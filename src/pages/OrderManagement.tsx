@@ -102,6 +102,7 @@ export default function OrderManagement() {
   const [orderToEditNumber, setOrderToEditNumber] = useState<Order | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [orderPayments, setOrderPayments] = useState<{[orderId: string]: number}>({});
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
 
@@ -711,12 +712,12 @@ export default function OrderManagement() {
                       <span className="text-red-600">TỔNG TIỀN ĐÃ BAO GỒM GTGT</span>
                       <span className="text-red-600">{(selectedOrder?.total_amount || 0).toLocaleString()}đ</span>
                     </div>
-                    <div className="flex justify-between text-sm font-bold">
-                      <span className="text-red-600">THANH TOÁN ĐÃ NHẬN</span>
-                      <span className="text-red-600">
-                        {((selectedOrder?.total_amount || 0) - calculateRemainingAmount(selectedOrder)).toLocaleString()}đ
-                      </span>
-                    </div>
+                     <div className="flex justify-between text-sm font-bold">
+                       <span className="text-red-600">THANH TOÁN ĐÃ NHẬN</span>
+                       <span className="text-red-600">
+                         {calculateTotalPaid(selectedOrder).toLocaleString()}đ
+                       </span>
+                     </div>
                     <div className="bg-yellow-100 p-3 rounded">
                       <div className="flex justify-between text-sm font-bold">
                         <span className="text-red-600">CÒN LẠI</span>
@@ -797,7 +798,7 @@ export default function OrderManagement() {
               orderId={orderToPayment.id}
               orderNumber={getOrderDisplayNumber(orderToPayment)}
               totalAmount={orderToPayment.total_amount || 0}
-              totalPaid={(orderToPayment.total_amount || 0) - (calculateRemainingAmount(orderToPayment))}
+              totalPaid={calculateTotalPaid(orderToPayment)}
               remainingAmount={calculateRemainingAmount(orderToPayment)}
               onClose={() => setOrderToPayment(null)}
               onSubmit={handlePaymentAdded}
@@ -827,9 +828,13 @@ export default function OrderManagement() {
     // Handle null/undefined order
     if (!order) return 0;
     
-    // This is a simplified calculation - in real app, we'd fetch from payment_summary
-    if (order.payment_status === 'paid') return 0;
-    if (order.payment_status === 'partial') return (order.total_amount || 0) * 0.5; // Example
-    return order.total_amount || 0;
+    // Use the total_paid amount that was loaded with the order
+    const totalPaid = (order as any).total_paid || 0;
+    return Math.max(0, (order.total_amount || 0) - totalPaid);
+  }
+  
+  function calculateTotalPaid(order: Order | null): number {
+    if (!order) return 0;
+    return (order as any).total_paid || 0;
   }
 }
