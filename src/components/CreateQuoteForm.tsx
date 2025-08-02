@@ -1039,24 +1039,22 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                   <DialogTitle>Chọn hình ảnh sản phẩm</DialogTitle>
                                 </DialogHeader>
                                 <div className="h-[70vh] overflow-y-auto">
-                                  {currentImageEditingIndex === index && (
-                                    <ProductImageLibrary 
-                                      onSelectImage={(imageUrl) => {
-                                        const newProducts = [...selectedProducts];
-                                        newProducts[index] = { 
-                                          ...newProducts[index], 
-                                          selectedImage: imageUrl 
-                                        };
-                                        setSelectedProducts(newProducts);
-                                        setShowImageLibrary(false);
-                                        setCurrentImageEditingIndex(-1);
-                                        toast({
-                                          title: "Thành công",
-                                          description: "Đã chọn hình ảnh cho sản phẩm",
-                                        });
-                                      }}
-                                    />
-                                  )}
+                                  <ProductImageLibrary 
+                                    onSelectImage={(imageUrl) => {
+                                      const newProducts = [...selectedProducts];
+                                      newProducts[index] = { 
+                                        ...newProducts[index], 
+                                        selectedImage: imageUrl 
+                                      };
+                                      setSelectedProducts(newProducts);
+                                      setShowImageLibrary(false);
+                                      setCurrentImageEditingIndex(-1);
+                                      toast({
+                                        title: "Thành công",
+                                        description: "Đã chọn hình ảnh cho sản phẩm",
+                                      });
+                                    }}
+                                  />
                                 </div>
                               </DialogContent>
                             </Dialog>
