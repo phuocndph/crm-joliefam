@@ -43,7 +43,7 @@ serve(async (req) => {
 
     if (action === 'track') {
       // Track single order by GHN order code
-      const ghnResponse = await fetch(`https://dev-online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
+      const ghnResponse = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -135,7 +135,7 @@ serve(async (req) => {
         if (order.ghn_tracking && order.ghn_tracking.length > 0) {
           const tracking = order.ghn_tracking[0];
           try {
-            const ghnResponse = await fetch(`https://dev-online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
+            const ghnResponse = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
