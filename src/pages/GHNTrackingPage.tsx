@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
-import { Loader2, ExternalLink, Trash2, Plus, RefreshCw } from 'lucide-react';
+import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
 
 interface GHNTrackingData {
@@ -181,6 +181,62 @@ export default function GHNTrackingPage() {
     }
   };
 
+  const importAllOrdersFromGHN = async () => {
+    if (!user) return;
+
+    setLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+        body: {
+          action: 'fetch_all_orders'
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.success) {
+        // Save all orders to database
+        const orders = data.data || [];
+        let savedCount = 0;
+        let errorCount = 0;
+
+        for (const order of orders) {
+          try {
+            const { error: saveError } = await supabase.functions.invoke('ghn-tracking', {
+              body: {
+                action: 'save_tracking',
+                orderCode: order.orderCode,
+                userId: user.id,
+                managerId: user.id
+              }
+            });
+
+            if (!saveError) {
+              savedCount++;
+            } else {
+              errorCount++;
+            }
+          } catch (saveError) {
+            errorCount++;
+          }
+        }
+
+        toast.success(`Đã import ${savedCount} đơn hàng từ GHN${errorCount > 0 ? `, ${errorCount} lỗi` : ''}`);
+        await loadTrackingData(); // Reload data
+      } else {
+        toast.error(data.error || 'Lỗi import đơn hàng từ GHN');
+      }
+    } catch (error: any) {
+      console.error('Error importing orders:', error);
+      toast.error(error.message || 'Lỗi kết nối server');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const removeTracking = async (id: string) => {
     try {
       const { error } = await supabase
@@ -229,6 +285,14 @@ export default function GHNTrackingPage() {
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Cập nhật tất cả
+            </Button>
+            <Button
+              onClick={importAllOrdersFromGHN}
+              disabled={loading}
+              variant="secondary"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+              Import từ GHN
             </Button>
           </div>
 
