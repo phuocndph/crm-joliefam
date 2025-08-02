@@ -51,6 +51,17 @@ const CustomerCare = () => {
         return;
       }
 
+      // Fetch orders to get real purchase data
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select('customer_id, total_amount, status, created_at, payment_date')
+        .eq('status', 'delivered')
+        .not('total_amount', 'is', null);
+
+      if (ordersError) {
+        console.error('Error fetching orders:', ordersError);
+      }
+
       // Fetch assignees using raw query to bypass type restrictions
       const { data: assigneesData, error: assigneesError } = await supabase
         .from('assignees' as any)
@@ -63,7 +74,63 @@ const CustomerCare = () => {
         setAssignees([]);
       }
 
-      setCustomers(customersData || []);
+      // Calculate real purchase statistics for each customer
+      if (customersData && ordersData) {
+        const ordersByCustomer = ordersData.reduce((acc: any, order: any) => {
+          if (!acc[order.customer_id]) {
+            acc[order.customer_id] = {
+              count: 0,
+              totalSpent: 0,
+              lastPurchase: null
+            };
+          }
+          
+          acc[order.customer_id].count += 1;
+          acc[order.customer_id].totalSpent += Number(order.total_amount) || 0;
+          
+          // Find the latest purchase date (use payment_date if available, otherwise created_at)
+          const purchaseDate = order.payment_date || order.created_at;
+          if (!acc[order.customer_id].lastPurchase || new Date(purchaseDate) > new Date(acc[order.customer_id].lastPurchase)) {
+            acc[order.customer_id].lastPurchase = purchaseDate;
+          }
+          
+          return acc;
+        }, {});
+
+        console.log('Orders data:', ordersData);
+        console.log('Customers data:', customersData);
+        console.log('Orders by customer:', ordersByCustomer);
+
+        // Update customers with real purchase data
+        const updatedCustomers = customersData.map(customer => {
+          const orderStats = ordersByCustomer[customer.id] || {
+            count: 0,
+            totalSpent: 0,
+            lastPurchase: null
+          };
+
+          console.log(`Customer ${customer.name}:`, {
+            id: customer.id,
+            orderStats,
+            finalStats: {
+              purchase_count: orderStats.count,
+              total_spent: orderStats.totalSpent,
+              last_purchase_date: orderStats.lastPurchase
+            }
+          });
+
+          return {
+            ...customer,
+            purchase_count: orderStats.count,
+            total_spent: orderStats.totalSpent,
+            last_purchase_date: orderStats.lastPurchase
+          };
+        });
+
+        setCustomers(updatedCustomers);
+      } else {
+        setCustomers(customersData || []);
+      }
     } catch (error) {
       console.error('Error:', error);
     } finally {
