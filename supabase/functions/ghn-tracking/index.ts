@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,7 +34,13 @@ serve(async (req) => {
       throw new Error('GHN API key not configured');
     }
 
-    const { action } = await req.json();
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const requestBody = await req.json();
+    const { action } = requestBody;
     console.log(`Processing action: ${action}`);
 
     if (action === 'fetch_all_orders') {
@@ -156,8 +163,8 @@ serve(async (req) => {
       );
 
     } else if (action === 'track_order') {
-      // Track single order by order code
-      const { orderCode } = await req.json();
+      // Track single order by order code  
+      const { orderCode } = requestBody;
       
       if (!orderCode) {
         throw new Error('Order code is required');
@@ -210,6 +217,191 @@ serve(async (req) => {
         JSON.stringify({ 
           success: true, 
           data: transformedOrder
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200 
+        }
+      );
+
+    } else if (action === 'save_tracking') {
+      // Save order tracking to database
+      const { orderCode, userId, managerId } = requestBody;
+      
+      if (!orderCode) {
+        throw new Error('Order code is required');
+      }
+
+      // First get order details from GHN
+      const response = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Token': ghnApiKey,
+        },
+        body: JSON.stringify({
+          order_code: orderCode
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`GHN API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.code !== 200) {
+        throw new Error(data.message || 'Order not found');
+      }
+
+      const order = data.data;
+      
+      // Extract order number from customer name
+      const orderNumberMatch = order.to_name.match(/_(\d+)/);
+      const extractedOrderNumber = orderNumberMatch ? orderNumberMatch[1] : '';
+      
+      // Prepare data for database
+      const trackingData = {
+        ghn_order_code: order.order_code,
+        internal_order_code: extractedOrderNumber,
+        customer_name: order.to_name,
+        customer_name_raw: order.to_name,
+        customer_phone: order.to_phone,
+        customer_address: `${order.to_address}${order.to_ward_name ? ', ' + order.to_ward_name : ''}${order.to_district_name ? ', ' + order.to_district_name : ''}${order.to_province_name ? ', ' + order.to_province_name : ''}`,
+        package_weight: order.weight,
+        created_date: order.created_date,
+        expected_delivery_date: order.expected_delivery_time,
+        delivered_date: order.delivered_date,
+        cod_amount: order.cod_amount,
+        ghn_status: order.status,
+        ghn_status_text: getStatusText(order.status),
+        tracking_url: `https://donhang.ghn.vn/?order_code=${order.order_code}`,
+        raw_data: order,
+        manager_id: managerId,
+        last_updated_at: new Date().toISOString()
+      };
+
+      // Check if record exists
+      const { data: existingRecord } = await supabase
+        .from('ghn_tracking')
+        .select('id')
+        .eq('ghn_order_code', order.order_code)
+        .single();
+
+      let result;
+      if (existingRecord) {
+        // Update existing record
+        result = await supabase
+          .from('ghn_tracking')
+          .update(trackingData)
+          .eq('ghn_order_code', order.order_code);
+      } else {
+        // Insert new record
+        result = await supabase
+          .from('ghn_tracking')
+          .insert(trackingData);
+      }
+
+      if (result.error) {
+        throw new Error(`Database error: ${result.error.message}`);
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: `Đã ${existingRecord ? 'cập nhật' : 'thêm'} tracking cho đơn hàng ${orderCode}`,
+          data: {
+            orderCode: order.order_code,
+            orderNumber: extractedOrderNumber,
+            status: order.status,
+            statusText: getStatusText(order.status),
+            customerName: order.to_name,
+            customerPhone: order.to_phone,
+            customerAddress: trackingData.customer_address,
+            weight: order.weight,
+            createdDate: order.created_date,
+            expectedDeliveryTime: order.expected_delivery_time,
+            deliveredDate: order.delivered_date,
+            codAmount: order.cod_amount,
+            trackingUrl: trackingData.tracking_url
+          }
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200 
+        }
+      );
+
+    } else if (action === 'update_all_tracking') {
+      // Update all tracking records in database
+      const { managerId } = requestBody;
+      
+      // Get all tracking records for this manager
+      const { data: trackingRecords, error: fetchError } = await supabase
+        .from('ghn_tracking')
+        .select('ghn_order_code')
+        .eq('manager_id', managerId);
+
+      if (fetchError) {
+        throw new Error(`Database error: ${fetchError.message}`);
+      }
+
+      let updateCount = 0;
+      let errorCount = 0;
+
+      // Update each record
+      for (const record of trackingRecords || []) {
+        try {
+          const response = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Token': ghnApiKey,
+            },
+            body: JSON.stringify({
+              order_code: record.ghn_order_code
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.code === 200) {
+              const order = data.data;
+              
+              // Update tracking data
+              const updateData = {
+                ghn_status: order.status,
+                ghn_status_text: getStatusText(order.status),
+                expected_delivery_date: order.expected_delivery_time,
+                delivered_date: order.delivered_date,
+                raw_data: order,
+                last_updated_at: new Date().toISOString()
+              };
+
+              const { error: updateError } = await supabase
+                .from('ghn_tracking')
+                .update(updateData)
+                .eq('ghn_order_code', record.ghn_order_code);
+
+              if (!updateError) {
+                updateCount++;
+              } else {
+                errorCount++;
+                console.error(`Update error for ${record.ghn_order_code}:`, updateError);
+              }
+            }
+          }
+        } catch (error) {
+          errorCount++;
+          console.error(`Error updating ${record.ghn_order_code}:`, error);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: `Đã cập nhật ${updateCount} đơn hàng${errorCount > 0 ? `, ${errorCount} lỗi` : ''}`,
+          data: { updateCount, errorCount }
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

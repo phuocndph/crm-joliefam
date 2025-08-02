@@ -300,6 +300,7 @@ export type Database = {
           created_date: string | null
           customer_address: string | null
           customer_name: string | null
+          customer_name_raw: string | null
           customer_phone: string | null
           delivered_date: string | null
           expected_delivery_date: string | null
@@ -307,11 +308,14 @@ export type Database = {
           ghn_status: string | null
           ghn_status_text: string | null
           id: string
+          internal_order_code: string | null
+          last_updated_at: string | null
           manager_id: string | null
           order_id: string | null
           package_weight: number | null
           raw_data: Json | null
           tenant_id: string
+          tracking_notes: string | null
           tracking_url: string | null
           updated_at: string
         }
@@ -321,6 +325,7 @@ export type Database = {
           created_date?: string | null
           customer_address?: string | null
           customer_name?: string | null
+          customer_name_raw?: string | null
           customer_phone?: string | null
           delivered_date?: string | null
           expected_delivery_date?: string | null
@@ -328,11 +333,14 @@ export type Database = {
           ghn_status?: string | null
           ghn_status_text?: string | null
           id?: string
+          internal_order_code?: string | null
+          last_updated_at?: string | null
           manager_id?: string | null
           order_id?: string | null
           package_weight?: number | null
           raw_data?: Json | null
           tenant_id?: string
+          tracking_notes?: string | null
           tracking_url?: string | null
           updated_at?: string
         }
@@ -342,6 +350,7 @@ export type Database = {
           created_date?: string | null
           customer_address?: string | null
           customer_name?: string | null
+          customer_name_raw?: string | null
           customer_phone?: string | null
           delivered_date?: string | null
           expected_delivery_date?: string | null
@@ -349,11 +358,14 @@ export type Database = {
           ghn_status?: string | null
           ghn_status_text?: string | null
           id?: string
+          internal_order_code?: string | null
+          last_updated_at?: string | null
           manager_id?: string | null
           order_id?: string | null
           package_weight?: number | null
           raw_data?: Json | null
           tenant_id?: string
+          tracking_notes?: string | null
           tracking_url?: string | null
           updated_at?: string
         }

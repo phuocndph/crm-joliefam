@@ -1,279 +1,322 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { X, Truck } from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { useUserRole } from '@/hooks/useUserRole';
+import { Loader2, ExternalLink, Trash2, Plus, RefreshCw } from 'lucide-react';
+import { User } from '@supabase/supabase-js';
 
-interface GHNOrder {
-  order_code: string;
-  status: string;
-  to_name: string;
-  to_phone: string;
-  to_address: string;
-  weight: number;
-  created_date: string;
-  leadtime?: string;
-  finish_date?: string;
-  cod_amount: number;
-  error?: string;
+interface GHNTrackingData {
+  id: string;
+  ghn_order_code: string;
+  internal_order_code?: string;
+  customer_name: string;
+  customer_phone?: string;
+  customer_address?: string;
+  package_weight?: number;
+  created_date?: string;
+  expected_delivery_date?: string;
+  delivered_date?: string;
+  cod_amount?: number;
+  ghn_status?: string;
+  ghn_status_text?: string;
+  tracking_url?: string;
+  last_updated_at?: string;
 }
 
-// Map trạng thái sang tiếng Việt và màu nền
-const statusMap = {
-  picking: { label: "Đang lấy hàng", color: "#FFFF99" },
-  storing: { label: "Đang lưu kho", color: "#FFCC99" },
-  transporting: { label: "Đang vận chuyển", color: "#99CCFF" },
-  delivered: { label: "Đã giao hàng", color: "#99FF99" },
-  canceled: { label: "Đã hủy", color: "#FF9999" },
-  returning: { label: "Đang trả hàng", color: "#FFCCFF" },
-  return_transporting: { label: "Đang vận chuyển trả hàng", color: "#FF9966" },
-  ready_to_pick: { label: "Sẵn sàng lấy hàng", color: "#CCFF99" },
-  delivering: { label: "Đang giao hàng", color: "#ED849C" },
-  returned: { label: "Hoàn hàng thành công", color: "#B8A6A0" },
+// Map trạng thái và màu sắc
+const statusColors: { [key: string]: string } = {
+  'ready_to_pick': 'bg-yellow-100 text-yellow-800',
+  'picking': 'bg-orange-100 text-orange-800',
+  'picked': 'bg-blue-100 text-blue-800',
+  'storing': 'bg-purple-100 text-purple-800',
+  'transporting': 'bg-indigo-100 text-indigo-800',
+  'sorting': 'bg-cyan-100 text-cyan-800',
+  'delivering': 'bg-pink-100 text-pink-800',
+  'delivered': 'bg-green-100 text-green-800',
+  'delivery_fail': 'bg-red-100 text-red-800',
+  'returning': 'bg-amber-100 text-amber-800',
+  'returned': 'bg-gray-100 text-gray-800',
+  'cancel': 'bg-red-100 text-red-800',
+  'lost': 'bg-red-100 text-red-800',
+  'damage': 'bg-red-100 text-red-800'
 };
 
-function formatDate(dateStr?: string) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("vi-VN");
+function formatDate(dateStr?: string): string {
+  if (!dateStr) return '';
+  try {
+    return new Date(dateStr).toLocaleDateString('vi-VN');
+  } catch {
+    return '';
+  }
+}
+
+function formatWeight(weight?: number): string {
+  if (!weight) return '';
+  return `${(weight / 1000).toFixed(2)} kg`;
+}
+
+function formatCurrency(amount?: number): string {
+  if (!amount) return '0 ₫';
+  return `${amount.toLocaleString('vi-VN')} ₫`;
 }
 
 export default function GHNTrackingPage() {
-  const [orders, setOrders] = useState<GHNOrder[]>([]);
-  const [orderInput, setOrderInput] = useState("");
+  const [trackingData, setTrackingData] = useState<GHNTrackingData[]>([]);
+  const [orderCodeInput, setOrderCodeInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const { toast } = useToast();
+  const [user, setUser] = useState<User | null>(null);
+  const { role } = useUserRole(user);
 
-  // Load từ localStorage khi khởi tạo
+  // Get current user
   useEffect(() => {
-    const saved = localStorage.getItem("ghn_orders");
-    if (saved) {
-      try {
-        setOrders(JSON.parse(saved));
-      } catch (e) {
-        console.error("Error loading saved orders:", e);
-      }
-    }
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getCurrentUser();
   }, []);
 
-  // Lưu vào localStorage khi orders thay đổi
+  // Load tracking data from database
   useEffect(() => {
-    localStorage.setItem("ghn_orders", JSON.stringify(orders));
-  }, [orders]);
+    if (user) {
+      loadTrackingData();
+    }
+  }, [user]);
 
-  // Thêm đơn mới
-  const addOrder = async () => {
-    const code = orderInput.trim();
-    if (!code) return;
-    
+  const loadTrackingData = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('ghn_tracking')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading tracking data:', error);
+        toast.error('Lỗi tải dữ liệu tracking');
+      } else {
+        setTrackingData(data || []);
+      }
+    } catch (error) {
+      console.error('Error loading tracking data:', error);
+      toast.error('Lỗi tải dữ liệu tracking');
+    }
+  };
+
+  const addOrderTracking = async () => {
+    const orderCode = orderCodeInput.trim();
+    if (!orderCode || !user) return;
+
+    // Check if already exists
+    const existingOrder = trackingData.find(item => item.ghn_order_code === orderCode);
+    if (existingOrder) {
+      toast.error('Mã đơn hàng đã tồn tại trong hệ thống');
+      return;
+    }
+
     setLoading(true);
-    setError("");
-    
+
     try {
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-        body: { 
-          action: 'track_order',
-          orderCode: code
+        body: {
+          action: 'save_tracking',
+          orderCode: orderCode,
+          userId: user.id,
+          managerId: user.id
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       if (data.success) {
-        // Kiểm tra đã có trong bảng chưa
-        if (orders.some((o) => o.order_code === code)) {
-          setError("Đơn đã tồn tại trong danh sách.");
-          toast({
-            title: "Cảnh báo",
-            description: "Đơn đã tồn tại trong danh sách.",
-            variant: "destructive",
-          });
-        } else {
-          setOrders(prev => [data.data, ...prev]);
-          toast({
-            title: "Thành công",
-            description: "Đã thêm đơn hàng mới",
-            duration: 2000,
-          });
-        }
+        toast.success(data.message);
+        setOrderCodeInput('');
+        await loadTrackingData(); // Reload data
       } else {
-        setError(data.error || "Không tìm thấy đơn hàng");
-        toast({
-          title: "Lỗi",
-          description: data.error || "Không tìm thấy đơn hàng",
-          variant: "destructive",
-        });
+        toast.error(data.error || 'Lỗi thêm tracking');
       }
     } catch (error: any) {
-      const errorMsg = error.message || "Lỗi kết nối server!";
-      setError(errorMsg);
-      toast({
-        title: "Lỗi",
-        description: errorMsg,
-        variant: "destructive",
-      });
+      console.error('Error adding tracking:', error);
+      toast.error(error.message || 'Lỗi kết nối server');
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
-    setOrderInput("");
   };
 
-  // Cập nhật trạng thái toàn bộ đơn
-  const updateAll = async () => {
-    if (orders.length === 0) return;
-    
+  const updateAllTracking = async () => {
+    if (!user || trackingData.length === 0) return;
+
     setLoading(true);
-    setError("");
-    
-    try {
-      const updated: GHNOrder[] = [];
-      for (let o of orders) {
-        const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-          body: { 
-            action: 'track_order',
-            orderCode: o.order_code
-          }
-        });
 
-        if (error) {
-          updated.push({ ...o, error: error.message });
-        } else if (data.success) {
-          updated.push(data.data);
-        } else {
-          updated.push({ ...o, error: data.error || "Lỗi cập nhật" });
+    try {
+      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+        body: {
+          action: 'update_all_tracking',
+          managerId: user.id
         }
+      });
+
+      if (error) {
+        throw error;
       }
-      setOrders(updated);
-      toast({
-        title: "Thành công",
-        description: "Đã cập nhật trạng thái tất cả đơn hàng",
-        duration: 2000,
-      });
+
+      if (data.success) {
+        toast.success(data.message);
+        await loadTrackingData(); // Reload data
+      } else {
+        toast.error(data.error || 'Lỗi cập nhật tracking');
+      }
     } catch (error: any) {
-      setError("Lỗi cập nhật trạng thái!");
-      toast({
-        title: "Lỗi",
-        description: "Lỗi cập nhật trạng thái!",
-        variant: "destructive",
-      });
+      console.error('Error updating tracking:', error);
+      toast.error(error.message || 'Lỗi kết nối server');
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
-  // Xóa đơn hàng
-  const removeOrder = (code: string) => {
-    setOrders(orders.filter((o) => o.order_code !== code));
-    toast({
-      title: "Đã xóa",
-      description: "Đã xóa đơn hàng khỏi danh sách",
-      duration: 1500,
-    });
+  const removeTracking = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('ghn_tracking')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        throw error;
+      }
+
+      toast.success('Đã xóa tracking');
+      await loadTrackingData();
+    } catch (error: any) {
+      console.error('Error removing tracking:', error);
+      toast.error('Lỗi xóa tracking');
+    }
   };
 
   return (
-    <div style={{ padding: 32, maxWidth: 1280, margin: "auto", fontFamily: "Segoe UI" }}>
-      <div className="flex items-center gap-2 mb-6">
-        <Truck className="h-6 w-6 text-blue-600" />
-        <h2 className="text-2xl font-bold">Quản lý đơn hàng GHN</h2>
-      </div>
-      
-      <div style={{ marginBottom: 16 }}>
-        <Input
-          value={orderInput}
-          onChange={(e) => setOrderInput(e.target.value)}
-          placeholder="Nhập mã đơn GHN"
-          style={{ padding: 8, width: 240, marginRight: 8, fontSize: 16 }}
-          onKeyDown={e => e.key === "Enter" && addOrder()}
-          className="inline-block"
-        />
-        <Button onClick={addOrder} disabled={loading || !orderInput} style={{ padding: 8, fontSize: 16, marginRight: 8 }}>
-          Thêm đơn
-        </Button>
-        <Button onClick={updateAll} disabled={loading || !orders.length} style={{ padding: 8 }}>
-          Cập nhật trạng thái
-        </Button>
-      </div>
-      
-      {error && <div style={{ color: "red", marginBottom: 12 }}>{error}</div>}
-      
-      <div style={{ overflowX: "auto" }}>
-        <table border={1} cellPadding={6} cellSpacing={0} style={{ minWidth: 1200, background: "#fff", width: "100%" }}>
-          <thead style={{ background: "#eaeaea" }}>
-            <tr>
-              <th>STT</th>
-              <th>Mã đơn</th>
-              <th>Trạng thái</th>
-              <th>Tên khách</th>
-              <th>SĐT khách</th>
-              <th>Địa chỉ</th>
-              <th>Cân nặng</th>
-              <th>Ngày tạo</th>
-              <th>Ngày dự kiến</th>
-              <th>Ngày giao thành công</th>
-              <th>Tiền COD</th>
-              <th>Tra cứu GHN</th>
-              <th>Xóa</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.length === 0 && (
-              <tr>
-                <td colSpan={13} style={{ textAlign: "center" }}>
-                  Chưa có đơn nào.
-                </td>
-              </tr>
-            )}
-            {orders.map((o, idx) => {
-              const statusObj = statusMap[o.status as keyof typeof statusMap] || { label: o.status, color: "#fff" };
-              return (
-                <tr key={o.order_code} style={{ background: statusObj.color }}>
-                  <td style={{ textAlign: "center" }}>{idx + 1}</td>
-                  <td>{o.order_code}</td>
-                  <td>{statusObj.label}</td>
-                  <td>{o.to_name}</td>
-                  <td>{o.to_phone}</td>
-                  <td>{o.to_address}</td>
-                  <td>{o.weight ? `${o.weight / 1000} kg` : ""}</td>
-                  <td>{formatDate(o.created_date)}</td>
-                  <td>{formatDate(o.leadtime)}</td>
-                  <td>{formatDate(o.finish_date)}</td>
-                  <td>{o.cod_amount ? o.cod_amount.toLocaleString() : ""}</td>
-                  <td>
-                    <a
-                      href={`https://donhang.ghn.vn/?order_code=${o.order_code}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 underline"
-                    >
-                      Tra cứu
-                    </a>
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <Button 
-                      onClick={() => removeOrder(o.order_code)} 
-                      style={{ color: "red", background: "none", border: "none", cursor: "pointer" }}
-                      variant="ghost"
-                      size="sm"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </td>
+    <div className="container mx-auto py-6 space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Theo dõi đơn hàng GHN</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4 mb-6">
+            <Input
+              placeholder="Nhập mã đơn hàng GHN"
+              value={orderCodeInput}
+              onChange={(e) => setOrderCodeInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && addOrderTracking()}
+              className="max-w-xs"
+            />
+            <Button
+              onClick={addOrderTracking}
+              disabled={loading || !orderCodeInput.trim()}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              Thêm tracking
+            </Button>
+            <Button
+              onClick={updateAllTracking}
+              disabled={loading || trackingData.length === 0}
+              variant="outline"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              Cập nhật tất cả
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse border border-gray-300">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">STT</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">MÃ GHN</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">MÃ ĐƠN HÀNG</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">TRẠNG THÁI ĐƠN HÀNG</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">TÊN KHÁCH HÀNG</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">SỐ ĐIỆN THOẠI</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">ĐỊA CHỈ</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">CÂN NẶNG ĐƠN HÀNG</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">NGÀY TẠO ĐƠN</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">NGÀY DỰ KIẾN GIAO</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">NGÀY GIAO THÀNH CÔNG</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">COD THU HỘ</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">TRA CỨU ĐƠN HÀNG</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">THAO TÁC</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      
-      {loading && <div style={{ color: "#888", marginTop: 12 }}>Đang xử lý...</div>}
-      
-      <div style={{ fontSize: 12, color: "#888", marginTop: 16 }}>
-        * Dữ liệu được lưu tạm thời trong trình duyệt. Xóa cache sẽ mất dữ liệu.
-      </div>
+              </thead>
+              <tbody>
+                {trackingData.length === 0 ? (
+                  <tr>
+                    <td colSpan={14} className="border border-gray-300 px-3 py-4 text-center text-gray-500">
+                      Chưa có dữ liệu tracking
+                    </td>
+                  </tr>
+                ) : (
+                  trackingData.map((item, index) => (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="border border-gray-300 px-3 py-2 text-sm">{index + 1}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm font-mono">{item.ghn_order_code}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm font-mono">{item.internal_order_code || '-'}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">
+                        <Badge className={statusColors[item.ghn_status || ''] || 'bg-gray-100 text-gray-800'}>
+                          {item.ghn_status_text || item.ghn_status || '-'}
+                        </Badge>
+                      </td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">{item.customer_name}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">{item.customer_phone || '-'}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm max-w-xs truncate" title={item.customer_address}>
+                        {item.customer_address || '-'}
+                      </td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatWeight(item.package_weight)}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatDate(item.created_date)}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatDate(item.expected_delivery_date)}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatDate(item.delivered_date)}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatCurrency(item.cod_amount)}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">
+                        {item.tracking_url && (
+                          <a
+                            href={item.tracking_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            Tra cứu
+                          </a>
+                        )}
+                      </td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">
+                        <Button
+                          onClick={() => removeTracking(item.id)}
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {trackingData.length > 0 && (
+            <div className="mt-4 text-sm text-gray-500">
+              Tổng cộng: {trackingData.length} đơn hàng đang được theo dõi
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
