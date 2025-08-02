@@ -259,19 +259,34 @@ serve(async (req) => {
       );
 
     } else if (action === 'bulk_sync') {
-      // Sync multiple orders that already have GHN tracking records
-      const { data: trackingRecords, error: trackingError } = await supabaseClient
-        .from('ghn_tracking')
-        .select('*')
-        .not('ghn_order_code', 'like', 'PENDING_%');
+      // Sync all orders from the orders table that have GHN order codes
+      const { data: orders, error: ordersError } = await supabaseClient
+        .from('orders')
+        .select('id, order_number, items')
+        .not('items', 'is', null);
 
-      if (trackingError) {
-        throw trackingError;
+      if (ordersError) {
+        throw ordersError;
       }
 
       const results = [];
       
-      for (const tracking of trackingRecords) {
+      for (const order of orders) {
+        // Extract GHN order code from items JSON
+        let ghnOrderCode = null;
+        if (order.items && Array.isArray(order.items)) {
+          for (const item of order.items) {
+            if (item.ghn_order_code) {
+              ghnOrderCode = item.ghn_order_code;
+              break;
+            }
+          }
+        }
+        
+        if (!ghnOrderCode) {
+          console.log(`No GHN order code found for order ${order.order_number}`);
+          continue;
+        }
         try {
           const ghnResponse = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
             method: 'POST',
@@ -280,7 +295,7 @@ serve(async (req) => {
               'Token': ghnApiKey,
             },
             body: JSON.stringify({
-              order_code: tracking.ghn_order_code
+              order_code: ghnOrderCode
             })
           });
 
@@ -289,43 +304,72 @@ serve(async (req) => {
             if (ghnData.code === 200) {
               const orderData = ghnData.data;
               
-              // Update tracking data
-              await supabaseClient
+              // Check if tracking record exists
+              const { data: existingTracking } = await supabaseClient
                 .from('ghn_tracking')
-                .update({
-                  ghn_status: orderData.status,
-                  ghn_status_text: getStatusText(orderData.status),
-                  expected_delivery_date: orderData.expected_delivery_time,
-                  delivered_date: orderData.delivered_date,
-                  raw_data: orderData,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('ghn_order_code', tracking.ghn_order_code);
+                .select('id')
+                .eq('ghn_order_code', ghnOrderCode)
+                .maybeSingle();
+
+              const trackingRecord = {
+                order_id: order.id,
+                ghn_order_code: orderData.order_code,
+                ghn_status: orderData.status,
+                ghn_status_text: getStatusText(orderData.status),
+                customer_name: orderData.to_name,
+                customer_phone: orderData.to_phone,
+                customer_address: `${orderData.to_address}, ${orderData.to_ward_name || ''}, ${orderData.to_district_name || ''}, ${orderData.to_province_name || ''}`,
+                package_weight: orderData.weight,
+                created_date: orderData.created_date,
+                expected_delivery_date: orderData.expected_delivery_time,
+                delivered_date: orderData.delivered_date,
+                cod_amount: orderData.cod_amount,
+                tracking_url: `https://tracking.ghn.dev/?order_code=${orderData.order_code}`,
+                raw_data: orderData,
+                tenant_id: 'default'
+              };
+
+              if (existingTracking) {
+                // Update existing record
+                await supabaseClient
+                  .from('ghn_tracking')
+                  .update(trackingRecord)
+                  .eq('id', existingTracking.id);
+              } else {
+                // Create new record
+                await supabaseClient
+                  .from('ghn_tracking')
+                  .insert(trackingRecord);
+              }
 
               results.push({
-                orderCode: tracking.ghn_order_code,
+                orderCode: ghnOrderCode,
+                orderNumber: order.order_number,
                 status: orderData.status,
                 statusText: getStatusText(orderData.status),
                 updated: true
               });
             } else {
               results.push({
-                orderCode: tracking.ghn_order_code,
+                orderCode: ghnOrderCode,
+                orderNumber: order.order_number,
                 error: ghnData.message || 'GHN API error',
                 updated: false
               });
             }
           } else {
             results.push({
-              orderCode: tracking.ghn_order_code,
+              orderCode: ghnOrderCode,
+              orderNumber: order.order_number,
               error: `HTTP ${ghnResponse.status}: ${ghnResponse.statusText}`,
               updated: false
             });
           }
         } catch (error) {
-          console.error(`Error updating order ${tracking.ghn_order_code}:`, error);
+          console.error(`Error updating order ${order.order_number} (${ghnOrderCode}):`, error);
           results.push({
-            orderCode: tracking.ghn_order_code,
+            orderCode: ghnOrderCode,
+            orderNumber: order.order_number,
             error: error.message,
             updated: false
           });
@@ -335,7 +379,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: `Đã cập nhật ${results.filter(r => r.updated).length}/${trackingRecords.length} đơn hàng`,
+          message: `Đã đồng bộ ${results.filter(r => r.updated).length}/${orders.length} đơn hàng từ hệ thống`,
           results 
         }),
         { 
