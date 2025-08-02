@@ -214,8 +214,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       // Empty row
       let currentRow = 8;
 
-      // Quote title
-      worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+      // Quote title - merge from A to I
+      worksheet.mergeCells(`A${currentRow}:I${currentRow}`);
       const titleCell = worksheet.getCell(`A${currentRow}`);
       titleCell.value = 'BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN';
       titleCell.font = { name: 'Times New Roman', bold: true, size: 18, color: { argb: templateSettings.quoteTitleColor.replace('#', 'FF') } };
@@ -223,70 +223,60 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       currentRow += 2;
 
-      // Date info
-      worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
-      const dateCell = worksheet.getCell(`A${currentRow}`);
-      dateCell.value = `Hà Nội ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1} năm ${currentDate.getFullYear()}`;
+      // Date info on row 9 - merge from A to I
+      worksheet.mergeCells(`A9:I9`);
+      const dateCell = worksheet.getCell(`A9`);
+      dateCell.value = `Hà Nội ngày 2 tháng 8 năm 2025`;
       dateCell.font = { name: 'Times New Roman', size: 12, italic: true };
       dateCell.alignment = { horizontal: 'center' };
 
       currentRow += 2;
 
-      // Customer and Quote info headers
-      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
-      const customerHeaderCell = worksheet.getCell(`A${currentRow}`);
-      customerHeaderCell.value = 'THÔNG TIN KHÁCH HÀNG:';
-      customerHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FF0066CC' } };
+      // Customer info in column B
+      const customerInfoCell = worksheet.getCell(`B${currentRow}`);
+      customerInfoCell.value = 'THÔNG TIN KHÁCH HÀNG:';
+      customerInfoCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FF0066CC' } };
 
-      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
-      const quoteHeaderCell = worksheet.getCell(`E${currentRow}`);
-      quoteHeaderCell.value = 'THÔNG TIN BÁO GIÁ:';
-      quoteHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FF0066CC' } };
+      // Quote info starting from column H
+      const quoteInfoCell = worksheet.getCell(`H${currentRow}`);
+      quoteInfoCell.value = 'THÔNG TIN BÁO GIÁ:';
+      quoteInfoCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FF0066CC' } };
 
       currentRow++;
       
-      // Customer details
-      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
-      const customerNameCell = worksheet.getCell(`A${currentRow}`);
+      // Customer details in column B
+      const customerNameCell = worksheet.getCell(`B${currentRow}`);
       customerNameCell.value = `Tên KH: ${customerName}`;
       customerNameCell.font = { name: 'Times New Roman', size: 10 };
 
-      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
-      const quoteNumberCell = worksheet.getCell(`E${currentRow}`);
+      // Quote details from column H
+      const quoteNumberCell = worksheet.getCell(`H${currentRow}`);
       quoteNumberCell.value = `Số báo giá: ${quote.quoteNumber || 'BG-20250717-082'}`;
       quoteNumberCell.font = { name: 'Times New Roman', size: 10 };
 
       currentRow++;
       
-      // Empty cell for customer side, quote date on right
-      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
-      const emptyCell1 = worksheet.getCell(`A${currentRow}`);
-
-      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
-      const quoteDateCell = worksheet.getCell(`E${currentRow}`);
+      // Quote date from column H
+      const quoteDateCell = worksheet.getCell(`H${currentRow}`);
       quoteDateCell.value = `Ngày báo giá: ${currentDate.getDate()}/${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`;
       quoteDateCell.font = { name: 'Times New Roman', size: 10 };
 
       currentRow++;
       
-      // Empty cell for customer side, expiry date on right
-      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
-      const emptyCell2 = worksheet.getCell(`A${currentRow}`);
-
-      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
-      const expiryDateCell = worksheet.getCell(`E${currentRow}`);
+      // Expiry date from column H
+      const expiryDateCell = worksheet.getCell(`H${currentRow}`);
       expiryDateCell.value = `Ngày hết hạn: ${expiryDate || '31/7/2025'}`;
       expiryDateCell.font = { name: 'Times New Roman', size: 10 };
 
       currentRow += 2;
 
-      // Table headers with Times New Roman font
+      // Table headers with Times New Roman font and blue color #0070C0
       const headers = ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'HÌNH ẢNH', 'Ghi Chú'];
       
       headers.forEach((header, index) => {
         const cell = worksheet.getCell(`${String.fromCharCode(65 + index)}${currentRow}`);
         cell.value = header;
-        cell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FF000000' } };
+        cell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FF0070C0' } };
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
@@ -331,6 +321,16 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             right: { style: 'thin' }
           };
           
+          // Add border to image column H for aesthetics
+          if (colIndex === 7) {
+            cell.border = {
+              top: { style: 'medium' },
+              left: { style: 'medium' },
+              bottom: { style: 'medium' },
+              right: { style: 'medium' }
+            };
+          }
+          
           if (colIndex === 0 || colIndex === 4) { // STT và Số lượng
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
           } else if (colIndex >= 5 && colIndex <= 6) { // Đơn giá và Thành tiền
@@ -342,6 +342,15 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             cell.alignment = { wrapText: true, vertical: 'middle' };
           }
         });
+
+        // Add border to image column H
+        const imageCell = worksheet.getCell(`H${currentRow}`);
+        imageCell.border = {
+          top: { style: 'medium' },
+          left: { style: 'medium' },
+          bottom: { style: 'medium' },
+          right: { style: 'medium' }
+        };
 
         // Add image if available - moved to column H
         if (item.selectedImage) {
@@ -390,7 +399,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         worksheet.mergeCells(`A${currentRow}:G${currentRow}`);
         const labelCell = worksheet.getCell(`A${currentRow}`);
         labelCell.value = label;
-        labelCell.font = { name: 'Times New Roman', bold: true, size: 11 };
+        labelCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFC00000' } };
         labelCell.alignment = { horizontal: 'left', vertical: 'middle' };
         labelCell.border = {
           top: { style: 'thin' },
@@ -399,10 +408,12 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           right: { style: 'thin' }
         };
 
+        // Merge & Center total amount in columns H and J
+        worksheet.mergeCells(`H${currentRow}:J${currentRow}`);
         const valueCell = worksheet.getCell(`H${currentRow}`);
         valueCell.value = value;
-        valueCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFDC143C' } };
-        valueCell.alignment = { horizontal: 'right', vertical: 'middle' };
+        valueCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFC00000' } };
+        valueCell.alignment = { horizontal: 'center', vertical: 'middle' };
         valueCell.border = {
           top: { style: 'thin' },
           left: { style: 'thin' },
