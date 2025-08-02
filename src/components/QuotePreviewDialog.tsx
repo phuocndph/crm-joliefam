@@ -796,7 +796,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </div>
             </div>
             <div class="logo-section">
-              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 120px; max-height: 80px;" alt="Logo">` : 'LOGO'}
+              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 205px; max-height: 126px;" alt="Logo">` : 'LOGO'}
             </div>
           </div>
 
@@ -973,7 +973,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </div>
             </div>
             <div style="width: 100px; height: 60px; background: rgba(255,255,255,0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 90px; max-height: 50px; object-fit: contain;" alt="Logo">` : '<div style="font-size: 10px; text-align: center;">LOGO</div>'}
+              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 205px; max-height: 126px; object-fit: contain;" alt="Logo">` : '<div style="font-size: 10px; text-align: center;">LOGO</div>'}
             </div>
           </div>
 
