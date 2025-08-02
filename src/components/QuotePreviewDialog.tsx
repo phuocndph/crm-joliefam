@@ -166,7 +166,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           // Add logo to worksheet (A1:A4)
           worksheet.addImage(logoId, {
             tl: { col: 0, row: 0 },
-            ext: { width: 100, height: 80 }
+            ext: { width: 205, height: 126 }
           });
         }
       } catch (logoError) {
