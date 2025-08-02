@@ -311,53 +311,53 @@ export default function GHNTrackingPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-[120px]">Mã GHN</TableHead>
-                    <TableHead className="min-w-[100px]">Mã đơn hàng</TableHead>
-                    <TableHead className="min-w-[140px]">Trạng thái đơn hàng</TableHead>
-                    <TableHead className="min-w-[150px]">Tên khách hàng</TableHead>
-                    <TableHead className="min-w-[120px]">Số điện thoại</TableHead>
-                    <TableHead className="min-w-[200px]">Địa chỉ</TableHead>
-                    <TableHead className="min-w-[100px]">Cân nặng đơn hàng</TableHead>
-                    <TableHead className="min-w-[100px]">Ngày tạo đơn</TableHead>
-                    <TableHead className="min-w-[100px]">Ngày dự kiến giao</TableHead>
-                    <TableHead className="min-w-[120px]">Ngày giao thành công</TableHead>
-                    <TableHead className="min-w-[100px]">COD thu hộ đơn</TableHead>
-                    <TableHead className="min-w-[80px]">Tra cứu đơn</TableHead>
+                  <TableRow className="bg-blue-50 border-b-2 border-blue-200">
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">MÃ GHN</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">MÃ ĐƠN HÀNG</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">TRẠNG THÁI ĐƠN HÀNG</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">TÊN KHÁCH HÀNG</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">SỐ ĐIỆN THOẠI</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">ĐỊA CHỈ</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">CÂN NẶNG ĐƠN HÀNG</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">NGÀY TẠO ĐƠN</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">NGÀY DỰ KIẾN GIAO</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">NGÀY GIAO THÀNH CÔNG</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900 border-r border-gray-300">COD THU HỘ ĐƠN</TableHead>
+                    <TableHead className="font-bold text-center text-blue-900">TRA CỨU ĐƠN</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredOrders.map((order) => (
+                  {filteredOrders.map((order, index) => (
                     <TableRow 
                       key={order.orderCode}
-                      className={`${getRowColor(order.status)} hover:bg-opacity-80 transition-colors`}
+                      className={`${getRowColor(order.status)} hover:bg-opacity-80 transition-colors border-b border-gray-200`}
                     >
-                      <TableCell className="font-mono font-medium text-sm">
+                      <TableCell className="font-mono font-medium text-sm text-center border-r border-gray-200">
                         {order.orderCode}
                       </TableCell>
-                      <TableCell className="font-medium text-center">
+                      <TableCell className="font-medium text-center border-r border-gray-200">
                         {order.orderNumber || '-'}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center border-r border-gray-200">
                         <Badge className={getStatusColor(order.status)}>
                           {order.statusText}
                         </Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="border-r border-gray-200">
                         <div className="break-words">
                           <div className="font-medium">{order.customerName}</div>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono">{order.customerPhone}</TableCell>
-                      <TableCell>
+                      <TableCell className="font-mono text-center border-r border-gray-200">{order.customerPhone}</TableCell>
+                      <TableCell className="border-r border-gray-200">
                         <div className="max-w-[200px] break-words text-sm" title={order.customerAddress}>
                           {order.customerAddress}
                         </div>
                       </TableCell>
-                      <TableCell className="text-center">{formatWeight(order.weight)}</TableCell>
-                      <TableCell className="text-sm">{formatDate(order.createdDate)}</TableCell>
-                      <TableCell className="text-sm">{formatDate(order.expectedDeliveryTime)}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-center border-r border-gray-200 font-medium">{formatWeight(order.weight)}</TableCell>
+                      <TableCell className="text-sm text-center border-r border-gray-200">{formatDate(order.createdDate)}</TableCell>
+                      <TableCell className="text-sm text-center border-r border-gray-200">{formatDate(order.expectedDeliveryTime)}</TableCell>
+                      <TableCell className="text-center border-r border-gray-200">
                         {order.deliveredDate ? (
                           <span className="text-green-600 font-medium text-sm">
                             {formatDate(order.deliveredDate)}
@@ -366,16 +366,19 @@ export default function GHNTrackingPage() {
                           <span className="text-gray-500 text-sm">Chưa giao đến khách</span>
                         )}
                       </TableCell>
-                      <TableCell className="font-medium text-sm">
-                        {formatCOD(order.codAmount)}
+                      <TableCell className="font-medium text-sm text-center border-r border-gray-200">
+                        <span className="text-green-600 font-semibold">
+                          {formatCOD(order.codAmount)}
+                        </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => window.open(order.trackingUrl, '_blank')}
-                          className="gap-1 text-blue-600 hover:text-blue-800"
+                          className="gap-1 text-blue-600 hover:text-blue-800 font-medium"
                         >
+                          <ExternalLink className="h-3 w-3" />
                           Tra cứu
                         </Button>
                       </TableCell>
