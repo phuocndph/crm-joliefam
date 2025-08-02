@@ -334,7 +334,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           if (colIndex === 0 || colIndex === 4) { // STT và Số lượng
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
           } else if (colIndex >= 5 && colIndex <= 6) { // Đơn giá và Thành tiền
-            cell.alignment = { horizontal: 'right', vertical: 'middle' };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
             if (typeof value === 'number') {
               cell.numFmt = '#,##0';
             }
