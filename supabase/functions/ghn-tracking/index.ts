@@ -17,8 +17,8 @@ interface GHNOrder {
   to_province_name?: string;
   weight: number;
   created_date: string;
-  expected_delivery_time?: string;
-  delivered_date?: string;
+  leadtime?: string;  // GHN API uses 'leadtime' for expected delivery
+  finish_date?: string;  // GHN API uses 'finish_date' for actual delivery
   cod_amount: number;
 }
 
@@ -129,9 +129,25 @@ serve(async (req) => {
 
       // Transform data for frontend
       const transformedOrders = allOrders.map(order => {
-        // Extract order number from customer name (e.g., "hà thu _3203 hoan" → "3203")
-        const orderNumberMatch = order.to_name.match(/_(\d+)/);
-        const extractedOrderNumber = orderNumberMatch ? orderNumberMatch[1] : '';
+        // Extract order number from customer name - improved regex patterns
+        let extractedOrderNumber = '';
+        
+        // Try multiple patterns: _3203, 3203, or any number sequence
+        const patterns = [
+          /_(\d+)/,           // Pattern like "hà thu _3203 hoan"
+          /(\d{4,})/,         // Any 4+ digit number
+          /\b(\d+)\b/         // Any standalone number
+        ];
+        
+        for (const pattern of patterns) {
+          const match = order.to_name.match(pattern);
+          if (match) {
+            extractedOrderNumber = match[1];
+            break;
+          }
+        }
+        
+        console.log(`Order ${order.order_code}: Customer name "${order.to_name}" → Extracted order number: "${extractedOrderNumber}"`);
         
         return {
           orderCode: order.order_code,
@@ -143,8 +159,8 @@ serve(async (req) => {
           customerAddress: `${order.to_address}${order.to_ward_name ? ', ' + order.to_ward_name : ''}${order.to_district_name ? ', ' + order.to_district_name : ''}${order.to_province_name ? ', ' + order.to_province_name : ''}`,
           weight: order.weight,
           createdDate: order.created_date,
-          expectedDeliveryTime: order.expected_delivery_time,
-          deliveredDate: order.delivered_date,
+          expectedDeliveryTime: order.leadtime,  // Use correct GHN field
+          deliveredDate: order.finish_date,      // Use correct GHN field
           codAmount: order.cod_amount,
           trackingUrl: `https://donhang.ghn.vn/?order_code=${order.order_code}`
         };
@@ -193,9 +209,24 @@ serve(async (req) => {
 
       const order = data.data;
       
-      // Extract order number from customer name
-      const orderNumberMatch = order.to_name.match(/_(\d+)/);
-      const extractedOrderNumber = orderNumberMatch ? orderNumberMatch[1] : '';
+      // Extract order number from customer name - improved regex patterns
+      let extractedOrderNumber = '';
+      
+      const patterns = [
+        /_(\d+)/,           // Pattern like "hà thu _3203 hoan"
+        /(\d{4,})/,         // Any 4+ digit number
+        /\b(\d+)\b/         // Any standalone number
+      ];
+      
+      for (const pattern of patterns) {
+        const match = order.to_name.match(pattern);
+        if (match) {
+          extractedOrderNumber = match[1];
+          break;
+        }
+      }
+      
+      console.log(`Track order ${order.order_code}: Customer name "${order.to_name}" → Extracted order number: "${extractedOrderNumber}"`);
       
       const transformedOrder = {
         orderCode: order.order_code,
@@ -207,8 +238,8 @@ serve(async (req) => {
         customerAddress: `${order.to_address}${order.to_ward_name ? ', ' + order.to_ward_name : ''}${order.to_district_name ? ', ' + order.to_district_name : ''}${order.to_province_name ? ', ' + order.to_province_name : ''}`,
         weight: order.weight,
         createdDate: order.created_date,
-        expectedDeliveryTime: order.expected_delivery_time,
-        deliveredDate: order.delivered_date,
+        expectedDeliveryTime: order.leadtime,  // Use correct GHN field
+        deliveredDate: order.finish_date,      // Use correct GHN field
         codAmount: order.cod_amount,
         trackingUrl: `https://donhang.ghn.vn/?order_code=${order.order_code}`
       };
@@ -256,9 +287,24 @@ serve(async (req) => {
 
       const order = data.data;
       
-      // Extract order number from customer name
-      const orderNumberMatch = order.to_name.match(/_(\d+)/);
-      const extractedOrderNumber = orderNumberMatch ? orderNumberMatch[1] : '';
+      // Extract order number from customer name - improved regex patterns
+      let extractedOrderNumber = '';
+      
+      const patterns = [
+        /_(\d+)/,           // Pattern like "hà thu _3203 hoan"
+        /(\d{4,})/,         // Any 4+ digit number
+        /\b(\d+)\b/         // Any standalone number
+      ];
+      
+      for (const pattern of patterns) {
+        const match = order.to_name.match(pattern);
+        if (match) {
+          extractedOrderNumber = match[1];
+          break;
+        }
+      }
+      
+      console.log(`Save tracking ${order.order_code}: Customer name "${order.to_name}" → Extracted order number: "${extractedOrderNumber}"`);
       
       // Prepare data for database
       const trackingData = {
@@ -270,8 +316,8 @@ serve(async (req) => {
         customer_address: `${order.to_address}${order.to_ward_name ? ', ' + order.to_ward_name : ''}${order.to_district_name ? ', ' + order.to_district_name : ''}${order.to_province_name ? ', ' + order.to_province_name : ''}`,
         package_weight: order.weight,
         created_date: order.created_date,
-        expected_delivery_date: order.expected_delivery_time,
-        delivered_date: order.delivered_date,
+        expected_delivery_date: order.leadtime,    // Use correct GHN field
+        delivered_date: order.finish_date,         // Use correct GHN field
         cod_amount: order.cod_amount,
         ghn_status: order.status,
         ghn_status_text: getStatusText(order.status),
@@ -320,8 +366,8 @@ serve(async (req) => {
             customerAddress: trackingData.customer_address,
             weight: order.weight,
             createdDate: order.created_date,
-            expectedDeliveryTime: order.expected_delivery_time,
-            deliveredDate: order.delivered_date,
+            expectedDeliveryTime: order.leadtime,    // Use correct GHN field
+            deliveredDate: order.finish_date,        // Use correct GHN field
             codAmount: order.cod_amount,
             trackingUrl: trackingData.tracking_url
           }
@@ -372,8 +418,8 @@ serve(async (req) => {
               const updateData = {
                 ghn_status: order.status,
                 ghn_status_text: getStatusText(order.status),
-                expected_delivery_date: order.expected_delivery_time,
-                delivered_date: order.delivered_date,
+                expected_delivery_date: order.leadtime,     // Use correct GHN field
+                delivered_date: order.finish_date,          // Use correct GHN field
                 raw_data: order,
                 last_updated_at: new Date().toISOString()
               };
