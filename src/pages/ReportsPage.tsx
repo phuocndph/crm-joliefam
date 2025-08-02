@@ -933,7 +933,7 @@ const ReportsPage = () => {
 
           <TabsContent value="actual-revenue" className="space-y-6">
             {/* Header Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -1015,6 +1015,28 @@ const ReportsPage = () => {
                     <BarChart3 className="w-4 h-4 text-purple-600 mr-1" />
                     <span className="text-xs text-purple-600">
                       {formatCurrency(averageOrderValue)} giá trị đơn TB
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    🏭 Tổng giá vốn
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-red-600">
+                    {formatCurrency(totalCostPrice)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Giá vốn hàng bán
+                  </p>
+                  <div className="flex items-center mt-2">
+                    <TrendingDown className="w-4 h-4 text-red-600 mr-1" />
+                    <span className="text-xs text-red-600">
+                      {totalOrderAmount > 0 ? ((totalCostPrice / totalOrderAmount) * 100).toFixed(1) : 0}% của doanh thu
                     </span>
                   </div>
                 </CardContent>
