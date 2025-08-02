@@ -581,41 +581,41 @@ const CustomerCare = () => {
                       return acc;
                     }, {} as Record<string, number>);
 
-                    const statusLabels = {
-                      'waiting-payment': 'Chờ thanh toán tiền',
-                      'waiting-deposit': 'Chờ thanh toán cọc',
-                      'sample-sent': 'Đã gửi mẫu',
-                      'quote-sent': 'Đã gửi báo giá',
-                      'waiting-response': 'Chờ phản hồi khách hàng',
-                      'ordered': 'Đã đặt hàng',
-                      'paid': 'Đã thanh toán xong',
-                      'check-notes': 'Xem ở ghi chú',
-                      'no-response': 'Khách không phản hồi',
-                      // Fallback cho các trạng thái cũ
-                      'contacted': 'Đã liên hệ',
-                      'negotiating': 'Đang đàm phán',
-                      'closed-deal': 'Đã chốt deal',
-                      'lost': 'Mất khách',
-                      'follow-up': 'Theo dõi',
-                    };
+                     const statusLabels = {
+                       'waiting-payment': 'Chờ thanh toán tiền',
+                       'waiting-deposit': 'Chờ thanh toán cọc',
+                       'sent-sample': 'Đã gửi mẫu',
+                       'sent-quote': 'Đã gửi báo giá',
+                       'waiting-response': 'Chờ phản hồi khách hàng',
+                       'ordered': 'Đã đặt hàng',
+                       'paid': 'Đã thanh toán xong',
+                       'see-notes': 'Xem ở ghi chú',
+                       'no-response': 'Khách không phản hồi',
+                       // Fallback cho các trạng thái cũ
+                       'contacted': 'Đã liên hệ',
+                       'negotiating': 'Đang đàm phán',
+                       'closed-deal': 'Đã chốt deal',
+                       'lost': 'Mất khách',
+                       'follow-up': 'Theo dõi',
+                     };
 
-                    const statusColors = {
-                      'waiting-payment': 'bg-yellow-500',
-                      'waiting-deposit': 'bg-orange-500',
-                      'sample-sent': 'bg-blue-500',
-                      'quote-sent': 'bg-purple-500',
-                      'waiting-response': 'bg-indigo-500',
-                      'ordered': 'bg-green-500',
-                      'paid': 'bg-emerald-500',
-                      'check-notes': 'bg-gray-500',
-                      'no-response': 'bg-red-500',
-                      // Fallback cho các trạng thái cũ
-                      'contacted': 'bg-blue-500',
-                      'negotiating': 'bg-purple-500',
-                      'closed-deal': 'bg-green-500',
-                      'lost': 'bg-red-500',
-                      'follow-up': 'bg-orange-500',
-                    };
+                     const statusColors = {
+                       'waiting-payment': 'bg-yellow-500',
+                       'waiting-deposit': 'bg-orange-500',
+                       'sent-sample': 'bg-blue-500',
+                       'sent-quote': 'bg-purple-500',
+                       'waiting-response': 'bg-indigo-500',
+                       'ordered': 'bg-green-500',
+                       'paid': 'bg-emerald-500',
+                       'see-notes': 'bg-gray-500',
+                       'no-response': 'bg-red-500',
+                       // Fallback cho các trạng thái cũ
+                       'contacted': 'bg-blue-500',
+                       'negotiating': 'bg-purple-500',
+                       'closed-deal': 'bg-green-500',
+                       'lost': 'bg-red-500',
+                       'follow-up': 'bg-orange-500',
+                     };
 
                     const total = customers.length;
 
@@ -713,17 +713,17 @@ const CustomerCare = () => {
                     return acc;
                   }, {} as Record<string, number>);
 
-                  const statusDetails = [
-                    { key: 'waiting-payment', label: 'Chờ thanh toán tiền', color: 'border-yellow-200 bg-yellow-50', icon: '💰' },
-                    { key: 'waiting-deposit', label: 'Chờ thanh toán cọc', color: 'border-orange-200 bg-orange-50', icon: '💸' },
-                    { key: 'sample-sent', label: 'Đã gửi mẫu', color: 'border-blue-200 bg-blue-50', icon: '📦' },
-                    { key: 'quote-sent', label: 'Đã gửi báo giá', color: 'border-purple-200 bg-purple-50', icon: '📄' },
-                    { key: 'waiting-response', label: 'Chờ phản hồi khách hàng', color: 'border-indigo-200 bg-indigo-50', icon: '⏳' },
-                    { key: 'ordered', label: 'Đã đặt hàng', color: 'border-green-200 bg-green-50', icon: '✅' },
-                    { key: 'paid', label: 'Đã thanh toán xong', color: 'border-emerald-200 bg-emerald-50', icon: '💯' },
-                    { key: 'check-notes', label: 'Xem ở ghi chú', color: 'border-gray-200 bg-gray-50', icon: '📝' },
-                    { key: 'no-response', label: 'Khách không phản hồi', color: 'border-red-200 bg-red-50', icon: '❌' },
-                  ];
+                   const statusDetails = [
+                     { key: 'waiting-payment', label: 'Chờ thanh toán tiền', color: 'border-yellow-200 bg-yellow-50', icon: '💰' },
+                     { key: 'waiting-deposit', label: 'Chờ thanh toán cọc', color: 'border-orange-200 bg-orange-50', icon: '💸' },
+                     { key: 'sent-sample', label: 'Đã gửi mẫu', color: 'border-blue-200 bg-blue-50', icon: '📦' },
+                     { key: 'sent-quote', label: 'Đã gửi báo giá', color: 'border-purple-200 bg-purple-50', icon: '📄' },
+                     { key: 'waiting-response', label: 'Chờ phản hồi khách hàng', color: 'border-indigo-200 bg-indigo-50', icon: '⏳' },
+                     { key: 'ordered', label: 'Đã đặt hàng', color: 'border-green-200 bg-green-50', icon: '✅' },
+                     { key: 'paid', label: 'Đã thanh toán xong', color: 'border-emerald-200 bg-emerald-50', icon: '💯' },
+                     { key: 'see-notes', label: 'Xem ở ghi chú', color: 'border-gray-200 bg-gray-50', icon: '📝' },
+                     { key: 'no-response', label: 'Khách không phản hồi', color: 'border-red-200 bg-red-50', icon: '❌' },
+                   ];
 
                   return statusDetails.map(({ key, label, color, icon }) => {
                     const count = statusCounts[key] || 0;
