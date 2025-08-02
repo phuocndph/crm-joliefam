@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw } from "lucide-react";
+import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw, MapPin, Navigation } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -104,6 +105,7 @@ export default function OrderManagement() {
   const [loading, setLoading] = useState(true);
   const [orderPayments, setOrderPayments] = useState<{[orderId: string]: number}>({});
   const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState("orders");
   const { toast } = useToast();
 
   const filteredOrders = orders.filter((order) => {
@@ -363,6 +365,27 @@ export default function OrderManagement() {
     return diffDays;
   };
 
+  // Get delivery tracking orders
+  const deliveryOrders = orders.filter(order => 
+    order.status === 'processing' || order.status === 'shipped' || 
+    (order.status === 'delivered' && order.delivered_date && 
+     new Date().getTime() - new Date(order.delivered_date).getTime() < 7 * 24 * 60 * 60 * 1000) // Last 7 days
+  );
+
+  const getDeliveryStatus = (order: Order) => {
+    if (order.status === 'delivered') return 'Đã giao thành công';
+    if (order.status === 'shipped') return 'Đang vận chuyển';
+    if (order.status === 'processing') return 'Đang chuẩn bị hàng';
+    return 'Chờ xử lý';
+  };
+
+  const getDeliveryStatusColor = (order: Order) => {
+    if (order.status === 'delivered') return 'bg-green-100 text-green-800';
+    if (order.status === 'shipped') return 'bg-blue-100 text-blue-800';
+    if (order.status === 'processing') return 'bg-yellow-100 text-yellow-800';
+    return 'bg-gray-100 text-gray-800';
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -400,8 +423,23 @@ export default function OrderManagement() {
         ))}
       </div>
 
-      {/* Search and Filter */}
-      <Card>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="orders" className="gap-2">
+            <Package className="h-4 w-4" />
+            Danh sách Đơn hàng
+          </TabsTrigger>
+          <TabsTrigger value="delivery" className="gap-2">
+            <Truck className="h-4 w-4" />
+            Theo dõi Giao hàng
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="orders">
+
+        {/* Search and Filter */}
+        <Card>
         <CardHeader>
           <CardTitle>Danh sách Đơn hàng</CardTitle>
           <div className="flex flex-col lg:flex-row gap-4">
@@ -547,7 +585,197 @@ export default function OrderManagement() {
             />
           )}
         </CardContent>
-      </Card>
+        </Card>
+        </TabsContent>
+
+        <TabsContent value="delivery">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Truck className="h-5 w-5" />
+                Theo dõi Giao hàng
+              </CardTitle>
+              <CardDescription>
+                Theo dõi tình trạng giao hàng các đơn hàng đang xử lý
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex justify-center py-8">
+                  <span>Đang tải...</span>
+                </div>
+              ) : deliveryOrders.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-8">
+                  <Truck className="h-8 w-8 text-muted-foreground" />
+                  <p className="text-muted-foreground">Không có đơn hàng nào đang giao</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {deliveryOrders.map((order) => (
+                    <Card key={order.id} className="overflow-hidden">
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-3 flex-1">
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <Navigation className="h-4 w-4 text-blue-600" />
+                                <span className="font-semibold text-lg">
+                                  {getOrderDisplayNumber(order)}
+                                </span>
+                              </div>
+                              <Badge className={`${getDeliveryStatusColor(order)} px-2 py-1`}>
+                                {getDeliveryStatus(order)}
+                              </Badge>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                                  <MapPin className="h-4 w-4" />
+                                  Khách hàng
+                                </div>
+                                <p className="font-medium">{order.customers?.name || "Khách lẻ"}</p>
+                                <p className="text-sm text-muted-foreground">{order.customers?.phone}</p>
+                              </div>
+                              
+                              <div>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                                  <CalendarDays className="h-4 w-4" />
+                                  Thời gian
+                                </div>
+                                <div className="space-y-1">
+                                  {order.delivery_date && (
+                                    <p className="text-sm">
+                                      <span className="font-medium">Hẹn giao:</span> {format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi })}
+                                    </p>
+                                  )}
+                                  {order.delivered_date && (
+                                    <p className="text-sm">
+                                      <span className="font-medium">Đã giao:</span> {format(new Date(order.delivered_date), "dd/MM/yyyy HH:mm", { locale: vi })}
+                                    </p>
+                                  )}
+                                  <p className="text-sm">
+                                    <span className="font-medium">Tạo đơn:</span> {format(new Date(order.created_at), "dd/MM/yyyy", { locale: vi })}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-3 border-t">
+                              <div>
+                                <span className="text-sm text-muted-foreground">Giá trị đơn hàng:</span>
+                                <span className="ml-2 font-semibold text-lg">
+                                  {(order.total_amount || 0).toLocaleString()}đ
+                                </span>
+                              </div>
+                              
+                              {order.delivery_date && order.status !== 'delivered' && (
+                                <div className="text-right">
+                                  {(() => {
+                                    const daysUntil = getDaysUntilDelivery(order.delivery_date);
+                                    if (daysUntil < 0) {
+                                      return (
+                                        <Badge variant="destructive" className="gap-1">
+                                          <AlertCircle className="h-3 w-3" />
+                                          Trễ {Math.abs(daysUntil)} ngày
+                                        </Badge>
+                                      );
+                                    } else if (daysUntil === 0) {
+                                      return (
+                                        <Badge className="bg-orange-100 text-orange-800 gap-1">
+                                          <Clock className="h-3 w-3" />
+                                          Hôm nay
+                                        </Badge>
+                                      );
+                                    } else if (daysUntil <= 2) {
+                                      return (
+                                        <Badge className="bg-yellow-100 text-yellow-800 gap-1">
+                                          <Clock className="h-3 w-3" />
+                                          Còn {daysUntil} ngày
+                                        </Badge>
+                                      );
+                                    } else {
+                                      return (
+                                        <Badge variant="secondary" className="gap-1">
+                                          <Clock className="h-3 w-3" />
+                                          Còn {daysUntil} ngày
+                                        </Badge>
+                                      );
+                                    }
+                                  })()}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>Tiến độ giao hàng</span>
+                                <span>
+                                  {order.status === 'delivered' ? '100%' : 
+                                   order.status === 'shipped' ? '75%' :
+                                   order.status === 'processing' ? '50%' : '25%'}
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className={`h-2 rounded-full transition-all duration-300 ${
+                                    order.status === 'delivered' ? 'bg-green-500 w-full' :
+                                    order.status === 'shipped' ? 'bg-blue-500 w-3/4' :
+                                    order.status === 'processing' ? 'bg-yellow-500 w-1/2' :
+                                    'bg-gray-400 w-1/4'
+                                  }`}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedOrder(order)}
+                                className="gap-1"
+                              >
+                                <Eye className="h-3 w-3" />
+                                Chi tiết
+                              </Button>
+                              
+                              {order.status !== 'delivered' && (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm" className="gap-1">
+                                      <Edit3 className="h-3 w-3" />
+                                      Cập nhật
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    {order.status === 'processing' && (
+                                      <DropdownMenuItem onClick={() => updateOrderStatus(order.id, 'shipped')}>
+                                        <Truck className="h-4 w-4 mr-2" />
+                                        Đã giao hàng
+                                      </DropdownMenuItem>
+                                    )}
+                                    {order.status === 'shipped' && (
+                                      <DropdownMenuItem onClick={() => updateOrderStatus(order.id, 'delivered')}>
+                                        <CheckCircle className="h-4 w-4 mr-2" />
+                                        Hoàn thành
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
