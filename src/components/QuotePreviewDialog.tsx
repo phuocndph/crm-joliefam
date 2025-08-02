@@ -359,7 +359,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               // Add image to cell H (column index 7) with proper sizing and positioning
               worksheet.addImage(imageId, {
                 tl: { col: 7.1, row: currentRow - 0.9 },
-                ext: { width: 100, height: 65 }
+                ext: { width: 132, height: 106 }
               });
             }
           } catch (imageError) {
