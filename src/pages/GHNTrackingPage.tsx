@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { RefreshCw, Search, Download, Truck, Package, Clock, Eye, ExternalLink, MapPin, Phone, Calendar, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 
@@ -37,6 +39,8 @@ export default function GHNTrackingPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [showOrderCodeDialog, setShowOrderCodeDialog] = useState(false);
+  const [orderCodesInput, setOrderCodesInput] = useState("");
   const { toast } = useToast();
 
   const loadTrackingRecords = useCallback(async (isBackground = false) => {
@@ -152,17 +156,38 @@ export default function GHNTrackingPage() {
   };
 
   const handleSyncFromGHN = async () => {
-    const isConfirmed = window.confirm(
-      "Bạn có muốn đồng bộ dữ liệu trực tiếp từ GHN không? " +
-      "Điều này sẽ lấy dữ liệu từ GHN API và cập nhật vào hệ thống."
-    );
-    
-    if (!isConfirmed) return;
+    setShowOrderCodeDialog(true);
+  };
+
+  const processSyncFromGHN = async () => {
+    if (!orderCodesInput.trim()) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập mã đơn hàng",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setSyncing(true);
+    setShowOrderCodeDialog(false);
+    
     try {
+      // Parse order codes from input (split by comma, newline, or space)
+      const orderCodes = orderCodesInput
+        .split(/[,\n\s]+/)
+        .map(code => code.trim())
+        .filter(code => code.length > 0);
+
+      if (orderCodes.length === 0) {
+        throw new Error('Không có mã đơn hàng hợp lệ');
+      }
+
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-        body: { action: 'sync_from_ghn' }
+        body: { 
+          action: 'sync_from_ghn',
+          orderCodes: orderCodes
+        }
       });
 
       if (error) throw error;
@@ -173,6 +198,7 @@ export default function GHNTrackingPage() {
           description: data.message,
         });
         await loadTrackingRecords();
+        setOrderCodesInput(""); // Clear input after success
       } else {
         throw new Error(data.error || 'Sync from GHN failed');
       }
@@ -565,6 +591,48 @@ export default function GHNTrackingPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Order Code Input Dialog */}
+      <Dialog open={showOrderCodeDialog} onOpenChange={setShowOrderCodeDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nhập mã đơn hàng GHN</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">
+                Nhập các mã đơn hàng GHN, mỗi mã trên một dòng hoặc cách nhau bằng dấu phẩy:
+              </p>
+              <Textarea
+                placeholder="Ví dụ:&#10;P12345678&#10;P87654321&#10;hoặc: P12345678, P87654321"
+                value={orderCodesInput}
+                onChange={(e) => setOrderCodesInput(e.target.value)}
+                rows={6}
+                className="resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowOrderCodeDialog(false)}
+            >
+              Hủy
+            </Button>
+            <Button 
+              onClick={processSyncFromGHN}
+              disabled={syncing || !orderCodesInput.trim()}
+            >
+              {syncing ? (
+                <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Truck className="h-4 w-4 mr-2" />
+              )}
+              Đồng bộ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
