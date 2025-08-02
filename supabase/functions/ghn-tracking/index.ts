@@ -49,7 +49,7 @@ serve(async (req) => {
         try {
           console.log(`Fetching batch - offset: ${offset}, limit: ${limit}`);
           
-          const response = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/list`, {
+          const response = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -57,7 +57,8 @@ serve(async (req) => {
             },
             body: JSON.stringify({
               offset: offset,
-              limit: limit
+              limit: limit,
+              client_id: null
             })
           });
 
