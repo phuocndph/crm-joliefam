@@ -887,45 +887,323 @@ const ReportsPage = () => {
           </TabsContent>
 
           <TabsContent value="actual-revenue" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Header Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Đã thu thực tế</CardTitle>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    💰 Đã thu thực tế
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-600">{formatCurrency(actualPaidAmount)}</div>
                   <p className="text-xs text-muted-foreground">
                     Từ {filteredPayments.length} giao dịch
                   </p>
+                  <div className="flex items-center mt-2">
+                    <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
+                    <span className="text-xs text-green-600">
+                      {totalOrderRevenue > 0 ? ((actualPaidAmount / totalOrderRevenue) * 100).toFixed(1) : 0}% của tổng doanh thu
+                    </span>
+                  </div>
                 </CardContent>
               </Card>
+              
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Còn phải thu</CardTitle>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    📋 Còn phải thu
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-orange-600">
                     {formatCurrency(totalOrderRevenue - actualPaidAmount)}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Chưa thanh toán
+                    {unpaidOrders + partialPaidOrders} đơn chưa thanh toán đủ
                   </p>
+                  <div className="flex items-center mt-2">
+                    <TrendingDown className="w-4 h-4 text-orange-600 mr-1" />
+                    <span className="text-xs text-orange-600">
+                      {totalOrderRevenue > 0 ? (((totalOrderRevenue - actualPaidAmount) / totalOrderRevenue) * 100).toFixed(1) : 0}% còn lại
+                    </span>
+                  </div>
                 </CardContent>
               </Card>
+              
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Tỷ lệ thu tiền</CardTitle>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    📊 Tỷ lệ thu tiền
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl font-bold text-blue-600">
                     {totalOrderRevenue > 0 ? ((actualPaidAmount / totalOrderRevenue) * 100).toFixed(1) : 0}%
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Hiệu suất thu tiền
                   </p>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full" 
+                      style={{ width: `${totalOrderRevenue > 0 ? ((actualPaidAmount / totalOrderRevenue) * 100) : 0}%` }}
+                    ></div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    📈 Giá trị trung bình
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-purple-600">
+                    {formatCurrency(filteredPayments.length > 0 ? actualPaidAmount / filteredPayments.length : 0)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Thanh toán trung bình/giao dịch
+                  </p>
+                  <div className="flex items-center mt-2">
+                    <BarChart3 className="w-4 h-4 text-purple-600 mr-1" />
+                    <span className="text-xs text-purple-600">
+                      {formatCurrency(averageOrderValue)} giá trị đơn TB
+                    </span>
+                  </div>
                 </CardContent>
               </Card>
             </div>
+
+            {/* Revenue Analysis Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Monthly Payment Trends */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    📊 Xu hướng thanh toán theo tháng
+                  </CardTitle>
+                  <CardDescription>
+                    So sánh doanh thu đặt hàng và số tiền thực thu
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={(() => {
+                      return monthlyData.map(monthData => {
+                        // Calculate actual payments for this month
+                        const monthStart = new Date(monthData.month + " 01");
+                        const monthEnd = endOfMonth(monthStart);
+                        
+                        const monthPayments = orderPayments.filter(p => {
+                          const paymentDate = new Date(p.payment_date);
+                          return paymentDate >= monthStart && paymentDate <= monthEnd;
+                        });
+                        
+                        const actualReceived = monthPayments.reduce((sum, p) => sum + Number(p.payment_amount), 0);
+                        
+                        return {
+                          ...monthData,
+                          actualReceived,
+                          outstanding: monthData.revenue - actualReceived
+                        };
+                      });
+                    })()}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis tickFormatter={(value) => formatCurrency(value).replace('₫', '').trim()} />
+                      <Tooltip 
+                        formatter={(value: number, name: string) => [
+                          formatCurrency(value), 
+                          name === 'revenue' ? 'Doanh thu đặt hàng' : 
+                          name === 'actualReceived' ? 'Đã thu thực tế' : 'Còn phải thu'
+                        ]}
+                      />
+                      <Bar dataKey="revenue" fill="hsl(var(--primary))" name="Doanh thu đặt hàng" />
+                      <Bar dataKey="actualReceived" fill="hsl(var(--success))" name="Đã thu thực tế" />
+                      <Bar dataKey="outstanding" fill="hsl(var(--warning))" name="Còn phải thu" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Payment Status Breakdown */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    🔄 Phân tích trạng thái thanh toán
+                  </CardTitle>
+                  <CardDescription>
+                    Tỷ lệ các đơn hàng theo trạng thái thanh toán
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <RechartsPieChart>
+                      <Pie
+                        data={paymentStatusData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {paymentStatusData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Detailed Payment Timeline */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  ⏰ Timeline thanh toán chi tiết
+                </CardTitle>
+                <CardDescription>
+                  Lịch sử các khoản thanh toán trong kỳ báo cáo
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4 max-h-96 overflow-y-auto">
+                  {filteredPayments.length > 0 ? (
+                    filteredPayments
+                      .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())
+                      .map((payment, index) => (
+                        <div key={payment.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                          <div className="flex items-center space-x-4">
+                            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                              <span className="text-green-600 font-bold text-sm">#{index + 1}</span>
+                            </div>
+                            <div>
+                              <div className="font-medium">
+                                {payment.orders?.customers?.name || 'Khách hàng không xác định'}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                Đơn hàng: {payment.orders?.order_number || 'N/A'} • 
+                                {payment.payment_type === 'deposit' ? ' Cọc' : payment.payment_type === 'partial' ? ' Trả góp' : ' Thanh toán đủ'} • 
+                                {payment.payment_method || 'Tiền mặt'}
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                {format(new Date(payment.payment_date), "dd/MM/yyyy HH:mm", { locale: vi })}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-bold text-green-600">
+                              {formatCurrency(payment.payment_amount)}
+                            </div>
+                            {payment.installment_number && payment.installment_number > 1 && (
+                              <div className="text-xs text-gray-500">
+                                Kỳ {payment.installment_number}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      Chưa có giao dịch thanh toán nào trong kỳ này
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Outstanding Orders Analysis */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  🚨 Phân tích đơn hàng chưa thu đủ tiền
+                </CardTitle>
+                <CardDescription>
+                  Danh sách các đơn hàng cần theo dõi thu tiền
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4 max-h-96 overflow-y-auto">
+                  {(() => {
+                    const unpaidOrdersList = filteredOrders.filter(order => 
+                      order.payment_status === 'pending' || order.payment_status === 'partial'
+                    );
+                    
+                    return unpaidOrdersList.length > 0 ? (
+                      unpaidOrdersList
+                        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                        .map((order) => {
+                          // Calculate paid amount for this order
+                          const orderPaymentsForOrder = orderPayments.filter(p => p.order_id === order.id);
+                          const paidAmount = orderPaymentsForOrder.reduce((sum, p) => sum + Number(p.payment_amount), 0);
+                          const outstandingAmount = Number(order.total_amount || 0) - paidAmount;
+                          const paymentProgress = Number(order.total_amount) > 0 ? (paidAmount / Number(order.total_amount)) * 100 : 0;
+                          
+                          return (
+                            <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                              <div className="flex items-center space-x-4">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                  order.payment_status === 'pending' ? 'bg-red-100' : 'bg-yellow-100'
+                                }`}>
+                                  <span className={`font-bold text-sm ${
+                                    order.payment_status === 'pending' ? 'text-red-600' : 'text-yellow-600'
+                                  }`}>
+                                    {order.payment_status === 'pending' ? '!' : '~'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <div className="font-medium">
+                                    {order.customers?.name || 'Khách hàng không xác định'}
+                                  </div>
+                                  <div className="text-sm text-gray-500">
+                                    Đơn hàng: {order.order_number} • 
+                                    Trạng thái: {order.status === 'delivered' ? 'Đã giao' : 'Đang xử lý'}
+                                  </div>
+                                  <div className="text-xs text-gray-400">
+                                    Ngày đặt: {format(new Date(order.created_at), "dd/MM/yyyy", { locale: vi })}
+                                  </div>
+                                  <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
+                                    <div 
+                                      className={`h-2 rounded-full ${
+                                        order.payment_status === 'pending' ? 'bg-red-500' : 'bg-yellow-500'
+                                      }`}
+                                      style={{ width: `${Math.max(paymentProgress, 5)}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold text-red-600">
+                                  {formatCurrency(outstandingAmount)}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  còn phải thu
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                  Tổng: {formatCurrency(order.total_amount || 0)}
+                                </div>
+                                <div className="text-xs text-green-600">
+                                  Đã thu: {formatCurrency(paidAmount)}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        🎉 Tất cả đơn hàng đã được thanh toán đầy đủ!
+                      </div>
+                    );
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="customers" className="space-y-6">
