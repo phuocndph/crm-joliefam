@@ -125,12 +125,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       // Set column widths first
       worksheet.getColumn('A').width = 7.14;
       worksheet.getColumn('B').width = 22.86;
-      worksheet.getColumn('C').width = 42;
-      worksheet.getColumn('D').width = 52.85;
-      worksheet.getColumn('E').width = 12.86;
+      worksheet.getColumn('C').width = 18;  // Cột hình ảnh
+      worksheet.getColumn('D').width = 32;
+      worksheet.getColumn('E').width = 42.85;
       worksheet.getColumn('F').width = 12.86;
-      worksheet.getColumn('G').width = 17.29;
-      worksheet.getColumn('H').width = 18.14;
+      worksheet.getColumn('G').width = 12.86;
+      worksheet.getColumn('H').width = 17.29;
+      worksheet.getColumn('I').width = 18.14;
 
       worksheet.pageSetup = {
         orientation: 'portrait',
@@ -280,7 +281,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       currentRow += 2;
 
       // Table headers with Times New Roman font
-      const headers = ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'];
+      const headers = ['STT', 'SẢN PHẨM', 'HÌNH ẢNH', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'];
       
       headers.forEach((header, index) => {
         const cell = worksheet.getCell(`${String.fromCharCode(65 + index)}${currentRow}`);
@@ -302,11 +303,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       currentRow++;
 
-      // Quote items with Times New Roman font
-      items.forEach((item: any, index: number) => {
+      // Quote items with Times New Roman font and images
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index];
         const rowData = [
           index + 1,
           item.name || item.sku || '', // Sử dụng tên sản phẩm thay vì SKU
+          '', // Placeholder cho hình ảnh
           item.specifications || '', // Để trống nếu không có specifications
           item.description || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu',
           item.quantity || 144,
@@ -316,6 +319,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         ];
 
         rowData.forEach((value, colIndex) => {
+          if (colIndex === 2) return; // Skip image column for now
+          
           const cell = worksheet.getCell(`${String.fromCharCode(65 + colIndex)}${currentRow}`);
           cell.value = value;
           cell.font = { name: 'Times New Roman', size: 10 };
@@ -326,23 +331,47 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             right: { style: 'thin' }
           };
           
-          if (colIndex === 0 || colIndex === 4) { // STT và Số lượng
+          if (colIndex === 0 || colIndex === 5) { // STT và Số lượng
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
-          } else if (colIndex >= 5) { // Đơn giá và Thành tiền
+          } else if (colIndex >= 6) { // Đơn giá và Thành tiền
             cell.alignment = { horizontal: 'right', vertical: 'middle' };
             if (typeof value === 'number') {
               cell.numFmt = '#,##0';
             }
-          } else if (colIndex >= 1 && colIndex <= 3) { // Text columns
+          } else if (colIndex >= 1 && colIndex <= 4) { // Text columns
             cell.alignment = { wrapText: true, vertical: 'middle' };
           }
         });
+
+        // Add image if available
+        if (item.selectedImage) {
+          try {
+            const imageResponse = await fetch(item.selectedImage);
+            if (imageResponse.ok) {
+              const imageBlob = await imageResponse.blob();
+              const imageArrayBuffer = await imageBlob.arrayBuffer();
+              
+              const imageId = workbook.addImage({
+                buffer: imageArrayBuffer,
+                extension: 'png',
+              });
+              
+              // Add image to cell C (column index 2)
+              worksheet.addImage(imageId, {
+                tl: { col: 2, row: currentRow - 1 },
+                ext: { width: 80, height: 60 }
+              });
+            }
+          } catch (imageError) {
+            console.warn('Could not load product image:', imageError);
+          }
+        }
         
         // Set row height for product content
         worksheet.getRow(currentRow).height = 48.75;
         
         currentRow++;
-      });
+      }
 
       currentRow++;
 
@@ -358,7 +387,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       ];
 
       totalsData.forEach(([label, value]) => {
-        worksheet.mergeCells(`A${currentRow}:F${currentRow}`);
+        worksheet.mergeCells(`A${currentRow}:G${currentRow}`);
         const labelCell = worksheet.getCell(`A${currentRow}`);
         labelCell.value = label;
         labelCell.font = { name: 'Times New Roman', bold: true, size: 11 };
@@ -370,7 +399,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           right: { style: 'thin' }
         };
 
-        const valueCell = worksheet.getCell(`G${currentRow}`);
+        const valueCell = worksheet.getCell(`H${currentRow}`);
         valueCell.value = value;
         valueCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFDC143C' } };
         valueCell.alignment = { horizontal: 'right', vertical: 'middle' };
@@ -798,12 +827,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
           <div class="table-container">
             <table>
-              <thead>
+               <thead>
                 <tr>
                   <th style="width: 5%">STT</th>
-                  <th style="width: 20%">SẢN PHẨM</th>
-                  <th style="width: 15%">QUY CÁCH</th>
-                  <th style="width: 20%">CHẤT LƯỢNG</th>
+                  <th style="width: 18%">SẢN PHẨM</th>
+                  <th style="width: 12%">HÌNH ẢNH</th>
+                  <th style="width: 13%">QUY CÁCH</th>
+                  <th style="width: 18%">CHẤT LƯỢNG</th>
                   <th style="width: 8%">SỐ LƯỢNG</th>
                   <th style="width: 12%">ĐƠN GIÁ</th>
                   <th style="width: 12%">THÀNH TIỀN</th>
@@ -815,6 +845,9 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                   <tr>
                     <td class="text-center">${index + 1}</td>
                     <td>${item.name || item.sku || ''}</td>
+                    <td class="text-center">
+                      ${item.selectedImage ? `<img src="${item.selectedImage}" style="width: 60px; height: 45px; object-fit: cover; border-radius: 4px;" alt="Product">` : '<div style="width: 60px; height: 45px; background: #f3f4f6; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #9ca3af;">Không có ảnh</div>'}
+                    </td>
                     <td>${item.specifications || ''}</td>
                     <td>${item.category || item.description || ''}</td>
                     <td class="text-center">${item.quantity}</td>
@@ -974,9 +1007,10 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               <thead>
                 <tr>
                   <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 5%;">STT</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 20%;">SẢN PHẨM</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 15%;">QUY CÁCH</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 20%;">CHẤT LƯỢNG</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 18%;">SẢN PHẨM</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 12%;">HÌNH ẢNH</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 13%;">QUY CÁCH</th>
+                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 18%;">CHẤT LƯỢNG</th>
                   <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 8%;">SỐ LƯỢNG</th>
                   <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 12%;">ĐƠN GIÁ</th>
                   <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 12%;">THÀNH TIỀN</th>
@@ -988,6 +1022,9 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                   <tr style="${index % 2 === 1 ? 'background: #f8fafc;' : ''}">
                     <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: center;">${index + 1}</td>
                     <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.name || item.sku || ''}</td>
+                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: center;">
+                      ${item.selectedImage ? `<img src="${item.selectedImage}" style="width: 60px; height: 45px; object-fit: cover; border-radius: 4px;" alt="Product">` : '<div style="width: 60px; height: 45px; background: #f3f4f6; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #9ca3af;">Không có ảnh</div>'}
+                    </td>
                     <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.specifications || ''}</td>
                     <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.category || item.description || ''}</td>
                     <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: center;">${item.quantity}</td>
@@ -1253,6 +1290,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                   <TableRow className="bg-yellow-200">
                     <TableHead className="border border-gray-300 text-center font-bold">STT</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">SẢN PHẨM</TableHead>
+                    <TableHead className="border border-gray-300 text-center font-bold">HÌNH ẢNH</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">QUY CÁCH (CM)</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">CHẤT LIỆU</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">SỐ LƯỢNG</TableHead>
@@ -1266,6 +1304,19 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                      <TableRow key={index} className="bg-white">
                        <TableCell className="border border-gray-400 text-center">{index + 1}</TableCell>
                        <TableCell className="border border-gray-400">{item.name || item.sku}</TableCell>
+                       <TableCell className="border border-gray-400 text-center">
+                         {item.selectedImage ? (
+                           <img 
+                             src={item.selectedImage} 
+                             alt="Product" 
+                             className="w-16 h-12 object-cover mx-auto rounded"
+                           />
+                         ) : (
+                           <div className="w-16 h-12 bg-gray-100 mx-auto rounded flex items-center justify-center">
+                             <span className="text-xs text-gray-400">Không có ảnh</span>
+                           </div>
+                         )}
+                       </TableCell>
                        <TableCell className="border border-gray-400 text-sm">{item.specifications}</TableCell>
                        <TableCell className="border border-gray-400 text-sm">{item.description}</TableCell>
                        <TableCell className="border border-gray-400 text-center">{item.quantity}</TableCell>

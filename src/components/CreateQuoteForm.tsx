@@ -3,8 +3,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Settings, X, Plus, Trash2, Search, MoreVertical, Edit } from "lucide-react";
+import { CalendarIcon, Settings, X, Plus, Trash2, Search, MoreVertical, Edit, Image } from "lucide-react";
 import { ProductSelectionForm } from './ProductSelectionForm';
+import ProductImageLibrary from './ProductImageLibrary';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -103,6 +104,7 @@ interface QuoteItem {
   total: number;
   description?: string;
   specifications?: string;
+  selectedImage?: string; // URL của hình ảnh đã chọn
 }
 
 interface PriceList {
@@ -127,6 +129,8 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentEditingIndex, setCurrentEditingIndex] = useState<number>(-1);
+  const [showImageLibrary, setShowImageLibrary] = useState(false);
+  const [currentImageEditingIndex, setCurrentImageEditingIndex] = useState<number>(-1);
   const { toast } = useToast();
   
   // Helper function to safely parse dates
@@ -863,6 +867,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                       <TableRow className="bg-gray-50">
                         <TableHead className="font-bold text-base">Chọn sản phẩm</TableHead>
                         <TableHead className="font-bold text-base min-w-72">Tên sản phẩm</TableHead>
+                        <TableHead className="font-bold text-base">Hình ảnh</TableHead>
                         <TableHead className="font-bold text-base">Mô tả sản phẩm</TableHead>
                         <TableHead className="font-bold text-base">Quy cách</TableHead>
                         <TableHead className="font-bold text-base text-right">Đơn giá</TableHead>
@@ -999,6 +1004,56 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                               placeholder="Tên sản phẩm"
                               className="border-gray-200 focus:border-blue-500 font-medium text-base w-full"
                             />
+                          </TableCell>
+                          <TableCell className="p-4">
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-16 w-20 border-2 border-dashed border-gray-300 hover:border-blue-500 flex flex-col items-center justify-center gap-1"
+                                  onClick={() => {
+                                    setCurrentImageEditingIndex(index);
+                                    setShowImageLibrary(true);
+                                  }}
+                                >
+                                  {item.selectedImage ? (
+                                    <img 
+                                      src={item.selectedImage} 
+                                      alt="Selected" 
+                                      className="w-12 h-12 object-cover rounded"
+                                    />
+                                  ) : (
+                                    <>
+                                      <Image className="h-4 w-4 text-gray-400" />
+                                      <span className="text-xs text-gray-500">Chọn ảnh</span>
+                                    </>
+                                  )}
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+                                <DialogHeader>
+                                  <DialogTitle>Chọn hình ảnh sản phẩm</DialogTitle>
+                                </DialogHeader>
+                                <div className="h-[70vh] overflow-y-auto">
+                                  <ProductImageLibrary 
+                                    onSelectImage={(imageUrl) => {
+                                      const newProducts = [...selectedProducts];
+                                      newProducts[currentImageEditingIndex] = { 
+                                        ...newProducts[currentImageEditingIndex], 
+                                        selectedImage: imageUrl 
+                                      };
+                                      setSelectedProducts(newProducts);
+                                      setShowImageLibrary(false);
+                                      toast({
+                                        title: "Thành công",
+                                        description: "Đã chọn hình ảnh cho sản phẩm",
+                                      });
+                                    }}
+                                  />
+                                </div>
+                              </DialogContent>
+                            </Dialog>
                           </TableCell>
                           <TableCell className="min-w-40 p-4">
                             <div className="flex items-center space-x-2">
