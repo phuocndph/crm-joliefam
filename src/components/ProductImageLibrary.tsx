@@ -101,8 +101,15 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
         const directories = data.filter(item => !item.name.includes('.'));
         
         for (const dir of directories) {
-          // Use the actual folder name from Supabase as display name
-          const displayName = dir.name;
+          // Get display name from localStorage, fallback to folder name
+          let displayName = dir.name;
+          try {
+            const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
+            const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
+            displayName = displayNamesMap[dir.name] || dir.name;
+          } catch (error) {
+            console.error('Error loading category display names:', error);
+          }
           
           categoryMap[dir.name] = displayName;
           
@@ -162,9 +169,12 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
   };
 
   const sanitizeFolderName = (name: string) => {
-    // Only remove truly problematic characters, keep Vietnamese characters
+    // Convert Vietnamese characters to ASCII equivalents for storage
     return name
-      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') // Remove only file system problematic chars
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+      .replace(/đ/g, 'd').replace(/Đ/g, 'D') // Handle đ/Đ specifically
+      .replace(/[^a-zA-Z0-9\-_.]/g, '_') // Replace special chars with underscore
       .replace(/\s+/g, '_') // Replace spaces with underscore
       .replace(/_+/g, '_') // Replace multiple underscores with single
       .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
@@ -185,14 +195,15 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
 
     setUploading(true);
     
-    // Use original category name for folder name (Supabase supports UTF-8)
-    const folderName = category;
+    // Use sanitized name for storage, original for display
+    const sanitizedCategory = sanitizeFolderName(category);
+    const folderName = sanitizedCategory;
     
-    // Save display name to localStorage with proper encoding
+    // Save display name mapping to localStorage
     try {
       const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
       const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
-      displayNamesMap[folderName] = category; // Save original name as display name
+      displayNamesMap[sanitizedCategory] = category; // Map sanitized name to original display name
       localStorage.setItem('categoryDisplayNames', JSON.stringify(displayNamesMap));
     } catch (error) {
       console.error('Error saving category display names:', error);
@@ -262,11 +273,12 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
   const handleRenameCategory = async () => {
     if (!categoryToRename || !newCategoryName) return;
 
-    // Use original name directly (no sanitization needed for Supabase)
-    const newFolderName = newCategoryName;
+    // Sanitize new name for storage
+    const sanitizedNewName = sanitizeFolderName(newCategoryName);
+    const newFolderName = sanitizedNewName;
     
     // Check if new name is the same as old name
-    if (newFolderName === categoryToRename) {
+    if (sanitizedNewName === categoryToRename) {
       toast({
         title: "Thông báo",
         description: "Tên thư mục mới giống tên cũ",
@@ -319,14 +331,14 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
 
       toast({
         title: "Thành công",
-        description: `Đã đổi tên thư mục từ "${categoryToRename}" thành "${newFolderName}"`,
+        description: `Đã đổi tên thư mục từ "${categoryDisplayNames[categoryToRename] || categoryToRename}" thành "${newCategoryName}"`,
       });
 
       // Update display names in localStorage
       try {
         const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
         const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
-        displayNamesMap[newFolderName] = newCategoryName; // Save new display name
+        displayNamesMap[sanitizedNewName] = newCategoryName; // Save new display name
         delete displayNamesMap[categoryToRename]; // Remove old display name
         localStorage.setItem('categoryDisplayNames', JSON.stringify(displayNamesMap));
       } catch (error) {
