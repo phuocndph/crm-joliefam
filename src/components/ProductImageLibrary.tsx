@@ -101,16 +101,8 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
         const directories = data.filter(item => !item.name.includes('.'));
         
         for (const dir of directories) {
-          // Try to get display name from localStorage or decode folder name
-          let displayName = dir.name;
-          try {
-            const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
-            const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
-            displayName = displayNamesMap[dir.name] || decodeURIComponent(dir.name).replace(/_/g, ' ');
-          } catch (error) {
-            // If decoding fails, try to convert underscores to spaces
-            displayName = dir.name.replace(/_/g, ' ');
-          }
+          // Use the actual folder name from Supabase as display name
+          const displayName = dir.name;
           
           categoryMap[dir.name] = displayName;
           
@@ -170,8 +162,9 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
   };
 
   const sanitizeFolderName = (name: string) => {
+    // Only remove truly problematic characters, keep Vietnamese characters
     return name
-      .replace(/[^\w\-_.]/g, '_') // Replace special chars with underscore
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') // Remove only file system problematic chars
       .replace(/\s+/g, '_') // Replace spaces with underscore
       .replace(/_+/g, '_') // Replace multiple underscores with single
       .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
@@ -192,13 +185,14 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
 
     setUploading(true);
     
-    const sanitizedCategory = sanitizeFolderName(category);
+    // Use original category name for folder name (Supabase supports UTF-8)
+    const folderName = category;
     
     // Save display name to localStorage with proper encoding
     try {
       const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
       const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
-      displayNamesMap[sanitizedCategory] = category; // Save original name as display name
+      displayNamesMap[folderName] = category; // Save original name as display name
       localStorage.setItem('categoryDisplayNames', JSON.stringify(displayNamesMap));
     } catch (error) {
       console.error('Error saving category display names:', error);
@@ -207,7 +201,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
     try {
       const uploadPromises = Array.from(files).map(async (file) => {
         const fileExt = file.name.split('.').pop();
-        const fileName = `${sanitizedCategory}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const fileName = `${folderName}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from('product-images')
@@ -268,10 +262,11 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
   const handleRenameCategory = async () => {
     if (!categoryToRename || !newCategoryName) return;
 
-    const sanitizedNewName = sanitizeFolderName(newCategoryName);
+    // Use original name directly (no sanitization needed for Supabase)
+    const newFolderName = newCategoryName;
     
     // Check if new name is the same as old name
-    if (sanitizedNewName === categoryToRename) {
+    if (newFolderName === categoryToRename) {
       toast({
         title: "Thông báo",
         description: "Tên thư mục mới giống tên cũ",
@@ -289,7 +284,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
       // Move each file to the new category folder
       for (const file of filesToMove) {
         const fileName = file.name;
-        const newPath = `${sanitizedNewName}/${fileName}`;
+        const newPath = `${newFolderName}/${fileName}`;
         
         // Download the file
         const { data: fileData } = await supabase.storage
@@ -324,8 +319,19 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
 
       toast({
         title: "Thành công",
-        description: `Đã đổi tên thư mục từ "${categoryToRename}" thành "${sanitizedNewName}"`,
+        description: `Đã đổi tên thư mục từ "${categoryToRename}" thành "${newFolderName}"`,
       });
+
+      // Update display names in localStorage
+      try {
+        const storedDisplayNames = localStorage.getItem('categoryDisplayNames');
+        const displayNamesMap = storedDisplayNames ? JSON.parse(storedDisplayNames) : {};
+        displayNamesMap[newFolderName] = newCategoryName; // Save new display name
+        delete displayNamesMap[categoryToRename]; // Remove old display name
+        localStorage.setItem('categoryDisplayNames', JSON.stringify(displayNamesMap));
+      } catch (error) {
+        console.error('Error updating category display names:', error);
+      }
 
       setShowRenameCategoryDialog(false);
       setCategoryToRename('');
