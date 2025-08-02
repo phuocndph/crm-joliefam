@@ -276,11 +276,11 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       headers.forEach((header, index) => {
         const cell = worksheet.getCell(`${String.fromCharCode(65 + index)}${currentRow}`);
         cell.value = header;
-        cell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FF0070C0' } };
+        cell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: 'FFFFF2CC' }
+          fgColor: { argb: 'FF0070C0' }
         };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
         cell.border = {
@@ -346,10 +346,10 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         // Add border to image column H
         const imageCell = worksheet.getCell(`H${currentRow}`);
         imageCell.border = {
-          top: { style: 'medium' },
-          left: { style: 'medium' },
-          bottom: { style: 'medium' },
-          right: { style: 'medium' }
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
         };
 
         // Add image if available - moved to column H
@@ -408,8 +408,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           right: { style: 'thin' }
         };
 
-        // Merge & Center total amount in columns H and J
-        worksheet.mergeCells(`H${currentRow}:J${currentRow}`);
+        // Merge & Center total amount in columns H and I
+        worksheet.mergeCells(`H${currentRow}:I${currentRow}`);
         const valueCell = worksheet.getCell(`H${currentRow}`);
         valueCell.value = value;
         valueCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFC00000' } };
