@@ -960,184 +960,158 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         description: "Vui lòng đợi trong giây lát",
       });
 
-      // Create temporary container with the same styling
-      const tempContainer = document.createElement('div');
-      tempContainer.style.position = 'absolute';
-      tempContainer.style.left = '-9999px';
-      tempContainer.style.top = '0';
-      tempContainer.style.width = '210mm'; // A4 width
-      tempContainer.style.background = 'white';
-      tempContainer.style.fontFamily = 'Inter, sans-serif';
-      tempContainer.style.padding = '20px';
-      
-      // Get template settings
+      const pdf = new jsPDF('p', 'mm', 'a4');
       const templateSettings = getTemplateSettings();
       
-      tempContainer.innerHTML = `
-        <div style="width: 100%; background: white; font-family: 'Inter', sans-serif; font-size: 11px; line-height: 1.3; color: #333;">
-          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 15px; margin: -20px -20px 20px -20px; display: flex; justify-content: space-between; align-items: center; border-radius: 8px;">
-            <div style="flex: 1;">
-              <div style="font-size: 18px; font-weight: 700; margin-bottom: 3px;">${templateSettings.companyName || 'CÔNG TY ABC'}</div>
-              <div style="font-size: 10px; opacity: 0.9;">
-                ${templateSettings.address || 'Địa chỉ công ty'}<br>
-                ĐT: ${templateSettings.phone || '0123456789'} | Email: contact@company.com
-              </div>
-            </div>
-            <div style="width: 100px; height: 60px; background: rgba(255,255,255,0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-              ${templateSettings.logoUrl ? `<img src="${templateSettings.logoUrl}" style="max-width: 205px; max-height: 126px; object-fit: contain;" alt="Logo">` : '<div style="font-size: 10px; text-align: center;">LOGO</div>'}
-            </div>
-          </div>
-
-          <div style="text-align: center; background: #f8fafc; padding: 10px; margin: 15px 0; border-radius: 8px; border-left: 4px solid #3b82f6;">
-            <div style="font-size: 16px; font-weight: 600; color: #1e40af;">BẢNG BÁO GIÁ SỐ: ${quote.quote_number || 'N/A'}</div>
-            <div style="font-size: 10px; color: #666; margin-top: 3px;">
-              Ngày tạo: ${new Date(quote.created_at).toLocaleDateString('vi-VN')}
-            </div>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0;">
-            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
-              <div style="font-weight: 600; color: #1e40af; margin-bottom: 8px; font-size: 12px;">THÔNG TIN KHÁCH HÀNG</div>
-              <div style="margin: 3px 0; font-size: 10px;"><strong>Tên:</strong> ${customerName}</div>
-              <div style="margin: 3px 0; font-size: 10px;"><strong>Số điện thoại:</strong> ${phone}</div>
-              <div style="margin: 3px 0; font-size: 10px;"><strong>Địa chỉ:</strong> ${address}</div>
-              <div style="margin: 3px 0; font-size: 10px;"><strong>Email:</strong> ${email}</div>
-            </div>
-            
-            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
-              <div style="font-weight: 600; color: #1e40af; margin-bottom: 8px; font-size: 12px;">THÔNG TIN BÁO GIÁ</div>
-              <div style="margin: 3px 0; font-size: 10px;"><strong>Mã báo giá:</strong> ${quote.quote_number}</div>
-              <div style="margin: 3px 0; font-size: 10px;"><strong>Ngày tạo:</strong> ${new Date(quote.created_at).toLocaleDateString('vi-VN')}</div>
-              <div style="margin: 3px 0; font-size: 10px;"><strong>Hiệu lực đến:</strong> ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN')}</div>
-              <div style="margin: 3px 0; font-size: 10px;"><strong>Trạng thái:</strong> ${quote.status || 'Draft'}</div>
-            </div>
-          </div>
-
-          <div style="margin: 20px 0; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
-            <table style="width: 100%; border-collapse: collapse; background: white;">
-              <thead>
-                <tr>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 5%;">STT</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 18%;">SẢN PHẨM</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 12%;">HÌNH ẢNH</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 13%;">QUY CÁCH</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 18%;">CHẤT LƯỢNG</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 8%;">SỐ LƯỢNG</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 12%;">ĐƠN GIÁ</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 12%;">THÀNH TIỀN</th>
-                  <th style="background: #1e40af; color: white; padding: 8px 4px; text-align: center; font-weight: 600; font-size: 10px; width: 8%;">GHI CHÚ</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${items.map((item, index) => `
-                  <tr style="${index % 2 === 1 ? 'background: #f8fafc;' : ''}">
-                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: center;">${index + 1}</td>
-                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.name || item.sku || ''}</td>
-                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: center;">
-                      ${item.selectedImage ? `<img src="${item.selectedImage}" style="width: 60px; height: 45px; object-fit: cover; border-radius: 4px;" alt="Product">` : '<div style="width: 60px; height: 45px; background: #f3f4f6; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #9ca3af;">Không có ảnh</div>'}
-                    </td>
-                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.specifications || ''}</td>
-                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.category || item.description || ''}</td>
-                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: center;">${item.quantity}</td>
-                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: right;">${parseFloat(item.price).toLocaleString('vi-VN')}</td>
-                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px; text-align: right; font-weight: 500;">${(parseFloat(item.price) * parseFloat(item.quantity)).toLocaleString('vi-VN')}</td>
-                    <td style="padding: 6px 4px; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${item.notes || ''}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-
-          <div style="margin: 15px 0; text-align: right;">
-            <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin: 3px 0; padding: 3px 0;">
-              <div style="font-weight: 500; font-size: 11px;">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</div>
-              <div style="font-weight: 600; min-width: 100px; font-size: 11px;">${subtotal.toLocaleString('vi-VN')}</div>
-            </div>
-            ${includeVAT ? `
-              <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin: 3px 0; padding: 3px 0;">
-                <div style="font-weight: 500; font-size: 11px;">GTGT (${vatRate}%):</div>
-                <div style="font-weight: 600; min-width: 100px; font-size: 11px;">${vatAmount.toLocaleString('vi-VN')}</div>
-              </div>
-              <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin: 3px 0; padding: 3px 0;">
-                <div style="font-weight: 500; font-size: 11px;">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</div>
-                <div style="font-weight: 600; min-width: 100px; font-size: 11px;">${totalWithVat.toLocaleString('vi-VN')}</div>
-              </div>
-            ` : ''}
-            <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin: 3px 0; padding: 3px 0;">
-              <div style="font-weight: 500; font-size: 11px;">THANH TOÁN LẦN 1:</div>
-              <div style="font-weight: 600; min-width: 100px; font-size: 11px;">${firstPayment.toLocaleString('vi-VN')}</div>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin: 3px 0; padding: 8px; background: #1e40af; color: white; border-radius: 6px; font-size: 12px; font-weight: 700;">
-              <div>CÒN LẠI:</div>
-              <div>${remaining.toLocaleString('vi-VN')}</div>
-            </div>
-          </div>
-
-          ${templateSettings.terms && templateSettings.terms.length > 0 ? `
-            <div style="margin: 20px 0; background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #059669;">
-              <div style="font-weight: 600; color: #059669; margin-bottom: 8px; font-size: 12px;">ĐIỀU KHOẢN & ĐIỀU KIỆN</div>
-              <ul style="margin: 0; padding-left: 15px;">
-                ${templateSettings.terms.map(term => term.trim() ? `<li style="margin: 4px 0; font-size: 10px;">${term}</li>` : '').join('')}
-              </ul>
-            </div>
-          ` : ''}
-
-          <div style="margin-top: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
-            <div style="text-align: center; padding: 15px;">
-              <div style="font-weight: 600; margin-bottom: 25px; color: #1e40af; font-size: 12px;">ĐẠI DIỆN CÔNG TY</div>
-              <div style="border-bottom: 1px solid #333; margin: 8px 0; height: 25px;"></div>
-              <div style="font-size: 9px; color: #666; margin-top: 3px;">(Ký tên & đóng dấu)</div>
-            </div>
-            <div style="text-align: center; padding: 15px;">
-              <div style="font-weight: 600; margin-bottom: 25px; color: #1e40af; font-size: 12px;">KHÁCH HÀNG</div>
-              <div style="border-bottom: 1px solid #333; margin: 8px 0; height: 25px;"></div>
-              <div style="font-size: 9px; color: #666; margin-top: 3px;">(Ký tên xác nhận)</div>
-            </div>
-          </div>
-
-          ${templateSettings.footerNote ? `
-            <div style="text-align: center; margin-top: 15px; font-size: 9px; color: #666; font-style: italic;">
-              ${templateSettings.footerNote}
-            </div>
-          ` : ''}
-        </div>
-      `;
-
-      document.body.appendChild(tempContainer);
-
-      // Wait for images to load
-      const images = tempContainer.querySelectorAll('img');
-      await Promise.all(Array.from(images).map(img => {
-        return new Promise((resolve) => {
-          if (img.complete) {
-            resolve(true);
-          } else {
-            img.onload = () => resolve(true);
-            img.onerror = () => resolve(true);
-          }
-        });
-      }));
-
-      // Generate canvas with adjusted size for better fit
-      const canvas = await html2canvas(tempContainer, {
-        scale: 1.5,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: 794, // A4 width in pixels at 96 DPI
-        height: 1123, // A4 height in pixels at 96 DPI
-        scrollX: 0,
-        scrollY: 0,
-      });
-
-      // Remove temporary container
-      document.body.removeChild(tempContainer);
-
-      // Convert to PDF
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgData = canvas.toDataURL('image/png');
+      // Set default font
+      pdf.setFont('helvetica', 'normal');
       
-      pdf.addImage(imgData, 'PNG', 0, 0, 210, 297); // A4 size in mm
+      let yPosition = 20;
+      
+      // Header section with company info
+      pdf.setFontSize(18);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(templateSettings.companyName, 20, yPosition);
+      yPosition += 8;
+      
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`${templateSettings.address}`, 20, yPosition);
+      yPosition += 5;
+      pdf.text(`Tel: ${templateSettings.phone}`, 20, yPosition);
+      yPosition += 15;
+      
+      // Title
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      const title = `BAO GIA ${quote.quote_number || ''}`;
+      const titleWidth = pdf.getTextWidth(title);
+      pdf.text(title, (210 - titleWidth) / 2, yPosition);
+      yPosition += 15;
+      
+      // Customer info and quote info side by side
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      
+      // Left column - Customer info
+      pdf.text('THONG TIN KHACH HANG:', 20, yPosition);
+      yPosition += 6;
+      pdf.text(`Ten: ${quote.customer_name || 'N/A'}`, 20, yPosition);
+      yPosition += 5;
+      pdf.text(`Dien thoai: ${quote.customer_phone || 'N/A'}`, 20, yPosition);
+      yPosition += 5;
+      pdf.text(`Email: ${quote.customer_email || 'N/A'}`, 20, yPosition);
+      yPosition += 5;
+      pdf.text(`Dia chi: ${quote.customer_address || 'N/A'}`, 20, yPosition);
+      
+      // Right column - Quote info
+      let rightY = yPosition - 20;
+      pdf.text(`Ngay bao gia: ${new Date(quote.created_at).toLocaleDateString('vi-VN')}`, 120, rightY);
+      rightY += 5;
+      pdf.text(`Hieu luc: ${quote.validity_days || 30} ngay`, 120, rightY);
+      rightY += 5;
+      pdf.text(`Hinh thuc thanh toan: ${quote.payment_terms || 'Tien mat'}`, 120, rightY);
+      
+      yPosition += 15;
+      
+      // Products table
+      const tableStartY = yPosition;
+      const tableHeaders = ['STT', 'Ten san pham', 'Hinh anh', 'Mo ta', 'SL', 'Don gia', 'Thanh tien'];
+      const columnWidths = [15, 40, 25, 35, 15, 25, 25];
+      const rowHeight = 8;
+      
+      // Table headers
+      pdf.setFillColor(0, 112, 192); // #0070C0
+      pdf.setTextColor(255, 255, 255); // White text
+      pdf.setFont('helvetica', 'bold');
+      
+      let xPosition = 20;
+      tableHeaders.forEach((header, index) => {
+        pdf.rect(xPosition, yPosition, columnWidths[index], rowHeight, 'F');
+        pdf.text(header, xPosition + 2, yPosition + 5);
+        xPosition += columnWidths[index];
+      });
+      
+      yPosition += rowHeight;
+      pdf.setTextColor(0, 0, 0); // Black text
+      pdf.setFont('helvetica', 'normal');
+      
+      // Table rows
+      quote.products?.forEach((product: any, index: number) => {
+        const unitPrice = parseFloat(product.unit_price) || 0;
+        const quantity = parseInt(product.quantity) || 0;
+        const total = unitPrice * quantity;
+        
+        xPosition = 20;
+        
+        // Draw borders and content
+        pdf.rect(xPosition, yPosition, columnWidths[0], rowHeight); // STT
+        pdf.text((index + 1).toString(), xPosition + 2, yPosition + 5);
+        xPosition += columnWidths[0];
+        
+        pdf.rect(xPosition, yPosition, columnWidths[1], rowHeight); // Ten san pham
+        pdf.text(product.product_name || '', xPosition + 2, yPosition + 5);
+        xPosition += columnWidths[1];
+        
+        pdf.rect(xPosition, yPosition, columnWidths[2], rowHeight); // Hinh anh
+        pdf.text('Hinh', xPosition + 2, yPosition + 5);
+        xPosition += columnWidths[2];
+        
+        pdf.rect(xPosition, yPosition, columnWidths[3], rowHeight); // Mo ta
+        pdf.text(product.description || '', xPosition + 2, yPosition + 5);
+        xPosition += columnWidths[3];
+        
+        pdf.rect(xPosition, yPosition, columnWidths[4], rowHeight); // SL
+        pdf.text(quantity.toString(), xPosition + 2, yPosition + 5);
+        xPosition += columnWidths[4];
+        
+        pdf.rect(xPosition, yPosition, columnWidths[5], rowHeight); // Don gia
+        pdf.text(unitPrice.toLocaleString('vi-VN'), xPosition + 2, yPosition + 5);
+        xPosition += columnWidths[5];
+        
+        pdf.rect(xPosition, yPosition, columnWidths[6], rowHeight); // Thanh tien
+        pdf.text(total.toLocaleString('vi-VN'), xPosition + 2, yPosition + 5);
+        
+        yPosition += rowHeight;
+      });
+      
+      yPosition += 10;
+      
+      // Summary section
+      const totals = [
+        { label: 'Tong tien hang:', value: quote.subtotal?.toLocaleString('vi-VN') || '0' },
+        { label: 'Thue VAT:', value: quote.tax_amount?.toLocaleString('vi-VN') || '0' },
+        { label: 'Tong cong:', value: quote.total_amount?.toLocaleString('vi-VN') || '0' }
+      ];
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(192, 0, 0); // Red color for totals
+      
+      totals.forEach(({ label, value }) => {
+        pdf.text(label, 120, yPosition);
+        pdf.text(value, 160, yPosition);
+        yPosition += 6;
+      });
+      
+      yPosition += 10;
+      
+      // Terms
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      templateSettings.terms.forEach((term: string, index: number) => {
+        pdf.text(`${index + 1}. ${term}`, 20, yPosition);
+        yPosition += 5;
+      });
+      
+      yPosition += 15;
+      
+      // Signature section
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('DAI DIEN CONG TY', 50, yPosition);
+      pdf.text('KHACH HANG', 140, yPosition);
+      yPosition += 20;
+      pdf.text('GIAM DOC', 50, yPosition);
+      pdf.text('Ky ten va dong dau xac nhan', 140, yPosition);
       
       // Save PDF
       const fileName = `BaoGia_${quote.quote_number || 'quote'}_${new Date().toISOString().split('T')[0]}.pdf`;
@@ -1145,7 +1119,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       toast({
         title: "Lưu PDF thành công",
-        description: `Đã lưu báo giá ${quote.quote_number || 'N/A'} thành file PDF`,
+        description: `Đã tự động tạo và lưu báo giá ${quote.quote_number || 'N/A'} thành file PDF`,
       });
 
     } catch (error) {
