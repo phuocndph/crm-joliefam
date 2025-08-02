@@ -187,6 +187,7 @@ export default function GHNTrackingPage() {
     setLoading(true);
 
     try {
+      // First fetch all orders from GHN
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
         body: {
           action: 'fetch_all_orders'
@@ -198,14 +199,30 @@ export default function GHNTrackingPage() {
       }
 
       if (data.success) {
-        // Save all orders to database
         const orders = data.data || [];
+        
+        if (orders.length === 0) {
+          toast.info('Không tìm thấy đơn hàng nào trên GHN');
+          return;
+        }
+
+        toast.info(`Tìm thấy ${orders.length} đơn hàng trên GHN. Đang import...`);
+
+        // Save each order to database
         let savedCount = 0;
+        let skippedCount = 0;
         let errorCount = 0;
 
         for (const order of orders) {
           try {
-            const { error: saveError } = await supabase.functions.invoke('ghn-tracking', {
+            // Check if order already exists
+            const existingOrder = trackingData.find(item => item.ghn_order_code === order.orderCode);
+            if (existingOrder) {
+              skippedCount++;
+              continue;
+            }
+
+            const { data: saveData, error: saveError } = await supabase.functions.invoke('ghn-tracking', {
               body: {
                 action: 'save_tracking',
                 orderCode: order.orderCode,
@@ -214,20 +231,26 @@ export default function GHNTrackingPage() {
               }
             });
 
-            if (!saveError) {
-              savedCount++;
-            } else {
+            if (saveError || !saveData.success) {
               errorCount++;
+              console.error(`Error saving order ${order.orderCode}:`, saveError || saveData.error);
+            } else {
+              savedCount++;
             }
           } catch (saveError) {
             errorCount++;
+            console.error(`Error saving order ${order.orderCode}:`, saveError);
           }
         }
 
-        toast.success(`Đã import ${savedCount} đơn hàng từ GHN${errorCount > 0 ? `, ${errorCount} lỗi` : ''}`);
-        await loadTrackingData(); // Reload data
+        const message = `Import hoàn tất: ${savedCount} đã thêm, ${skippedCount} đã tồn tại${errorCount > 0 ? `, ${errorCount} lỗi` : ''}`;
+        toast.success(message);
+        
+        if (savedCount > 0) {
+          await loadTrackingData(); // Reload data only if new orders were added
+        }
       } else {
-        toast.error(data.error || 'Lỗi import đơn hàng từ GHN');
+        toast.error(data.error || 'Lỗi lấy dữ liệu từ GHN');
       }
     } catch (error: any) {
       console.error('Error importing orders:', error);
