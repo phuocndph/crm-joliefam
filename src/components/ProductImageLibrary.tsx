@@ -24,9 +24,10 @@ interface ProductImage {
 interface ProductImageLibraryProps {
   onSelectImage: (imageUrl: string) => void;
   selectedCategory?: string;
+  hideDeleteButton?: boolean; // Ẩn nút xóa khi chọn hình ảnh cho sản phẩm
 }
 
-const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLibraryProps) => {
+const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton = false }: ProductImageLibraryProps) => {
   const [images, setImages] = useState<ProductImage[]>([]);
   const [filteredImages, setFilteredImages] = useState<ProductImage[]>([]);
   const [categories, setCategories] = useState<{safeName: string, displayName: string}[]>([]);
@@ -447,19 +448,21 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
                   alt={image.name}
                   className="w-full h-24 object-cover rounded"
                 />
-                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded flex items-center justify-center transition-all">
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteImage(image.fullPath);
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
+                {!hideDeleteButton && (
+                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded flex items-center justify-center transition-all">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteImage(image.fullPath);
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
               <div className="mt-2 space-y-1">
                 <p className="text-xs text-muted-foreground truncate" title={image.name}>

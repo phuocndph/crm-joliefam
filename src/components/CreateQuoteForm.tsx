@@ -1034,6 +1034,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                 </DialogHeader>
                                 <div className="h-[70vh] overflow-y-auto">
                                   <ProductImageLibrary 
+                                    hideDeleteButton={true}
                                     onSelectImage={(imageUrl) => {
                                       const newProducts = [...selectedProducts];
                                       newProducts[index] = { 
@@ -1042,11 +1043,13 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                       };
                                       setSelectedProducts(newProducts);
                                       
-                                      // Đóng dialog bằng cách trigger close
-                                      const closeButton = document.querySelector('[data-state="open"] button[aria-label="Close"]') as HTMLButtonElement;
-                                      if (closeButton) {
-                                        closeButton.click();
-                                      }
+                                      // Đóng dialog bằng cách trigger close - cải thiện cách đóng
+                                      setTimeout(() => {
+                                        const dialogOverlay = document.querySelector('[data-radix-dialog-overlay]');
+                                        if (dialogOverlay) {
+                                          (dialogOverlay as HTMLElement).click();
+                                        }
+                                      }, 100);
                                       
                                       toast({
                                         title: "Thành công",
