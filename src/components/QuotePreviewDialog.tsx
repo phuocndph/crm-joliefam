@@ -956,177 +956,413 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     setIsExporting(true);
     try {
       toast({
-        title: "Đang tạo PDF...",
+        title: "Đang tạo PDF từ Excel...",
         description: "Vui lòng đợi trong giây lát",
       });
 
-      const pdf = new jsPDF('p', 'mm', 'a4');
       const templateSettings = getTemplateSettings();
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Báo giá');
+
+      // Set page setup for A4
+      worksheet.pageSetup = {
+        paperSize: 9, // A4
+        orientation: 'portrait',
+        margins: {
+          left: 0.75,
+          right: 0.75,
+          top: 1,
+          bottom: 1,
+          header: 0.3,
+          footer: 0.3
+        }
+      };
+
+      // Set column widths
+      worksheet.columns = [
+        { width: 5 },   // STT
+        { width: 35 },  // Thông tin khách hàng / Tên sản phẩm  
+        { width: 15 },  // Hình ảnh
+        { width: 25 },  // Mô tả
+        { width: 8 },   // Số lượng
+        { width: 15 },  // Đơn giá
+        { width: 15 },  // Thành tiền
+        { width: 15 },  // Additional column for totals
+        { width: 15 },  // Additional column for totals
+      ];
+
+      let currentRow = 1;
+
+      // Company name header
+      worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+      const companyCell = worksheet.getCell(`A${currentRow}`);
+      companyCell.value = templateSettings.companyName;
+      companyCell.font = { name: 'Times New Roman', bold: true, size: 14 };
+      companyCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      currentRow++;
+
+      // Company title
+      worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+      const titleCell = worksheet.getCell(`A${currentRow}`);
+      titleCell.value = templateSettings.companyTitle;
+      titleCell.font = { name: 'Times New Roman', bold: true, size: 12, color: { argb: 'FFD32F2F' } };
+      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      currentRow++;
+
+      // Company address
+      worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+      const addressCell = worksheet.getCell(`A${currentRow}`);
+      addressCell.value = templateSettings.address;
+      addressCell.font = { name: 'Times New Roman', size: 10 };
+      addressCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      currentRow++;
+
+      // Phone
+      worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+      const phoneCell = worksheet.getCell(`A${currentRow}`);
+      phoneCell.value = `Tel: ${templateSettings.phone}`;
+      phoneCell.font = { name: 'Times New Roman', size: 10 };
+      phoneCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      currentRow += 2;
+
+      // Quote title
+      worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+      const quoteTitleCell = worksheet.getCell(`A${currentRow}`);
+      quoteTitleCell.value = `BÁO GIÁ ${quote.quote_number || ''}`;
+      quoteTitleCell.font = { name: 'Times New Roman', bold: true, size: 16, color: { argb: 'FF1976D2' } };
+      quoteTitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      currentRow += 2;
+
+      // Customer info label at column B
+      const customerLabelCell = worksheet.getCell(`B${currentRow}`);
+      customerLabelCell.value = 'THÔNG TIN KHÁCH HÀNG:';
+      customerLabelCell.font = { name: 'Times New Roman', bold: true, size: 11 };
       
-      // Set default font
-      pdf.setFont('helvetica', 'normal');
-      
-      let yPosition = 20;
-      
-      // Header section with company info
-      pdf.setFontSize(18);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(templateSettings.companyName, 20, yPosition);
-      yPosition += 8;
-      
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`${templateSettings.address}`, 20, yPosition);
-      yPosition += 5;
-      pdf.text(`Tel: ${templateSettings.phone}`, 20, yPosition);
-      yPosition += 15;
-      
-      // Title
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      const title = `BAO GIA ${quote.quote_number || ''}`;
-      const titleWidth = pdf.getTextWidth(title);
-      pdf.text(title, (210 - titleWidth) / 2, yPosition);
-      yPosition += 15;
-      
-      // Customer info and quote info side by side
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      
-      // Left column - Customer info
-      pdf.text('THONG TIN KHACH HANG:', 20, yPosition);
-      yPosition += 6;
-      pdf.text(`Ten: ${quote.customer_name || 'N/A'}`, 20, yPosition);
-      yPosition += 5;
-      pdf.text(`Dien thoai: ${quote.customer_phone || 'N/A'}`, 20, yPosition);
-      yPosition += 5;
-      pdf.text(`Email: ${quote.customer_email || 'N/A'}`, 20, yPosition);
-      yPosition += 5;
-      pdf.text(`Dia chi: ${quote.customer_address || 'N/A'}`, 20, yPosition);
-      
-      // Right column - Quote info
-      let rightY = yPosition - 20;
-      pdf.text(`Ngay bao gia: ${new Date(quote.created_at).toLocaleDateString('vi-VN')}`, 120, rightY);
-      rightY += 5;
-      pdf.text(`Hieu luc: ${quote.validity_days || 30} ngay`, 120, rightY);
-      rightY += 5;
-      pdf.text(`Hinh thuc thanh toan: ${quote.payment_terms || 'Tien mat'}`, 120, rightY);
-      
-      yPosition += 15;
-      
-      // Products table
-      const tableStartY = yPosition;
-      const tableHeaders = ['STT', 'Ten san pham', 'Hinh anh', 'Mo ta', 'SL', 'Don gia', 'Thanh tien'];
-      const columnWidths = [15, 40, 25, 35, 15, 25, 25];
-      const rowHeight = 8;
-      
-      // Table headers
-      pdf.setFillColor(0, 112, 192); // #0070C0
-      pdf.setTextColor(255, 255, 255); // White text
-      pdf.setFont('helvetica', 'bold');
-      
-      let xPosition = 20;
-      tableHeaders.forEach((header, index) => {
-        pdf.rect(xPosition, yPosition, columnWidths[index], rowHeight, 'F');
-        pdf.text(header, xPosition + 2, yPosition + 5);
-        xPosition += columnWidths[index];
+      // Quote date info at column G
+      const quoteDateCell = worksheet.getCell(`G${currentRow}`);
+      quoteDateCell.value = `Ngày báo giá: ${new Date(quote.created_at).toLocaleDateString('vi-VN')}`;
+      quoteDateCell.font = { name: 'Times New Roman', size: 10 };
+      currentRow++;
+
+      // Customer details at column B
+      const customerInfo = [
+        `Tên: ${quote.customer_name || 'N/A'}`,
+        `Điện thoại: ${quote.customer_phone || 'N/A'}`,
+        `Email: ${quote.customer_email || 'N/A'}`,
+        `Địa chỉ: ${quote.customer_address || 'N/A'}`
+      ];
+
+      const quoteInfo = [
+        `Hiệu lực: ${quote.validity_days || 30} ngày`,
+        `Hình thức thanh toán: ${quote.payment_terms || 'Tiền mặt'}`,
+        '',
+        ''
+      ];
+
+      customerInfo.forEach((info, index) => {
+        const customerCell = worksheet.getCell(`B${currentRow + index}`);
+        customerCell.value = info;
+        customerCell.font = { name: 'Times New Roman', size: 10 };
+        
+        const quoteInfoCell = worksheet.getCell(`G${currentRow + index}`);
+        quoteInfoCell.value = quoteInfo[index];
+        quoteInfoCell.font = { name: 'Times New Roman', size: 10 };
       });
-      
-      yPosition += rowHeight;
-      pdf.setTextColor(0, 0, 0); // Black text
-      pdf.setFont('helvetica', 'normal');
-      
-      // Table rows
+
+      currentRow += 5;
+
+      // Products table header
+      const headers = ['STT', 'Tên sản phẩm', 'Hình ảnh', 'Mô tả', 'Số lượng', 'Đơn giá', 'Thành tiền'];
+      headers.forEach((header, index) => {
+        const headerCell = worksheet.getCell(currentRow, index + 1);
+        headerCell.value = header;
+        headerCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+        headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0070C0' } };
+        headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        headerCell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+      });
+
+      currentRow++;
+
+      // Products data
       quote.products?.forEach((product: any, index: number) => {
         const unitPrice = parseFloat(product.unit_price) || 0;
         const quantity = parseInt(product.quantity) || 0;
         const total = unitPrice * quantity;
-        
-        xPosition = 20;
-        
-        // Draw borders and content
-        pdf.rect(xPosition, yPosition, columnWidths[0], rowHeight); // STT
-        pdf.text((index + 1).toString(), xPosition + 2, yPosition + 5);
-        xPosition += columnWidths[0];
-        
-        pdf.rect(xPosition, yPosition, columnWidths[1], rowHeight); // Ten san pham
-        pdf.text(product.product_name || '', xPosition + 2, yPosition + 5);
-        xPosition += columnWidths[1];
-        
-        pdf.rect(xPosition, yPosition, columnWidths[2], rowHeight); // Hinh anh
-        pdf.text('Hinh', xPosition + 2, yPosition + 5);
-        xPosition += columnWidths[2];
-        
-        pdf.rect(xPosition, yPosition, columnWidths[3], rowHeight); // Mo ta
-        pdf.text(product.description || '', xPosition + 2, yPosition + 5);
-        xPosition += columnWidths[3];
-        
-        pdf.rect(xPosition, yPosition, columnWidths[4], rowHeight); // SL
-        pdf.text(quantity.toString(), xPosition + 2, yPosition + 5);
-        xPosition += columnWidths[4];
-        
-        pdf.rect(xPosition, yPosition, columnWidths[5], rowHeight); // Don gia
-        pdf.text(unitPrice.toLocaleString('vi-VN'), xPosition + 2, yPosition + 5);
-        xPosition += columnWidths[5];
-        
-        pdf.rect(xPosition, yPosition, columnWidths[6], rowHeight); // Thanh tien
-        pdf.text(total.toLocaleString('vi-VN'), xPosition + 2, yPosition + 5);
-        
-        yPosition += rowHeight;
-      });
-      
-      yPosition += 10;
-      
-      // Summary section
-      const totals = [
-        { label: 'Tong tien hang:', value: quote.subtotal?.toLocaleString('vi-VN') || '0' },
-        { label: 'Thue VAT:', value: quote.tax_amount?.toLocaleString('vi-VN') || '0' },
-        { label: 'Tong cong:', value: quote.total_amount?.toLocaleString('vi-VN') || '0' }
-      ];
-      
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(192, 0, 0); // Red color for totals
-      
-      totals.forEach(({ label, value }) => {
-        pdf.text(label, 120, yPosition);
-        pdf.text(value, 160, yPosition);
-        yPosition += 6;
-      });
-      
-      yPosition += 10;
-      
-      // Terms
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(0, 0, 0);
-      templateSettings.terms.forEach((term: string, index: number) => {
-        pdf.text(`${index + 1}. ${term}`, 20, yPosition);
-        yPosition += 5;
-      });
-      
-      yPosition += 15;
-      
-      // Signature section
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('DAI DIEN CONG TY', 50, yPosition);
-      pdf.text('KHACH HANG', 140, yPosition);
-      yPosition += 20;
-      pdf.text('GIAM DOC', 50, yPosition);
-      pdf.text('Ky ten va dong dau xac nhan', 140, yPosition);
-      
-      // Save PDF
-      const fileName = `BaoGia_${quote.quote_number || 'quote'}_${new Date().toISOString().split('T')[0]}.pdf`;
-      pdf.save(fileName);
 
-      toast({
-        title: "Lưu PDF thành công",
-        description: `Đã tự động tạo và lưu báo giá ${quote.quote_number || 'N/A'} thành file PDF`,
+        const values = [
+          index + 1,
+          product.product_name || '',
+          'Hình',
+          product.description || '',
+          quantity,
+          unitPrice,
+          total
+        ];
+
+        values.forEach((value, colIndex) => {
+          const cell = worksheet.getCell(currentRow, colIndex + 1);
+          cell.value = value;
+          cell.font = { name: 'Times New Roman', size: 10 };
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+
+          if (colIndex === 0 || colIndex === 4) { // STT và Số lượng
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          } else if (colIndex >= 5 && colIndex <= 6) { // Đơn giá và Thành tiền
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            if (typeof value === 'number') {
+              cell.numFmt = '#,##0';
+            }
+          }
+        });
+
+        // Add border to image column H
+        const imageCell = worksheet.getCell(`C${currentRow}`);
+        imageCell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+
+        currentRow++;
       });
+
+      currentRow += 2;
+
+      // Summary section
+      const summaryData = [
+        { label: 'Tổng tiền hàng:', value: quote.subtotal?.toLocaleString('vi-VN') || '0' },
+        { label: 'Thuế VAT:', value: quote.tax_amount?.toLocaleString('vi-VN') || '0' },
+        { label: 'TỔNG CỘNG:', value: quote.total_amount?.toLocaleString('vi-VN') || '0' }
+      ];
+
+      summaryData.forEach(({ label, value }) => {
+        const labelCell = worksheet.getCell(`A${currentRow}`);
+        labelCell.value = label;
+        labelCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFC00000' } };
+        labelCell.alignment = { horizontal: 'left', vertical: 'middle' };
+        labelCell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+
+        // Merge & Center total amount in columns H and I
+        worksheet.mergeCells(`H${currentRow}:I${currentRow}`);
+        const valueCell = worksheet.getCell(`H${currentRow}`);
+        valueCell.value = value;
+        valueCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFC00000' } };
+        valueCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        valueCell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+
+        currentRow++;
+      });
+
+      currentRow += 2;
+
+      // Terms
+      templateSettings.terms.forEach((term, index) => {
+        worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+        const termCell = worksheet.getCell(`A${currentRow}`);
+        termCell.value = `${index + 1}. ${term}`;
+        termCell.font = { name: 'Times New Roman', size: 10 };
+        currentRow++;
+      });
+
+      currentRow += 2;
+
+      // Signature section
+      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
+      const companySignatureHeaderCell = worksheet.getCell(`A${currentRow}`);
+      companySignatureHeaderCell.value = 'ĐẠI DIỆN CÔNG TY';
+      companySignatureHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12 };
+      companySignatureHeaderCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
+      const customerSignatureHeaderCell = worksheet.getCell(`E${currentRow}`);
+      customerSignatureHeaderCell.value = 'KHÁCH HÀNG';
+      customerSignatureHeaderCell.font = { name: 'Times New Roman', bold: true, size: 12 };
+      customerSignatureHeaderCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      currentRow += 4; // Space for signature
+
+      worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
+      const directorCell = worksheet.getCell(`A${currentRow}`);
+      directorCell.value = 'GIÁM ĐỐC';
+      directorCell.font = { name: 'Times New Roman', bold: true, size: 11 };
+      directorCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      worksheet.mergeCells(`E${currentRow}:H${currentRow}`);
+      const customerSignatureCell = worksheet.getCell(`E${currentRow}`);
+      customerSignatureCell.value = 'Ký tên và đóng dấu xác nhận';
+      customerSignatureCell.font = { name: 'Times New Roman', size: 10 };
+      customerSignatureCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      // Convert Excel to HTML for PDF conversion
+      const buffer = await workbook.xlsx.writeBuffer();
+      
+      // Create a temporary HTML representation of the Excel data for PDF
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: 'Times New Roman', serif; margin: 20px; }
+            .header { text-align: center; margin-bottom: 20px; }
+            .company-name { font-size: 14pt; font-weight: bold; }
+            .company-title { font-size: 12pt; font-weight: bold; color: #D32F2F; }
+            .address, .phone { font-size: 10pt; }
+            .quote-title { font-size: 16pt; font-weight: bold; color: #1976D2; margin: 20px 0; }
+            .info-section { display: flex; justify-content: space-between; margin: 20px 0; }
+            .customer-info, .quote-info { font-size: 10pt; }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            th { background-color: #0070C0; color: white; font-weight: bold; font-size: 11pt; padding: 8px; border: 1px solid #000; text-align: center; }
+            td { font-size: 10pt; padding: 8px; border: 1px solid #000; }
+            .number { text-align: center; }
+            .amount { text-align: center; }
+            .summary { margin: 20px 0; }
+            .summary-row { display: flex; justify-content: space-between; font-weight: bold; color: #C00000; font-size: 11pt; margin: 5px 0; }
+            .terms { font-size: 10pt; margin: 20px 0; }
+            .signature { display: flex; justify-content: space-between; margin-top: 40px; }
+            .signature-section { text-align: center; width: 45%; }
+            .signature-header { font-weight: bold; font-size: 12pt; }
+            .signature-title { font-weight: bold; font-size: 11pt; margin-top: 40px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="company-name">${templateSettings.companyName}</div>
+            <div class="company-title">${templateSettings.companyTitle}</div>
+            <div class="address">${templateSettings.address}</div>
+            <div class="phone">Tel: ${templateSettings.phone}</div>
+          </div>
+          
+          <div class="quote-title">BÁO GIÁ ${quote.quote_number || ''}</div>
+          
+          <div class="info-section">
+            <div class="customer-info">
+              <div><strong>THÔNG TIN KHÁCH HÀNG:</strong></div>
+              <div>Tên: ${quote.customer_name || 'N/A'}</div>
+              <div>Điện thoại: ${quote.customer_phone || 'N/A'}</div>
+              <div>Email: ${quote.customer_email || 'N/A'}</div>
+              <div>Địa chỉ: ${quote.customer_address || 'N/A'}</div>
+            </div>
+            <div class="quote-info">
+              <div>Ngày báo giá: ${new Date(quote.created_at).toLocaleDateString('vi-VN')}</div>
+              <div>Hiệu lực: ${quote.validity_days || 30} ngày</div>
+              <div>Hình thức thanh toán: ${quote.payment_terms || 'Tiền mặt'}</div>
+            </div>
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>STT</th>
+                <th>Tên sản phẩm</th>
+                <th>Hình ảnh</th>
+                <th>Mô tả</th>
+                <th>Số lượng</th>
+                <th>Đơn giá</th>
+                <th>Thành tiền</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${quote.products?.map((product: any, index: number) => {
+                const unitPrice = parseFloat(product.unit_price) || 0;
+                const quantity = parseInt(product.quantity) || 0;
+                const total = unitPrice * quantity;
+                return `
+                  <tr>
+                    <td class="number">${index + 1}</td>
+                    <td>${product.product_name || ''}</td>
+                    <td class="number">Hình</td>
+                    <td>${product.description || ''}</td>
+                    <td class="number">${quantity}</td>
+                    <td class="amount">${unitPrice.toLocaleString('vi-VN')}</td>
+                    <td class="amount">${total.toLocaleString('vi-VN')}</td>
+                  </tr>
+                `;
+              }).join('') || ''}
+            </tbody>
+          </table>
+          
+          <div class="summary">
+            <div class="summary-row">
+              <span>Tổng tiền hàng:</span>
+              <span>${quote.subtotal?.toLocaleString('vi-VN') || '0'}</span>
+            </div>
+            <div class="summary-row">
+              <span>Thuế VAT:</span>
+              <span>${quote.tax_amount?.toLocaleString('vi-VN') || '0'}</span>
+            </div>
+            <div class="summary-row">
+              <span>TỔNG CỘNG:</span>
+              <span>${quote.total_amount?.toLocaleString('vi-VN') || '0'}</span>
+            </div>
+          </div>
+          
+          <div class="terms">
+            ${templateSettings.terms.map((term: string, index: number) => `
+              <div>${index + 1}. ${term}</div>
+            `).join('')}
+          </div>
+          
+          <div class="signature">
+            <div class="signature-section">
+              <div class="signature-header">ĐẠI DIỆN CÔNG TY</div>
+              <div class="signature-title">GIÁM ĐỐC</div>
+            </div>
+            <div class="signature-section">
+              <div class="signature-header">KHÁCH HÀNG</div>
+              <div class="signature-title">Ký tên và đóng dấu xác nhận</div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      // Open print dialog to save as PDF
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        
+        printWindow.onload = () => {
+          setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+          }, 500);
+        };
+
+        toast({
+          title: "PDF được tạo từ Excel",
+          description: "Đã mở cửa sổ in. Chọn 'Save as PDF' để lưu file PDF từ định dạng Excel.",
+        });
+      }
 
     } catch (error) {
-      console.error('Error saving PDF:', error);
+      console.error('Error creating PDF from Excel:', error);
       toast({
-        title: "Lỗi lưu PDF",
-        description: "Có lỗi xảy ra khi lưu file PDF. Vui lòng thử lại.",
+        title: "Lỗi tạo PDF từ Excel",
+        description: "Có lỗi xảy ra khi tạo file PDF từ Excel. Vui lòng thử lại.",
         variant: "destructive",
       });
     } finally {
