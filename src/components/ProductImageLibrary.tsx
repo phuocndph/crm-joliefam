@@ -435,14 +435,17 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory }: ProductImageLi
       {/* Image Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {filteredImages.map((image) => (
-          <Card key={image.id} className="cursor-pointer hover:shadow-md transition-shadow">
+          <Card 
+            key={image.id} 
+            className="cursor-pointer hover:shadow-md transition-shadow border-2 hover:border-blue-400"
+            onClick={() => onSelectImage(image.url)}
+          >
             <CardContent className="p-2">
               <div className="relative group">
                 <img
                   src={image.url}
                   alt={image.name}
                   className="w-full h-24 object-cover rounded"
-                  onClick={() => onSelectImage(image.url)}
                 />
                 <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded flex items-center justify-center transition-all">
                   <Button
