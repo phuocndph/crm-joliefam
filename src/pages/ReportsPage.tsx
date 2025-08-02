@@ -880,39 +880,42 @@ const ReportsPage = () => {
                 <CardContent>
                   <div className="text-2xl font-bold text-orange-600">
                     {formatCurrency((() => {
-                      // Tính giá vốn thực tế như trong Cash Flow Management
+                      // Ưu tiên sử dụng cost_price có sẵn trong đơn hàng (giá sản xuất)
                       const deliveredOrders = filteredOrders.filter(order => 
                         order.status === "delivered" && order.total_amount > 0
                       );
                       
-                      let totalCostPriceReal = 0;
-                      deliveredOrders.forEach(order => {
-                        let orderCostPrice = Number(order.cost_price) || 0;
-                        
-                        // Nếu cost_price trong order bằng 0, tính từ product data
-                        if (orderCostPrice === 0 && order.items) {
-                          try {
-                            const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items);
-                            const orderItems = JSON.parse(itemsStr);
-                            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                              const quantity = item.quantity || 0;
-                              // Tìm product để lấy cost_price
-                              const product = products.find(p => p.id === item.id || p.sku === item.sku);
-                              const costPrice = product ? Number(product.cost_price) || 0 : 0;
-                              return sum + (quantity * costPrice);
-                            }, 0);
-                          } catch (error) {
-                            console.error('Error calculating cost price for order:', order.id, error);
+                      // Đơn giản hóa: chủ yếu sử dụng cost_price từ đơn hàng
+                      let totalCostPriceReal = deliveredOrders.reduce((sum, order) => {
+                        return sum + (Number(order.cost_price) || 0);
+                      }, 0);
+                      
+                      // Chỉ tính từ products nếu cần thiết và cost_price = 0
+                      if (totalCostPriceReal === 0) {
+                        deliveredOrders.forEach(order => {
+                          if (order.items) {
+                            try {
+                              const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items);
+                              const orderItems = JSON.parse(itemsStr);
+                              const orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+                                const quantity = item.quantity || 0;
+                                const product = products.find(p => p.id === item.id || p.sku === item.sku);
+                                const costPrice = product ? Number(product.cost_price) || 0 : 0;
+                                return sum + (quantity * costPrice);
+                              }, 0);
+                              totalCostPriceReal += orderCostPrice;
+                            } catch (error) {
+                              console.error('Error calculating cost price for order:', order.id, error);
+                            }
                           }
-                        }
-                        totalCostPriceReal += orderCostPrice;
-                      });
+                        });
+                      }
                       
                       return totalCostPriceReal;
                     })())}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Chi phí giá gốc hàng bán
+                    Giá sản xuất từ đơn hàng
                   </p>
                 </CardContent>
               </Card>
@@ -945,25 +948,10 @@ const ReportsPage = () => {
                     
                     const revenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
                     
-                    let totalCostPriceReal = 0;
-                    deliveredOrders.forEach(order => {
-                      let orderCostPrice = Number(order.cost_price) || 0;
-                        if (orderCostPrice === 0 && order.items) {
-                          try {
-                            const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items);
-                            const orderItems = JSON.parse(itemsStr);
-                          orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                            const quantity = item.quantity || 0;
-                            const product = products.find(p => p.id === item.id || p.sku === item.sku);
-                            const costPrice = product ? Number(product.cost_price) || 0 : 0;
-                            return sum + (quantity * costPrice);
-                          }, 0);
-                        } catch (error) {
-                          console.error('Error calculating cost price for order:', order.id, error);
-                        }
-                      }
-                      totalCostPriceReal += orderCostPrice;
-                    });
+                    // Ưu tiên sử dụng cost_price có sẵn trong đơn hàng (giá sản xuất)
+                    let totalCostPriceReal = deliveredOrders.reduce((sum, order) => {
+                      return sum + (Number(order.cost_price) || 0);
+                    }, 0);
                     
                     const netProfitReal = revenue - totalCostPriceReal - totalExpensesAmount;
                     return netProfitReal >= 0 ? 'text-green-600' : 'text-red-600';
@@ -975,31 +963,16 @@ const ReportsPage = () => {
                       
                       const revenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
                       
-                      let totalCostPriceReal = 0;
-                      deliveredOrders.forEach(order => {
-                        let orderCostPrice = Number(order.cost_price) || 0;
-                        if (orderCostPrice === 0 && order.items) {
-                          try {
-                            const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items);
-                            const orderItems = JSON.parse(itemsStr);
-                            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                              const quantity = item.quantity || 0;
-                              const product = products.find(p => p.id === item.id || p.sku === item.sku);
-                              const costPrice = product ? Number(product.cost_price) || 0 : 0;
-                              return sum + (quantity * costPrice);
-                            }, 0);
-                          } catch (error) {
-                            console.error('Error calculating cost price for order:', order.id, error);
-                          }
-                        }
-                        totalCostPriceReal += orderCostPrice;
-                      });
+                      // Ưu tiên sử dụng cost_price có sẵn trong đơn hàng (giá sản xuất)
+                      let totalCostPriceReal = deliveredOrders.reduce((sum, order) => {
+                        return sum + (Number(order.cost_price) || 0);
+                      }, 0);
                       
                       return revenue - totalCostPriceReal - totalExpensesAmount;
                     })())}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Sau trừ giá vốn & chi phí
+                    Doanh thu - Giá sản xuất - Chi phí
                   </p>
                 </CardContent>
               </Card>
