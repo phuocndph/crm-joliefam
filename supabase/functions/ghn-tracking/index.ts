@@ -118,21 +118,166 @@ serve(async (req) => {
       );
 
     } else if (action === 'sync_from_ghn') {
-      // Sync data directly from GHN API
-      // This requires getting a list of orders from GHN
-      // For demonstration, we'll create a simple sync that gets recent orders
+      // Sync data directly from GHN API using customer names that contain order codes
+      // Extract GHN order codes from customer names (pattern: customer_name_XXXX)
       
+      const { data: customers, error: customersError } = await supabaseClient
+        .from('customers')
+        .select('id, name')
+        .like('name', '%_%');
+
+      if (customersError) {
+        throw customersError;
+      }
+
       const results = [];
       
-      // Note: GHN API doesn't have a direct "get all orders" endpoint
-      // In real implementation, you would need to provide specific order codes
-      // or implement a different approach based on your GHN integration
-      
+      for (const customer of customers) {
+        // Extract GHN order code from customer name (e.g., "hà thu _3203 hoan" -> "3203")
+        const nameMatch = customer.name.match(/_(\d+)/);
+        if (!nameMatch) continue;
+        
+        const ghnOrderCode = nameMatch[1];
+        
+        try {
+          // Check if tracking record already exists
+          const { data: existingTracking } = await supabaseClient
+            .from('ghn_tracking')
+            .select('id')
+            .eq('ghn_order_code', ghnOrderCode)
+            .maybeSingle();
+
+          // Get order info for this customer if exists
+          const { data: orderData } = await supabaseClient
+            .from('orders')
+            .select('id')
+            .eq('customer_id', customer.id)
+            .maybeSingle();
+
+          // Fetch data from GHN API
+          const ghnResponse = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Token': ghnApiKey,
+            },
+            body: JSON.stringify({
+              order_code: ghnOrderCode
+            })
+          });
+
+          if (!ghnResponse.ok) {
+            results.push({
+              customerName: customer.name,
+              ghnOrderCode,
+              status: 'error',
+              message: `GHN API error: ${ghnResponse.statusText}`,
+              updated: false
+            });
+            continue;
+          }
+
+          const ghnData = await ghnResponse.json();
+          
+          if (ghnData.code !== 200) {
+            results.push({
+              customerName: customer.name,
+              ghnOrderCode,
+              status: 'error', 
+              message: `GHN API error: ${ghnData.message}`,
+              updated: false
+            });
+            continue;
+          }
+
+          const trackingData = ghnData.data;
+          
+          const trackingRecord = {
+            order_id: orderData?.id || null,
+            ghn_order_code: trackingData.order_code,
+            ghn_status: trackingData.status,
+            ghn_status_text: getStatusText(trackingData.status),
+            customer_name: trackingData.to_name,
+            customer_phone: trackingData.to_phone,
+            customer_address: `${trackingData.to_address}, ${trackingData.to_ward_name}, ${trackingData.to_district_name}, ${trackingData.to_province_name}`,
+            package_weight: trackingData.weight,
+            created_date: trackingData.created_date,
+            expected_delivery_date: trackingData.expected_delivery_time,
+            delivered_date: trackingData.delivered_date,
+            cod_amount: trackingData.cod_amount,
+            tracking_url: `https://tracking.ghn.dev/?order_code=${trackingData.order_code}`,
+            raw_data: trackingData,
+            tenant_id: 'default'
+          };
+
+          if (existingTracking) {
+            // Update existing record
+            const { error: updateError } = await supabaseClient
+              .from('ghn_tracking')
+              .update(trackingRecord)
+              .eq('id', existingTracking.id);
+
+            if (updateError) {
+              console.error(`Error updating tracking ${ghnOrderCode}:`, updateError);
+              results.push({
+                customerName: customer.name,
+                ghnOrderCode,
+                status: 'error',
+                message: updateError.message,
+                updated: false
+              });
+            } else {
+              results.push({
+                customerName: customer.name,
+                ghnOrderCode,
+                status: 'updated',
+                message: 'Đã cập nhật thông tin tracking',
+                updated: true
+              });
+            }
+          } else {
+            // Create new record
+            const { error: insertError } = await supabaseClient
+              .from('ghn_tracking')
+              .insert(trackingRecord);
+
+            if (insertError) {
+              console.error(`Error creating tracking ${ghnOrderCode}:`, insertError);
+              results.push({
+                customerName: customer.name,
+                ghnOrderCode,
+                status: 'error',
+                message: insertError.message,
+                updated: false
+              });
+            } else {
+              results.push({
+                customerName: customer.name,
+                ghnOrderCode,
+                status: 'created',
+                message: 'Đã tạo bản ghi tracking mới',
+                updated: true
+              });
+            }
+          }
+          
+        } catch (error) {
+          console.error(`Error processing customer ${customer.name}:`, error);
+          results.push({
+            customerName: customer.name,
+            ghnOrderCode,
+            status: 'error',
+            message: error.message,
+            updated: false
+          });
+        }
+      }
+
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: `Chức năng đồng bộ từ GHN cần được cấu hình với danh sách mã đơn hàng cụ thể`,
-          results: [] 
+          message: `Đã xử lý ${customers.length} khách hàng, đồng bộ thành công ${results.filter(r => r.updated).length} đơn hàng`,
+          results 
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
