@@ -1,375 +1,279 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RefreshCw, Search, Download, Truck, Package, ExternalLink } from "lucide-react";
-import { format } from "date-fns";
+import { X, Truck } from "lucide-react";
 
 interface GHNOrder {
-  orderCode: string;
-  orderNumber: string;
+  order_code: string;
   status: string;
-  statusText: string;
-  customerName: string;
-  customerPhone: string;
-  customerAddress: string;
+  to_name: string;
+  to_phone: string;
+  to_address: string;
   weight: number;
-  createdDate: string;
-  expectedDeliveryTime?: string;
-  deliveredDate?: string;
-  codAmount: number;
-  trackingUrl: string;
+  created_date: string;
+  leadtime?: string;
+  finish_date?: string;
+  cod_amount: number;
+  error?: string;
+}
+
+// Map trạng thái sang tiếng Việt và màu nền
+const statusMap = {
+  picking: { label: "Đang lấy hàng", color: "#FFFF99" },
+  storing: { label: "Đang lưu kho", color: "#FFCC99" },
+  transporting: { label: "Đang vận chuyển", color: "#99CCFF" },
+  delivered: { label: "Đã giao hàng", color: "#99FF99" },
+  canceled: { label: "Đã hủy", color: "#FF9999" },
+  returning: { label: "Đang trả hàng", color: "#FFCCFF" },
+  return_transporting: { label: "Đang vận chuyển trả hàng", color: "#FF9966" },
+  ready_to_pick: { label: "Sẵn sàng lấy hàng", color: "#CCFF99" },
+  delivering: { label: "Đang giao hàng", color: "#ED849C" },
+  returned: { label: "Hoàn hàng thành công", color: "#B8A6A0" },
+};
+
+function formatDate(dateStr?: string) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("vi-VN");
 }
 
 export default function GHNTrackingPage() {
   const [orders, setOrders] = useState<GHNOrder[]>([]);
+  const [orderInput, setOrderInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [singleOrderCode, setSingleOrderCode] = useState("");
+  const [error, setError] = useState("");
   const { toast } = useToast();
 
-  const fetchAllOrders = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-        body: { action: 'fetch_all_orders' }
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        setOrders(data.data);
-        toast({
-          title: "Thành công",
-          description: data.message,
-          duration: 3000,
-        });
-      } else {
-        throw new Error(data.error || 'Failed to fetch orders');
+  // Load từ localStorage khi khởi tạo
+  useEffect(() => {
+    const saved = localStorage.getItem("ghn_orders");
+    if (saved) {
+      try {
+        setOrders(JSON.parse(saved));
+      } catch (e) {
+        console.error("Error loading saved orders:", e);
       }
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-      toast({
-        title: "Lỗi",
-        description: error.message || "Không thể lấy dữ liệu từ GHN",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, []);
 
-  const trackSingleOrder = async () => {
-    if (!singleOrderCode.trim()) {
-      toast({
-        title: "Lỗi",
-        description: "Vui lòng nhập mã đơn hàng",
-        variant: "destructive",
-      });
-      return;
-    }
+  // Lưu vào localStorage khi orders thay đổi
+  useEffect(() => {
+    localStorage.setItem("ghn_orders", JSON.stringify(orders));
+  }, [orders]);
 
+  // Thêm đơn mới
+  const addOrder = async () => {
+    const code = orderInput.trim();
+    if (!code) return;
+    
     setLoading(true);
+    setError("");
+    
     try {
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
         body: { 
           action: 'track_order',
-          orderCode: singleOrderCode.trim()
+          orderCode: code
         }
       });
 
       if (error) throw error;
 
       if (data.success) {
-        setOrders(prev => {
-          const filtered = prev.filter(order => order.orderCode !== data.data.orderCode);
-          return [data.data, ...filtered];
-        });
-        setSingleOrderCode("");
-        toast({
-          title: "Thành công",
-          description: "Đã tìm thấy đơn hàng",
-          duration: 2000,
-        });
+        // Kiểm tra đã có trong bảng chưa
+        if (orders.some((o) => o.order_code === code)) {
+          setError("Đơn đã tồn tại trong danh sách.");
+          toast({
+            title: "Cảnh báo",
+            description: "Đơn đã tồn tại trong danh sách.",
+            variant: "destructive",
+          });
+        } else {
+          setOrders(prev => [data.data, ...prev]);
+          toast({
+            title: "Thành công",
+            description: "Đã thêm đơn hàng mới",
+            duration: 2000,
+          });
+        }
       } else {
-        throw new Error(data.error || 'Order not found');
+        setError(data.error || "Không tìm thấy đơn hàng");
+        toast({
+          title: "Lỗi",
+          description: data.error || "Không tìm thấy đơn hàng",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
-      console.error('Error tracking order:', error);
+    } catch (error: any) {
+      const errorMsg = error.message || "Lỗi kết nối server!";
+      setError(errorMsg);
       toast({
         title: "Lỗi",
-        description: error.message || "Không tìm thấy đơn hàng",
+        description: errorMsg,
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const getStatusColor = (status: string) => {
-    const colorMap = {
-      'ready_to_pick': 'bg-green-200 text-green-800', // Sẵn sàng lấy hàng
-      'picking': 'bg-yellow-200 text-yellow-800', // Đang lấy hàng
-      'storing': 'bg-orange-200 text-orange-800', // Đang lưu kho
-      'transporting': 'bg-blue-200 text-blue-800', // Đang vận chuyển
-      'delivering': 'bg-purple-200 text-purple-800', // Đang giao hàng
-      'delivered': 'bg-green-300 text-green-900', // Đã giao hàng
-      'cancel': 'bg-red-200 text-red-800', // Đã hủy
-      'delivery_fail': 'bg-red-200 text-red-800', // Giao hàng thất bại
-      'returning': 'bg-pink-200 text-pink-800', // Đang trả hàng
-      'return_transporting': 'bg-orange-300 text-orange-900', // Đang vận chuyển trả hàng
-      'returned': 'bg-orange-300 text-orange-900' // Hoàn hàng thành công
-    };
-    return colorMap[status] || 'bg-gray-200 text-gray-800';
-  };
-
-  const formatWeight = (weight: number) => {
-    return `${weight / 1000} kg`;
-  };
-
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return "";
-    try {
-      return format(new Date(dateString), 'dd/MM/yyyy');
-    } catch {
-      return "";
-    }
-  };
-
-  const formatCOD = (amount: number) => {
-    return `${amount.toLocaleString('vi-VN')} đ`;
-  };
-
-  const filteredOrders = orders.filter(order =>
-    order.orderCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    order.orderNumber.includes(searchTerm) ||
-    order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    order.customerPhone.includes(searchTerm)
-  );
-
-  const exportToCSV = () => {
-    const headers = [
-      'MÃ GHN', 'MÃ ĐƠN HÀNG', 'TRẠNG THÁI ĐƠN HÀNG', 'TÊN KHÁCH HÀNG', 'SỐ ĐIỆN THOẠI', 'ĐỊA CHỈ', 
-      'CÂN NẶNG ĐƠN HÀNG', 'NGÀY TẠO ĐƠN', 'NGÀY DỰ KIẾN GIAO', 'NGÀY GIAO THÀNH CÔNG', 'COD THU HỘ'
-    ];
     
-    const csvData = filteredOrders.map(order => [
-      order.orderCode,
-      order.orderNumber,
-      order.statusText,
-      order.customerName,
-      order.customerPhone,
-      order.customerAddress,
-      formatWeight(order.weight),
-      formatDate(order.createdDate),
-      formatDate(order.expectedDeliveryTime),
-      order.deliveredDate ? formatDate(order.deliveredDate) : '',
-      formatCOD(order.codAmount)
-    ]);
+    setLoading(false);
+    setOrderInput("");
+  };
 
-    const csvContent = [headers, ...csvData]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
-      .join('\n');
+  // Cập nhật trạng thái toàn bộ đơn
+  const updateAll = async () => {
+    if (orders.length === 0) return;
+    
+    setLoading(true);
+    setError("");
+    
+    try {
+      const updated: GHNOrder[] = [];
+      for (let o of orders) {
+        const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+          body: { 
+            action: 'track_order',
+            orderCode: o.order_code
+          }
+        });
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `ghn-orders-${format(new Date(), 'dd-MM-yyyy')}.csv`;
-    link.click();
+        if (error) {
+          updated.push({ ...o, error: error.message });
+        } else if (data.success) {
+          updated.push(data.data);
+        } else {
+          updated.push({ ...o, error: data.error || "Lỗi cập nhật" });
+        }
+      }
+      setOrders(updated);
+      toast({
+        title: "Thành công",
+        description: "Đã cập nhật trạng thái tất cả đơn hàng",
+        duration: 2000,
+      });
+    } catch (error: any) {
+      setError("Lỗi cập nhật trạng thái!");
+      toast({
+        title: "Lỗi",
+        description: "Lỗi cập nhật trạng thái!",
+        variant: "destructive",
+      });
+    }
+    
+    setLoading(false);
+  };
+
+  // Xóa đơn hàng
+  const removeOrder = (code: string) => {
+    setOrders(orders.filter((o) => o.order_code !== code));
+    toast({
+      title: "Đã xóa",
+      description: "Đã xóa đơn hàng khỏi danh sách",
+      duration: 1500,
+    });
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <Truck className="h-6 w-6 text-blue-600" />
-          <div>
-            <h1 className="text-2xl font-bold">Theo dõi giao hàng GHN</h1>
-            <p className="text-sm text-muted-foreground">
-              Lấy dữ liệu trực tiếp từ hệ thống Giao Hàng Nhanh
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button onClick={exportToCSV} variant="outline" size="sm" className="gap-2" disabled={orders.length === 0}>
-            <Download className="h-4 w-4" />
-            Xuất Excel
-          </Button>
-          <Button onClick={fetchAllOrders} disabled={loading} size="sm" className="gap-2">
-            {loading ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <Package className="h-4 w-4" />
-            )}
-            Lấy tất cả đơn từ GHN
-          </Button>
-        </div>
+    <div style={{ padding: 32, maxWidth: 1280, margin: "auto", fontFamily: "Segoe UI" }}>
+      <div className="flex items-center gap-2 mb-6">
+        <Truck className="h-6 w-6 text-blue-600" />
+        <h2 className="text-2xl font-bold">Quản lý đơn hàng GHN</h2>
       </div>
-
-      {/* Single Order Tracking */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="h-5 w-5" />
-            Tra cứu đơn hàng cụ thể
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Nhập mã đơn hàng GHN..."
-              value={singleOrderCode}
-              onChange={(e) => setSingleOrderCode(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && trackSingleOrder()}
-              className="flex-1"
-            />
-            <Button onClick={trackSingleOrder} disabled={loading}>
-              {loading ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
-              Tra cứu
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Orders List */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <CardTitle className="flex items-center gap-2">
-              <span>Danh sách đơn hàng ({filteredOrders.length})</span>
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Tìm kiếm theo mã GHN, mã đơn hàng, tên khách hàng, SĐT..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-80"
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading && orders.length === 0 ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="text-center">
-                <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
-                <p>Đang lấy dữ liệu từ GHN...</p>
-              </div>
-            </div>
-          ) : filteredOrders.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Chưa có dữ liệu đơn hàng</p>
-              <p className="text-sm mt-1">Bấm "Lấy tất cả đơn từ GHN" để bắt đầu</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto border-2 border-gray-400 rounded-lg">
-              <Table className="w-full border-collapse" style={{ borderSpacing: 0 }}>
-                <TableHeader>
-                  <TableRow style={{ backgroundColor: '#FBBF24' }} className="hover:bg-yellow-400">
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      MÃ GHN
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      MÃ ĐƠN HÀNG
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      TRẠNG THÁI ĐƠN HÀNG
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      TÊN KHÁCH HÀNG
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      SỐ ĐIỆN THOẠI
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      ĐỊA CHỈ
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      CÂN NẶNG ĐƠN HÀNG
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      NGÀY TẠO ĐƠN
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      NGÀY DỰ KIẾN GIAO
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      NGÀY GIAO THÀNH CÔNG
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', borderRight: '1px solid #6B7280', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      COD THU HỘ
-                    </TableHead>
-                    <TableHead style={{ backgroundColor: '#FBBF24', color: '#000000', fontWeight: 'bold', textAlign: 'center', padding: '12px 8px', fontSize: '12px' }}>
-                      TRA CỨU ĐƠN
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredOrders.map((order, index) => (
-                    <TableRow 
-                      key={order.orderCode}
-                      className={`${getStatusColor(order.status)} hover:opacity-80 transition-opacity border-b border-gray-300`}
+      
+      <div style={{ marginBottom: 16 }}>
+        <Input
+          value={orderInput}
+          onChange={(e) => setOrderInput(e.target.value)}
+          placeholder="Nhập mã đơn GHN"
+          style={{ padding: 8, width: 240, marginRight: 8, fontSize: 16 }}
+          onKeyDown={e => e.key === "Enter" && addOrder()}
+          className="inline-block"
+        />
+        <Button onClick={addOrder} disabled={loading || !orderInput} style={{ padding: 8, fontSize: 16, marginRight: 8 }}>
+          Thêm đơn
+        </Button>
+        <Button onClick={updateAll} disabled={loading || !orders.length} style={{ padding: 8 }}>
+          Cập nhật trạng thái
+        </Button>
+      </div>
+      
+      {error && <div style={{ color: "red", marginBottom: 12 }}>{error}</div>}
+      
+      <div style={{ overflowX: "auto" }}>
+        <table border={1} cellPadding={6} cellSpacing={0} style={{ minWidth: 1200, background: "#fff", width: "100%" }}>
+          <thead style={{ background: "#eaeaea" }}>
+            <tr>
+              <th>STT</th>
+              <th>Mã đơn</th>
+              <th>Trạng thái</th>
+              <th>Tên khách</th>
+              <th>SĐT khách</th>
+              <th>Địa chỉ</th>
+              <th>Cân nặng</th>
+              <th>Ngày tạo</th>
+              <th>Ngày dự kiến</th>
+              <th>Ngày giao thành công</th>
+              <th>Tiền COD</th>
+              <th>Tra cứu GHN</th>
+              <th>Xóa</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.length === 0 && (
+              <tr>
+                <td colSpan={13} style={{ textAlign: "center" }}>
+                  Chưa có đơn nào.
+                </td>
+              </tr>
+            )}
+            {orders.map((o, idx) => {
+              const statusObj = statusMap[o.status as keyof typeof statusMap] || { label: o.status, color: "#fff" };
+              return (
+                <tr key={o.order_code} style={{ background: statusObj.color }}>
+                  <td style={{ textAlign: "center" }}>{idx + 1}</td>
+                  <td>{o.order_code}</td>
+                  <td>{statusObj.label}</td>
+                  <td>{o.to_name}</td>
+                  <td>{o.to_phone}</td>
+                  <td>{o.to_address}</td>
+                  <td>{o.weight ? `${o.weight / 1000} kg` : ""}</td>
+                  <td>{formatDate(o.created_date)}</td>
+                  <td>{formatDate(o.leadtime)}</td>
+                  <td>{formatDate(o.finish_date)}</td>
+                  <td>{o.cod_amount ? o.cod_amount.toLocaleString() : ""}</td>
+                  <td>
+                    <a
+                      href={`https://donhang.ghn.vn/?order_code=${o.order_code}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline"
                     >
-                      <TableCell className="text-center border-r border-gray-300 py-2 px-2 text-sm font-mono">
-                        {order.orderCode}
-                      </TableCell>
-                      <TableCell className="text-center border-r border-gray-300 py-2 px-2 text-sm font-bold">
-                        {order.orderNumber || ''}
-                      </TableCell>
-                      <TableCell className="text-center border-r border-gray-300 py-2 px-2 text-sm font-medium">
-                        {order.statusText}
-                      </TableCell>
-                      <TableCell className="border-r border-gray-300 py-2 px-2 text-sm">
-                        {order.customerName}
-                      </TableCell>
-                      <TableCell className="text-center border-r border-gray-300 py-2 px-2 text-sm">
-                        {order.customerPhone}
-                      </TableCell>
-                      <TableCell className="border-r border-gray-300 py-2 px-2 text-sm max-w-[200px] break-words">
-                        {order.customerAddress}
-                      </TableCell>
-                      <TableCell className="text-center border-r border-gray-300 py-2 px-2 text-sm">
-                        {formatWeight(order.weight)}
-                      </TableCell>
-                      <TableCell className="text-center border-r border-gray-300 py-2 px-2 text-sm">
-                        {formatDate(order.createdDate)}
-                      </TableCell>
-                      <TableCell className="text-center border-r border-gray-300 py-2 px-2 text-sm">
-                        {formatDate(order.expectedDeliveryTime)}
-                      </TableCell>
-                      <TableCell className="text-center border-r border-gray-300 py-2 px-2 text-sm">
-                        {formatDate(order.deliveredDate)}
-                      </TableCell>
-                      <TableCell className="text-center border-r border-gray-300 py-2 px-2 text-sm font-bold">
-                        {formatCOD(order.codAmount)}
-                      </TableCell>
-                      <TableCell className="text-center py-2 px-2">
-                        <Button
-                          variant="link"
-                          size="sm"
-                          onClick={() => window.open(order.trackingUrl, '_blank')}
-                          className="text-blue-600 hover:text-blue-800 underline p-0 h-auto font-normal"
-                        >
-                          Tra cứu
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      Tra cứu
+                    </a>
+                  </td>
+                  <td style={{ textAlign: "center" }}>
+                    <Button 
+                      onClick={() => removeOrder(o.order_code)} 
+                      style={{ color: "red", background: "none", border: "none", cursor: "pointer" }}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      
+      {loading && <div style={{ color: "#888", marginTop: 12 }}>Đang xử lý...</div>}
+      
+      <div style={{ fontSize: 12, color: "#888", marginTop: 16 }}>
+        * Dữ liệu được lưu tạm thời trong trình duyệt. Xóa cache sẽ mất dữ liệu.
+      </div>
     </div>
   );
 }
