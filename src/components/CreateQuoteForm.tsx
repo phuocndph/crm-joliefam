@@ -868,12 +868,12 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                       <TableRow className="bg-gray-50">
                         <TableHead className="font-bold text-base">Chọn sản phẩm</TableHead>
                         <TableHead className="font-bold text-base min-w-72">Tên sản phẩm</TableHead>
-                        <TableHead className="font-bold text-base">Hình ảnh</TableHead>
                         <TableHead className="font-bold text-base">Mô tả sản phẩm</TableHead>
                         <TableHead className="font-bold text-base">Quy cách</TableHead>
                         <TableHead className="font-bold text-base text-right">Đơn giá</TableHead>
                         <TableHead className="font-bold text-base text-center">Số lượng</TableHead>
                         <TableHead className="font-bold text-base text-right">Thành tiền</TableHead>
+                        <TableHead className="font-bold text-base">Hình ảnh</TableHead>
                         <TableHead className="font-bold text-base text-center">Thao tác</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1006,7 +1006,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                               className="border-gray-200 focus:border-blue-500 font-medium text-base w-full"
                             />
                           </TableCell>
-                          <TableCell className="p-4">
+                          <TableCell className="min-w-72 p-4">
                             <Dialog 
                               open={imageDialogOpen[index] || false} 
                               onOpenChange={(open) => {
@@ -1168,7 +1168,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                               </Dialog>
                             </div>
                           </TableCell>
-                          <TableCell className="p-4">
+                          <TableCell className="min-w-72 p-4">
                             <Input
                               type="number"
                               value={item.price}
@@ -1223,7 +1223,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                       ))}
                       {selectedProducts.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                             Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
                           </TableCell>
                         </TableRow>

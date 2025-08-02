@@ -125,12 +125,12 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       // Set column widths first
       worksheet.getColumn('A').width = 7.14;
       worksheet.getColumn('B').width = 22.86;
-      worksheet.getColumn('C').width = 18;  // Cột hình ảnh
-      worksheet.getColumn('D').width = 32;
-      worksheet.getColumn('E').width = 42.85;
+      worksheet.getColumn('C').width = 32;
+      worksheet.getColumn('D').width = 42.85;
+      worksheet.getColumn('E').width = 12.86;
       worksheet.getColumn('F').width = 12.86;
-      worksheet.getColumn('G').width = 12.86;
-      worksheet.getColumn('H').width = 17.29;
+      worksheet.getColumn('G').width = 17.29;
+      worksheet.getColumn('H').width = 18;  // Cột hình ảnh
       worksheet.getColumn('I').width = 18.14;
 
       worksheet.pageSetup = {
@@ -281,7 +281,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       currentRow += 2;
 
       // Table headers with Times New Roman font
-      const headers = ['STT', 'SẢN PHẨM', 'HÌNH ẢNH', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'Ghi Chú'];
+      const headers = ['STT', 'SẢN PHẨM', 'QUY CÁCH (CM)', 'CHẤT LIỆU', 'SỐ LƯỢNG', 'ĐƠN GIÁ', 'THÀNH TIỀN', 'HÌNH ẢNH', 'Ghi Chú'];
       
       headers.forEach((header, index) => {
         const cell = worksheet.getCell(`${String.fromCharCode(65 + index)}${currentRow}`);
@@ -309,17 +309,17 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         const rowData = [
           index + 1,
           item.name || item.sku || '', // Sử dụng tên sản phẩm thay vì SKU
-          '', // Placeholder cho hình ảnh
-          item.specifications || '', // Để trống nếu không có specifications
+          item.specifications || '', // Quy cách
           item.description || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu',
           item.quantity || 144,
           item.price || 140000,
           item.total || 20160000,
+          '', // Placeholder cho hình ảnh
           ''
         ];
 
         rowData.forEach((value, colIndex) => {
-          if (colIndex === 2) return; // Skip image column for now
+          if (colIndex === 7) return; // Skip image column for now
           
           const cell = worksheet.getCell(`${String.fromCharCode(65 + colIndex)}${currentRow}`);
           cell.value = value;
@@ -331,19 +331,19 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             right: { style: 'thin' }
           };
           
-          if (colIndex === 0 || colIndex === 5) { // STT và Số lượng
+          if (colIndex === 0 || colIndex === 4) { // STT và Số lượng
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
-          } else if (colIndex >= 6) { // Đơn giá và Thành tiền
+          } else if (colIndex >= 5 && colIndex <= 6) { // Đơn giá và Thành tiền
             cell.alignment = { horizontal: 'right', vertical: 'middle' };
             if (typeof value === 'number') {
               cell.numFmt = '#,##0';
             }
-          } else if (colIndex >= 1 && colIndex <= 4) { // Text columns
+          } else if (colIndex >= 1 && colIndex <= 3) { // Text columns
             cell.alignment = { wrapText: true, vertical: 'middle' };
           }
         });
 
-        // Add image if available
+        // Add image if available - moved to column H
         if (item.selectedImage) {
           try {
             const imageResponse = await fetch(item.selectedImage);
@@ -356,10 +356,10 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                 extension: 'png',
               });
               
-              // Add image to cell C (column index 2)
+              // Add image to cell H (column index 7) with proper sizing and positioning
               worksheet.addImage(imageId, {
-                tl: { col: 2, row: currentRow - 1 },
-                ext: { width: 80, height: 60 }
+                tl: { col: 7.1, row: currentRow - 0.9 },
+                ext: { width: 100, height: 65 }
               });
             }
           } catch (imageError) {
@@ -1290,12 +1290,12 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                   <TableRow className="bg-yellow-200">
                     <TableHead className="border border-gray-300 text-center font-bold">STT</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">SẢN PHẨM</TableHead>
-                    <TableHead className="border border-gray-300 text-center font-bold">HÌNH ẢNH</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">QUY CÁCH (CM)</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">CHẤT LIỆU</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">SỐ LƯỢNG</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">ĐƠN GIÁ</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">THÀNH TIỀN</TableHead>
+                    <TableHead className="border border-gray-300 text-center font-bold">HÌNH ẢNH</TableHead>
                     <TableHead className="border border-gray-300 text-center font-bold">Ghi Chú</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1304,6 +1304,11 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                      <TableRow key={index} className="bg-white">
                        <TableCell className="border border-gray-400 text-center">{index + 1}</TableCell>
                        <TableCell className="border border-gray-400">{item.name || item.sku}</TableCell>
+                       <TableCell className="border border-gray-400 text-sm">{item.specifications}</TableCell>
+                       <TableCell className="border border-gray-400 text-sm">{item.description}</TableCell>
+                       <TableCell className="border border-gray-400 text-center">{item.quantity}</TableCell>
+                       <TableCell className="border border-gray-400 text-right">{formatCurrency(item.price)}</TableCell>
+                       <TableCell className="border border-gray-400 text-right font-semibold">{formatCurrency(item.total)}</TableCell>
                        <TableCell className="border border-gray-400 text-center">
                          {item.selectedImage ? (
                            <img 
@@ -1317,11 +1322,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                            </div>
                          )}
                        </TableCell>
-                       <TableCell className="border border-gray-400 text-sm">{item.specifications}</TableCell>
-                       <TableCell className="border border-gray-400 text-sm">{item.description}</TableCell>
-                       <TableCell className="border border-gray-400 text-center">{item.quantity}</TableCell>
-                       <TableCell className="border border-gray-400 text-right">{formatCurrency(item.price)}</TableCell>
-                       <TableCell className="border border-gray-400 text-right font-semibold">{formatCurrency(item.total)}</TableCell>
                        <TableCell className="border border-gray-400"></TableCell>
                      </TableRow>
                    ))}
