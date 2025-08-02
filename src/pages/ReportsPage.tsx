@@ -167,19 +167,31 @@ const ReportsPage = () => {
   
   // Calculate actual paid amount - only from payments related to filtered orders
   const filteredOrderIds = new Set(filteredOrders.map(o => o.id));
-  const actualPaidAmount = filteredPayments
+  
+  // Calculate payments for filtered orders (not necessarily in the same time period)
+  const paymentsForFilteredOrders = orderPayments.filter(p => 
+    p.order_id && filteredOrderIds.has(p.order_id)
+  );
+  
+  const actualPaidAmountTotal = paymentsForFilteredOrders.reduce((sum, p) => 
+    sum + Number(p.payment_amount || 0), 0
+  );
+  
+  // Calculate payments that happened in the filtered time period
+  const actualPaidAmountInPeriod = filteredPayments
     .filter(p => !p.order_id || filteredOrderIds.has(p.order_id))
     .reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
   
   // Calculate remaining amount to collect for filtered orders
   const totalOrderAmount = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-  const remainingAmount = Math.max(0, totalOrderAmount - actualPaidAmount);
+  const remainingAmount = Math.max(0, totalOrderAmount - actualPaidAmountTotal);
   
   console.log('Revenue Calculation Debug:', {
     filteredOrders: filteredOrders.length,
     filteredPayments: filteredPayments.length,
-    totalOrderRevenue: totalOrderAmount,
-    actualPaidAmount,
+    totalOrderAmount,
+    actualPaidAmountTotal,
+    actualPaidAmountInPeriod,
     remainingAmount,
     dateRange: {
       from: dateRange?.from?.toISOString(),
@@ -189,9 +201,10 @@ const ReportsPage = () => {
       id: o.id,
       order_number: o.order_number,
       total_amount: o.total_amount,
-      created_at: o.created_at
+      created_at: o.created_at,
+      payment_status: o.payment_status
     })),
-    samplePayments: filteredPayments.slice(0, 3).map(p => ({
+    paymentsForOrders: paymentsForFilteredOrders.map(p => ({
       id: p.id,
       order_id: p.order_id,
       payment_amount: p.payment_amount,
@@ -337,7 +350,7 @@ const ReportsPage = () => {
         grossProfit,
         totalExpensesAmount,
         netProfit,
-        actualPaidAmount,
+        actualPaidAmount: actualPaidAmountTotal,
         totalOrders,
         completedOrders,
         newCustomers,
@@ -928,14 +941,14 @@ const ReportsPage = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-green-600">{formatCurrency(actualPaidAmount)}</div>
+                  <div className="text-2xl font-bold text-green-600">{formatCurrency(actualPaidAmountTotal)}</div>
                   <p className="text-xs text-muted-foreground">
                     Từ {filteredPayments.length} giao dịch
                   </p>
                   <div className="flex items-center mt-2">
                     <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
                     <span className="text-xs text-green-600">
-                      {totalOrderAmount > 0 ? ((actualPaidAmount / totalOrderAmount) * 100).toFixed(1) : 0}% của tổng doanh thu
+                      {totalOrderAmount > 0 ? ((actualPaidAmountTotal / totalOrderAmount) * 100).toFixed(1) : 0}% của tổng doanh thu
                     </span>
                   </div>
                 </CardContent>
@@ -971,7 +984,7 @@ const ReportsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-blue-600">
-                    {totalOrderAmount > 0 ? ((actualPaidAmount / totalOrderAmount) * 100).toFixed(1) : 0}%
+                    {totalOrderAmount > 0 ? ((actualPaidAmountTotal / totalOrderAmount) * 100).toFixed(1) : 0}%
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Hiệu suất thu tiền
@@ -979,7 +992,7 @@ const ReportsPage = () => {
                   <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                     <div 
                       className="bg-blue-600 h-2 rounded-full" 
-                      style={{ width: `${totalOrderAmount > 0 ? ((actualPaidAmount / totalOrderAmount) * 100) : 0}%` }}
+                      style={{ width: `${totalOrderAmount > 0 ? ((actualPaidAmountTotal / totalOrderAmount) * 100) : 0}%` }}
                     ></div>
                   </div>
                 </CardContent>
@@ -993,7 +1006,7 @@ const ReportsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-purple-600">
-                    {formatCurrency(filteredPayments.length > 0 ? actualPaidAmount / filteredPayments.length : 0)}
+                    {formatCurrency(filteredPayments.length > 0 ? actualPaidAmountTotal / filteredPayments.length : 0)}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Thanh toán trung bình/giao dịch
