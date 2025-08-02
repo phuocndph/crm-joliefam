@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw, MapPin, Navigation } from "lucide-react";
+import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw, MapPin, Navigation, Zap } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,7 @@ import { EditOrderDialog } from "@/components/EditOrderDialog";
 import { DeleteOrderDialog } from "@/components/DeleteOrderDialog";
 import { CreatePaymentForm } from "@/components/CreatePaymentForm";
 import { EditOrderNumberDialog } from "@/components/EditOrderNumberDialog";
+import { GHNTrackingDialog } from "@/components/GHNTrackingDialog";
 import { InlineOrderEditTable } from "@/components/InlineOrderEditTable";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -101,11 +102,13 @@ export default function OrderManagement() {
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [orderToPayment, setOrderToPayment] = useState<Order | null>(null);
   const [orderToEditNumber, setOrderToEditNumber] = useState<Order | null>(null);
+  const [orderToGHNTracking, setOrderToGHNTracking] = useState<Order | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [orderPayments, setOrderPayments] = useState<{[orderId: string]: number}>({});
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("orders");
+  const [bulkSyncing, setBulkSyncing] = useState(false);
   const { toast } = useToast();
 
   const filteredOrders = orders.filter((order) => {
@@ -304,6 +307,36 @@ export default function OrderManagement() {
       title: "Thành công",
       description: "Thanh toán đã được thêm thành công",
     });
+  };
+
+  const handleBulkSync = async () => {
+    setBulkSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+        body: { action: 'bulk_sync' }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Thành công",
+          description: data.message,
+        });
+        loadOrders(); // Reload to get updated data
+      } else {
+        throw new Error(data.error || 'Không thể đồng bộ dữ liệu');
+      }
+    } catch (error) {
+      console.error('Error syncing GHN data:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể đồng bộ dữ liệu từ GHN",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkSyncing(false);
+    }
   };
 
   // Calculate stats
@@ -591,13 +624,30 @@ export default function OrderManagement() {
         <TabsContent value="delivery">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Truck className="h-5 w-5" />
-                Theo dõi Giao hàng
-              </CardTitle>
-              <CardDescription>
-                Theo dõi tình trạng giao hàng các đơn hàng đang xử lý
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Truck className="h-5 w-5" />
+                    Theo dõi Giao hàng
+                  </CardTitle>
+                  <CardDescription>
+                    Theo dõi tình trạng giao hàng các đơn hàng đang xử lý
+                  </CardDescription>
+                </div>
+                <Button 
+                  onClick={handleBulkSync}
+                  disabled={bulkSyncing}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  {bulkSyncing ? (
+                    <Zap className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Zap className="h-4 w-4" />
+                  )}
+                  Đồng bộ GHN
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -738,6 +788,16 @@ export default function OrderManagement() {
                               >
                                 <Eye className="h-3 w-3" />
                                 Chi tiết
+                              </Button>
+                              
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setOrderToGHNTracking(order)}
+                                className="gap-1"
+                              >
+                                <Truck className="h-3 w-3" />
+                                GHN Tracking
                               </Button>
                               
                               {order.status !== 'delivered' && (
@@ -1046,6 +1106,19 @@ export default function OrderManagement() {
           onSuccess={() => {
             loadOrders();
             setOrderToEditNumber(null);
+          }}
+        />
+      )}
+
+      {/* GHN Tracking Dialog */}
+      {orderToGHNTracking && (
+        <GHNTrackingDialog
+          order={orderToGHNTracking}
+          open={!!orderToGHNTracking}
+          onOpenChange={(open) => !open && setOrderToGHNTracking(null)}
+          onTrackingAdded={() => {
+            loadOrders();
+            setOrderToGHNTracking(null);
           }}
         />
       )}

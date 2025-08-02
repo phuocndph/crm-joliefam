@@ -293,6 +293,87 @@ export type Database = {
         }
         Relationships: []
       }
+      ghn_tracking: {
+        Row: {
+          cod_amount: number | null
+          created_at: string
+          created_date: string | null
+          customer_address: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          delivered_date: string | null
+          expected_delivery_date: string | null
+          ghn_order_code: string
+          ghn_status: string | null
+          ghn_status_text: string | null
+          id: string
+          manager_id: string | null
+          order_id: string | null
+          package_weight: number | null
+          raw_data: Json | null
+          tenant_id: string
+          tracking_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          cod_amount?: number | null
+          created_at?: string
+          created_date?: string | null
+          customer_address?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          delivered_date?: string | null
+          expected_delivery_date?: string | null
+          ghn_order_code: string
+          ghn_status?: string | null
+          ghn_status_text?: string | null
+          id?: string
+          manager_id?: string | null
+          order_id?: string | null
+          package_weight?: number | null
+          raw_data?: Json | null
+          tenant_id?: string
+          tracking_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cod_amount?: number | null
+          created_at?: string
+          created_date?: string | null
+          customer_address?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          delivered_date?: string | null
+          expected_delivery_date?: string | null
+          ghn_order_code?: string
+          ghn_status?: string | null
+          ghn_status_text?: string | null
+          id?: string
+          manager_id?: string | null
+          order_id?: string | null
+          package_weight?: number | null
+          raw_data?: Json | null
+          tenant_id?: string
+          tracking_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ghn_tracking_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ghn_tracking_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "payment_summary"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
       order_payments: {
         Row: {
           created_at: string
