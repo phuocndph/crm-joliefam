@@ -141,89 +141,83 @@ serve(async (req) => {
       );
 
     } else if (action === 'bulk_sync') {
-      // Sync multiple orders from database that already have tracking
-      const { data: orders, error: ordersError } = await supabaseClient
-        .from('orders')
-        .select('id, order_number, display_order_number, ghn_tracking(*)')
-        .not('status', 'eq', 'delivered')
-        .not('status', 'eq', 'cancelled');
+      // Sync multiple orders that already have GHN tracking records
+      const { data: trackingRecords, error: trackingError } = await supabaseClient
+        .from('ghn_tracking')
+        .select('*')
+        .not('ghn_order_code', 'like', 'PENDING_%');
 
-      if (ordersError) {
-        throw ordersError;
+      if (trackingError) {
+        throw trackingError;
       }
 
       const results = [];
       
-      for (const order of orders) {
-        if (order.ghn_tracking && order.ghn_tracking.length > 0) {
-          const tracking = order.ghn_tracking[0];
-          
-          // Skip placeholder records
-          if (tracking.ghn_order_code.startsWith('PENDING_')) {
-            results.push({
-              orderId: order.id,
-              orderCode: tracking.ghn_order_code,
-              status: 'skipped',
-              message: 'Chờ cập nhật mã GHN thực',
-              updated: false
-            });
-            continue;
-          }
-          
-          try {
-            const ghnResponse = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Token': ghnApiKey,
-              },
-              body: JSON.stringify({
-                order_code: tracking.ghn_order_code
-              })
-            });
+      for (const tracking of trackingRecords) {
+        try {
+          const ghnResponse = await fetch(`https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Token': ghnApiKey,
+            },
+            body: JSON.stringify({
+              order_code: tracking.ghn_order_code
+            })
+          });
 
-            if (ghnResponse.ok) {
-              const ghnData = await ghnResponse.json();
-              if (ghnData.code === 200) {
-                const orderData = ghnData.data;
-                
-                // Update tracking data
-                await supabaseClient
-                  .from('ghn_tracking')
-                  .update({
-                    ghn_status: orderData.status,
-                    ghn_status_text: getStatusText(orderData.status),
-                    expected_delivery_date: orderData.expected_delivery_time,
-                    delivered_date: orderData.delivered_date,
-                    raw_data: orderData,
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('ghn_order_code', tracking.ghn_order_code);
+          if (ghnResponse.ok) {
+            const ghnData = await ghnResponse.json();
+            if (ghnData.code === 200) {
+              const orderData = ghnData.data;
+              
+              // Update tracking data
+              await supabaseClient
+                .from('ghn_tracking')
+                .update({
+                  ghn_status: orderData.status,
+                  ghn_status_text: getStatusText(orderData.status),
+                  expected_delivery_date: orderData.expected_delivery_time,
+                  delivered_date: orderData.delivered_date,
+                  raw_data: orderData,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('ghn_order_code', tracking.ghn_order_code);
 
-                results.push({
-                  orderId: order.id,
-                  orderCode: tracking.ghn_order_code,
-                  status: orderData.status,
-                  updated: true
-                });
-              }
+              results.push({
+                orderCode: tracking.ghn_order_code,
+                status: orderData.status,
+                statusText: getStatusText(orderData.status),
+                updated: true
+              });
+            } else {
+              results.push({
+                orderCode: tracking.ghn_order_code,
+                error: ghnData.message || 'GHN API error',
+                updated: false
+              });
             }
-          } catch (error) {
-            console.error(`Error updating order ${order.id}:`, error);
+          } else {
             results.push({
-              orderId: order.id,
               orderCode: tracking.ghn_order_code,
-              error: error.message,
+              error: `HTTP ${ghnResponse.status}: ${ghnResponse.statusText}`,
               updated: false
             });
           }
+        } catch (error) {
+          console.error(`Error updating order ${tracking.ghn_order_code}:`, error);
+          results.push({
+            orderCode: tracking.ghn_order_code,
+            error: error.message,
+            updated: false
+          });
         }
       }
 
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: `Synced ${results.filter(r => r.updated).length} orders`,
+          message: `Đã cập nhật ${results.filter(r => r.updated).length}/${trackingRecords.length} đơn hàng`,
           results 
         }),
         { 
