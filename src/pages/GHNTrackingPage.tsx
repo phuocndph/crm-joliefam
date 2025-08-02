@@ -151,6 +151,37 @@ export default function GHNTrackingPage() {
     }
   };
 
+  const handleFetchAllOrders = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+        body: { action: 'fetch_all_orders' }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Thành công",
+          description: data.message,
+          duration: 5000,
+        });
+        await loadTrackingRecords();
+      } else {
+        throw new Error(data.error || 'Fetch failed');
+      }
+    } catch (error) {
+      console.error('Error fetching all orders:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể lấy dữ liệu từ GHN",
+        variant: "destructive",
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
 
   const getStatusColor = (status: string) => {
     const colorMap = {
@@ -292,6 +323,14 @@ export default function GHNTrackingPage() {
               <Package className="h-4 w-4" />
             )}
             Cập nhật trạng thái
+          </Button>
+          <Button onClick={handleFetchAllOrders} disabled={syncing} size="sm" className="gap-2 bg-orange-600 hover:bg-orange-700">
+            {syncing ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            Lấy tất cả đơn từ GHN
           </Button>
         </div>
       </div>
