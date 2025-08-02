@@ -15,6 +15,7 @@ import CashFlowManagement from "./pages/CashFlowManagement";
 import TransactionManagement from "./pages/TransactionManagement";
 import ReportsPage from "./pages/ReportsPage";
 import CustomerCare from "./pages/CustomerCare";
+import GHNTrackingPage from "./pages/GHNTrackingPage";
 import MainLayout from "./components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="transactions" element={<TransactionManagement />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="customer-care" element={<CustomerCare />} />
+            <Route path="ghn-tracking" element={<GHNTrackingPage />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

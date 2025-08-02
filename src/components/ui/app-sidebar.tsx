@@ -8,7 +8,8 @@ import {
   CreditCard, 
   BarChart3,
   Settings,
-  UserCheck
+  UserCheck,
+  Truck
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -69,6 +70,13 @@ const menuItems = [
     url: "/orders", 
     icon: ShoppingCart,
     description: "Xử lý và theo dõi đơn hàng",
+    permission: "orders" as const
+  },
+  { 
+    title: "Theo dõi GHN", 
+    url: "/ghn-tracking", 
+    icon: Truck,
+    description: "Theo dõi giao hàng GHN",
     permission: "orders" as const
   },
   { 
