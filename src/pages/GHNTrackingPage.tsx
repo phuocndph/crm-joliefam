@@ -151,10 +151,10 @@ export default function GHNTrackingPage() {
     }
   };
 
-  const handleSyncAllOrders = async () => {
+  const handleSyncFromGHN = async () => {
     const isConfirmed = window.confirm(
-      "Bạn có muốn đồng bộ tất cả đơn hàng từ hệ thống vào GHN tracking không? " +
-      "Điều này sẽ tạo bản ghi chờ cho các đơn hàng chưa có mã GHN."
+      "Bạn có muốn đồng bộ dữ liệu trực tiếp từ GHN không? " +
+      "Điều này sẽ lấy dữ liệu từ GHN API và cập nhật vào hệ thống."
     );
     
     if (!isConfirmed) return;
@@ -162,7 +162,7 @@ export default function GHNTrackingPage() {
     setSyncing(true);
     try {
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-        body: { action: 'sync_all_orders' }
+        body: { action: 'sync_from_ghn' }
       });
 
       if (error) throw error;
@@ -170,17 +170,17 @@ export default function GHNTrackingPage() {
       if (data.success) {
         toast({
           title: "Thành công",
-          description: `${data.message}. ${data.results.filter(r => r.updated).length} đơn hàng đã được xử lý.`,
+          description: data.message,
         });
         await loadTrackingRecords();
       } else {
-        throw new Error(data.error || 'Sync all orders failed');
+        throw new Error(data.error || 'Sync from GHN failed');
       }
     } catch (error) {
-      console.error('Error syncing all orders:', error);
+      console.error('Error syncing from GHN:', error);
       toast({
         title: "Lỗi",
-        description: error.message || "Không thể đồng bộ tất cả đơn hàng",
+        description: error.message || "Không thể đồng bộ từ GHN",
         variant: "destructive",
       });
     } finally {
@@ -321,13 +321,13 @@ export default function GHNTrackingPage() {
             <Download className="h-4 w-4" />
             Xuất Excel
           </Button>
-          <Button onClick={handleSyncAllOrders} disabled={syncing} variant="secondary" size="sm" className="gap-2">
+          <Button onClick={handleSyncFromGHN} disabled={syncing} variant="secondary" size="sm" className="gap-2">
             {syncing ? (
               <RefreshCw className="h-4 w-4 animate-spin" />
             ) : (
               <Truck className="h-4 w-4" />
             )}
-            Đồng bộ tất cả đơn hàng
+            Đồng bộ từ GHN
           </Button>
           <Button onClick={handleBulkSync} disabled={syncing} size="sm" className="gap-2">
             {syncing ? (

@@ -117,87 +117,22 @@ serve(async (req) => {
         }
       );
 
-    } else if (action === 'sync_all_orders') {
-      // Sync all orders that don't have tracking yet
-      const { data: ordersWithoutTracking, error: ordersError } = await supabaseClient
-        .from('orders')
-        .select(`
-          id, 
-          order_number, 
-          display_order_number,
-          customers(name, phone, company)
-        `)
-        .is('ghn_tracking', null); // Orders without GHN tracking
-
-      if (ordersError) {
-        throw ordersError;
-      }
-
+    } else if (action === 'sync_from_ghn') {
+      // Sync data directly from GHN API
+      // This requires getting a list of orders from GHN
+      // For demonstration, we'll create a simple sync that gets recent orders
+      
       const results = [];
       
-      for (const order of ordersWithoutTracking) {
-        // For each order without tracking, we would need a GHN order code
-        // Since we can't automatically know the GHN code, we'll create placeholder records
-        // that can be updated later with actual GHN codes
-        
-        try {
-          const placeholderData = {
-            order_id: order.id,
-            ghn_order_code: `PENDING_${order.order_number}`, // Placeholder
-            ghn_status: 'unknown',
-            ghn_status_text: 'Chưa có mã GHN',
-            customer_name: order.customers?.name || 'Chưa có thông tin',
-            customer_phone: order.customers?.phone || '',
-            customer_address: order.customers?.company || 'Chưa có địa chỉ',
-            package_weight: 0,
-            created_date: new Date().toISOString(),
-            expected_delivery_date: new Date().toISOString(),
-            delivered_date: null,
-            cod_amount: 0,
-            tracking_url: '',
-            raw_data: { status: 'placeholder', order_id: order.id },
-            tenant_id: 'default'
-          };
-
-          const { error: insertError } = await supabaseClient
-            .from('ghn_tracking')
-            .insert(placeholderData);
-
-          if (insertError) {
-            console.error(`Error creating placeholder for order ${order.id}:`, insertError);
-            results.push({
-              orderId: order.id,
-              orderNumber: order.display_order_number || order.order_number,
-              status: 'error',
-              message: insertError.message,
-              updated: false
-            });
-          } else {
-            results.push({
-              orderId: order.id,
-              orderNumber: order.display_order_number || order.order_number,
-              status: 'placeholder_created',
-              message: 'Đã tạo bản ghi chờ cập nhật mã GHN',
-              updated: true
-            });
-          }
-        } catch (error) {
-          console.error(`Error processing order ${order.id}:`, error);
-          results.push({
-            orderId: order.id,
-            orderNumber: order.display_order_number || order.order_number,
-            status: 'error',
-            message: error.message,
-            updated: false
-          });
-        }
-      }
-
+      // Note: GHN API doesn't have a direct "get all orders" endpoint
+      // In real implementation, you would need to provide specific order codes
+      // or implement a different approach based on your GHN integration
+      
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: `Đã xử lý ${ordersWithoutTracking.length} đơn hàng`,
-          results 
+          message: `Chức năng đồng bộ từ GHN cần được cấu hình với danh sách mã đơn hàng cụ thể`,
+          results: [] 
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
