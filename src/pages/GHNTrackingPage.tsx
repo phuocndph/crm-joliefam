@@ -442,7 +442,7 @@ export default function GHNTrackingPage() {
                       </td>
                       <td className="border border-gray-300 px-3 py-2 text-sm">{item.customer_name}</td>
                       <td className="border border-gray-300 px-3 py-2 text-sm">{item.customer_phone || '-'}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm max-w-xs truncate" title={item.customer_address}>
+                      <td className="border border-gray-300 px-3 py-2 text-sm max-w-sm break-words whitespace-normal align-top">
                         {item.customer_address || '-'}
                       </td>
                       <td className="border border-gray-300 px-3 py-2 text-sm">{formatWeight(item.package_weight)}</td>
