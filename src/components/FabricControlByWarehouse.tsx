@@ -306,10 +306,14 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
       );
       
       if (fromInventoryItem) {
+        const newFromStock = Math.max(0, fromInventoryItem.current_stock - transferQuantity);
         await updateInventory.mutateAsync({
           fabric_variant_id: fabricVariant.id,
           warehouse_id: fromWarehouse.id,
-          current_stock: fromInventoryItem.current_stock - transferQuantity
+          current_stock: newFromStock,
+          reserved_stock: fromInventoryItem.reserved_stock || 0,
+          minimum_stock: fromInventoryItem.minimum_stock || 0,
+          maximum_stock: fromInventoryItem.maximum_stock || 0
         });
       }
 
@@ -318,23 +322,15 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         item.fabric_variant_id === fabricVariant.id && item.warehouse_id === toWarehouse.id
       );
       
-      if (toInventoryItem) {
-        // Update existing inventory
-        await updateInventory.mutateAsync({
-          fabric_variant_id: fabricVariant.id,
-          warehouse_id: toWarehouse.id,
-          current_stock: toInventoryItem.current_stock + transferQuantity
-        });
-      } else {
-        // Create new inventory record if doesn't exist
-        await updateInventory.mutateAsync({
-          fabric_variant_id: fabricVariant.id,
-          warehouse_id: toWarehouse.id,
-          current_stock: transferQuantity,
-          minimum_stock: 0,
-          maximum_stock: 0
-        });
-      }
+      const newToStock = (toInventoryItem?.current_stock || 0) + transferQuantity;
+      await updateInventory.mutateAsync({
+        fabric_variant_id: fabricVariant.id,
+        warehouse_id: toWarehouse.id,
+        current_stock: newToStock,
+        reserved_stock: toInventoryItem?.reserved_stock || 0,
+        minimum_stock: toInventoryItem?.minimum_stock || 0,
+        maximum_stock: toInventoryItem?.maximum_stock || 0
+      });
 
       setSelectedFabricForTransfer('');
       setTransferQuantity(0);

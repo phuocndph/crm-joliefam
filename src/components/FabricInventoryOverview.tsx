@@ -226,10 +226,14 @@ export const FabricInventoryOverview = () => {
       );
       
       if (fromInventoryItem) {
+        const newFromStock = Math.max(0, fromInventoryItem.current_stock - transferQuantity);
         await updateInventory.mutateAsync({
           fabric_variant_id: fabricVariant.id,
           warehouse_id: fromWarehouseId,
-          current_stock: fromInventoryItem.current_stock - transferQuantity
+          current_stock: newFromStock,
+          reserved_stock: fromInventoryItem.reserved_stock || 0,
+          minimum_stock: fromInventoryItem.minimum_stock || 0,
+          maximum_stock: fromInventoryItem.maximum_stock || 0
         });
       }
 
@@ -238,23 +242,15 @@ export const FabricInventoryOverview = () => {
         item.fabric_variant_id === fabricVariant.id && item.warehouse_id === toWarehouseId
       );
       
-      if (toInventoryItem) {
-        // Update existing inventory
-        await updateInventory.mutateAsync({
-          fabric_variant_id: fabricVariant.id,
-          warehouse_id: toWarehouseId,
-          current_stock: toInventoryItem.current_stock + transferQuantity
-        });
-      } else {
-        // Create new inventory record if doesn't exist
-        await updateInventory.mutateAsync({
-          fabric_variant_id: fabricVariant.id,
-          warehouse_id: toWarehouseId,
-          current_stock: transferQuantity,
-          minimum_stock: 0,
-          maximum_stock: 0
-        });
-      }
+      const newToStock = (toInventoryItem?.current_stock || 0) + transferQuantity;
+      await updateInventory.mutateAsync({
+        fabric_variant_id: fabricVariant.id,
+        warehouse_id: toWarehouseId,
+        current_stock: newToStock,
+        reserved_stock: toInventoryItem?.reserved_stock || 0,
+        minimum_stock: toInventoryItem?.minimum_stock || 0,
+        maximum_stock: toInventoryItem?.maximum_stock || 0
+      });
 
       // Create transactions for tracking
       await createTransaction.mutateAsync({
