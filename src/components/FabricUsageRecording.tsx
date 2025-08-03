@@ -126,7 +126,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
       // Create multiple fabric usage records for each fabric item
       for (const fabricItem of formData.fabricItems) {
         await createFabricUsage.mutateAsync({
-          order_id: formData.order_id,
+          order_id: formData.order_id || null, // Send null instead of empty string
           order_number: formData.order_number,
           fabric_variant_id: fabricItem.fabric_variant_id,
           warehouse_id: formData.warehouse_id,
@@ -303,7 +303,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                           </SelectTrigger>
                           <SelectContent>
                             {fabricVariants?.map((variant) => (
-                              <SelectItem key={variant.id} value={variant.id}>
+                              <SelectItem key={`${variant.id}-${index}`} value={variant.id}>
                                 {variant.fabric_types?.name} - {variant.variant_name} 
                                 {variant.color && ` (${variant.color})`}
                               </SelectItem>
