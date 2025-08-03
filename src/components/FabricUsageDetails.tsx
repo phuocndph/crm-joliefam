@@ -238,7 +238,6 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
                 <TableHead>Khách hàng</TableHead>
                 <TableHead>Loại đơn</TableHead>
                 <TableHead>Vải sử dụng</TableHead>
-                <TableHead>Tổng số lượng</TableHead>
                 <TableHead>Ghi chú</TableHead>
               </TableRow>
             </TableHeader>
@@ -273,33 +272,10 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
                     <TableCell>
                       <div className="space-y-1">
                         {order.fabrics.map((fabric: any, fabricIndex: number) => (
-                          <div key={fabricIndex} className="flex flex-col">
-                            <div className="font-medium text-sm">
-                              {fabric.fabric_type} - {fabric.variant_name}
-                              {fabric.fabric_width && ` (${fabric.fabric_width})`}
-                            </div>
-                            {fabric.color && (
-                              <div className="text-xs text-muted-foreground">
-                                Màu: {fabric.color}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-semibold">
-                      <div className="space-y-1">
-                        {order.fabrics.map((fabric: any, fabricIndex: number) => (
                           <div key={fabricIndex} className="text-sm">
-                            {formatQuantity(fabric.quantity_used, fabric.unit || 'm')}
+                            {fabric.fabric_type} {fabric.color && fabric.color} {fabric.fabric_width && `(${fabric.fabric_width})`} - {formatQuantity(fabric.quantity_used, fabric.unit || 'm')}
                           </div>
                         ))}
-                        <div className="text-xs text-muted-foreground border-t pt-1">
-                          Tổng: {formatQuantity(
-                            order.fabrics.reduce((sum: number, f: any) => sum + (f.quantity_used || 0), 0),
-                            'm'
-                          )}
-                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="max-w-xs">
@@ -311,7 +287,7 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     Không có dữ liệu sử dụng vải
                   </TableCell>
                 </TableRow>
