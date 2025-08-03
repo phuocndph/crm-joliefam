@@ -76,7 +76,7 @@ export default function GHNTrackingPage() {
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
     status: 'all',
-    sortBy: '',
+    sortBy: 'none',
     sortOrder: 'asc'
   });
   const { role } = useUserRole(user);
@@ -344,7 +344,7 @@ export default function GHNTrackingPage() {
     });
 
     // Apply sorting
-    if (filters.sortBy) {
+    if (filters.sortBy && filters.sortBy !== 'none') {
       result = [...result].sort((a, b) => {
         let aValue = '';
         let bValue = '';

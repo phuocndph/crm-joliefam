@@ -46,7 +46,7 @@ export function GHNTrackingFilters({
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
     status: 'all',
-    sortBy: '',
+    sortBy: 'none',
     sortOrder: 'asc'
   });
 
@@ -106,7 +106,7 @@ export function GHNTrackingFilters({
               <SelectValue placeholder="Chọn cách sắp xếp" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Không sắp xếp</SelectItem>
+              <SelectItem value="none">Không sắp xếp</SelectItem>
               {sortOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
@@ -117,7 +117,7 @@ export function GHNTrackingFilters({
         </div>
 
         {/* Sort Order */}
-        {filters.sortBy && (
+        {filters.sortBy && filters.sortBy !== 'none' && (
           <div className="sm:w-48">
             <label className="text-sm font-medium mb-2 block">Thứ tự</label>
             <Select value={filters.sortOrder} onValueChange={(value: 'asc' | 'desc') => updateFilters({ sortOrder: value })}>
