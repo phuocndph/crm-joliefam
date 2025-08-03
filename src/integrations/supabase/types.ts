@@ -257,6 +257,300 @@ export type Database = {
         }
         Relationships: []
       }
+      fabric_inventory: {
+        Row: {
+          created_at: string
+          current_stock: number
+          fabric_variant_id: string
+          id: string
+          last_updated: string
+          manager_id: string | null
+          maximum_stock: number | null
+          minimum_stock: number | null
+          reserved_stock: number
+          tenant_id: string
+          updated_at: string
+          warehouse_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_stock?: number
+          fabric_variant_id: string
+          id?: string
+          last_updated?: string
+          manager_id?: string | null
+          maximum_stock?: number | null
+          minimum_stock?: number | null
+          reserved_stock?: number
+          tenant_id?: string
+          updated_at?: string
+          warehouse_id: string
+        }
+        Update: {
+          created_at?: string
+          current_stock?: number
+          fabric_variant_id?: string
+          id?: string
+          last_updated?: string
+          manager_id?: string | null
+          maximum_stock?: number | null
+          minimum_stock?: number | null
+          reserved_stock?: number
+          tenant_id?: string
+          updated_at?: string
+          warehouse_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fabric_inventory_fabric_variant_id_fkey"
+            columns: ["fabric_variant_id"]
+            isOneToOne: false
+            referencedRelation: "fabric_variants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fabric_inventory_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fabric_transactions: {
+        Row: {
+          created_at: string
+          fabric_variant_id: string
+          id: string
+          manager_id: string | null
+          notes: string | null
+          quantity: number
+          recipient_name: string | null
+          reference_number: string | null
+          supplier_name: string | null
+          tenant_id: string
+          total_amount: number | null
+          transaction_date: string
+          transaction_type: string
+          unit_price: number | null
+          updated_at: string
+          warehouse_id: string
+        }
+        Insert: {
+          created_at?: string
+          fabric_variant_id: string
+          id?: string
+          manager_id?: string | null
+          notes?: string | null
+          quantity: number
+          recipient_name?: string | null
+          reference_number?: string | null
+          supplier_name?: string | null
+          tenant_id?: string
+          total_amount?: number | null
+          transaction_date?: string
+          transaction_type: string
+          unit_price?: number | null
+          updated_at?: string
+          warehouse_id: string
+        }
+        Update: {
+          created_at?: string
+          fabric_variant_id?: string
+          id?: string
+          manager_id?: string | null
+          notes?: string | null
+          quantity?: number
+          recipient_name?: string | null
+          reference_number?: string | null
+          supplier_name?: string | null
+          tenant_id?: string
+          total_amount?: number | null
+          transaction_date?: string
+          transaction_type?: string
+          unit_price?: number | null
+          updated_at?: string
+          warehouse_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fabric_transactions_fabric_variant_id_fkey"
+            columns: ["fabric_variant_id"]
+            isOneToOne: false
+            referencedRelation: "fabric_variants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fabric_transactions_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fabric_transfers: {
+        Row: {
+          approved_by: string | null
+          created_at: string
+          fabric_variant_id: string
+          from_warehouse_id: string
+          id: string
+          manager_id: string | null
+          notes: string | null
+          quantity: number
+          received_by: string | null
+          status: string
+          tenant_id: string
+          to_warehouse_id: string
+          transfer_date: string
+          updated_at: string
+        }
+        Insert: {
+          approved_by?: string | null
+          created_at?: string
+          fabric_variant_id: string
+          from_warehouse_id: string
+          id?: string
+          manager_id?: string | null
+          notes?: string | null
+          quantity: number
+          received_by?: string | null
+          status?: string
+          tenant_id?: string
+          to_warehouse_id: string
+          transfer_date?: string
+          updated_at?: string
+        }
+        Update: {
+          approved_by?: string | null
+          created_at?: string
+          fabric_variant_id?: string
+          from_warehouse_id?: string
+          id?: string
+          manager_id?: string | null
+          notes?: string | null
+          quantity?: number
+          received_by?: string | null
+          status?: string
+          tenant_id?: string
+          to_warehouse_id?: string
+          transfer_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fabric_transfers_fabric_variant_id_fkey"
+            columns: ["fabric_variant_id"]
+            isOneToOne: false
+            referencedRelation: "fabric_variants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fabric_transfers_from_warehouse_id_fkey"
+            columns: ["from_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fabric_transfers_to_warehouse_id_fkey"
+            columns: ["to_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fabric_types: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          manager_id: string | null
+          name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          manager_id?: string | null
+          name: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          manager_id?: string | null
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      fabric_variants: {
+        Row: {
+          color: string | null
+          cost_price: number | null
+          created_at: string
+          fabric_type_id: string
+          id: string
+          manager_id: string | null
+          origin: string | null
+          selling_price: number | null
+          tenant_id: string
+          unit: string
+          updated_at: string
+          variant_name: string
+          weight: string | null
+          width_code: string | null
+        }
+        Insert: {
+          color?: string | null
+          cost_price?: number | null
+          created_at?: string
+          fabric_type_id: string
+          id?: string
+          manager_id?: string | null
+          origin?: string | null
+          selling_price?: number | null
+          tenant_id?: string
+          unit?: string
+          updated_at?: string
+          variant_name: string
+          weight?: string | null
+          width_code?: string | null
+        }
+        Update: {
+          color?: string | null
+          cost_price?: number | null
+          created_at?: string
+          fabric_type_id?: string
+          id?: string
+          manager_id?: string | null
+          origin?: string | null
+          selling_price?: number | null
+          tenant_id?: string
+          unit?: string
+          updated_at?: string
+          variant_name?: string
+          weight?: string | null
+          width_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fabric_variants_fabric_type_id_fkey"
+            columns: ["fabric_type_id"]
+            isOneToOne: false
+            referencedRelation: "fabric_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       finance_data: {
         Row: {
           amount: number
@@ -806,6 +1100,42 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      warehouses: {
+        Row: {
+          address: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          manager_id: string | null
+          name: string
+          tenant_id: string
+          updated_at: string
+          warehouse_type: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          manager_id?: string | null
+          name: string
+          tenant_id?: string
+          updated_at?: string
+          warehouse_type?: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          manager_id?: string | null
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+          warehouse_type?: string
         }
         Relationships: []
       }
