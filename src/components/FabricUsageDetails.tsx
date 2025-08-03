@@ -36,8 +36,8 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
     to: undefined
   });
 
-  // Filter data based on warehouse and search criteria
-  const filteredData = useMemo(() => {
+  // Filter and group data by order for better tracking
+  const filteredAndGroupedData = useMemo(() => {
     if (!fabricUsage) return [];
 
     const currentWarehouse = warehouses?.find(w => 
@@ -45,16 +45,17 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
       warehouseFilter === 'bacninh' ? w.name.includes('Bắc Ninh') : false
     );
 
-    return fabricUsage.filter(usage => {
+    // First filter the data
+    const filtered = fabricUsage.filter(usage => {
       // Filter by warehouse
       if (currentWarehouse && usage.warehouse_id !== currentWarehouse.id) {
         return false;
       }
 
       // Filter by search term
-      if (searchTerm && !usage.order_number.toLowerCase().includes(searchTerm.toLowerCase()) &&
-          !usage.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-          !usage.fabric_variants?.fabric_types?.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+      if (searchTerm && !usage.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) &&
+          !usage.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) &&
+          !usage.fabric_variants?.fabric_types?.name?.toLowerCase().includes(searchTerm.toLowerCase())) {
         return false;
       }
 
@@ -73,16 +74,46 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
 
       return true;
     });
+
+    // Group by order_number to show multiple fabrics per order
+    const grouped = filtered.reduce((acc, usage) => {
+      const key = usage.order_number;
+      if (!acc[key]) {
+        acc[key] = {
+          order_number: usage.order_number,
+          order_type: usage.order_type,
+          customer_name: usage.customer_name,
+          customer_code: usage.customer_code,
+          usage_date: usage.usage_date,
+          notes: usage.notes,
+          fabrics: []
+        };
+      }
+      
+      acc[key].fabrics.push({
+        fabric_type: usage.fabric_variants?.fabric_types?.name,
+        variant_name: usage.fabric_variants?.variant_name,
+        color: usage.fabric_variants?.color,
+        fabric_width: usage.fabric_width,
+        quantity_used: usage.quantity_used,
+        unit: usage.unit
+      });
+      
+      return acc;
+    }, {} as Record<string, any>);
+
+    return Object.values(grouped);
   }, [fabricUsage, warehouses, warehouseFilter, searchTerm, selectedFabricType, dateRange]);
 
   // Calculate summary statistics
   const summaryStats = useMemo(() => {
-    const totalRecords = filteredData.length;
-    const totalQuantity = filteredData.reduce((sum, usage) => sum + (usage.quantity_used || 0), 0);
-    const uniqueOrders = new Set(filteredData.map(usage => usage.order_number)).size;
+    const totalRecords = filteredAndGroupedData.length;
+    const totalQuantity = filteredAndGroupedData.reduce((sum, order) => 
+      sum + order.fabrics.reduce((fabricSum: number, fabric: any) => fabricSum + (fabric.quantity_used || 0), 0), 0);
+    const uniqueOrders = filteredAndGroupedData.length;
     
     return { totalRecords, totalQuantity, uniqueOrders };
-  }, [filteredData]);
+  }, [filteredAndGroupedData]);
 
   const formatQuantity = (quantity: number, unit: string = 'kg') => {
     return `${quantity.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ${unit}`;
@@ -203,59 +234,84 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
               <TableRow>
                 <TableHead>Ngày sử dụng</TableHead>
                 <TableHead>Số đơn hàng</TableHead>
+                <TableHead>Loại đơn hàng</TableHead>
                 <TableHead>Khách hàng</TableHead>
-                <TableHead>Loại vải</TableHead>
-                <TableHead>Màu sắc</TableHead>
-                <TableHead>Số lượng</TableHead>
+                <TableHead>Loại đơn</TableHead>
+                <TableHead>Vải sử dụng</TableHead>
+                <TableHead>Tổng số lượng</TableHead>
                 <TableHead>Ghi chú</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredData.length > 0 ? (
-                filteredData.map((usage) => (
-                  <TableRow key={usage.id}>
+              {filteredAndGroupedData.length > 0 ? (
+                filteredAndGroupedData.map((order, index) => (
+                  <TableRow key={`${order.order_number}-${index}`}>
                     <TableCell className="font-medium">
-                      {formatDate(usage.usage_date)}
+                      {formatDate(order.usage_date)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{usage.order_number}</Badge>
+                      <Badge variant="outline">{order.order_number}</Badge>
                     </TableCell>
                     <TableCell>
-                      <div>
-                        <div className="font-medium">{usage.customer_name}</div>
-                        {usage.customer_code && (
-                          <div className="text-sm text-muted-foreground">
-                            {usage.customer_code}
+                      <Badge variant="secondary">
+                        {order.order_type === 'new' ? 'Đơn hàng mới' :
+                         order.order_type === 'replacement' ? 'Đơn đổi trả' :
+                         order.order_type === 'repair' ? 'Đơn sửa chữa' : 
+                         order.order_type || '-'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{order.customer_name}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {order.customer_code === 'don_phuoc' ? 'Đơn Phước' :
+                         order.customer_code === 'don_hoan' ? 'Đơn Hoan' :
+                         order.customer_code || '-'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        {order.fabrics.map((fabric: any, fabricIndex: number) => (
+                          <div key={fabricIndex} className="flex flex-col">
+                            <div className="font-medium text-sm">
+                              {fabric.fabric_type} - {fabric.variant_name}
+                              {fabric.fabric_width && ` (${fabric.fabric_width})`}
+                            </div>
+                            {fabric.color && (
+                              <div className="text-xs text-muted-foreground">
+                                Màu: {fabric.color}
+                              </div>
+                            )}
                           </div>
-                        )}
+                        ))}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">
-                          {usage.fabric_variants?.fabric_types?.name}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {usage.fabric_variants?.variant_name}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {usage.fabric_variants?.color || '-'}
                     </TableCell>
                     <TableCell className="font-semibold">
-                      {formatQuantity(usage.quantity_used, usage.unit)}
+                      <div className="space-y-1">
+                        {order.fabrics.map((fabric: any, fabricIndex: number) => (
+                          <div key={fabricIndex} className="text-sm">
+                            {formatQuantity(fabric.quantity_used, fabric.unit || 'm')}
+                          </div>
+                        ))}
+                        <div className="text-xs text-muted-foreground border-t pt-1">
+                          Tổng: {formatQuantity(
+                            order.fabrics.reduce((sum: number, f: any) => sum + (f.quantity_used || 0), 0),
+                            'm'
+                          )}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell className="max-w-xs">
-                      <div className="truncate" title={usage.notes || ''}>
-                        {usage.notes || '-'}
+                      <div className="truncate" title={order.notes || ''}>
+                        {order.notes || '-'}
                       </div>
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     Không có dữ liệu sử dụng vải
                   </TableCell>
                 </TableRow>
