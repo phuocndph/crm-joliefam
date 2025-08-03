@@ -15,6 +15,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { FabricInventoryOverview } from '@/components/FabricInventoryOverview';
 import { FabricControlByWarehouse } from '@/components/FabricControlByWarehouse';
+import { FabricUsageRecording } from '@/components/FabricUsageRecording';
+import { FabricUsageDetails } from '@/components/FabricUsageDetails';
 import { 
   useFabricTypes, 
   useFabricVariants,
@@ -371,6 +373,8 @@ const FabricManagement = () => {
             warehouseName="Hà Nội" 
             warehouseFilter="hanoi"
           />
+          <FabricUsageRecording warehouseName="Hà Nội" warehouseFilter="hanoi" />
+          <FabricUsageDetails warehouseName="Hà Nội" warehouseFilter="hanoi" />
         </TabsContent>
 
         {/* Bac Ninh Control Tab */}
@@ -379,6 +383,8 @@ const FabricManagement = () => {
             warehouseName="Bắc Ninh" 
             warehouseFilter="bacninh"
           />
+          <FabricUsageRecording warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
+          <FabricUsageDetails warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
