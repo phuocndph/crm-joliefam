@@ -405,21 +405,36 @@ export default function GHNTrackingPage() {
             </div>
 
             {!isMultipleMode ? (
-              <div className="flex gap-4">
-                <Input
-                  placeholder="Nhập mã đơn hàng GHN"
-                  value={orderCodeInput}
-                  onChange={(e) => setOrderCodeInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addOrderTracking()}
-                  className="max-w-xs"
-                />
-                <Button
-                  onClick={addOrderTracking}
-                  disabled={loading || !orderCodeInput.trim()}
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-                  Thêm tracking
-                </Button>
+              <div className="flex gap-4 items-center justify-between">
+                <div className="flex gap-4">
+                  <Input
+                    placeholder="Nhập mã đơn hàng GHN"
+                    value={orderCodeInput}
+                    onChange={(e) => setOrderCodeInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addOrderTracking()}
+                    className="max-w-xs"
+                  />
+                  <Button
+                    onClick={addOrderTracking}
+                    disabled={loading || !orderCodeInput.trim()}
+                  >
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                    Thêm tracking
+                  </Button>
+                </div>
+                <div className="flex gap-4 items-center">
+                  <span className="text-sm text-gray-600">
+                    Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
+                  </span>
+                  <Button
+                    onClick={updateAllTracking}
+                    disabled={loading || trackingData.length === 0}
+                    variant="outline"
+                  >
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    Cập nhật tất cả
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">
@@ -430,44 +445,47 @@ export default function GHNTrackingPage() {
                   rows={4}
                   className="resize-none"
                 />
-                <div className="flex gap-4">
-                  <Button
-                    onClick={addOrderTracking}
-                    disabled={loading || !orderCodeInput.trim()}
-                  >
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-                    Thêm tất cả
-                  </Button>
-                  <Button
-                    onClick={() => setOrderCodeInput('')}
-                    variant="outline"
-                    disabled={loading}
-                  >
-                    Xóa
-                  </Button>
+                <div className="flex gap-4 items-center justify-between">
+                  <div className="flex gap-4">
+                    <Button
+                      onClick={addOrderTracking}
+                      disabled={loading || !orderCodeInput.trim()}
+                    >
+                      {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                      Thêm tất cả
+                    </Button>
+                    <Button
+                      onClick={() => setOrderCodeInput('')}
+                      variant="outline"
+                      disabled={loading}
+                    >
+                      Xóa
+                    </Button>
+                  </div>
+                  <div className="flex gap-4 items-center">
+                    <span className="text-sm text-gray-600">
+                      Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
+                    </span>
+                    <Button
+                      onClick={updateAllTracking}
+                      disabled={loading || trackingData.length === 0}
+                      variant="outline"
+                    >
+                      {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                      Cập nhật tất cả
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
 
-            <div className="space-y-4">
-              <div className="flex gap-4">
-                <Button
-                  onClick={updateAllTracking}
-                  disabled={loading || trackingData.length === 0}
-                  variant="outline"
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                  Cập nhật tất cả
-                </Button>
-              </div>
-              
-              {/* Filter Component */}
-              <GHNTrackingFilters
-                onFiltersChange={handleFiltersChange}
-                filteredCount={filteredData.length}
-                totalCount={trackingData.length}
-              />
-            </div>
+            
+            {/* Filter Component */}
+            <GHNTrackingFilters
+              onFiltersChange={handleFiltersChange}
+              filteredCount={filteredData.length}
+              totalCount={trackingData.length}
+            />
           </div>
 
           <div className="overflow-auto border rounded-lg max-h-[70vh]">
