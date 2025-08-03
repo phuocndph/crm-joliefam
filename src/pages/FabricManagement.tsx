@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
+import { FabricInventoryOverview } from '@/components/FabricInventoryOverview';
 import { 
   useFabricTypes, 
   useFabricVariants,
@@ -358,12 +359,13 @@ const FabricManagement = () => {
 
         {/* Total Quantity Tab */}
         <TabsContent value="total-quantity" className="space-y-4">
+          <FabricInventoryOverview />
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle>Tổng số lượng vải</CardTitle>
-                  <CardDescription>Quản lý tổng số lượng vải của các xưởng và kiểm soát đầu vào/đầu ra</CardDescription>
+                  <CardTitle>Giao dịch vải</CardTitle>
+                  <CardDescription>Quản lý các giao dịch nhập/xuất vải</CardDescription>
                 </div>
                 <Dialog open={showCreateTransactionDialog} onOpenChange={setShowCreateTransactionDialog}>
                   <DialogTrigger asChild>
