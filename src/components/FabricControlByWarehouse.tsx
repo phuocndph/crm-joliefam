@@ -121,9 +121,18 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   const hanoiWarehouse = warehouses.find(w => w.name.toLowerCase().includes('hà nội') || w.name.toLowerCase().includes('hanoi'));
   const bacninhWarehouse = warehouses.find(w => w.name.toLowerCase().includes('bắc ninh') || w.name.toLowerCase().includes('bacninh'));
 
-  // Group by fabric variant with warehouse breakdown for this specific warehouse
+  // Group by fabric variant with warehouse breakdown - using ALL inventory data like "Tổng số lượng vải"
   const fabricSummary = useMemo(() => {
-    return warehouseInventory.reduce((acc, item) => {
+    const inventoryData = inventory.map(item => ({
+      ...item,
+      fabricCode: item.fabric_variants?.variant_name || '',
+      fabricType: item.fabric_variants?.fabric_types?.name || '',
+      widthCode: item.fabric_variants?.width_code || '',
+      warehouse: item.warehouses?.name || '',
+      currentStockMeters: item.current_stock,
+    }));
+
+    return inventoryData.reduce((acc, item) => {
       const key = `${item.fabricCode} ${item.widthCode}`;
       if (!acc[key]) {
         acc[key] = {
@@ -136,18 +145,29 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
       }
       
       acc[key].total += item.currentStockMeters;
-      acc[key].currentWarehouse += item.currentStockMeters;
       
-      // Also get totals from other warehouses for transfer reference
       if (item.warehouse?.toLowerCase().includes('hà nội') || item.warehouse?.toLowerCase().includes('hanoi')) {
-        acc[key].hanoi = item.currentStockMeters;
+        acc[key].hanoi += item.currentStockMeters;
       } else if (item.warehouse?.toLowerCase().includes('bắc ninh') || item.warehouse?.toLowerCase().includes('bacninh')) {
-        acc[key].bacninh = item.currentStockMeters;
+        acc[key].bacninh += item.currentStockMeters;
+      }
+
+      // Set current warehouse quantity based on filter
+      if (warehouseFilter) {
+        if ((warehouseFilter.toLowerCase().includes('hà nội') || warehouseFilter.toLowerCase().includes('hanoi')) && 
+            (item.warehouse?.toLowerCase().includes('hà nội') || item.warehouse?.toLowerCase().includes('hanoi'))) {
+          acc[key].currentWarehouse = acc[key].hanoi;
+        } else if ((warehouseFilter.toLowerCase().includes('bắc ninh') || warehouseFilter.toLowerCase().includes('bacninh')) && 
+                   (item.warehouse?.toLowerCase().includes('bắc ninh') || item.warehouse?.toLowerCase().includes('bacninh'))) {
+          acc[key].currentWarehouse = acc[key].bacninh;
+        }
+      } else {
+        acc[key].currentWarehouse = acc[key].total;
       }
       
       return acc;
     }, {} as Record<string, { fabricName: string; total: number; hanoi: number; bacninh: number; currentWarehouse: number }>);
-  }, [warehouseInventory]);
+  }, [inventory, warehouseFilter]);
 
   const fabricSummaryArray = Object.values(fabricSummary);
 
