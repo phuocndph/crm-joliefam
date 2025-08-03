@@ -185,17 +185,28 @@ export const useUpdateInventory = () => {
       minimum_stock?: number;
       maximum_stock?: number;
     }) => {
+      // First, check if record already exists
+      const { data: existingRecord } = await supabase
+        .from('fabric_inventory')
+        .select('id')
+        .eq('fabric_variant_id', fabric_variant_id)
+        .eq('warehouse_id', warehouse_id)
+        .single();
+
+      const upsertData = {
+        fabric_variant_id,
+        warehouse_id,
+        current_stock,
+        reserved_stock,
+        minimum_stock,
+        maximum_stock,
+        last_updated: new Date().toISOString(),
+        ...(existingRecord?.id && { id: existingRecord.id })
+      };
+
       const { data, error } = await supabase
         .from('fabric_inventory')
-        .upsert({
-          fabric_variant_id,
-          warehouse_id,
-          current_stock,
-          reserved_stock,
-          minimum_stock,
-          maximum_stock,
-          last_updated: new Date().toISOString()
-        })
+        .upsert(upsertData)
         .select()
         .single();
       
