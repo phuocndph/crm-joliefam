@@ -180,10 +180,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
       });
       
       setShowDialog(false);
-      toast({ 
-        title: "Thành công", 
-        description: `Đã ghi nhận sử dụng ${formData.fabricItems.length} loại vải` 
-      });
+      
     } catch (error) {
       console.error('Error recording fabric usage:', error);
       toast({ 
