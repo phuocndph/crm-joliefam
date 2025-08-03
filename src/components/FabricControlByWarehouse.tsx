@@ -356,173 +356,9 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold">Kiểm soát vải {warehouseName}</h2>
-          <p className="text-muted-foreground">Theo dõi sử dụng vải theo đơn hàng và khách hàng</p>
-        </div>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Ghi nhận sử dụng vải
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Ghi nhận sử dụng vải</DialogTitle>
-              <DialogDescription>Thêm thông tin sử dụng vải cho đơn hàng</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="usage_date">Ngày xuất vải *</Label>
-                <Input
-                  id="usage_date"
-                  type="date"
-                  value={newUsage.usage_date}
-                  onChange={(e) => setNewUsage(prev => ({ ...prev, usage_date: e.target.value }))}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="order_number">Mã đơn hàng *</Label>
-                <Input
-                  id="order_number"
-                  value={newUsage.order_number}
-                  onChange={async (e) => {
-                    const orderNumber = e.target.value;
-                    setNewUsage(prev => ({ ...prev, order_number: orderNumber }));
-                    
-                    // Tự động tìm kiếm đơn hàng và điền thông tin
-                    if (orderNumber) {
-                      try {
-                        const { data: orders, error } = await supabase
-                          .from('orders')
-                          .select(`
-                            *,
-                            customers (name, customer_code)
-                          `)
-                          .or(`order_number.ilike.%${orderNumber}%,display_order_number.ilike.%${orderNumber}%`)
-                          .limit(1);
-
-                        if (orders && orders.length > 0) {
-                          const order = orders[0];
-                          
-                          // Lấy fabric usage riêng biệt
-                          const { data: fabricUsageData } = await supabase
-                            .from('fabric_usage')
-                            .select('quantity_used')
-                            .eq('order_id', order.id);
-                          
-                          const totalFabricUsed = fabricUsageData ? 
-                            fabricUsageData.reduce((sum: number, usage: any) => sum + Number(usage.quantity_used), 0) : 0;
-                          
-                          setNewUsage(prev => ({
-                            ...prev,
-                            customer_name: order.customers?.name || '',
-                            customer_code: order.customers?.customer_code || '',
-                            notes: `Đơn hàng ${orderNumber} - Tổng vải tiêu thụ: ${totalFabricUsed.toFixed(2)}m`
-                          }));
-                        }
-                      } catch (error) {
-                        console.error('Error fetching order:', error);
-                      }
-                    }
-                  }}
-                  placeholder="Nhập mã đơn hàng (VD: 1555)"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="customer_name">Tên khách hàng *</Label>
-                <Input
-                  id="customer_name"
-                  value={newUsage.customer_name}
-                  onChange={(e) => setNewUsage(prev => ({ ...prev, customer_name: e.target.value }))}
-                  placeholder="Nhập tên khách hàng"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="order_type">Loại đơn</Label>
-                <Select value={newUsage.order_type} onValueChange={(value) => setNewUsage(prev => ({ ...prev, order_type: value }))}>
-                  <SelectTrigger id="order_type">
-                    <SelectValue placeholder="Chọn loại đơn" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Phước">Phước</SelectItem>
-                    <SelectItem value="Hoan">Hoan</SelectItem>
-                    <SelectItem value="Khác">Khác</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fabric_variant">Loại vải *</Label>
-                <Select value={newUsage.fabric_variant_id} onValueChange={(value) => setNewUsage(prev => ({ ...prev, fabric_variant_id: value }))}>
-                  <SelectTrigger id="fabric_variant">
-                    <SelectValue placeholder="Chọn loại vải" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fabricVariants.map((variant) => (
-                      <SelectItem key={variant.id} value={variant.id}>
-                        {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="warehouse">Kho *</Label>
-                <Select value={newUsage.warehouse_id} onValueChange={(value) => setNewUsage(prev => ({ ...prev, warehouse_id: value }))}>
-                  <SelectTrigger id="warehouse">
-                    <SelectValue placeholder="Chọn kho" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {warehouses.map((warehouse) => (
-                      <SelectItem key={warehouse.id} value={warehouse.id}>
-                        {warehouse.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fabric_width">Khổ vải</Label>
-                <Input
-                  id="fabric_width"
-                  value={newUsage.fabric_width}
-                  onChange={(e) => setNewUsage(prev => ({ ...prev, fabric_width: e.target.value }))}
-                  placeholder="Nhập khổ vải (VD: 150cm)"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="quantity">Số lượng (m) *</Label>
-                <Input
-                  id="quantity"
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={newUsage.quantity_used}
-                  onChange={(e) => setNewUsage(prev => ({ ...prev, quantity_used: Number(e.target.value) }))}
-                  placeholder="Nhập số lượng"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="notes">Ghi chú</Label>
-                <Input
-                  id="notes"
-                  value={newUsage.notes}
-                  onChange={(e) => setNewUsage(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Ghi chú (sẽ tự động điền nếu có đơn hàng trùng khớp)"
-                />
-              </div>
-              <Button onClick={handleCreateUsage} className="w-full" disabled={createFabricUsage.isPending}>
-                {createFabricUsage.isPending ? 'Đang xử lý...' : 'Ghi nhận sử dụng vải'}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+      <div>
+        <h2 className="text-2xl font-bold">Kiểm soát vải {warehouseName}</h2>
+        <p className="text-muted-foreground">Theo dõi sử dụng vải theo đơn hàng và khách hàng</p>
       </div>
 
       {/* Fabric Inventory Cards */}
@@ -694,6 +530,177 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
               </TableBody>
             </Table>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Fabric Usage Recording */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Ghi nhận sử dụng vải</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <DialogTrigger asChild>
+              <Button className="w-full">
+                <Plus className="mr-2 h-4 w-4" />
+                Ghi nhận sử dụng vải mới
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Ghi nhận sử dụng vải</DialogTitle>
+                <DialogDescription>Thêm thông tin sử dụng vải cho đơn hàng</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="usage_date">Ngày xuất vải *</Label>
+                  <Input
+                    id="usage_date"
+                    type="date"
+                    value={newUsage.usage_date}
+                    onChange={(e) => setNewUsage(prev => ({ ...prev, usage_date: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="order_number">Mã đơn hàng *</Label>
+                  <Input
+                    id="order_number"
+                    value={newUsage.order_number}
+                    onChange={async (e) => {
+                      const orderNumber = e.target.value;
+                      setNewUsage(prev => ({ ...prev, order_number: orderNumber }));
+                      
+                      // Tự động tìm kiếm đơn hàng và điền thông tin
+                      if (orderNumber) {
+                        try {
+                          const { data: orders, error } = await supabase
+                            .from('orders')
+                            .select(`
+                              *,
+                              customers (name, customer_code)
+                            `)
+                            .or(`order_number.ilike.%${orderNumber}%,display_order_number.ilike.%${orderNumber}%`)
+                            .limit(1);
+
+                          if (orders && orders.length > 0) {
+                            const order = orders[0];
+                            
+                            // Lấy fabric usage riêng biệt
+                            const { data: fabricUsageData } = await supabase
+                              .from('fabric_usage')
+                              .select('quantity_used')
+                              .eq('order_id', order.id);
+                            
+                            const totalFabricUsed = fabricUsageData ? 
+                              fabricUsageData.reduce((sum: number, usage: any) => sum + Number(usage.quantity_used), 0) : 0;
+                            
+                            setNewUsage(prev => ({
+                              ...prev,
+                              customer_name: order.customers?.name || '',
+                              customer_code: order.customers?.customer_code || '',
+                              notes: `Đơn hàng ${orderNumber} - Tổng vải tiêu thụ: ${totalFabricUsed.toFixed(2)}m`
+                            }));
+                          }
+                        } catch (error) {
+                          console.error('Error fetching order:', error);
+                        }
+                      }
+                    }}
+                    placeholder="Nhập mã đơn hàng (VD: 1555)"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="customer_name">Tên khách hàng *</Label>
+                  <Input
+                    id="customer_name"
+                    value={newUsage.customer_name}
+                    onChange={(e) => setNewUsage(prev => ({ ...prev, customer_name: e.target.value }))}
+                    placeholder="Nhập tên khách hàng"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="order_type">Loại đơn</Label>
+                  <Select value={newUsage.order_type} onValueChange={(value) => setNewUsage(prev => ({ ...prev, order_type: value }))}>
+                    <SelectTrigger id="order_type">
+                      <SelectValue placeholder="Chọn loại đơn" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Phước">Phước</SelectItem>
+                      <SelectItem value="Hoan">Hoan</SelectItem>
+                      <SelectItem value="Khác">Khác</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fabric_variant">Loại vải *</Label>
+                  <Select value={newUsage.fabric_variant_id} onValueChange={(value) => setNewUsage(prev => ({ ...prev, fabric_variant_id: value }))}>
+                    <SelectTrigger id="fabric_variant">
+                      <SelectValue placeholder="Chọn loại vải" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fabricVariants.map((variant) => (
+                        <SelectItem key={variant.id} value={variant.id}>
+                          {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="warehouse">Kho *</Label>
+                  <Select value={newUsage.warehouse_id} onValueChange={(value) => setNewUsage(prev => ({ ...prev, warehouse_id: value }))}>
+                    <SelectTrigger id="warehouse">
+                      <SelectValue placeholder="Chọn kho" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {warehouses.map((warehouse) => (
+                        <SelectItem key={warehouse.id} value={warehouse.id}>
+                          {warehouse.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fabric_width">Khổ vải</Label>
+                  <Input
+                    id="fabric_width"
+                    value={newUsage.fabric_width}
+                    onChange={(e) => setNewUsage(prev => ({ ...prev, fabric_width: e.target.value }))}
+                    placeholder="Nhập khổ vải (VD: 150cm)"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="quantity">Số lượng (m) *</Label>
+                  <Input
+                    id="quantity"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={newUsage.quantity_used}
+                    onChange={(e) => setNewUsage(prev => ({ ...prev, quantity_used: Number(e.target.value) }))}
+                    placeholder="Nhập số lượng"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Ghi chú</Label>
+                  <Input
+                    id="notes"
+                    value={newUsage.notes}
+                    onChange={(e) => setNewUsage(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Ghi chú (sẽ tự động điền nếu có đơn hàng trùng khớp)"
+                  />
+                </div>
+                <Button onClick={handleCreateUsage} className="w-full" disabled={createFabricUsage.isPending}>
+                  {createFabricUsage.isPending ? 'Đang xử lý...' : 'Ghi nhận sử dụng vải'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
 
