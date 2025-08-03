@@ -476,24 +476,24 @@ export default function GHNTrackingPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto border rounded-lg">
+          <div className="overflow-auto border rounded-lg max-h-[70vh]">
             <table className="w-full border-collapse">
-              <thead className="bg-gray-50">
+              <thead className="sticky top-0 z-10">
                 <tr>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[60px]">STT</th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">MÃ GHN</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[100px]">MÃ ĐƠN HÀNG</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[140px]">TRẠNG THÁI</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[140px]">TÊN KHÁCH HÀNG</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[120px]">SỐ ĐIỆN THOẠI</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[200px]">ĐỊA CHỈ</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[100px]">CÂN NẶNG</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[110px]">NGÀY TẠO</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[120px]">DỰ KIẾN GIAO</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[120px]">NGÀY GIAO</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[100px]">COD THU HỘ</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[100px]">TRA CỨU</th>
-                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[80px]">THAO TÁC</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[100px]">MÃ ĐƠN HÀNG</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[140px]">TRẠNG THÁI</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[140px]">TÊN KHÁCH HÀNG</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">SỐ ĐIỆN THOẠI</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[200px]">ĐỊA CHỈ</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[100px]">CÂN NẶNG</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[110px]">NGÀY TẠO</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">DỰ KIẾN GIAO</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">NGÀY GIAO</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[100px]">COD THU HỘ</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[100px]">TRA CỨU</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[80px]">THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
