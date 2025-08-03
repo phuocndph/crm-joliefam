@@ -265,29 +265,43 @@ export const FabricInventoryOverview = () => {
 
       {/* Fabric Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {fabricSummaryArray.map((fabric, index) => (
-          <Card key={index}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Vải {fabric.fabricName}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm font-medium">Tổng:</span>
-                  <span className="text-lg font-bold">{fabric.total.toFixed(2)}m</span>
+        {fabricSummaryArray.map((fabric, index) => {
+          const getCardClass = () => {
+            if (fabric.total < 500) return "border-red-500 bg-red-50";
+            if (fabric.total < 1000) return "border-yellow-500 bg-yellow-50";
+            return "";
+          };
+          
+          const getTextClass = () => {
+            if (fabric.total < 500) return "text-red-700";
+            if (fabric.total < 1000) return "text-yellow-700";
+            return "";
+          };
+
+          return (
+            <Card key={index} className={getCardClass()}>
+              <CardHeader className="pb-2">
+                <CardTitle className={`text-sm font-medium ${getTextClass()}`}>Vải {fabric.fabricName}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className={`text-sm font-medium ${getTextClass()}`}>Tổng:</span>
+                    <span className={`text-lg font-bold ${getTextClass()}`}>{fabric.total.toFixed(2)}m</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Hà Nội:</span>
+                    <span className="text-sm">{fabric.hanoi.toFixed(2)}m</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Bắc Ninh:</span>
+                    <span className="text-sm">{fabric.bacninh.toFixed(2)}m</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Hà Nội:</span>
-                  <span className="text-sm">{fabric.hanoi.toFixed(2)}m</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Bắc Ninh:</span>
-                  <span className="text-sm">{fabric.bacninh.toFixed(2)}m</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
         {fabricSummaryArray.length === 0 && (
           <Card>
             <CardContent className="text-center text-muted-foreground py-8">
