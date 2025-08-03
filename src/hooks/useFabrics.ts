@@ -416,10 +416,8 @@ export const useCreateFabricUsage = () => {
       return result;
     },
     onSuccess: () => {
-      // Invalidate và refetch ngay lập tức để cập nhật UI
       queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
       queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
-      queryClient.refetchQueries({ queryKey: ['fabric-usage'] });
     },
   });
 };
