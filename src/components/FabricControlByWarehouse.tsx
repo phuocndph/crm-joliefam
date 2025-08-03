@@ -42,6 +42,8 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     quantity_used: 0,
     customer_name: '',
     customer_code: '',
+    order_type: '',
+    fabric_width: '',
     notes: ''
   });
 
@@ -135,6 +137,8 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         quantity_used: 0,
         customer_name: '',
         customer_code: '',
+        order_type: '',
+        fabric_width: '',
         notes: ''
       });
       setShowCreateDialog(false);
@@ -144,7 +148,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   };
 
   const formatQuantity = (quantity: number) => {
-    return `${quantity.toLocaleString('vi-VN')} kg`;
+    return `${quantity.toLocaleString('vi-VN')} m`;
   };
 
   const getUniqueManagers = () => {
@@ -203,6 +207,19 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                 />
               </div>
               <div className="space-y-2">
+                <Label>Loại đơn</Label>
+                <Select value={newUsage.order_type} onValueChange={(value) => setNewUsage(prev => ({ ...prev, order_type: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn loại đơn" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Phước">Phước</SelectItem>
+                    <SelectItem value="Hoan">Hoan</SelectItem>
+                    <SelectItem value="Khác">Khác</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Loại vải</Label>
                 <Select value={newUsage.fabric_variant_id} onValueChange={(value) => setNewUsage(prev => ({ ...prev, fabric_variant_id: value }))}>
                   <SelectTrigger>
@@ -232,8 +249,16 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                   </SelectContent>
                 </Select>
               </div>
+               <div className="space-y-2">
+                <Label>Khổ vải</Label>
+                <Input
+                  value={newUsage.fabric_width}
+                  onChange={(e) => setNewUsage(prev => ({ ...prev, fabric_width: e.target.value }))}
+                  placeholder="Nhập khổ vải (VD: 150cm)"
+                />
+              </div>
               <div className="space-y-2">
-                <Label>Số lượng sử dụng (kg)</Label>
+                <Label>Số lượng sử dụng (m)</Label>
                 <Input
                   type="number"
                   value={newUsage.quantity_used}
@@ -368,54 +393,44 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Ngày xuất vải</TableHead>
                   <TableHead>Mã đơn hàng</TableHead>
-                  <TableHead>Khách hàng</TableHead>
-                  <TableHead>Mã KH</TableHead>
+                  <TableHead>Tên khách hàng</TableHead>
+                  <TableHead>Loại đơn</TableHead>
                   <TableHead>Loại vải</TableHead>
-                  <TableHead>Biến thể</TableHead>
-                  <TableHead>Kho</TableHead>
-                  <TableHead className="text-right">Số lượng</TableHead>
-                  <TableHead>Ngày sử dụng</TableHead>
-                  <TableHead>Ghi chú</TableHead>
+                  <TableHead>Khổ vải</TableHead>
+                  <TableHead className="text-right">Số lượng (m)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsage.map((item) => (
                   <TableRow key={item.id}>
+                    <TableCell>
+                      {format(new Date(item.usage_date), 'dd/MM/yyyy', { locale: vi })}
+                    </TableCell>
                     <TableCell className="font-medium">
                       <Badge variant="outline">{item.order_number}</Badge>
                     </TableCell>
                     <TableCell className="font-medium">{item.customer_name}</TableCell>
-                    <TableCell>{item.customer_code}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{item.order_type || '-'}</Badge>
+                    </TableCell>
                     <TableCell>
                       {item.fabric_variants && typeof item.fabric_variants === 'object' && 'fabric_types' in item.fabric_variants &&
                         item.fabric_variants.fabric_types && typeof item.fabric_variants.fabric_types === 'object' && 'name' in item.fabric_variants.fabric_types
                         ? item.fabric_variants.fabric_types.name : '-'}
                     </TableCell>
                     <TableCell>
-                      {item.fabric_variants && typeof item.fabric_variants === 'object' && 'variant_name' in item.fabric_variants
-                        ? item.fabric_variants.variant_name : '-'}
-                      {item.fabric_variants && typeof item.fabric_variants === 'object' && 'color' in item.fabric_variants && item.fabric_variants.color && (
-                        <Badge variant="secondary" className="ml-1">{item.fabric_variants.color}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={(item.warehouses && typeof item.warehouses === 'object' && 'warehouse_type' in item.warehouses && item.warehouses.warehouse_type === 'main') ? 'default' : 'secondary'}>
-                        {item.warehouses && typeof item.warehouses === 'object' && 'name' in item.warehouses ? item.warehouses.name : '-'}
-                      </Badge>
+                      {item.fabric_width || '-'}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatQuantity(item.quantity_used)}
                     </TableCell>
-                    <TableCell>
-                      {format(new Date(item.usage_date), 'dd/MM/yyyy', { locale: vi })}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate">{item.notes}</TableCell>
                   </TableRow>
                 ))}
                 {filteredUsage.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground">
                       Không có dữ liệu sử dụng vải
                     </TableCell>
                   </TableRow>

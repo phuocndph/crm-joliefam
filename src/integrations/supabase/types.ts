@@ -498,11 +498,13 @@ export type Database = {
           customer_code: string | null
           customer_name: string | null
           fabric_variant_id: string
+          fabric_width: string | null
           id: string
           manager_id: string | null
           notes: string | null
           order_id: string
           order_number: string | null
+          order_type: string | null
           quantity_used: number
           tenant_id: string
           unit: string
@@ -515,11 +517,13 @@ export type Database = {
           customer_code?: string | null
           customer_name?: string | null
           fabric_variant_id: string
+          fabric_width?: string | null
           id?: string
           manager_id?: string | null
           notes?: string | null
           order_id: string
           order_number?: string | null
+          order_type?: string | null
           quantity_used?: number
           tenant_id?: string
           unit?: string
@@ -532,11 +536,13 @@ export type Database = {
           customer_code?: string | null
           customer_name?: string | null
           fabric_variant_id?: string
+          fabric_width?: string | null
           id?: string
           manager_id?: string | null
           notes?: string | null
           order_id?: string
           order_number?: string | null
+          order_type?: string | null
           quantity_used?: number
           tenant_id?: string
           unit?: string
