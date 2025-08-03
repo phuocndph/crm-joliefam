@@ -90,6 +90,42 @@ export const useCreateFabricVariant = () => {
   });
 };
 
+// Fabric Widths hooks
+export const useFabricWidths = () => {
+  return useQuery({
+    queryKey: ['fabric-widths'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('fabric_widths')
+        .select('*')
+        .order('width_code');
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+};
+
+export const useCreateFabricWidth = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (newWidth: { width_code: string; description?: string }) => {
+      const { data, error } = await supabase
+        .from('fabric_widths')
+        .insert([newWidth])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fabric-widths'] });
+    },
+  });
+};
+
 // Warehouses hooks
 export const useWarehouses = () => {
   return useQuery({

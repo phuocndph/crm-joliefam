@@ -498,6 +498,7 @@ export type Database = {
           cost_price: number | null
           created_at: string
           fabric_type_id: string
+          fabric_width_id: string | null
           id: string
           manager_id: string | null
           origin: string | null
@@ -514,6 +515,7 @@ export type Database = {
           cost_price?: number | null
           created_at?: string
           fabric_type_id: string
+          fabric_width_id?: string | null
           id?: string
           manager_id?: string | null
           origin?: string | null
@@ -530,6 +532,7 @@ export type Database = {
           cost_price?: number | null
           created_at?: string
           fabric_type_id?: string
+          fabric_width_id?: string | null
           id?: string
           manager_id?: string | null
           origin?: string | null
@@ -549,7 +552,44 @@ export type Database = {
             referencedRelation: "fabric_types"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fabric_variants_fabric_width_id_fkey"
+            columns: ["fabric_width_id"]
+            isOneToOne: false
+            referencedRelation: "fabric_widths"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      fabric_widths: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          manager_id: string | null
+          tenant_id: string
+          updated_at: string
+          width_code: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          manager_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          width_code: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          manager_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          width_code?: string
+        }
+        Relationships: []
       }
       finance_data: {
         Row: {
