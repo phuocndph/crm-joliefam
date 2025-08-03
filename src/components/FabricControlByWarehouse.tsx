@@ -39,6 +39,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     order_number: '',
     fabric_variant_id: '',
     warehouse_id: '',
+    order_id: '',
     quantity_used: 0,
     customer_name: '',
     customer_code: '',
@@ -129,11 +130,18 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     }
 
     try {
-      await createFabricUsage.mutateAsync(newUsage);
+      // Create a random UUID for order_id if not provided
+      const usageData = {
+        ...newUsage,
+        order_id: newUsage.order_id || crypto.randomUUID()
+      };
+      
+      await createFabricUsage.mutateAsync(usageData);
       setNewUsage({
         order_number: '',
         fabric_variant_id: '',
         warehouse_id: '',
+        order_id: '',
         quantity_used: 0,
         customer_name: '',
         customer_code: '',
@@ -142,8 +150,10 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         notes: ''
       });
       setShowCreateDialog(false);
+      toast({ title: "Thành công", description: "Đã ghi nhận sử dụng vải" });
     } catch (error) {
       console.error('Error creating fabric usage:', error);
+      toast({ title: "Lỗi", description: "Không thể ghi nhận sử dụng vải", variant: "destructive" });
     }
   };
 
@@ -183,33 +193,38 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Mã đơn hàng</Label>
+                <Label htmlFor="order_number">Mã đơn hàng *</Label>
                 <Input
+                  id="order_number"
                   value={newUsage.order_number}
                   onChange={(e) => setNewUsage(prev => ({ ...prev, order_number: e.target.value }))}
                   placeholder="Nhập mã đơn hàng"
+                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label>Tên khách hàng</Label>
+                <Label htmlFor="customer_name">Tên khách hàng *</Label>
                 <Input
+                  id="customer_name"
                   value={newUsage.customer_name}
                   onChange={(e) => setNewUsage(prev => ({ ...prev, customer_name: e.target.value }))}
                   placeholder="Nhập tên khách hàng"
+                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label>Mã khách hàng</Label>
+                <Label htmlFor="customer_code">Mã khách hàng</Label>
                 <Input
+                  id="customer_code"
                   value={newUsage.customer_code}
                   onChange={(e) => setNewUsage(prev => ({ ...prev, customer_code: e.target.value }))}
-                  placeholder="Nhập mã khách hàng"
+                  placeholder="Nhập mã khách hàng (tùy chọn)"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Loại đơn</Label>
+                <Label htmlFor="order_type">Loại đơn</Label>
                 <Select value={newUsage.order_type} onValueChange={(value) => setNewUsage(prev => ({ ...prev, order_type: value }))}>
-                  <SelectTrigger>
+                  <SelectTrigger id="order_type">
                     <SelectValue placeholder="Chọn loại đơn" />
                   </SelectTrigger>
                   <SelectContent>
@@ -220,9 +235,9 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Loại vải</Label>
+                <Label htmlFor="fabric_variant">Loại vải *</Label>
                 <Select value={newUsage.fabric_variant_id} onValueChange={(value) => setNewUsage(prev => ({ ...prev, fabric_variant_id: value }))}>
-                  <SelectTrigger>
+                  <SelectTrigger id="fabric_variant">
                     <SelectValue placeholder="Chọn loại vải" />
                   </SelectTrigger>
                   <SelectContent>
@@ -235,9 +250,9 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Kho</Label>
+                <Label htmlFor="warehouse">Kho *</Label>
                 <Select value={newUsage.warehouse_id} onValueChange={(value) => setNewUsage(prev => ({ ...prev, warehouse_id: value }))}>
-                  <SelectTrigger>
+                  <SelectTrigger id="warehouse">
                     <SelectValue placeholder="Chọn kho" />
                   </SelectTrigger>
                   <SelectContent>
@@ -249,33 +264,39 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                   </SelectContent>
                 </Select>
               </div>
-               <div className="space-y-2">
-                <Label>Khổ vải</Label>
+              <div className="space-y-2">
+                <Label htmlFor="fabric_width">Khổ vải</Label>
                 <Input
+                  id="fabric_width"
                   value={newUsage.fabric_width}
                   onChange={(e) => setNewUsage(prev => ({ ...prev, fabric_width: e.target.value }))}
                   placeholder="Nhập khổ vải (VD: 150cm)"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Số lượng sử dụng (m)</Label>
+                <Label htmlFor="quantity">Số lượng sử dụng (m) *</Label>
                 <Input
+                  id="quantity"
                   type="number"
+                  min="0"
+                  step="0.1"
                   value={newUsage.quantity_used}
                   onChange={(e) => setNewUsage(prev => ({ ...prev, quantity_used: Number(e.target.value) }))}
                   placeholder="Nhập số lượng"
+                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label>Ghi chú</Label>
+                <Label htmlFor="notes">Ghi chú</Label>
                 <Input
+                  id="notes"
                   value={newUsage.notes}
                   onChange={(e) => setNewUsage(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Ghi chú thêm"
+                  placeholder="Ghi chú thêm (tùy chọn)"
                 />
               </div>
               <Button onClick={handleCreateUsage} className="w-full" disabled={createFabricUsage.isPending}>
-                {createFabricUsage.isPending ? 'Đang xử lý...' : 'Tạo ghi nhận'}
+                {createFabricUsage.isPending ? 'Đang xử lý...' : 'Ghi nhận sử dụng vải'}
               </Button>
             </div>
           </DialogContent>
