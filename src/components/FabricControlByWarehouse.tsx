@@ -42,10 +42,9 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     order_id: '',
     quantity_used: 0,
     customer_name: '',
-    customer_code: '',
     order_type: '',
     fabric_width: '',
-    notes: ''
+    usage_date: format(new Date(), 'yyyy-MM-dd')
   });
 
   // Filter data by warehouse if specified
@@ -144,10 +143,9 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         order_id: '',
         quantity_used: 0,
         customer_name: '',
-        customer_code: '',
         order_type: '',
         fabric_width: '',
-        notes: ''
+        usage_date: format(new Date(), 'yyyy-MM-dd')
       });
       setShowCreateDialog(false);
       toast({ title: "Thành công", description: "Đã ghi nhận sử dụng vải" });
@@ -193,6 +191,16 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="usage_date">Ngày xuất vải *</Label>
+                <Input
+                  id="usage_date"
+                  type="date"
+                  value={newUsage.usage_date}
+                  onChange={(e) => setNewUsage(prev => ({ ...prev, usage_date: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="order_number">Mã đơn hàng *</Label>
                 <Input
                   id="order_number"
@@ -210,15 +218,6 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                   onChange={(e) => setNewUsage(prev => ({ ...prev, customer_name: e.target.value }))}
                   placeholder="Nhập tên khách hàng"
                   required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="customer_code">Mã khách hàng</Label>
-                <Input
-                  id="customer_code"
-                  value={newUsage.customer_code}
-                  onChange={(e) => setNewUsage(prev => ({ ...prev, customer_code: e.target.value }))}
-                  placeholder="Nhập mã khách hàng (tùy chọn)"
                 />
               </div>
               <div className="space-y-2">
@@ -274,7 +273,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="quantity">Số lượng sử dụng (m) *</Label>
+                <Label htmlFor="quantity">Số lượng (m) *</Label>
                 <Input
                   id="quantity"
                   type="number"
@@ -284,15 +283,6 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                   onChange={(e) => setNewUsage(prev => ({ ...prev, quantity_used: Number(e.target.value) }))}
                   placeholder="Nhập số lượng"
                   required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="notes">Ghi chú</Label>
-                <Input
-                  id="notes"
-                  value={newUsage.notes}
-                  onChange={(e) => setNewUsage(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Ghi chú thêm (tùy chọn)"
                 />
               </div>
               <Button onClick={handleCreateUsage} className="w-full" disabled={createFabricUsage.isPending}>
