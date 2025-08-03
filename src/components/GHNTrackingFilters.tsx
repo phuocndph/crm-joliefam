@@ -6,6 +6,8 @@ import { Search } from 'lucide-react';
 interface FilterState {
   searchText: string;
   status: string;
+  sortBy: string;
+  sortOrder: 'asc' | 'desc';
 }
 
 interface GHNTrackingFiltersProps {
@@ -30,6 +32,12 @@ const statusOptions = [
   { value: 'damage', label: 'Hư hỏng' }
 ];
 
+const sortOptions = [
+  { value: 'status', label: 'Trạng thái đơn hàng' },
+  { value: 'customer_name', label: 'Tên khách hàng' },
+  { value: 'created_date', label: 'Ngày tạo đơn' }
+];
+
 export function GHNTrackingFilters({
   onFiltersChange,
   filteredCount,
@@ -37,7 +45,9 @@ export function GHNTrackingFilters({
 }: GHNTrackingFiltersProps) {
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
-    status: 'all'
+    status: 'all',
+    sortBy: '',
+    sortOrder: 'asc'
   });
 
   const updateFilters = (newFilters: Partial<FilterState>) => {
@@ -87,6 +97,40 @@ export function GHNTrackingFilters({
             </SelectContent>
           </Select>
         </div>
+
+        {/* Sort By */}
+        <div className="sm:w-64">
+          <label className="text-sm font-medium mb-2 block">Sắp xếp theo</label>
+          <Select value={filters.sortBy} onValueChange={(value) => updateFilters({ sortBy: value })}>
+            <SelectTrigger>
+              <SelectValue placeholder="Chọn cách sắp xếp" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Không sắp xếp</SelectItem>
+              {sortOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Sort Order */}
+        {filters.sortBy && (
+          <div className="sm:w-48">
+            <label className="text-sm font-medium mb-2 block">Thứ tự</label>
+            <Select value={filters.sortOrder} onValueChange={(value: 'asc' | 'desc') => updateFilters({ sortOrder: value })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="asc">A → Z</SelectItem>
+                <SelectItem value="desc">Z → A</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
     </div>
   );

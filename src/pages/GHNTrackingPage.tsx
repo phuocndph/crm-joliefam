@@ -75,7 +75,9 @@ export default function GHNTrackingPage() {
   const [user, setUser] = useState<User | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
-    status: 'all'
+    status: 'all',
+    sortBy: '',
+    sortOrder: 'asc'
   });
   const { role } = useUserRole(user);
 
@@ -318,9 +320,9 @@ export default function GHNTrackingPage() {
     }
   };
 
-  // Filter logic - simplified to only search and status
+  // Filter and sort logic
   const filteredData = useMemo(() => {
-    return trackingData.filter(item => {
+    let result = trackingData.filter(item => {
       // Search text filter
       if (filters.searchText) {
         const searchText = filters.searchText.toLowerCase();
@@ -340,6 +342,37 @@ export default function GHNTrackingPage() {
 
       return true;
     });
+
+    // Apply sorting
+    if (filters.sortBy) {
+      result = [...result].sort((a, b) => {
+        let aValue = '';
+        let bValue = '';
+
+        switch (filters.sortBy) {
+          case 'status':
+            aValue = a.ghn_status_text || a.ghn_status || '';
+            bValue = b.ghn_status_text || b.ghn_status || '';
+            break;
+          case 'customer_name':
+            aValue = a.customer_name || '';
+            bValue = b.customer_name || '';
+            break;
+          case 'created_date':
+            aValue = a.created_date || '';
+            bValue = b.created_date || '';
+            break;
+        }
+
+        if (filters.sortOrder === 'desc') {
+          return bValue.localeCompare(aValue, 'vi');
+        } else {
+          return aValue.localeCompare(bValue, 'vi');
+        }
+      });
+    }
+
+    return result;
   }, [trackingData, filters]);
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
