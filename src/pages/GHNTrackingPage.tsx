@@ -476,24 +476,24 @@ export default function GHNTrackingPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-gray-300">
+          <div className="overflow-x-auto border rounded-lg">
+            <table className="w-full border-collapse">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">STT</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">MÃ GHN</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">MÃ ĐƠN HÀNG</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">TRẠNG THÁI ĐƠN HÀNG</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">TÊN KHÁCH HÀNG</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">SỐ ĐIỆN THOẠI</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">ĐỊA CHỈ</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">CÂN NẶNG ĐƠN HÀNG</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">NGÀY TẠO ĐƠN</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">NGÀY DỰ KIẾN GIAO</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">NGÀY GIAO THÀNH CÔNG</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">COD THU HỘ</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">TRA CỨU ĐƠN HÀNG</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">THAO TÁC</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[60px]">STT</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">MÃ GHN</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[100px]">MÃ ĐƠN HÀNG</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[140px]">TRẠNG THÁI</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[140px]">TÊN KHÁCH HÀNG</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[120px]">SỐ ĐIỆN THOẠI</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[200px]">ĐỊA CHỈ</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[100px]">CÂN NẶNG</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[110px]">NGÀY TẠO</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[120px]">DỰ KIẾN GIAO</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[120px]">NGÀY GIAO</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[100px]">COD THU HỘ</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[100px]">TRA CỨU</th>
+                  <th className="border border-gray-300 px-4 py-4 text-left text-sm font-semibold bg-gray-50 min-w-[80px]">THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
@@ -506,38 +506,38 @@ export default function GHNTrackingPage() {
                 ) : (
                   filteredData.map((item, index) => (
                     <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{index + 1}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm font-mono">{item.ghn_order_code}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm font-mono">{item.internal_order_code || '-'}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">
+                      <td className="bg-blue-800 text-white border border-gray-300 px-4 py-3 text-sm font-medium text-center">{index + 1}</td>
+                      <td className="bg-blue-800 text-white border border-gray-300 px-4 py-3 text-sm font-mono font-medium">{item.ghn_order_code}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm font-mono">{item.internal_order_code || '-'}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm">
                         <Badge className={statusColors[item.ghn_status || ''] || 'bg-gray-100 text-gray-800'}>
                           {item.ghn_status_text || item.ghn_status || '-'}
                         </Badge>
                       </td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{item.customer_name}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{item.customer_phone || '-'}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm max-w-sm break-words whitespace-normal align-top">
+                      <td className="border border-gray-300 px-4 py-3 text-sm">{item.customer_name}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm">{item.customer_phone || '-'}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm max-w-xs break-words whitespace-normal leading-relaxed">
                         {item.customer_address || '-'}
                       </td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatWeight(item.package_weight)}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatDate(item.created_date)}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatDate(item.expected_delivery_date)}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatDate(item.delivered_date)}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatCurrency(item.cod_amount)}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">
+                      <td className="border border-gray-300 px-4 py-3 text-sm">{formatWeight(item.package_weight)}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap">{formatDate(item.created_date)}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap">{formatDate(item.expected_delivery_date)}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap">{formatDate(item.delivered_date)}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap">{formatCurrency(item.cod_amount)}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm">
                         {item.tracking_url && (
                           <a
                             href={item.tracking_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                            className="text-blue-600 hover:text-blue-800 flex items-center gap-1 whitespace-nowrap"
                           >
                             <ExternalLink className="h-3 w-3" />
                             Tra cứu
                           </a>
                         )}
                       </td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">
+                      <td className="border border-gray-300 px-4 py-3 text-sm">
                         <Button
                           onClick={() => removeTracking(item.id)}
                           variant="ghost"
