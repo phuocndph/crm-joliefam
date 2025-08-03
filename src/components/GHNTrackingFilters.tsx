@@ -58,13 +58,6 @@ export function GHNTrackingFilters({
 
   return (
     <div className="mb-6">
-      {/* Header with count */}
-      <div className="mb-4">
-        <div className="text-sm text-muted-foreground">
-          Hiển thị {filteredCount.toLocaleString()} / {totalCount.toLocaleString()} đơn hàng
-        </div>
-      </div>
-
       {/* Simple Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         {/* Search */}
