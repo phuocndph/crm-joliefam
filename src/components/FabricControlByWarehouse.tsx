@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Badge } from '@/components/ui/badge';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
 import { Plus, Filter, Search, Package, TrendingUp, ArrowRight } from 'lucide-react';
-import { useFabricUsage, useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransfer } from '@/hooks/useFabrics';
+import { useFabricUsage, useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransfer, useUpdateInventory } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -30,6 +30,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   const { data: inventory = [] } = useFabricInventory();
   const createFabricUsage = useCreateFabricUsage();
   const createTransfer = useCreateTransfer();
+  const updateInventory = useUpdateInventory();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedManager, setSelectedManager] = useState('all');
@@ -299,14 +300,50 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         notes: transferNotes || `Chuyển ${transferQuantity}m từ ${fromWarehouse.name} về ${toWarehouse.name}`
       });
 
+      // Update inventory - reduce from source warehouse
+      const fromInventoryItem = inventory.find(item => 
+        item.fabric_variant_id === fabricVariant.id && item.warehouse_id === fromWarehouse.id
+      );
+      
+      if (fromInventoryItem) {
+        await updateInventory.mutateAsync({
+          fabric_variant_id: fabricVariant.id,
+          warehouse_id: fromWarehouse.id,
+          current_stock: fromInventoryItem.current_stock - transferQuantity
+        });
+      }
+
+      // Update inventory - add to destination warehouse
+      const toInventoryItem = inventory.find(item => 
+        item.fabric_variant_id === fabricVariant.id && item.warehouse_id === toWarehouse.id
+      );
+      
+      if (toInventoryItem) {
+        // Update existing inventory
+        await updateInventory.mutateAsync({
+          fabric_variant_id: fabricVariant.id,
+          warehouse_id: toWarehouse.id,
+          current_stock: toInventoryItem.current_stock + transferQuantity
+        });
+      } else {
+        // Create new inventory record if doesn't exist
+        await updateInventory.mutateAsync({
+          fabric_variant_id: fabricVariant.id,
+          warehouse_id: toWarehouse.id,
+          current_stock: transferQuantity,
+          minimum_stock: 0,
+          maximum_stock: 0
+        });
+      }
+
       setSelectedFabricForTransfer('');
       setTransferQuantity(0);
       setTransferNotes('');
       setShowTransferDialog(false);
-      toast({ title: "Thành công", description: "Đã tạo phiếu chuyển vải thành công" });
+      toast({ title: "Thành công", description: "Đã chuyển vải thành công và cập nhật tồn kho" });
     } catch (error) {
       console.error('Error creating transfer:', error);
-      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi tạo phiếu chuyển", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi chuyển vải", variant: "destructive" });
     }
   };
 

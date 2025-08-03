@@ -211,7 +211,7 @@ export const FabricInventoryOverview = () => {
     }
 
     try {
-      // Create transfer record
+      // First create transfer record
       await createTransfer.mutateAsync({
         fabric_variant_id: fabricVariant.id,
         from_warehouse_id: fromWarehouseId,
@@ -220,16 +220,69 @@ export const FabricInventoryOverview = () => {
         notes: transferNotes || `Chuyển ${transferQuantity}m từ ${fromWarehouse.name} về ${toWarehouse.name}`
       });
 
+      // Update inventory - reduce from source warehouse
+      const fromInventoryItem = inventory.find(item => 
+        item.fabric_variant_id === fabricVariant.id && item.warehouse_id === fromWarehouseId
+      );
+      
+      if (fromInventoryItem) {
+        await updateInventory.mutateAsync({
+          fabric_variant_id: fabricVariant.id,
+          warehouse_id: fromWarehouseId,
+          current_stock: fromInventoryItem.current_stock - transferQuantity
+        });
+      }
+
+      // Update inventory - add to destination warehouse
+      const toInventoryItem = inventory.find(item => 
+        item.fabric_variant_id === fabricVariant.id && item.warehouse_id === toWarehouseId
+      );
+      
+      if (toInventoryItem) {
+        // Update existing inventory
+        await updateInventory.mutateAsync({
+          fabric_variant_id: fabricVariant.id,
+          warehouse_id: toWarehouseId,
+          current_stock: toInventoryItem.current_stock + transferQuantity
+        });
+      } else {
+        // Create new inventory record if doesn't exist
+        await updateInventory.mutateAsync({
+          fabric_variant_id: fabricVariant.id,
+          warehouse_id: toWarehouseId,
+          current_stock: transferQuantity,
+          minimum_stock: 0,
+          maximum_stock: 0
+        });
+      }
+
+      // Create transactions for tracking
+      await createTransaction.mutateAsync({
+        fabric_variant_id: fabricVariant.id,
+        warehouse_id: fromWarehouseId,
+        transaction_type: 'transfer_out',
+        quantity: -transferQuantity,
+        notes: `Chuyển đi ${toWarehouse.name}`
+      });
+
+      await createTransaction.mutateAsync({
+        fabric_variant_id: fabricVariant.id,
+        warehouse_id: toWarehouseId,
+        transaction_type: 'transfer_in',
+        quantity: transferQuantity,
+        notes: `Nhận từ ${fromWarehouse.name}`
+      });
+
       setSelectedFabricForTransfer('');
       setTransferQuantity(0);
       setTransferNotes('');
       setFromWarehouseId('');
       setToWarehouseId('');
       setShowTransferDialog(false);
-      toast({ title: "Thành công", description: "Đã tạo phiếu chuyển vải thành công" });
+      toast({ title: "Thành công", description: "Đã chuyển vải thành công và cập nhật tồn kho" });
     } catch (error) {
       console.error('Error creating transfer:', error);
-      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi tạo phiếu chuyển", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi chuyển vải", variant: "destructive" });
     }
   };
 
