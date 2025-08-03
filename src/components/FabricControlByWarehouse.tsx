@@ -14,6 +14,7 @@ import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
+import { supabase } from '@/integrations/supabase/client';
 
 interface FabricControlByWarehouseProps {
   warehouseName: string;
@@ -49,9 +50,11 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     order_id: '',
     quantity_used: 0,
     customer_name: '',
+    customer_code: '',
     order_type: '',
     fabric_width: '',
-    usage_date: format(new Date(), 'yyyy-MM-dd')
+    usage_date: format(new Date(), 'yyyy-MM-dd'),
+    notes: ''
   });
 
   // Filter data by warehouse if specified
@@ -227,9 +230,11 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         order_id: '',
         quantity_used: 0,
         customer_name: '',
+        customer_code: '',
         order_type: '',
         fabric_width: '',
-        usage_date: format(new Date(), 'yyyy-MM-dd')
+        usage_date: format(new Date(), 'yyyy-MM-dd'),
+        notes: ''
       });
       setShowCreateDialog(false);
       toast({ title: "Thành công", description: "Đã ghi nhận sử dụng vải" });
@@ -384,8 +389,47 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                 <Input
                   id="order_number"
                   value={newUsage.order_number}
-                  onChange={(e) => setNewUsage(prev => ({ ...prev, order_number: e.target.value }))}
-                  placeholder="Nhập mã đơn hàng"
+                  onChange={async (e) => {
+                    const orderNumber = e.target.value;
+                    setNewUsage(prev => ({ ...prev, order_number: orderNumber }));
+                    
+                    // Tự động tìm kiếm đơn hàng và điền thông tin
+                    if (orderNumber) {
+                      try {
+                        const { data: orders, error } = await supabase
+                          .from('orders')
+                          .select(`
+                            *,
+                            customers (name, customer_code)
+                          `)
+                          .or(`order_number.ilike.%${orderNumber}%,display_order_number.ilike.%${orderNumber}%`)
+                          .limit(1);
+
+                        if (orders && orders.length > 0) {
+                          const order = orders[0];
+                          
+                          // Lấy fabric usage riêng biệt
+                          const { data: fabricUsageData } = await supabase
+                            .from('fabric_usage')
+                            .select('quantity_used')
+                            .eq('order_id', order.id);
+                          
+                          const totalFabricUsed = fabricUsageData ? 
+                            fabricUsageData.reduce((sum: number, usage: any) => sum + Number(usage.quantity_used), 0) : 0;
+                          
+                          setNewUsage(prev => ({
+                            ...prev,
+                            customer_name: order.customers?.name || '',
+                            customer_code: order.customers?.customer_code || '',
+                            notes: `Đơn hàng ${orderNumber} - Tổng vải tiêu thụ: ${totalFabricUsed.toFixed(2)}m`
+                          }));
+                        }
+                      } catch (error) {
+                        console.error('Error fetching order:', error);
+                      }
+                    }
+                  }}
+                  placeholder="Nhập mã đơn hàng (VD: 1555)"
                   required
                 />
               </div>
@@ -462,6 +506,15 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                   onChange={(e) => setNewUsage(prev => ({ ...prev, quantity_used: Number(e.target.value) }))}
                   placeholder="Nhập số lượng"
                   required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes">Ghi chú</Label>
+                <Input
+                  id="notes"
+                  value={newUsage.notes}
+                  onChange={(e) => setNewUsage(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Ghi chú (sẽ tự động điền nếu có đơn hàng trùng khớp)"
                 />
               </div>
               <Button onClick={handleCreateUsage} className="w-full" disabled={createFabricUsage.isPending}>
