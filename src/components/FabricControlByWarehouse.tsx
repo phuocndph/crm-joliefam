@@ -454,11 +454,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
             return "";
           };
 
-          const canTransfer = warehouseFilter?.toLowerCase().includes('hà nội') || warehouseFilter?.toLowerCase().includes('hanoi') 
-            ? fabric.hanoi > 0 
-            : warehouseFilter?.toLowerCase().includes('bắc ninh') || warehouseFilter?.toLowerCase().includes('bacninh')
-            ? fabric.bacninh > 0
-            : fabric.currentWarehouse > 0;
+          const canTransfer = fabric.currentWarehouse > 0;
 
           return (
             <Card key={index} className={getCardClass()}>
@@ -470,14 +466,6 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                   <div className="flex justify-between">
                     <span className={`text-sm font-medium ${getTextClass()}`}>Tồn kho:</span>
                     <span className={`text-lg font-bold ${getTextClass()}`}>{fabric.currentWarehouse.toFixed(2)}m</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Hà Nội:</span>
-                    <span className="text-sm">{fabric.hanoi.toFixed(2)}m</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Bắc Ninh:</span>
-                    <span className="text-sm">{fabric.bacninh.toFixed(2)}m</span>
                   </div>
                   {canTransfer && (
                     <div className="pt-2 border-t">
