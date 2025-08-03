@@ -129,13 +129,20 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     }
 
     try {
-      // Create a random UUID for order_id if not provided
       const usageData = {
-        ...newUsage,
-        order_id: newUsage.order_id || crypto.randomUUID()
+        order_id: newUsage.order_id || crypto.randomUUID(),
+        order_number: newUsage.order_number,
+        fabric_variant_id: newUsage.fabric_variant_id,
+        warehouse_id: newUsage.warehouse_id,
+        quantity_used: newUsage.quantity_used,
+        customer_name: newUsage.customer_name,
+        order_type: newUsage.order_type,
+        fabric_width: newUsage.fabric_width,
+        usage_date: newUsage.usage_date
       };
       
       await createFabricUsage.mutateAsync(usageData);
+      
       setNewUsage({
         order_number: '',
         fabric_variant_id: '',

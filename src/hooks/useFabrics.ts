@@ -383,21 +383,21 @@ export const useCreateFabricUsage = () => {
   
   return useMutation({
     mutationFn: async (data: {
+      order_id: string;
       order_number: string;
       fabric_variant_id: string;
       warehouse_id: string;
       quantity_used: number;
       customer_name: string;
       customer_code?: string;
+      order_type?: string;
+      fabric_width?: string;
       usage_date?: string;
       notes?: string;
     }) => {
       const { data: result, error } = await supabase
         .from('fabric_usage')
-        .insert({
-          ...data,
-          order_id: crypto.randomUUID()
-        })
+        .insert(data)
         .select()
         .single();
       
@@ -407,7 +407,6 @@ export const useCreateFabricUsage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
       queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
-      toast({ title: "Thành công", description: "Đã ghi nhận sử dụng vải" });
     },
   });
 };
