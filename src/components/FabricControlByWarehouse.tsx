@@ -25,7 +25,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   warehouseName,
   warehouseFilter
 }) => {
-  const { data: fabricUsage = [] } = useFabricUsage();
+  const { data: fabricUsage = [], refetch: refetchFabricUsage } = useFabricUsage();
   const { data: fabricVariants = [] } = useFabricVariants();
   const { data: warehouses = [] } = useWarehouses();
   const { data: inventory = [] } = useFabricInventory();
@@ -481,7 +481,12 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
       {/* Usage Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Chi tiết sử dụng vải theo đơn hàng</CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle>Chi tiết sử dụng vải theo đơn hàng</CardTitle>
+            <Badge variant="secondary">
+              {filteredUsage.length} bản ghi
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
