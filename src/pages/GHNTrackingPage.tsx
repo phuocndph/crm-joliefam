@@ -449,7 +449,7 @@ export default function GHNTrackingPage() {
               </div>
             )}
 
-            <div className="flex gap-4">
+            <div className="flex gap-4 items-start">
               <Button
                 onClick={updateAllTracking}
                 disabled={loading || trackingData.length === 0}
@@ -458,6 +458,15 @@ export default function GHNTrackingPage() {
                 {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                 Cập nhật tất cả
               </Button>
+              
+              {/* Filter Component */}
+              <div className="flex-1">
+                <GHNTrackingFilters
+                  onFiltersChange={handleFiltersChange}
+                  filteredCount={filteredData.length}
+                  totalCount={trackingData.length}
+                />
+              </div>
             </div>
           </div>
 
@@ -550,13 +559,6 @@ export default function GHNTrackingPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Filter Component moved to bottom */}
-      <GHNTrackingFilters
-        onFiltersChange={handleFiltersChange}
-        filteredCount={filteredData.length}
-        totalCount={trackingData.length}
-      />
     </div>
   );
 }
