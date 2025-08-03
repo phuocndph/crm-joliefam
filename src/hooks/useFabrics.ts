@@ -39,6 +39,48 @@ export const useCreateFabricType = () => {
   });
 };
 
+export const useUpdateFabricType = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (data: { id: string; name: string; description?: string }) => {
+      const { id, ...updateData } = data;
+      const { data: result, error } = await supabase
+        .from('fabric_types')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fabric-types'] });
+      toast({ title: "Thành công", description: "Đã cập nhật loại vải" });
+    },
+  });
+};
+
+export const useDeleteFabricType = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('fabric_types')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fabric-types'] });
+      toast({ title: "Thành công", description: "Đã xóa loại vải" });
+    },
+  });
+};
+
 // Fabric Variants hooks
 export const useFabricVariants = () => {
   return useQuery({

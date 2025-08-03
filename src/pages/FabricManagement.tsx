@@ -17,6 +17,9 @@ import { FabricInventoryOverview } from '@/components/FabricInventoryOverview';
 import { FabricControlByWarehouse } from '@/components/FabricControlByWarehouse';
 import { FabricUsageRecording } from '@/components/FabricUsageRecording';
 import { FabricUsageDetails } from '@/components/FabricUsageDetails';
+import { FabricTypeManagement } from '@/components/FabricTypeManagement';
+import { FabricWidthManagement } from '@/components/FabricWidthManagement';
+import { FabricVariantManagement } from '@/components/FabricVariantManagement';
 import { 
   useFabricTypes, 
   useFabricVariants,
@@ -864,144 +867,13 @@ const FabricManagement = () => {
 
         {/* Fabric Types Tab */}
         <TabsContent value="fabric-types" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Loại vải</CardTitle>
-                  <CardDescription>Quản lý các loại vải</CardDescription>
-                </div>
-                <Dialog open={showCreateTypeDialog} onOpenChange={setShowCreateTypeDialog}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Thêm loại vải
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Thêm loại vải mới</DialogTitle>
-                      <DialogDescription>Tạo loại vải mới cho hệ thống</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Tên loại vải</Label>
-                        <Input
-                          value={newFabricType.name}
-                          onChange={(e) => setNewFabricType(prev => ({ ...prev, name: e.target.value }))}
-                          placeholder="Ví dụ: T250 trơn, T300 sọc..."
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Mô tả</Label>
-                        <Textarea
-                          value={newFabricType.description}
-                          onChange={(e) => setNewFabricType(prev => ({ ...prev, description: e.target.value }))}
-                          placeholder="Mô tả về loại vải này"
-                        />
-                      </div>
-                      <Button onClick={handleCreateFabricType} className="w-full" disabled={createFabricType.isPending}>
-                        {createFabricType.isPending ? "Đang thêm..." : "Thêm loại vải"}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tên loại vải</TableHead>
-                      <TableHead>Mô tả</TableHead>
-                      <TableHead>Ngày tạo</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {fabricTypes?.map((type) => (
-                      <TableRow key={type.id}>
-                        <TableCell className="font-medium">{type.name}</TableCell>
-                        <TableCell>{type.description || '-'}</TableCell>
-                        <TableCell>{new Date(type.created_at).toLocaleDateString('vi-VN')}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+          <FabricTypeManagement />
+          <FabricVariantManagement />
         </TabsContent>
 
         {/* Fabric Widths Tab */}
         <TabsContent value="fabric-widths" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Khổ vải</CardTitle>
-                  <CardDescription>Quản lý các khổ vải</CardDescription>
-                </div>
-                <Dialog open={showCreateWidthDialog} onOpenChange={setShowCreateWidthDialog}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Thêm khổ vải
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Thêm khổ vải mới</DialogTitle>
-                      <DialogDescription>Tạo khổ vải mới cho hệ thống</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Mã khổ vải</Label>
-                        <Input
-                          value={newFabricWidth.width_code}
-                          onChange={(e) => setNewFabricWidth(prev => ({ ...prev, width_code: e.target.value }))}
-                          placeholder="Ví dụ: K240, K260, K280..."
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Mô tả</Label>
-                        <Textarea
-                          value={newFabricWidth.description}
-                          onChange={(e) => setNewFabricWidth(prev => ({ ...prev, description: e.target.value }))}
-                          placeholder="Mô tả về khổ vải này"
-                        />
-                      </div>
-                      <Button onClick={handleCreateFabricWidth} className="w-full" disabled={createFabricWidth.isPending}>
-                        {createFabricWidth.isPending ? "Đang thêm..." : "Thêm khổ vải"}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Mã khổ vải</TableHead>
-                      <TableHead>Mô tả</TableHead>
-                      <TableHead>Ngày tạo</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {fabricWidths?.map((width) => (
-                      <TableRow key={width.id}>
-                        <TableCell className="font-medium">{width.width_code}</TableCell>
-                        <TableCell>{width.description || '-'}</TableCell>
-                        <TableCell>{new Date(width.created_at).toLocaleDateString('vi-VN')}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+          <FabricWidthManagement />
         </TabsContent>
       </Tabs>
     </div>
