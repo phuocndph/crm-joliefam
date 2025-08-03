@@ -39,7 +39,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
     order_number: '',
     warehouse_id: '',
     customer_name: '',
-    customer_code: '',
+    order_category: '', // Thay customer_code thành order_category
     order_type: '',
     usage_date: new Date().toISOString().split('T')[0],
     notes: '',
@@ -75,7 +75,6 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
           ...prev,
           order_id: order.id,
           customer_name: order.customers?.name || '',
-          customer_code: (order.customers as any)?.customer_code || '',
           notes: `Xuất vải cho đơn hàng ${formData.order_number} - ${order.customers?.name || 'Khách hàng'}`
         }));
       }
@@ -132,7 +131,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
           warehouse_id: formData.warehouse_id,
           quantity_used: fabricItem.quantity_used,
           customer_name: formData.customer_name,
-          customer_code: formData.customer_code,
+          customer_code: formData.order_category, // Use order_category
           order_type: formData.order_type,
           fabric_width: fabricItem.fabric_width,
           usage_date: formData.usage_date,
@@ -149,7 +148,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
           warehouseFilter === 'bacninh' ? w.name.includes('Bắc Ninh') : false
         )?.id || '',
         customer_name: '',
-        customer_code: '',
+        order_category: '',
         order_type: '',
         usage_date: new Date().toISOString().split('T')[0],
         notes: '',
@@ -244,19 +243,20 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                     className="w-full"
                     value={formData.customer_name}
                     onChange={(e) => setFormData(prev => ({ ...prev, customer_name: e.target.value }))}
-                    placeholder="Tự động điền khi chọn đơn hàng"
-                    readOnly
+                    placeholder="Tự động điền từ đơn hàng hoặc nhập thủ công"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Mã khách hàng</Label>
-                  <Input
-                    className="w-full"
-                    value={formData.customer_code}
-                    onChange={(e) => setFormData(prev => ({ ...prev, customer_code: e.target.value }))}
-                    placeholder="Tự động điền khi chọn đơn hàng"
-                    readOnly
-                  />
+                  <Label>Loại đơn</Label>
+                  <Select value={formData.order_category} onValueChange={(value) => setFormData(prev => ({ ...prev, order_category: value }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Chọn loại đơn" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="don_phuoc">Đơn Phước</SelectItem>
+                      <SelectItem value="don_hoan">Đơn Hoan</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
