@@ -381,13 +381,6 @@ export default function GHNTrackingPage() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      {/* Filter Component */}
-      <GHNTrackingFilters
-        onFiltersChange={handleFiltersChange}
-        filteredCount={filteredData.length}
-        totalCount={trackingData.length}
-      />
-
       <Card>
         <CardHeader>
           <CardTitle>Theo dõi đơn hàng GHN</CardTitle>
@@ -464,14 +457,6 @@ export default function GHNTrackingPage() {
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                 Cập nhật tất cả
-              </Button>
-              <Button
-                onClick={importAllOrdersFromGHN}
-                disabled={loading}
-                variant="secondary"
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
-                Import từ GHN
               </Button>
             </div>
           </div>
@@ -565,6 +550,13 @@ export default function GHNTrackingPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Filter Component moved to bottom */}
+      <GHNTrackingFilters
+        onFiltersChange={handleFiltersChange}
+        filteredCount={filteredData.length}
+        totalCount={trackingData.length}
+      />
     </div>
   );
 }
