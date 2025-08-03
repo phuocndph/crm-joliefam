@@ -354,3 +354,60 @@ export const useUpdateTransferStatus = () => {
     },
   });
 };
+
+// Fabric Usage hooks
+export const useFabricUsage = () => {
+  return useQuery({
+    queryKey: ['fabric-usage'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('fabric_usage')
+        .select(`
+          *,
+          fabric_variants (
+            *,
+            fabric_types (name)
+          ),
+          warehouses (name, warehouse_type)
+        `)
+        .order('usage_date', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+};
+
+export const useCreateFabricUsage = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (data: {
+      order_number: string;
+      fabric_variant_id: string;
+      warehouse_id: string;
+      quantity_used: number;
+      customer_name: string;
+      customer_code?: string;
+      usage_date?: string;
+      notes?: string;
+    }) => {
+      const { data: result, error } = await supabase
+        .from('fabric_usage')
+        .insert({
+          ...data,
+          order_id: crypto.randomUUID()
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
+      queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+      toast({ title: "Thành công", description: "Đã ghi nhận sử dụng vải" });
+    },
+  });
+};

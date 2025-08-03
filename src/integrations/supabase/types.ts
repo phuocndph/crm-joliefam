@@ -492,6 +492,60 @@ export type Database = {
         }
         Relationships: []
       }
+      fabric_usage: {
+        Row: {
+          created_at: string
+          customer_code: string | null
+          customer_name: string | null
+          fabric_variant_id: string
+          id: string
+          manager_id: string | null
+          notes: string | null
+          order_id: string
+          order_number: string | null
+          quantity_used: number
+          tenant_id: string
+          unit: string
+          updated_at: string
+          usage_date: string
+          warehouse_id: string
+        }
+        Insert: {
+          created_at?: string
+          customer_code?: string | null
+          customer_name?: string | null
+          fabric_variant_id: string
+          id?: string
+          manager_id?: string | null
+          notes?: string | null
+          order_id: string
+          order_number?: string | null
+          quantity_used?: number
+          tenant_id?: string
+          unit?: string
+          updated_at?: string
+          usage_date?: string
+          warehouse_id: string
+        }
+        Update: {
+          created_at?: string
+          customer_code?: string | null
+          customer_name?: string | null
+          fabric_variant_id?: string
+          id?: string
+          manager_id?: string | null
+          notes?: string | null
+          order_id?: string
+          order_number?: string | null
+          quantity_used?: number
+          tenant_id?: string
+          unit?: string
+          updated_at?: string
+          usage_date?: string
+          warehouse_id?: string
+        }
+        Relationships: []
+      }
       fabric_variants: {
         Row: {
           color: string | null

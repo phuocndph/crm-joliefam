@@ -14,6 +14,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { FabricInventoryOverview } from '@/components/FabricInventoryOverview';
+import { FabricControlByWarehouse } from '@/components/FabricControlByWarehouse';
 import { 
   useFabricTypes, 
   useFabricVariants,
@@ -22,13 +23,15 @@ import {
   useFabricInventory,
   useFabricTransactions,
   useFabricTransfers,
+  useFabricUsage,
   useCreateFabricType,
   useCreateFabricVariant,
   useCreateFabricWidth,
   useUpdateInventory,
   useCreateTransaction,
   useCreateTransfer,
-  useUpdateTransferStatus
+  useUpdateTransferStatus,
+  useCreateFabricUsage
 } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 
@@ -360,6 +363,22 @@ const FabricManagement = () => {
         {/* Total Quantity Tab */}
         <TabsContent value="total-quantity" className="space-y-4">
           <FabricInventoryOverview />
+        </TabsContent>
+
+        {/* Hanoi Control Tab */}
+        <TabsContent value="hanoi-control" className="space-y-4">
+          <FabricControlByWarehouse 
+            warehouseName="Hà Nội" 
+            warehouseFilter="hanoi"
+          />
+        </TabsContent>
+
+        {/* Bac Ninh Control Tab */}
+        <TabsContent value="bacninh-control" className="space-y-4">
+          <FabricControlByWarehouse 
+            warehouseName="Bắc Ninh" 
+            warehouseFilter="bacninh"
+          />
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
