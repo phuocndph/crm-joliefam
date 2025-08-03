@@ -58,13 +58,34 @@ export const FabricInventoryOverview = () => {
     return acc;
   }, [] as Array<{ name: string; meters: number; rolls: number }>);
 
-  // Calculate totals
-  const totalRolls = inventoryData.reduce((sum, item) => sum + item.currentStockRolls, 0);
-  const totalMeters = inventoryData.reduce((sum, item) => sum + item.currentStockMeters, 0);
-
   // Find main warehouses
   const hanoiWarehouse = warehouses.find(w => w.name.toLowerCase().includes('hà nội') || w.name.toLowerCase().includes('hanoi'));
   const bacninhWarehouse = warehouses.find(w => w.name.toLowerCase().includes('bắc ninh') || w.name.toLowerCase().includes('bacninh'));
+
+  // Group by fabric variant with warehouse breakdown
+  const fabricSummary = inventoryData.reduce((acc, item) => {
+    const key = `${item.fabricCode} ${item.widthCode}`;
+    if (!acc[key]) {
+      acc[key] = {
+        fabricName: key,
+        total: 0,
+        hanoi: 0,
+        bacninh: 0
+      };
+    }
+    
+    acc[key].total += item.currentStockMeters;
+    
+    if (item.warehouse?.toLowerCase().includes('hà nội') || item.warehouse?.toLowerCase().includes('hanoi')) {
+      acc[key].hanoi += item.currentStockMeters;
+    } else if (item.warehouse?.toLowerCase().includes('bắc ninh') || item.warehouse?.toLowerCase().includes('bacninh')) {
+      acc[key].bacninh += item.currentStockMeters;
+    }
+    
+    return acc;
+  }, {} as Record<string, { fabricName: string; total: number; hanoi: number; bacninh: number }>);
+
+  const fabricSummaryArray = Object.values(fabricSummary);
 
   const handleInboundSubmit = async () => {
     if (!newInbound.fabric_variant_id || newInbound.quantity <= 0) {
@@ -242,35 +263,38 @@ export const FabricInventoryOverview = () => {
         </Dialog>
       </div>
 
-      {/* Summary Cards */}
+      {/* Fabric Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Tổng số cuộn</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalRolls}</div>
-            <p className="text-xs text-muted-foreground">cuộn vải</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Tổng số mét</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalMeters.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground">mét vải</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Loại vải</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{variants.length}</div>
-            <p className="text-xs text-muted-foreground">loại khác nhau</p>
-          </CardContent>
-        </Card>
+        {fabricSummaryArray.map((fabric, index) => (
+          <Card key={index}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Vải {fabric.fabricName}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium">Tổng:</span>
+                  <span className="text-lg font-bold">{fabric.total.toFixed(2)}m</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Hà Nội:</span>
+                  <span className="text-sm">{fabric.hanoi.toFixed(2)}m</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Bắc Ninh:</span>
+                  <span className="text-sm">{fabric.bacninh.toFixed(2)}m</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {fabricSummaryArray.length === 0 && (
+          <Card>
+            <CardContent className="text-center text-muted-foreground py-8">
+              Chưa có dữ liệu tồn kho
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -319,8 +343,8 @@ export const FabricInventoryOverview = () => {
                   {inventoryData.length > 0 && (
                     <TableRow className="bg-muted/50 font-medium">
                       <TableCell colSpan={3}>Tổng</TableCell>
-                      <TableCell className="text-center">{totalRolls}</TableCell>
-                      <TableCell className="text-center">{totalMeters.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">{inventoryData.reduce((sum, item) => sum + item.currentStockRolls, 0)}</TableCell>
+                      <TableCell className="text-center">{inventoryData.reduce((sum, item) => sum + item.currentStockMeters, 0).toFixed(2)}</TableCell>
                       <TableCell></TableCell>
                     </TableRow>
                   )}
