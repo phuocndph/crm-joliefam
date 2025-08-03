@@ -216,13 +216,16 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         warehouse_id: newUsage.warehouse_id,
         quantity_used: newUsage.quantity_used,
         customer_name: newUsage.customer_name,
+        customer_code: newUsage.customer_code,
         order_type: newUsage.order_type,
         fabric_width: newUsage.fabric_width,
-        usage_date: newUsage.usage_date
+        usage_date: newUsage.usage_date,
+        notes: newUsage.notes
       };
       
       await createFabricUsage.mutateAsync(usageData);
       
+      // Reset form
       setNewUsage({
         order_number: '',
         fabric_variant_id: '',
@@ -487,11 +490,14 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                 <TableRow>
                   <TableHead>Ngày xuất vải</TableHead>
                   <TableHead>Mã đơn hàng</TableHead>
-                  <TableHead>Tên khách hàng</TableHead>
+                  <TableHead>Khách hàng</TableHead>
+                  <TableHead>Mã KH</TableHead>
                   <TableHead>Loại đơn</TableHead>
                   <TableHead>Loại vải</TableHead>
                   <TableHead>Khổ vải</TableHead>
+                  <TableHead>Kho</TableHead>
                   <TableHead className="text-right">Số lượng (m)</TableHead>
+                  <TableHead>Ghi chú</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -504,25 +510,45 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                       <Badge variant="outline">{item.order_number}</Badge>
                     </TableCell>
                     <TableCell className="font-medium">{item.customer_name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {item.customer_code || '-'}
+                    </TableCell>
                     <TableCell>
                       <Badge variant="secondary">{item.order_type || '-'}</Badge>
                     </TableCell>
                     <TableCell>
-                      {item.fabric_variants && typeof item.fabric_variants === 'object' && 'fabric_types' in item.fabric_variants &&
-                        item.fabric_variants.fabric_types && typeof item.fabric_variants.fabric_types === 'object' && 'name' in item.fabric_variants.fabric_types
-                        ? item.fabric_variants.fabric_types.name : '-'}
+                      <div className="space-y-1">
+                        <div className="font-medium">
+                          {item.fabric_variants && typeof item.fabric_variants === 'object' && 'fabric_types' in item.fabric_variants &&
+                            item.fabric_variants.fabric_types && typeof item.fabric_variants.fabric_types === 'object' && 'name' in item.fabric_variants.fabric_types
+                            ? item.fabric_variants.fabric_types.name : '-'}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {item.fabric_variants && typeof item.fabric_variants === 'object' && 'variant_name' in item.fabric_variants
+                            ? item.fabric_variants.variant_name : ''}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>
-                      {item.fabric_width || '-'}
+                      <Badge variant="outline">{item.fabric_width || '-'}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {item.warehouses && typeof item.warehouses === 'object' && 'name' in item.warehouses
+                          ? item.warehouses.name : '-'}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatQuantity(item.quantity_used)}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                      {item.notes || '-'}
                     </TableCell>
                   </TableRow>
                 ))}
                 {filteredUsage.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground">
                       Không có dữ liệu sử dụng vải
                     </TableCell>
                   </TableRow>
