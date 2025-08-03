@@ -323,14 +323,32 @@ export default function GHNTrackingPage() {
   // Filter and sort logic
   const filteredData = useMemo(() => {
     let result = trackingData.filter(item => {
-      // Search text filter
+      // Search text filter - flexible search across all columns
       if (filters.searchText) {
         const searchText = filters.searchText.toLowerCase();
-        const matchesGhnCode = item.ghn_order_code?.toLowerCase().includes(searchText);
-        const matchesInternalCode = item.internal_order_code?.toLowerCase().includes(searchText);
-        const matchesCustomerName = item.customer_name?.toLowerCase().includes(searchText);
         
-        if (!matchesGhnCode && !matchesInternalCode && !matchesCustomerName) {
+        // Create an array of all searchable text fields
+        const searchableFields = [
+          item.ghn_order_code,
+          item.internal_order_code,
+          item.customer_name,
+          item.customer_phone,
+          item.customer_address,
+          item.ghn_status,
+          item.ghn_status_text,
+          formatDate(item.created_date),
+          formatDate(item.expected_delivery_date),
+          formatDate(item.delivered_date),
+          formatCurrency(item.cod_amount),
+          formatWeight(item.package_weight)
+        ].filter(Boolean); // Remove null/undefined values
+        
+        // Check if search text appears in any field
+        const hasMatch = searchableFields.some(field => 
+          field?.toString().toLowerCase().includes(searchText)
+        );
+        
+        if (!hasMatch) {
           return false;
         }
       }
