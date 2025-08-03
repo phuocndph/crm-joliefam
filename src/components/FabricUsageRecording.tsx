@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricWidths } from '@/hooks/useFabrics';
 import { useOrders } from '@/hooks/useOrders';
 import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface FabricUsageRecordingProps {
   warehouseName: string;
@@ -66,29 +67,38 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
     }
   }, [warehouses, warehouseFilter]);
 
-  // Auto-fill customer info when order is selected
-  useEffect(() => {
-    console.log('Auto-fill effect triggered:', { 
-      order_number: formData.order_number, 
-      orders: orders?.length,
-      ordersData: orders 
-    });
+  // Auto-fill customer info when order is selected - using direct API call like in FabricControlByWarehouse
+  const handleOrderNumberChange = async (orderNumber: string) => {
+    setFormData(prev => ({ ...prev, order_number: orderNumber }));
     
-    if (formData.order_number && orders && orders.length > 0) {
-      const order = orders.find(o => o.order_number === formData.order_number);
-      console.log('Found order:', order);
-      
-      if (order && order.customers) {
-        console.log('Setting customer name:', order.customers.name);
-        setFormData(prev => ({
-          ...prev,
-          order_id: order.id,
-          customer_name: order.customers?.name || '',
-          notes: `Xuất vải cho đơn hàng ${formData.order_number} - ${order.customers?.name || 'Khách hàng'}`
-        }));
+    // Tự động tìm kiếm đơn hàng và điền thông tin
+    if (orderNumber) {
+      try {
+        const { data: orders, error } = await supabase
+          .from('orders')
+          .select(`
+            *,
+            customers (name, customer_code)
+          `)
+          .or(`order_number.ilike.%${orderNumber}%,display_order_number.ilike.%${orderNumber}%`)
+          .limit(1);
+
+        if (orders && orders.length > 0) {
+          const order = orders[0];
+          console.log('Found order:', order);
+          
+          setFormData(prev => ({
+            ...prev,
+            order_id: order.id,
+            customer_name: order.customers?.name || '',
+            notes: `Xuất vải cho đơn hàng ${orderNumber} - ${order.customers?.name || 'Khách hàng'}`
+          }));
+        }
+      } catch (error) {
+        console.error('Error fetching order:', error);
       }
     }
-  }, [formData.order_number, orders]);
+  };
 
   const addFabricItem = () => {
     setFormData(prev => ({
@@ -216,7 +226,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                   <Input
                     className="w-full"
                     value={formData.order_number}
-                    onChange={(e) => setFormData(prev => ({ ...prev, order_number: e.target.value }))}
+                    onChange={(e) => handleOrderNumberChange(e.target.value)}
                     placeholder="Nhập số đơn hàng"
                   />
                 </div>
