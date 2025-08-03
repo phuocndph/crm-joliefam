@@ -1,11 +1,34 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useFabricInventory, useFabricVariants } from "@/hooks/useFabrics";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Plus, Package2 } from "lucide-react";
+import { useFabricInventory, useFabricVariants, useFabricTypes, useWarehouses, useCreateTransaction, useUpdateInventory } from "@/hooks/useFabrics";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { toast } from "@/hooks/use-toast";
 
 export const FabricInventoryOverview = () => {
   const { data: inventory = [] } = useFabricInventory();
   const { data: variants = [] } = useFabricVariants();
+  const { data: fabricTypes = [] } = useFabricTypes();
+  const { data: warehouses = [] } = useWarehouses();
+  const createTransaction = useCreateTransaction();
+  const updateInventory = useUpdateInventory();
+  
+  const [showInboundDialog, setShowInboundDialog] = useState(false);
+  const [newInbound, setNewInbound] = useState({
+    fabric_variant_id: '',
+    quantity: 0,
+    unit_price: 0,
+    supplier_name: '',
+    reference_number: '',
+    transfer_to_bacninh: 0,
+    notes: ''
+  });
 
   // Process inventory data for table display
   const inventoryData = inventory.map(item => ({
@@ -39,8 +62,186 @@ export const FabricInventoryOverview = () => {
   const totalRolls = inventoryData.reduce((sum, item) => sum + item.currentStockRolls, 0);
   const totalMeters = inventoryData.reduce((sum, item) => sum + item.currentStockMeters, 0);
 
+  // Find main warehouses
+  const hanoiWarehouse = warehouses.find(w => w.name.toLowerCase().includes('hà nội') || w.name.toLowerCase().includes('hanoi'));
+  const bacninhWarehouse = warehouses.find(w => w.name.toLowerCase().includes('bắc ninh') || w.name.toLowerCase().includes('bacninh'));
+
+  const handleInboundSubmit = async () => {
+    if (!newInbound.fabric_variant_id || newInbound.quantity <= 0) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
+      return;
+    }
+
+    if (!hanoiWarehouse) {
+      toast({ title: "Lỗi", description: "Không tìm thấy kho Hà Nội", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const hanoiQuantity = newInbound.quantity - newInbound.transfer_to_bacninh;
+      
+      // Create inbound transaction for Hanoi
+      await createTransaction.mutateAsync({
+        fabric_variant_id: newInbound.fabric_variant_id,
+        warehouse_id: hanoiWarehouse.id,
+        transaction_type: 'inbound',
+        quantity: hanoiQuantity,
+        unit_price: newInbound.unit_price,
+        supplier_name: newInbound.supplier_name,
+        reference_number: newInbound.reference_number,
+        notes: newInbound.notes
+      });
+
+      // Update Hanoi inventory
+      await updateInventory.mutateAsync({
+        fabric_variant_id: newInbound.fabric_variant_id,
+        warehouse_id: hanoiWarehouse.id,
+        current_stock: hanoiQuantity
+      });
+
+      // If transferring to Bac Ninh
+      if (newInbound.transfer_to_bacninh > 0 && bacninhWarehouse) {
+        // Create transfer transaction
+        await createTransaction.mutateAsync({
+          fabric_variant_id: newInbound.fabric_variant_id,
+          warehouse_id: bacninhWarehouse.id,
+          transaction_type: 'transfer_in',
+          quantity: newInbound.transfer_to_bacninh,
+          reference_number: `Chuyển từ HN: ${newInbound.reference_number}`,
+          notes: `Chuyển từ kho Hà Nội`
+        });
+
+        // Update Bac Ninh inventory
+        await updateInventory.mutateAsync({
+          fabric_variant_id: newInbound.fabric_variant_id,
+          warehouse_id: bacninhWarehouse.id,
+          current_stock: newInbound.transfer_to_bacninh
+        });
+      }
+
+      setNewInbound({
+        fabric_variant_id: '',
+        quantity: 0,
+        unit_price: 0,
+        supplier_name: '',
+        reference_number: '',
+        transfer_to_bacninh: 0,
+        notes: ''
+      });
+      setShowInboundDialog(false);
+      toast({ title: "Thành công", description: "Đã nhập kho và phân bổ vải thành công" });
+    } catch (error) {
+      console.error('Error creating inbound:', error);
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi nhập kho", variant: "destructive" });
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Header with Import Button */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-semibold">Tổng số lượng vải</h2>
+          <p className="text-sm text-muted-foreground">Quản lý tồn kho tổng thể các loại vải</p>
+        </div>
+        <Dialog open={showInboundDialog} onOpenChange={setShowInboundDialog}>
+          <DialogTrigger asChild>
+            <Button>
+              <Package2 className="mr-2 h-4 w-4" />
+              Nhập kho vải
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Nhập kho vải mới</DialogTitle>
+              <DialogDescription>
+                Nhập vải vào kho chính (Hà Nội) và phân bổ sang Bắc Ninh nếu cần
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Loại vải</Label>
+                <Select value={newInbound.fabric_variant_id} onValueChange={(value) => setNewInbound(prev => ({ ...prev, fabric_variant_id: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn loại vải" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {variants?.map((variant) => (
+                      <SelectItem key={variant.id} value={variant.id}>
+                        {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Tổng số lượng nhập (mét)</Label>
+                <Input
+                  type="number"
+                  value={newInbound.quantity}
+                  onChange={(e) => setNewInbound(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
+                  placeholder="Nhập số lượng"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Chuyển sang Bắc Ninh (mét)</Label>
+                <Input
+                  type="number"
+                  value={newInbound.transfer_to_bacninh}
+                  onChange={(e) => setNewInbound(prev => ({ ...prev, transfer_to_bacninh: parseFloat(e.target.value) || 0 }))}
+                  placeholder="Số lượng chuyển sang Bắc Ninh"
+                  max={newInbound.quantity}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Còn lại tại Hà Nội: {(newInbound.quantity - newInbound.transfer_to_bacninh).toFixed(2)} mét
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Đơn giá (VNĐ/mét)</Label>
+                <Input
+                  type="number"
+                  value={newInbound.unit_price}
+                  onChange={(e) => setNewInbound(prev => ({ ...prev, unit_price: parseFloat(e.target.value) || 0 }))}
+                  placeholder="Đơn giá"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Nhà cung cấp</Label>
+                <Input
+                  value={newInbound.supplier_name}
+                  onChange={(e) => setNewInbound(prev => ({ ...prev, supplier_name: e.target.value }))}
+                  placeholder="Tên nhà cung cấp"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Số chứng từ</Label>
+                <Input
+                  value={newInbound.reference_number}
+                  onChange={(e) => setNewInbound(prev => ({ ...prev, reference_number: e.target.value }))}
+                  placeholder="Số hóa đơn/phiếu nhập"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Ghi chú</Label>
+                <Input
+                  value={newInbound.notes}
+                  onChange={(e) => setNewInbound(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Ghi chú thêm"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setShowInboundDialog(false)}>
+                  Hủy
+                </Button>
+                <Button onClick={handleInboundSubmit} disabled={createTransaction.isPending}>
+                  {createTransaction.isPending ? "Đang xử lý..." : "Nhập kho"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
