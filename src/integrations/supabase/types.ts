@@ -544,7 +544,22 @@ export type Database = {
           usage_date?: string
           warehouse_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fabric_usage_fabric_variant_id_fkey"
+            columns: ["fabric_variant_id"]
+            isOneToOne: false
+            referencedRelation: "fabric_variants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fabric_usage_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fabric_variants: {
         Row: {

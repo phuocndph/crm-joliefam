@@ -52,8 +52,9 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     // Filter by warehouse
     if (warehouseFilter) {
       filtered = filtered.filter(item => 
-        item.warehouses?.warehouse_type === warehouseFilter ||
-        item.warehouses?.name.toLowerCase().includes(warehouseFilter.toLowerCase())
+        (item.warehouses && typeof item.warehouses === 'object' && 'warehouse_type' in item.warehouses) &&
+        (item.warehouses.warehouse_type === warehouseFilter ||
+        item.warehouses.name?.toLowerCase().includes(warehouseFilter.toLowerCase()))
       );
     }
 
@@ -63,15 +64,19 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         item.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.fabric_variants?.variant_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.fabric_variants?.fabric_types?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+        (item.fabric_variants && typeof item.fabric_variants === 'object' && 'variant_name' in item.fabric_variants &&
+          item.fabric_variants.variant_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (item.fabric_variants && typeof item.fabric_variants === 'object' && 'fabric_types' in item.fabric_variants &&
+          item.fabric_variants.fabric_types && typeof item.fabric_variants.fabric_types === 'object' && 'name' in item.fabric_variants.fabric_types &&
+          item.fabric_variants.fabric_types.name?.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
     // Filter by fabric type
     if (selectedFabricType !== 'all') {
       filtered = filtered.filter(item => 
-        item.fabric_variants?.fabric_type_id === selectedFabricType
+        item.fabric_variants && typeof item.fabric_variants === 'object' && 'fabric_type_id' in item.fabric_variants &&
+        item.fabric_variants.fabric_type_id === selectedFabricType
       );
     }
 
@@ -96,8 +101,11 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     
     // Group by fabric type
     const fabricTypeUsage = filteredUsage.reduce((acc, item) => {
-      const fabricType = item.fabric_variants?.fabric_types?.name || 'Không xác định';
-      const variant = item.fabric_variants?.variant_name || '';
+      const fabricType = (item.fabric_variants && typeof item.fabric_variants === 'object' && 'fabric_types' in item.fabric_variants &&
+        item.fabric_variants.fabric_types && typeof item.fabric_variants.fabric_types === 'object' && 'name' in item.fabric_variants.fabric_types)
+        ? item.fabric_variants.fabric_types.name : 'Không xác định';
+      const variant = (item.fabric_variants && typeof item.fabric_variants === 'object' && 'variant_name' in item.fabric_variants)
+        ? item.fabric_variants.variant_name : '';
       const key = `${fabricType} - ${variant}`;
       
       acc[key] = (acc[key] || 0) + (item.quantity_used || 0);
@@ -379,16 +387,21 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                     </TableCell>
                     <TableCell className="font-medium">{item.customer_name}</TableCell>
                     <TableCell>{item.customer_code}</TableCell>
-                    <TableCell>{item.fabric_variants?.fabric_types?.name}</TableCell>
                     <TableCell>
-                      {item.fabric_variants?.variant_name}
-                      {item.fabric_variants?.color && (
+                      {item.fabric_variants && typeof item.fabric_variants === 'object' && 'fabric_types' in item.fabric_variants &&
+                        item.fabric_variants.fabric_types && typeof item.fabric_variants.fabric_types === 'object' && 'name' in item.fabric_variants.fabric_types
+                        ? item.fabric_variants.fabric_types.name : '-'}
+                    </TableCell>
+                    <TableCell>
+                      {item.fabric_variants && typeof item.fabric_variants === 'object' && 'variant_name' in item.fabric_variants
+                        ? item.fabric_variants.variant_name : '-'}
+                      {item.fabric_variants && typeof item.fabric_variants === 'object' && 'color' in item.fabric_variants && item.fabric_variants.color && (
                         <Badge variant="secondary" className="ml-1">{item.fabric_variants.color}</Badge>
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={item.warehouses?.warehouse_type === 'main' ? 'default' : 'secondary'}>
-                        {item.warehouses?.name}
+                      <Badge variant={(item.warehouses && typeof item.warehouses === 'object' && 'warehouse_type' in item.warehouses && item.warehouses.warehouse_type === 'main') ? 'default' : 'secondary'}>
+                        {item.warehouses && typeof item.warehouses === 'object' && 'name' in item.warehouses ? item.warehouses.name : '-'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right font-medium">
