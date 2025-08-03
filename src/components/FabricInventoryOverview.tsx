@@ -25,6 +25,8 @@ export const FabricInventoryOverview = () => {
   const [selectedFabricForTransfer, setSelectedFabricForTransfer] = useState<string>('');
   const [transferQuantity, setTransferQuantity] = useState(0);
   const [transferNotes, setTransferNotes] = useState('');
+  const [fromWarehouseId, setFromWarehouseId] = useState('');
+  const [toWarehouseId, setToWarehouseId] = useState('');
   const [newInbound, setNewInbound] = useState({
     fabric_variant_id: '',
     quantity: 0,
@@ -163,20 +165,41 @@ export const FabricInventoryOverview = () => {
   };
 
   const handleTransferSubmit = async () => {
-    if (!selectedFabricForTransfer || transferQuantity <= 0) {
+    if (!selectedFabricForTransfer || transferQuantity <= 0 || !fromWarehouseId || !toWarehouseId) {
       toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
       return;
     }
 
-    if (!hanoiWarehouse || !bacninhWarehouse) {
-      toast({ title: "Lỗi", description: "Không tìm thấy kho Hà Nội hoặc Bắc Ninh", variant: "destructive" });
+    if (fromWarehouseId === toWarehouseId) {
+      toast({ title: "Lỗi", description: "Kho nguồn và kho đích không được trùng nhau", variant: "destructive" });
       return;
     }
 
     // Find the fabric variant for the selected fabric
     const selectedFabric = fabricSummaryArray.find(f => f.fabricName === selectedFabricForTransfer);
-    if (!selectedFabric || selectedFabric.hanoi < transferQuantity) {
-      toast({ title: "Lỗi", description: "Số lượng chuyển vượt quá tồn kho Hà Nội", variant: "destructive" });
+    if (!selectedFabric) {
+      toast({ title: "Lỗi", description: "Không tìm thấy thông tin vải", variant: "destructive" });
+      return;
+    }
+
+    // Get available quantity from source warehouse
+    const fromWarehouse = warehouses.find(w => w.id === fromWarehouseId);
+    const toWarehouse = warehouses.find(w => w.id === toWarehouseId);
+    
+    if (!fromWarehouse || !toWarehouse) {
+      toast({ title: "Lỗi", description: "Không tìm thấy thông tin kho", variant: "destructive" });
+      return;
+    }
+
+    let availableQuantity = 0;
+    if (fromWarehouse.name.toLowerCase().includes('hà nội') || fromWarehouse.name.toLowerCase().includes('hanoi')) {
+      availableQuantity = selectedFabric.hanoi;
+    } else if (fromWarehouse.name.toLowerCase().includes('bắc ninh') || fromWarehouse.name.toLowerCase().includes('bacninh')) {
+      availableQuantity = selectedFabric.bacninh;
+    }
+
+    if (availableQuantity < transferQuantity) {
+      toast({ title: "Lỗi", description: `Số lượng chuyển vượt quá tồn kho ${fromWarehouse.name} (${availableQuantity.toFixed(2)}m)`, variant: "destructive" });
       return;
     }
 
@@ -191,15 +214,17 @@ export const FabricInventoryOverview = () => {
       // Create transfer record
       await createTransfer.mutateAsync({
         fabric_variant_id: fabricVariant.id,
-        from_warehouse_id: hanoiWarehouse.id,
-        to_warehouse_id: bacninhWarehouse.id,
+        from_warehouse_id: fromWarehouseId,
+        to_warehouse_id: toWarehouseId,
         quantity: transferQuantity,
-        notes: transferNotes || `Chuyển ${transferQuantity}m từ Hà Nội về Bắc Ninh`
+        notes: transferNotes || `Chuyển ${transferQuantity}m từ ${fromWarehouse.name} về ${toWarehouse.name}`
       });
 
       setSelectedFabricForTransfer('');
       setTransferQuantity(0);
       setTransferNotes('');
+      setFromWarehouseId('');
+      setToWarehouseId('');
       setShowTransferDialog(false);
       toast({ title: "Thành công", description: "Đã tạo phiếu chuyển vải thành công" });
     } catch (error) {
@@ -353,7 +378,7 @@ export const FabricInventoryOverview = () => {
                     <span className="text-sm text-muted-foreground">Bắc Ninh:</span>
                     <span className="text-sm">{fabric.bacninh.toFixed(2)}m</span>
                   </div>
-                  {fabric.hanoi > 0 && (
+                  {(fabric.hanoi > 0 || fabric.bacninh > 0) && (
                     <div className="pt-2 border-t">
                       <Button 
                         variant="outline" 
@@ -362,7 +387,7 @@ export const FabricInventoryOverview = () => {
                         onClick={() => handleTransferClick(fabric.fabricName)}
                       >
                         <ArrowRight className="mr-2 h-4 w-4" />
-                        Chuyển về Bắc Ninh
+                        Chuyển kho
                       </Button>
                     </div>
                   )}
@@ -473,9 +498,9 @@ export const FabricInventoryOverview = () => {
       <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Chuyển vải từ Hà Nội về Bắc Ninh</DialogTitle>
+            <DialogTitle>Chuyển vải giữa các kho</DialogTitle>
             <DialogDescription>
-              Chuyển vải {selectedFabricForTransfer} từ kho Hà Nội về kho Bắc Ninh
+              Chuyển vải {selectedFabricForTransfer} từ kho này sang kho khác
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -488,17 +513,59 @@ export const FabricInventoryOverview = () => {
               />
             </div>
             <div className="space-y-2">
+              <Label>Từ kho</Label>
+              <Select value={fromWarehouseId} onValueChange={setFromWarehouseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn kho nguồn" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses?.map((warehouse) => (
+                    <SelectItem key={warehouse.id} value={warehouse.id}>
+                      {warehouse.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Đến kho</Label>
+              <Select value={toWarehouseId} onValueChange={setToWarehouseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn kho đích" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses?.filter(w => w.id !== fromWarehouseId).map((warehouse) => (
+                    <SelectItem key={warehouse.id} value={warehouse.id}>
+                      {warehouse.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>Số lượng chuyển (mét)</Label>
               <Input
                 type="number"
                 value={transferQuantity}
                 onChange={(e) => setTransferQuantity(parseFloat(e.target.value) || 0)}
                 placeholder="Nhập số lượng cần chuyển"
-                max={fabricSummaryArray.find(f => f.fabricName === selectedFabricForTransfer)?.hanoi || 0}
               />
-              <p className="text-xs text-muted-foreground">
-                Tồn kho Hà Nội: {fabricSummaryArray.find(f => f.fabricName === selectedFabricForTransfer)?.hanoi.toFixed(2) || 0}m
-              </p>
+              {fromWarehouseId && (
+                <p className="text-xs text-muted-foreground">
+                  Tồn kho: {(() => {
+                    const selectedFabric = fabricSummaryArray.find(f => f.fabricName === selectedFabricForTransfer);
+                    const fromWarehouse = warehouses.find(w => w.id === fromWarehouseId);
+                    if (!selectedFabric || !fromWarehouse) return "0";
+                    
+                    if (fromWarehouse.name.toLowerCase().includes('hà nội') || fromWarehouse.name.toLowerCase().includes('hanoi')) {
+                      return selectedFabric.hanoi.toFixed(2);
+                    } else if (fromWarehouse.name.toLowerCase().includes('bắc ninh') || fromWarehouse.name.toLowerCase().includes('bacninh')) {
+                      return selectedFabric.bacninh.toFixed(2);
+                    }
+                    return "0";
+                  })()}m
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Ghi chú</Label>
