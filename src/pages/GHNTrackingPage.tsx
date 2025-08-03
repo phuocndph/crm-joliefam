@@ -506,8 +506,8 @@ export default function GHNTrackingPage() {
                 ) : (
                   filteredData.map((item, index) => (
                     <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="bg-blue-800 text-white border border-gray-300 px-4 py-3 text-sm font-medium text-center">{index + 1}</td>
-                      <td className="bg-blue-800 text-white border border-gray-300 px-4 py-3 text-sm font-mono font-medium">{item.ghn_order_code}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm font-medium text-center">{index + 1}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm font-mono">{item.ghn_order_code}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-mono">{item.internal_order_code || '-'}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm">
                         <Badge className={statusColors[item.ghn_status || ''] || 'bg-gray-100 text-gray-800'}>
