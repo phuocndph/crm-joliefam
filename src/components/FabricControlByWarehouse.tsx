@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
-import { Plus, Filter, Search, Package, TrendingUp } from 'lucide-react';
-import { useFabricUsage, useFabricVariants, useWarehouses, useCreateFabricUsage } from '@/hooks/useFabrics';
+import { Plus, Filter, Search, Package, TrendingUp, ArrowRight } from 'lucide-react';
+import { useFabricUsage, useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransfer } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -27,13 +27,19 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   const { data: fabricUsage = [] } = useFabricUsage();
   const { data: fabricVariants = [] } = useFabricVariants();
   const { data: warehouses = [] } = useWarehouses();
+  const { data: inventory = [] } = useFabricInventory();
   const createFabricUsage = useCreateFabricUsage();
+  const createTransfer = useCreateTransfer();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedManager, setSelectedManager] = useState('all');
   const [selectedFabricType, setSelectedFabricType] = useState('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [selectedFabricForTransfer, setSelectedFabricForTransfer] = useState<string>('');
+  const [transferQuantity, setTransferQuantity] = useState(0);
+  const [transferNotes, setTransferNotes] = useState('');
 
   const [newUsage, setNewUsage] = useState({
     order_number: '',
@@ -94,6 +100,56 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
 
     return filtered;
   }, [fabricUsage, warehouseFilter, searchTerm, selectedFabricType, dateRange]);
+
+  // Process inventory data for current warehouse
+  const warehouseInventory = useMemo(() => {
+    return inventory.filter(item => {
+      if (!warehouseFilter) return true;
+      return item.warehouses?.name?.toLowerCase().includes(warehouseFilter.toLowerCase()) ||
+             item.warehouses?.warehouse_type === warehouseFilter;
+    }).map(item => ({
+      ...item,
+      fabricCode: item.fabric_variants?.variant_name || '',
+      fabricType: item.fabric_variants?.fabric_types?.name || '',
+      widthCode: item.fabric_variants?.width_code || '',
+      warehouse: item.warehouses?.name || '',
+      currentStockMeters: item.current_stock,
+    }));
+  }, [inventory, warehouseFilter]);
+
+  // Find warehouses
+  const hanoiWarehouse = warehouses.find(w => w.name.toLowerCase().includes('hà nội') || w.name.toLowerCase().includes('hanoi'));
+  const bacninhWarehouse = warehouses.find(w => w.name.toLowerCase().includes('bắc ninh') || w.name.toLowerCase().includes('bacninh'));
+
+  // Group by fabric variant with warehouse breakdown for this specific warehouse
+  const fabricSummary = useMemo(() => {
+    return warehouseInventory.reduce((acc, item) => {
+      const key = `${item.fabricCode} ${item.widthCode}`;
+      if (!acc[key]) {
+        acc[key] = {
+          fabricName: key,
+          total: 0,
+          hanoi: 0,
+          bacninh: 0,
+          currentWarehouse: 0
+        };
+      }
+      
+      acc[key].total += item.currentStockMeters;
+      acc[key].currentWarehouse += item.currentStockMeters;
+      
+      // Also get totals from other warehouses for transfer reference
+      if (item.warehouse?.toLowerCase().includes('hà nội') || item.warehouse?.toLowerCase().includes('hanoi')) {
+        acc[key].hanoi = item.currentStockMeters;
+      } else if (item.warehouse?.toLowerCase().includes('bắc ninh') || item.warehouse?.toLowerCase().includes('bacninh')) {
+        acc[key].bacninh = item.currentStockMeters;
+      }
+      
+      return acc;
+    }, {} as Record<string, { fabricName: string; total: number; hanoi: number; bacninh: number; currentWarehouse: number }>);
+  }, [warehouseInventory]);
+
+  const fabricSummaryArray = Object.values(fabricSummary);
 
   // Calculate summary statistics
   const summary = useMemo(() => {
@@ -174,6 +230,69 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   const getUniqueFabricTypes = () => {
     const types = new Set(fabricVariants.map(v => v.fabric_type_id));
     return fabricVariants.filter(v => types.has(v.fabric_type_id));
+  };
+
+  const handleTransferSubmit = async () => {
+    if (!selectedFabricForTransfer || transferQuantity <= 0) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
+      return;
+    }
+
+    if (!hanoiWarehouse || !bacninhWarehouse) {
+      toast({ title: "Lỗi", description: "Không tìm thấy kho Hà Nội hoặc Bắc Ninh", variant: "destructive" });
+      return;
+    }
+
+    // Find the fabric variant for the selected fabric
+    const selectedFabric = fabricSummaryArray.find(f => f.fabricName === selectedFabricForTransfer);
+    if (!selectedFabric) {
+      toast({ title: "Lỗi", description: "Không tìm thấy thông tin vải", variant: "destructive" });
+      return;
+    }
+
+    // Check if transfer is from Hanoi to Bac Ninh or vice versa
+    const isFromHanoi = warehouseFilter?.toLowerCase().includes('hà nội') || warehouseFilter?.toLowerCase().includes('hanoi');
+    const maxTransferableQuantity = isFromHanoi ? selectedFabric.hanoi : selectedFabric.bacninh;
+    
+    if (maxTransferableQuantity < transferQuantity) {
+      toast({ title: "Lỗi", description: `Số lượng chuyển vượt quá tồn kho (${maxTransferableQuantity.toFixed(2)}m)`, variant: "destructive" });
+      return;
+    }
+
+    // Find the variant ID
+    const fabricVariant = fabricVariants.find(v => `${v.variant_name} ${v.width_code}` === selectedFabricForTransfer);
+    if (!fabricVariant) {
+      toast({ title: "Lỗi", description: "Không tìm thấy thông tin loại vải", variant: "destructive" });
+      return;
+    }
+
+    try {
+      // Create transfer record
+      const fromWarehouse = isFromHanoi ? hanoiWarehouse : bacninhWarehouse;
+      const toWarehouse = isFromHanoi ? bacninhWarehouse : hanoiWarehouse;
+      
+      await createTransfer.mutateAsync({
+        fabric_variant_id: fabricVariant.id,
+        from_warehouse_id: fromWarehouse.id,
+        to_warehouse_id: toWarehouse.id,
+        quantity: transferQuantity,
+        notes: transferNotes || `Chuyển ${transferQuantity}m từ ${fromWarehouse.name} về ${toWarehouse.name}`
+      });
+
+      setSelectedFabricForTransfer('');
+      setTransferQuantity(0);
+      setTransferNotes('');
+      setShowTransferDialog(false);
+      toast({ title: "Thành công", description: "Đã tạo phiếu chuyển vải thành công" });
+    } catch (error) {
+      console.error('Error creating transfer:', error);
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi tạo phiếu chuyển", variant: "destructive" });
+    }
+  };
+
+  const handleTransferClick = (fabricName: string) => {
+    setSelectedFabricForTransfer(fabricName);
+    setShowTransferDialog(true);
   };
 
   return (
@@ -300,46 +419,71 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         </Dialog>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center">
-              <Package className="mr-2 h-4 w-4" />
-              Tổng đơn hàng
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.totalOrders}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center">
-              <TrendingUp className="mr-2 h-4 w-4" />
-              Tổng vải sử dụng
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatQuantity(summary.totalFabricUsed)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Tổng khách hàng</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.totalCustomers}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Loại vải đã dùng</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{Object.keys(summary.fabricTypeUsage).length}</div>
-          </CardContent>
-        </Card>
+      {/* Fabric Inventory Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {fabricSummaryArray.map((fabric, index) => {
+          const getCardClass = () => {
+            if (fabric.currentWarehouse < 500) return "border-red-500 bg-red-50";
+            if (fabric.currentWarehouse < 1000) return "border-yellow-500 bg-yellow-50";
+            return "";
+          };
+          
+          const getTextClass = () => {
+            if (fabric.currentWarehouse < 500) return "text-red-700";
+            if (fabric.currentWarehouse < 1000) return "text-yellow-700";
+            return "";
+          };
+
+          const canTransfer = warehouseFilter?.toLowerCase().includes('hà nội') || warehouseFilter?.toLowerCase().includes('hanoi') 
+            ? fabric.hanoi > 0 
+            : warehouseFilter?.toLowerCase().includes('bắc ninh') || warehouseFilter?.toLowerCase().includes('bacninh')
+            ? fabric.bacninh > 0
+            : fabric.currentWarehouse > 0;
+
+          return (
+            <Card key={index} className={getCardClass()}>
+              <CardHeader className="pb-2">
+                <CardTitle className={`text-sm font-medium ${getTextClass()}`}>Vải {fabric.fabricName}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className={`text-sm font-medium ${getTextClass()}`}>Tồn kho:</span>
+                    <span className={`text-lg font-bold ${getTextClass()}`}>{fabric.currentWarehouse.toFixed(2)}m</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Hà Nội:</span>
+                    <span className="text-sm">{fabric.hanoi.toFixed(2)}m</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Bắc Ninh:</span>
+                    <span className="text-sm">{fabric.bacninh.toFixed(2)}m</span>
+                  </div>
+                  {canTransfer && (
+                    <div className="pt-2 border-t">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full"
+                        onClick={() => handleTransferClick(fabric.fabricName)}
+                      >
+                        <ArrowRight className="mr-2 h-4 w-4" />
+                        Chuyển kho
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+        {fabricSummaryArray.length === 0 && (
+          <Card>
+            <CardContent className="text-center text-muted-foreground py-8">
+              Chưa có dữ liệu tồn kho vải
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Filters */}
@@ -477,6 +621,57 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
           </CardContent>
         </Card>
       )}
+
+      {/* Transfer Dialog */}
+      <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chuyển vải giữa các kho</DialogTitle>
+            <DialogDescription>
+              Chuyển vải {selectedFabricForTransfer} từ {warehouseName} sang kho khác
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Loại vải</Label>
+              <Input
+                value={selectedFabricForTransfer}
+                disabled
+                className="bg-muted"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Số lượng chuyển (mét)</Label>
+              <Input
+                type="number"
+                value={transferQuantity}
+                onChange={(e) => setTransferQuantity(parseFloat(e.target.value) || 0)}
+                placeholder="Nhập số lượng cần chuyển"
+                max={fabricSummaryArray.find(f => f.fabricName === selectedFabricForTransfer)?.currentWarehouse || 0}
+              />
+              <p className="text-xs text-muted-foreground">
+                Tồn kho hiện tại: {fabricSummaryArray.find(f => f.fabricName === selectedFabricForTransfer)?.currentWarehouse.toFixed(2) || 0}m
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Ghi chú</Label>
+              <Input
+                value={transferNotes}
+                onChange={(e) => setTransferNotes(e.target.value)}
+                placeholder="Ghi chú thêm (tùy chọn)"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowTransferDialog(false)}>
+                Hủy
+              </Button>
+              <Button onClick={handleTransferSubmit} disabled={createTransfer.isPending}>
+                {createTransfer.isPending ? "Đang xử lý..." : "Tạo phiếu chuyển"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
