@@ -68,9 +68,18 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
 
   // Auto-fill customer info when order is selected
   useEffect(() => {
-    if (formData.order_number && orders) {
+    console.log('Auto-fill effect triggered:', { 
+      order_number: formData.order_number, 
+      orders: orders?.length,
+      ordersData: orders 
+    });
+    
+    if (formData.order_number && orders && orders.length > 0) {
       const order = orders.find(o => o.order_number === formData.order_number);
-      if (order) {
+      console.log('Found order:', order);
+      
+      if (order && order.customers) {
+        console.log('Setting customer name:', order.customers.name);
         setFormData(prev => ({
           ...prev,
           order_id: order.id,
