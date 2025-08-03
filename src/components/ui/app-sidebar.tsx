@@ -9,7 +9,8 @@ import {
   BarChart3,
   Settings,
   UserCheck,
-  Truck
+  Truck,
+  Scissors
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -56,6 +57,13 @@ const menuItems = [
     url: "/products", 
     icon: Package,
     description: "Quản lý kho hàng và giá",
+    permission: "products" as const
+  },
+  { 
+    title: "Quản lý vải", 
+    url: "/fabrics", 
+    icon: Scissors,
+    description: "Quản lý kho vải xưởng sản xuất",
     permission: "products" as const
   },
   { 

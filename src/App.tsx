@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import UserManagement from "./pages/UserManagement";
 import CustomerManagement from "./pages/CustomerManagement";
 import ProductManagement from "./pages/ProductManagement";
+import FabricManagement from "./pages/FabricManagement";
 import QuotesPage from "./pages/QuotesPage";
 import OrderManagement from "./pages/OrderManagement";
 import CashFlowManagement from "./pages/CashFlowManagement";
@@ -35,6 +36,7 @@ const App = () => (
             <Route path="user-management" element={<UserManagement />} />
             <Route path="customers" element={<CustomerManagement />} />
             <Route path="products" element={<ProductManagement />} />
+            <Route path="fabrics" element={<FabricManagement />} />
             <Route path="quotes" element={<QuotesPage />} />
             <Route path="orders" element={<OrderManagement />} />
             <Route path="cash-flow" element={<CashFlowManagement />} />

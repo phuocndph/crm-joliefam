@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Search, Package, Warehouse, ArrowUpDown, ArrowLeftRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { 
   useFabricTypes, 
@@ -29,7 +30,24 @@ import {
 import { toast } from '@/hooks/use-toast';
 
 const FabricManagement = () => {
-  const { role, loading: userLoading } = useUserRole();
+  const [user, setUser] = useState<any>(null);
+  const { role, loading: userLoading } = useUserRole(user);
+
+  // Get current user
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+
+    getUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
   const { data: fabricTypes } = useFabricTypes();
   const { data: fabricVariants } = useFabricVariants();
   const { data: warehouses } = useWarehouses();
@@ -64,7 +82,7 @@ const FabricManagement = () => {
   const [newTransaction, setNewTransaction] = useState({
     fabric_variant_id: '',
     warehouse_id: '',
-    transaction_type: 'inbound' as const,
+    transaction_type: 'inbound' as 'inbound' | 'outbound' | 'adjustment',
     quantity: 0,
     unit_price: 0,
     reference_number: '',
@@ -264,7 +282,7 @@ const FabricManagement = () => {
     return <div className="flex items-center justify-center h-64">Đang tải...</div>;
   }
 
-  if (!user || !['admin', 'manager', 'employee'].includes(user.role)) {
+  if (!user || !role || !['admin', 'manager', 'employee'].includes(role)) {
     return <div className="text-center text-muted-foreground">Bạn không có quyền truy cập trang này.</div>;
   }
 
