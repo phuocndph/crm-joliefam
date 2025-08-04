@@ -30,9 +30,7 @@ export const FabricInventoryOverview = () => {
   const [newInbound, setNewInbound] = useState({
     fabric_variant_id: '',
     quantity: 0,
-    unit_price: 0,
     supplier_name: '',
-    reference_number: '',
     transfer_to_bacninh: 0,
     notes: ''
   });
@@ -114,9 +112,7 @@ export const FabricInventoryOverview = () => {
         warehouse_id: hanoiWarehouse.id,
         transaction_type: 'inbound',
         quantity: hanoiQuantity,
-        unit_price: newInbound.unit_price,
         supplier_name: newInbound.supplier_name,
-        reference_number: newInbound.reference_number,
         notes: newInbound.notes
       });
 
@@ -135,7 +131,6 @@ export const FabricInventoryOverview = () => {
           warehouse_id: bacninhWarehouse.id,
           transaction_type: 'transfer_in',
           quantity: newInbound.transfer_to_bacninh,
-          reference_number: `Chuyển từ HN: ${newInbound.reference_number}`,
           notes: `Chuyển từ kho Hà Nội`
         });
 
@@ -150,9 +145,7 @@ export const FabricInventoryOverview = () => {
       setNewInbound({
         fabric_variant_id: '',
         quantity: 0,
-        unit_price: 0,
         supplier_name: '',
-        reference_number: '',
         transfer_to_bacninh: 0,
         notes: ''
       });
@@ -317,9 +310,9 @@ export const FabricInventoryOverview = () => {
                     <SelectValue placeholder="Chọn loại vải" />
                   </SelectTrigger>
                   <SelectContent>
-                    {variants?.map((variant) => (
-                      <SelectItem key={variant.id} value={variant.id}>
-                        {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`}
+                    {fabricTypes?.map((fabricType) => (
+                      <SelectItem key={fabricType.id} value={fabricType.id}>
+                        {fabricType.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -348,28 +341,11 @@ export const FabricInventoryOverview = () => {
                 </p>
               </div>
               <div className="space-y-2">
-                <Label>Đơn giá (VNĐ/mét)</Label>
-                <Input
-                  type="number"
-                  value={newInbound.unit_price}
-                  onChange={(e) => setNewInbound(prev => ({ ...prev, unit_price: parseFloat(e.target.value) || 0 }))}
-                  placeholder="Đơn giá"
-                />
-              </div>
-              <div className="space-y-2">
                 <Label>Nhà cung cấp</Label>
                 <Input
                   value={newInbound.supplier_name}
                   onChange={(e) => setNewInbound(prev => ({ ...prev, supplier_name: e.target.value }))}
                   placeholder="Tên nhà cung cấp"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Số chứng từ</Label>
-                <Input
-                  value={newInbound.reference_number}
-                  onChange={(e) => setNewInbound(prev => ({ ...prev, reference_number: e.target.value }))}
-                  placeholder="Số hóa đơn/phiếu nhập"
                 />
               </div>
               <div className="space-y-2">
