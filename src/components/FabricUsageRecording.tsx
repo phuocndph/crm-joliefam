@@ -320,8 +320,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                           <SelectContent>
                             {fabricVariants?.map((variant) => (
                               <SelectItem key={`${variant.id}-${index}`} value={variant.id}>
-                                {variant.fabric_types?.name} - {variant.variant_name} 
-                                {variant.color && ` (${variant.color})`}
+                                {variant.variant_name}
                               </SelectItem>
                             ))}
                           </SelectContent>

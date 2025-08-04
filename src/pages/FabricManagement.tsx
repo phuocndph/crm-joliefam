@@ -428,7 +428,7 @@ const FabricManagement = () => {
                           <SelectContent>
                             {fabricVariants?.map((variant) => (
                               <SelectItem key={variant.id} value={variant.id}>
-                                {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`}
+                                {variant.variant_name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -600,7 +600,7 @@ const FabricManagement = () => {
                           <SelectContent>
                             {fabricVariants?.map((variant) => (
                               <SelectItem key={variant.id} value={variant.id}>
-                                {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`}
+                                {variant.variant_name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -747,7 +747,7 @@ const FabricManagement = () => {
                           <SelectContent>
                             {fabricVariants?.map((variant) => (
                               <SelectItem key={variant.id} value={variant.id}>
-                                {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`}
+                                {variant.variant_name}
                               </SelectItem>
                             ))}
                           </SelectContent>

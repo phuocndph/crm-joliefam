@@ -137,7 +137,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     }));
 
     return inventoryData.reduce((acc, item) => {
-      const key = `${item.fabricCode} ${item.widthCode}`;
+      const key = item.fabricCode;
       if (!acc[key]) {
         acc[key] = {
           fabricName: item.fabricCode, // Only use fabric code, not width code
@@ -289,7 +289,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     }
 
     // Find the variant ID
-    const fabricVariant = fabricVariants.find(v => `${v.variant_name} ${v.width_code}` === selectedFabricForTransfer);
+    const fabricVariant = fabricVariants.find(v => v.variant_name === selectedFabricForTransfer);
     if (!fabricVariant) {
       toast({ title: "Lỗi", description: "Không tìm thấy thông tin loại vải", variant: "destructive" });
       return;
@@ -669,7 +669,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                     <SelectContent>
                       {fabricVariants.map((variant) => (
                         <SelectItem key={variant.id} value={variant.id}>
-                          {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`}
+                          {variant.variant_name}
                         </SelectItem>
                       ))}
                     </SelectContent>

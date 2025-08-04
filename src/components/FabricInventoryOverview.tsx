@@ -48,7 +48,7 @@ export const FabricInventoryOverview = () => {
 
   // Group by fabric type for chart
   const chartData = inventoryData.reduce((acc, item) => {
-    const key = `${item.fabricCode} ${item.widthCode}`;
+    const key = item.fabricCode;
     const existing = acc.find(d => d.name === key);
     if (existing) {
       existing.meters += item.currentStockMeters;
@@ -69,7 +69,7 @@ export const FabricInventoryOverview = () => {
 
   // Group by fabric variant with warehouse breakdown
   const fabricSummary = inventoryData.reduce((acc, item) => {
-    const key = `${item.fabricCode} ${item.widthCode}`;
+    const key = item.fabricCode;
     if (!acc[key]) {
       acc[key] = {
         fabricName: item.fabricCode, // Only use fabric code, not width code
@@ -197,7 +197,7 @@ export const FabricInventoryOverview = () => {
     }
 
     // Find the variant ID
-    const fabricVariant = variants.find(v => `${v.variant_name} ${v.width_code}` === selectedFabricForTransfer);
+    const fabricVariant = variants.find(v => v.variant_name === selectedFabricForTransfer);
     if (!fabricVariant) {
       toast({ title: "Lỗi", description: "Không tìm thấy thông tin loại vải", variant: "destructive" });
       return;
@@ -313,7 +313,7 @@ export const FabricInventoryOverview = () => {
                     {variants && variants.length > 0 ? (
                       variants.map((variant) => (
                         <SelectItem key={variant.id} value={variant.id} className="cursor-pointer hover:bg-accent">
-                          {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`} {variant.width_code && `[${variant.width_code}]`}
+                          {variant.variant_name}
                         </SelectItem>
                       ))
                     ) : (
