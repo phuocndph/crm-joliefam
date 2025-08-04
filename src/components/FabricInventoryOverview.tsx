@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Package2, ArrowRight } from "lucide-react";
-import { useFabricInventory, useFabricVariants, useFabricTypes, useWarehouses, useCreateTransaction, useUpdateInventory, useCreateTransfer } from "@/hooks/useFabrics";
+import { Plus, Package2, ArrowRight, Edit, Trash2 } from "lucide-react";
+import { useFabricInventory, useFabricVariants, useFabricTypes, useWarehouses, useCreateTransaction, useUpdateInventory, useCreateTransfer, useUpdateFabricType, useDeleteFabricType } from "@/hooks/useFabrics";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from "@/hooks/use-toast";
 import { FabricTransactionsTable } from "@/components/FabricTransactionsTable";
@@ -20,14 +20,23 @@ export const FabricInventoryOverview = () => {
   const createTransaction = useCreateTransaction();
   const updateInventory = useUpdateInventory();
   const createTransfer = useCreateTransfer();
+  const updateFabricType = useUpdateFabricType();
+  const deleteFabricType = useDeleteFabricType();
   
   const [showInboundDialog, setShowInboundDialog] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedFabric, setSelectedFabric] = useState<any>(null);
   const [selectedFabricForTransfer, setSelectedFabricForTransfer] = useState<string>('');
   const [transferQuantity, setTransferQuantity] = useState(0);
   const [transferNotes, setTransferNotes] = useState('');
   const [fromWarehouseId, setFromWarehouseId] = useState('');
   const [toWarehouseId, setToWarehouseId] = useState('');
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: ''
+  });
   const [newInbound, setNewInbound] = useState({
     fabric_variant_id: '',
     quantity: 0,
@@ -307,6 +316,73 @@ export const FabricInventoryOverview = () => {
     }
   };
 
+  const handleEditClick = (fabric: any) => {
+    const fabricType = fabricTypes?.find(ft => 
+      fabricSummaryArray.some(fs => fs.fabricName === fabric.fabricName && 
+        variants?.some(v => v.variant_name === fs.fabricName && v.fabric_type_id === ft.id))
+    );
+    
+    setSelectedFabric(fabric);
+    setEditForm({
+      name: fabricType?.name || '',
+      description: fabricType?.description || ''
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleDeleteClick = (fabric: any) => {
+    setSelectedFabric(fabric);
+    setShowDeleteDialog(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!selectedFabric || !editForm.name) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập tên loại vải", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const fabricType = fabricTypes?.find(ft => 
+        variants?.some(v => v.variant_name === selectedFabric.fabricName && v.fabric_type_id === ft.id)
+      );
+
+      if (fabricType) {
+        await updateFabricType.mutateAsync({
+          id: fabricType.id,
+          name: editForm.name,
+          description: editForm.description
+        });
+      }
+
+      setShowEditDialog(false);
+      setSelectedFabric(null);
+      setEditForm({ name: '', description: '' });
+    } catch (error) {
+      console.error('Error updating fabric type:', error);
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi cập nhật", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteSubmit = async () => {
+    if (!selectedFabric) return;
+
+    try {
+      const fabricType = fabricTypes?.find(ft => 
+        variants?.some(v => v.variant_name === selectedFabric.fabricName && v.fabric_type_id === ft.id)
+      );
+
+      if (fabricType) {
+        await deleteFabricType.mutateAsync(fabricType.id);
+      }
+
+      setShowDeleteDialog(false);
+      setSelectedFabric(null);
+    } catch (error) {
+      console.error('Error deleting fabric type:', error);
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi xóa", variant: "destructive" });
+    }
+  };
+
   const handleTransferClick = (fabricName: string) => {
     setSelectedFabricForTransfer(fabricName);
     setShowTransferDialog(true);
@@ -474,25 +550,42 @@ export const FabricInventoryOverview = () => {
                         {formatNumber(fabric.total)}
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="flex flex-col gap-1">
-                          {(fabric.hanoi > 0 || fabric.bacninh > 0) && (
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="h-7 text-xs px-2"
-                              onClick={() => handleTransferClick(fabric.fabricName)}
-                            >
-                              <ArrowRight className="mr-1 h-3 w-3" />
-                              Chuyển kho
-                            </Button>
-                          )}
-                          <Button 
-                            size="sm" 
-                            className="h-7 text-xs px-2"
-                            onClick={() => setShowInboundDialog(true)}
+                        <div className="flex items-center justify-center space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditClick(fabric)}
+                            className="h-8 w-8 p-0"
+                            title="Chỉnh sửa"
                           >
-                            <Plus className="mr-1 h-3 w-3" />
-                            Nhập kho
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteClick(fabric)}
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            title="Xóa"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleTransferClick(fabric.fabricName)}
+                            className="h-8 w-8 p-0"
+                            title="Chuyển kho"
+                          >
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowInboundDialog(true)}
+                            className="h-8 w-8 p-0"
+                            title="Nhập kho"
+                          >
+                            <Package2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -731,7 +824,70 @@ export const FabricInventoryOverview = () => {
             </div>
           </div>
         </DialogContent>
-      </Dialog>
+        </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Chỉnh sửa loại vải</DialogTitle>
+              <DialogDescription>
+                Cập nhật thông tin loại vải {selectedFabric?.fabricName}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Tên loại vải</Label>
+                <Input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Nhập tên loại vải"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Mô tả</Label>
+                <Input
+                  value={editForm.description}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Nhập mô tả"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+                  Hủy
+                </Button>
+                <Button onClick={handleEditSubmit} disabled={updateFabricType.isPending}>
+                  {updateFabricType.isPending ? "Đang cập nhật..." : "Cập nhật"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Dialog */}
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Xác nhận xóa</DialogTitle>
+              <DialogDescription>
+                Bạn có chắc chắn muốn xóa loại vải "{selectedFabric?.fabricName}"? 
+                Hành động này không thể hoàn tác.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+                Hủy
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteSubmit} 
+                disabled={deleteFabricType.isPending}
+              >
+                {deleteFabricType.isPending ? "Đang xóa..." : "Xóa"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
     </div>
   );
 };
