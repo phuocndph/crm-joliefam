@@ -446,13 +446,11 @@ export const FabricInventoryOverview = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Mã vải</TableHead>
-                    <TableHead>Khổ vải</TableHead>
-                    <TableHead>Tên vải</TableHead>
                     <TableHead className="text-center" colSpan={2}>Còn trong kho</TableHead>
                     <TableHead>Kho</TableHead>
                   </TableRow>
                   <TableRow>
-                    <TableHead colSpan={3}></TableHead>
+                    <TableHead></TableHead>
                     <TableHead className="text-center">Cuộn</TableHead>
                     <TableHead className="text-center">Mét</TableHead>
                     <TableHead></TableHead>
@@ -462,8 +460,6 @@ export const FabricInventoryOverview = () => {
                   {inventoryData.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.fabricCode}</TableCell>
-                      <TableCell>{item.widthCode}</TableCell>
-                      <TableCell>{item.fabricType}</TableCell>
                       <TableCell className="text-center">{item.currentStockRolls}</TableCell>
                       <TableCell className="text-center">{item.currentStockMeters.toFixed(2)}</TableCell>
                       <TableCell>{item.warehouse}</TableCell>
@@ -471,7 +467,7 @@ export const FabricInventoryOverview = () => {
                   ))}
                   {inventoryData.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      <TableCell colSpan={4} className="text-center text-muted-foreground">
                         Chưa có dữ liệu tồn kho
                       </TableCell>
                     </TableRow>
@@ -479,7 +475,7 @@ export const FabricInventoryOverview = () => {
                   {/* Total row */}
                   {inventoryData.length > 0 && (
                     <TableRow className="bg-muted/50 font-medium">
-                      <TableCell colSpan={3}>Tổng</TableCell>
+                      <TableCell>Tổng</TableCell>
                       <TableCell className="text-center">{inventoryData.reduce((sum, item) => sum + item.currentStockRolls, 0)}</TableCell>
                       <TableCell className="text-center">{inventoryData.reduce((sum, item) => sum + item.currentStockMeters, 0).toFixed(2)}</TableCell>
                       <TableCell></TableCell>
