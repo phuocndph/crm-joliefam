@@ -34,6 +34,7 @@ export const FabricInventoryOverview = () => {
   const [selectedFabric, setSelectedFabric] = useState<any>(null);
   const [selectedFabricForTransfer, setSelectedFabricForTransfer] = useState<string>('');
   const [transferQuantity, setTransferQuantity] = useState(0);
+  const [transferPackagesCount, setTransferPackagesCount] = useState(0);
   const [transferNotes, setTransferNotes] = useState('');
   const [fromWarehouseId, setFromWarehouseId] = useState('');
   const [toWarehouseId, setToWarehouseId] = useState('');
@@ -856,6 +857,16 @@ export const FabricInventoryOverview = () => {
               />
             </div>
             <div className="space-y-2">
+              <Label>Số kiện chuyển</Label>
+              <Input
+                type="number"
+                value={transferPackagesCount}
+                onChange={(e) => setTransferPackagesCount(Number(e.target.value))}
+                placeholder="Nhập số kiện"
+                min="0"
+              />
+            </div>
+            <div className="space-y-2">
               <Label>Ghi chú</Label>
               <Input
                 value={transferNotes}
@@ -870,6 +881,7 @@ export const FabricInventoryOverview = () => {
                 setFromWarehouseId('');
                 setToWarehouseId('');
                 setTransferQuantity(0);
+                setTransferPackagesCount(0);
                 setTransferNotes('');
               }}>
                 Hủy
