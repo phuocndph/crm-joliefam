@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricWidths } from '@/hooks/useFabrics';
+import { useFabricVariants, useWarehouses, useCreateFabricUsage } from '@/hooks/useFabrics';
 import { useOrders } from '@/hooks/useOrders';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,9 +19,7 @@ interface FabricUsageRecordingProps {
 
 interface FabricItem {
   fabric_variant_id: string;
-  fabric_width_id: string;
   quantity_used: number;
-  fabric_width: string;
 }
 
 export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({ 
@@ -31,7 +29,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
   const { data: fabricVariants } = useFabricVariants();
   const { data: warehouses } = useWarehouses();
   const { data: orders } = useOrders();
-  const { data: fabricWidths } = useFabricWidths();
+  
   const createFabricUsage = useCreateFabricUsage();
 
   const [showDialog, setShowDialog] = useState(false);
@@ -47,9 +45,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
     fabricItems: [
       {
         fabric_variant_id: '',
-        fabric_width_id: '',
-        quantity_used: 0,
-        fabric_width: ''
+        quantity_used: 0
       }
     ] as FabricItem[]
   });
@@ -105,9 +101,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
       ...prev,
       fabricItems: [...prev.fabricItems, {
         fabric_variant_id: '',
-        fabric_width_id: '',
-        quantity_used: 0,
-        fabric_width: ''
+        quantity_used: 0
       }]
     }));
   };
@@ -152,7 +146,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
           customer_name: formData.customer_name,
           customer_code: formData.order_category, // Use order_category
           order_type: formData.order_type,
-          fabric_width: fabricItem.fabric_width,
+          fabric_width: '',
           usage_date: formData.usage_date,
           notes: formData.notes
         });
@@ -173,9 +167,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
         notes: '',
         fabricItems: [{
           fabric_variant_id: '',
-          fabric_width_id: '',
-          quantity_used: 0,
-          fabric_width: ''
+          quantity_used: 0
         }]
       });
       
@@ -307,7 +299,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                       )}
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Loại vải *</Label>
                         <Select 
@@ -321,29 +313,6 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                             {fabricVariants?.map((variant) => (
                               <SelectItem key={`${variant.id}-${index}`} value={variant.id}>
                                 {variant.variant_name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label>Khổ vải</Label>
-                        <Select 
-                          value={item.fabric_width_id} 
-                          onValueChange={(value) => {
-                            const selectedWidth = fabricWidths?.find(w => w.id === value);
-                            updateFabricItem(index, 'fabric_width_id', value);
-                            updateFabricItem(index, 'fabric_width', selectedWidth?.width_code || '');
-                          }}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Chọn khổ vải" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {fabricWidths?.map((width) => (
-                              <SelectItem key={width.id} value={width.id}>
-                                {width.width_code} - {width.description}
                               </SelectItem>
                             ))}
                           </SelectContent>
