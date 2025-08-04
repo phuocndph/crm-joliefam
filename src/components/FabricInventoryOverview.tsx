@@ -485,29 +485,20 @@ export const FabricInventoryOverview = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleEditClick(fabric)}
-                            className="h-8 w-8 p-0"
-                            title="Chỉnh sửa"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteClick(fabric)}
-                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                            title="Xóa"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
                             onClick={() => setShowInboundDialog(true)}
                             className="h-8 w-8 p-0"
                             title="Nhập kho"
                           >
                             <Package2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowTransferDialog(true)}
+                            className="h-8 w-8 p-0"
+                            title="Chuyển kho"
+                          >
+                            <ArrowRight className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>
