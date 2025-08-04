@@ -18,7 +18,6 @@ import { FabricControlByWarehouse } from '@/components/FabricControlByWarehouse'
 import { FabricUsageRecording } from '@/components/FabricUsageRecording';
 import { FabricUsageDetails } from '@/components/FabricUsageDetails';
 import { FabricTypeManagement } from '@/components/FabricTypeManagement';
-import { FabricWidthManagement } from '@/components/FabricWidthManagement';
 import { FabricVariantManagement } from '@/components/FabricVariantManagement';
 import { 
   useFabricTypes, 
@@ -362,7 +361,6 @@ const FabricManagement = () => {
           <TabsTrigger value="hanoi-control">Kiểm soát vải Hà Nội</TabsTrigger>
           <TabsTrigger value="bacninh-control">Kiểm soát vải Bắc Ninh</TabsTrigger>
           <TabsTrigger value="fabric-types">Loại vải</TabsTrigger>
-          <TabsTrigger value="fabric-widths">Khổ vải</TabsTrigger>
         </TabsList>
 
         {/* Total Quantity Tab */}
@@ -871,10 +869,6 @@ const FabricManagement = () => {
           <FabricVariantManagement />
         </TabsContent>
 
-        {/* Fabric Widths Tab */}
-        <TabsContent value="fabric-widths" className="space-y-4">
-          <FabricWidthManagement />
-        </TabsContent>
       </Tabs>
     </div>
   );
