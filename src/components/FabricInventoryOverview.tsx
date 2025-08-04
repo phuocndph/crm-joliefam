@@ -10,6 +10,7 @@ import { Plus, Package2, ArrowRight } from "lucide-react";
 import { useFabricInventory, useFabricVariants, useFabricTypes, useWarehouses, useCreateTransaction, useUpdateInventory, useCreateTransfer } from "@/hooks/useFabrics";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from "@/hooks/use-toast";
+import { FabricTransactionsTable } from "@/components/FabricTransactionsTable";
 
 export const FabricInventoryOverview = () => {
   const { data: inventory = [] } = useFabricInventory();
@@ -117,11 +118,16 @@ export const FabricInventoryOverview = () => {
         notes: newInbound.notes
       });
 
-      // Update Hanoi inventory
+      // Update Hanoi inventory - cộng dồn số lượng
+      const existingHanoiInventory = inventory.find(item => 
+        item.fabric_variant_id === newInbound.fabric_variant_id && item.warehouse_id === hanoiWarehouse.id
+      );
+      const currentHanoiStock = existingHanoiInventory?.current_stock || 0;
+      
       await updateInventory.mutateAsync({
         fabric_variant_id: newInbound.fabric_variant_id,
         warehouse_id: hanoiWarehouse.id,
-        current_stock: hanoiQuantity
+        current_stock: currentHanoiStock + hanoiQuantity
       });
 
       // If transferring to Bac Ninh
@@ -135,11 +141,16 @@ export const FabricInventoryOverview = () => {
           notes: `Chuyển từ kho Hà Nội`
         });
 
-        // Update Bac Ninh inventory
+        // Update Bac Ninh inventory - cộng dồn số lượng
+        const existingBacninhInventory = inventory.find(item => 
+          item.fabric_variant_id === newInbound.fabric_variant_id && item.warehouse_id === bacninhWarehouse.id
+        );
+        const currentBacninhStock = existingBacninhInventory?.current_stock || 0;
+        
         await updateInventory.mutateAsync({
           fabric_variant_id: newInbound.fabric_variant_id,
           warehouse_id: bacninhWarehouse.id,
-          current_stock: newInbound.transfer_to_bacninh
+          current_stock: currentBacninhStock + newInbound.transfer_to_bacninh
         });
       }
 
@@ -477,11 +488,13 @@ export const FabricInventoryOverview = () => {
                     <TableHead>Mã vải</TableHead>
                     <TableHead className="text-center" colSpan={2}>Còn trong kho</TableHead>
                     <TableHead>Kho</TableHead>
+                    <TableHead>Cập nhật lần cuối</TableHead>
                   </TableRow>
                   <TableRow>
                     <TableHead></TableHead>
                     <TableHead className="text-center">Cuộn</TableHead>
                     <TableHead className="text-center">Mét</TableHead>
+                    <TableHead></TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -492,11 +505,14 @@ export const FabricInventoryOverview = () => {
                       <TableCell className="text-center">{item.currentStockRolls}</TableCell>
                       <TableCell className="text-center">{item.currentStockMeters.toFixed(2)}</TableCell>
                       <TableCell>{item.warehouse}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {item.last_updated ? new Date(item.last_updated).toLocaleString('vi-VN') : 'Chưa có'}
+                      </TableCell>
                     </TableRow>
                   ))}
                   {inventoryData.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      <TableCell colSpan={5} className="text-center text-muted-foreground">
                         Chưa có dữ liệu tồn kho
                       </TableCell>
                     </TableRow>
@@ -507,6 +523,7 @@ export const FabricInventoryOverview = () => {
                       <TableCell>Tổng</TableCell>
                       <TableCell className="text-center">{inventoryData.reduce((sum, item) => sum + item.currentStockRolls, 0)}</TableCell>
                       <TableCell className="text-center">{inventoryData.reduce((sum, item) => sum + item.currentStockMeters, 0).toFixed(2)}</TableCell>
+                      <TableCell></TableCell>
                       <TableCell></TableCell>
                     </TableRow>
                   )}
@@ -547,6 +564,9 @@ export const FabricInventoryOverview = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Fabric Transactions Table */}
+      <FabricTransactionsTable />
 
       {/* Transfer Dialog */}
       <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
