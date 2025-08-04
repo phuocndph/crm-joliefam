@@ -23,6 +23,9 @@ export const FabricInventoryOverview = () => {
   const updateFabricType = useUpdateFabricType();
   const deleteFabricType = useDeleteFabricType();
   
+  // Debug log
+  console.log('FabricInventoryOverview - variants:', variants);
+  
   const [showInboundDialog, setShowInboundDialog] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
