@@ -529,7 +529,7 @@ export const FabricInventoryOverview = () => {
                   return (
                     <TableRow key={index} className={getRowClass()}>
                       <TableCell className="font-medium border-r">
-                        Vải {fabric.fabricName}
+                        {fabric.fabricName}
                       </TableCell>
                       <TableCell className="text-center">
                         {fabric.hanoiPackages}
