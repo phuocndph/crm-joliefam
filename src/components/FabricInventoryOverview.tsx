@@ -118,6 +118,20 @@ export const FabricInventoryOverview = () => {
     return num.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
   };
 
+  // Format input value for display
+  const formatInputValue = (value: number) => {
+    if (value === 0) return '';
+    return formatNumber(value);
+  };
+
+  // Parse formatted input value back to number
+  const parseInputValue = (value: string) => {
+    if (!value) return 0;
+    // Remove dots and replace comma with dot for parsing
+    const cleanValue = value.replace(/\./g, '').replace(',', '.');
+    return parseFloat(cleanValue) || 0;
+  };
+
   const handleInboundSubmit = async () => {
     if (!newInbound.fabric_variant_id || newInbound.quantity <= 0) {
       toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
@@ -441,18 +455,25 @@ export const FabricInventoryOverview = () => {
               <div className="space-y-2">
                 <Label>Tổng số lượng nhập (mét)</Label>
                 <Input
-                  type="number"
-                  value={newInbound.quantity}
-                  onChange={(e) => setNewInbound(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
+                  type="text"
+                  value={formatInputValue(newInbound.quantity)}
+                  onChange={(e) => {
+                    const numericValue = parseInputValue(e.target.value);
+                    setNewInbound(prev => ({ ...prev, quantity: numericValue }));
+                  }}
                   placeholder="Nhập số lượng"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Số kiện</Label>
                 <Input
-                  type="number"
-                  value={newInbound.packages_count}
-                  onChange={(e) => setNewInbound(prev => ({ ...prev, packages_count: parseInt(e.target.value) || 0 }))}
+                  type="text"
+                  value={newInbound.packages_count === 0 ? '' : newInbound.packages_count.toLocaleString('vi-VN')}
+                  onChange={(e) => {
+                    const cleanValue = e.target.value.replace(/\./g, '');
+                    const numericValue = parseInt(cleanValue) || 0;
+                    setNewInbound(prev => ({ ...prev, packages_count: numericValue }));
+                  }}
                   placeholder="Nhập số kiện"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -462,11 +483,13 @@ export const FabricInventoryOverview = () => {
               <div className="space-y-2">
                 <Label>Chuyển sang Bắc Ninh (mét)</Label>
                 <Input
-                  type="number"
-                  value={newInbound.transfer_to_bacninh}
-                  onChange={(e) => setNewInbound(prev => ({ ...prev, transfer_to_bacninh: parseFloat(e.target.value) || 0 }))}
+                  type="text"
+                  value={formatInputValue(newInbound.transfer_to_bacninh)}
+                  onChange={(e) => {
+                    const numericValue = parseInputValue(e.target.value);
+                    setNewInbound(prev => ({ ...prev, transfer_to_bacninh: numericValue }));
+                  }}
                   placeholder="Số lượng chuyển sang Bắc Ninh"
-                  max={newInbound.quantity}
                 />
                 <p className="text-xs text-muted-foreground">
                   Còn lại tại Hà Nội: {formatNumber(newInbound.quantity - newInbound.transfer_to_bacninh)} mét
