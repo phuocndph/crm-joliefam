@@ -327,6 +327,47 @@ export const useCreateTransaction = () => {
   });
 };
 
+export const useUpdateTransaction = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (data: {
+      id: string;
+      fabric_variant_id: string;
+      warehouse_id: string;
+      transaction_type: 'inbound' | 'outbound' | 'transfer_in' | 'transfer_out' | 'adjustment';
+      quantity: number;
+      packages_count?: number;
+      unit_price?: number;
+      total_amount?: number;
+      reference_number?: string;
+      supplier_name?: string;
+      recipient_name?: string;
+      notes?: string;
+      transaction_date?: string;
+    }) => {
+      const { id, ...updateData } = data;
+      const { data: result, error } = await supabase
+        .from('fabric_transactions')
+        .update({
+          ...updateData,
+          total_amount: updateData.total_amount || (updateData.unit_price || 0) * updateData.quantity
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fabric-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+      toast({ title: "Thành công", description: "Đã cập nhật giao dịch vải" });
+    },
+  });
+};
+
 // Fabric Transfers hooks
 export const useFabricTransfers = () => {
   return useQuery({
