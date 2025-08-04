@@ -96,7 +96,7 @@ const FabricManagement = () => {
     weight: '',
     color: '',
     origin: 'TQ',
-    unit: 'kg',
+        unit: 'm',
     cost_price: 0,
     selling_price: 0
   });
@@ -209,7 +209,7 @@ const FabricManagement = () => {
         weight: '',
         color: '',
         origin: 'TQ',
-        unit: 'kg',
+        unit: 'm',
         cost_price: 0,
         selling_price: 0
       });
@@ -320,7 +320,7 @@ const FabricManagement = () => {
       currency: 'VND'
     }).format(amount);
   };
-  const formatQuantity = (quantity: number, unit: string = 'kg') => {
+  const formatQuantity = (quantity: number, unit: string = 'm') => {
     return `${quantity.toLocaleString('vi-VN')} ${unit}`;
   };
   if (userLoading) {

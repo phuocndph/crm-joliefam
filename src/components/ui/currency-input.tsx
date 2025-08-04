@@ -20,7 +20,7 @@ const CurrencyInput = React.forwardRef<HTMLInputElement, CurrencyInputProps>(
 
     const formatNumber = (num: number) => {
       if (num === 0) return "0"
-      return num.toLocaleString("vi-VN")
+      return num.toLocaleString("vi-VN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })
     }
 
     const parseNumber = (str: string) => {

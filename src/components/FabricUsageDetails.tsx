@@ -115,8 +115,8 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
     return { totalRecords, totalQuantity, uniqueOrders };
   }, [filteredAndGroupedData]);
 
-  const formatQuantity = (quantity: number, unit: string = 'kg') => {
-    return `${quantity.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ${unit}`;
+  const formatQuantity = (quantity: number, unit: string = 'm') => {
+    return `${quantity.toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${unit}`;
   };
 
   const formatDate = (date: string | Date) => {

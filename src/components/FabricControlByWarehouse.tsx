@@ -236,7 +236,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     }
   };
   const formatQuantity = (quantity: number) => {
-    return `${quantity.toLocaleString('vi-VN')} m`;
+    return `${quantity.toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} m`;
   };
   const getUniqueManagers = () => {
     const managers = new Set(filteredUsage.map(item => item.manager_id).filter(Boolean));
