@@ -309,12 +309,16 @@ export const FabricInventoryOverview = () => {
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn loại vải" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {variants?.map((variant) => (
-                      <SelectItem key={variant.id} value={variant.id}>
-                        {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`} {variant.width_code && `[${variant.width_code}]`}
-                      </SelectItem>
-                    ))}
+                  <SelectContent className="bg-background border shadow-lg z-50">
+                    {variants && variants.length > 0 ? (
+                      variants.map((variant) => (
+                        <SelectItem key={variant.id} value={variant.id} className="cursor-pointer hover:bg-accent">
+                          {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`} {variant.width_code && `[${variant.width_code}]`}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="" disabled>Chưa có biến thể vải nào</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
