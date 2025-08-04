@@ -100,6 +100,14 @@ export const FabricInventoryOverview = () => {
 
   const fabricSummaryArray = Object.values(fabricSummary);
 
+  // Format number function
+  const formatNumber = (num: number) => {
+    if (num % 1 === 0) {
+      return num.toLocaleString('vi-VN');
+    }
+    return num.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
   const handleInboundSubmit = async () => {
     if (!newInbound.fabric_variant_id || newInbound.quantity <= 0) {
       toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
@@ -404,114 +412,134 @@ export const FabricInventoryOverview = () => {
         </Dialog>
       </div>
 
-      {/* Fabric Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {fabricSummaryArray.map((fabric, index) => {
-          const getCardClass = () => {
-            if (fabric.total < 500) return "border-red-500 bg-red-50";
-            if (fabric.total < 1000) return "border-yellow-500 bg-yellow-50";
-            return "";
-          };
-          
-          const getTextClass = () => {
-            if (fabric.total < 500) return "text-red-700";
-            if (fabric.total < 1000) return "text-yellow-700";
-            return "";
-          };
+      {/* Fabric Summary Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Tổng quan tồn kho vải</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead rowSpan={2} className="text-center align-middle border-r">Tên Loại Vải</TableHead>
+                  <TableHead colSpan={2} className="text-center border-r">Hà Nội</TableHead>
+                  <TableHead colSpan={2} className="text-center border-r">Bắc Ninh</TableHead>
+                  <TableHead colSpan={2} className="text-center border-r">Tổng</TableHead>
+                  <TableHead rowSpan={2} className="text-center align-middle">Thao Tác</TableHead>
+                </TableRow>
+                <TableRow>
+                  <TableHead className="text-center text-xs">Kiện</TableHead>
+                  <TableHead className="text-center text-xs border-r">Mét</TableHead>
+                  <TableHead className="text-center text-xs">Kiện</TableHead>
+                  <TableHead className="text-center text-xs border-r">Mét</TableHead>
+                  <TableHead className="text-center text-xs">Kiện</TableHead>
+                  <TableHead className="text-center text-xs border-r">Mét</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {fabricSummaryArray.map((fabric, index) => {
+                  const getRowClass = () => {
+                    if (fabric.total < 500) return "bg-red-50 text-red-700";
+                    if (fabric.total < 1000) return "bg-yellow-50 text-yellow-700";
+                    return "";
+                  };
 
-          const formatNumber = (num: number) => {
-            if (num % 1 === 0) {
-              return num.toLocaleString('vi-VN');
-            }
-            return num.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-          };
-
-          return (
-            <Card key={index} className={getCardClass()}>
-              <CardHeader className="pb-3">
-                <CardTitle className={`text-sm font-medium ${getTextClass()}`}>
-                  Vải {fabric.fabricName}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Tổng số */}
-                <div className="bg-muted/30 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <span className={`text-xs font-medium ${getTextClass()}`}>TỔNG:</span>
-                    <div className="text-right">
-                      <div className={`text-lg font-bold ${getTextClass()}`}>
-                        {fabric.totalPackages} Kiện
+                  return (
+                    <TableRow key={index} className={getRowClass()}>
+                      <TableCell className="font-medium border-r">
+                        Vải {fabric.fabricName}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {fabric.hanoiPackages}
+                      </TableCell>
+                      <TableCell className="text-center border-r">
+                        {formatNumber(fabric.hanoi)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {fabric.bacninhPackages}
+                      </TableCell>
+                      <TableCell className="text-center border-r">
+                        {formatNumber(fabric.bacninh)}
+                      </TableCell>
+                      <TableCell className="text-center font-semibold">
+                        {fabric.totalPackages}
+                      </TableCell>
+                      <TableCell className="text-center font-semibold border-r">
+                        {formatNumber(fabric.total)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex flex-col gap-1">
+                          {(fabric.hanoi > 0 || fabric.bacninh > 0) && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="h-7 text-xs px-2"
+                              onClick={() => handleTransferClick(fabric.fabricName)}
+                            >
+                              <ArrowRight className="mr-1 h-3 w-3" />
+                              Chuyển kho
+                            </Button>
+                          )}
+                          <Button 
+                            size="sm" 
+                            className="h-7 text-xs px-2"
+                            onClick={() => setShowInboundDialog(true)}
+                          >
+                            <Plus className="mr-1 h-3 w-3" />
+                            Nhập kho
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {fabricSummaryArray.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      <div className="space-y-4">
+                        <p>Chưa có dữ liệu tồn kho</p>
+                        <Button 
+                          onClick={() => setShowInboundDialog(true)}
+                          className="mx-auto"
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Nhập kho đầu tiên
+                        </Button>
                       </div>
-                      <div className={`text-sm font-semibold ${getTextClass()}`}>
-                        {formatNumber(fabric.total)}m
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Chi tiết kho */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between py-1">
-                    <span className="text-xs text-muted-foreground">Hà Nội:</span>
-                    <div className="text-right">
-                      <span className="text-sm font-medium">{fabric.hanoiPackages} Kiện</span>
-                      <span className="text-sm text-muted-foreground ml-2">
-                        {formatNumber(fabric.hanoi)}m
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between py-1">
-                    <span className="text-xs text-muted-foreground">Bắc Ninh:</span>
-                    <div className="text-right">
-                      <span className="text-sm font-medium">{fabric.bacninhPackages} Kiện</span>
-                      <span className="text-sm text-muted-foreground ml-2">
-                        {formatNumber(fabric.bacninh)}m
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Buttons */}
-                <div className="pt-2 border-t space-y-2">
-                  {(fabric.hanoi > 0 || fabric.bacninh > 0) && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full h-8 text-xs"
-                      onClick={() => handleTransferClick(fabric.fabricName)}
-                    >
-                      <ArrowRight className="mr-1 h-3 w-3" />
-                      Chuyển kho
-                    </Button>
-                  )}
-                  <Button 
-                    size="sm" 
-                    className="w-full h-8 text-xs"
-                    onClick={() => setShowInboundDialog(true)}
-                  >
-                    <Plus className="mr-1 h-3 w-3" />
-                    Nhập kho
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-        {fabricSummaryArray.length === 0 && (
-          <Card>
-            <CardContent className="text-center text-muted-foreground py-8 space-y-4">
-              <p>Chưa có dữ liệu tồn kho</p>
-              <Button 
-                onClick={() => setShowInboundDialog(true)}
-                className="mx-auto"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Nhập kho đầu tiên
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {/* Total row */}
+                {fabricSummaryArray.length > 0 && (
+                  <TableRow className="bg-muted font-semibold border-t-2">
+                    <TableCell className="border-r">TỔNG CỘNG</TableCell>
+                    <TableCell className="text-center">
+                      {fabricSummaryArray.reduce((sum, item) => sum + item.hanoiPackages, 0)}
+                    </TableCell>
+                    <TableCell className="text-center border-r">
+                      {formatNumber(fabricSummaryArray.reduce((sum, item) => sum + item.hanoi, 0))}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {fabricSummaryArray.reduce((sum, item) => sum + item.bacninhPackages, 0)}
+                    </TableCell>
+                    <TableCell className="text-center border-r">
+                      {formatNumber(fabricSummaryArray.reduce((sum, item) => sum + item.bacninh, 0))}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {fabricSummaryArray.reduce((sum, item) => sum + item.totalPackages, 0)}
+                    </TableCell>
+                    <TableCell className="text-center border-r">
+                      {formatNumber(fabricSummaryArray.reduce((sum, item) => sum + item.total, 0))}
+                    </TableCell>
+                    <TableCell></TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Inventory Table */}
