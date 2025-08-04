@@ -407,8 +407,8 @@ export const FabricInventoryOverview = () => {
                     <span className="text-sm text-muted-foreground">Bắc Ninh:</span>
                     <span className="text-sm">{fabric.bacninh.toFixed(2)}m</span>
                   </div>
-                  {(fabric.hanoi > 0 || fabric.bacninh > 0) && (
-                    <div className="pt-2 border-t">
+                  <div className="pt-2 border-t space-y-2">
+                    {(fabric.hanoi > 0 || fabric.bacninh > 0) && (
                       <Button 
                         variant="outline" 
                         size="sm" 
@@ -418,8 +418,16 @@ export const FabricInventoryOverview = () => {
                         <ArrowRight className="mr-2 h-4 w-4" />
                         Chuyển kho
                       </Button>
-                    </div>
-                  )}
+                    )}
+                    <Button 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => setShowInboundDialog(true)}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Nhập kho
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -427,90 +435,19 @@ export const FabricInventoryOverview = () => {
         })}
         {fabricSummaryArray.length === 0 && (
           <Card>
-            <CardContent className="text-center text-muted-foreground py-8">
-              Chưa có dữ liệu tồn kho
+            <CardContent className="text-center text-muted-foreground py-8 space-y-4">
+              <p>Chưa có dữ liệu tồn kho</p>
+              <Button 
+                onClick={() => setShowInboundDialog(true)}
+                className="mx-auto"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Nhập kho đầu tiên
+              </Button>
             </CardContent>
           </Card>
         )}
       </div>
-
-      {/* Quick Import Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Nhập kho nhanh
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-            <div className="space-y-2">
-              <Label>Loại vải</Label>
-              <Select value={newInbound.fabric_variant_id} onValueChange={(value) => setNewInbound(prev => ({ ...prev, fabric_variant_id: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn loại vải" />
-                </SelectTrigger>
-                <SelectContent className="bg-background border shadow-lg z-50">
-                  {variants && variants.length > 0 ? (
-                    variants.map((variant) => (
-                      <SelectItem key={variant.id} value={variant.id} className="cursor-pointer hover:bg-accent">
-                        {variant.variant_name}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="" disabled>Chưa có biến thể vải nào</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Số lượng (mét)</Label>
-              <Input
-                type="number"
-                value={newInbound.quantity}
-                onChange={(e) => setNewInbound(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
-                placeholder="Nhập số lượng"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Chuyển sang Bắc Ninh</Label>
-              <Input
-                type="number"
-                value={newInbound.transfer_to_bacninh}
-                onChange={(e) => setNewInbound(prev => ({ ...prev, transfer_to_bacninh: parseFloat(e.target.value) || 0 }))}
-                placeholder="Số lượng chuyển"
-                max={newInbound.quantity}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Nhà cung cấp</Label>
-              <Input
-                value={newInbound.supplier_name}
-                onChange={(e) => setNewInbound(prev => ({ ...prev, supplier_name: e.target.value }))}
-                placeholder="Tên nhà cung cấp"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Ghi chú</Label>
-              <Input
-                value={newInbound.notes}
-                onChange={(e) => setNewInbound(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="Ghi chú thêm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="invisible">Action</Label>
-              <Button 
-                onClick={handleInboundSubmit} 
-                disabled={createTransaction.isPending}
-                className="w-full"
-              >
-                {createTransaction.isPending ? "Đang xử lý..." : "Nhập kho"}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Inventory Table */}
