@@ -310,9 +310,9 @@ export const FabricInventoryOverview = () => {
                     <SelectValue placeholder="Chọn loại vải" />
                   </SelectTrigger>
                   <SelectContent>
-                    {fabricTypes?.map((fabricType) => (
-                      <SelectItem key={fabricType.id} value={fabricType.id}>
-                        {fabricType.name}
+                    {variants?.map((variant) => (
+                      <SelectItem key={variant.id} value={variant.id}>
+                        {variant.fabric_types?.name} - {variant.variant_name} {variant.color && `(${variant.color})`} {variant.width_code && `[${variant.width_code}]`}
                       </SelectItem>
                     ))}
                   </SelectContent>
