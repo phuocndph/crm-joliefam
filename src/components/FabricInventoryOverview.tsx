@@ -367,7 +367,7 @@ export const FabricInventoryOverview = () => {
         fabric_variant_id: fabricInventoryItem.fabric_variant_id,
         warehouse_id: fromWarehouseId,
         current_stock: fabricInventoryItem.current_stock - transferQuantity,
-        packages_count: fabricInventoryItem.packages_count
+        packages_count: Math.max(0, fabricInventoryItem.packages_count - transferPackagesCount)
       });
 
       // Update destination warehouse inventory (increase)
@@ -383,7 +383,7 @@ export const FabricInventoryOverview = () => {
         fabric_variant_id: fabricInventoryItem.fabric_variant_id,
         warehouse_id: toWarehouseId,
         current_stock: currentDestinationStock + transferQuantity,
-        packages_count: currentDestinationPackages
+        packages_count: currentDestinationPackages + transferPackagesCount
       });
 
       // Create transfer transactions
