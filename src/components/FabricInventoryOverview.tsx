@@ -76,21 +76,27 @@ export const FabricInventoryOverview = () => {
       acc[key] = {
         fabricName: item.fabricCode, // Only use fabric code, not width code
         total: 0,
+        totalPackages: 0,
         hanoi: 0,
-        bacninh: 0
+        hanoiPackages: 0,
+        bacninh: 0,
+        bacninhPackages: 0
       };
     }
     
     acc[key].total += item.currentStockMeters;
+    acc[key].totalPackages += item.currentStockRolls;
     
     if (item.warehouse?.toLowerCase().includes('hà nội') || item.warehouse?.toLowerCase().includes('hanoi')) {
       acc[key].hanoi += item.currentStockMeters;
+      acc[key].hanoiPackages += item.currentStockRolls;
     } else if (item.warehouse?.toLowerCase().includes('bắc ninh') || item.warehouse?.toLowerCase().includes('bacninh')) {
       acc[key].bacninh += item.currentStockMeters;
+      acc[key].bacninhPackages += item.currentStockRolls;
     }
     
     return acc;
-  }, {} as Record<string, { fabricName: string; total: number; hanoi: number; bacninh: number }>);
+  }, {} as Record<string, { fabricName: string; total: number; totalPackages: number; hanoi: number; hanoiPackages: number; bacninh: number; bacninhPackages: number }>);
 
   const fabricSummaryArray = Object.values(fabricSummary);
 
@@ -419,19 +425,25 @@ export const FabricInventoryOverview = () => {
                 <CardTitle className={`text-sm font-medium ${getTextClass()}`}>Vải {fabric.fabricName}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className={`text-sm font-medium ${getTextClass()}`}>Tổng:</span>
-                    <span className={`text-lg font-bold ${getTextClass()}`}>{fabric.total.toFixed(2)}m</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Hà Nội:</span>
-                    <span className="text-sm">{fabric.hanoi.toFixed(2)}m</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Bắc Ninh:</span>
-                    <span className="text-sm">{fabric.bacninh.toFixed(2)}m</span>
-                  </div>
+                 <div className="space-y-2">
+                   <div className="flex justify-between">
+                     <span className={`text-sm font-medium ${getTextClass()}`}>Tổng:</span>
+                     <span className={`text-lg font-bold ${getTextClass()}`}>
+                       {fabric.totalPackages} Kiện {fabric.total.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}m
+                     </span>
+                   </div>
+                   <div className="flex justify-between">
+                     <span className="text-sm text-muted-foreground">Hà Nội:</span>
+                     <span className="text-sm">
+                       {fabric.hanoiPackages} Kiện {fabric.hanoi.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}m
+                     </span>
+                   </div>
+                   <div className="flex justify-between">
+                     <span className="text-sm text-muted-foreground">Bắc Ninh:</span>
+                     <span className="text-sm">
+                       {fabric.bacninhPackages} Kiện {fabric.bacninh.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}m
+                     </span>
+                   </div>
                   <div className="pt-2 border-t space-y-2">
                     {(fabric.hanoi > 0 || fabric.bacninh > 0) && (
                       <Button 
