@@ -514,3 +514,44 @@ export const useCreateFabricUsage = () => {
     },
   });
 };
+
+export const useUpdateFabricUsage = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const { data: updatedData, error } = await supabase
+        .from('fabric_usage')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return updatedData;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
+      queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+    },
+  });
+};
+
+export const useDeleteFabricUsage = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('fabric_usage')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
+      queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+    },
+  });
+};
