@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Edit, Trash2, Package } from 'lucide-react';
+import { Plus, Edit, Trash2, Package, Copy } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,11 +8,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { useFabricTypes, useCreateFabricType, useUpdateFabricType, useDeleteFabricType } from '@/hooks/useFabrics';
+import { useFabricTypes, useCreateFabricType, useUpdateFabricType, useDeleteFabricType, useFabricVariants } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 
 export const FabricTypeManagement = () => {
   const { data: fabricTypes = [] } = useFabricTypes();
+  const { data: fabricVariants = [] } = useFabricVariants();
   const createFabricType = useCreateFabricType();
   const updateFabricType = useUpdateFabricType();
   const deleteFabricType = useDeleteFabricType();
@@ -23,6 +24,13 @@ export const FabricTypeManagement = () => {
     name: '',
     description: ''
   });
+
+  // Extract unique fabric names from variants for quick add
+  const uniqueFabricNames = Array.from(new Set(
+    fabricVariants
+      .map(variant => variant.variant_name)
+      .filter(name => name && !fabricTypes.some(type => type.name === name))
+  )).slice(0, 6);
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
@@ -80,6 +88,19 @@ export const FabricTypeManagement = () => {
     setFormData({ name: '', description: '' });
     setEditingType(null);
     setShowCreateDialog(false);
+  };
+
+  const handleQuickAdd = async (fabricName: string) => {
+    try {
+      await createFabricType.mutateAsync({
+        name: fabricName,
+        description: `Loại vải ${fabricName}`
+      });
+      toast({ title: "Thành công", description: `Đã thêm loại vải ${fabricName}` });
+    } catch (error) {
+      console.error('Error:', error);
+      toast({ title: "Lỗi", description: "Không thể thêm loại vải", variant: "destructive" });
+    }
   };
 
   return (
@@ -214,6 +235,36 @@ export const FabricTypeManagement = () => {
             </TableBody>
           </Table>
         </div>
+        
+        {/* Quick sync from fabric variants */}
+        {uniqueFabricNames.length > 0 && (
+          <div className="mt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Copy className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Đồng bộ từ tổng số lượng vải:
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {uniqueFabricNames.map((fabricName) => (
+                <Button
+                  key={fabricName}
+                  variant="outline"
+                  size="sm"
+                  disabled={createFabricType.isPending}
+                  onClick={() => handleQuickAdd(fabricName)}
+                  className="text-xs"
+                >
+                  <Plus className="mr-1 h-3 w-3" />
+                  {fabricName}
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Tự động tạo loại vải từ các tên trong danh sách biến thể vải
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
