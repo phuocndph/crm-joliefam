@@ -456,7 +456,7 @@ export const FabricInventoryOverview = () => {
                   placeholder="Nhập số kiện"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Trung bình: {newInbound.packages_count > 0 ? (newInbound.quantity / newInbound.packages_count).toFixed(2) : 0} mét/kiện
+                  Trung bình: {newInbound.packages_count > 0 ? formatNumber(newInbound.quantity / newInbound.packages_count) : 0} mét/kiện
                 </p>
               </div>
               <div className="space-y-2">
@@ -469,7 +469,7 @@ export const FabricInventoryOverview = () => {
                   max={newInbound.quantity}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Còn lại tại Hà Nội: {(newInbound.quantity - newInbound.transfer_to_bacninh).toFixed(2)} mét
+                  Còn lại tại Hà Nội: {formatNumber(newInbound.quantity - newInbound.transfer_to_bacninh)} mét
                 </p>
               </div>
               <div className="space-y-2">
