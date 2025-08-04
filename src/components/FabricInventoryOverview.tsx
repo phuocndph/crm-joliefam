@@ -7,14 +7,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Package2, ArrowRight, Edit, Trash2 } from "lucide-react";
-import { useFabricInventory, useFabricVariants, useFabricTypes, useWarehouses, useCreateTransaction, useUpdateInventory, useCreateTransfer, useUpdateFabricType, useDeleteFabricType } from "@/hooks/useFabrics";
+import { useFabricInventory, useFabricTypes, useWarehouses, useCreateTransaction, useUpdateInventory, useCreateTransfer, useUpdateFabricType, useDeleteFabricType } from "@/hooks/useFabrics";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from "@/hooks/use-toast";
 import { FabricTransactionsTable } from "@/components/FabricTransactionsTable";
 
 export const FabricInventoryOverview = () => {
   const { data: inventory = [] } = useFabricInventory();
-  const { data: variants = [] } = useFabricVariants();
   const { data: fabricTypes = [] } = useFabricTypes();
   const { data: warehouses = [] } = useWarehouses();
   const createTransaction = useCreateTransaction();
@@ -24,7 +23,7 @@ export const FabricInventoryOverview = () => {
   const deleteFabricType = useDeleteFabricType();
   
   // Debug log
-  console.log('FabricInventoryOverview - variants:', variants);
+  console.log('FabricInventoryOverview - fabricTypes:', fabricTypes);
   
   const [showInboundDialog, setShowInboundDialog] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
@@ -41,8 +40,9 @@ export const FabricInventoryOverview = () => {
     name: '',
     description: ''
   });
+  // Sử dụng fabric_type_id cho UI nhưng sẽ tạo fabric_variant tự động
   const [newInbound, setNewInbound] = useState({
-    fabric_variant_id: '',
+    fabric_type_id: '',
     quantity: 0,
     packages_count: 0,
     supplier_name: '',
@@ -55,9 +55,8 @@ export const FabricInventoryOverview = () => {
     ...item,
     fabricCode: item.fabric_variants?.variant_name || '',
     fabricType: item.fabric_variants?.fabric_types?.name || '',
-    widthCode: item.fabric_variants?.width_code || '',
     warehouse: item.warehouses?.name || '',
-    currentStockRolls: item.packages_count || 0, // Use actual packages count from database
+    currentStockRolls: item.packages_count || 0,
     currentStockMeters: item.current_stock,
   }));
 
@@ -82,12 +81,12 @@ export const FabricInventoryOverview = () => {
   const hanoiWarehouse = warehouses.find(w => w.name.toLowerCase().includes('hà nội') || w.name.toLowerCase().includes('hanoi'));
   const bacninhWarehouse = warehouses.find(w => w.name.toLowerCase().includes('bắc ninh') || w.name.toLowerCase().includes('bacninh'));
 
-  // Group by fabric variant with warehouse breakdown
+  // Group by fabric type with warehouse breakdown
   const fabricSummary = inventoryData.reduce((acc, item) => {
     const key = item.fabricCode;
     if (!acc[key]) {
       acc[key] = {
-        fabricName: item.fabricCode, // Only use fabric code, not width code
+        fabricName: item.fabricCode,
         total: 0,
         totalPackages: 0,
         hanoi: 0,
@@ -136,7 +135,7 @@ export const FabricInventoryOverview = () => {
   };
 
   const handleInboundSubmit = async () => {
-    if (!newInbound.fabric_variant_id || newInbound.quantity <= 0) {
+    if (!newInbound.fabric_type_id || newInbound.quantity <= 0) {
       toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
       return;
     }
@@ -146,18 +145,26 @@ export const FabricInventoryOverview = () => {
   };
 
   const handleConfirmInbound = async () => {
-
     if (!hanoiWarehouse) {
       toast({ title: "Lỗi", description: "Không tìm thấy kho Hà Nội", variant: "destructive" });
       return;
     }
 
     try {
+      const selectedFabricType = fabricTypes.find(ft => ft.id === newInbound.fabric_type_id);
+      if (!selectedFabricType) {
+        toast({ title: "Lỗi", description: "Không tìm thấy loại vải", variant: "destructive" });
+        return;
+      }
+
+      // Sử dụng fabric_type_id trực tiếp làm variant_id
+      // Vì chúng ta đã bỏ fabric_variants, sử dụng fabric_type_id làm fabric_variant_id
+      const fabricVariantId = newInbound.fabric_type_id;
       const hanoiQuantity = newInbound.quantity - newInbound.transfer_to_bacninh;
       
       // Create inbound transaction for Hanoi
       await createTransaction.mutateAsync({
-        fabric_variant_id: newInbound.fabric_variant_id,
+        fabric_variant_id: fabricVariantId,
         warehouse_id: hanoiWarehouse.id,
         transaction_type: 'inbound',
         quantity: hanoiQuantity,
@@ -166,14 +173,14 @@ export const FabricInventoryOverview = () => {
         notes: newInbound.notes
       });
 
-      // Update Hanoi inventory - cộng dồn số lượng
+      // Update Hanoi inventory
       const existingHanoiInventory = inventory.find(item => 
-        item.fabric_variant_id === newInbound.fabric_variant_id && item.warehouse_id === hanoiWarehouse.id
+        item.fabric_variant_id === fabricVariantId && item.warehouse_id === hanoiWarehouse.id
       );
       const currentHanoiStock = existingHanoiInventory?.current_stock || 0;
       
       await updateInventory.mutateAsync({
-        fabric_variant_id: newInbound.fabric_variant_id,
+        fabric_variant_id: fabricVariantId,
         warehouse_id: hanoiWarehouse.id,
         current_stock: currentHanoiStock + hanoiQuantity,
         packages_count: (existingHanoiInventory?.packages_count || 0) + newInbound.packages_count
@@ -183,29 +190,29 @@ export const FabricInventoryOverview = () => {
       if (newInbound.transfer_to_bacninh > 0 && bacninhWarehouse) {
         // Create transfer transaction
         await createTransaction.mutateAsync({
-          fabric_variant_id: newInbound.fabric_variant_id,
+          fabric_variant_id: fabricVariantId,
           warehouse_id: bacninhWarehouse.id,
           transaction_type: 'transfer_in',
           quantity: newInbound.transfer_to_bacninh,
           notes: `Chuyển từ kho Hà Nội`
         });
 
-        // Update Bac Ninh inventory - cộng dồn số lượng
+        // Update Bac Ninh inventory
         const existingBacninhInventory = inventory.find(item => 
-          item.fabric_variant_id === newInbound.fabric_variant_id && item.warehouse_id === bacninhWarehouse.id
+          item.fabric_variant_id === fabricVariantId && item.warehouse_id === bacninhWarehouse.id
         );
         const currentBacninhStock = existingBacninhInventory?.current_stock || 0;
         
         await updateInventory.mutateAsync({
-          fabric_variant_id: newInbound.fabric_variant_id,
+          fabric_variant_id: fabricVariantId,
           warehouse_id: bacninhWarehouse.id,
           current_stock: currentBacninhStock + newInbound.transfer_to_bacninh,
-          packages_count: existingBacninhInventory?.packages_count || 0 // Keep existing packages at Bac Ninh
+          packages_count: existingBacninhInventory?.packages_count || 0
         });
       }
 
       setNewInbound({
-        fabric_variant_id: '',
+        fabric_type_id: '',
         quantity: 0,
         packages_count: 0,
         supplier_name: '',
@@ -221,131 +228,8 @@ export const FabricInventoryOverview = () => {
     }
   };
 
-  const handleTransferSubmit = async () => {
-    if (!selectedFabricForTransfer || transferQuantity <= 0 || !fromWarehouseId || !toWarehouseId) {
-      toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
-      return;
-    }
-
-    if (fromWarehouseId === toWarehouseId) {
-      toast({ title: "Lỗi", description: "Kho nguồn và kho đích không được trùng nhau", variant: "destructive" });
-      return;
-    }
-
-    // Find the fabric variant for the selected fabric
-    const selectedFabric = fabricSummaryArray.find(f => f.fabricName === selectedFabricForTransfer);
-    if (!selectedFabric) {
-      toast({ title: "Lỗi", description: "Không tìm thấy thông tin vải", variant: "destructive" });
-      return;
-    }
-
-    // Get available quantity from source warehouse
-    const fromWarehouse = warehouses.find(w => w.id === fromWarehouseId);
-    const toWarehouse = warehouses.find(w => w.id === toWarehouseId);
-    
-    if (!fromWarehouse || !toWarehouse) {
-      toast({ title: "Lỗi", description: "Không tìm thấy thông tin kho", variant: "destructive" });
-      return;
-    }
-
-    let availableQuantity = 0;
-    if (fromWarehouse.name.toLowerCase().includes('hà nội') || fromWarehouse.name.toLowerCase().includes('hanoi')) {
-      availableQuantity = selectedFabric.hanoi;
-    } else if (fromWarehouse.name.toLowerCase().includes('bắc ninh') || fromWarehouse.name.toLowerCase().includes('bacninh')) {
-      availableQuantity = selectedFabric.bacninh;
-    }
-
-    if (availableQuantity < transferQuantity) {
-      toast({ title: "Lỗi", description: `Số lượng chuyển vượt quá tồn kho ${fromWarehouse.name} (${availableQuantity.toFixed(2)}m)`, variant: "destructive" });
-      return;
-    }
-
-    // Find the variant ID
-    const fabricVariant = variants.find(v => v.variant_name === selectedFabricForTransfer);
-    if (!fabricVariant) {
-      toast({ title: "Lỗi", description: "Không tìm thấy thông tin loại vải", variant: "destructive" });
-      return;
-    }
-
-    try {
-      // First create transfer record
-      await createTransfer.mutateAsync({
-        fabric_variant_id: fabricVariant.id,
-        from_warehouse_id: fromWarehouseId,
-        to_warehouse_id: toWarehouseId,
-        quantity: transferQuantity,
-        notes: transferNotes || `Chuyển ${transferQuantity}m từ ${fromWarehouse.name} về ${toWarehouse.name}`
-      });
-
-      // Update inventory - reduce from source warehouse
-      const fromInventoryItem = inventory.find(item => 
-        item.fabric_variant_id === fabricVariant.id && item.warehouse_id === fromWarehouseId
-      );
-      
-      if (fromInventoryItem) {
-        const newFromStock = Math.max(0, fromInventoryItem.current_stock - transferQuantity);
-        await updateInventory.mutateAsync({
-          fabric_variant_id: fabricVariant.id,
-          warehouse_id: fromWarehouseId,
-          current_stock: newFromStock,
-          packages_count: fromInventoryItem.packages_count || 0, // Keep existing packages count
-          reserved_stock: fromInventoryItem.reserved_stock || 0,
-          minimum_stock: fromInventoryItem.minimum_stock || 0,
-          maximum_stock: fromInventoryItem.maximum_stock || 0
-        });
-      }
-
-      // Update inventory - add to destination warehouse
-      const toInventoryItem = inventory.find(item => 
-        item.fabric_variant_id === fabricVariant.id && item.warehouse_id === toWarehouseId
-      );
-      
-      const newToStock = (toInventoryItem?.current_stock || 0) + transferQuantity;
-      await updateInventory.mutateAsync({
-        fabric_variant_id: fabricVariant.id,
-        warehouse_id: toWarehouseId,
-        current_stock: newToStock,
-        packages_count: toInventoryItem?.packages_count || 0, // Keep existing packages count  
-        reserved_stock: toInventoryItem?.reserved_stock || 0,
-        minimum_stock: toInventoryItem?.minimum_stock || 0,
-        maximum_stock: toInventoryItem?.maximum_stock || 0
-      });
-
-      // Create transactions for tracking
-      await createTransaction.mutateAsync({
-        fabric_variant_id: fabricVariant.id,
-        warehouse_id: fromWarehouseId,
-        transaction_type: 'transfer_out',
-        quantity: -transferQuantity,
-        notes: `Chuyển đi ${toWarehouse.name}`
-      });
-
-      await createTransaction.mutateAsync({
-        fabric_variant_id: fabricVariant.id,
-        warehouse_id: toWarehouseId,
-        transaction_type: 'transfer_in',
-        quantity: transferQuantity,
-        notes: `Nhận từ ${fromWarehouse.name}`
-      });
-
-      setSelectedFabricForTransfer('');
-      setTransferQuantity(0);
-      setTransferNotes('');
-      setFromWarehouseId('');
-      setToWarehouseId('');
-      setShowTransferDialog(false);
-      toast({ title: "Thành công", description: "Đã chuyển vải thành công và cập nhật tồn kho" });
-    } catch (error) {
-      console.error('Error creating transfer:', error);
-      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi chuyển vải", variant: "destructive" });
-    }
-  };
-
   const handleEditClick = (fabric: any) => {
-    const fabricType = fabricTypes?.find(ft => 
-      fabricSummaryArray.some(fs => fs.fabricName === fabric.fabricName && 
-        variants?.some(v => v.variant_name === fs.fabricName && v.fabric_type_id === ft.id))
-    );
+    const fabricType = fabricTypes?.find(ft => ft.name === fabric.fabricName);
     
     setSelectedFabric(fabric);
     setEditForm({
@@ -367,9 +251,7 @@ export const FabricInventoryOverview = () => {
     }
 
     try {
-      const fabricType = fabricTypes?.find(ft => 
-        variants?.some(v => v.variant_name === selectedFabric.fabricName && v.fabric_type_id === ft.id)
-      );
+      const fabricType = fabricTypes?.find(ft => ft.name === selectedFabric.fabricName);
 
       if (fabricType) {
         await updateFabricType.mutateAsync({
@@ -392,9 +274,7 @@ export const FabricInventoryOverview = () => {
     if (!selectedFabric) return;
 
     try {
-      const fabricType = fabricTypes?.find(ft => 
-        variants?.some(v => v.variant_name === selectedFabric.fabricName && v.fabric_type_id === ft.id)
-      );
+      const fabricType = fabricTypes?.find(ft => ft.name === selectedFabric.fabricName);
 
       if (fabricType) {
         await deleteFabricType.mutateAsync(fabricType.id);
@@ -406,11 +286,6 @@ export const FabricInventoryOverview = () => {
       console.error('Error deleting fabric type:', error);
       toast({ title: "Lỗi", description: "Có lỗi xảy ra khi xóa", variant: "destructive" });
     }
-  };
-
-  const handleTransferClick = (fabricName: string) => {
-    setSelectedFabricForTransfer(fabricName);
-    setShowTransferDialog(true);
   };
 
   return (
@@ -438,19 +313,19 @@ export const FabricInventoryOverview = () => {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Loại vải</Label>
-                <Select value={newInbound.fabric_variant_id} onValueChange={(value) => setNewInbound(prev => ({ ...prev, fabric_variant_id: value }))}>
+                <Select value={newInbound.fabric_type_id} onValueChange={(value) => setNewInbound(prev => ({ ...prev, fabric_type_id: value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn loại vải" />
                   </SelectTrigger>
                   <SelectContent className="bg-background border shadow-lg z-50">
-                    {variants && variants.length > 0 ? (
-                      variants.map((variant) => (
-                        <SelectItem key={variant.id} value={variant.id} className="cursor-pointer hover:bg-accent">
-                          {variant.variant_name}
+                    {fabricTypes && fabricTypes.length > 0 ? (
+                      fabricTypes.map((fabricType) => (
+                        <SelectItem key={fabricType.id} value={fabricType.id} className="cursor-pointer hover:bg-accent">
+                          {fabricType.name}
                         </SelectItem>
                       ))
                     ) : (
-                      <SelectItem value="no-variants" disabled>Chưa có biến thể vải nào</SelectItem>
+                      <SelectItem value="no-types" disabled>Chưa có loại vải nào</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
@@ -606,15 +481,6 @@ export const FabricInventoryOverview = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleTransferClick(fabric.fabricName)}
-                            className="h-8 w-8 p-0"
-                            title="Chuyển kho"
-                          >
-                            <ArrowRight className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
                             onClick={() => setShowInboundDialog(true)}
                             className="h-8 w-8 p-0"
                             title="Nhập kho"
@@ -673,8 +539,8 @@ export const FabricInventoryOverview = () => {
         </CardContent>
       </Card>
 
+      {/* Inventory Table and Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Inventory Table */}
         <Card>
           <CardHeader>
             <CardTitle>Bảng tồn kho chi tiết</CardTitle>
@@ -684,7 +550,7 @@ export const FabricInventoryOverview = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Mã vải</TableHead>
+                    <TableHead>Loại vải</TableHead>
                     <TableHead className="text-center" colSpan={2}>Còn trong kho</TableHead>
                     <TableHead>Kho</TableHead>
                     <TableHead>Cập nhật lần cuối</TableHead>
@@ -716,23 +582,12 @@ export const FabricInventoryOverview = () => {
                       </TableCell>
                     </TableRow>
                   )}
-                  {/* Total row */}
-                  {inventoryData.length > 0 && (
-                    <TableRow className="bg-muted/50 font-medium">
-                      <TableCell>Tổng</TableCell>
-                      <TableCell className="text-center">{inventoryData.reduce((sum, item) => sum + item.currentStockRolls, 0)}</TableCell>
-                      <TableCell className="text-center">{inventoryData.reduce((sum, item) => sum + item.currentStockMeters, 0).toFixed(2)}</TableCell>
-                      <TableCell></TableCell>
-                      <TableCell></TableCell>
-                    </TableRow>
-                  )}
                 </TableBody>
               </Table>
             </div>
           </CardContent>
         </Card>
 
-        {/* Chart */}
         <Card>
           <CardHeader>
             <CardTitle>Biểu đồ thể hiện tổng số mét vải các loại</CardTitle>
@@ -767,218 +622,125 @@ export const FabricInventoryOverview = () => {
       {/* Fabric Transactions Table */}
       <FabricTransactionsTable />
 
-      {/* Transfer Dialog */}
-      <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
-        <DialogContent className="max-w-md">
+      {/* Confirmation Dialog for Inbound */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Chuyển vải giữa các kho</DialogTitle>
+            <DialogTitle>Xác nhận thông tin nhập kho</DialogTitle>
             <DialogDescription>
-              Chuyển vải {selectedFabricForTransfer} từ kho này sang kho khác
+              Vui lòng kiểm tra lại thông tin trước khi nhập kho
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Loại vải</Label>
-              <Input
-                value={selectedFabricForTransfer}
-                disabled
-                className="bg-muted"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Từ kho</Label>
-              <Select value={fromWarehouseId} onValueChange={setFromWarehouseId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn kho nguồn" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses?.map((warehouse) => (
-                    <SelectItem key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Đến kho</Label>
-              <Select value={toWarehouseId} onValueChange={setToWarehouseId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn kho đích" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses?.filter(w => w.id !== fromWarehouseId).map((warehouse) => (
-                    <SelectItem key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Số lượng chuyển (mét)</Label>
-              <Input
-                type="number"
-                value={transferQuantity}
-                onChange={(e) => setTransferQuantity(parseFloat(e.target.value) || 0)}
-                placeholder="Nhập số lượng cần chuyển"
-              />
-              {fromWarehouseId && (
-                <p className="text-xs text-muted-foreground">
-                  Tồn kho: {(() => {
-                    const selectedFabric = fabricSummaryArray.find(f => f.fabricName === selectedFabricForTransfer);
-                    const fromWarehouse = warehouses.find(w => w.id === fromWarehouseId);
-                    if (!selectedFabric || !fromWarehouse) return "0";
-                    
-                    if (fromWarehouse.name.toLowerCase().includes('hà nội') || fromWarehouse.name.toLowerCase().includes('hanoi')) {
-                      return selectedFabric.hanoi.toFixed(2);
-                    } else if (fromWarehouse.name.toLowerCase().includes('bắc ninh') || fromWarehouse.name.toLowerCase().includes('bacninh')) {
-                      return selectedFabric.bacninh.toFixed(2);
-                    }
-                    return "0";
-                  })()}m
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Ghi chú</Label>
-              <Input
-                value={transferNotes}
-                onChange={(e) => setTransferNotes(e.target.value)}
-                placeholder="Ghi chú thêm (tùy chọn)"
-              />
+            <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span className="font-medium">Loại vải:</span>
+                <span>{fabricTypes?.find(ft => ft.id === newInbound.fabric_type_id)?.name}</span>
+                
+                <span className="font-medium">Tổng số lượng:</span>
+                <span>{formatNumber(newInbound.quantity)} mét</span>
+                
+                <span className="font-medium">Số kiện:</span>
+                <span>{formatNumber(newInbound.packages_count)} kiện</span>
+                
+                <span className="font-medium">Trung bình/kiện:</span>
+                <span>{newInbound.packages_count > 0 ? formatNumber(newInbound.quantity / newInbound.packages_count) : 0} mét</span>
+                
+                <span className="font-medium">Nhà cung cấp:</span>
+                <span>{newInbound.supplier_name || "Chưa có"}</span>
+                
+                <span className="font-medium">Lưu tại Hà Nội:</span>
+                <span>{formatNumber(newInbound.quantity - newInbound.transfer_to_bacninh)} mét</span>
+                
+                {newInbound.transfer_to_bacninh > 0 && (
+                  <>
+                    <span className="font-medium">Chuyển Bắc Ninh:</span>
+                    <span>{formatNumber(newInbound.transfer_to_bacninh)} mét</span>
+                  </>
+                )}
+                
+                {newInbound.notes && (
+                  <>
+                    <span className="font-medium">Ghi chú:</span>
+                    <span>{newInbound.notes}</span>
+                  </>
+                )}
+              </div>
             </div>
             <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowTransferDialog(false)}>
-                Hủy
+              <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
+                Sửa lại
               </Button>
-              <Button onClick={handleTransferSubmit} disabled={createTransfer.isPending}>
-                {createTransfer.isPending ? "Đang xử lý..." : "Tạo phiếu chuyển"}
+              <Button onClick={handleConfirmInbound} disabled={createTransaction.isPending}>
+                {createTransaction.isPending ? "Đang xử lý..." : "Xác nhận nhập kho"}
               </Button>
             </div>
           </div>
         </DialogContent>
-        </Dialog>
+      </Dialog>
 
-        {/* Confirmation Dialog for Inbound */}
-        <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Xác nhận thông tin nhập kho</DialogTitle>
-              <DialogDescription>
-                Vui lòng kiểm tra lại thông tin trước khi nhập kho
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="bg-muted/50 p-4 rounded-lg space-y-3">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <span className="font-medium">Loại vải:</span>
-                  <span>{variants?.find(v => v.id === newInbound.fabric_variant_id)?.variant_name}</span>
-                  
-                  <span className="font-medium">Tổng số lượng:</span>
-                  <span>{formatNumber(newInbound.quantity)} mét</span>
-                  
-                  <span className="font-medium">Số kiện:</span>
-                  <span>{formatNumber(newInbound.packages_count)} kiện</span>
-                  
-                  <span className="font-medium">Trung bình/kiện:</span>
-                  <span>{newInbound.packages_count > 0 ? formatNumber(newInbound.quantity / newInbound.packages_count) : 0} mét</span>
-                  
-                  <span className="font-medium">Nhà cung cấp:</span>
-                  <span>{newInbound.supplier_name || "Chưa có"}</span>
-                  
-                  <span className="font-medium">Lưu tại Hà Nội:</span>
-                  <span>{formatNumber(newInbound.quantity - newInbound.transfer_to_bacninh)} mét</span>
-                  
-                  {newInbound.transfer_to_bacninh > 0 && (
-                    <>
-                      <span className="font-medium">Chuyển Bắc Ninh:</span>
-                      <span>{formatNumber(newInbound.transfer_to_bacninh)} mét</span>
-                    </>
-                  )}
-                  
-                  {newInbound.notes && (
-                    <>
-                      <span className="font-medium">Ghi chú:</span>
-                      <span>{newInbound.notes}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
-                  Sửa lại
-                </Button>
-                <Button onClick={handleConfirmInbound} disabled={createTransaction.isPending}>
-                  {createTransaction.isPending ? "Đang xử lý..." : "Xác nhận nhập kho"}
-                </Button>
-              </div>
+      {/* Edit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa loại vải</DialogTitle>
+            <DialogDescription>
+              Cập nhật thông tin loại vải {selectedFabric?.fabricName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Tên loại vải</Label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Nhập tên loại vải"
+              />
             </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Dialog */}
-        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Chỉnh sửa loại vải</DialogTitle>
-              <DialogDescription>
-                Cập nhật thông tin loại vải {selectedFabric?.fabricName}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Tên loại vải</Label>
-                <Input
-                  value={editForm.name}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Nhập tên loại vải"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Mô tả</Label>
-                <Input
-                  value={editForm.description}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Nhập mô tả"
-                />
-              </div>
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-                  Hủy
-                </Button>
-                <Button onClick={handleEditSubmit} disabled={updateFabricType.isPending}>
-                  {updateFabricType.isPending ? "Đang cập nhật..." : "Cập nhật"}
-                </Button>
-              </div>
+            <div className="space-y-2">
+              <Label>Mô tả</Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Nhập mô tả"
+              />
             </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Delete Dialog */}
-        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Xác nhận xóa</DialogTitle>
-              <DialogDescription>
-                Bạn có chắc chắn muốn xóa loại vải "{selectedFabric?.fabricName}"? 
-                Hành động này không thể hoàn tác.
-              </DialogDescription>
-            </DialogHeader>
             <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              <Button variant="outline" onClick={() => setShowEditDialog(false)}>
                 Hủy
               </Button>
-              <Button 
-                variant="destructive" 
-                onClick={handleDeleteSubmit} 
-                disabled={deleteFabricType.isPending}
-              >
-                {deleteFabricType.isPending ? "Đang xóa..." : "Xóa"}
+              <Button onClick={handleEditSubmit} disabled={updateFabricType.isPending}>
+                {updateFabricType.isPending ? "Đang cập nhật..." : "Cập nhật"}
               </Button>
             </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Xác nhận xóa</DialogTitle>
+            <DialogDescription>
+              Bạn có chắc chắn muốn xóa loại vải "{selectedFabric?.fabricName}"? 
+              Hành động này không thể hoàn tác.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Hủy
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteSubmit} 
+              disabled={deleteFabricType.isPending}
+            >
+              {deleteFabricType.isPending ? "Đang xóa..." : "Xóa"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
