@@ -10,9 +10,20 @@ import { useFabricTransactions, useUpdateTransaction, useFabricInventory, useUpd
 import { ArrowUp, ArrowDown, RefreshCw, Edit } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
-export const FabricTransactionsTable = () => {
-  const { data: transactions = [] } = useFabricTransactions();
+interface FabricTransactionsTableProps {
+  warehouseFilter?: string;
+}
+
+export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsTableProps) => {
+  const { data: allTransactions = [] } = useFabricTransactions();
   const { data: inventory = [] } = useFabricInventory();
+  
+  // Filter transactions by warehouse if filter is provided
+  const transactions = warehouseFilter 
+    ? allTransactions.filter(transaction => 
+        transaction.warehouses?.name?.toLowerCase().includes(warehouseFilter.toLowerCase())
+      )
+    : allTransactions;
   const updateTransaction = useUpdateTransaction();
   const updateInventory = useUpdateInventory();
 
@@ -235,7 +246,7 @@ export const FabricTransactionsTable = () => {
               ))}
               {transactions.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     Chưa có giao dịch nào
                   </TableCell>
                 </TableRow>

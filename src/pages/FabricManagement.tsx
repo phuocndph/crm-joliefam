@@ -19,6 +19,7 @@ import { FabricUsageRecording } from '@/components/FabricUsageRecording';
 import { FabricUsageDetails } from '@/components/FabricUsageDetails';
 import { FabricTypeManagement } from '@/components/FabricTypeManagement';
 import { FabricVariantManagement } from '@/components/FabricVariantManagement';
+import { FabricTransactionsTable } from '@/components/FabricTransactionsTable';
 import { useFabricTypes, useFabricVariants, useFabricWidths, useWarehouses, useFabricInventory, useFabricTransactions, useFabricTransfers, useFabricUsage, useCreateFabricType, useCreateFabricVariant, useCreateFabricWidth, useUpdateInventory, useCreateTransaction, useCreateTransfer, useUpdateTransferStatus, useCreateFabricUsage } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 const FabricManagement = () => {
@@ -386,6 +387,7 @@ const FabricManagement = () => {
           <FabricControlByWarehouse warehouseName="Hà Nội" warehouseFilter="hanoi" />
           <FabricUsageRecording warehouseName="Hà Nội" warehouseFilter="hanoi" />
           <FabricUsageDetails warehouseName="Hà Nội" warehouseFilter="hanoi" />
+          <FabricTransactionsTable warehouseFilter="hanoi" />
         </TabsContent>
 
         {/* Bac Ninh Control Tab */}
@@ -393,26 +395,7 @@ const FabricManagement = () => {
           <FabricControlByWarehouse warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
           <FabricUsageRecording warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
           <FabricUsageDetails warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
-          <Card>
-            
-            
-          </Card>
-        </TabsContent>
-
-        {/* Hanoi Control Tab */}
-        <TabsContent value="hanoi-control" className="space-y-4">
-          <Card>
-            
-            
-          </Card>
-        </TabsContent>
-
-        {/* Bac Ninh Control Tab */}
-        <TabsContent value="bacninh-control" className="space-y-4">
-          <Card>
-            
-            
-          </Card>
+          <FabricTransactionsTable warehouseFilter="bacninh" />
         </TabsContent>
 
         {/* Fabric Types Tab */}
