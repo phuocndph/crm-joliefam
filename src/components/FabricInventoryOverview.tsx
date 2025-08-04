@@ -310,6 +310,95 @@ export const FabricInventoryOverview = () => {
     }
   };
 
+  const handleTransferSubmit = async () => {
+    if (!selectedFabricForTransfer || !fromWarehouseId || !toWarehouseId || transferQuantity <= 0) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
+      return;
+    }
+
+    try {
+      // Find the fabric variant based on the selected fabric name
+      const fabricInventoryItem = inventory.find(item => 
+        item.fabric_variants?.variant_name === selectedFabricForTransfer && 
+        item.warehouse_id === fromWarehouseId
+      );
+
+      if (!fabricInventoryItem) {
+        toast({ title: "Lỗi", description: "Không tìm thấy vải trong kho nguồn", variant: "destructive" });
+        return;
+      }
+
+      // Check if there's enough stock
+      if (fabricInventoryItem.current_stock < transferQuantity) {
+        toast({ title: "Lỗi", description: `Không đủ tồn kho. Chỉ còn ${formatNumber(fabricInventoryItem.current_stock)} mét`, variant: "destructive" });
+        return;
+      }
+
+      // Create transfer record
+      await createTransfer.mutateAsync({
+        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
+        from_warehouse_id: fromWarehouseId,
+        to_warehouse_id: toWarehouseId,
+        quantity: transferQuantity,
+        notes: transferNotes
+      });
+
+      // Update source warehouse inventory (decrease)
+      await updateInventory.mutateAsync({
+        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
+        warehouse_id: fromWarehouseId,
+        current_stock: fabricInventoryItem.current_stock - transferQuantity,
+        packages_count: fabricInventoryItem.packages_count
+      });
+
+      // Update destination warehouse inventory (increase)
+      const destinationInventory = inventory.find(item => 
+        item.fabric_variant_id === fabricInventoryItem.fabric_variant_id && 
+        item.warehouse_id === toWarehouseId
+      );
+      
+      const currentDestinationStock = destinationInventory?.current_stock || 0;
+      const currentDestinationPackages = destinationInventory?.packages_count || 0;
+
+      await updateInventory.mutateAsync({
+        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
+        warehouse_id: toWarehouseId,
+        current_stock: currentDestinationStock + transferQuantity,
+        packages_count: currentDestinationPackages
+      });
+
+      // Create transfer transactions
+      await createTransaction.mutateAsync({
+        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
+        warehouse_id: fromWarehouseId,
+        transaction_type: 'transfer_out',
+        quantity: -transferQuantity, // Negative for outbound
+        notes: `Chuyển đến ${warehouses.find(w => w.id === toWarehouseId)?.name}. ${transferNotes}`
+      });
+
+      await createTransaction.mutateAsync({
+        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
+        warehouse_id: toWarehouseId,
+        transaction_type: 'transfer_in',
+        quantity: transferQuantity,
+        notes: `Nhận từ ${warehouses.find(w => w.id === fromWarehouseId)?.name}. ${transferNotes}`
+      });
+
+      // Reset form and close dialog
+      setSelectedFabricForTransfer('');
+      setFromWarehouseId('');
+      setToWarehouseId('');
+      setTransferQuantity(0);
+      setTransferNotes('');
+      setShowTransferDialog(false);
+
+      toast({ title: "Thành công", description: "Đã chuyển kho thành công" });
+    } catch (error) {
+      console.error('Error transferring fabric:', error);
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi chuyển kho", variant: "destructive" });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Import Button */}
@@ -686,6 +775,103 @@ export const FabricInventoryOverview = () => {
               </Button>
               <Button onClick={handleConfirmInbound} disabled={createTransaction.isPending}>
                 {createTransaction.isPending ? "Đang xử lý..." : "Xác nhận nhập kho"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer Dialog */}
+      <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chuyển kho vải</DialogTitle>
+            <DialogDescription>
+              Chuyển vải giữa các kho
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Loại vải</Label>
+              <Select value={selectedFabricForTransfer} onValueChange={setSelectedFabricForTransfer}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn loại vải" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border shadow-lg z-50">
+                  {fabricSummaryArray.map((fabric) => (
+                    <SelectItem key={fabric.fabricName} value={fabric.fabricName} className="cursor-pointer hover:bg-accent">
+                      {fabric.fabricName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Từ kho</Label>
+              <Select value={fromWarehouseId} onValueChange={setFromWarehouseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn kho nguồn" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border shadow-lg z-50">
+                  {warehouses.map((warehouse) => (
+                    <SelectItem key={warehouse.id} value={warehouse.id} className="cursor-pointer hover:bg-accent">
+                      {warehouse.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Đến kho</Label>
+              <Select value={toWarehouseId} onValueChange={setToWarehouseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn kho đích" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border shadow-lg z-50">
+                  {warehouses.filter(w => w.id !== fromWarehouseId).map((warehouse) => (
+                    <SelectItem key={warehouse.id} value={warehouse.id} className="cursor-pointer hover:bg-accent">
+                      {warehouse.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Số lượng chuyển (mét)</Label>
+              <Input
+                type="text"
+                value={formatInputValue(transferQuantity)}
+                onChange={(e) => {
+                  const numericValue = parseInputValue(e.target.value);
+                  setTransferQuantity(numericValue);
+                }}
+                placeholder="Nhập số lượng"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Ghi chú</Label>
+              <Input
+                value={transferNotes}
+                onChange={(e) => setTransferNotes(e.target.value)}
+                placeholder="Ghi chú chuyển kho"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => {
+                setShowTransferDialog(false);
+                setSelectedFabricForTransfer('');
+                setFromWarehouseId('');
+                setToWarehouseId('');
+                setTransferQuantity(0);
+                setTransferNotes('');
+              }}>
+                Hủy
+              </Button>
+              <Button 
+                onClick={handleTransferSubmit} 
+                disabled={createTransfer.isPending || !selectedFabricForTransfer || !fromWarehouseId || !toWarehouseId || transferQuantity <= 0}
+              >
+                {createTransfer.isPending ? "Đang xử lý..." : "Chuyển kho"}
               </Button>
             </div>
           </div>
