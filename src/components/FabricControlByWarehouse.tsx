@@ -403,29 +403,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
           </Card>}
       </div>
 
-      {/* Filters */}
-      
-
-      {/* Usage Table */}
-      
-
-      {/* Fabric Usage Recording */}
-      
-
-      {/* Fabric Type Usage Summary */}
-      {Object.keys(summary.fabricTypeUsage).length > 0 && <Card>
-          <CardHeader>
-            <CardTitle>Tổng kết sử dụng theo loại vải</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {Object.entries(summary.fabricTypeUsage).map(([fabricType, quantity]) => <div key={fabricType} className="flex justify-between items-center p-2 bg-muted/50 rounded">
-                  <span className="font-medium">{fabricType}</span>
-                  <Badge variant="outline">{formatQuantity(quantity)}</Badge>
-                </div>)}
-            </div>
-          </CardContent>
-        </Card>}
+      {/* Transfer Dialog */}
 
       {/* Transfer Dialog */}
       <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
