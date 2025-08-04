@@ -403,6 +403,9 @@ export const FabricInventoryOverview = () => {
         notes: `Nhận từ ${warehouses.find(w => w.id === fromWarehouseId)?.name}. ${transferNotes}`
       });
 
+      // Force refresh inventory data
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait for database updates
+      
       // Reset form and close dialogs
       setSelectedFabricForTransfer('');
       setFromWarehouseId('');
