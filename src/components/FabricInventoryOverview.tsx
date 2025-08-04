@@ -25,6 +25,7 @@ export const FabricInventoryOverview = () => {
   
   const [showInboundDialog, setShowInboundDialog] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedFabric, setSelectedFabric] = useState<any>(null);
@@ -109,12 +110,12 @@ export const FabricInventoryOverview = () => {
 
   const fabricSummaryArray = Object.values(fabricSummary);
 
-  // Format number function
+  // Format number function with Vietnamese formatting
   const formatNumber = (num: number) => {
     if (num % 1 === 0) {
       return num.toLocaleString('vi-VN');
     }
-    return num.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return num.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
   };
 
   const handleInboundSubmit = async () => {
@@ -122,6 +123,12 @@ export const FabricInventoryOverview = () => {
       toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
       return;
     }
+
+    // Show confirmation dialog instead of processing immediately
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmInbound = async () => {
 
     if (!hanoiWarehouse) {
       toast({ title: "Lỗi", description: "Không tìm thấy kho Hà Nội", variant: "destructive" });
@@ -189,6 +196,7 @@ export const FabricInventoryOverview = () => {
         notes: ''
       });
       setShowInboundDialog(false);
+      setShowConfirmDialog(false);
       toast({ title: "Thành công", description: "Đã nhập kho và phân bổ vải thành công" });
     } catch (error) {
       console.error('Error creating inbound:', error);
@@ -824,6 +832,63 @@ export const FabricInventoryOverview = () => {
             </div>
           </div>
         </DialogContent>
+        </Dialog>
+
+        {/* Confirmation Dialog for Inbound */}
+        <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Xác nhận thông tin nhập kho</DialogTitle>
+              <DialogDescription>
+                Vui lòng kiểm tra lại thông tin trước khi nhập kho
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <span className="font-medium">Loại vải:</span>
+                  <span>{variants?.find(v => v.id === newInbound.fabric_variant_id)?.variant_name}</span>
+                  
+                  <span className="font-medium">Tổng số lượng:</span>
+                  <span>{formatNumber(newInbound.quantity)} mét</span>
+                  
+                  <span className="font-medium">Số kiện:</span>
+                  <span>{formatNumber(newInbound.packages_count)} kiện</span>
+                  
+                  <span className="font-medium">Trung bình/kiện:</span>
+                  <span>{newInbound.packages_count > 0 ? formatNumber(newInbound.quantity / newInbound.packages_count) : 0} mét</span>
+                  
+                  <span className="font-medium">Nhà cung cấp:</span>
+                  <span>{newInbound.supplier_name || "Chưa có"}</span>
+                  
+                  <span className="font-medium">Lưu tại Hà Nội:</span>
+                  <span>{formatNumber(newInbound.quantity - newInbound.transfer_to_bacninh)} mét</span>
+                  
+                  {newInbound.transfer_to_bacninh > 0 && (
+                    <>
+                      <span className="font-medium">Chuyển Bắc Ninh:</span>
+                      <span>{formatNumber(newInbound.transfer_to_bacninh)} mét</span>
+                    </>
+                  )}
+                  
+                  {newInbound.notes && (
+                    <>
+                      <span className="font-medium">Ghi chú:</span>
+                      <span>{newInbound.notes}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
+                  Sửa lại
+                </Button>
+                <Button onClick={handleConfirmInbound} disabled={createTransaction.isPending}>
+                  {createTransaction.isPending ? "Đang xử lý..." : "Xác nhận nhập kho"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
         </Dialog>
 
         {/* Edit Dialog */}
