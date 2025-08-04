@@ -392,6 +392,7 @@ export const FabricInventoryOverview = () => {
         warehouse_id: fromWarehouseId,
         transaction_type: 'transfer_out',
         quantity: -transferQuantity, // Negative for outbound
+        packages_count: -transferPackagesCount, // Negative for outbound packages
         notes: `Chuyển đến ${warehouses.find(w => w.id === toWarehouseId)?.name}. ${transferNotes}`
       });
 
@@ -400,6 +401,7 @@ export const FabricInventoryOverview = () => {
         warehouse_id: toWarehouseId,
         transaction_type: 'transfer_in',
         quantity: transferQuantity,
+        packages_count: transferPackagesCount, // Positive for inbound packages
         notes: `Nhận từ ${warehouses.find(w => w.id === fromWarehouseId)?.name}. ${transferNotes}`
       });
 
