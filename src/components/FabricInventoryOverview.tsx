@@ -30,6 +30,7 @@ export const FabricInventoryOverview = () => {
   const [newInbound, setNewInbound] = useState({
     fabric_variant_id: '',
     quantity: 0,
+    packages_count: 0,
     supplier_name: '',
     transfer_to_bacninh: 0,
     notes: ''
@@ -145,6 +146,7 @@ export const FabricInventoryOverview = () => {
       setNewInbound({
         fabric_variant_id: '',
         quantity: 0,
+        packages_count: 0,
         supplier_name: '',
         transfer_to_bacninh: 0,
         notes: ''
@@ -330,6 +332,18 @@ export const FabricInventoryOverview = () => {
                   onChange={(e) => setNewInbound(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
                   placeholder="Nhập số lượng"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Số kiện</Label>
+                <Input
+                  type="number"
+                  value={newInbound.packages_count}
+                  onChange={(e) => setNewInbound(prev => ({ ...prev, packages_count: parseInt(e.target.value) || 0 }))}
+                  placeholder="Nhập số kiện"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Trung bình: {newInbound.packages_count > 0 ? (newInbound.quantity / newInbound.packages_count).toFixed(2) : 0} mét/kiện
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Chuyển sang Bắc Ninh (mét)</Label>
