@@ -20,9 +20,15 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
   
   // Filter transactions by warehouse if filter is provided
   const transactions = warehouseFilter 
-    ? allTransactions.filter(transaction => 
-        transaction.warehouses?.name?.toLowerCase().includes(warehouseFilter.toLowerCase())
-      )
+    ? allTransactions.filter(transaction => {
+        const warehouseName = transaction.warehouses?.name?.toLowerCase() || '';
+        if (warehouseFilter === 'hanoi') {
+          return warehouseName.includes('hà nội') || warehouseName.includes('hanoi');
+        } else if (warehouseFilter === 'bacninh') {
+          return warehouseName.includes('bắc ninh') || warehouseName.includes('bac ninh');
+        }
+        return warehouseName.includes(warehouseFilter.toLowerCase());
+      })
     : allTransactions;
   const updateTransaction = useUpdateTransaction();
   const updateInventory = useUpdateInventory();
