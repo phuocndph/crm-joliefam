@@ -78,6 +78,19 @@ export const FabricTransactionsTable = () => {
     return num.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
   };
 
+  // Format quantity with sign based on transaction type
+  const formatQuantityWithSign = (quantity: number, type: string) => {
+    const absQuantity = Math.abs(quantity);
+    const formattedNum = formatNumber(absQuantity);
+    
+    if (type === 'transfer_in' || type === 'inbound') {
+      return `+${formattedNum}m`;
+    } else if (type === 'transfer_out' || type === 'outbound') {
+      return `-${formattedNum}m`;
+    }
+    return `${formattedNum}m`;
+  };
+
   const handleEditClick = (transaction: any) => {
     setSelectedTransaction(transaction);
     setEditForm({
@@ -202,7 +215,7 @@ export const FabricTransactionsTable = () => {
                   <TableCell className={`text-right font-medium ${
                     transaction.quantity > 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    {transaction.quantity > 0 ? '+' : ''}{formatNumber(Math.abs(transaction.quantity))}
+                    {formatQuantityWithSign(transaction.quantity, transaction.transaction_type)}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                     {transaction.supplier_name || transaction.notes || '-'}

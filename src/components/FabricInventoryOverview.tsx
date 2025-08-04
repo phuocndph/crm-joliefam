@@ -121,6 +121,13 @@ export const FabricInventoryOverview = () => {
     return num.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
   };
 
+  // Format quantity with sign for transfer display
+  const formatTransferQuantity = (quantity: number, type: 'in' | 'out') => {
+    const formattedNum = formatNumber(Math.abs(quantity));
+    const sign = type === 'in' ? '+' : '-';
+    return `${sign}${formattedNum}m`;
+  };
+
   // Format input value for display
   const formatInputValue = (value: number) => {
     if (value === 0) return '';
