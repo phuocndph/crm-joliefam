@@ -434,6 +434,84 @@ export const FabricInventoryOverview = () => {
         )}
       </div>
 
+      {/* Quick Import Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5" />
+            Nhập kho nhanh
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+            <div className="space-y-2">
+              <Label>Loại vải</Label>
+              <Select value={newInbound.fabric_variant_id} onValueChange={(value) => setNewInbound(prev => ({ ...prev, fabric_variant_id: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn loại vải" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border shadow-lg z-50">
+                  {variants && variants.length > 0 ? (
+                    variants.map((variant) => (
+                      <SelectItem key={variant.id} value={variant.id} className="cursor-pointer hover:bg-accent">
+                        {variant.variant_name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="" disabled>Chưa có biến thể vải nào</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Số lượng (mét)</Label>
+              <Input
+                type="number"
+                value={newInbound.quantity}
+                onChange={(e) => setNewInbound(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
+                placeholder="Nhập số lượng"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Chuyển sang Bắc Ninh</Label>
+              <Input
+                type="number"
+                value={newInbound.transfer_to_bacninh}
+                onChange={(e) => setNewInbound(prev => ({ ...prev, transfer_to_bacninh: parseFloat(e.target.value) || 0 }))}
+                placeholder="Số lượng chuyển"
+                max={newInbound.quantity}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Nhà cung cấp</Label>
+              <Input
+                value={newInbound.supplier_name}
+                onChange={(e) => setNewInbound(prev => ({ ...prev, supplier_name: e.target.value }))}
+                placeholder="Tên nhà cung cấp"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Ghi chú</Label>
+              <Input
+                value={newInbound.notes}
+                onChange={(e) => setNewInbound(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Ghi chú thêm"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="invisible">Action</Label>
+              <Button 
+                onClick={handleInboundSubmit} 
+                disabled={createTransaction.isPending}
+                className="w-full"
+              >
+                {createTransaction.isPending ? "Đang xử lý..." : "Nhập kho"}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Inventory Table */}
         <Card>
