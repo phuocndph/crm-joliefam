@@ -140,7 +140,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
       const key = `${item.fabricCode} ${item.widthCode}`;
       if (!acc[key]) {
         acc[key] = {
-          fabricName: key,
+          fabricName: item.fabricCode, // Only use fabric code, not width code
           total: 0,
           hanoi: 0,
           bacninh: 0,
