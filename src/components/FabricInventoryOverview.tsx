@@ -28,6 +28,7 @@ export const FabricInventoryOverview = () => {
   
   const [showInboundDialog, setShowInboundDialog] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [showTransferConfirmDialog, setShowTransferConfirmDialog] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -324,6 +325,16 @@ export const FabricInventoryOverview = () => {
       return;
     }
 
+    // Show confirmation dialog instead of executing directly
+    setShowTransferConfirmDialog(true);
+  };
+
+  const handleConfirmTransfer = async () => {
+    if (!selectedFabricForTransfer || !fromWarehouseId || !toWarehouseId || transferQuantity <= 0) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
+      return;
+    }
+
     try {
       // Find the fabric variant based on the selected fabric name
       const fabricInventoryItem = inventory.find(item => 
@@ -392,13 +403,15 @@ export const FabricInventoryOverview = () => {
         notes: `Nhận từ ${warehouses.find(w => w.id === fromWarehouseId)?.name}. ${transferNotes}`
       });
 
-      // Reset form and close dialog
+      // Reset form and close dialogs
       setSelectedFabricForTransfer('');
       setFromWarehouseId('');
       setToWarehouseId('');
       setTransferQuantity(0);
+      setTransferPackagesCount(0);
       setTransferNotes('');
       setShowTransferDialog(false);
+      setShowTransferConfirmDialog(false);
 
       toast({ title: "Thành công", description: "Đã chuyển kho thành công" });
     } catch (error) {
@@ -956,6 +969,57 @@ export const FabricInventoryOverview = () => {
             >
               {deleteFabricType.isPending ? "Đang xóa..." : "Xóa"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer Confirmation Dialog */}
+      <Dialog open={showTransferConfirmDialog} onOpenChange={setShowTransferConfirmDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Xác nhận chuyển kho vải</DialogTitle>
+            <DialogDescription>
+              Vui lòng kiểm tra lại thông tin trước khi chuyển kho
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span className="font-medium">Loại vải:</span>
+                <span>{selectedFabricForTransfer}</span>
+                
+                <span className="font-medium">Từ kho:</span>
+                <span>{warehouses.find(w => w.id === fromWarehouseId)?.name}</span>
+                
+                <span className="font-medium">Đến kho:</span>
+                <span>{warehouses.find(w => w.id === toWarehouseId)?.name}</span>
+                
+                <span className="font-medium">Số lượng:</span>
+                <span>{formatNumber(transferQuantity)} mét</span>
+                
+                {transferPackagesCount > 0 && (
+                  <>
+                    <span className="font-medium">Số kiện:</span>
+                    <span>{transferPackagesCount} kiện</span>
+                  </>
+                )}
+                
+                {transferNotes && (
+                  <>
+                    <span className="font-medium">Ghi chú:</span>
+                    <span>{transferNotes}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowTransferConfirmDialog(false)}>
+                Sửa lại
+              </Button>
+              <Button onClick={handleConfirmTransfer} disabled={createTransfer.isPending}>
+                {createTransfer.isPending ? "Đang xử lý..." : "Xác nhận chuyển kho"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
