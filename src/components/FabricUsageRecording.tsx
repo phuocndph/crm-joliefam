@@ -63,11 +63,11 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
     }
   }, [warehouses, warehouseFilter]);
 
-  // Auto-fill customer info when order is selected - using direct API call like in FabricControlByWarehouse
+  // Auto-fill customer info when order is selected - using exact matching (100% accuracy)
   const handleOrderNumberChange = async (orderNumber: string) => {
     setFormData(prev => ({ ...prev, order_number: orderNumber }));
     
-    // Tự động tìm kiếm đơn hàng và điền thông tin
+    // Tự động tìm kiếm đơn hàng với khớp chính xác 100%
     if (orderNumber) {
       try {
         const { data: orders, error } = await supabase
@@ -76,7 +76,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
             *,
             customers (name, customer_code)
           `)
-          .or(`order_number.ilike.%${orderNumber}%,display_order_number.ilike.%${orderNumber}%`)
+          .or(`order_number.eq.${orderNumber},display_order_number.eq.${orderNumber}`)
           .limit(1);
 
         if (orders && orders.length > 0) {
@@ -88,6 +88,14 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
             order_id: order.id,
             customer_name: order.customers?.name || '',
             notes: `Xuất vải cho đơn hàng ${orderNumber} - ${order.customers?.name || 'Khách hàng'}`
+          }));
+        } else {
+          // Nếu không tìm thấy đơn hàng trùng khớp, xóa thông tin khách hàng để cho phép nhập thủ công
+          setFormData(prev => ({
+            ...prev,
+            order_id: '',
+            customer_name: '',
+            notes: `Xuất vải cho đơn hàng ${orderNumber}`
           }));
         }
       } catch (error) {
