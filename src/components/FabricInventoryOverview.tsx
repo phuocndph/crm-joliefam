@@ -447,7 +447,7 @@ export const FabricInventoryOverview = () => {
                         </SelectItem>
                       ))
                     ) : (
-                      <SelectItem value="" disabled>Chưa có biến thể vải nào</SelectItem>
+                      <SelectItem value="no-variants" disabled>Chưa có biến thể vải nào</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
