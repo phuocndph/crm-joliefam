@@ -371,12 +371,330 @@ const FabricManagement = () => {
       <Tabs defaultValue="total-quantity" className="space-y-4">
         <TabsList>
           <TabsTrigger value="total-quantity">Tổng số lượng vải</TabsTrigger>
+          <TabsTrigger value="hanoi-control">Kiểm soát vải Hà Nội</TabsTrigger>
+          <TabsTrigger value="bacninh-control">Kiểm soát vải Bắc Ninh</TabsTrigger>
           <TabsTrigger value="fabric-types">Loại vải</TabsTrigger>
         </TabsList>
 
         {/* Total Quantity Tab */}
         <TabsContent value="total-quantity" className="space-y-4">
           <FabricInventoryOverview />
+        </TabsContent>
+
+        {/* Hanoi Control Tab */}
+        <TabsContent value="hanoi-control" className="space-y-4">
+          <FabricControlByWarehouse warehouseName="Hà Nội" warehouseFilter="hanoi" />
+          <FabricUsageRecording warehouseName="Hà Nội" warehouseFilter="hanoi" />
+          <FabricUsageDetails warehouseName="Hà Nội" warehouseFilter="hanoi" />
+        </TabsContent>
+
+        {/* Bac Ninh Control Tab */}
+        <TabsContent value="bacninh-control" className="space-y-4">
+          <FabricControlByWarehouse warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
+          <FabricUsageRecording warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
+          <FabricUsageDetails warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Giao dịch vải</CardTitle>
+                  <CardDescription>Quản lý các giao dịch nhập/xuất vải</CardDescription>
+                </div>
+                <Dialog open={showCreateTransactionDialog} onOpenChange={setShowCreateTransactionDialog}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Giao dịch mới
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Tạo giao dịch vải</DialogTitle>
+                      <DialogDescription>Thêm giao dịch nhập hoặc xuất vải</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Loại giao dịch</Label>
+                        <Select value={newTransaction.transaction_type} onValueChange={(value: any) => setNewTransaction(prev => ({
+                        ...prev,
+                        transaction_type: value
+                      }))}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="inbound">Nhập kho</SelectItem>
+                            <SelectItem value="outbound">Xuất kho</SelectItem>
+                            <SelectItem value="adjustment">Điều chỉnh</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Biến thể vải</Label>
+                        <Select value={newTransaction.fabric_variant_id} onValueChange={value => setNewTransaction(prev => ({
+                        ...prev,
+                        fabric_variant_id: value
+                      }))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn biến thể vải" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {fabricVariants?.map(variant => <SelectItem key={variant.id} value={variant.id}>
+                                {variant.variant_name}
+                              </SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Kho</Label>
+                        <Select value={newTransaction.warehouse_id} onValueChange={value => setNewTransaction(prev => ({
+                        ...prev,
+                        warehouse_id: value
+                      }))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn kho" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {warehouses?.map(warehouse => <SelectItem key={warehouse.id} value={warehouse.id}>
+                                {warehouse.name}
+                              </SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Số lượng</Label>
+                        <Input type="number" value={newTransaction.quantity} onChange={e => setNewTransaction(prev => ({
+                        ...prev,
+                        quantity: Number(e.target.value)
+                      }))} placeholder="Nhập số lượng" />
+                      </div>
+                      {newTransaction.transaction_type === 'inbound' && <div className="space-y-2">
+                          <Label>Nhà cung cấp</Label>
+                          <Input value={newTransaction.supplier_name} onChange={e => setNewTransaction(prev => ({
+                        ...prev,
+                        supplier_name: e.target.value
+                      }))} placeholder="Nhập tên nhà cung cấp" />
+                        </div>}
+                      {newTransaction.transaction_type === 'outbound' && <div className="space-y-2">
+                          <Label>Người nhận</Label>
+                          <Input value={newTransaction.recipient_name} onChange={e => setNewTransaction(prev => ({
+                        ...prev,
+                        recipient_name: e.target.value
+                      }))} placeholder="Nhập tên người nhận" />
+                        </div>}
+                      <div className="space-y-2">
+                        <Label>Ghi chú</Label>
+                        <Textarea value={newTransaction.notes} onChange={e => setNewTransaction(prev => ({
+                        ...prev,
+                        notes: e.target.value
+                      }))} placeholder="Nhập ghi chú" />
+                      </div>
+                      <Button onClick={handleCreateTransaction} className="w-full" disabled={createTransaction.isPending}>
+                        {createTransaction.isPending ? "Đang tạo..." : "Tạo giao dịch"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Search and Filter */}
+              <div className="flex gap-4 mb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Tìm kiếm vải..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+                </div>
+                <Select value={selectedFabricType} onValueChange={setSelectedFabricType}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả loại vải</SelectItem>
+                    {fabricTypes?.map(type => <SelectItem key={type.id} value={type.id}>
+                        {type.name}
+                      </SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Inventory Summary Table */}
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Loại vải</TableHead>
+                      <TableHead>Biến thể</TableHead>
+                      <TableHead>Màu sắc</TableHead>
+                      <TableHead>Khổ rộng</TableHead>
+                      <TableHead>Tổng tồn kho</TableHead>
+                      <TableHead>Hà Nội</TableHead>
+                      <TableHead>Bắc Ninh</TableHead>
+                      <TableHead>Trạng thái</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {fabricVariants?.map(variant => {
+                    const inventoryByWarehouse = inventory?.filter(inv => inv.fabric_variant_id === variant.id) || [];
+                    const totalStock = inventoryByWarehouse.reduce((sum, inv) => sum + (inv.current_stock || 0), 0);
+                    const hanoiStock = inventoryByWarehouse.find(inv => inv.warehouses?.name === "Kho Hà Nội")?.current_stock || 0;
+                    const bacninhStock = inventoryByWarehouse.find(inv => inv.warehouses?.name === "Kho Bắc Ninh")?.current_stock || 0;
+                    return <TableRow key={variant.id}>
+                          <TableCell className="font-medium">{variant.fabric_types?.name}</TableCell>
+                          <TableCell>{variant.variant_name}</TableCell>
+                          <TableCell>{variant.color || '-'}</TableCell>
+                          <TableCell>{variant.width_code || '-'}</TableCell>
+                          <TableCell className="font-semibold">{formatQuantity(totalStock, variant.unit)}</TableCell>
+                          <TableCell>{formatQuantity(hanoiStock, variant.unit)}</TableCell>
+                          <TableCell>{formatQuantity(bacninhStock, variant.unit)}</TableCell>
+                          <TableCell>
+                            {totalStock > 0 ? <Badge variant="default">Còn hàng</Badge> : <Badge variant="secondary">Hết hàng</Badge>}
+                          </TableCell>
+                        </TableRow>;
+                  })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Hanoi Control Tab */}
+        <TabsContent value="hanoi-control" className="space-y-4">
+          <Card>
+            
+            
+          </Card>
+        </TabsContent>
+
+        {/* Bac Ninh Control Tab */}
+        <TabsContent value="bacninh-control" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Kiểm soát vải Bắc Ninh</CardTitle>
+                  <CardDescription>Quản lý tồn kho và xuất vải tại kho Bắc Ninh</CardDescription>
+                </div>
+                <Dialog open={showCreateTransactionDialog} onOpenChange={setShowCreateTransactionDialog}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Xuất vải
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Xuất vải - Kho Bắc Ninh</DialogTitle>
+                      <DialogDescription>Ghi nhận việc xuất vải cho đơn hàng</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Biến thể vải</Label>
+                        <Select value={newTransaction.fabric_variant_id} onValueChange={value => setNewTransaction(prev => ({
+                        ...prev,
+                        fabric_variant_id: value,
+                        warehouse_id: warehouses?.find(w => w.name === "Kho Bắc Ninh")?.id || ''
+                      }))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn biến thể vải" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {fabricVariants?.map(variant => <SelectItem key={variant.id} value={variant.id}>
+                                {variant.variant_name}
+                              </SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Số lượng xuất</Label>
+                        <Input type="number" value={newTransaction.quantity} onChange={e => setNewTransaction(prev => ({
+                        ...prev,
+                        quantity: Number(e.target.value),
+                        transaction_type: 'outbound'
+                      }))} placeholder="Nhập số lượng" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Số đơn hàng</Label>
+                        <Input value={newTransaction.reference_number} onChange={e => setNewTransaction(prev => ({
+                        ...prev,
+                        reference_number: e.target.value
+                      }))} placeholder="Nhập số đơn hàng" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Người phụ trách xuất</Label>
+                        <Input value={newTransaction.supplier_name} onChange={e => setNewTransaction(prev => ({
+                        ...prev,
+                        supplier_name: e.target.value
+                      }))} placeholder="Nhập tên người phụ trách" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Người nhận</Label>
+                        <Input value={newTransaction.recipient_name} onChange={e => setNewTransaction(prev => ({
+                        ...prev,
+                        recipient_name: e.target.value
+                      }))} placeholder="Nhập tên người nhận" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Ghi chú</Label>
+                        <Textarea value={newTransaction.notes} onChange={e => setNewTransaction(prev => ({
+                        ...prev,
+                        notes: e.target.value
+                      }))} placeholder="Nhập ghi chú" />
+                      </div>
+                      <Button onClick={handleCreateTransaction} className="w-full" disabled={createTransaction.isPending}>
+                        {createTransaction.isPending ? "Đang xuất..." : "Xuất vải"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Search */}
+              <div className="flex gap-4 mb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Tìm kiếm vải..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+                </div>
+              </div>
+
+              {/* Bac Ninh Inventory */}
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Loại vải</TableHead>
+                      <TableHead>Biến thể</TableHead>
+                      <TableHead>Màu sắc</TableHead>
+                      <TableHead>Khổ rộng</TableHead>
+                      <TableHead>Tồn kho hiện tại</TableHead>
+                      <TableHead>Giao dịch gần nhất</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {inventory?.filter(item => item.warehouses?.name === "Kho Bắc Ninh").map(item => {
+                    const lastTransaction = transactions?.find(tx => tx.fabric_variant_id === item.fabric_variant_id && tx.warehouse_id === item.warehouse_id);
+                    return <TableRow key={`${item.fabric_variant_id}-${item.warehouse_id}`}>
+                          <TableCell className="font-medium">{item.fabric_variants?.fabric_types?.name}</TableCell>
+                          <TableCell>{item.fabric_variants?.variant_name}</TableCell>
+                          <TableCell>{item.fabric_variants?.color || '-'}</TableCell>
+                          <TableCell>{item.fabric_variants?.width_code || '-'}</TableCell>
+                          <TableCell className="font-semibold">{formatQuantity(item.current_stock || 0, item.fabric_variants?.unit)}</TableCell>
+                          <TableCell>
+                            {lastTransaction ? <div className="text-sm">
+                                <div>{getTransactionTypeLabel(lastTransaction.transaction_type)}</div>
+                                <div className="text-muted-foreground">
+                                  {new Date(lastTransaction.transaction_date).toLocaleDateString('vi-VN')}
+                                </div>
+                              </div> : '-'}
+                          </TableCell>
+                        </TableRow>;
+                  })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Fabric Types Tab */}
