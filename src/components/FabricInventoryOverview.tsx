@@ -419,52 +419,79 @@ export const FabricInventoryOverview = () => {
             return "";
           };
 
+          const formatNumber = (num: number) => {
+            if (num % 1 === 0) {
+              return num.toLocaleString('vi-VN');
+            }
+            return num.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          };
+
           return (
             <Card key={index} className={getCardClass()}>
-              <CardHeader className="pb-2">
-                <CardTitle className={`text-sm font-medium ${getTextClass()}`}>Vải {fabric.fabricName}</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className={`text-sm font-medium ${getTextClass()}`}>
+                  Vải {fabric.fabricName}
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                 <div className="space-y-2">
-                   <div className="flex justify-between">
-                     <span className={`text-sm font-medium ${getTextClass()}`}>Tổng:</span>
-                     <span className={`text-lg font-bold ${getTextClass()}`}>
-                       {fabric.totalPackages} Kiện {fabric.total.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}m
-                     </span>
-                   </div>
-                   <div className="flex justify-between">
-                     <span className="text-sm text-muted-foreground">Hà Nội:</span>
-                     <span className="text-sm">
-                       {fabric.hanoiPackages} Kiện {fabric.hanoi.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}m
-                     </span>
-                   </div>
-                   <div className="flex justify-between">
-                     <span className="text-sm text-muted-foreground">Bắc Ninh:</span>
-                     <span className="text-sm">
-                       {fabric.bacninhPackages} Kiện {fabric.bacninh.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}m
-                     </span>
-                   </div>
-                  <div className="pt-2 border-t space-y-2">
-                    {(fabric.hanoi > 0 || fabric.bacninh > 0) && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="w-full"
-                        onClick={() => handleTransferClick(fabric.fabricName)}
-                      >
-                        <ArrowRight className="mr-2 h-4 w-4" />
-                        Chuyển kho
-                      </Button>
-                    )}
-                    <Button 
-                      size="sm" 
-                      className="w-full"
-                      onClick={() => setShowInboundDialog(true)}
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Nhập kho
-                    </Button>
+              <CardContent className="space-y-4">
+                {/* Tổng số */}
+                <div className="bg-muted/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-medium ${getTextClass()}`}>TỔNG:</span>
+                    <div className="text-right">
+                      <div className={`text-lg font-bold ${getTextClass()}`}>
+                        {fabric.totalPackages} Kiện
+                      </div>
+                      <div className={`text-sm font-semibold ${getTextClass()}`}>
+                        {formatNumber(fabric.total)}m
+                      </div>
+                    </div>
                   </div>
+                </div>
+
+                {/* Chi tiết kho */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-xs text-muted-foreground">Hà Nội:</span>
+                    <div className="text-right">
+                      <span className="text-sm font-medium">{fabric.hanoiPackages} Kiện</span>
+                      <span className="text-sm text-muted-foreground ml-2">
+                        {formatNumber(fabric.hanoi)}m
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-xs text-muted-foreground">Bắc Ninh:</span>
+                    <div className="text-right">
+                      <span className="text-sm font-medium">{fabric.bacninhPackages} Kiện</span>
+                      <span className="text-sm text-muted-foreground ml-2">
+                        {formatNumber(fabric.bacninh)}m
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Buttons */}
+                <div className="pt-2 border-t space-y-2">
+                  {(fabric.hanoi > 0 || fabric.bacninh > 0) && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full h-8 text-xs"
+                      onClick={() => handleTransferClick(fabric.fabricName)}
+                    >
+                      <ArrowRight className="mr-1 h-3 w-3" />
+                      Chuyển kho
+                    </Button>
+                  )}
+                  <Button 
+                    size="sm" 
+                    className="w-full h-8 text-xs"
+                    onClick={() => setShowInboundDialog(true)}
+                  >
+                    <Plus className="mr-1 h-3 w-3" />
+                    Nhập kho
+                  </Button>
                 </div>
               </CardContent>
             </Card>
