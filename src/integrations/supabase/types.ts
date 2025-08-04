@@ -267,6 +267,7 @@ export type Database = {
           manager_id: string | null
           maximum_stock: number | null
           minimum_stock: number | null
+          packages_count: number | null
           reserved_stock: number
           tenant_id: string
           updated_at: string
@@ -281,6 +282,7 @@ export type Database = {
           manager_id?: string | null
           maximum_stock?: number | null
           minimum_stock?: number | null
+          packages_count?: number | null
           reserved_stock?: number
           tenant_id?: string
           updated_at?: string
@@ -295,6 +297,7 @@ export type Database = {
           manager_id?: string | null
           maximum_stock?: number | null
           minimum_stock?: number | null
+          packages_count?: number | null
           reserved_stock?: number
           tenant_id?: string
           updated_at?: string
@@ -324,6 +327,7 @@ export type Database = {
           id: string
           manager_id: string | null
           notes: string | null
+          packages_count: number | null
           quantity: number
           recipient_name: string | null
           reference_number: string | null
@@ -342,6 +346,7 @@ export type Database = {
           id?: string
           manager_id?: string | null
           notes?: string | null
+          packages_count?: number | null
           quantity: number
           recipient_name?: string | null
           reference_number?: string | null
@@ -360,6 +365,7 @@ export type Database = {
           id?: string
           manager_id?: string | null
           notes?: string | null
+          packages_count?: number | null
           quantity?: number
           recipient_name?: string | null
           reference_number?: string | null

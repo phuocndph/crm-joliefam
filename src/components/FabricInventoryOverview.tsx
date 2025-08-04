@@ -44,7 +44,7 @@ export const FabricInventoryOverview = () => {
     fabricType: item.fabric_variants?.fabric_types?.name || '',
     widthCode: item.fabric_variants?.width_code || '',
     warehouse: item.warehouses?.name || '',
-    currentStockRolls: Math.floor(item.current_stock / 50), // Assuming 50m per roll
+    currentStockRolls: item.packages_count || 0, // Use actual packages count from database
     currentStockMeters: item.current_stock,
   }));
 
@@ -128,6 +128,7 @@ export const FabricInventoryOverview = () => {
         warehouse_id: hanoiWarehouse.id,
         transaction_type: 'inbound',
         quantity: hanoiQuantity,
+        packages_count: newInbound.packages_count,
         supplier_name: newInbound.supplier_name,
         notes: newInbound.notes
       });
@@ -141,7 +142,8 @@ export const FabricInventoryOverview = () => {
       await updateInventory.mutateAsync({
         fabric_variant_id: newInbound.fabric_variant_id,
         warehouse_id: hanoiWarehouse.id,
-        current_stock: currentHanoiStock + hanoiQuantity
+        current_stock: currentHanoiStock + hanoiQuantity,
+        packages_count: (existingHanoiInventory?.packages_count || 0) + newInbound.packages_count
       });
 
       // If transferring to Bac Ninh
@@ -164,7 +166,8 @@ export const FabricInventoryOverview = () => {
         await updateInventory.mutateAsync({
           fabric_variant_id: newInbound.fabric_variant_id,
           warehouse_id: bacninhWarehouse.id,
-          current_stock: currentBacninhStock + newInbound.transfer_to_bacninh
+          current_stock: currentBacninhStock + newInbound.transfer_to_bacninh,
+          packages_count: existingBacninhInventory?.packages_count || 0 // Keep existing packages at Bac Ninh
         });
       }
 
@@ -251,6 +254,7 @@ export const FabricInventoryOverview = () => {
           fabric_variant_id: fabricVariant.id,
           warehouse_id: fromWarehouseId,
           current_stock: newFromStock,
+          packages_count: fromInventoryItem.packages_count || 0, // Keep existing packages count
           reserved_stock: fromInventoryItem.reserved_stock || 0,
           minimum_stock: fromInventoryItem.minimum_stock || 0,
           maximum_stock: fromInventoryItem.maximum_stock || 0
@@ -267,6 +271,7 @@ export const FabricInventoryOverview = () => {
         fabric_variant_id: fabricVariant.id,
         warehouse_id: toWarehouseId,
         current_stock: newToStock,
+        packages_count: toInventoryItem?.packages_count || 0, // Keep existing packages count  
         reserved_stock: toInventoryItem?.reserved_stock || 0,
         minimum_stock: toInventoryItem?.minimum_stock || 0,
         maximum_stock: toInventoryItem?.maximum_stock || 0

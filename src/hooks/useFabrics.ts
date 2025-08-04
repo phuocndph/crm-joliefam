@@ -216,6 +216,7 @@ export const useUpdateInventory = () => {
       fabric_variant_id, 
       warehouse_id, 
       current_stock,
+      packages_count = 0,
       reserved_stock = 0,
       minimum_stock = 0,
       maximum_stock = 0
@@ -223,6 +224,7 @@ export const useUpdateInventory = () => {
       fabric_variant_id: string;
       warehouse_id: string;
       current_stock: number;
+      packages_count?: number;
       reserved_stock?: number;
       minimum_stock?: number;
       maximum_stock?: number;
@@ -239,6 +241,7 @@ export const useUpdateInventory = () => {
         fabric_variant_id,
         warehouse_id,
         current_stock,
+        packages_count,
         reserved_stock,
         minimum_stock,
         maximum_stock,
@@ -295,6 +298,7 @@ export const useCreateTransaction = () => {
       warehouse_id: string;
       transaction_type: 'inbound' | 'outbound' | 'transfer_in' | 'transfer_out' | 'adjustment';
       quantity: number;
+      packages_count?: number;
       unit_price?: number;
       total_amount?: number;
       reference_number?: string;
