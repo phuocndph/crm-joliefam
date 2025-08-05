@@ -18,7 +18,7 @@ import { FabricControlByWarehouse } from '@/components/FabricControlByWarehouse'
 import { FabricUsageRecording } from '@/components/FabricUsageRecording';
 import { FabricUsageDetails } from '@/components/FabricUsageDetails';
 import { FabricTypeManagement } from '@/components/FabricTypeManagement';
-import { FabricVariantManagement } from '@/components/FabricVariantManagement';
+
 import { FabricTransactionsTable } from '@/components/FabricTransactionsTable';
 import { useFabricTypes, useFabricVariants, useFabricWidths, useWarehouses, useFabricInventory, useFabricTransactions, useFabricTransfers, useFabricUsage, useCreateFabricType, useCreateFabricVariant, useCreateFabricWidth, useUpdateInventory, useCreateTransaction, useCreateTransfer, useUpdateTransferStatus, useCreateFabricUsage } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
@@ -401,7 +401,7 @@ const FabricManagement = () => {
         {/* Fabric Types Tab */}
         <TabsContent value="fabric-types" className="space-y-4">
           <FabricTypeManagement />
-          <FabricVariantManagement />
+          
         </TabsContent>
 
       </Tabs>
