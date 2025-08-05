@@ -121,7 +121,8 @@ export const FabricInventoryOverview = () => {
     if (num % 1 === 0) {
       return num.toLocaleString('vi-VN');
     }
-    return num.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+    // Use maximum fraction digits without minimum to avoid trailing zeros
+    return num.toLocaleString('vi-VN', { maximumFractionDigits: 3 }).replace(/,000$/, '');
   };
 
   // Format quantity with sign for transfer display
