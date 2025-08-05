@@ -43,13 +43,14 @@ export const FabricInventoryOverview = () => {
     name: '',
     description: ''
   });
-  // Sử dụng fabric_type_id cho UI nhưng sẽ tạo fabric_variant tự động
   const [newInbound, setNewInbound] = useState({
     fabric_type_id: '',
     quantity: 0,
+    quantityDisplay: '',
     packages_count: 0,
     supplier_name: '',
     transfer_to_bacninh: 0,
+    transferDisplay: '',
     notes: ''
   });
 
@@ -267,9 +268,11 @@ export const FabricInventoryOverview = () => {
       setNewInbound({
         fabric_type_id: '',
         quantity: 0,
+        quantityDisplay: '',
         packages_count: 0,
         supplier_name: '',
         transfer_to_bacninh: 0,
+        transferDisplay: '',
         notes: ''
       });
       setShowInboundDialog(false);
@@ -493,12 +496,24 @@ export const FabricInventoryOverview = () => {
                 <Label>Tổng số lượng nhập (mét)</Label>
                 <Input
                   type="text"
-                  value={formatInputValue(newInbound.quantity)}
+                  value={newInbound.quantityDisplay || ''}
                   onChange={(e) => {
-                    const numericValue = parseInputValue(e.target.value);
-                    setNewInbound(prev => ({ ...prev, quantity: numericValue }));
+                    const inputValue = e.target.value;
+                    setNewInbound(prev => ({ 
+                      ...prev, 
+                      quantityDisplay: inputValue,
+                      quantity: parseInputValue(inputValue)
+                    }));
                   }}
-                  placeholder="Nhập số lượng"
+                  onBlur={(e) => {
+                    const numericValue = parseInputValue(e.target.value);
+                    setNewInbound(prev => ({ 
+                      ...prev, 
+                      quantityDisplay: formatInputValue(numericValue),
+                      quantity: numericValue
+                    }));
+                  }}
+                  placeholder="Nhập số lượng (ví dụ: 1645,2)"
                 />
               </div>
               <div className="space-y-2">
@@ -521,12 +536,24 @@ export const FabricInventoryOverview = () => {
                 <Label>Chuyển sang Bắc Ninh (mét)</Label>
                 <Input
                   type="text"
-                  value={formatInputValue(newInbound.transfer_to_bacninh)}
+                  value={newInbound.transferDisplay || ''}
                   onChange={(e) => {
-                    const numericValue = parseInputValue(e.target.value);
-                    setNewInbound(prev => ({ ...prev, transfer_to_bacninh: numericValue }));
+                    const inputValue = e.target.value;
+                    setNewInbound(prev => ({ 
+                      ...prev, 
+                      transferDisplay: inputValue,
+                      transfer_to_bacninh: parseInputValue(inputValue)
+                    }));
                   }}
-                  placeholder="Số lượng chuyển sang Bắc Ninh"
+                  onBlur={(e) => {
+                    const numericValue = parseInputValue(e.target.value);
+                    setNewInbound(prev => ({ 
+                      ...prev, 
+                      transferDisplay: formatInputValue(numericValue),
+                      transfer_to_bacninh: numericValue
+                    }));
+                  }}
+                  placeholder="Số lượng chuyển sang Bắc Ninh (ví dụ: 500,5)"
                 />
                 <p className="text-xs text-muted-foreground">
                   Còn lại tại Hà Nội: {formatNumber(newInbound.quantity - newInbound.transfer_to_bacninh)} mét
@@ -837,15 +864,15 @@ export const FabricInventoryOverview = () => {
             </div>
             <div className="space-y-2">
               <Label>Số lượng chuyển (mét)</Label>
-              <Input
-                type="text"
-                value={formatInputValue(transferQuantity)}
-                onChange={(e) => {
-                  const numericValue = parseInputValue(e.target.value);
-                  setTransferQuantity(numericValue);
-                }}
-                placeholder="Nhập số lượng"
-              />
+                <Input
+                  type="text"
+                  value={transferQuantity === 0 ? '' : formatNumber(transferQuantity)}
+                  onChange={(e) => {
+                    const inputValue = e.target.value;
+                    setTransferQuantity(parseInputValue(inputValue));
+                  }}
+                  placeholder="Nhập số lượng (ví dụ: 1645,2)"
+                />
             </div>
             <div className="space-y-2">
               <Label>Số kiện chuyển</Label>
