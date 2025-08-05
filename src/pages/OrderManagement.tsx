@@ -5,35 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CreateOrderForm } from "@/components/CreateOrderForm";
 import { EditOrderDialog } from "@/components/EditOrderDialog";
 import { DeleteOrderDialog } from "@/components/DeleteOrderDialog";
@@ -46,7 +22,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
-
 interface Order {
   id: string;
   order_number: string;
@@ -74,23 +49,57 @@ interface Order {
     company: string | null;
   } | null;
 }
-
 const statusConfig = {
-  pending: { label: "Chờ xử lý", color: "bg-yellow-100 text-yellow-800 hover:bg-yellow-600 hover:text-white", icon: Clock },
-  processing: { label: "Đang xử lý", color: "bg-blue-100 text-blue-800 hover:bg-blue-600 hover:text-white", icon: AlertCircle },
-  shipped: { label: "Đã giao", color: "bg-green-100 text-green-800 hover:bg-green-600 hover:text-white", icon: Truck },
-  delivered: { label: "Hoàn thành", color: "bg-green-100 text-green-800 hover:bg-green-600 hover:text-white", icon: CheckCircle },
-  cancelled: { label: "Đã hủy", color: "bg-red-100 text-red-800 hover:bg-red-600 hover:text-white", icon: XCircle },
-  self_delivered: { label: "Đã giao tự thu tiền", color: "bg-purple-100 text-purple-800 hover:bg-purple-600 hover:text-white", icon: Truck },
-  returned: { label: "Hoàn Hàng", color: "bg-orange-100 text-orange-800 hover:bg-orange-600 hover:text-white", icon: RotateCcw },
+  pending: {
+    label: "Chờ xử lý",
+    color: "bg-yellow-100 text-yellow-800 hover:bg-yellow-600 hover:text-white",
+    icon: Clock
+  },
+  processing: {
+    label: "Đang xử lý",
+    color: "bg-blue-100 text-blue-800 hover:bg-blue-600 hover:text-white",
+    icon: AlertCircle
+  },
+  shipped: {
+    label: "Đã giao",
+    color: "bg-green-100 text-green-800 hover:bg-green-600 hover:text-white",
+    icon: Truck
+  },
+  delivered: {
+    label: "Hoàn thành",
+    color: "bg-green-100 text-green-800 hover:bg-green-600 hover:text-white",
+    icon: CheckCircle
+  },
+  cancelled: {
+    label: "Đã hủy",
+    color: "bg-red-100 text-red-800 hover:bg-red-600 hover:text-white",
+    icon: XCircle
+  },
+  self_delivered: {
+    label: "Đã giao tự thu tiền",
+    color: "bg-purple-100 text-purple-800 hover:bg-purple-600 hover:text-white",
+    icon: Truck
+  },
+  returned: {
+    label: "Hoàn Hàng",
+    color: "bg-orange-100 text-orange-800 hover:bg-orange-600 hover:text-white",
+    icon: RotateCcw
+  }
 };
-
 const paymentStatusConfig = {
-  pending: { label: "Chưa thanh toán", color: "bg-red-100 text-red-800" },
-  partial: { label: "Thanh toán 1 phần", color: "bg-yellow-100 text-yellow-800" },
-  paid: { label: "Đã thanh toán", color: "bg-green-100 text-green-800" },
+  pending: {
+    label: "Chưa thanh toán",
+    color: "bg-red-100 text-red-800"
+  },
+  partial: {
+    label: "Thanh toán 1 phần",
+    color: "bg-yellow-100 text-yellow-800"
+  },
+  paid: {
+    label: "Đã thanh toán",
+    color: "bg-green-100 text-green-800"
+  }
 };
-
 export default function OrderManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -105,26 +114,21 @@ export default function OrderManagement() {
   const [orderToGHNTracking, setOrderToGHNTracking] = useState<Order | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [orderPayments, setOrderPayments] = useState<{[orderId: string]: number}>({});
+  const [orderPayments, setOrderPayments] = useState<{
+    [orderId: string]: number;
+  }>({});
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("orders");
   const [bulkSyncing, setBulkSyncing] = useState(false);
-  const { toast } = useToast();
-
-  const filteredOrders = orders.filter((order) => {
-    const matchesSearch = 
-      getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customers?.phone?.includes(searchTerm);
-
+  const {
+    toast
+  } = useToast();
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
     const matchesPayment = paymentFilter === "all" || order.payment_status === paymentFilter;
-
     return matchesSearch && matchesStatus && matchesPayment;
   });
-
   const sortedOrders = [...filteredOrders].sort((a, b) => {
     switch (sortBy) {
       case "order_number":
@@ -147,13 +151,13 @@ export default function OrderManagement() {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     }
   });
-
   const loadOrders = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
+      const {
+        data,
+        error
+      } = await supabase.from('orders').select(`
           *,
           customers (
             id,
@@ -163,41 +167,34 @@ export default function OrderManagement() {
             phone,
             company
           )
-        `)
-        .order('created_at', { ascending: false });
-
+        `).order('created_at', {
+        ascending: false
+      });
       if (error) throw error;
-      
+
       // Add payment amounts from order_payments
-      const ordersWithPayments = await Promise.all(
-        (data || []).map(async (order) => {
-          const { data: payments } = await supabase
-            .from('order_payments')
-            .select('payment_amount')
-            .eq('order_id', order.id);
-          
-          const totalPaid = payments?.reduce((sum, payment) => sum + payment.payment_amount, 0) || 0;
-          
-          return {
-            ...order,
-            total_paid: totalPaid
-          };
-        })
-      );
-      
+      const ordersWithPayments = await Promise.all((data || []).map(async order => {
+        const {
+          data: payments
+        } = await supabase.from('order_payments').select('payment_amount').eq('order_id', order.id);
+        const totalPaid = payments?.reduce((sum, payment) => sum + payment.payment_amount, 0) || 0;
+        return {
+          ...order,
+          total_paid: totalPaid
+        };
+      }));
       setOrders(ordersWithPayments);
     } catch (error) {
       console.error('Error loading orders:', error);
       toast({
         title: "Lỗi",
         description: "Không thể tải danh sách đơn hàng",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     loadOrders();
   }, []);
@@ -218,48 +215,43 @@ export default function OrderManagement() {
       }
     }
   }, [orders, searchParams, setSearchParams]);
-
   const handleCreateOrder = () => {
     loadOrders();
     setShowCreateForm(false);
     toast({
       title: "Thành công",
-      description: "Đơn hàng đã được tạo thành công",
+      description: "Đơn hàng đã được tạo thành công"
     });
   };
-
   const handleEditOrder = () => {
     loadOrders();
     setOrderToEdit(null);
     toast({
       title: "Thành công",
-      description: "Đơn hàng đã được cập nhật thành công",
+      description: "Đơn hàng đã được cập nhật thành công"
     });
   };
-
   const handleDeleteOrder = () => {
     loadOrders();
     setOrderToDelete(null);
     toast({
       title: "Thành công",
-      description: "Đơn hàng đã được xóa thành công",
+      description: "Đơn hàng đã được xóa thành công"
     });
   };
-
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
-      const updateData: any = { status: newStatus };
-      
+      const updateData: any = {
+        status: newStatus
+      };
+
       // If order is delivered or shipped, set delivered_date
       if (newStatus === 'delivered' || newStatus === 'shipped') {
         updateData.delivered_date = new Date().toISOString();
       }
-      
-      const { error } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', orderId);
-
+      const {
+        error
+      } = await supabase.from('orders').update(updateData).eq('id', orderId);
       if (error) throw error;
 
       // If order is delivered, create transaction
@@ -272,56 +264,53 @@ export default function OrderManagement() {
             category: 'sales',
             description: `Thanh toán đơn hàng ${getOrderDisplayNumber(order)}`,
             date: new Date().toISOString(),
-            tenant_id: 'default',
+            tenant_id: 'default'
           });
         }
       }
 
       // Update local state instead of reloading
-      setOrders(prevOrders => 
-        prevOrders.map(o => 
-          o.id === orderId 
-            ? { ...o, ...updateData }
-            : o
-        )
-      );
-
+      setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? {
+        ...o,
+        ...updateData
+      } : o));
       toast({
         title: "Thành công",
-        description: "Trạng thái đơn hàng đã được cập nhật",
+        description: "Trạng thái đơn hàng đã được cập nhật"
       });
     } catch (error) {
       console.error('Error updating order status:', error);
       toast({
         title: "Lỗi",
         description: "Không thể cập nhật trạng thái đơn hàng",
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
-
   const handlePaymentAdded = () => {
     loadOrders();
     setOrderToPayment(null);
     toast({
       title: "Thành công",
-      description: "Thanh toán đã được thêm thành công",
+      description: "Thanh toán đã được thêm thành công"
     });
   };
-
   const handleBulkSync = async () => {
     setBulkSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-        body: { action: 'bulk_sync' }
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('ghn-tracking', {
+        body: {
+          action: 'bulk_sync'
+        }
       });
-
       if (error) throw error;
-
       if (data.success) {
         toast({
           title: "Thành công",
-          description: data.message,
+          description: data.message
         });
         loadOrders(); // Reload to get updated data
       } else {
@@ -332,7 +321,7 @@ export default function OrderManagement() {
       toast({
         title: "Lỗi",
         description: error.message || "Không thể đồng bộ dữ liệu từ GHN",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setBulkSyncing(false);
@@ -340,47 +329,37 @@ export default function OrderManagement() {
   };
 
   // Calculate stats
-  const stats = [
-    {
-      title: "Tổng đơn hàng",
-      value: orders.length,
-      icon: Package,
-      color: "text-blue-600",
-      bgColor: "bg-blue-100",
-    },
-    {
-      title: "Chờ xử lý",
-      value: orders.filter(order => order.status === 'pending').length,
-      icon: Clock,
-      color: "text-yellow-600",
-      bgColor: "bg-yellow-100",
-    },
-    {
-      title: "Hoàn thành",
-      value: orders.filter(order => order.status === 'delivered').length,
-      icon: CheckCircle,
-      color: "text-green-600",
-      bgColor: "bg-green-100",
-    },
-    {
-      title: "Tổng giá trị",
-      value: `${orders
-        .filter(order => order.status === 'delivered')
-        .reduce((sum, order) => sum + (order.total_amount || 0), 0)
-        .toLocaleString("vi-VN")} VNĐ`,
-      icon: DollarSign,
-      color: "text-purple-600",
-      bgColor: "bg-purple-100",
-    },
-  ];
-
+  const stats = [{
+    title: "Tổng đơn hàng",
+    value: orders.length,
+    icon: Package,
+    color: "text-blue-600",
+    bgColor: "bg-blue-100"
+  }, {
+    title: "Chờ xử lý",
+    value: orders.filter(order => order.status === 'pending').length,
+    icon: Clock,
+    color: "text-yellow-600",
+    bgColor: "bg-yellow-100"
+  }, {
+    title: "Hoàn thành",
+    value: orders.filter(order => order.status === 'delivered').length,
+    icon: CheckCircle,
+    color: "text-green-600",
+    bgColor: "bg-green-100"
+  }, {
+    title: "Tổng giá trị",
+    value: `${orders.filter(order => order.status === 'delivered').reduce((sum, order) => sum + (order.total_amount || 0), 0).toLocaleString("vi-VN")} VNĐ`,
+    icon: DollarSign,
+    color: "text-purple-600",
+    bgColor: "bg-purple-100"
+  }];
   const getDefaultDeliveryDate = (createdAt: string) => {
     const orderDate = new Date(createdAt);
     const deliveryDate = new Date(orderDate);
     deliveryDate.setDate(orderDate.getDate() + 4);
     return deliveryDate.toISOString().split('T')[0];
   };
-
   const isDeliveryDateNear = (deliveryDate: string | null, status: string) => {
     if (!deliveryDate || status === 'delivered' || status === 'shipped') return false;
     const delivery = new Date(deliveryDate);
@@ -389,7 +368,6 @@ export default function OrderManagement() {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays <= 2;
   };
-
   const getDaysUntilDelivery = (deliveryDate: string) => {
     const today = new Date();
     const delivery = new Date(deliveryDate);
@@ -399,28 +377,21 @@ export default function OrderManagement() {
   };
 
   // Get delivery tracking orders
-  const deliveryOrders = orders.filter(order => 
-    order.status === 'processing' || order.status === 'shipped' || 
-    (order.status === 'delivered' && order.delivered_date && 
-     new Date().getTime() - new Date(order.delivered_date).getTime() < 7 * 24 * 60 * 60 * 1000) // Last 7 days
+  const deliveryOrders = orders.filter(order => order.status === 'processing' || order.status === 'shipped' || order.status === 'delivered' && order.delivered_date && new Date().getTime() - new Date(order.delivered_date).getTime() < 7 * 24 * 60 * 60 * 1000 // Last 7 days
   );
-
   const getDeliveryStatus = (order: Order) => {
     if (order.status === 'delivered') return 'Đã giao thành công';
     if (order.status === 'shipped') return 'Đang vận chuyển';
     if (order.status === 'processing') return 'Đang chuẩn bị hàng';
     return 'Chờ xử lý';
   };
-
   const getDeliveryStatusColor = (order: Order) => {
     if (order.status === 'delivered') return 'bg-green-100 text-green-800';
     if (order.status === 'shipped') return 'bg-blue-100 text-blue-800';
     if (order.status === 'processing') return 'bg-yellow-100 text-yellow-800';
     return 'bg-gray-100 text-gray-800';
   };
-
-  return (
-    <div className="space-y-6">
+  return <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -437,8 +408,7 @@ export default function OrderManagement() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, index) => (
-          <Card key={index}>
+        {stats.map((stat, index) => <Card key={index}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -452,18 +422,12 @@ export default function OrderManagement() {
                 </div>
               </div>
             </CardContent>
-          </Card>
-        ))}
+          </Card>)}
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-1">
-          <TabsTrigger value="orders" className="gap-2">
-            <Package className="h-4 w-4" />
-            Danh sách Đơn hàng
-          </TabsTrigger>
-        </TabsList>
+        
 
         <TabsContent value="orders">
 
@@ -474,12 +438,7 @@ export default function OrderManagement() {
           <div className="flex flex-col lg:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Tìm kiếm theo mã đơn, khách hàng..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+              <Input placeholder="Tìm kiếm theo mã đơn, khách hàng..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
             </div>
             <div className="flex gap-2 flex-wrap">
               <Select value={sortBy} onValueChange={setSortBy}>
@@ -525,94 +484,75 @@ export default function OrderManagement() {
           </div>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-8">
+          {loading ? <div className="flex justify-center py-8">
               <span>Đang tải...</span>
-            </div>
-          ) : sortedOrders.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-8">
+            </div> : sortedOrders.length === 0 ? <div className="flex flex-col items-center gap-2 py-8">
               <Package className="h-8 w-8 text-muted-foreground" />
               <p className="text-muted-foreground">
-                {searchTerm || statusFilter !== "all" || paymentFilter !== "all" 
-                  ? "Không tìm thấy đơn hàng nào" 
-                  : "Chưa có đơn hàng nào"}
+                {searchTerm || statusFilter !== "all" || paymentFilter !== "all" ? "Không tìm thấy đơn hàng nào" : "Chưa có đơn hàng nào"}
               </p>
-              {!searchTerm && statusFilter === "all" && paymentFilter === "all" && (
-                <Button onClick={() => setShowCreateForm(true)} variant="outline" className="gap-2">
+              {!searchTerm && statusFilter === "all" && paymentFilter === "all" && <Button onClick={() => setShowCreateForm(true)} variant="outline" className="gap-2">
                   <Plus className="h-4 w-4" />
                   Tạo đơn hàng đầu tiên
-                </Button>
-              )}
-            </div>
-          ) : (
-            <InlineOrderEditTable 
-              orders={sortedOrders}
-              onOrderUpdate={async (orderId: string, updates: Partial<Order>) => {
-                try {
-                  const updateData: any = { ...updates };
-                  
-                  // Handle special cases for status changes
-                  if (updates.status) {
-                    if (updates.status === 'delivered' || updates.status === 'shipped') {
-                      updateData.delivered_date = new Date().toISOString();
-                    }
-                    
-                    // Create transaction for delivered orders
-                    if (updates.status === 'delivered') {
-                      const order = orders.find(o => o.id === orderId);
-                      if (order?.total_amount) {
-                        const { error: transactionError } = await supabase
-                          .from('transactions')
-                          .insert({
-                            type: 'income',
-                            amount: order.total_amount,
-                            description: `Hoàn thành đơn hàng ${getOrderDisplayNumber(order)}`,
-                            order_id: orderId,
-                            category: 'order_completion',
-                            date: new Date().toISOString()
-                          });
-                        
-                        if (transactionError) console.error('Error creating transaction:', transactionError);
-                      }
-                    }
+                </Button>}
+            </div> : <InlineOrderEditTable orders={sortedOrders} onOrderUpdate={async (orderId: string, updates: Partial<Order>) => {
+              try {
+                const updateData: any = {
+                  ...updates
+                };
+
+                // Handle special cases for status changes
+                if (updates.status) {
+                  if (updates.status === 'delivered' || updates.status === 'shipped') {
+                    updateData.delivered_date = new Date().toISOString();
                   }
 
-                  const { error } = await supabase
-                    .from('orders')
-                    .update(updateData)
-                    .eq('id', orderId);
-
-                  if (error) throw error;
-
-                  // Update local state
-                  console.log('Before update - orderId:', orderId, 'updateData:', updateData);
-                  setOrders(prevOrders => {
-                    const newOrders = prevOrders.map(o => 
-                      o.id === orderId 
-                        ? { ...o, ...updateData }
-                        : o
-                    );
-                    console.log('Updated orders:', newOrders.find(o => o.id === orderId));
-                    return newOrders;
-                  });
-
-                  toast({
-                    title: "Thành công",
-                    description: "Đơn hàng đã được cập nhật",
-                  });
-                } catch (error) {
-                  console.error('Error updating order:', error);
-                  toast({
-                    title: "Lỗi",
-                    description: "Không thể cập nhật đơn hàng",
-                    variant: "destructive",
-                  });
+                  // Create transaction for delivered orders
+                  if (updates.status === 'delivered') {
+                    const order = orders.find(o => o.id === orderId);
+                    if (order?.total_amount) {
+                      const {
+                        error: transactionError
+                      } = await supabase.from('transactions').insert({
+                        type: 'income',
+                        amount: order.total_amount,
+                        description: `Hoàn thành đơn hàng ${getOrderDisplayNumber(order)}`,
+                        order_id: orderId,
+                        category: 'order_completion',
+                        date: new Date().toISOString()
+                      });
+                      if (transactionError) console.error('Error creating transaction:', transactionError);
+                    }
+                  }
                 }
-              }}
-              onDeleteOrder={(order) => setOrderToDelete(order)}
-              onViewOrderDetail={(order) => setSelectedOrder(order)}
-            />
-          )}
+                const {
+                  error
+                } = await supabase.from('orders').update(updateData).eq('id', orderId);
+                if (error) throw error;
+
+                // Update local state
+                console.log('Before update - orderId:', orderId, 'updateData:', updateData);
+                setOrders(prevOrders => {
+                  const newOrders = prevOrders.map(o => o.id === orderId ? {
+                    ...o,
+                    ...updateData
+                  } : o);
+                  console.log('Updated orders:', newOrders.find(o => o.id === orderId));
+                  return newOrders;
+                });
+                toast({
+                  title: "Thành công",
+                  description: "Đơn hàng đã được cập nhật"
+                });
+              } catch (error) {
+                console.error('Error updating order:', error);
+                toast({
+                  title: "Lỗi",
+                  description: "Không thể cập nhật đơn hàng",
+                  variant: "destructive"
+                });
+              }
+            }} onDeleteOrder={order => setOrderToDelete(order)} onViewOrderDetail={order => setSelectedOrder(order)} />}
         </CardContent>
         </Card>
         </TabsContent>
@@ -620,7 +560,7 @@ export default function OrderManagement() {
       </Tabs>
 
       {/* Order Detail Dialog */}
-      <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
+      <Dialog open={!!selectedOrder} onOpenChange={open => !open && setSelectedOrder(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <div className="p-6">
             <div className="space-y-6">
@@ -710,25 +650,20 @@ export default function OrderManagement() {
                     </thead>
                     <tbody>
                       {(() => {
-                        let itemsToDisplay = selectedOrder?.items;
-                        
-                        if (typeof selectedOrder?.items === 'string') {
-                          try {
-                            itemsToDisplay = JSON.parse(selectedOrder.items);
-                          } catch (error) {
-                            return (
-                              <tr>
+                      let itemsToDisplay = selectedOrder?.items;
+                      if (typeof selectedOrder?.items === 'string') {
+                        try {
+                          itemsToDisplay = JSON.parse(selectedOrder.items);
+                        } catch (error) {
+                          return <tr>
                                 <td colSpan={8} className="px-4 py-8 text-center text-red-500">
                                   Lỗi định dạng dữ liệu sản phẩm
                                 </td>
-                              </tr>
-                            );
-                          }
+                              </tr>;
                         }
-                        
-                        if (Array.isArray(itemsToDisplay) && itemsToDisplay.length > 0) {
-                          return itemsToDisplay.map((item: any, index: number) => (
-                            <tr key={index} className="border-b">
+                      }
+                      if (Array.isArray(itemsToDisplay) && itemsToDisplay.length > 0) {
+                        return itemsToDisplay.map((item: any, index: number) => <tr key={index} className="border-b">
                               <td className="py-3 px-2 text-center font-medium">{index + 1}</td>
                               <td className="py-3 px-3">
                                 <div className="font-medium text-sm">{item.name || `Sản phẩm ${index + 1}`}</div>
@@ -747,18 +682,14 @@ export default function OrderManagement() {
                                 </span>
                               </td>
                               <td className="py-3 px-2 text-center text-xs text-gray-500">{item.notes || "-"}</td>
-                            </tr>
-                          ));
-                        }
-                        
-                        return (
-                          <tr>
+                            </tr>);
+                      }
+                      return <tr>
                             <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                               Không có thông tin sản phẩm
                             </td>
-                          </tr>
-                        );
-                      })()}
+                          </tr>;
+                    })()}
                     </tbody>
                   </table>
                 </div>
@@ -802,26 +733,17 @@ export default function OrderManagement() {
                 {/* Terms and Conditions */}
                 <div className="bg-white p-4 border-t text-sm">
                   <p className="font-medium">1. Báng báo giá áp dụng trong vòng 10 ngày</p>
-                  {selectedOrder?.notes && (
-                    <p className="mt-2">Ghi chú: {selectedOrder.notes}</p>
-                  )}
+                  {selectedOrder?.notes && <p className="mt-2">Ghi chú: {selectedOrder.notes}</p>}
                 </div>
               </div>
 
               {/* Action Buttons */}
               <div className="flex justify-end space-x-2 pt-4 border-t">
-                <Button 
-                  onClick={() => setOrderToPayment(selectedOrder)}
-                  variant="default"
-                  className="gap-2"
-                >
+                <Button onClick={() => setOrderToPayment(selectedOrder)} variant="default" className="gap-2">
                   <CreditCard className="h-4 w-4" />
                   Thêm thanh toán
                 </Button>
-                <Button 
-                  onClick={() => setSelectedOrder(null)}
-                  variant="outline"
-                >
+                <Button onClick={() => setSelectedOrder(null)} variant="outline">
                   Đóng
                 </Button>
               </div>
@@ -833,89 +755,43 @@ export default function OrderManagement() {
       {/* Create Order Dialog */}
       <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
-          <CreateOrderForm 
-            onClose={() => setShowCreateForm(false)}
-            onSubmit={handleCreateOrder}
-          />
+          <CreateOrderForm onClose={() => setShowCreateForm(false)} onSubmit={handleCreateOrder} />
         </DialogContent>
       </Dialog>
 
       {/* Edit Order Dialog */}
-      {orderToEdit && (
-        <EditOrderDialog
-          order={orderToEdit}
-          open={!!orderToEdit}
-          onOpenChange={(open) => !open && setOrderToEdit(null)}
-          onSubmit={handleEditOrder}
-        />
-      )}
+      {orderToEdit && <EditOrderDialog order={orderToEdit} open={!!orderToEdit} onOpenChange={open => !open && setOrderToEdit(null)} onSubmit={handleEditOrder} />}
 
       {/* Delete Order Dialog */}
-      {orderToDelete && (
-        <DeleteOrderDialog
-          order={orderToDelete}
-          open={!!orderToDelete}
-          onOpenChange={(open) => !open && setOrderToDelete(null)}
-          onConfirm={handleDeleteOrder}
-        />
-      )}
+      {orderToDelete && <DeleteOrderDialog order={orderToDelete} open={!!orderToDelete} onOpenChange={open => !open && setOrderToDelete(null)} onConfirm={handleDeleteOrder} />}
 
       {/* Add Payment Dialog */}
-      {orderToPayment && (
-        <Dialog open={!!orderToPayment} onOpenChange={(open) => !open && setOrderToPayment(null)}>
+      {orderToPayment && <Dialog open={!!orderToPayment} onOpenChange={open => !open && setOrderToPayment(null)}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <CreatePaymentForm
-              orderId={orderToPayment.id}
-              orderNumber={getOrderDisplayNumber(orderToPayment)}
-              totalAmount={orderToPayment.total_amount || 0}
-              totalPaid={calculateTotalPaid(orderToPayment)}
-              remainingAmount={calculateRemainingAmount(orderToPayment)}
-              onClose={() => setOrderToPayment(null)}
-              onSubmit={handlePaymentAdded}
-            />
+            <CreatePaymentForm orderId={orderToPayment.id} orderNumber={getOrderDisplayNumber(orderToPayment)} totalAmount={orderToPayment.total_amount || 0} totalPaid={calculateTotalPaid(orderToPayment)} remainingAmount={calculateRemainingAmount(orderToPayment)} onClose={() => setOrderToPayment(null)} onSubmit={handlePaymentAdded} />
           </DialogContent>
-        </Dialog>
-      )}
+        </Dialog>}
 
       {/* Edit Order Number Dialog */}
-      {orderToEditNumber && (
-        <EditOrderNumberDialog
-          orderId={orderToEditNumber.id}
-          currentOrderNumber={orderToEditNumber.order_number}
-          currentDisplayNumber={orderToEditNumber.display_order_number}
-          open={!!orderToEditNumber}
-          onOpenChange={(open) => !open && setOrderToEditNumber(null)}
-          onSuccess={() => {
-            loadOrders();
-            setOrderToEditNumber(null);
-          }}
-        />
-      )}
+      {orderToEditNumber && <EditOrderNumberDialog orderId={orderToEditNumber.id} currentOrderNumber={orderToEditNumber.order_number} currentDisplayNumber={orderToEditNumber.display_order_number} open={!!orderToEditNumber} onOpenChange={open => !open && setOrderToEditNumber(null)} onSuccess={() => {
+      loadOrders();
+      setOrderToEditNumber(null);
+    }} />}
 
       {/* GHN Tracking Dialog */}
-      {orderToGHNTracking && (
-        <GHNTrackingDialog
-          order={orderToGHNTracking}
-          open={!!orderToGHNTracking}
-          onOpenChange={(open) => !open && setOrderToGHNTracking(null)}
-          onTrackingAdded={() => {
-            loadOrders();
-            setOrderToGHNTracking(null);
-          }}
-        />
-      )}
-    </div>
-  );
-
+      {orderToGHNTracking && <GHNTrackingDialog order={orderToGHNTracking} open={!!orderToGHNTracking} onOpenChange={open => !open && setOrderToGHNTracking(null)} onTrackingAdded={() => {
+      loadOrders();
+      setOrderToGHNTracking(null);
+    }} />}
+    </div>;
   function calculateRemainingAmount(order: Order | null): number {
     // Handle null/undefined order
     if (!order) return 0;
-    
+
     // Use the total_paid amount that was loaded with the order
     const totalPaid = (order as any).total_paid || 0;
     return Math.max(0, (order.total_amount || 0) - totalPaid);
   }
-  
   function calculateTotalPaid(order: Order | null): number {
     if (!order) return 0;
     return (order as any).total_paid || 0;
