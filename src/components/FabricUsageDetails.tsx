@@ -361,9 +361,7 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        {usage.fabric_variants?.fabric_types?.name} - {usage.fabric_variants?.variant_name}
-                        {usage.fabric_variants?.color && ` (${usage.fabric_variants.color})`}
-                        {usage.fabric_width && ` - ${usage.fabric_width}`}
+                        {usage.fabric_variants?.variant_name}
                       </div>
                     </TableCell>
                     <TableCell>
