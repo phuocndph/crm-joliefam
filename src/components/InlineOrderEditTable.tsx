@@ -199,28 +199,8 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
           );
 
         case "payment_status":
-          return (
-            <Select 
-              open={true} 
-              value={editValue} 
-              onValueChange={(value) => {
-                setEditValue(value);
-                handleSave(order.id, field, undefined, value);
-              }}
-              onOpenChange={(open) => !open && handleCancel()}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(paymentStatusConfig).map(([key, config]) => (
-                  <SelectItem key={key} value={key}>
-                    {config.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          );
+          // Payment status is now read-only, no editing needed
+          return null;
 
         case "delivery_date":
           return (
@@ -306,15 +286,18 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
         );
 
       case "payment_status":
-        const paymentInfo = paymentStatusConfig[order.payment_status as keyof typeof paymentStatusConfig];
+        const totalPaid = (order as any).total_paid || 0;
+        const remainingAmount = Math.max(0, (order.total_amount || 0) - totalPaid);
         return (
-          <div 
-            className="cursor-pointer"
-            onClick={() => handleCellEdit(order.id, field, order.payment_status)}
-          >
-            <Badge className={paymentInfo?.color}>
-              {paymentInfo?.label || order.payment_status}
-            </Badge>
+          <div className="text-sm space-y-1">
+            <div className="flex items-center gap-1">
+              <span className="text-green-600">Đã thanh toán:</span>
+              <span className="font-medium">{formatCurrency(totalPaid)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-orange-600">Còn lại:</span>
+              <span className="font-medium">{formatCurrency(remainingAmount)}</span>
+            </div>
           </div>
         );
 
