@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Minus, X } from 'lucide-react';
+import { Plus, Minus, X, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { useFabricVariants, useWarehouses, useCreateFabricUsage } from '@/hooks/useFabrics';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory } from '@/hooks/useFabrics';
 import { useOrders } from '@/hooks/useOrders';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,6 +21,7 @@ interface FabricUsageRecordingProps {
 interface FabricItem {
   fabric_variant_id: string;
   quantity_used: number;
+  available_stock?: number;
 }
 
 export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({ 
@@ -29,6 +31,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
   const { data: fabricVariants } = useFabricVariants();
   const { data: warehouses } = useWarehouses();
   const { data: orders } = useOrders();
+  const { data: fabricInventory } = useFabricInventory();
   
   const createFabricUsage = useCreateFabricUsage();
 
@@ -42,12 +45,13 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
     order_type: '',
     usage_date: new Date().toISOString().split('T')[0],
     notes: '',
-    fabricItems: [
-      {
-        fabric_variant_id: '',
-        quantity_used: 0
-      }
-    ] as FabricItem[]
+        fabricItems: [
+          {
+            fabric_variant_id: '',
+            quantity_used: 0,
+            available_stock: 0
+          }
+        ] as FabricItem[]
   });
 
   // Auto-fill warehouse based on filter
@@ -109,7 +113,8 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
       ...prev,
       fabricItems: [...prev.fabricItems, {
         fabric_variant_id: '',
-        quantity_used: 0
+        quantity_used: 0,
+        available_stock: 0
       }]
     }));
   };
@@ -126,9 +131,22 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
   const updateFabricItem = (index: number, field: keyof FabricItem, value: any) => {
     setFormData(prev => ({
       ...prev,
-      fabricItems: prev.fabricItems.map((item, i) => 
-        i === index ? { ...item, [field]: value } : item
-      )
+      fabricItems: prev.fabricItems.map((item, i) => {
+        if (i === index) {
+          const updatedItem = { ...item, [field]: value };
+          
+          // Update available stock when fabric variant changes
+          if (field === 'fabric_variant_id' && value && fabricInventory && formData.warehouse_id) {
+            const inventory = fabricInventory.find(inv => 
+              inv.fabric_variant_id === value && inv.warehouse_id === formData.warehouse_id
+            );
+            updatedItem.available_stock = inventory?.current_stock || 0;
+          }
+          
+          return updatedItem;
+        }
+        return item;
+      })
     }));
   };
 
@@ -140,6 +158,19 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
         variant: "destructive" 
       });
       return;
+    }
+
+    // Check inventory for each fabric item
+    for (const item of formData.fabricItems) {
+      if (item.available_stock !== undefined && item.quantity_used > item.available_stock) {
+        const fabricName = fabricVariants?.find(v => v.id === item.fabric_variant_id)?.variant_name;
+        toast({ 
+          title: "Lỗi", 
+          description: `Không đủ vải ${fabricName}. Số lượng có sẵn: ${item.available_stock}m, cần: ${item.quantity_used}m`, 
+          variant: "destructive" 
+        });
+        return;
+      }
     }
 
     try {
@@ -175,7 +206,8 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
         notes: '',
         fabricItems: [{
           fabric_variant_id: '',
-          quantity_used: 0
+          quantity_used: 0,
+          available_stock: 0
         }]
       });
       
@@ -318,13 +350,25 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                             <SelectValue placeholder="Chọn loại vải" />
                           </SelectTrigger>
                           <SelectContent>
-                            {fabricVariants?.map((variant) => (
-                              <SelectItem key={`${variant.id}-${index}`} value={variant.id}>
-                                {variant.variant_name}
-                              </SelectItem>
-                            ))}
+                            {fabricVariants?.map((variant) => {
+                              const inventory = fabricInventory?.find(inv => 
+                                inv.fabric_variant_id === variant.id && inv.warehouse_id === formData.warehouse_id
+                              );
+                              const currentStock = inventory?.current_stock || 0;
+                              
+                              return (
+                                <SelectItem key={`${variant.id}-${index}`} value={variant.id}>
+                                  {variant.variant_name} - Còn lại: {currentStock}m
+                                </SelectItem>
+                              );
+                            })}
                           </SelectContent>
                         </Select>
+                        {item.fabric_variant_id && item.available_stock !== undefined && (
+                          <div className="text-sm text-muted-foreground">
+                            Số lượng có sẵn: {item.available_stock}m
+                          </div>
+                        )}
                       </div>
                       
                       <div className="space-y-2">
@@ -332,11 +376,19 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                         <Input
                           type="number"
                           step="0.01"
-                          className="w-full"
+                          className={`w-full ${item.available_stock !== undefined && item.quantity_used > item.available_stock ? 'border-destructive' : ''}`}
                           value={item.quantity_used}
                           onChange={(e) => updateFabricItem(index, 'quantity_used', Number(e.target.value))}
                           placeholder="Nhập số lượng"
                         />
+                        {item.available_stock !== undefined && item.quantity_used > item.available_stock && (
+                          <Alert variant="destructive">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertDescription>
+                              Số lượng cần dùng ({item.quantity_used}m) vượt quá số lượng có sẵn ({item.available_stock}m)
+                            </AlertDescription>
+                          </Alert>
+                        )}
                       </div>
                     </div>
                   </Card>
