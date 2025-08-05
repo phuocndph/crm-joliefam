@@ -328,13 +328,31 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
         );
 
       case "notes":
+        const formatNotes = (notes: string | null) => {
+          if (!notes) return "Thêm ghi chú...";
+          
+          // Split by lines and format each line that starts with "•"
+          const lines = notes.split('\n');
+          return lines.map((line, index) => {
+            if (line.trim().startsWith('•')) {
+              return (
+                <div key={index} className="flex items-start gap-1 mb-1">
+                  <span className="text-blue-600 font-bold text-base leading-none mt-0.5">•</span>
+                  <span className="flex-1">{line.replace('•', '').trim()}</span>
+                </div>
+              );
+            }
+            return line && <div key={index} className="mb-1">{line}</div>;
+          }).filter(Boolean);
+        };
+
         return (
           <div 
             className="cursor-pointer"
             onClick={() => handleCellEdit(order.id, field, order.notes)}
           >
-            <div className="text-sm whitespace-pre-wrap break-words max-w-48 leading-relaxed">
-              {order.notes || "Thêm ghi chú..."}
+            <div className="text-sm break-words max-w-48 leading-relaxed space-y-1">
+              {formatNotes(order.notes)}
             </div>
           </div>
         );
