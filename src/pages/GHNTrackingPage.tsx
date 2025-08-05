@@ -97,6 +97,18 @@ export default function GHNTrackingPage() {
     }
   }, [user]);
 
+  // Auto-update tracking data every 60 minutes
+  useEffect(() => {
+    if (!user || trackingData.length === 0) return;
+
+    const autoUpdateInterval = setInterval(async () => {
+      console.log('Auto-updating GHN tracking data...');
+      await updateAllTracking();
+    }, 60 * 60 * 1000); // 60 minutes
+
+    return () => clearInterval(autoUpdateInterval);
+  }, [user, trackingData.length]);
+
   const loadTrackingData = async () => {
     if (!user) return;
 
