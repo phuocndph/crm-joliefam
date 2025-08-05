@@ -139,8 +139,30 @@ export const FabricInventoryOverview = () => {
   // Parse formatted input value back to number
   const parseInputValue = (value: string) => {
     if (!value) return 0;
-    // Remove dots and replace comma with dot for parsing
-    const cleanValue = value.replace(/\./g, '').replace(',', '.');
+    // Handle both comma and dot as decimal separator
+    // Remove thousand separators (dots) but keep decimal separator
+    let cleanValue = value;
+    
+    // If there's a comma, treat it as decimal separator
+    if (cleanValue.includes(',')) {
+      const parts = cleanValue.split(',');
+      if (parts.length === 2) {
+        // Remove dots from integer part (thousand separators)
+        const integerPart = parts[0].replace(/\./g, '');
+        cleanValue = integerPart + '.' + parts[1];
+      }
+    } else if (cleanValue.includes('.')) {
+      // Check if it's a decimal or thousand separator
+      const parts = cleanValue.split('.');
+      if (parts.length === 2 && parts[1].length <= 3) {
+        // Likely a decimal number (e.g., 123.45)
+        cleanValue = value;
+      } else {
+        // Multiple dots or long decimal part, treat as thousand separators
+        cleanValue = cleanValue.replace(/\./g, '');
+      }
+    }
+    
     return parseFloat(cleanValue) || 0;
   };
 
