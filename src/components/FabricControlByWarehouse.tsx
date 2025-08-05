@@ -384,7 +384,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className={`text-sm font-medium ${getTextClass()}`}>Tồn kho:</span>
-                    <span className={`text-lg font-bold ${getTextClass()}`}>{fabric.currentWarehouse.toFixed(2)}m</span>
+                    <span className={`text-lg font-bold ${getTextClass()}`}>{fabric.currentWarehouse.toLocaleString('vi-VN', { maximumFractionDigits: 3 }).replace(/,000$/, '')}m</span>
                   </div>
                   {canTransfer && <div className="pt-2 border-t">
                       <Button variant="outline" size="sm" className="w-full" onClick={() => handleTransferClick(fabric.fabricName)}>
