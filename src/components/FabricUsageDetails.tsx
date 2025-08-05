@@ -319,16 +319,16 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
         <div className="rounded-md border">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Ngày sử dụng</TableHead>
-                <TableHead>Số đơn hàng</TableHead>
-                <TableHead>Loại đơn hàng</TableHead>
-                <TableHead>Khách hàng</TableHead>
-                <TableHead>Loại đơn</TableHead>
-                <TableHead>Loại vải</TableHead>
-                <TableHead>Số lượng</TableHead>
-                <TableHead>Ghi chú</TableHead>
-                <TableHead className="w-[100px]">Thao tác</TableHead>
+              <TableRow className="bg-blue-900 text-white">
+                <TableHead className="w-[100px] text-white">Ngày sử dụng</TableHead>
+                <TableHead className="w-[100px] text-white">Số đơn hàng</TableHead>
+                <TableHead className="w-[110px] text-white">Loại đơn hàng</TableHead>
+                <TableHead className="w-[140px] text-white">Khách hàng</TableHead>
+                <TableHead className="w-[100px] text-white">Loại đơn</TableHead>
+                <TableHead className="w-[200px] text-white">Loại vải</TableHead>
+                <TableHead className="w-[80px] text-white">Số lượng</TableHead>
+                <TableHead className="w-[200px] text-white">Ghi chú</TableHead>
+                <TableHead className="w-[100px] text-white">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -371,8 +371,8 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
                         {formatQuantity(usage.quantity_used, usage.unit)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="max-w-xs">
-                      <div className="truncate" title={usage.notes || ''}>
+                    <TableCell className="w-[200px]">
+                      <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
                         {usage.notes || '-'}
                       </div>
                     </TableCell>
