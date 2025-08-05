@@ -336,6 +336,7 @@ export type Database = {
           total_amount: number | null
           transaction_date: string
           transaction_type: string
+          transfer_reference_id: string | null
           unit_price: number | null
           updated_at: string
           warehouse_id: string
@@ -355,6 +356,7 @@ export type Database = {
           total_amount?: number | null
           transaction_date?: string
           transaction_type: string
+          transfer_reference_id?: string | null
           unit_price?: number | null
           updated_at?: string
           warehouse_id: string
@@ -374,6 +376,7 @@ export type Database = {
           total_amount?: number | null
           transaction_date?: string
           transaction_type?: string
+          transfer_reference_id?: string | null
           unit_price?: number | null
           updated_at?: string
           warehouse_id?: string
