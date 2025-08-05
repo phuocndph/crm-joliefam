@@ -667,85 +667,36 @@ export const FabricInventoryOverview = () => {
         </CardContent>
       </Card>
 
-      {/* Inventory Table and Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Bảng tồn kho chi tiết</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Loại vải</TableHead>
-                    <TableHead className="text-center" colSpan={2}>Còn trong kho</TableHead>
-                    <TableHead>Kho</TableHead>
-                    <TableHead>Cập nhật lần cuối</TableHead>
-                  </TableRow>
-                  <TableRow>
-                    <TableHead></TableHead>
-                    <TableHead className="text-center">Cuộn</TableHead>
-                    <TableHead className="text-center">Mét</TableHead>
-                    <TableHead></TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {inventoryData.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.fabricCode}</TableCell>
-                      <TableCell className="text-center">{item.currentStockRolls}</TableCell>
-                      <TableCell className="text-center">{item.currentStockMeters.toFixed(2)}</TableCell>
-                      <TableCell>{item.warehouse}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {item.last_updated ? new Date(item.last_updated).toLocaleString('vi-VN') : 'Chưa có'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {inventoryData.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
-                        Chưa có dữ liệu tồn kho
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Biểu đồ thể hiện tổng số mét vải các loại</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="name" 
-                    angle={-45}
-                    textAnchor="end"
-                    height={80}
-                    fontSize={10}
-                  />
-                  <YAxis />
-                  <Tooltip 
-                    formatter={(value, name) => [
-                      `${Number(value).toFixed(2)} ${name === 'meters' ? 'mét' : 'cuộn'}`,
-                      name === 'meters' ? 'Mét' : 'Cuộn'
-                    ]}
-                  />
-                  <Bar dataKey="meters" fill="#3b82f6" name="meters" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Biểu đồ thể hiện tổng số mét vải các loại</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-96">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="name" 
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                  fontSize={12}
+                />
+                <YAxis />
+                <Tooltip 
+                  formatter={(value, name) => [
+                    `${Number(value).toFixed(2)} ${name === 'meters' ? 'mét' : 'cuộn'}`,
+                    name === 'meters' ? 'Mét' : 'Cuộn'
+                  ]}
+                />
+                <Bar dataKey="meters" fill="#3b82f6" name="meters" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Fabric Transactions Table */}
       <FabricTransactionsTable />
