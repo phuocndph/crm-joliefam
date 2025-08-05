@@ -549,19 +549,19 @@ export const FabricInventoryOverview = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead rowSpan={2} className="text-center align-middle border-r">Tên Loại Vải</TableHead>
-                  <TableHead colSpan={2} className="text-center border-r">Hà Nội</TableHead>
-                  <TableHead colSpan={2} className="text-center border-r">Bắc Ninh</TableHead>
-                  <TableHead colSpan={2} className="text-center border-r">Tổng</TableHead>
-                  <TableHead rowSpan={2} className="text-center align-middle">Thao Tác</TableHead>
+                  <TableHead rowSpan={2} className="text-center align-middle border-r bg-blue-900 text-white font-semibold">Tên Loại Vải</TableHead>
+                  <TableHead colSpan={2} className="text-center border-r bg-blue-900 text-white font-semibold">Hà Nội</TableHead>
+                  <TableHead colSpan={2} className="text-center border-r bg-blue-900 text-white font-semibold">Bắc Ninh</TableHead>
+                  <TableHead colSpan={2} className="text-center border-r bg-blue-900 text-white font-semibold">Tổng</TableHead>
+                  <TableHead rowSpan={2} className="text-center align-middle bg-blue-900 text-white font-semibold">Thao Tác</TableHead>
                 </TableRow>
                 <TableRow>
-                  <TableHead className="text-center text-xs">Kiện</TableHead>
-                  <TableHead className="text-center text-xs border-r">Mét</TableHead>
-                  <TableHead className="text-center text-xs">Kiện</TableHead>
-                  <TableHead className="text-center text-xs border-r">Mét</TableHead>
-                  <TableHead className="text-center text-xs">Kiện</TableHead>
-                  <TableHead className="text-center text-xs border-r">Mét</TableHead>
+                  <TableHead className="text-center text-xs bg-blue-900 text-white font-semibold">Kiện</TableHead>
+                  <TableHead className="text-center text-xs border-r bg-blue-900 text-white font-semibold">Mét</TableHead>
+                  <TableHead className="text-center text-xs bg-blue-900 text-white font-semibold">Kiện</TableHead>
+                  <TableHead className="text-center text-xs border-r bg-blue-900 text-white font-semibold">Mét</TableHead>
+                  <TableHead className="text-center text-xs bg-blue-900 text-white font-semibold">Kiện</TableHead>
+                  <TableHead className="text-center text-xs border-r bg-blue-900 text-white font-semibold">Mét</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -676,21 +676,21 @@ export const FabricInventoryOverview = () => {
           <CardContent>
             <div className="rounded-md border">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Loại vải</TableHead>
-                    <TableHead className="text-center" colSpan={2}>Còn trong kho</TableHead>
-                    <TableHead>Kho</TableHead>
-                    <TableHead>Cập nhật lần cuối</TableHead>
-                  </TableRow>
-                  <TableRow>
-                    <TableHead></TableHead>
-                    <TableHead className="text-center">Cuộn</TableHead>
-                    <TableHead className="text-center">Mét</TableHead>
-                    <TableHead></TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
+                 <TableHeader>
+                   <TableRow>
+                     <TableHead className="bg-blue-900 text-white font-semibold">Loại vải</TableHead>
+                     <TableHead className="text-center bg-blue-900 text-white font-semibold" colSpan={2}>Còn trong kho</TableHead>
+                     <TableHead className="bg-blue-900 text-white font-semibold">Kho</TableHead>
+                     <TableHead className="bg-blue-900 text-white font-semibold">Cập nhật lần cuối</TableHead>
+                   </TableRow>
+                   <TableRow>
+                     <TableHead className="bg-blue-900 text-white font-semibold"></TableHead>
+                     <TableHead className="text-center bg-blue-900 text-white font-semibold">Cuộn</TableHead>
+                     <TableHead className="text-center bg-blue-900 text-white font-semibold">Mét</TableHead>
+                     <TableHead className="bg-blue-900 text-white font-semibold"></TableHead>
+                     <TableHead className="bg-blue-900 text-white font-semibold"></TableHead>
+                   </TableRow>
+                 </TableHeader>
                 <TableBody>
                   {inventoryData.map((item) => (
                     <TableRow key={item.id}>
