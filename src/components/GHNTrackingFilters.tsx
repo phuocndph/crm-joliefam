@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Search, ChevronDown, X } from 'lucide-react';
 
 interface FilterState {
   searchText: string;
-  status: string;
+  status: string[];
   sortBy: string;
   sortOrder: 'asc' | 'desc';
 }
@@ -45,7 +48,7 @@ export function GHNTrackingFilters({
 }: GHNTrackingFiltersProps) {
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
-    status: 'all',
+    status: ['all'],
     sortBy: 'none',
     sortOrder: 'asc'
   });
@@ -54,6 +57,48 @@ export function GHNTrackingFilters({
     const updatedFilters = { ...filters, ...newFilters };
     setFilters(updatedFilters);
     onFiltersChange(updatedFilters);
+  };
+
+  const handleStatusChange = (statusValue: string, checked: boolean) => {
+    let newStatus = [...filters.status];
+    
+    if (statusValue === 'all') {
+      newStatus = checked ? ['all'] : [];
+    } else {
+      if (checked) {
+        // Remove 'all' if adding specific status
+        newStatus = newStatus.filter(s => s !== 'all');
+        newStatus.push(statusValue);
+      } else {
+        newStatus = newStatus.filter(s => s !== statusValue);
+      }
+      
+      // If no status selected, default to 'all'
+      if (newStatus.length === 0) {
+        newStatus = ['all'];
+      }
+    }
+    
+    updateFilters({ status: newStatus });
+  };
+
+  const clearStatus = (statusValue: string) => {
+    let newStatus = filters.status.filter(s => s !== statusValue);
+    if (newStatus.length === 0) {
+      newStatus = ['all'];
+    }
+    updateFilters({ status: newStatus });
+  };
+
+  const getStatusDisplayText = () => {
+    if (filters.status.includes('all')) {
+      return 'Tất cả trạng thái';
+    }
+    if (filters.status.length === 1) {
+      const status = statusOptions.find(opt => opt.value === filters.status[0]);
+      return status?.label || 'Chọn trạng thái';
+    }
+    return `${filters.status.length} trạng thái được chọn`;
   };
 
   return (
@@ -74,21 +119,62 @@ export function GHNTrackingFilters({
           </div>
         </div>
 
-        {/* Status */}
+        {/* Status Multi-Select */}
         <div className="sm:w-64">
           <label className="text-sm font-medium mb-2 block">Trạng thái đơn hàng</label>
-          <Select value={filters.status} onValueChange={(value) => updateFilters({ status: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Chọn trạng thái" />
-            </SelectTrigger>
-            <SelectContent>
-              {statusOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button 
+                variant="outline" 
+                className="w-full justify-between text-left font-normal"
+              >
+                <span className="truncate">{getStatusDisplayText()}</span>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-0 z-50 bg-white" align="start">
+              <div className="p-4 max-h-64 overflow-y-auto">
+                {/* Selected Status Tags */}
+                {!filters.status.includes('all') && filters.status.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-1">
+                    {filters.status.map(statusValue => {
+                      const option = statusOptions.find(opt => opt.value === statusValue);
+                      return option ? (
+                        <div key={statusValue} className="flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                          <span>{option.label}</span>
+                          <button
+                            onClick={() => clearStatus(statusValue)}
+                            className="hover:bg-blue-200 rounded-full p-0.5"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ) : null;
+                    })}
+                  </div>
+                )}
+                
+                {/* Status Options */}
+                <div className="space-y-2">
+                  {statusOptions.map((option) => (
+                    <div key={option.value} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={option.value}
+                        checked={filters.status.includes(option.value)}
+                        onCheckedChange={(checked) => handleStatusChange(option.value, checked as boolean)}
+                      />
+                      <label 
+                        htmlFor={option.value}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        {option.label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
 
         {/* Sort By */}

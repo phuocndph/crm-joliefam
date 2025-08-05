@@ -75,7 +75,7 @@ export default function GHNTrackingPage() {
   const [user, setUser] = useState<User | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
-    status: 'all',
+    status: ['all'],
     sortBy: 'none',
     sortOrder: 'asc'
   });
@@ -366,7 +366,7 @@ export default function GHNTrackingPage() {
       }
 
       // Status filter
-      if (filters.status && filters.status !== 'all' && item.ghn_status !== filters.status) {
+      if (filters.status && filters.status.length > 0 && !filters.status.includes('all') && !filters.status.includes(item.ghn_status || '')) {
         return false;
       }
 
