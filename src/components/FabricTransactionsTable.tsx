@@ -294,7 +294,7 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
                 <Label>Số kiện</Label>
                 <Input
                   type="number"
-                  value={editForm.packages_count}
+                  value={editForm.packages_count || ''}
                   onChange={(e) => setEditForm(prev => ({ ...prev, packages_count: parseInt(e.target.value) || 0 }))}
                   placeholder="Nhập số kiện"
                 />
