@@ -371,10 +371,20 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!newProductName.trim() || !watchedValues.priceList) {
+    if (!newProductName.trim()) {
       toast({
         title: "Lỗi",
-        description: "Vui lòng nhập tên sản phẩm và chọn bảng giá",
+        description: "Vui lòng nhập tên sản phẩm",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedPriceList = watchedValues.priceList;
+    if (!selectedPriceList) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng chọn bảng giá trong form báo giá trước",
         variant: "destructive",
       });
       return;
@@ -393,7 +403,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
           category: newProductCategory || null,
           specifications: newProductSpecifications || null,
           in_stock: newProductInStock,
-          price_list_id: watchedValues.priceList,
+          price_list_id: selectedPriceList,
         })
         .select()
         .single();
@@ -417,11 +427,11 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
       setShowCreateProduct(false);
       
       // Refresh products list
-      if (watchedValues.priceList) {
+      if (selectedPriceList) {
         const { data: updatedProducts } = await supabase
           .from('products')
           .select('*')
-          .eq('price_list_id', watchedValues.priceList)
+          .eq('price_list_id', selectedPriceList)
           .order('name');
         
         if (updatedProducts) {
