@@ -952,7 +952,6 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                       variant="outline"
                       className="border-blue-600 text-blue-600 hover:bg-blue-50"
                       onClick={() => setShowCreateProduct(true)}
-                      disabled={!watchedValues.priceList}
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Tạo sản phẩm mới
