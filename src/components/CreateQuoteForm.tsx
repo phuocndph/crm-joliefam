@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -133,6 +134,18 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
   const [currentImageEditingIndex, setCurrentImageEditingIndex] = useState<number>(-1);
   const [imageDialogOpen, setImageDialogOpen] = useState<{[key: number]: boolean}>({});
   const { toast } = useToast();
+  
+  // Create new product states
+  const [showCreateProduct, setShowCreateProduct] = useState(false);
+  const [createProductLoading, setCreateProductLoading] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductDescription, setNewProductDescription] = useState('');
+  const [newProductPrice, setNewProductPrice] = useState('');
+  const [newProductCostPrice, setNewProductCostPrice] = useState('');
+  const [newProductSku, setNewProductSku] = useState('');
+  const [newProductCategory, setNewProductCategory] = useState('');
+  const [newProductSpecifications, setNewProductSpecifications] = useState('');
+  const [newProductInStock, setNewProductInStock] = useState(true);
   
   // Helper function to safely parse dates
   const parseDate = (dateString: string | Date): Date => {
@@ -352,6 +365,80 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
 
   const removeProduct = (productId: string) => {
     setSelectedProducts(prev => prev.filter(item => item.id !== productId));
+  };
+
+  // Handle creating new product
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!newProductName.trim() || !watchedValues.priceList) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập tên sản phẩm và chọn bảng giá",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCreateProductLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .insert({
+          name: newProductName,
+          description: newProductDescription || null,
+          price: newProductPrice ? parseFloat(newProductPrice) : null,
+          cost_price: newProductCostPrice ? parseFloat(newProductCostPrice) : null,
+          sku: newProductSku || null,
+          category: newProductCategory || null,
+          specifications: newProductSpecifications || null,
+          in_stock: newProductInStock,
+          price_list_id: watchedValues.priceList,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: "Đã tạo sản phẩm thành công",
+      });
+
+      // Reset form
+      setNewProductName('');
+      setNewProductDescription('');
+      setNewProductPrice('');
+      setNewProductCostPrice('');
+      setNewProductSku('');
+      setNewProductCategory('');
+      setNewProductSpecifications('');
+      setNewProductInStock(true);
+      setShowCreateProduct(false);
+      
+      // Refresh products list
+      if (watchedValues.priceList) {
+        const { data: updatedProducts } = await supabase
+          .from('products')
+          .select('*')
+          .eq('price_list_id', watchedValues.priceList)
+          .order('name');
+        
+        if (updatedProducts) {
+          setProducts(updatedProducts);
+        }
+      }
+      
+    } catch (error: any) {
+      console.error('Error creating product:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể tạo sản phẩm",
+        variant: "destructive",
+      });
+    } finally {
+      setCreateProductLoading(false);
+    }
   };
 
   const handleSubmit = async (data: QuoteFormData) => {
@@ -841,24 +928,36 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                       Bảng giá: {priceLists.find(p => p.id === watchedValues.priceList)?.name || "Chưa chọn"} ({products.length} sản phẩm có sẵn)
                     </p>
                   </div>
-                  <Button 
-                    type="button" 
-                    className="bg-green-600 hover:bg-green-700"
-                    onClick={() => {
-                      const newItem: QuoteItem = {
-                        id: `temp-${Date.now()}`,
-                        name: '',
-                        sku: '',
-                        price: 0,
-                        quantity: 1,
-                        total: 0,
-                      };
-                      setSelectedProducts(prev => [...prev, newItem]);
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Thêm sản phẩm
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      type="button" 
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={() => {
+                        const newItem: QuoteItem = {
+                          id: `temp-${Date.now()}`,
+                          name: '',
+                          sku: '',
+                          price: 0,
+                          quantity: 1,
+                          total: 0,
+                        };
+                        setSelectedProducts(prev => [...prev, newItem]);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Thêm sản phẩm
+                    </Button>
+                    <Button 
+                      type="button" 
+                      variant="outline"
+                      className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                      onClick={() => setShowCreateProduct(true)}
+                      disabled={!watchedValues.priceList}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Tạo sản phẩm mới
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
@@ -1362,6 +1461,118 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
           </form>
         </Form>
       </div>
+
+      {/* Create New Product Dialog */}
+      <Dialog open={showCreateProduct} onOpenChange={setShowCreateProduct}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Tạo sản phẩm mới
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateProduct} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="newSku">Mã SP *</Label>
+                <Input
+                  id="newSku"
+                  value={newProductSku}
+                  onChange={(e) => setNewProductSku(e.target.value)}
+                  placeholder="VD: SP001"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newName">Tên sản phẩm *</Label>
+                <Input
+                  id="newName"
+                  value={newProductName}
+                  onChange={(e) => setNewProductName(e.target.value)}
+                  required
+                  placeholder="Tên sản phẩm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newCategory">Danh mục</Label>
+                <Input
+                  id="newCategory"
+                  value={newProductCategory}
+                  onChange={(e) => setNewProductCategory(e.target.value)}
+                  placeholder="Danh mục"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newSpecifications">Quy cách</Label>
+                <Input
+                  id="newSpecifications"
+                  value={newProductSpecifications}
+                  onChange={(e) => setNewProductSpecifications(e.target.value)}
+                  placeholder="Quy cách"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="newCostPrice">Giá gốc (VND)</Label>
+                <Input
+                  id="newCostPrice"
+                  type="number"
+                  step="1000"
+                  value={newProductCostPrice}
+                  onChange={(e) => setNewProductCostPrice(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newPrice">Giá bán (VND)</Label>
+                <Input
+                  id="newPrice"
+                  type="number"
+                  step="1000"
+                  value={newProductPrice}
+                  onChange={(e) => setNewProductPrice(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newInStock">Tình trạng</Label>
+                <div className="flex items-center space-x-2 h-10">
+                  <Switch
+                    id="newInStock"
+                    checked={newProductInStock}
+                    onCheckedChange={setNewProductInStock}
+                  />
+                  <Label htmlFor="newInStock" className="text-sm">
+                    {newProductInStock ? 'Còn hàng' : 'Hết hàng'}
+                  </Label>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="newDescription">Mô tả</Label>
+              <Textarea
+                id="newDescription"
+                value={newProductDescription}
+                onChange={(e) => setNewProductDescription(e.target.value)}
+                rows={2}
+                placeholder="Mô tả chi tiết sản phẩm..."
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button 
+                type="button" 
+                variant="outline"
+                onClick={() => setShowCreateProduct(false)}
+              >
+                Hủy
+              </Button>
+              <Button type="submit" disabled={createProductLoading}>
+                {createProductLoading ? 'Đang tạo...' : 'Tạo sản phẩm'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
