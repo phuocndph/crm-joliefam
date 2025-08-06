@@ -155,7 +155,15 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
 
       if (existingInventory) {
         const newStock = existingInventory.current_stock + quantityDifference;
-        const newPackagesCount = existingInventory.packages_count + (editForm.packages_count - (selectedTransaction.packages_count || 0));
+        
+        // For inbound transactions, set packages_count directly from the edit form
+        // For other transaction types, calculate the difference
+        let newPackagesCount;
+        if (selectedTransaction.transaction_type === 'inbound') {
+          newPackagesCount = editForm.packages_count;
+        } else {
+          newPackagesCount = existingInventory.packages_count + (editForm.packages_count - (selectedTransaction.packages_count || 0));
+        }
         
         await updateInventory.mutateAsync({
           fabric_variant_id: selectedTransaction.fabric_variant_id,
