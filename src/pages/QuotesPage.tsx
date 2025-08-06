@@ -34,6 +34,7 @@ import { CreateQuoteForm } from "@/components/CreateQuoteForm";
 import { QuotePreviewDialog } from "@/components/QuotePreviewDialog";
 import { QuoteSupplementDialog } from "@/components/QuoteSupplementDialog";
 import { QuoteTemplateSettings } from "@/components/QuoteTemplateSettings";
+import CreateAssigneeForm from "@/components/CreateAssigneeForm";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
@@ -326,6 +327,7 @@ export default function QuotesPage() {
             </p>
           </div>
           <div className="flex gap-2">
+            <CreateAssigneeForm onSuccess={loadQuotes} />
             <Button 
               variant="outline" 
               onClick={() => setShowTemplateSettings(true)} 
