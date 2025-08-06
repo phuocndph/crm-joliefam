@@ -34,12 +34,15 @@ const CustomerCare = () => {
   const fetchCustomers = async () => {
     try {
       setLoading(true);
+      console.log('Starting to fetch customer care data...');
       
       // Fetch customers
       const { data: customersData, error: customersError } = await supabase
         .from('customers')
         .select('*')
         .order('created_at', { ascending: false });
+
+      console.log('Customers fetch result:', { customersData, customersError });
 
       if (customersError) {
         console.error('Error fetching customers:', customersError);
@@ -48,6 +51,7 @@ const CustomerCare = () => {
           description: "Không thể tải danh sách khách hàng",
           variant: "destructive",
         });
+        setLoading(false);
         return;
       }
 
