@@ -586,26 +586,36 @@ const ProductManagement = () => {
         <TabsContent value="products" className="space-y-6">
           {/* Price List Selection & Stats */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Chọn bảng giá để xem sản phẩm</CardTitle>
+            <Card className="lg:col-span-2 bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-primary"></div>
+                  Chọn bảng giá để xem sản phẩm
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <Select value={selectedPriceList} onValueChange={setSelectedPriceList}>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="w-full h-12 bg-background/80 hover:bg-background transition-colors border-2 hover:border-primary/30">
                     <SelectValue placeholder="Chọn bảng giá..." />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-background border-2 border-border/50 shadow-lg">
                     {priceLists.map((priceList) => (
-                      <SelectItem key={priceList.id} value={priceList.id}>
-                        <div className="flex items-center justify-between w-full">
-                          <span className="font-medium">{priceList.name}</span>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span>({priceList.year})</span>
-                            <Badge variant={priceList.status === 'active' ? 'default' : 'secondary'} className="text-xs">
-                              {priceList.status === 'active' ? 'Đang dùng' : 'Nháp'}
-                            </Badge>
+                      <SelectItem 
+                        key={priceList.id} 
+                        value={priceList.id}
+                        className="hover:bg-accent/80 cursor-pointer py-3"
+                      >
+                        <div className="flex items-center justify-between w-full min-w-0">
+                          <div className="flex flex-col items-start min-w-0 flex-1">
+                            <span className="font-semibold text-foreground truncate">{priceList.name}</span>
+                            <span className="text-xs text-muted-foreground">Năm {priceList.year}</span>
                           </div>
+                          <Badge 
+                            variant={priceList.status === 'active' ? 'default' : 'secondary'} 
+                            className="text-xs shrink-0 ml-2"
+                          >
+                            {priceList.status === 'active' ? 'Đang dùng' : 'Nháp'}
+                          </Badge>
                         </div>
                       </SelectItem>
                     ))}
