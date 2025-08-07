@@ -481,6 +481,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
         include_vat: data.includeVAT,
         vat_rate: data.vatRate,
         price_list_id: data.priceList || null,
+        assignee_id: data.responsible || null,
         status: initialData ? initialData.status : "draft", // Keep original status when editing
         notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy") : ""}`,
         items: JSON.stringify(selectedProducts),
