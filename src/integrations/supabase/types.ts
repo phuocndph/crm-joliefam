@@ -866,6 +866,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          assignee_id: string | null
           cost_price: number | null
           created_at: string
           customer_id: string | null
@@ -887,6 +888,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          assignee_id?: string | null
           cost_price?: number | null
           created_at?: string
           customer_id?: string | null
@@ -908,6 +910,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          assignee_id?: string | null
           cost_price?: number | null
           created_at?: string
           customer_id?: string | null
@@ -929,6 +932,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "assignees"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orders_customer_id_fkey"
             columns: ["customer_id"]
@@ -1071,6 +1081,7 @@ export type Database = {
       }
       quotes: {
         Row: {
+          assignee_id: string | null
           created_at: string
           customer_id: string | null
           id: string
@@ -1089,6 +1100,7 @@ export type Database = {
           vat_rate: number | null
         }
         Insert: {
+          assignee_id?: string | null
           created_at?: string
           customer_id?: string | null
           id?: string
@@ -1107,6 +1119,7 @@ export type Database = {
           vat_rate?: number | null
         }
         Update: {
+          assignee_id?: string | null
           created_at?: string
           customer_id?: string | null
           id?: string
@@ -1125,6 +1138,13 @@ export type Database = {
           vat_rate?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "quotes_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "assignees"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "quotes_customer_id_fkey"
             columns: ["customer_id"]

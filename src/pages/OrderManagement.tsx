@@ -48,6 +48,9 @@ interface Order {
     phone: string | null;
     company: string | null;
   } | null;
+  assignees?: {
+    name: string;
+  } | null;
 }
 const statusConfig = {
   pending: {
@@ -154,7 +157,7 @@ export default function OrderManagement() {
   const loadOrders = async () => {
     try {
       setLoading(true);
-      const {
+        const {
         data,
         error
       } = await supabase.from('orders').select(`
@@ -166,6 +169,9 @@ export default function OrderManagement() {
             email,
             phone,
             company
+          ),
+          assignees!orders_assignee_id_fkey (
+            name
           )
         `).order('created_at', {
         ascending: false

@@ -61,6 +61,9 @@ interface Order {
     phone: string | null;
     company: string | null;
   } | null;
+  assignees?: {
+    name: string;
+  } | null;
 }
 
 interface InlineOrderEditTableProps {
@@ -374,6 +377,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
             <TableHead>Ngày hẹn trả</TableHead>
             <TableHead>Tình trạng đơn</TableHead>
             <TableHead>Thanh toán</TableHead>
+            <TableHead>Người phụ trách</TableHead>
             <TableHead>Ghi chú</TableHead>
             <TableHead className="w-[70px]">Hành động</TableHead>
           </TableRow>
@@ -409,6 +413,11 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
               </TableCell>
               <TableCell>
                 {getCellContent(order, "payment_status")}
+              </TableCell>
+              <TableCell>
+                <span className="text-sm text-muted-foreground">
+                  {order.assignees?.name || 'Chưa phân công'}
+                </span>
               </TableCell>
               <TableCell>
                 {getCellContent(order, "notes")}
