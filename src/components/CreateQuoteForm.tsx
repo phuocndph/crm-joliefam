@@ -1025,18 +1025,19 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                               </DialogContent>
                             </Dialog>
                            </TableCell>
-                           <TableCell className="w-48 p-2">
-                            <Input
-                              value={item.name}
-                              onChange={(e) => {
-                                const newProducts = [...selectedProducts];
-                                newProducts[index] = { ...item, name: e.target.value };
-                                setSelectedProducts(newProducts);
-                              }}
-                              placeholder="Tên sản phẩm"
-                               className="border-gray-200 focus:border-blue-500 font-medium text-sm w-full"
-                             />
-                          </TableCell>
+                            <TableCell className="min-w-48 p-2">
+                             <Textarea
+                               value={item.name}
+                               onChange={(e) => {
+                                 const newProducts = [...selectedProducts];
+                                 newProducts[index] = { ...item, name: e.target.value };
+                                 setSelectedProducts(newProducts);
+                               }}
+                               placeholder="Tên sản phẩm"
+                               className="border-gray-200 focus:border-blue-500 font-medium text-sm w-full min-h-[2.5rem] resize-none"
+                               rows={2}
+                              />
+                           </TableCell>
                            <TableCell className="w-20 p-2">
                              <Dialog
                               open={imageDialogOpen[index] || false} 
