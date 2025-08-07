@@ -102,7 +102,7 @@ export default function QuotesPage() {
             address,
             company
           ),
-          assignees!quotes_assignee_id_fkey (
+          assignees (
             name
           )
         `)

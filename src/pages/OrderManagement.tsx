@@ -170,7 +170,7 @@ export default function OrderManagement() {
             phone,
             company
           ),
-          assignees!orders_assignee_id_fkey (
+          assignees (
             name
           )
         `).order('created_at', {
