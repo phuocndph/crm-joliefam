@@ -974,15 +974,15 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                   <Table>
                      <TableHeader>
                        <TableRow className="bg-gray-50">
-                         <TableHead className="font-bold text-base">Chọn sản phẩm</TableHead>
-                         <TableHead className="font-bold text-base min-w-72">Tên sản phẩm</TableHead>
-                         <TableHead className="font-bold text-base">Hình ảnh</TableHead>
-                         <TableHead className="font-bold text-base">Mô tả sản phẩm</TableHead>
-                         <TableHead className="font-bold text-base">Quy cách</TableHead>
-                         <TableHead className="font-bold text-base text-right">Đơn giá</TableHead>
-                         <TableHead className="font-bold text-base text-center">Số lượng</TableHead>
-                         <TableHead className="font-bold text-base text-right">Thành tiền</TableHead>
-                         <TableHead className="font-bold text-base text-center">Thao tác</TableHead>
+                         <TableHead className="font-bold text-base w-32">Chọn sản phẩm</TableHead>
+                         <TableHead className="font-bold text-base w-48">Tên sản phẩm</TableHead>
+                         <TableHead className="font-bold text-base w-20">Hình ảnh</TableHead>
+                         <TableHead className="font-bold text-base w-40">Mô tả sản phẩm</TableHead>
+                         <TableHead className="font-bold text-base w-32">Quy cách</TableHead>
+                         <TableHead className="font-bold text-base text-right w-28">Đơn giá</TableHead>
+                         <TableHead className="font-bold text-base text-center w-24">Số lượng</TableHead>
+                         <TableHead className="font-bold text-base text-right w-32">Thành tiền</TableHead>
+                         <TableHead className="font-bold text-base text-center w-20">Thao tác</TableHead>
                        </TableRow>
                      </TableHeader>
                     <TableBody>
@@ -1101,8 +1101,8 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                 </div>
                               </DialogContent>
                             </Dialog>
-                          </TableCell>
-                          <TableCell className="min-w-72 p-4">
+                           </TableCell>
+                           <TableCell className="w-48 p-2">
                             <Input
                               value={item.name}
                               onChange={(e) => {
@@ -1111,11 +1111,11 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                 setSelectedProducts(newProducts);
                               }}
                               placeholder="Tên sản phẩm"
-                              className="border-gray-200 focus:border-blue-500 font-medium text-base w-full"
-                            />
+                               className="border-gray-200 focus:border-blue-500 font-medium text-sm w-full"
+                             />
                           </TableCell>
-                          <TableCell className="min-w-72 p-4">
-                            <Dialog 
+                           <TableCell className="w-20 p-2">
+                             <Dialog
                               open={imageDialogOpen[index] || false} 
                               onOpenChange={(open) => {
                                 setImageDialogOpen(prev => ({
@@ -1125,10 +1125,10 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                               }}
                             >
                               <DialogTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-16 w-20 border-2 border-dashed border-gray-300 hover:border-blue-500 flex flex-col items-center justify-center gap-1"
+                                 <Button
+                                   variant="outline"
+                                   size="sm"
+                                   className="h-12 w-16 border-2 border-dashed border-gray-300 hover:border-blue-500 flex flex-col items-center justify-center gap-1"
                                   type="button"
                                 >
                                   {item.selectedImage ? (
@@ -1176,8 +1176,8 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                               </DialogContent>
                             </Dialog>
                           </TableCell>
-                          <TableCell className="min-w-40 p-4">
-                            <div className="flex items-center space-x-2">
+                           <TableCell className="w-40 p-2">
+                             <div className="flex items-center space-x-1">
                               <Input
                                 value={item.description || ''}
                                 onChange={(e) => {
@@ -1226,8 +1226,8 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                               </Dialog>
                             </div>
                           </TableCell>
-                          <TableCell className="min-w-40 p-4">
-                            <div className="flex items-center space-x-2">
+                           <TableCell className="w-32 p-2">
+                             <div className="flex items-center space-x-1">
                               <Input
                                 value={(item as any).specifications || ''}
                                 onChange={(e) => {
@@ -1276,7 +1276,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                               </Dialog>
                             </div>
                           </TableCell>
-                          <TableCell className="min-w-72 p-4">
+                          <TableCell className="w-28 p-2">
                             <Input
                               type="number"
                               value={item.price}
@@ -1290,14 +1290,14 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                 };
                                 setSelectedProducts(newProducts);
                               }}
-                              className="w-32 text-right font-mono text-blue-600 font-semibold border-gray-200 focus:border-blue-500"
-                              min="0"
+                               className="w-24 text-right font-mono text-blue-600 font-semibold border-gray-200 focus:border-blue-500"
+                               min="0"
                               step="1000"
                               placeholder="0"
                             />
                           </TableCell>
-                          <TableCell className="p-4">
-                            <Input
+                           <TableCell className="w-24 p-2">
+                             <Input
                               type="number"
                               value={item.quantity}
                               onChange={(e) => {
@@ -1310,19 +1310,19 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                 };
                                 setSelectedProducts(newProducts);
                               }}
-                              className="w-24 h-12 text-center border-2 focus:border-blue-500 text-lg font-semibold"
-                              min="1"
+                               className="w-20 h-10 text-center border-2 focus:border-blue-500 text-sm font-semibold"
+                               min="1"
                             />
                           </TableCell>
-                          <TableCell className="text-right font-mono font-bold text-green-600 text-base p-4">
-                            {item.total.toLocaleString()}đ
+                           <TableCell className="w-32 text-right font-mono font-bold text-green-600 text-sm p-2">
+                             {item.total.toLocaleString()}đ
                           </TableCell>
-                          <TableCell className="text-center p-4">
-                            <Button
+                           <TableCell className="w-20 text-center p-2">
+                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-red-600 hover:bg-red-50 h-12 w-12"
-                              onClick={() => removeProduct(item.id)}
+                               className="text-red-600 hover:bg-red-50 h-8 w-8"
+                               onClick={() => removeProduct(item.id)}
                             >
                               <Trash2 className="w-5 h-5" />
                             </Button>
