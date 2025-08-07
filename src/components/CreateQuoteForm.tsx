@@ -920,9 +920,9 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                   onClick={() => setCurrentEditingIndex(index)}
                                 >
                                   <Search className="h-4 w-4 text-blue-600" />
-                                  <span className="text-blue-600">
-                                    {item.name ? `${item.name.substring(0, 30)}...` : 'Chọn sản phẩm từ danh sách'}
-                                  </span>
+                                   <span className="text-blue-600">
+                                     {item.sku ? item.sku : (item.name ? `${item.name.substring(0, 15)}...` : 'Chọn sản phẩm từ danh sách')}
+                                   </span>
                                 </Button>
                               </DialogTrigger>
                               <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
