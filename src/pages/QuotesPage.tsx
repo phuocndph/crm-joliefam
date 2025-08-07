@@ -101,6 +101,9 @@ export default function QuotesPage() {
             phone,
             address,
             company
+          ),
+          assignees (
+            name
           )
         `)
         .order('created_at', { ascending: false });
@@ -135,7 +138,7 @@ export default function QuotesPage() {
           customerCompany: quote.customers?.company || '',
           quoteDate: quote.created_at,
           expiryDate: extractFromNotes(/Ngày hết hạn:\s*(.+)/) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          responsible: 'Admin',
+          responsible: quote.assignees?.name || 'Chưa phân công',
           totalAmount: quote.total_amount || 0
         };
       }) || [];
