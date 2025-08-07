@@ -972,19 +972,19 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-bold text-base">Chọn sản phẩm</TableHead>
-                        <TableHead className="font-bold text-base min-w-72">Tên sản phẩm</TableHead>
-                        <TableHead className="font-bold text-base">Mô tả sản phẩm</TableHead>
-                        <TableHead className="font-bold text-base">Quy cách</TableHead>
-                        <TableHead className="font-bold text-base text-right">Đơn giá</TableHead>
-                        <TableHead className="font-bold text-base text-center">Số lượng</TableHead>
-                        <TableHead className="font-bold text-base text-right">Thành tiền</TableHead>
-                        <TableHead className="font-bold text-base">Hình ảnh</TableHead>
-                        <TableHead className="font-bold text-base text-center">Thao tác</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                     <TableHeader>
+                       <TableRow className="bg-gray-50">
+                         <TableHead className="font-bold text-base">Chọn sản phẩm</TableHead>
+                         <TableHead className="font-bold text-base min-w-72">Tên sản phẩm</TableHead>
+                         <TableHead className="font-bold text-base">Hình ảnh</TableHead>
+                         <TableHead className="font-bold text-base">Mô tả sản phẩm</TableHead>
+                         <TableHead className="font-bold text-base">Quy cách</TableHead>
+                         <TableHead className="font-bold text-base text-right">Đơn giá</TableHead>
+                         <TableHead className="font-bold text-base text-center">Số lượng</TableHead>
+                         <TableHead className="font-bold text-base text-right">Thành tiền</TableHead>
+                         <TableHead className="font-bold text-base text-center">Thao tác</TableHead>
+                       </TableRow>
+                     </TableHeader>
                     <TableBody>
                       {selectedProducts.map((item, index) => (
                         <TableRow key={item.id} className="h-24">
