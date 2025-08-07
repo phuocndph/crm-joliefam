@@ -1100,18 +1100,19 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                               </DialogContent>
                             </Dialog>
                           </TableCell>
-                           <TableCell className="w-40 p-2">
-                             <div className="flex items-center space-x-1">
-                              <Input
-                                value={item.description || ''}
-                                onChange={(e) => {
-                                  const newProducts = [...selectedProducts];
-                                  newProducts[index] = { ...item, description: e.target.value };
-                                  setSelectedProducts(newProducts);
-                                }}
-                                placeholder="Mô tả sản phẩm"
-                                className="border-gray-200 focus:border-blue-500 flex-1"
-                              />
+                            <TableCell className="min-w-40 p-2">
+                              <div className="flex items-start space-x-1">
+                               <Textarea
+                                 value={item.description || ''}
+                                 onChange={(e) => {
+                                   const newProducts = [...selectedProducts];
+                                   newProducts[index] = { ...item, description: e.target.value };
+                                   setSelectedProducts(newProducts);
+                                 }}
+                                 placeholder="Mô tả sản phẩm"
+                                 className="border-gray-200 focus:border-blue-500 flex-1 min-h-[2.5rem] resize-none"
+                                 rows={2}
+                               />
                               <Dialog>
                                 <DialogTrigger asChild>
                                   <Button
@@ -1150,18 +1151,19 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                               </Dialog>
                             </div>
                           </TableCell>
-                           <TableCell className="w-32 p-2">
-                             <div className="flex items-center space-x-1">
-                              <Input
-                                value={(item as any).specifications || ''}
-                                onChange={(e) => {
-                                  const newProducts = [...selectedProducts];
-                                  newProducts[index] = { ...item, specifications: e.target.value };
-                                  setSelectedProducts(newProducts);
-                                }}
-                                placeholder="Quy cách"
-                                className="border-gray-200 focus:border-blue-500 flex-1 min-w-32"
-                              />
+                            <TableCell className="min-w-32 p-2">
+                              <div className="flex items-start space-x-1">
+                               <Textarea
+                                 value={(item as any).specifications || ''}
+                                 onChange={(e) => {
+                                   const newProducts = [...selectedProducts];
+                                   newProducts[index] = { ...item, specifications: e.target.value };
+                                   setSelectedProducts(newProducts);
+                                 }}
+                                 placeholder="Quy cách"
+                                 className="border-gray-200 focus:border-blue-500 flex-1 min-h-[2.5rem] resize-none"
+                                 rows={2}
+                               />
                               <Dialog>
                                 <DialogTrigger asChild>
                                   <Button
