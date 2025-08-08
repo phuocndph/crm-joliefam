@@ -1068,19 +1068,31 @@ export default function CustomerManagement() {
                     <div>
                       <label className="text-sm font-medium">Trạng thái:</label>
                       <Badge className="ml-2">
-                        {selectedOrderDetail.status === 'pending' ? 'Chờ xử lý' :
-                         selectedOrderDetail.status === 'processing' ? 'Đang xử lý' :
-                         selectedOrderDetail.status === 'shipped' ? 'Đã giao' :
-                         selectedOrderDetail.status === 'delivered' ? 'Hoàn thành' :
-                         selectedOrderDetail.status === 'cancelled' ? 'Đã hủy' : selectedOrderDetail.status}
+                        {(() => {
+                          const s = selectedOrderDetail.status;
+                          const map: Record<string, string> = {
+                            pending: 'Chờ xử lý',
+                            processing: 'Đang xử lý',
+                            shipped: 'Đã giao',
+                            delivered: 'Hoàn thành',
+                            cancelled: 'Đã hủy',
+                          };
+                          return map[s] ?? 'Không xác định';
+                        })()}
                       </Badge>
                     </div>
                     <div>
                       <label className="text-sm font-medium">Thanh toán:</label>
                       <Badge className="ml-2">
-                        {selectedOrderDetail.payment_status === 'pending' ? 'Chưa thanh toán' :
-                         selectedOrderDetail.payment_status === 'paid' ? 'Đã thanh toán' :
-                         selectedOrderDetail.payment_status === 'partial' ? 'Thanh toán 1 phần' : selectedOrderDetail.payment_status}
+                        {(() => {
+                          const ps = selectedOrderDetail.payment_status;
+                          const map: Record<string, string> = {
+                            pending: 'Chưa thanh toán',
+                            paid: 'Đã thanh toán',
+                            partial: 'Thanh toán một phần',
+                          };
+                          return map[ps] ?? 'Không xác định';
+                        })()}
                       </Badge>
                     </div>
                     <div>
