@@ -327,7 +327,7 @@ const FabricManagement = () => {
   if (userLoading) {
     return <div className="flex items-center justify-center h-64">Đang tải...</div>;
   }
-  if (!user || !role || !['admin', 'manager', 'employee'].includes(role)) {
+  if (!user || !role || !['admin', 'manager', 'employee', 'accountant'].includes(role)) {
     return <div className="text-center text-muted-foreground">Bạn không có quyền truy cập trang này.</div>;
   }
   return <div className="container mx-auto p-6 space-y-8">
