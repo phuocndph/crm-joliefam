@@ -333,7 +333,8 @@ export default function CustomerManagement() {
         return updatedCustomer;
       }) || [];
       
-      setCustomers(formattedCustomers);
+      // Chỉ lưu khách hàng đã phát sinh đơn hàng
+      setCustomers(formattedCustomers.filter((c: Customer) => c.purchase_count > 0));
     } catch (error) {
       console.error('Error loading customers:', error);
       toast({
