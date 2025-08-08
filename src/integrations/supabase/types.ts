@@ -948,6 +948,30 @@ export type Database = {
           },
         ]
       }
+      password_reset_logs: {
+        Row: {
+          admin_user_id: string
+          created_at: string
+          id: string
+          reset_type: string
+          target_user_id: string
+        }
+        Insert: {
+          admin_user_id: string
+          created_at?: string
+          id?: string
+          reset_type: string
+          target_user_id: string
+        }
+        Update: {
+          admin_user_id?: string
+          created_at?: string
+          id?: string
+          reset_type?: string
+          target_user_id?: string
+        }
+        Relationships: []
+      }
       price_lists: {
         Row: {
           created_at: string

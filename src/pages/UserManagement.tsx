@@ -11,10 +11,12 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { User, UserPlus, Users, Shield, Edit, Trash2, Eye, RefreshCw, UserCheck } from 'lucide-react';
+import { User, UserPlus, Users, Shield, Edit, Trash2, Eye, RefreshCw, UserCheck, Key } from 'lucide-react';
 import EditUserDialog from '@/components/EditUserDialog';
 import DeleteUserDialog from '@/components/DeleteUserDialog';
 import EmployeePermissionManagement from '@/components/EmployeePermissionManagement';
+import ChangePasswordDialog from '@/components/ChangePasswordDialog';
+import ResetPasswordDialog from '@/components/ResetPasswordDialog';
 
 interface Profile {
   id: string;
@@ -38,6 +40,8 @@ const UserManagement = () => {
   const [deletingProfile, setDeletingProfile] = useState<Profile | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
+  const [resetPasswordProfile, setResetPasswordProfile] = useState<Profile | null>(null);
   const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
   const { toast } = useToast();
 
@@ -512,11 +516,38 @@ const UserManagement = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
+                          {/* Change password button for own account */}
+                          {profile.user_id === user?.id && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setShowChangePasswordDialog(true)}
+                              title="Đổi mật khẩu của tôi"
+                            >
+                              <Key className="h-4 w-4" />
+                            </Button>
+                          )}
+                          
+                          {/* Reset password button for admin/manager */}
+                          {profile.user_id !== user?.id && 
+                           ((currentUserRole === 'admin') || 
+                            (currentUserRole === 'manager' && userRole === 'employee')) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setResetPasswordProfile(profile)}
+                              title="Reset mật khẩu người dùng"
+                            >
+                              <Key className="h-4 w-4 text-orange-500" />
+                            </Button>
+                          )}
+                          
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setEditingProfile(profile)}
                             disabled={!canEditUser(userRole)}
+                            title="Chỉnh sửa người dùng"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -525,6 +556,7 @@ const UserManagement = () => {
                             size="sm"
                             onClick={() => setDeletingProfile(profile)}
                             disabled={!canDelete}
+                            title="Xóa người dùng"
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
@@ -568,6 +600,20 @@ const UserManagement = () => {
           fetchProfiles();
           setSelectedUsers([]);
         }}
+      />
+
+      {/* Change Password Dialog */}
+      <ChangePasswordDialog
+        open={showChangePasswordDialog}
+        onOpenChange={setShowChangePasswordDialog}
+      />
+
+      {/* Reset Password Dialog */}
+      <ResetPasswordDialog
+        open={!!resetPasswordProfile}
+        onOpenChange={(open) => !open && setResetPasswordProfile(null)}
+        profile={resetPasswordProfile}
+        currentUserRole={currentUserRole}
       />
 
       {/* Employee Permission Management */}
