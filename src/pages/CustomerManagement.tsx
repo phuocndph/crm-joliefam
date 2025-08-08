@@ -88,6 +88,7 @@ interface CustomerOrder {
   created_at: string;
   delivery_date: string | null;
   payment_date: string | null;
+  items?: any;
 }
 
 interface CustomerQuote {
@@ -358,7 +359,7 @@ export default function CustomerManagement() {
       const [ordersResult, quotesResult, paymentsResult] = await Promise.all([
         supabase
           .from('orders')
-          .select('id, order_number, display_order_number, total_amount, status, payment_status, created_at, delivery_date, payment_date')
+          .select('id, order_number, display_order_number, total_amount, status, payment_status, created_at, delivery_date, payment_date, items')
           .in('customer_id', customerIds)
           .order('created_at', { ascending: false }),
         supabase
@@ -1176,18 +1177,58 @@ export default function CustomerManagement() {
                     <div className="space-y-2">
                       {(() => {
                         const total = selectedOrderDetail.total_amount || 0;
+                        // Try to derive subtotal from items if available
+                        let itemsData: any[] = [];
+                        try {
+                          if (selectedOrderDetail.items) {
+                            itemsData = typeof selectedOrderDetail.items === 'string'
+                              ? JSON.parse(selectedOrderDetail.items)
+                              : selectedOrderDetail.items;
+                          }
+                        } catch (e) {
+                          itemsData = [];
+                        }
+                        const subtotalFromItems = Array.isArray(itemsData)
+                          ? itemsData.reduce((sum, item) => {
+                              const itemTotal = typeof item === 'object'
+                                ? (item.total ?? ((item.price || 0) * (item.quantity || 0)))
+                                : 0;
+                              return sum + (Number.isFinite(itemTotal) ? itemTotal : 0);
+                            }, 0)
+                          : 0;
+                        const subtotal = subtotalFromItems > 0 ? subtotalFromItems : total;
+                        const vatAmountRaw = total > subtotal ? total - subtotal : 0;
+                        const includeVAT = vatAmountRaw > 0.5; // avoid tiny rounding differences
+                        const vatAmount = includeVAT ? vatAmountRaw : 0;
+                        const vatRate = includeVAT && subtotal > 0 ? Math.round((vatAmount / subtotal) * 100) : null;
                         return (
                           <>
                             <div className="flex justify-between items-center py-2 border-b border-red-200">
-                              <span className="font-medium">TỔNG GIÁ TRỊ ĐƠN HÀNG (chưa bao gồm GTGT):</span>
+                              <span className="font-medium">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
                               <span className="font-bold text-lg">
-                                {total.toLocaleString("vi-VN")} VNĐ
+                                {Math.round(subtotal).toLocaleString("vi-VN")} VNĐ
                               </span>
                             </div>
+                            {includeVAT && (
+                              <>
+                                <div className="flex justify-between items-center py-2 border-b border-red-200">
+                                  <span className="font-medium">GTGT{vatRate !== null ? ` (${vatRate}%)` : ''}:</span>
+                                  <span className="font-bold text-lg">
+                                    {Math.round(vatAmount).toLocaleString("vi-VN")} VNĐ
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center py-2 border-b border-red-200">
+                                  <span className="font-medium">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
+                                  <span className="font-bold text-lg text-red-600">
+                                    {Math.round(total).toLocaleString("vi-VN")} VNĐ
+                                  </span>
+                                </div>
+                              </>
+                            )}
                           </>
                         );
                       })()}
-                      
+
                       {/* Payment Status Information */}
                       <div className="pt-2 border-t border-red-300">
                         <div className="flex justify-between items-center py-2">
