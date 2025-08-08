@@ -40,7 +40,10 @@ const permissionLabels: Record<PermissionType, string> = {
   transactions: 'Giao dịch - Lịch sử thanh toán',
   reports: 'Báo cáo - Thống kê và phân tích',
   user_management: 'Quản lý nhân viên - Phân quyền users',
-  quote_supplement: 'Quyền xem báo giá phụ'
+  quote_supplement: 'Quyền xem báo giá phụ',
+  customer_care: 'Chăm sóc khách hàng - Hỗ trợ và tư vấn',
+  fabric_management: 'Quản lý vải - Kho vải và giao dịch',
+  ghn_tracking: 'Theo dõi GHN - Tra cứu vận chuyển'
 };
 
 const EmployeePermissionManagement = () => {

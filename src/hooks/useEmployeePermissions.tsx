@@ -12,7 +12,10 @@ export type PermissionType =
   | 'transactions'
   | 'reports'
   | 'user_management'
-  | 'quote_supplement';
+  | 'quote_supplement'
+  | 'customer_care'
+  | 'fabric_management'
+  | 'ghn_tracking';
 
 export interface EmployeePermission {
   permission_type: PermissionType;
