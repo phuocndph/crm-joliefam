@@ -865,11 +865,19 @@ export default function CustomerManagement() {
                     <div>
                       <label className="text-sm font-medium">Phân loại khách hàng:</label>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {getCustomerTags(selectedCustomer).map((tag, index) => (
-                          <Badge key={index} className={getTagColor(tag)}>
-                            {tag}
-                          </Badge>
-                        ))}
+                        {(() => {
+                          const count = selectedCustomer.purchase_count || 0;
+                          let tag = "Chưa có đơn";
+                          if (count === 1) tag = "Đã Mua";
+                          else if (count === 2) tag = "Đã Mua lần 2";
+                          else if (count === 3) tag = "Đã Mua lần 3";
+                          else if (count >= 4) tag = "KHTT";
+                          return (
+                            <Badge className={getTagColor(tag)}>
+                              {tag}
+                            </Badge>
+                          );
+                        })()}
                       </div>
                     </div>
                   </CardContent>
