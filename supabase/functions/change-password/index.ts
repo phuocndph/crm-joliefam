@@ -80,6 +80,15 @@ const handler = async (req: Request): Promise<Response> => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Special endpoint for generating password
+    if (req.method === 'GET' && new URL(req.url).pathname.endsWith('/generate')) {
+      const generatedPassword = generateStrongPassword();
+      return new Response(
+        JSON.stringify({ password: generatedPassword }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Get the user from the Authorization header
     const authHeader = req.headers.get('Authorization')?.replace('Bearer ', '');
     if (!authHeader) {
@@ -98,16 +107,15 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Special endpoint for generating password
-    if (req.method === 'GET' && new URL(req.url).pathname.endsWith('/generate')) {
-      const generatedPassword = generateStrongPassword();
+    const body = await req.json().catch(() => null);
+    if (!body) {
       return new Response(
-        JSON.stringify({ password: generatedPassword }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Invalid request body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { action, currentPassword, newPassword, targetUserId }: ChangePasswordRequest = await req.json();
+    const { action, currentPassword, newPassword, targetUserId }: ChangePasswordRequest = body;
 
     // Validate password strength
     const validation = validatePasswordStrength(newPassword);

@@ -84,7 +84,12 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
 
   const generateStrongPassword = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('change-password/generate');
+      const { data, error } = await supabase.functions.invoke('change-password', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        }
+      });
       
       if (error) throw error;
       

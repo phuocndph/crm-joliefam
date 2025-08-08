@@ -516,7 +516,7 @@ const UserManagement = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          {/* Change password button for own account */}
+                          {/* Change password button - show for all users for their own account */}
                           {profile.user_id === user?.id && (
                             <Button
                               variant="ghost"
@@ -524,11 +524,11 @@ const UserManagement = () => {
                               onClick={() => setShowChangePasswordDialog(true)}
                               title="Đổi mật khẩu của tôi"
                             >
-                              <Key className="h-4 w-4" />
+                              <Key className="h-4 w-4 text-blue-500" />
                             </Button>
                           )}
                           
-                          {/* Reset password button for admin/manager */}
+                          {/* Reset password button for admin/manager on other users */}
                           {profile.user_id !== user?.id && 
                            ((currentUserRole === 'admin') || 
                             (currentUserRole === 'manager' && userRole === 'employee')) && (
