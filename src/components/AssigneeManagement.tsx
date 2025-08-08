@@ -136,12 +136,24 @@ export const AssigneeManagement: React.FC<AssigneeManagementProps> = ({
         title: "Thành công",
         description: "Đã xóa người phụ trách",
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Delete assignee error:', error);
+      let errorMessage = "Không thể xóa người phụ trách";
+      
+      // Check if it's a foreign key constraint error
+      if (error?.message?.includes('foreign key constraint') || 
+          error?.message?.includes('quotes_assignee_id_fkey') ||
+          error?.code === '23503') {
+        errorMessage = "Không thể xóa người phụ trách này vì đang có báo giá liên kết. Vui lòng xóa hoặc chuyển các báo giá sang người phụ trách khác trước.";
+      }
+      
       toast({
         title: "Lỗi",
-        description: "Không thể xóa người phụ trách",
+        description: errorMessage,
         variant: "destructive",
       });
+      setDeletingAssigneeId(null);
+      setShowDeleteDialog(false);
     }
   };
 
@@ -306,7 +318,9 @@ export const AssigneeManagement: React.FC<AssigneeManagementProps> = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Xóa người phụ trách</AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn có chắc chắn muốn xóa người phụ trách này? Hành động này không thể hoàn tác.
+              Bạn có chắc chắn muốn xóa người phụ trách này? 
+              <br /><br />
+              <strong>Lưu ý:</strong> Nếu người này đang có báo giá liên kết, bạn cần chuyển các báo giá sang người khác hoặc xóa chúng trước khi có thể xóa người phụ trách.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
