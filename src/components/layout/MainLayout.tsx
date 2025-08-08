@@ -11,13 +11,16 @@ import {
   LogOut,
   Settings,
   Bell,
-  User
+  User,
+  Key
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 
 const MainLayout = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const navigate = useNavigate();
   const { role: userRole, loading: roleLoading } = useUserRole(user);
 
@@ -117,6 +120,15 @@ const MainLayout = () => {
               <Button variant="ghost" size="icon" className="hover:bg-sidebar-accent">
                 <Bell className="h-5 w-5" />
               </Button>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="hover:bg-sidebar-accent"
+                onClick={() => setShowChangePasswordDialog(true)}
+                title="Đổi mật khẩu"
+              >
+                <Key className="h-5 w-5" />
+              </Button>
               <Button variant="ghost" size="icon" className="hover:bg-sidebar-accent">
                 <Settings className="h-5 w-5" />
               </Button>
@@ -153,6 +165,11 @@ const MainLayout = () => {
           </main>
         </div>
       </div>
+      
+      <ChangePasswordDialog 
+        open={showChangePasswordDialog} 
+        onOpenChange={setShowChangePasswordDialog}
+      />
     </SidebarProvider>
   );
 };
