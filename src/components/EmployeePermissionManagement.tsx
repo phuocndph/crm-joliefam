@@ -219,16 +219,7 @@ const EmployeePermissionManagement = () => {
     fetchPermissions(employee.user_id);
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (!currentUserRole || currentUserRole === 'employee') {
+  if (!currentUserRole || (currentUserRole !== 'admin' && currentUserRole !== 'manager')) {
     return (
       <Card>
         <CardHeader>
@@ -237,7 +228,10 @@ const EmployeePermissionManagement = () => {
             Không có quyền truy cập
           </CardTitle>
           <CardDescription>
-            Bạn không có quyền quản lý phân quyền nhân viên
+            {currentUserRole === 'accountant' 
+              ? 'Kế toán có quyền truy cập tất cả module (trừ quản lý người dùng) và không cần cấu hình permission riêng'
+              : 'Bạn không có quyền quản lý phân quyền nhân viên'
+            }
           </CardDescription>
         </CardHeader>
       </Card>
