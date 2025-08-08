@@ -59,7 +59,7 @@ const CustomerCare = () => {
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
         .select('customer_id, total_amount, status, created_at, payment_date')
-        .eq('status', 'delivered')
+        .neq('status', 'cancelled')
         .not('total_amount', 'is', null);
 
       if (ordersError) {
