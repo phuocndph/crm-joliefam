@@ -72,6 +72,7 @@ export default function GHNTrackingPage() {
   const [orderCodeInput, setOrderCodeInput] = useState('');
   const [isMultipleMode, setIsMultipleMode] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [updatingOrderCode, setUpdatingOrderCode] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
@@ -237,7 +238,7 @@ export default function GHNTrackingPage() {
   const updateSingleTracking = async (orderCode: string) => {
     if (!user) return;
 
-    setLoading(true);
+    setUpdatingOrderCode(orderCode);
 
     try {
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
@@ -263,7 +264,7 @@ export default function GHNTrackingPage() {
       console.error('Error updating single tracking:', error);
       toast.error(error.message || 'Lỗi kết nối server');
     } finally {
-      setLoading(false);
+      setUpdatingOrderCode(null);
     }
   };
 
@@ -619,10 +620,10 @@ export default function GHNTrackingPage() {
                              variant="ghost"
                              size="sm"
                              className="h-6 w-6 p-0 text-blue-600 hover:text-blue-800"
-                             disabled={loading}
+                             disabled={updatingOrderCode === item.ghn_order_code}
                              title="Cập nhật đơn hàng này"
                            >
-                             <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+                             <RefreshCw className={`h-3 w-3 ${updatingOrderCode === item.ghn_order_code ? 'animate-spin' : ''}`} />
                            </Button>
                          </div>
                        </td>
