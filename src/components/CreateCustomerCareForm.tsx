@@ -241,15 +241,15 @@ const { toast } = useToast();
                   <SelectValue placeholder="Chọn tình trạng" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="sample-order">Đặt mẫu</SelectItem>
-                  <SelectItem value="agent">Đại lý</SelectItem>
-                  <SelectItem value="not-converted">Chưa chuyển đổi</SelectItem>
-                  <SelectItem value="vip-customer">KHTT</SelectItem>
-                  <SelectItem value="third-purchase">Mua lần 3</SelectItem>
-                  <SelectItem value="second-purchase">Mua lần 2</SelectItem>
-                  <SelectItem value="distributor">NPP</SelectItem>
-                  <SelectItem value="purchased">Đã mua</SelectItem>
-                  <SelectItem value="potential">Tiềm năng</SelectItem>
+                  <SelectItem value="quote-sent">Đã gửi báo giá</SelectItem>
+                  <SelectItem value="sample-sent">Đã gửi mẫu</SelectItem>
+                  <SelectItem value="waiting-customer-response">Chờ phản hồi khách</SelectItem>
+                  <SelectItem value="order-placed">Đã đặt hàng</SelectItem>
+                  <SelectItem value="customer-no-response">Khách không phản hồi</SelectItem>
+                  <SelectItem value="waiting-deposit">Chờ thanh toán cọc</SelectItem>
+                  <SelectItem value="see-notes">Xem ở ghi chú</SelectItem>
+                  <SelectItem value="waiting-payment">Chờ thanh toán tiền</SelectItem>
+                  <SelectItem value="payment-completed">Đã thanh toán xong</SelectItem>
                 </SelectContent>
               </Select>
             </div>
