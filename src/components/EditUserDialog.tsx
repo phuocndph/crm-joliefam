@@ -172,6 +172,7 @@ const EditUserDialog = ({ open, onOpenChange, profile, currentUserRole, onUserUp
                   <>
                     <SelectItem value="admin">Quản trị viên</SelectItem>
                     <SelectItem value="manager">Quản lý</SelectItem>
+                    <SelectItem value="accountant">Kế toán</SelectItem>
                   </>
                 )}
                 <SelectItem value="employee">Nhân viên</SelectItem>

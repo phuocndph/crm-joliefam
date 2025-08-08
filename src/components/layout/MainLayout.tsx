@@ -71,6 +71,7 @@ const MainLayout = () => {
     switch (role) {
       case 'admin': return 'Quản trị viên';
       case 'manager': return 'Quản lý';
+      case 'accountant': return 'Kế toán';
       case 'employee': return 'Nhân viên';
       default: return 'Chưa phân quyền';
     }
@@ -80,6 +81,7 @@ const MainLayout = () => {
     switch (role) {
       case 'admin': return 'destructive' as const;
       case 'manager': return 'default' as const;
+      case 'accountant': return 'outline' as const;
       case 'employee': return 'secondary' as const;
       default: return 'outline' as const;
     }
