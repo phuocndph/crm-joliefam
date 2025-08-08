@@ -180,6 +180,7 @@ const UserManagement = () => {
     switch (role) {
       case 'admin': return 'destructive';
       case 'manager': return 'default';
+      case 'accountant': return 'outline';
       case 'employee': return 'secondary';
       default: return 'outline';
     }
@@ -189,6 +190,7 @@ const UserManagement = () => {
     switch (role) {
       case 'admin': return 'Quản trị viên';
       case 'manager': return 'Quản lý';
+      case 'accountant': return 'Kế toán';
       case 'employee': return 'Nhân viên';
       default: return 'Chưa phân quyền';
     }
@@ -422,6 +424,7 @@ const UserManagement = () => {
                       <>
                         <SelectItem value="admin">Quản trị viên</SelectItem>
                         <SelectItem value="manager">Quản lý</SelectItem>
+                        <SelectItem value="accountant">Kế toán</SelectItem>
                       </>
                     )}
                     <SelectItem value="employee">Nhân viên</SelectItem>
