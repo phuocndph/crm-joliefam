@@ -28,7 +28,7 @@ export const useEmployeePermissions = (user: User | null, userRole: string | nul
 
   useEffect(() => {
     const fetchPermissions = async () => {
-      if (!user || userRole !== 'employee') {
+      if (!user || (userRole !== 'employee' && userRole !== 'accountant')) {
         setPermissions([]);
         setLoading(false);
         return;
@@ -63,13 +63,8 @@ export const useEmployeePermissions = (user: User | null, userRole: string | nul
       return true;
     }
 
-    // Kế toán: có tất cả quyền trừ Quản lý người dùng
-    if (userRole === 'accountant') {
-      return permissionType !== 'user_management';
-    }
-
-    // Employee kiểm tra quyền cụ thể
-    if (userRole === 'employee') {
+    // Kế toán và Employee kiểm tra quyền cụ thể
+    if (userRole === 'accountant' || userRole === 'employee') {
       const permission = permissions.find(p => p.permission_type === permissionType);
       return permission?.enabled || false;
     }

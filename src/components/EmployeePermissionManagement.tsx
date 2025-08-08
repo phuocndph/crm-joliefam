@@ -83,11 +83,10 @@ const EmployeePermissionManagement = () => {
         throw profilesError;
       }
 
-      // Lấy user_roles để filter employees với thông tin manager
       const { data: rolesData, error: rolesError } = await supabase
         .from('user_roles')
         .select('user_id, role, assigned_by')
-        .eq('role', 'employee');
+        .in('role', ['employee', 'accountant']);
 
       if (rolesError) {
         console.error('Roles error:', rolesError);
@@ -115,7 +114,7 @@ const EmployeePermissionManagement = () => {
         
         return {
           ...profile,
-          user_roles: [{ role: 'employee' }],
+          user_roles: [{ role: roleInfo?.role || 'employee' }],
           manager_info: managerInfo ? {
             email: managerInfo.email,
             first_name: managerInfo.first_name,
@@ -241,9 +240,9 @@ const EmployeePermissionManagement = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold mb-2">Quản lý phân quyền nhân viên</h2>
+        <h2 className="text-2xl font-bold mb-2">Quản lý phân quyền nhân viên & kế toán</h2>
         <p className="text-muted-foreground">
-          Cấu hình quyền truy cập các module cho từng nhân viên
+          Cấu hình quyền truy cập các module cho từng nhân viên và kế toán
         </p>
       </div>
 
@@ -279,8 +278,8 @@ const EmployeePermissionManagement = () => {
                     Quản lý: {employee.manager_info.first_name} {employee.manager_info.last_name}
                   </div>
                 )}
-                <Badge variant="secondary" className="mt-1 text-xs">
-                  Nhân viên
+                <Badge variant={employee.user_roles?.[0]?.role === 'accountant' ? 'outline' : 'secondary'} className="mt-1 text-xs">
+                  {employee.user_roles?.[0]?.role === 'accountant' ? 'Kế toán' : 'Nhân viên'}
                 </Badge>
               </div>
             ))}
