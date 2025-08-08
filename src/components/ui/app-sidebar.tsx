@@ -64,7 +64,7 @@ const menuItems = [
     url: "/fabrics", 
     icon: Scissors,
     description: "Quản lý kho vải xưởng sản xuất",
-    permission: "products" as const
+    permission: "fabric_management" as const
   },
   { 
     title: "Báo giá", 
@@ -85,7 +85,7 @@ const menuItems = [
     url: "/ghn-tracking", 
     icon: Truck,
     description: "Theo dõi giao hàng GHN",
-    permission: "orders" as const
+    permission: "ghn_tracking" as const
   },
   { 
     title: "Dòng tiền", 
