@@ -1175,30 +1175,13 @@ export default function CustomerManagement() {
                     </div>
                     <div className="space-y-2">
                       {(() => {
-                        // Giả sử total_amount đã bao gồm VAT 8%
-                        const totalWithVAT = selectedOrderDetail.total_amount || 0;
-                        const vatRate = 0.08; // 8% VAT
-                        const totalWithoutVAT = totalWithVAT / (1 + vatRate);
-                        const vatAmount = totalWithVAT - totalWithoutVAT;
-                        
+                        const total = selectedOrderDetail.total_amount || 0;
                         return (
                           <>
                             <div className="flex justify-between items-center py-2 border-b border-red-200">
-                              <span className="font-medium">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
+                              <span className="font-medium">TỔNG GIÁ TRỊ ĐƠN HÀNG (chưa bao gồm GTGT):</span>
                               <span className="font-bold text-lg">
-                                {Math.round(totalWithoutVAT).toLocaleString("vi-VN")} VNĐ
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center py-2 border-b border-red-200">
-                              <span className="font-medium">GTGT (8%):</span>
-                              <span className="font-bold text-lg">
-                                {Math.round(vatAmount).toLocaleString("vi-VN")} VNĐ
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center py-2 border-b border-red-200">
-                              <span className="font-medium">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
-                              <span className="font-bold text-lg text-red-600">
-                                {totalWithVAT.toLocaleString("vi-VN")} VNĐ
+                                {total.toLocaleString("vi-VN")} VNĐ
                               </span>
                             </div>
                           </>
