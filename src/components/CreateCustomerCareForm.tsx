@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useAssignees } from "@/hooks/useAssignees";
 
 interface CreateCustomerCareFormProps {
   onSuccess?: () => void;
@@ -21,7 +22,8 @@ const CreateCustomerCareForm = ({ onSuccess }: CreateCustomerCareFormProps) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lastUpdateDate, setLastUpdateDate] = useState<Date>();
-  const { toast } = useToast();
+const { toast } = useToast();
+  const { data: assigneesData, isLoading: assigneesLoading } = useAssignees();
 
   const [formData, setFormData] = useState({
     customerName: "",
@@ -91,7 +93,7 @@ const CreateCustomerCareForm = ({ onSuccess }: CreateCustomerCareFormProps) => {
         .insert({
           name: formData.customerName,
           notes: formData.notes,
-          manager_id: user.id,
+          manager_id: formData.assignedTo,
           // Store customer care specific data in notes for now
           // In a real implementation, you might want to create a separate customer_care table
         });
@@ -187,12 +189,16 @@ const CreateCustomerCareForm = ({ onSuccess }: CreateCustomerCareFormProps) => {
                 <SelectTrigger>
                   <SelectValue placeholder="Chọn người phụ trách" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="manager1">Manager 1</SelectItem>
-                  <SelectItem value="manager2">Manager 2</SelectItem>
-                  <SelectItem value="employee1">Nhân viên 1</SelectItem>
-                  <SelectItem value="employee2">Nhân viên 2</SelectItem>
+<SelectContent>
+                  {assigneesLoading ? (
+                    <SelectItem value="" disabled>Đang tải...</SelectItem>
+                  ) : assigneesData && assigneesData.length > 0 ? (
+                    assigneesData.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="" disabled>Chưa có người phụ trách</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
