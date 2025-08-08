@@ -268,10 +268,14 @@ const { toast } = useToast();
                   <SelectValue placeholder="Chọn loại theo dõi" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="first-contact">Liên hệ lần đầu</SelectItem>
+                  <SelectItem value="sample-order">Đặt mẫu</SelectItem>
+                  <SelectItem value="agent">Đại lý</SelectItem>
+                  <SelectItem value="not-converted">Chưa chuyển đổi</SelectItem>
+                  <SelectItem value="vip-customer">KHTT</SelectItem>
+                  <SelectItem value="third-purchase">Mua lần 3</SelectItem>
                   <SelectItem value="second-purchase">Mua lần 2</SelectItem>
-                  <SelectItem value="regular-customer">Khách hàng thường xuyên</SelectItem>
-                  <SelectItem value="vip-customer">Khách VIP</SelectItem>
+                  <SelectItem value="distributor">NPP</SelectItem>
+                  <SelectItem value="purchased">Đã mua</SelectItem>
                   <SelectItem value="potential">Tiềm năng</SelectItem>
                 </SelectContent>
               </Select>
