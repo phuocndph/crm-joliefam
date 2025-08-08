@@ -373,9 +373,20 @@ export default function GHNTrackingPage() {
       return true;
     });
 
-    // Apply sorting
-    if (filters.sortBy && filters.sortBy !== 'none') {
-      result = [...result].sort((a, b) => {
+    // Define completed statuses
+    const completedStatuses = ['delivered', 'returned', 'cancel', 'lost', 'damage'];
+    
+    // Primary sort: incomplete orders first, then by custom sort
+    result = [...result].sort((a, b) => {
+      const aIsCompleted = completedStatuses.includes(a.ghn_status || '');
+      const bIsCompleted = completedStatuses.includes(b.ghn_status || '');
+      
+      // Incomplete orders come first
+      if (!aIsCompleted && bIsCompleted) return -1;
+      if (aIsCompleted && !bIsCompleted) return 1;
+      
+      // If both have same completion status, apply secondary sorting
+      if (filters.sortBy && filters.sortBy !== 'none') {
         let aValue = '';
         let bValue = '';
 
@@ -392,6 +403,15 @@ export default function GHNTrackingPage() {
             aValue = a.created_date || '';
             bValue = b.created_date || '';
             break;
+          default:
+            // Default to most recent first for same completion status
+            aValue = a.created_date || '';
+            bValue = b.created_date || '';
+            if (filters.sortOrder === 'desc') {
+              return bValue.localeCompare(aValue, 'vi');
+            } else {
+              return aValue.localeCompare(bValue, 'vi');
+            }
         }
 
         if (filters.sortOrder === 'desc') {
@@ -399,8 +419,13 @@ export default function GHNTrackingPage() {
         } else {
           return aValue.localeCompare(bValue, 'vi');
         }
-      });
-    }
+      } else {
+        // Default sorting: most recent first within same completion status
+        const aDate = a.created_date || '';
+        const bDate = b.created_date || '';
+        return bDate.localeCompare(aDate, 'vi');
+      }
+    });
 
     return result;
   }, [trackingData, filters]);
