@@ -234,6 +234,39 @@ export default function GHNTrackingPage() {
     }
   };
 
+  const updateSingleTracking = async (orderCode: string) => {
+    if (!user) return;
+
+    setLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+        body: {
+          action: 'save_tracking',
+          orderCode: orderCode,
+          userId: user.id,
+          managerId: user.id
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.success) {
+        toast.success(`Đã cập nhật đơn hàng ${orderCode}`);
+        await loadTrackingData(); // Reload data
+      } else {
+        toast.error(data.error || 'Lỗi cập nhật tracking');
+      }
+    } catch (error: any) {
+      console.error('Error updating single tracking:', error);
+      toast.error(error.message || 'Lỗi kết nối server');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const importAllOrdersFromGHN = async () => {
     if (!user) return;
 
@@ -576,11 +609,23 @@ export default function GHNTrackingPage() {
                       <td className="border border-gray-300 px-4 py-3 text-sm font-medium text-center">{index + 1}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-mono">{item.ghn_order_code}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-mono">{item.internal_order_code || '-'}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm">
-                        <Badge className={statusColors[item.ghn_status || ''] || 'bg-gray-100 text-gray-800'}>
-                          {item.ghn_status_text || item.ghn_status || '-'}
-                        </Badge>
-                      </td>
+                       <td className="border border-gray-300 px-4 py-3 text-sm">
+                         <div className="flex items-center gap-2">
+                           <Badge className={statusColors[item.ghn_status || ''] || 'bg-gray-100 text-gray-800'}>
+                             {item.ghn_status_text || item.ghn_status || '-'}
+                           </Badge>
+                           <Button
+                             onClick={() => updateSingleTracking(item.ghn_order_code)}
+                             variant="ghost"
+                             size="sm"
+                             className="h-6 w-6 p-0 text-blue-600 hover:text-blue-800"
+                             disabled={loading}
+                             title="Cập nhật đơn hàng này"
+                           >
+                             <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+                           </Button>
+                         </div>
+                       </td>
                       <td className="border border-gray-300 px-4 py-3 text-sm">{item.customer_name}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm">{item.customer_phone || '-'}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm max-w-xs break-words whitespace-normal leading-relaxed">
