@@ -42,10 +42,14 @@ Deno.serve(async (req) => {
 
     console.log('Starting auto-update of GHN tracking data...');
 
-    // Get all existing tracking records
+    // Define completed statuses that don't need updates
+    const completedStatuses = ['delivered', 'returned', 'cancel', 'lost', 'damage'];
+
+    // Get only tracking records that are not in completed status
     const { data: trackingRecords, error: fetchError } = await supabaseClient
       .from('ghn_tracking')
-      .select('*');
+      .select('*')
+      .not('ghn_status', 'in', `(${completedStatuses.map(s => `"${s}"`).join(',')})`);
 
     if (fetchError) {
       console.error('Error fetching tracking records:', fetchError);
@@ -56,14 +60,23 @@ Deno.serve(async (req) => {
     }
 
     if (!trackingRecords || trackingRecords.length === 0) {
-      console.log('No tracking records found');
+      console.log('No incomplete tracking records found');
       return new Response(
-        JSON.stringify({ success: true, message: 'No tracking records to update' }),
+        JSON.stringify({ success: true, message: 'No incomplete tracking records to update' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`Found ${trackingRecords.length} tracking records to update`);
+    console.log(`Found ${trackingRecords.length} incomplete tracking records to update`);
+
+    // Check if GHN credentials are configured
+    if (!GHN_TOKEN || !SHOP_ID) {
+      console.error('GHN_TOKEN or GHN_SHOP_ID not configured');
+      return new Response(
+        JSON.stringify({ success: false, error: 'GHN credentials not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     let updatedCount = 0;
     let errorCount = 0;
