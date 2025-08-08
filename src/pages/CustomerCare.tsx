@@ -464,14 +464,16 @@ const CustomerCare = () => {
                             })()}
                           </TableCell>
                            <TableCell>
-                             {customer.auto_tags && customer.auto_tags.length > 0 ? (
-                               <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                 {customer.auto_tags[0]}
-                               </Badge>
+                             {customer.purchase_count && customer.purchase_count > 0 ? (
+                               <div className="text-sm space-y-0.5">
+                                 <div className="font-medium">{customer.purchase_count} đơn hàng</div>
+                                 <div className="text-muted-foreground">Tổng chi: {Number(customer.total_spent || 0).toLocaleString("vi-VN")} VNĐ</div>
+                                 {customer.last_purchase_date && (
+                                   <div className="text-muted-foreground">Lần cuối: {format(new Date(customer.last_purchase_date), 'dd/MM/yyyy')}</div>
+                                 )}
+                               </div>
                              ) : (
-                               <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">
-                                 Liên hệ lần đầu
-                               </Badge>
+                               <div className="text-sm text-muted-foreground">Chưa có đơn hàng</div>
                              )}
                            </TableCell>
                              <TableCell className="max-w-xs">
