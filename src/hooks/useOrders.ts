@@ -9,7 +9,8 @@ export const useOrders = () => {
         .from('orders')
         .select(`
           *,
-          customers (name, email, phone)
+          customers (name, email, phone, company, customer_code),
+          assignees (name)
         `)
         .order('created_at', { ascending: false });
       
