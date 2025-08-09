@@ -469,12 +469,12 @@ export default function GHNTrackingPage() {
   }, []);
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <Card>
+    <div className="container mx-auto py-6 space-y-6 max-w-full">
+      <Card className="w-full">
         <CardHeader>
           <CardTitle>Theo dõi đơn hàng GHN</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-2">
           <div className="space-y-4 mb-6">
             <div className="flex items-center gap-2">
               <Button
@@ -577,24 +577,24 @@ export default function GHNTrackingPage() {
             />
           </div>
 
-          <div className="overflow-auto border rounded-lg max-h-[70vh]">
-            <table className="w-full border-collapse">
+          <div className="overflow-auto border rounded-lg max-h-[600px] w-full">
+            <table className="w-full border-collapse min-w-[1800px]">
               <thead className="sticky top-0 z-10">
                 <tr>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[60px]">STT</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">MÃ GHN</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[100px]">MÃ ĐƠN HÀNG</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[140px]">TRẠNG THÁI</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[140px]">TÊN KHÁCH HÀNG</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">SỐ ĐIỆN THOẠI</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[200px]">ĐỊA CHỈ</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[100px]">CÂN NẶNG</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[110px]">NGÀY TẠO</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">DỰ KIẾN GIAO</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">NGÀY GIAO</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[100px]">COD THU HỘ</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[100px]">TRA CỨU</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[80px]">THAO TÁC</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[80px]">STT</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[150px]">MÃ GHN</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">MÃ ĐƠN HÀNG</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[180px]">TRẠNG THÁI</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[180px]">TÊN KHÁCH HÀNG</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[140px]">SỐ ĐIỆN THOẠI</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[250px]">ĐỊA CHỈ</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">CÂN NẶNG</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[130px]">NGÀY TẠO</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[140px]">DỰ KIẾN GIAO</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[140px]">NGÀY GIAO</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">COD THU HỘ</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px] sticky right-[80px] shadow-lg">TRA CỨU</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[80px] sticky right-0 shadow-lg">THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
@@ -607,10 +607,10 @@ export default function GHNTrackingPage() {
                 ) : (
                   filteredData.map((item, index) => (
                     <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="border border-gray-300 px-4 py-3 text-sm font-medium text-center">{index + 1}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm font-mono">{item.ghn_order_code}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm font-mono">{item.internal_order_code || '-'}</td>
-                       <td className="border border-gray-300 px-4 py-3 text-sm">
+                      <td className="border border-gray-300 px-4 py-3 text-sm font-medium text-center min-w-[80px]">{index + 1}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[150px]">{item.ghn_order_code}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[120px]">{item.internal_order_code || '-'}</td>
+                       <td className="border border-gray-300 px-4 py-3 text-sm min-w-[180px]">
                          <div className="flex items-center gap-2">
                            <Badge className={statusColors[item.ghn_status || ''] || 'bg-gray-100 text-gray-800'}>
                              {item.ghn_status_text || item.ghn_status || '-'}
@@ -627,17 +627,17 @@ export default function GHNTrackingPage() {
                            </Button>
                          </div>
                        </td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm">{item.customer_name}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm">{item.customer_phone || '-'}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm max-w-xs break-words whitespace-normal leading-relaxed">
+                      <td className="border border-gray-300 px-4 py-3 text-sm min-w-[180px]">{item.customer_name}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm min-w-[140px]">{item.customer_phone || '-'}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm min-w-[250px] break-words whitespace-normal leading-relaxed">
                         {item.customer_address || '-'}
                       </td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm">{formatWeight(item.package_weight)}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap">{formatDate(item.created_date)}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap">{formatDate(item.expected_delivery_date)}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap">{formatDate(item.delivered_date)}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap">{formatCurrency(item.cod_amount)}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm">
+                      <td className="border border-gray-300 px-4 py-3 text-sm min-w-[120px]">{formatWeight(item.package_weight)}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap min-w-[130px]">{formatDate(item.created_date)}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap min-w-[140px]">{formatDate(item.expected_delivery_date)}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap min-w-[140px]">{formatDate(item.delivered_date)}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap min-w-[120px]">{formatCurrency(item.cod_amount)}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm min-w-[120px] sticky right-[80px] bg-background shadow-lg">
                         {item.tracking_url && (
                           <a
                             href={item.tracking_url}
@@ -650,7 +650,7 @@ export default function GHNTrackingPage() {
                           </a>
                         )}
                       </td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm">
+                      <td className="border border-gray-300 px-4 py-3 text-sm min-w-[80px] sticky right-0 bg-background shadow-lg">
                         <Button
                           onClick={() => removeTracking(item.id)}
                           variant="ghost"
