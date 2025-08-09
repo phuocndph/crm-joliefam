@@ -34,6 +34,7 @@ import { format, differenceInDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
+import { useFabricUsageByOrder } from "@/hooks/useFabrics";
 
 interface Order {
   id: string;
@@ -87,6 +88,26 @@ const paymentStatusConfig = {
   pending: { label: "Chưa thanh toán", color: "bg-red-100 text-red-800" },
   partial: { label: "Thanh toán 1 phần", color: "bg-yellow-100 text-yellow-800" },
   paid: { label: "Đã thanh toán", color: "bg-green-100 text-green-800" },
+};
+
+const FabricUsageCell = ({ orderId }: { orderId: string }) => {
+  const { data: fabricUsage = [] } = useFabricUsageByOrder(orderId);
+  
+  if (fabricUsage.length === 0) {
+    return <span className="text-sm text-muted-foreground italic">Chưa có</span>;
+  }
+  
+  return (
+    <div className="text-xs space-y-1 max-w-40">
+      {fabricUsage.map((usage: any, index: number) => (
+        <div key={usage.id} className="flex items-center gap-1 p-1 bg-blue-50 rounded text-blue-900">
+          <span className="font-medium">{usage.fabric_variants?.fabric_types?.name}</span>
+          <span className="text-blue-600">K{usage.fabric_variants?.fabric_widths?.width_code}</span>
+          <span className="font-semibold">{usage.quantity_used}m</span>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onViewOrderDetail }: InlineOrderEditTableProps) {
@@ -379,6 +400,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
             <TableHead>Thanh toán</TableHead>
             <TableHead>Người phụ trách</TableHead>
             <TableHead>Ghi chú</TableHead>
+            <TableHead>Vải đã sử dụng</TableHead>
             <TableHead className="w-[70px]">Hành động</TableHead>
           </TableRow>
         </TableHeader>
@@ -421,6 +443,9 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
               </TableCell>
               <TableCell>
                 {getCellContent(order, "notes")}
+              </TableCell>
+              <TableCell>
+                <FabricUsageCell orderId={order.id} />
               </TableCell>
               <TableCell>
                 <DropdownMenu>

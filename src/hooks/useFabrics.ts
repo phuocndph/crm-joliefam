@@ -476,6 +476,33 @@ export const useFabricUsage = () => {
   });
 };
 
+export const useFabricUsageByOrder = (orderId?: string) => {
+  return useQuery({
+    queryKey: ['fabric-usage', orderId],
+    queryFn: async () => {
+      if (!orderId) return [];
+      
+      const { data, error } = await supabase
+        .from('fabric_usage')
+        .select(`
+          *,
+          fabric_variants (
+            *,
+            fabric_types (name),
+            fabric_widths (width_code)
+          ),
+          warehouses (name)
+        `)
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!orderId,
+  });
+};
+
 export const useCreateFabricUsage = () => {
   const queryClient = useQueryClient();
   
