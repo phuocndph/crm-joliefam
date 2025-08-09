@@ -185,7 +185,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
           customer_name: formData.customer_name,
           customer_code: formData.order_category, // Use order_category
           order_type: formData.order_type,
-          fabric_width: '',
+          fabric_width: null,
           usage_date: formData.usage_date,
           notes: formData.notes
         });
