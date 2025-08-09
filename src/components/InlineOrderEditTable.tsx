@@ -466,9 +466,21 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
                 </div>
               </TableCell>
               <TableCell className="min-w-[150px]">
-                <div className="flex items-center gap-1">
-                  <DollarSign className="h-4 w-4 text-green-600" />
-                  {formatCurrency(order.total_amount)}
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-1">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                    {formatCurrency(order.total_amount)}
+                  </div>
+                  {(() => {
+                    const totalPaid = (order as any).order_payments?.reduce((total: number, payment: any) => 
+                      total + (payment.payment_amount || 0), 0) || 0;
+                    const remaining = Math.max(0, (order.total_amount || 0) - totalPaid);
+                    return remaining > 0 ? (
+                      <div className="text-sm text-muted-foreground">
+                        Còn: {formatCurrency(remaining)}
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               </TableCell>
               <TableCell className="min-w-[180px]">
