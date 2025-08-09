@@ -35,12 +35,14 @@ import { vi } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { useFabricUsageByOrder } from "@/hooks/useFabrics";
+import { useAssignees } from "@/hooks/useAssignees";
 
 interface Order {
   id: string;
   order_number: string;
   display_order_number?: string;
   customer_id: string | null;
+  assignee_id?: string | null;
   total_amount: number | null;
   cost_price: number | null;
   profit_before: number | null;
@@ -114,6 +116,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>("");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  const { data: assignees = [] } = useAssignees();
 
   const handleCellEdit = (orderId: string, field: string, currentValue: any) => {
     setEditingCell(`${orderId}-${field}`);
@@ -216,6 +219,31 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
                 {Object.entries(statusConfig).map(([key, config]) => (
                   <SelectItem key={key} value={key}>
                     {config.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          );
+
+        case "assignee_id":
+          return (
+            <Select 
+              open={true} 
+              value={editValue} 
+              onValueChange={(value) => {
+                setEditValue(value);
+                handleSave(order.id, field, undefined, value);
+              }}
+              onOpenChange={(open) => !open && handleCancel()}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Chưa phân công</SelectItem>
+                {assignees.map((assignee: any) => (
+                  <SelectItem key={assignee.id} value={assignee.id}>
+                    {assignee.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -341,6 +369,21 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
           </div>
         );
 
+      case "assignee_id":
+        const currentAssignee = assignees.find((a: any) => a.id === order.assignee_id);
+        return (
+          <div 
+            className="cursor-pointer"
+            onClick={() => handleCellEdit(order.id, field, order.assignee_id || "")}
+          >
+            {currentAssignee ? (
+              <span className="text-blue-600 font-medium">{currentAssignee.name}</span>
+            ) : (
+              <span className="text-muted-foreground italic">Chưa phân công</span>
+            )}
+          </div>
+        );
+
       case "order_number":
         return (
           <div 
@@ -437,13 +480,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
                 {getCellContent(order, "payment_status")}
               </TableCell>
               <TableCell>
-                <div className="text-sm">
-                  {order.assignees?.name ? (
-                    <span className="text-blue-600 font-medium">{order.assignees.name}</span>
-                  ) : (
-                    <span className="text-muted-foreground italic">Chưa phân công</span>
-                  )}
-                </div>
+                {getCellContent(order, "assignee_id")}
               </TableCell>
               <TableCell>
                 {getCellContent(order, "notes")}
