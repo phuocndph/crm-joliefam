@@ -137,7 +137,27 @@ export function CreatePaymentForm({
         tenant_id: 'default',
       });
 
+      // Calculate new payment status
+      const newTotalPaid = totalPaid + data.paymentAmount;
+      const newPaymentStatus = newTotalPaid >= totalAmount ? 'paid' : 
+                              newTotalPaid > 0 ? 'partial' : 'pending';
+
+      // Update order payment status
+      await supabase
+        .from('orders')
+        .update({
+          payment_status: newPaymentStatus,
+          payment_date: newPaymentStatus === 'paid' ? data.paymentDate.toISOString() : null
+        })
+        .eq('id', orderId);
+
+      toast({
+        title: "Thành công",
+        description: "Đã thêm thanh toán thành công",
+      });
+
       onSubmit();
+      onClose();
     } catch (error: any) {
       console.error("Error creating payment:", error);
       toast({
