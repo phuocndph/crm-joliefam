@@ -371,16 +371,16 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
         );
 
       case "assignee_id":
-        const currentAssignee = assignees.find((a: any) => a.id === order.assignee_id);
+        const assigneeName = order.assignees?.name || 'Chưa phân công';
         return (
           <div 
             className="cursor-pointer"
             onClick={() => handleCellEdit(order.id, field, order.assignee_id || "unassigned")}
           >
-            {currentAssignee ? (
-              <span className="text-blue-600 font-medium">{currentAssignee.name}</span>
+            {assigneeName !== 'Chưa phân công' ? (
+              <span className="text-blue-600 font-medium">{assigneeName}</span>
             ) : (
-              <span className="text-muted-foreground italic">Chưa phân công</span>
+              <span className="text-muted-foreground italic">{assigneeName}</span>
             )}
           </div>
         );
