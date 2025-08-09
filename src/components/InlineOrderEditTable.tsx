@@ -431,33 +431,33 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
   };
 
   return (
-    <div className="rounded-md border">
+    <div className="rounded-md border max-h-[600px] overflow-auto">
       <Table>
-        <TableHeader>
+        <TableHeader className="sticky top-0 bg-background z-10">
           <TableRow>
-            <TableHead>Mã đơn hàng</TableHead>
-            <TableHead>Ngày tạo đơn</TableHead>
-            <TableHead>Tên khách hàng</TableHead>
-            <TableHead>Giá trị đơn hàng</TableHead>
-            <TableHead>Ngày hẹn trả</TableHead>
-            <TableHead>Tình trạng đơn</TableHead>
-            <TableHead>Thanh toán</TableHead>
-            <TableHead>Người phụ trách</TableHead>
-            <TableHead>Ghi chú</TableHead>
-            <TableHead>Vải đã sử dụng</TableHead>
-            <TableHead className="w-[70px]">Hành động</TableHead>
+            <TableHead className="min-w-[120px] bg-background">Mã đơn hàng</TableHead>
+            <TableHead className="min-w-[110px] bg-background">Ngày tạo đơn</TableHead>
+            <TableHead className="min-w-[200px] bg-background">Tên khách hàng</TableHead>
+            <TableHead className="min-w-[150px] bg-background">Giá trị đơn hàng</TableHead>
+            <TableHead className="min-w-[180px] bg-background">Ngày hẹn trả</TableHead>
+            <TableHead className="min-w-[120px] bg-background">Tình trạng đơn</TableHead>
+            <TableHead className="min-w-[200px] bg-background">Thanh toán</TableHead>
+            <TableHead className="min-w-[150px] bg-background">Người phụ trách</TableHead>
+            <TableHead className="min-w-[250px] bg-background">Ghi chú</TableHead>
+            <TableHead className="min-w-[200px] bg-background">Vải đã sử dụng</TableHead>
+            <TableHead className="min-w-[100px] sticky right-0 bg-background shadow-lg">Hành động</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {orders.map((order) => (
             <TableRow key={order.id} className="hover:bg-muted/50">
-              <TableCell className="font-medium">
+              <TableCell className="font-medium min-w-[120px]">
                 {getCellContent(order, "order_number")}
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[110px]">
                 {format(new Date(order.created_at), "dd/MM/yyyy", { locale: vi })}
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[200px]">
                 <div>
                   <div className="font-medium">{order.customers?.name}</div>
                   {order.customers?.phone && (
@@ -465,31 +465,31 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
                   )}
                 </div>
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[150px]">
                 <div className="flex items-center gap-1">
                   <DollarSign className="h-4 w-4 text-green-600" />
                   {formatCurrency(order.total_amount)}
                 </div>
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[180px]">
                 {getCellContent(order, "delivery_date")}
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[120px]">
                 {getCellContent(order, "status")}
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[200px]">
                 {getCellContent(order, "payment_status")}
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[150px]">
                 {getCellContent(order, "assignee_id")}
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[250px]">
                 {getCellContent(order, "notes")}
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[200px]">
                 <FabricUsageCell orderId={order.id} />
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[100px] sticky right-0 bg-background shadow-lg">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="h-8 w-8 p-0">
