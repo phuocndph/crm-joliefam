@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw, MapPin, Navigation, Zap } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
+import { useOrders } from "@/hooks/useOrders";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -41,12 +42,11 @@ interface Order {
   created_at: string;
   updated_at: string;
   customers?: {
-    id: string;
-    customer_code: string | null;
     name: string;
     email: string | null;
     phone: string | null;
     company: string | null;
+    customer_code: string | null;
   } | null;
   assignees?: {
     name: string;
@@ -115,17 +115,12 @@ export default function OrderManagement() {
   const [orderToPayment, setOrderToPayment] = useState<Order | null>(null);
   const [orderToEditNumber, setOrderToEditNumber] = useState<Order | null>(null);
   const [orderToGHNTracking, setOrderToGHNTracking] = useState<Order | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [orderPayments, setOrderPayments] = useState<{
-    [orderId: string]: number;
-  }>({});
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("orders");
   const [bulkSyncing, setBulkSyncing] = useState(false);
-  const {
-    toast
-  } = useToast();
+
+  const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders() as any;
+  const { toast } = useToast();
   const filteredOrders = orders.filter(order => {
     const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
@@ -154,57 +149,6 @@ export default function OrderManagement() {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     }
   });
-  const loadOrders = async () => {
-    try {
-      setLoading(true);
-        const {
-        data,
-        error
-      } = await supabase.from('orders').select(`
-          *,
-          customers (
-            id,
-            customer_code,
-            name,
-            email,
-            phone,
-            company
-          ),
-          assignees (
-            name
-          )
-        `).order('created_at', {
-        ascending: false
-      });
-      if (error) throw error;
-
-      // Add payment amounts from order_payments
-      const ordersWithPayments = await Promise.all((data || []).map(async order => {
-        const {
-          data: payments
-        } = await supabase.from('order_payments').select('payment_amount').eq('order_id', order.id);
-        const totalPaid = payments?.reduce((sum, payment) => sum + payment.payment_amount, 0) || 0;
-        return {
-          ...order,
-          total_paid: totalPaid
-        };
-      }));
-      setOrders(ordersWithPayments);
-    } catch (error) {
-      console.error('Error loading orders:', error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách đơn hàng",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => {
-    loadOrders();
-  }, []);
-
   // Auto-open order detail from URL parameter
   useEffect(() => {
     const orderId = searchParams.get('order_id');
@@ -275,11 +219,8 @@ export default function OrderManagement() {
         }
       }
 
-      // Update local state instead of reloading
-      setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? {
-        ...o,
-        ...updateData
-      } : o));
+      // Refetch data to get updated state
+      loadOrders();
       toast({
         title: "Thành công",
         description: "Trạng thái đơn hàng đã được cập nhật"
@@ -536,16 +477,8 @@ export default function OrderManagement() {
                 } = await supabase.from('orders').update(updateData).eq('id', orderId);
                 if (error) throw error;
 
-                // Update local state
-                console.log('Before update - orderId:', orderId, 'updateData:', updateData);
-                setOrders(prevOrders => {
-                  const newOrders = prevOrders.map(o => o.id === orderId ? {
-                    ...o,
-                    ...updateData
-                  } : o);
-                  console.log('Updated orders:', newOrders.find(o => o.id === orderId));
-                  return newOrders;
-                });
+                // Refetch updated data
+                loadOrders();
                 toast({
                   title: "Thành công",
                   description: "Đơn hàng đã được cập nhật"
