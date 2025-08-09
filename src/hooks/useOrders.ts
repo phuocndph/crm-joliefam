@@ -10,7 +10,8 @@ export const useOrders = () => {
         .select(`
           *,
           customers (name, email, phone, company, customer_code),
-          assignees (name)
+          assignees (name),
+          order_payments (payment_amount, payment_date, payment_type)
         `)
         .order('created_at', { ascending: false });
       

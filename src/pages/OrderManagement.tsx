@@ -724,15 +724,28 @@ export default function OrderManagement() {
     }} />}
     </div>;
   function calculateRemainingAmount(order: Order | null): number {
-    // Handle null/undefined order
     if (!order) return 0;
-
-    // Use the total_paid amount that was loaded with the order
-    const totalPaid = (order as any).total_paid || 0;
+    const totalPaid = calculateTotalPaid(order);
     return Math.max(0, (order.total_amount || 0) - totalPaid);
   }
+
   function calculateTotalPaid(order: Order | null): number {
     if (!order) return 0;
-    return (order as any).total_paid || 0;
+    
+    // Calculate from order payments if available
+    if ((order as any).order_payments) {
+      return (order as any).order_payments.reduce((total: number, payment: any) => {
+        return total + (payment.payment_amount || 0);
+      }, 0);
+    }
+    
+    // If order is marked as paid, assume full amount is paid
+    if (order.payment_status === 'paid') {
+      return order.total_amount || 0;
+    }
+    
+    // For partial payments, we need to check the database
+    // For now, return 0 if no payment data available
+    return 0;
   }
 }
