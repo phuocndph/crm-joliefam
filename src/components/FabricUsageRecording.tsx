@@ -151,6 +151,9 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
   };
 
   const handleSubmit = async () => {
+    console.log('=== DEBUG: Form submission started ===');
+    console.log('Form data:', formData);
+    
     if (!formData.order_number || !formData.warehouse_id || formData.fabricItems.some(item => !item.fabric_variant_id || item.quantity_used <= 0)) {
       toast({ 
         title: "Lỗi", 
@@ -176,7 +179,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
     try {
       // Create multiple fabric usage records for each fabric item
       for (const fabricItem of formData.fabricItems) {
-        await createFabricUsage.mutateAsync({
+        const usageData = {
           order_id: formData.order_id || null, // Send null instead of empty string
           order_number: formData.order_number,
           fabric_variant_id: fabricItem.fabric_variant_id,
@@ -188,7 +191,9 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
           fabric_width: null,
           usage_date: formData.usage_date,
           notes: formData.notes
-        });
+        };
+        console.log('=== DEBUG: Sending usage data ===', usageData);
+        await createFabricUsage.mutateAsync(usageData);
       }
 
       // Reset form
