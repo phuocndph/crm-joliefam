@@ -67,6 +67,11 @@ interface Order {
   assignees?: {
     name: string;
   } | null;
+  order_payments?: {
+    payment_amount: number;
+    payment_date: string;
+    payment_type: string;
+  }[];
 }
 
 interface InlineOrderEditTableProps {
@@ -472,7 +477,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
                     {formatCurrency(order.total_amount)}
                   </div>
                   {(() => {
-                    const totalPaid = (order as any).order_payments?.reduce((total: number, payment: any) => 
+                    const totalPaid = order.order_payments?.reduce((total: number, payment: any) => 
                       total + (payment.payment_amount || 0), 0) || 0;
                     const remaining = Math.max(0, (order.total_amount || 0) - totalPaid);
                     return remaining > 0 ? (
