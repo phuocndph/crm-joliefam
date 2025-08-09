@@ -229,10 +229,11 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
           return (
             <Select 
               open={true} 
-              value={editValue} 
+              value={editValue || "unassigned"} 
               onValueChange={(value) => {
-                setEditValue(value);
-                handleSave(order.id, field, undefined, value);
+                const actualValue = value === "unassigned" ? null : value;
+                setEditValue(actualValue);
+                handleSave(order.id, field, undefined, actualValue);
               }}
               onOpenChange={(open) => !open && handleCancel()}
             >
@@ -240,7 +241,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Chưa phân công</SelectItem>
+                <SelectItem value="unassigned">Chưa phân công</SelectItem>
                 {assignees.map((assignee: any) => (
                   <SelectItem key={assignee.id} value={assignee.id}>
                     {assignee.name}
@@ -374,7 +375,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
         return (
           <div 
             className="cursor-pointer"
-            onClick={() => handleCellEdit(order.id, field, order.assignee_id || "")}
+            onClick={() => handleCellEdit(order.id, field, order.assignee_id || "unassigned")}
           >
             {currentAssignee ? (
               <span className="text-blue-600 font-medium">{currentAssignee.name}</span>
