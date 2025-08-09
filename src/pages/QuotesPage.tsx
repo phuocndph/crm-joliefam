@@ -241,6 +241,7 @@ export default function QuotesPage() {
         .insert({
           order_number: orderNumber,
           customer_id: customerId,
+          assignee_id: quote.assignee_id, // Copy assignee from quote
           total_amount: quote.total_amount,
           status: 'pending',
           items: quote.items,
