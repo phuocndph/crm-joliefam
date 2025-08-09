@@ -437,9 +437,13 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
                 {getCellContent(order, "payment_status")}
               </TableCell>
               <TableCell>
-                <span className="text-sm text-muted-foreground">
-                  {order.assignees?.name || 'Chưa phân công'}
-                </span>
+                <div className="text-sm">
+                  {order.assignees?.name ? (
+                    <span className="text-blue-600 font-medium">{order.assignees.name}</span>
+                  ) : (
+                    <span className="text-muted-foreground italic">Chưa phân công</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell>
                 {getCellContent(order, "notes")}
