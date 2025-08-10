@@ -13,11 +13,16 @@ export const useManagers = () => {
   return useQuery({
     queryKey: ['managers'],
     queryFn: async () => {
+      console.log('useManagers - Starting query...');
+      
       // First get users with manager role
       const { data: userRolesData, error: userRolesError } = await supabase
         .from('user_roles')
         .select('user_id')
         .eq('role', 'manager');
+      
+      console.log('useManagers - userRolesData:', userRolesData);
+      console.log('useManagers - userRolesError:', userRolesError);
       
       if (userRolesError) throw userRolesError;
       
@@ -27,10 +32,15 @@ export const useManagers = () => {
 
       // Get user profile information
       const userIds = userRolesData.map(role => role.user_id);
+      console.log('useManagers - userIds:', userIds);
+      
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('user_id, email, first_name, last_name')
         .in('user_id', userIds);
+      
+      console.log('useManagers - profilesData:', profilesData);
+      console.log('useManagers - profilesError:', profilesError);
       
       if (profilesError) throw profilesError;
       
@@ -42,6 +52,7 @@ export const useManagers = () => {
         display_name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.email || 'Không có tên'
       }));
       
+      console.log('useManagers - final managers:', managers);
       return managers as Manager[];
     },
     staleTime: 10 * 60 * 1000, // 10 minutes
