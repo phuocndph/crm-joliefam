@@ -32,6 +32,7 @@ import { CreateExpenseForm } from "@/components/CreateExpenseForm";
 import { EditExpenseDialog } from "@/components/EditExpenseDialog";
 import { DeleteExpenseDialog } from "@/components/DeleteExpenseDialog";
 import { useToast } from "@/hooks/use-toast";
+import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subYears, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
@@ -127,7 +128,18 @@ export default function CashFlowManagement() {
     netCashFlow: 0
   });
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<any>(null);
   const { toast } = useToast();
+  const { role } = useUserRole(user);
+  
+  // Get current user
+  useEffect(() => {
+    const getUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setUser(data.user);
+    };
+    getUser();
+  }, []);
 
   // Quick date ranges
   const quickDateRanges = [
@@ -526,45 +538,56 @@ export default function CashFlowManagement() {
       expense.expense_code.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Cash flow statistics cards
-  const statsCards = [
-    {
-      title: "Doanh thu",
-      value: formatCurrency(cashFlowStats.totalRevenue),
-      icon: TrendingUp,
-      color: "text-green-600"
-    },
-    {
-      title: "Chi phí", 
-      value: formatCurrency(cashFlowStats.totalExpenses),
-      icon: TrendingDown,
-      color: "text-red-600"
-    },
-    {
-      title: "Lợi nhuận trước",
-      value: formatCurrency(cashFlowStats.profitBefore),
-      icon: DollarSign,
-      color: "text-blue-600"
-    },
-    {
-      title: "Lợi nhuận sau",
-      value: formatCurrency(cashFlowStats.profitAfter),
-      icon: DollarSign,
-      color: cashFlowStats.profitAfter >= 0 ? "text-purple-600" : "text-red-600"
-    },
-    {
-      title: "Thu khác",
-      value: formatCurrency(cashFlowStats.otherIncome),
-      icon: TrendingUp,
-      color: "text-green-600"
-    },
-    {
-      title: "Dòng tiền ròng",
-      value: formatCurrency(cashFlowStats.netCashFlow),
-      icon: DollarSign,
-      color: cashFlowStats.netCashFlow >= 0 ? "text-green-600" : "text-red-600"
+  // Cash flow statistics cards - hide profit stats for accountants
+  const getVisibleStatsCards = () => {
+    const allCards = [
+      {
+        title: "Doanh thu",
+        value: formatCurrency(cashFlowStats.totalRevenue),
+        icon: TrendingUp,
+        color: "text-green-600"
+      },
+      {
+        title: "Chi phí", 
+        value: formatCurrency(cashFlowStats.totalExpenses),
+        icon: TrendingDown,
+        color: "text-red-600"
+      },
+      {
+        title: "Lợi nhuận trước",
+        value: formatCurrency(cashFlowStats.profitBefore),
+        icon: DollarSign,
+        color: "text-blue-600"
+      },
+      {
+        title: "Lợi nhuận sau",
+        value: formatCurrency(cashFlowStats.profitAfter),
+        icon: DollarSign,
+        color: cashFlowStats.profitAfter >= 0 ? "text-purple-600" : "text-red-600"
+      },
+      {
+        title: "Thu khác",
+        value: formatCurrency(cashFlowStats.otherIncome),
+        icon: TrendingUp,
+        color: "text-green-600"
+      },
+      {
+        title: "Dòng tiền ròng",
+        value: formatCurrency(cashFlowStats.netCashFlow),
+        icon: DollarSign,
+        color: cashFlowStats.netCashFlow >= 0 ? "text-green-600" : "text-red-600"
+      }
+    ];
+
+    // Hide profit-related cards for accountants
+    if (role === 'accountant') {
+      return allCards.filter((_, index) => index === 0 || index === 1 || index === 4); // Only show Revenue, Expenses, and Other Income
     }
-  ];
+    
+    return allCards;
+  };
+
+  const statsCards = getVisibleStatsCards();
 
   return (
     <main className="flex-1 container-responsive py-4 lg:py-6">
@@ -831,71 +854,79 @@ export default function CashFlowManagement() {
                   </div>
                 ) : (
                   <>
-                    {/* Summary Card */}
-                    <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
-                      <h4 className="text-sm font-semibold text-blue-900 mb-3">Tổng kết lợi nhuận</h4>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <span className="text-blue-600">Tổng doanh thu:</span>
-                          <div className="font-bold text-green-600">{formatCurrency(cashFlowStats.totalRevenue)}</div>
-                        </div>
-                        <div>
-                          <span className="text-blue-600">Tổng giá gốc:</span>
-                          <div className="font-bold text-blue-600">{formatCurrency(cashFlowStats.totalCostPrice)}</div>
-                        </div>
-                        <div>
-                          <span className="text-blue-600">Lợi nhuận trước:</span>
-                          <div className={`font-bold ${cashFlowStats.profitBefore >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatCurrency(cashFlowStats.profitBefore)}
-                          </div>
-                        </div>
-                        <div>
-                          <span className="text-blue-600">Lợi nhuận sau:</span>
-                          <div className={`font-bold ${cashFlowStats.profitAfter >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatCurrency(cashFlowStats.profitAfter)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                     {/* Summary Card - Hide profit data for accountants */}
+                     {role !== 'accountant' && (
+                       <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                         <h4 className="text-sm font-semibold text-blue-900 mb-3">Tổng kết lợi nhuận</h4>
+                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                           <div>
+                             <span className="text-blue-600">Tổng doanh thu:</span>
+                             <div className="font-bold text-green-600">{formatCurrency(cashFlowStats.totalRevenue)}</div>
+                           </div>
+                           <div>
+                             <span className="text-blue-600">Tổng giá gốc:</span>
+                             <div className="font-bold text-blue-600">{formatCurrency(cashFlowStats.totalCostPrice)}</div>
+                           </div>
+                           <div>
+                             <span className="text-blue-600">Lợi nhuận trước:</span>
+                             <div className={`font-bold ${cashFlowStats.profitBefore >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                               {formatCurrency(cashFlowStats.profitBefore)}
+                             </div>
+                           </div>
+                           <div>
+                             <span className="text-blue-600">Lợi nhuận sau:</span>
+                             <div className={`font-bold ${cashFlowStats.profitAfter >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                               {formatCurrency(cashFlowStats.profitAfter)}
+                             </div>
+                           </div>
+                         </div>
+                       </div>
+                     )}
 
                     <div className="rounded-md border">
                       <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Đơn hàng</TableHead>
-                            <TableHead>Khách hàng</TableHead>
-                            <TableHead>Ngày</TableHead>
-                            <TableHead>Doanh thu</TableHead>
-                            <TableHead>Giá sản xuất</TableHead>
-                            <TableHead>Lợi nhuận trước</TableHead>
-                            <TableHead>Chi phí phân bổ</TableHead>
-                            <TableHead>Lợi nhuận sau</TableHead>
-                          </TableRow>
-                        </TableHeader>
+                         <TableHeader>
+                           <TableRow>
+                             <TableHead>Đơn hàng</TableHead>
+                             <TableHead>Khách hàng</TableHead>
+                             <TableHead>Ngày</TableHead>
+                             <TableHead>Doanh thu</TableHead>
+                             {role !== 'accountant' && <TableHead>Giá sản xuất</TableHead>}
+                             {role !== 'accountant' && <TableHead>Lợi nhuận trước</TableHead>}
+                             <TableHead>Chi phí phân bổ</TableHead>
+                             {role !== 'accountant' && <TableHead>Lợi nhuận sau</TableHead>}
+                           </TableRow>
+                         </TableHeader>
                         <TableBody>
                           {orderProfits.map((profit) => (
                             <TableRow 
                               key={profit.id} 
                               className="cursor-pointer hover:bg-muted/60 transition-colors"
                             >
-                              <TableCell className="font-medium">{getOrderDisplayNumber(profit)}</TableCell>
-                              <TableCell>{profit.customer_name}</TableCell>
-                              <TableCell>{formatSafeDate(profit.date)}</TableCell>
-                              <TableCell className="text-green-600 font-semibold">
-                                {formatCurrency(profit.total_amount)}
-                              </TableCell>
-                              <TableCell className="text-blue-600 font-semibold">
-                                {formatCurrency(profit.cost_price)}
-                              </TableCell>
-                              <TableCell className={`font-semibold ${profit.profit_before >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {formatCurrency(profit.profit_before)}
-                              </TableCell>
-                              <TableCell className="text-orange-600 font-semibold">
-                                {formatCurrency(profit.allocated_expenses)}
-                              </TableCell>
-                              <TableCell className={`font-semibold ${profit.profit_after >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {formatCurrency(profit.profit_after)}
-                              </TableCell>
+                               <TableCell className="font-medium">{getOrderDisplayNumber(profit)}</TableCell>
+                               <TableCell>{profit.customer_name}</TableCell>
+                               <TableCell>{formatSafeDate(profit.date)}</TableCell>
+                               <TableCell className="text-green-600 font-semibold">
+                                 {formatCurrency(profit.total_amount)}
+                               </TableCell>
+                               {role !== 'accountant' && (
+                                 <TableCell className="text-blue-600 font-semibold">
+                                   {formatCurrency(profit.cost_price)}
+                                 </TableCell>
+                               )}
+                               {role !== 'accountant' && (
+                                 <TableCell className={`font-semibold ${profit.profit_before >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                   {formatCurrency(profit.profit_before)}
+                                 </TableCell>
+                               )}
+                               <TableCell className="text-orange-600 font-semibold">
+                                 {formatCurrency(profit.allocated_expenses)}
+                               </TableCell>
+                               {role !== 'accountant' && (
+                                 <TableCell className={`font-semibold ${profit.profit_after >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                   {formatCurrency(profit.profit_after)}
+                                 </TableCell>
+                               )}
                             </TableRow>
                           ))}
                         </TableBody>
