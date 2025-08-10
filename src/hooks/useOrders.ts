@@ -16,7 +16,19 @@ export const useOrders = () => {
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      return data;
+      
+      // Calculate total_paid for each order
+      const ordersWithPayments = data.map(order => {
+        const total_paid = order.order_payments?.reduce((sum: number, payment: any) => 
+          sum + (payment.payment_amount || 0), 0) || 0;
+        
+        return {
+          ...order,
+          total_paid
+        };
+      });
+      
+      return ordersWithPayments;
     },
     staleTime: 5 * 60 * 1000, // 5 phút
     gcTime: 10 * 60 * 1000, // 10 phút
