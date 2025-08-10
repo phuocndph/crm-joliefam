@@ -14,13 +14,20 @@ export const ManagerSelector: React.FC<ManagerSelectorProps> = ({
   onManagerChange,
   showAllOption = true
 }) => {
-  const { data: managers = [], isLoading, error } = useManagers();
+  console.log('ManagerSelector component rendered');
+  const { data: managers = [], isLoading, error, refetch } = useManagers();
   
   // Debug log
   console.log('ManagerSelector - managers:', managers);
   console.log('ManagerSelector - isLoading:', isLoading);
   console.log('ManagerSelector - error:', error);
   console.log('ManagerSelector - selectedManagerId:', selectedManagerId);
+
+  // Force refetch on mount
+  React.useEffect(() => {
+    console.log('ManagerSelector useEffect - forcing refetch');
+    refetch();
+  }, [refetch]);
 
   if (isLoading) {
     return (

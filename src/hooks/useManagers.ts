@@ -10,6 +10,7 @@ export interface Manager {
 }
 
 export const useManagers = () => {
+  console.log('useManagers hook called');
   return useQuery({
     queryKey: ['managers'],
     queryFn: async () => {
