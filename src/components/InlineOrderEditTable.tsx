@@ -56,6 +56,7 @@ interface Order {
   items: any;
   created_at: string;
   updated_at: string;
+  total_paid?: number;
   customers?: {
     id: string;
     customer_code: string | null;
@@ -344,8 +345,8 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
         );
 
       case "payment_status":
-        const totalPaid = (order as any).total_paid || 0;
-        const remainingAmount = Math.max(0, (order.total_amount || 0) - totalPaid);
+        const totalPaid = order.total_paid || 0;
+        const remainingAmount = (order.total_amount || 0) - totalPaid;
         return (
           <div className="text-sm space-y-1">
             <div className="flex items-center gap-1">
@@ -353,8 +354,10 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
               <span className="font-medium">{formatCurrency(totalPaid)}</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-orange-600">Còn lại:</span>
-              <span className="font-medium">{formatCurrency(remainingAmount)}</span>
+              <span className={remainingAmount > 0 ? "text-orange-600" : "text-green-600"}>
+                {remainingAmount > 0 ? "Còn lại:" : "Thừa:"}
+              </span>
+              <span className="font-medium">{formatCurrency(Math.abs(remainingAmount))}</span>
             </div>
           </div>
         );
