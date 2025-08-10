@@ -105,8 +105,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   const payment1 = quoteData.payment1 || 0;
   const payment2 = quoteData.payment2 || 0;
   const totalWithVat = subtotal + vatAmount;
-  const firstPayment = payment1 || Math.round(totalWithVat * 0.3); // Use payment1 or 30% default
-  const remaining = totalWithVat - firstPayment;
+  const firstPayment = payment1; // Only use payment1 if actually set
+  const remaining = firstPayment > 0 ? totalWithVat - firstPayment : totalWithVat;
 
   // Current date for display
   const currentDate = new Date();
@@ -1142,15 +1142,19 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                         <td className="border border-black bg-red-100 p-3 text-right font-bold">{formatCurrency(totalWithVat)}</td>
                       </tr>
                     </>
-                  )}
-                  <tr>
-                    <td className="border border-black bg-red-100 p-3 font-bold text-red-600">THANH TOÁN LẦN 1</td>
-                    <td className="border border-black bg-red-100 p-3 text-right font-bold">{formatCurrency(firstPayment)}</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black bg-red-100 p-3 font-bold text-red-600">CÒN LẠI</td>
-                    <td className="border border-black bg-red-100 p-3 text-right font-bold">{formatCurrency(remaining)}</td>
-                  </tr>
+                   )}
+                   {firstPayment > 0 && (
+                     <>
+                       <tr>
+                         <td className="border border-black bg-red-100 p-3 font-bold text-red-600">THANH TOÁN LẦN 1</td>
+                         <td className="border border-black bg-red-100 p-3 text-right font-bold">{formatCurrency(firstPayment)}</td>
+                       </tr>
+                       <tr>
+                         <td className="border border-black bg-red-100 p-3 font-bold text-red-600">CÒN LẠI</td>
+                         <td className="border border-black bg-red-100 p-3 text-right font-bold">{formatCurrency(remaining)}</td>
+                       </tr>
+                     </>
+                   )}
                 </tbody>
               </table>
             </div>
