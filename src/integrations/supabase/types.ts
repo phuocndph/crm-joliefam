@@ -1114,6 +1114,7 @@ export type Database = {
           manager_id: string | null
           notes: string | null
           price_list_id: string | null
+          quote_data: Json | null
           quote_number: string
           status: string
           subtotal: number | null
@@ -1133,6 +1134,7 @@ export type Database = {
           manager_id?: string | null
           notes?: string | null
           price_list_id?: string | null
+          quote_data?: Json | null
           quote_number: string
           status?: string
           subtotal?: number | null
@@ -1152,6 +1154,7 @@ export type Database = {
           manager_id?: string | null
           notes?: string | null
           price_list_id?: string | null
+          quote_data?: Json | null
           quote_number?: string
           status?: string
           subtotal?: number | null

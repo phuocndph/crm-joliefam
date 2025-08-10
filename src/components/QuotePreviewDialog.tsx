@@ -79,6 +79,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   
   // Parse quote data for VAT and payment info
   const quoteData = quote.quote_data ? JSON.parse(quote.quote_data) : {};
+  console.log('QuotePreviewDialog - quote:', quote);
+  console.log('QuotePreviewDialog - quoteData:', quoteData);
   
   // Calculate totals based on items
   const subtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
@@ -107,7 +109,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   const totalWithVat = subtotal + vatAmount;
   
   // Check if payment settings exist in quote data (meaning payment plan was configured)
-  const hasPaymentPlan = 'payment1' in quoteData || payment1 > 0;
+  // Use both conditions: explicit property check AND actual value check
+  const hasPaymentPlan = ('payment1' in quoteData && quoteData.payment1 !== undefined) || payment1 > 0;
   const firstPayment = hasPaymentPlan ? payment1 : 0;
   const remaining = hasPaymentPlan ? totalWithVat - firstPayment : totalWithVat;
 
