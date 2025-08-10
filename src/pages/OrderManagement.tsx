@@ -131,7 +131,7 @@ export default function OrderManagement() {
     });
   }, []);
   const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders(
-    userRole === 'accountant' ? selectedManagerId : null
+    userRole === 'accountant' ? (selectedManagerId || 'all') : null
   ) as any;
   const { toast } = useToast();
   const filteredOrders = orders.filter(order => {
