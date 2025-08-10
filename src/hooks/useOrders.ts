@@ -14,8 +14,9 @@ export const useOrders = (managerId?: string | null) => {
           order_payments (payment_amount, payment_date, payment_type)
         `);
 
-      // Filter by manager_id if provided
-      if (managerId) {
+      // Only filter by manager_id for accountants who need to see specific manager's data
+      // For managers and employees, RLS will automatically filter the data
+      if (managerId && managerId !== 'all') {
         query = query.eq('manager_id', managerId);
       }
 

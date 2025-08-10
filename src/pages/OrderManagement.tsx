@@ -130,7 +130,9 @@ export default function OrderManagement() {
       setUser(user);
     });
   }, []);
-  const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders(selectedManagerId) as any;
+  const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders(
+    userRole === 'accountant' ? selectedManagerId : null
+  ) as any;
   const { toast } = useToast();
   const filteredOrders = orders.filter(order => {
     const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
