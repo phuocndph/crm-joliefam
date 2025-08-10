@@ -3,40 +3,17 @@ import { Check, X, Edit3, Calendar, DollarSign, Trash2, MoreHorizontal, Eye } fr
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, differenceInDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { useFabricUsageByOrder } from "@/hooks/useFabrics";
 import { useAssignees } from "@/hooks/useAssignees";
-
 interface Order {
   id: string;
   order_number: string;
@@ -74,56 +51,87 @@ interface Order {
     payment_type: string;
   }[];
 }
-
 interface InlineOrderEditTableProps {
   orders: Order[];
   onOrderUpdate: (orderId: string, updates: Partial<Order>) => Promise<void>;
   onDeleteOrder: (order: Order) => void;
   onViewOrderDetail?: (order: Order) => void;
 }
-
 const statusConfig = {
-  pending: { label: "Chờ xử lý", color: "bg-yellow-100 text-yellow-800" },
-  processing: { label: "Đang xử lý", color: "bg-blue-100 text-blue-800" },
-  shipped: { label: "Đã giao", color: "bg-green-100 text-green-800" },
-  delivered: { label: "Hoàn thành", color: "bg-green-100 text-green-800" },
-  cancelled: { label: "Đã hủy", color: "bg-red-100 text-red-800" },
-  self_delivered: { label: "Đã giao tự thu tiền", color: "bg-purple-100 text-purple-800" },
-  returned: { label: "Hoàn Hàng", color: "bg-orange-100 text-orange-800" },
+  pending: {
+    label: "Chờ xử lý",
+    color: "bg-yellow-100 text-yellow-800"
+  },
+  processing: {
+    label: "Đang xử lý",
+    color: "bg-blue-100 text-blue-800"
+  },
+  shipped: {
+    label: "Đã giao",
+    color: "bg-green-100 text-green-800"
+  },
+  delivered: {
+    label: "Hoàn thành",
+    color: "bg-green-100 text-green-800"
+  },
+  cancelled: {
+    label: "Đã hủy",
+    color: "bg-red-100 text-red-800"
+  },
+  self_delivered: {
+    label: "Đã giao tự thu tiền",
+    color: "bg-purple-100 text-purple-800"
+  },
+  returned: {
+    label: "Hoàn Hàng",
+    color: "bg-orange-100 text-orange-800"
+  }
 };
-
 const paymentStatusConfig = {
-  pending: { label: "Chưa thanh toán", color: "bg-red-100 text-red-800" },
-  partial: { label: "Thanh toán 1 phần", color: "bg-yellow-100 text-yellow-800" },
-  paid: { label: "Đã thanh toán", color: "bg-green-100 text-green-800" },
+  pending: {
+    label: "Chưa thanh toán",
+    color: "bg-red-100 text-red-800"
+  },
+  partial: {
+    label: "Thanh toán 1 phần",
+    color: "bg-yellow-100 text-yellow-800"
+  },
+  paid: {
+    label: "Đã thanh toán",
+    color: "bg-green-100 text-green-800"
+  }
 };
-
-const FabricUsageCell = ({ orderId }: { orderId: string }) => {
-  const { data: fabricUsage = [] } = useFabricUsageByOrder(orderId);
-  
+const FabricUsageCell = ({
+  orderId
+}: {
+  orderId: string;
+}) => {
+  const {
+    data: fabricUsage = []
+  } = useFabricUsageByOrder(orderId);
   if (fabricUsage.length === 0) {
     return <span className="text-sm text-muted-foreground italic">Chưa có</span>;
   }
-  
-  return (
-    <div className="text-xs space-y-1 max-w-40">
-      {fabricUsage.map((usage: any, index: number) => (
-        <div key={usage.id} className="flex items-center gap-1 p-1 bg-blue-50 rounded text-blue-900">
+  return <div className="text-xs space-y-1 max-w-40">
+      {fabricUsage.map((usage: any, index: number) => <div key={usage.id} className="flex items-center gap-1 p-1 bg-blue-50 rounded text-blue-900">
           <span className="font-medium">{usage.fabric_variants?.fabric_types?.name}</span>
           <span className="text-blue-600">K{usage.fabric_variants?.fabric_widths?.width_code}</span>
           <span className="font-semibold">{usage.quantity_used}m</span>
-        </div>
-      ))}
-    </div>
-  );
+        </div>)}
+    </div>;
 };
-
-export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onViewOrderDetail }: InlineOrderEditTableProps) {
+export function InlineOrderEditTable({
+  orders,
+  onOrderUpdate,
+  onDeleteOrder,
+  onViewOrderDetail
+}: InlineOrderEditTableProps) {
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>("");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
-  const { data: assignees = [] } = useAssignees();
-
+  const {
+    data: assignees = []
+  } = useAssignees();
   const handleCellEdit = (orderId: string, field: string, currentValue: any) => {
     setEditingCell(`${orderId}-${field}`);
     setEditValue(currentValue || "");
@@ -131,7 +139,6 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
       setSelectedDate(new Date(currentValue));
     }
   };
-
   const handleSave = async (orderId: string, field: string, dateValue?: Date, newValue?: any) => {
     try {
       let valueToSave = newValue !== undefined ? newValue : editValue;
@@ -141,13 +148,13 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
           valueToSave = dateToUse.toISOString().split('T')[0];
         }
       }
-      
+
       // Map order_number field to display_order_number in database
       const fieldToUpdate = field === "order_number" ? "display_order_number" : field;
-      
       console.log('handleSave - field:', field, 'valueToSave:', valueToSave);
-      
-      await onOrderUpdate(orderId, { [fieldToUpdate]: valueToSave });
+      await onOrderUpdate(orderId, {
+        [fieldToUpdate]: valueToSave
+      });
       setEditingCell(null);
       setEditValue("");
       setSelectedDate(undefined);
@@ -155,164 +162,130 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
       console.error("Error saving:", error);
     }
   };
-
   const handleCancel = () => {
     setEditingCell(null);
     setEditValue("");
     setSelectedDate(undefined);
   };
-
   const formatCurrency = (amount: number | null) => {
     if (!amount) return "0 VNĐ";
     return `${amount.toLocaleString("vi-VN")} VNĐ`;
   };
-
   const formatDateWithCountdown = (date: string | null) => {
-    if (!date) return { text: "Chưa đặt", isUrgent: false };
-    
+    if (!date) return {
+      text: "Chưa đặt",
+      isUrgent: false
+    };
+
     // Validate and create Date object
     const deliveryDate = new Date(date);
-    
+
     // Check if the date is valid
     if (isNaN(deliveryDate.getTime())) {
-      return { text: "Ngày không hợp lệ", isUrgent: false };
+      return {
+        text: "Ngày không hợp lệ",
+        isUrgent: false
+      };
     }
-    
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Reset về đầu ngày
     deliveryDate.setHours(0, 0, 0, 0); // Reset về đầu ngày
-    
+
     const daysLeft = differenceInDays(deliveryDate, today);
-    
-    let text = format(deliveryDate, "dd/MM/yyyy", { locale: vi });
-    
+    let text = format(deliveryDate, "dd/MM/yyyy", {
+      locale: vi
+    });
     if (daysLeft < 0) {
       text += ` (Quá hạn ${Math.abs(daysLeft)} ngày)`;
-      return { text, isUrgent: true };
+      return {
+        text,
+        isUrgent: true
+      };
     } else if (daysLeft === 0) {
       text += " (Hôm nay)";
-      return { text, isUrgent: true };
+      return {
+        text,
+        isUrgent: true
+      };
     } else if (daysLeft <= 2) {
       text += ` (Còn ${daysLeft} ngày)`;
-      return { text, isUrgent: true };
+      return {
+        text,
+        isUrgent: true
+      };
     } else {
       text += ` (Còn ${daysLeft} ngày)`;
-      return { text, isUrgent: false };
+      return {
+        text,
+        isUrgent: false
+      };
     }
   };
-
   const getCellContent = (order: Order, field: string) => {
     const cellKey = `${order.id}-${field}`;
     const isEditing = editingCell === cellKey;
-
     if (isEditing) {
       switch (field) {
         case "status":
-          return (
-            <Select 
-              open={true} 
-              value={editValue} 
-              onValueChange={(value) => {
-                setEditValue(value);
-                handleSave(order.id, field, undefined, value);
-              }}
-              onOpenChange={(open) => !open && handleCancel()}
-            >
+          return <Select open={true} value={editValue} onValueChange={value => {
+            setEditValue(value);
+            handleSave(order.id, field, undefined, value);
+          }} onOpenChange={open => !open && handleCancel()}>
               <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(statusConfig).map(([key, config]) => (
-                  <SelectItem key={key} value={key}>
+                {Object.entries(statusConfig).map(([key, config]) => <SelectItem key={key} value={key}>
                     {config.label}
-                  </SelectItem>
-                ))}
+                  </SelectItem>)}
               </SelectContent>
-            </Select>
-          );
-
+            </Select>;
         case "assignee_id":
-          return (
-            <Select 
-              open={true} 
-              value={editValue || "unassigned"} 
-              onValueChange={(value) => {
-                const actualValue = value === "unassigned" ? null : value;
-                setEditValue(actualValue);
-                handleSave(order.id, field, undefined, actualValue);
-              }}
-              onOpenChange={(open) => !open && handleCancel()}
-            >
+          return <Select open={true} value={editValue || "unassigned"} onValueChange={value => {
+            const actualValue = value === "unassigned" ? null : value;
+            setEditValue(actualValue);
+            handleSave(order.id, field, undefined, actualValue);
+          }} onOpenChange={open => !open && handleCancel()}>
               <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="unassigned">Chưa phân công</SelectItem>
-                {assignees.map((assignee: any) => (
-                  <SelectItem key={assignee.id} value={assignee.id}>
+                {assignees.map((assignee: any) => <SelectItem key={assignee.id} value={assignee.id}>
                     {assignee.name}
-                  </SelectItem>
-                ))}
+                  </SelectItem>)}
               </SelectContent>
-            </Select>
-          );
-
+            </Select>;
         case "payment_status":
           // Payment status is now read-only, no editing needed
           return null;
-
         case "delivery_date":
-          return (
-            <Popover open={true} onOpenChange={(open) => !open && handleCancel()}>
+          return <Popover open={true} onOpenChange={open => !open && handleCancel()}>
               <PopoverTrigger asChild>
                 <div className="w-40" />
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0 bg-white z-50" align="start">
-                <CalendarComponent
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    setSelectedDate(date);
-                    if (date) {
-                      handleSave(order.id, field, date);
-                    }
-                  }}
-                  initialFocus
-                  locale={vi}
-                  className="p-3 pointer-events-auto"
-                />
+                <CalendarComponent mode="single" selected={selectedDate} onSelect={date => {
+                setSelectedDate(date);
+                if (date) {
+                  handleSave(order.id, field, date);
+                }
+              }} initialFocus locale={vi} className="p-3 pointer-events-auto" />
               </PopoverContent>
-            </Popover>
-          );
-
+            </Popover>;
         case "order_number":
-          return (
-            <div className="flex items-center gap-2">
-              <Input
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                className="w-40"
-                placeholder="Nhập mã đơn hàng..."
-              />
+          return <div className="flex items-center gap-2">
+              <Input value={editValue} onChange={e => setEditValue(e.target.value)} className="w-40" placeholder="Nhập mã đơn hàng..." />
               <Button size="sm" variant="ghost" onClick={() => handleSave(order.id, field)}>
                 <Check className="h-4 w-4" />
               </Button>
               <Button size="sm" variant="ghost" onClick={handleCancel}>
                 <X className="h-4 w-4" />
               </Button>
-            </div>
-          );
-
+            </div>;
         case "notes":
-          return (
-            <div className="flex items-start gap-2">
-              <textarea
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                className="w-48 min-h-[60px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                placeholder="Nhập ghi chú..."
-                rows={3}
-              />
+          return <div className="flex items-start gap-2">
+              <textarea value={editValue} onChange={e => setEditValue(e.target.value)} className="w-48 min-h-[60px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" placeholder="Nhập ghi chú..." rows={3} />
               <div className="flex flex-col gap-1">
                 <Button size="sm" variant="ghost" onClick={() => handleSave(order.id, field)}>
                   <Check className="h-4 w-4" />
@@ -321,9 +294,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
-          );
-
+            </div>;
         default:
           return null;
       }
@@ -333,22 +304,15 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
     switch (field) {
       case "status":
         const statusInfo = statusConfig[order.status as keyof typeof statusConfig];
-        return (
-          <div 
-            className="cursor-pointer"
-            onClick={() => handleCellEdit(order.id, field, order.status)}
-          >
+        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.status)}>
             <Badge className={statusInfo?.color}>
               {statusInfo?.label || order.status}
             </Badge>
-          </div>
-        );
-
+          </div>;
       case "payment_status":
         const totalPaid = order.total_paid || 0;
         const remainingAmount = (order.total_amount || 0) - totalPaid;
-        return (
-          <div className="text-sm space-y-1">
+        return <div className="text-sm space-y-1">
             <div className="flex items-center gap-1">
               <span className="text-green-600">Đã thanh toán:</span>
               <span className="font-medium">{formatCurrency(totalPaid)}</span>
@@ -359,87 +323,49 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
               </span>
               <span className="font-medium">{formatCurrency(Math.abs(remainingAmount))}</span>
             </div>
-          </div>
-        );
-
+          </div>;
       case "delivery_date":
         const dateInfo = formatDateWithCountdown(order.delivery_date);
-        return (
-          <div 
-            className="cursor-pointer"
-            onClick={() => handleCellEdit(order.id, field, order.delivery_date)}
-          >
-            <span className={cn(
-              "text-sm",
-              dateInfo.isUrgent && "text-red-600 font-semibold"
-            )}>
+        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.delivery_date)}>
+            <span className={cn("text-sm", dateInfo.isUrgent && "text-red-600 font-semibold")}>
               {dateInfo.text}
             </span>
-          </div>
-        );
-
+          </div>;
       case "assignee_id":
         const assigneeName = order.assignees?.name || 'Chưa phân công';
-        return (
-          <div 
-            className="cursor-pointer"
-            onClick={() => handleCellEdit(order.id, field, order.assignee_id || "unassigned")}
-          >
-            {assigneeName !== 'Chưa phân công' ? (
-              <span className="text-blue-600 font-medium">{assigneeName}</span>
-            ) : (
-              <span className="text-muted-foreground italic">{assigneeName}</span>
-            )}
-          </div>
-        );
-
+        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.assignee_id || "unassigned")}>
+            {assigneeName !== 'Chưa phân công' ? <span className="text-blue-600 font-medium">{assigneeName}</span> : <span className="text-muted-foreground italic">{assigneeName}</span>}
+          </div>;
       case "order_number":
-        return (
-          <div 
-            className="cursor-pointer"
-            onClick={() => handleCellEdit(order.id, field, getOrderDisplayNumber(order))}
-          >
+        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, getOrderDisplayNumber(order))}>
             <span className="text-sm font-medium">{getOrderDisplayNumber(order)}</span>
-          </div>
-        );
-
+          </div>;
       case "notes":
         const formatNotes = (notes: string | null) => {
           if (!notes) return "Thêm ghi chú...";
-          
+
           // Split by lines and format each line that starts with "•"
           const lines = notes.split('\n');
           return lines.map((line, index) => {
             if (line.trim().startsWith('•')) {
-              return (
-                <div key={index} className="flex items-start gap-1 mb-1">
+              return <div key={index} className="flex items-start gap-1 mb-1">
                   <span className="text-blue-600 font-bold text-base leading-none mt-0.5">•</span>
                   <span className="flex-1">{line.replace('•', '').trim()}</span>
-                </div>
-              );
+                </div>;
             }
             return line && <div key={index} className="mb-1">{line}</div>;
           }).filter(Boolean);
         };
-
-        return (
-          <div 
-            className="cursor-pointer"
-            onClick={() => handleCellEdit(order.id, field, order.notes)}
-          >
+        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.notes)}>
             <div className="text-sm break-words max-w-48 leading-relaxed space-y-1">
               {formatNotes(order.notes)}
             </div>
-          </div>
-        );
-
+          </div>;
       default:
         return null;
     }
   };
-
-  return (
-    <div className="rounded-md border max-h-[600px] overflow-auto">
+  return <div className="rounded-md border max-h-[600px] overflow-auto">
       <Table>
         <TableHeader className="sticky top-0 bg-background z-10">
           <TableRow>
@@ -457,38 +383,34 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
           </TableRow>
         </TableHeader>
         <TableBody>
-          {orders.map((order) => (
-            <TableRow key={order.id} className="hover:bg-muted/50">
+          {orders.map(order => <TableRow key={order.id} className="hover:bg-muted/50">
               <TableCell className="font-medium min-w-[120px]">
                 {getCellContent(order, "order_number")}
               </TableCell>
               <TableCell className="min-w-[110px]">
-                {format(new Date(order.created_at), "dd/MM/yyyy", { locale: vi })}
+                {format(new Date(order.created_at), "dd/MM/yyyy", {
+              locale: vi
+            })}
               </TableCell>
               <TableCell className="min-w-[200px]">
                 <div>
                   <div className="font-medium">{order.customers?.name}</div>
-                  {order.customers?.phone && (
-                    <div className="text-sm text-muted-foreground">{order.customers.phone}</div>
-                  )}
+                  {order.customers?.phone && <div className="text-sm text-muted-foreground">{order.customers.phone}</div>}
                 </div>
               </TableCell>
               <TableCell className="min-w-[150px]">
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-1">
-                    <DollarSign className="h-4 w-4 text-green-600" />
+                    
                     {formatCurrency(order.total_amount)}
                   </div>
                   {(() => {
-                    const totalPaid = order.order_payments?.reduce((total: number, payment: any) => 
-                      total + (payment.payment_amount || 0), 0) || 0;
-                    const remaining = Math.max(0, (order.total_amount || 0) - totalPaid);
-                    return remaining > 0 ? (
-                      <div className="text-sm text-muted-foreground">
+                const totalPaid = order.order_payments?.reduce((total: number, payment: any) => total + (payment.payment_amount || 0), 0) || 0;
+                const remaining = Math.max(0, (order.total_amount || 0) - totalPaid);
+                return remaining > 0 ? <div className="text-sm text-muted-foreground">
                         Còn: {formatCurrency(remaining)}
-                      </div>
-                    ) : null;
-                  })()}
+                      </div> : null;
+              })()}
                 </div>
               </TableCell>
               <TableCell className="min-w-[180px]">
@@ -518,29 +440,19 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {onViewOrderDetail && (
-                      <DropdownMenuItem 
-                        onClick={() => onViewOrderDetail(order)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
+                    {onViewOrderDetail && <DropdownMenuItem onClick={() => onViewOrderDetail(order)} className="text-blue-600 hover:text-blue-900">
                         <Eye className="mr-2 h-4 w-4" />
                         Xem chi tiết
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem 
-                      onClick={() => onDeleteOrder(order)}
-                      className="text-red-600 hover:text-red-900"
-                    >
+                      </DropdownMenuItem>}
+                    <DropdownMenuItem onClick={() => onDeleteOrder(order)} className="text-red-600 hover:text-red-900">
                       <Trash2 className="mr-2 h-4 w-4" />
                       Xóa đơn hàng
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>
-            </TableRow>
-          ))}
+            </TableRow>)}
         </TableBody>
       </Table>
-    </div>
-  );
+    </div>;
 }
