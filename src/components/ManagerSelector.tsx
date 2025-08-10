@@ -15,6 +15,11 @@ export const ManagerSelector: React.FC<ManagerSelectorProps> = ({
   showAllOption = true
 }) => {
   const { data: managers = [], isLoading } = useManagers();
+  
+  // Debug log
+  console.log('ManagerSelector - managers:', managers);
+  console.log('ManagerSelector - isLoading:', isLoading);
+  console.log('ManagerSelector - selectedManagerId:', selectedManagerId);
 
   if (isLoading) {
     return (
