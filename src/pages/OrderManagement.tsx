@@ -165,6 +165,16 @@ export default function OrderManagement() {
       }
     }
   }, [orders, searchParams, setSearchParams]);
+
+  // Update selectedOrder when orders data changes
+  useEffect(() => {
+    if (selectedOrder && orders.length > 0) {
+      const updatedOrder = orders.find(o => o.id === selectedOrder.id);
+      if (updatedOrder) {
+        setSelectedOrder(updatedOrder);
+      }
+    }
+  }, [orders, selectedOrder?.id]);
   const handleCreateOrder = () => {
     loadOrders();
     setShowCreateForm(false);
@@ -234,13 +244,18 @@ export default function OrderManagement() {
       });
     }
   };
-  const handlePaymentAdded = () => {
-    loadOrders();
-    setOrderToPayment(null);
-    toast({
-      title: "Thành công",
-      description: "Thanh toán đã được thêm thành công"
-    });
+  const handlePaymentAdded = async () => {
+    try {
+      await loadOrders();
+      toast({
+        title: "Thành công",
+        description: "Thanh toán đã được thêm thành công"
+      });
+    } catch (error) {
+      console.error('Error refreshing orders:', error);
+    } finally {
+      setOrderToPayment(null);
+    }
   };
   const handleBulkSync = async () => {
     setBulkSyncing(true);
