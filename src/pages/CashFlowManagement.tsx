@@ -132,7 +132,7 @@ export default function CashFlowManagement() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const { toast } = useToast();
-  const { role } = useUserRole(user);
+  const { role, loading: roleLoading } = useUserRole(user);
   
   // Get current user
   useEffect(() => {
@@ -142,6 +142,11 @@ export default function CashFlowManagement() {
     };
     getUser();
   }, []);
+
+  // Debug role
+  useEffect(() => {
+    console.log('Current user role:', role, 'Role loading:', roleLoading);
+  }, [role, roleLoading]);
 
   // Quick date ranges
   const quickDateRanges = [
