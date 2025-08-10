@@ -449,7 +449,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
             <TableHead className="min-w-[150px] bg-background">Giá trị đơn hàng</TableHead>
             <TableHead className="min-w-[180px] bg-background">Ngày hẹn trả</TableHead>
             <TableHead className="min-w-[120px] bg-background">Tình trạng đơn</TableHead>
-            <TableHead className="min-w-[200px] bg-background">Thanh toán</TableHead>
+            <TableHead className="min-w-[280px] bg-background">Thanh toán</TableHead>
             <TableHead className="min-w-[150px] bg-background">Người phụ trách</TableHead>
             <TableHead className="min-w-[250px] bg-background">Ghi chú</TableHead>
             <TableHead className="min-w-[200px] bg-background">Vải đã sử dụng</TableHead>
@@ -497,7 +497,7 @@ export function InlineOrderEditTable({ orders, onOrderUpdate, onDeleteOrder, onV
               <TableCell className="min-w-[120px]">
                 {getCellContent(order, "status")}
               </TableCell>
-              <TableCell className="min-w-[200px]">
+              <TableCell className="min-w-[280px]">
                 {getCellContent(order, "payment_status")}
               </TableCell>
               <TableCell className="min-w-[150px]">
