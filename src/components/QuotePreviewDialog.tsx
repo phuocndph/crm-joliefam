@@ -109,8 +109,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   const totalWithVat = subtotal + vatAmount;
   
   // Check if payment settings exist in quote data (meaning payment plan was configured)
-  // Use both conditions: explicit property check AND actual value check
-  const hasPaymentPlan = ('payment1' in quoteData && quoteData.payment1 !== undefined) || payment1 > 0;
+  // A payment plan exists if payment1 is explicitly set (even if 0)
+  const hasPaymentPlan = 'payment1' in quoteData;
   const firstPayment = hasPaymentPlan ? payment1 : 0;
   const remaining = hasPaymentPlan ? totalWithVat - firstPayment : totalWithVat;
 

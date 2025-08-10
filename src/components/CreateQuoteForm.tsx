@@ -214,8 +214,28 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
       responsible: initialData?.assignee_id || "",
       includeVAT: initialData?.include_vat || false,
       vatRate: initialData?.vat_rate || 8,
-      payment1: 0,
-      payment2: 0,
+      payment1: (() => {
+        if (initialData?.quote_data) {
+          try {
+            const quoteData = typeof initialData.quote_data === 'string' 
+              ? JSON.parse(initialData.quote_data) 
+              : initialData.quote_data;
+            return quoteData.payment1 || 0;
+          } catch { return 0; }
+        }
+        return 0;
+      })(),
+      payment2: (() => {
+        if (initialData?.quote_data) {
+          try {
+            const quoteData = typeof initialData.quote_data === 'string' 
+              ? JSON.parse(initialData.quote_data) 
+              : initialData.quote_data;
+            return quoteData.payment2 || 0;
+          } catch { return 0; }
+        }
+        return 0;
+      })(),
     },
   });
 
@@ -234,6 +254,22 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
           : initialData.items || [];
         setSelectedProducts(items);
 
+        // Parse quote_data for payment info
+        let paymentData = { payment1: 0, payment2: 0 };
+        if (initialData.quote_data) {
+          try {
+            const quoteData = typeof initialData.quote_data === 'string' 
+              ? JSON.parse(initialData.quote_data) 
+              : initialData.quote_data;
+            paymentData = {
+              payment1: quoteData.payment1 || 0,
+              payment2: quoteData.payment2 || 0,
+            };
+          } catch (error) {
+            console.error('Error parsing quote_data:', error);
+          }
+        }
+
         // Reset form with new data
         form.reset({
           title: initialData.title || "BẢNG BÁO GIÁ",
@@ -248,8 +284,8 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
           responsible: initialData.assignee_id || "",
           includeVAT: initialData.include_vat || false,
           vatRate: initialData.vat_rate || 8,
-          payment1: 0,
-          payment2: 0,
+          payment1: paymentData.payment1,
+          payment2: paymentData.payment2,
         });
       } catch (error) {
         console.error('Error parsing initial data:', error);
