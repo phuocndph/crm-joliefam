@@ -485,6 +485,12 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
         status: initialData ? initialData.status : "draft", // Keep original status when editing
         notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy") : ""}`,
         items: JSON.stringify(selectedProducts),
+        quote_data: JSON.stringify({
+          includeVAT: data.includeVAT,
+          vatRate: data.vatRate,
+          payment1: data.payment1 || 0,
+          payment2: data.payment2 || 0,
+        }),
         tenant_id: "default",
         manager_id: user?.id ? user.id.toString() : null,
       };
