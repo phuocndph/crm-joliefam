@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { TrendingUp, TrendingDown, DollarSign, Plus, Filter, Search, Eye, Edit, Trash2, MoreHorizontal } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
+import { ManagerSelector } from "@/components/ManagerSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,7 +34,6 @@ import { CreateExpenseForm } from "@/components/CreateExpenseForm";
 import { EditExpenseDialog } from "@/components/EditExpenseDialog";
 import { DeleteExpenseDialog } from "@/components/DeleteExpenseDialog";
 import { useToast } from "@/hooks/use-toast";
-import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subYears, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
@@ -113,6 +114,7 @@ export default function CashFlowManagement() {
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
   
   // Data states
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -213,9 +215,15 @@ export default function CashFlowManagement() {
         end: dateRange.end.toISOString()
       });
       
-      const { data, error } = await supabase
+      let expensesQuery = supabase
         .from('expenses')
-        .select('*')
+        .select('*');
+
+      if (selectedManagerId) {
+        expensesQuery = expensesQuery.eq('manager_id', selectedManagerId);
+      }
+
+      const { data, error } = await expensesQuery
         .gte('expense_date', dateRange.start.toISOString())
         .lte('expense_date', dateRange.end.toISOString())
         .order('expense_date', { ascending: false });
@@ -230,7 +238,7 @@ export default function CashFlowManagement() {
         variant: "destructive",
       });
     }
-  }, [getDateRange, toast]);
+  }, [getDateRange, toast, selectedManagerId]);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -241,7 +249,7 @@ export default function CashFlowManagement() {
         end: dateRange.end.toISOString()
       });
       
-      const { data, error } = await supabase
+      let ordersQuery = supabase
         .from('orders')
         .select(`
           id,
@@ -255,7 +263,13 @@ export default function CashFlowManagement() {
           created_at,
           items,
           customers(name)
-        `)
+        `);
+
+      if (selectedManagerId) {
+        ordersQuery = ordersQuery.eq('manager_id', selectedManagerId);
+      }
+
+      const { data, error } = await ordersQuery
         .gte('created_at', dateRange.start.toISOString())
         .lte('created_at', dateRange.end.toISOString())
         .order('created_at', { ascending: false });
@@ -270,7 +284,7 @@ export default function CashFlowManagement() {
         variant: "destructive",
       });
     }
-  }, [getDateRange, toast]);
+  }, [getDateRange, toast, selectedManagerId]);
 
   const calculateCashFlowStats = useCallback(async () => {
     // Tính từ đơn hàng đã giao (delivered orders) - tính giá gốc thực tế
@@ -474,7 +488,7 @@ export default function CashFlowManagement() {
     return () => {
       controller.abort();
     };
-  }, [selectedYear, selectedMonth, filterPeriod, dateRange]);
+  }, [selectedYear, selectedMonth, filterPeriod, dateRange, selectedManagerId]);
 
   useEffect(() => {
     if (orders.length > 0 || expenses.length > 0) {
@@ -600,10 +614,18 @@ export default function CashFlowManagement() {
               Theo dõi thu chi, lợi nhuận và dòng tiền của doanh nghiệp
             </p>
           </div>
-          <Button onClick={() => setShowCreateForm(true)} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Thêm thu chi
-          </Button>
+          <div className="flex items-center gap-2">
+            {role === 'accountant' && (
+              <ManagerSelector
+                selectedManagerId={selectedManagerId}
+                onManagerChange={setSelectedManagerId}
+              />
+            )}
+            <Button onClick={() => setShowCreateForm(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Thêm thu chi
+            </Button>
+          </div>
         </div>
 
         {/* Time Filter */}

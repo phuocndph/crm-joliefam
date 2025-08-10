@@ -1,19 +1,25 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
-export const useOrders = () => {
+export const useOrders = (managerId?: string | null) => {
   return useQuery({
-    queryKey: ['orders'],
+    queryKey: ['orders', managerId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select(`
           *,
           customers (name, email, phone, company, customer_code),
           assignees (name),
           order_payments (payment_amount, payment_date, payment_type)
-        `)
-        .order('created_at', { ascending: false });
+        `);
+
+      // Filter by manager_id if provided
+      if (managerId) {
+        query = query.eq('manager_id', managerId);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
       
       if (error) throw error;
       

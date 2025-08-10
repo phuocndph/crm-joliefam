@@ -12,6 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { CreatePaymentForm } from "@/components/CreatePaymentForm";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
+import { useUserRole } from "@/hooks/useUserRole";
+import { ManagerSelector } from "@/components/ManagerSelector";
 
 interface Order {
   id: string;
@@ -60,18 +62,28 @@ const TransactionManagement = () => {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const [user, setUser] = useState(null);
+  const { role: userRole } = useUserRole(user);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedManagerId]);
 
   const loadData = async () => {
     try {
       setLoading(true);
       
-      // Load orders with customer information
-      const { data: ordersData, error: ordersError } = await supabase
+      // Load orders with customer information and manager filter
+      let ordersQuery = supabase
         .from("orders")
         .select(`
           *,
@@ -80,7 +92,13 @@ const TransactionManagement = () => {
             customer_code,
             phone
           )
-        `)
+        `);
+
+      if (selectedManagerId) {
+        ordersQuery = ordersQuery.eq('manager_id', selectedManagerId);
+      }
+
+      const { data: ordersData, error: ordersError } = await ordersQuery
         .order("created_at", { ascending: false });
       
       if (ordersError) throw ordersError;
@@ -259,6 +277,12 @@ const TransactionManagement = () => {
             Theo dõi và quản lý thanh toán đơn hàng
           </p>
         </div>
+        {userRole === 'accountant' && (
+          <ManagerSelector
+            selectedManagerId={selectedManagerId}
+            onManagerChange={setSelectedManagerId}
+          />
+        )}
       </div>
 
       {/* Stats Cards */}

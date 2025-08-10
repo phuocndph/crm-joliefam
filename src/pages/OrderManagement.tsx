@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw, MapPin, Navigation, Zap } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useOrders } from "@/hooks/useOrders";
+import { useUserRole } from "@/hooks/useUserRole";
+import { ManagerSelector } from "@/components/ManagerSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -118,8 +120,17 @@ export default function OrderManagement() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("orders");
   const [bulkSyncing, setBulkSyncing] = useState(false);
+  const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
 
-  const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders() as any;
+  const [user, setUser] = useState(null);
+  const { role: userRole } = useUserRole(user);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+  }, []);
+  const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders(selectedManagerId) as any;
   const { toast } = useToast();
   const filteredOrders = orders.filter(order => {
     const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
@@ -362,10 +373,18 @@ export default function OrderManagement() {
             Theo dõi và quản lý đơn hàng, thanh toán và giao hàng
           </p>
         </div>
-        <Button onClick={() => setShowCreateForm(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Tạo đơn hàng
-        </Button>
+        <div className="flex items-center gap-2">
+          {userRole === 'accountant' && (
+            <ManagerSelector
+              selectedManagerId={selectedManagerId}
+              onManagerChange={setSelectedManagerId}
+            />
+          )}
+          <Button onClick={() => setShowCreateForm(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Tạo đơn hàng
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
