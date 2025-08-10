@@ -105,8 +105,11 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   const payment1 = quoteData.payment1 || 0;
   const payment2 = quoteData.payment2 || 0;
   const totalWithVat = subtotal + vatAmount;
-  const firstPayment = payment1; // Only use payment1 if actually set
-  const remaining = firstPayment > 0 ? totalWithVat - firstPayment : totalWithVat;
+  
+  // Check if payment settings exist in quote data (meaning payment plan was configured)
+  const hasPaymentPlan = 'payment1' in quoteData || payment1 > 0;
+  const firstPayment = hasPaymentPlan ? payment1 : 0;
+  const remaining = hasPaymentPlan ? totalWithVat - firstPayment : totalWithVat;
 
   // Current date for display
   const currentDate = new Date();
@@ -1143,7 +1146,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                       </tr>
                     </>
                    )}
-                   {firstPayment > 0 && (
+                   {hasPaymentPlan && (
                      <>
                        <tr>
                          <td className="border border-black bg-red-100 p-3 font-bold text-red-600">THANH TOÁN LẦN 1</td>
@@ -1155,9 +1158,9 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                        </tr>
                      </>
                    )}
-                </tbody>
-              </table>
-            </div>
+                 </tbody>
+               </table>
+             </div>
 
             {/* Điều khoản */}
             <div className="mb-8">
