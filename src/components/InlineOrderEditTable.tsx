@@ -34,6 +34,7 @@ interface Order {
   created_at: string;
   updated_at: string;
   total_paid?: number;
+  manager_id?: string | null;
   customers?: {
     id: string;
     customer_code: string | null;
@@ -50,6 +51,10 @@ interface Order {
     payment_date: string;
     payment_type: string;
   }[];
+  manager_profile?: {
+    first_name: string | null;
+    last_name: string | null;
+  } | null;
 }
 interface InlineOrderEditTableProps {
   orders: Order[];
@@ -371,6 +376,7 @@ export function InlineOrderEditTable({
           <TableRow>
             <TableHead className="min-w-[120px] bg-background">Mã đơn hàng</TableHead>
             <TableHead className="min-w-[110px] bg-background">Ngày tạo đơn</TableHead>
+            <TableHead className="min-w-[150px] bg-background">Quản lý</TableHead>
             <TableHead className="min-w-[200px] bg-background">Tên khách hàng</TableHead>
             <TableHead className="min-w-[150px] bg-background">Giá trị đơn hàng</TableHead>
             <TableHead className="min-w-[180px] bg-background">Ngày hẹn trả</TableHead>
@@ -391,6 +397,17 @@ export function InlineOrderEditTable({
                 {format(new Date(order.created_at), "dd/MM/yyyy", {
               locale: vi
             })}
+              </TableCell>
+              <TableCell className="min-w-[150px]">
+                <div className="text-sm">
+                  {order.manager_profile ? (
+                    <span className="font-medium text-blue-600">
+                      {order.manager_profile.first_name} {order.manager_profile.last_name}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground italic">Chưa có thông tin</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="min-w-[200px]">
                 <div>

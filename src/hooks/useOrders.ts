@@ -11,7 +11,8 @@ export const useOrders = (managerId?: string | null) => {
           *,
           customers (name, email, phone, company, customer_code),
           assignees (name),
-          order_payments (payment_amount, payment_date, payment_type)
+          order_payments (payment_amount, payment_date, payment_type),
+          manager_profile:profiles!manager_id (first_name, last_name)
         `);
 
       // Only filter by manager_id for accountants who need to see specific manager's data
