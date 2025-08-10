@@ -267,7 +267,8 @@ export default function CashFlowManagement() {
           status,
           created_at,
           items,
-          customers(name)
+          customers(name),
+          manager_id
         `);
 
       if (selectedManagerId) {
