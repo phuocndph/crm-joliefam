@@ -109,6 +109,14 @@ const ProductManagement = () => {
     filterProducts();
   }, [products, searchTerm, categoryFilter, stockFilter, selectedPriceList]);
 
+  // Tự động chọn bảng giá đầu tiên khi có dữ liệu
+  useEffect(() => {
+    if (priceLists.length > 0 && !selectedPriceList) {
+      console.log('Auto-selecting first price list:', priceLists[0]);
+      setSelectedPriceList(priceLists[0].id);
+    }
+  }, [priceLists, selectedPriceList]);
+
   const fetchPriceLists = async () => {
     try {
       // RLS sẽ tự động filter dữ liệu theo role, không cần thêm filter manual
@@ -153,10 +161,23 @@ const ProductManagement = () => {
   };
 
   const filterProducts = () => {
+    console.log('Filtering products:', {
+      totalProducts: products.length,
+      selectedPriceList,
+      searchTerm,
+      categoryFilter,
+      stockFilter
+    });
+    
     let filtered = products;
 
     if (selectedPriceList) {
-      filtered = filtered.filter(product => product.price_list_id === selectedPriceList);
+      console.log('Filtering by price list:', selectedPriceList);
+      filtered = filtered.filter(product => {
+        console.log('Product:', product.name, 'Price List ID:', product.price_list_id);
+        return product.price_list_id === selectedPriceList;
+      });
+      console.log('Filtered by price list:', filtered.length);
     }
 
     if (searchTerm) {
@@ -179,6 +200,7 @@ const ProductManagement = () => {
       }
     }
 
+    console.log('Final filtered products:', filtered.length);
     setFilteredProducts(filtered);
   };
 
