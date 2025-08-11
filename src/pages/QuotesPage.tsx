@@ -87,13 +87,15 @@ export default function QuotesPage() {
   }, []);
 
   useEffect(() => {
+    // Chỉ tải khi đã xác định được vai trò và người dùng
+    if (!userRole) return;
     loadQuotes();
-  }, []);
+  }, [userRole, user]);
 
   const loadQuotes = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      let query = supabase
         .from('quotes')
         .select(`
           *,
@@ -109,6 +111,12 @@ export default function QuotesPage() {
           )
         `)
         .order('created_at', { ascending: false });
+
+      if (userRole === 'manager' && user?.id) {
+        query = query.eq('manager_id', user.id.toString());
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       
