@@ -219,7 +219,10 @@ export default function CashFlowManagement() {
         .from('expenses')
         .select('*');
 
-      if (selectedManagerId) {
+      // Debug log
+      console.log('loadExpenses - selectedManagerId:', selectedManagerId);
+
+      if (selectedManagerId && selectedManagerId !== 'all') {
         expensesQuery = expensesQuery.eq('manager_id', selectedManagerId);
       }
 
@@ -264,7 +267,10 @@ export default function CashFlowManagement() {
           manager_id
         `);
 
-      if (selectedManagerId) {
+      // Debug log
+      console.log('loadOrders - selectedManagerId:', selectedManagerId);
+
+      if (selectedManagerId && selectedManagerId !== 'all') {
         ordersQuery = ordersQuery.eq('manager_id', selectedManagerId);
       }
 
