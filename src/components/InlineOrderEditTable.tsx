@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { useFabricUsageByOrder } from "@/hooks/useFabrics";
 import { useAssignees } from "@/hooks/useAssignees";
+import { useManagers } from "@/hooks/useManagers";
 interface Order {
   id: string;
   order_number: string;
@@ -137,6 +138,8 @@ export function InlineOrderEditTable({
   const {
     data: assignees = []
   } = useAssignees();
+  const { data: managers = [] } = useManagers();
+  const managerMap = React.useMemo(() => new Map((managers as any[]).map((m: any) => [m.user_id, m.display_name])), [managers]);
   const handleCellEdit = (orderId: string, field: string, currentValue: any) => {
     setEditingCell(`${orderId}-${field}`);
     setEditValue(currentValue || "");
@@ -400,9 +403,9 @@ export function InlineOrderEditTable({
               </TableCell>
               <TableCell className="min-w-[150px]">
                 <div className="text-sm">
-                  {order.manager_profile ? (
+                  {order.manager_id ? (
                     <span className="font-medium text-blue-600">
-                      {order.manager_profile.first_name} {order.manager_profile.last_name}
+                      {managerMap.get(order.manager_id) || 'Chưa có thông tin'}
                     </span>
                   ) : (
                     <span className="text-muted-foreground italic">Chưa có thông tin</span>
