@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
-export const useOrders = (managerId?: string | null) => {
+export const useOrders = () => {
   return useQuery({
-    queryKey: ['orders', managerId],
+    queryKey: ['orders'],
     queryFn: async () => {
-      let query = supabase
+      const { data, error } = await supabase
         .from('orders')
         .select(`
           *,
@@ -13,15 +13,8 @@ export const useOrders = (managerId?: string | null) => {
           assignees (name),
           order_payments (payment_amount, payment_date, payment_type),
           manager_profile:profiles!manager_id (first_name, last_name)
-        `);
-
-      // Only filter by manager_id for accountants who need to see specific manager's data
-      // For managers and employees, RLS will automatically filter the data
-      if (managerId && managerId !== 'all') {
-        query = query.eq('manager_id', managerId);
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: false });
+        `)
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
       
