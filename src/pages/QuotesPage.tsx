@@ -209,6 +209,22 @@ export default function QuotesPage() {
 
   const handleApproveQuote = async (quote: any) => {
     try {
+      // Determine responsible manager for this quote/order
+      let managerIdToUse: string | null = quote.manager_id || null;
+      // If quote has an existing customer, prefer that customer's manager
+      if (!managerIdToUse && quote.customer_id) {
+        const { data: existingCustomer } = await supabase
+          .from('customers')
+          .select('manager_id')
+          .eq('id', quote.customer_id)
+          .maybeSingle();
+        managerIdToUse = (existingCustomer as any)?.manager_id || null;
+      }
+      // Fallback: if current user is a manager, use their id
+      if (!managerIdToUse && userRole === 'manager' && user?.id) {
+        managerIdToUse = user.id.toString();
+      }
+
       // Update quote status to approved
       const { error: quoteError } = await supabase
         .from('quotes')
@@ -229,7 +245,7 @@ export default function QuotesPage() {
             address: quote.customerAddress || null,
             company: quote.customerCompany || null,
             tenant_id: 'default',
-            manager_id: user?.id ? user.id.toString() : null,
+            manager_id: managerIdToUse,
           })
           .select('id')
           .single();
@@ -245,12 +261,13 @@ export default function QuotesPage() {
         .insert({
           order_number: orderNumber,
           customer_id: customerId,
-          manager_id: user?.id ? user.id.toString() : null, // Thiết lập manager_id từ user hiện tại
+          manager_id: managerIdToUse,
           assignee_id: quote.assignee_id, // Copy assignee from quote
           total_amount: quote.total_amount,
           status: 'pending',
           items: typeof quote.items === 'string' ? JSON.parse(quote.items) : quote.items,
           notes: `Được tạo từ báo giá ${quote.quote_number}`,
+          tenant_id: 'default',
         });
 
       if (orderError) throw orderError;
