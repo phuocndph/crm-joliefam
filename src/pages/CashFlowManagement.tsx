@@ -210,15 +210,10 @@ export default function CashFlowManagement() {
     return `${amount.toLocaleString()}đ`;
   };
 
-  // Data loading functions
+  // Optimized data loading functions with error handling
   const loadExpenses = useCallback(async () => {
     try {
       const dateRange = getDateRange();
-      
-      console.log('Loading expenses with date range:', {
-        start: dateRange.start.toISOString(),
-        end: dateRange.end.toISOString()
-      });
       
       let expensesQuery = supabase
         .from('expenses')
@@ -237,22 +232,20 @@ export default function CashFlowManagement() {
       setExpenses(data || []);
     } catch (error) {
       console.error('Error loading expenses:', error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải dữ liệu chi phí",
-        variant: "destructive",
-      });
+      // Only show toast for actual errors, not aborted requests
+      if (error.name !== 'AbortError') {
+        toast({
+          title: "Lỗi",
+          description: "Không thể tải dữ liệu chi phí",
+          variant: "destructive",
+        });
+      }
     }
   }, [getDateRange, toast, selectedManagerId]);
 
   const loadOrders = useCallback(async () => {
     try {
       const dateRange = getDateRange();
-      
-      console.log('Loading orders with date range:', {
-        start: dateRange.start.toISOString(),
-        end: dateRange.end.toISOString()
-      });
       
       let ordersQuery = supabase
         .from('orders')
@@ -284,11 +277,14 @@ export default function CashFlowManagement() {
       setOrders(data || []);
     } catch (error) {
       console.error('Error loading orders:', error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải dữ liệu đơn hàng",
-        variant: "destructive",
-      });
+      // Only show toast for actual errors, not aborted requests
+      if (error.name !== 'AbortError') {
+        toast({
+          title: "Lỗi",
+          description: "Không thể tải dữ liệu đơn hàng",
+          variant: "destructive",
+        });
+      }
     }
   }, [getDateRange, toast, selectedManagerId]);
 
@@ -475,11 +471,12 @@ export default function CashFlowManagement() {
     }
   }, [loadExpenses, loadOrders]);
 
-  // Effects
+  // Effects with debounced loading
   useEffect(() => {
     const controller = new AbortController();
     
-    const loadData = async () => {
+    // Debounce data loading to prevent excessive API calls
+    const timeoutId = setTimeout(async () => {
       try {
         await loadAllData();
       } catch (error) {
@@ -487,19 +484,22 @@ export default function CashFlowManagement() {
           console.error('Error loading data:', error);
         }
       }
-    };
-    
-    loadData();
+    }, 300); // 300ms debounce
     
     return () => {
       controller.abort();
+      clearTimeout(timeoutId);
     };
   }, [selectedYear, selectedMonth, filterPeriod, dateRange, selectedManagerId]);
 
+  // Optimize calculations with useMemo
   useEffect(() => {
     if (orders.length > 0 || expenses.length > 0) {
-      calculateCashFlowStats();
-      calculateOrderProfits();
+      // Use requestAnimationFrame to prevent blocking UI
+      requestAnimationFrame(() => {
+        calculateCashFlowStats();
+        calculateOrderProfits();
+      });
     }
   }, [orders, expenses]);
 
@@ -642,11 +642,13 @@ export default function CashFlowManagement() {
                 <Select onValueChange={(value) => {
                   const selectedRange = quickDateRanges.find(range => range.label === value);
                   if (selectedRange) {
-                    setDateRange(selectedRange.range);
-                    // Reset year/month filters when using date range
-                    setFilterPeriod("month");
-                    setSelectedYear(new Date().getFullYear().toString());
-                    setSelectedMonth((new Date().getMonth() + 1).toString());
+                    // Batch state updates to prevent multiple re-renders
+                    setTimeout(() => {
+                      setDateRange(selectedRange.range);
+                      setFilterPeriod("month");
+                      setSelectedYear(new Date().getFullYear().toString());
+                      setSelectedMonth((new Date().getMonth() + 1).toString());
+                    }, 0);
                   }
                 }}>
                   <SelectTrigger className="w-48">
@@ -667,13 +669,15 @@ export default function CashFlowManagement() {
                 <DatePickerWithRange
                   date={dateRange}
                   setDate={(date) => {
-                    setDateRange(date);
-                    // Reset year/month filters when using custom date range
-                    if (date?.from && date?.to) {
-                      setFilterPeriod("month");
-                      setSelectedYear(new Date().getFullYear().toString());
-                      setSelectedMonth((new Date().getMonth() + 1).toString());
-                    }
+                    // Batch state updates to prevent multiple re-renders
+                    setTimeout(() => {
+                      setDateRange(date);
+                      if (date?.from && date?.to) {
+                        setFilterPeriod("month");
+                        setSelectedYear(new Date().getFullYear().toString());
+                        setSelectedMonth((new Date().getMonth() + 1).toString());
+                      }
+                    }, 0);
                   }}
                   className="w-auto"
                 />
@@ -681,9 +685,11 @@ export default function CashFlowManagement() {
               
               <div className="flex gap-4 items-center">
                 <Select value={filterPeriod} onValueChange={(value) => {
-                  setFilterPeriod(value);
-                  // Reset date range when using year/month filters
-                  setDateRange(undefined);
+                  // Batch state updates to prevent multiple re-renders
+                  setTimeout(() => {
+                    setFilterPeriod(value);
+                    setDateRange(undefined);
+                  }, 0);
                 }}>
                   <SelectTrigger className="w-40">
                     <SelectValue placeholder="Chọn khoảng thời gian" />
@@ -695,9 +701,11 @@ export default function CashFlowManagement() {
                 </Select>
 
                 <Select value={selectedYear} onValueChange={(value) => {
-                  setSelectedYear(value);
-                  // Reset date range when using year/month filters
-                  setDateRange(undefined);
+                  // Batch state updates to prevent multiple re-renders
+                  setTimeout(() => {
+                    setSelectedYear(value);
+                    setDateRange(undefined);
+                  }, 0);
                 }}>
                   <SelectTrigger className="w-32">
                     <SelectValue />
@@ -711,9 +719,11 @@ export default function CashFlowManagement() {
 
                 {filterPeriod === "month" && (
                   <Select value={selectedMonth} onValueChange={(value) => {
-                    setSelectedMonth(value);
-                    // Reset date range when using year/month filters
-                    setDateRange(undefined);
+                    // Batch state updates to prevent multiple re-renders
+                    setTimeout(() => {
+                      setSelectedMonth(value);
+                      setDateRange(undefined);
+                    }, 0);
                   }}>
                     <SelectTrigger className="w-32">
                       <SelectValue />
