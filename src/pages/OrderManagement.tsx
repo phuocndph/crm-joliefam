@@ -138,7 +138,8 @@ export default function OrderManagement() {
     const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
     const matchesPayment = paymentFilter === "all" || order.payment_status === paymentFilter;
-    return matchesSearch && matchesStatus && matchesPayment;
+    const matchesManager = !selectedManagerId || order.manager_id === selectedManagerId;
+    return matchesSearch && matchesStatus && matchesPayment && matchesManager;
   });
   const sortedOrders = [...filteredOrders].sort((a, b) => {
     switch (sortBy) {
