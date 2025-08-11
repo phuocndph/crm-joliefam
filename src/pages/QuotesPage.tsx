@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +78,7 @@ export default function QuotesPage() {
   const { toast } = useToast();
   const { role: userRole } = useUserRole(user);
   const { hasPermission } = useEmployeePermissions(user, userRole);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -252,6 +254,10 @@ export default function QuotesPage() {
       if (orderError) throw orderError;
 
       await loadQuotes();
+      
+      // Also invalidate orders cache since we created a new order
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      
       toast({
         title: "Thành công",
         description: `Báo giá đã được duyệt và đơn hàng ${orderNumber} đã được tạo`,
