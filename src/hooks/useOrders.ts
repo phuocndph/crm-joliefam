@@ -15,7 +15,7 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
         `)
         .order('created_at', { ascending: false });
       
-      if (opts?.managerId) {
+      if (opts?.managerId && opts.managerId !== 'all') {
         query = query.eq('manager_id', opts.managerId);
       }
       

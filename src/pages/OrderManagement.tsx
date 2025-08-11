@@ -140,7 +140,9 @@ export default function OrderManagement() {
   const managerFilter = (userRole === 'admin' || userRole === 'accountant')
     ? selectedManagerId
     : (userRole === 'manager' && (user as any)?.id) ? (user as any).id : undefined;
+  console.log('[Orders] role:', userRole, 'selectedManagerId:', selectedManagerId, 'managerFilter:', managerFilter);
   const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders({ managerId: managerFilter }) as any;
+  console.log('[Orders] fetched:', orders.length, 'unique managers:', Array.from(new Set(orders.map((o:any)=>o.manager_id))).length);
   const { toast } = useToast();
   const filteredOrders = orders.filter(order => {
     const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
