@@ -133,17 +133,6 @@ export default function OrderManagement() {
   const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders(
     userRole === 'accountant' ? (selectedManagerId || 'all') : null
   ) as any;
-  
-  // Debug logs for manager account verification
-  useEffect(() => {
-    console.log('OrderManagement Debug:', {
-      userRole,
-      selectedManagerId,
-      user: user?.id,
-      ordersCount: orders.length,
-      orders: orders.map(o => ({ id: o.id, manager_id: o.manager_id, manager_profile: o.manager_profile }))
-    });
-  }, [userRole, selectedManagerId, user, orders]);
   const { toast } = useToast();
   const filteredOrders = orders.filter(order => {
     const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
