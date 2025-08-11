@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
-export const useOrders = () => {
+export const useOrders = (opts?: { managerId?: string | null }) => {
   return useQuery({
-    queryKey: ['orders'],
+    queryKey: ['orders', opts?.managerId ?? 'all'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select(`
           *,
@@ -15,6 +15,12 @@ export const useOrders = () => {
           manager_profile:profiles!orders_manager_id_profiles_user_id_fkey (first_name, last_name)
         `)
         .order('created_at', { ascending: false });
+      
+      if (opts?.managerId) {
+        query = query.eq('manager_id', opts.managerId);
+      }
+      
+      const { data, error } = await query;
       
       if (error) throw error;
       

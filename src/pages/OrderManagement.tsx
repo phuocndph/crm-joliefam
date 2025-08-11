@@ -132,10 +132,16 @@ export default function OrderManagement() {
       setUser(user);
     });
   }, []);
-  const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders() as any;
+
+  useEffect(() => {
+    document.title = "Quản lý Đơn hàng | Hệ thống";
+  }, []);
+
+  const managerFilter = (userRole === 'admin' || userRole === 'accountant') ? selectedManagerId : undefined;
+  const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders({ managerId: managerFilter }) as any;
   const { toast } = useToast();
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
+    const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
     const matchesPayment = paymentFilter === "all" || order.payment_status === paymentFilter;
     const matchesManager = !selectedManagerId || order.manager_id === selectedManagerId;
@@ -238,7 +244,8 @@ export default function OrderManagement() {
             category: 'sales',
             description: `Thanh toán đơn hàng ${getOrderDisplayNumber(order)}`,
             date: new Date().toISOString(),
-            tenant_id: 'default'
+            tenant_id: 'default',
+            manager_id: (order as any).manager_id || null,
           });
         }
       }
@@ -377,7 +384,7 @@ export default function OrderManagement() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {userRole === 'accountant' && (
+          {(userRole === 'admin' || userRole === 'accountant') && (
             <ManagerSelector
               selectedManagerId={selectedManagerId}
               onManagerChange={setSelectedManagerId}
@@ -503,7 +510,9 @@ export default function OrderManagement() {
                         description: `Hoàn thành đơn hàng ${getOrderDisplayNumber(order)}`,
                         order_id: orderId,
                         category: 'order_completion',
-                        date: new Date().toISOString()
+                        date: new Date().toISOString(),
+                        tenant_id: 'default',
+                        manager_id: (order as any).manager_id || null,
                       });
                       if (transactionError) console.error('Error creating transaction:', transactionError);
                     }
