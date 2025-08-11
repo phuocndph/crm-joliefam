@@ -11,8 +11,7 @@ export const useOrders = () => {
           *,
           customers (name, email, phone, company, customer_code),
           assignees (name),
-          order_payments (payment_amount, payment_date, payment_type),
-          manager_profile:profiles!manager_id (first_name, last_name)
+          order_payments (payment_amount, payment_date, payment_type)
         `)
         .order('created_at', { ascending: false });
       
