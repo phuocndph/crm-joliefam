@@ -137,7 +137,9 @@ export default function OrderManagement() {
     document.title = "Quản lý Đơn hàng | Hệ thống";
   }, []);
 
-  const managerFilter = (userRole === 'admin' || userRole === 'accountant') ? selectedManagerId : undefined;
+  const managerFilter = (userRole === 'admin' || userRole === 'accountant')
+    ? selectedManagerId
+    : (userRole === 'manager' && (user as any)?.id) ? (user as any).id : undefined;
   const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders({ managerId: managerFilter }) as any;
   const { toast } = useToast();
   const filteredOrders = orders.filter(order => {
