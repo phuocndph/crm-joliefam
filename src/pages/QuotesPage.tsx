@@ -228,6 +228,8 @@ export default function QuotesPage() {
             phone: quote.customerPhone || null,
             address: quote.customerAddress || null,
             company: quote.customerCompany || null,
+            tenant_id: 'default',
+            manager_id: user?.id ? user.id.toString() : null,
           })
           .select('id')
           .single();
@@ -243,11 +245,11 @@ export default function QuotesPage() {
         .insert({
           order_number: orderNumber,
           customer_id: customerId,
-          manager_id: user?.id, // Thiết lập manager_id từ user hiện tại
+          manager_id: user?.id ? user.id.toString() : null, // Thiết lập manager_id từ user hiện tại
           assignee_id: quote.assignee_id, // Copy assignee from quote
           total_amount: quote.total_amount,
           status: 'pending',
-          items: quote.items,
+          items: typeof quote.items === 'string' ? JSON.parse(quote.items) : quote.items,
           notes: `Được tạo từ báo giá ${quote.quote_number}`,
         });
 
