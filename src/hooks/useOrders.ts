@@ -9,8 +9,8 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
         .from('orders')
         .select(`
           *,
-          customers (name, email, phone, company, customer_code),
-          assignees (name),
+          customers:customer_id (name, email, phone, company, customer_code),
+          assignees:assignee_id (name),
           order_payments (payment_amount, payment_date, payment_type),
           manager_profile:profiles!orders_manager_id_profiles_user_id_fkey (first_name, last_name)
         `)
