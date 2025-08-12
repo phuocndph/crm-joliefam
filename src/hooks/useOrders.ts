@@ -28,41 +28,63 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
   return useQuery({
     queryKey: ['orders', opts?.managerId ?? 'all'],
     queryFn: async () => {
-      let query = supabase
+      console.log('🔍 Fetching orders with manager filter:', opts?.managerId);
+      
+      // First, get all orders
+      let ordersQuery = supabase
         .from('orders')
         .select(`
           *,
           customers:customer_id (name, email, phone, company, customer_code),
-          assignees:assignee_id (name),
-          order_payments (payment_amount, payment_date, payment_type)
+          assignees:assignee_id (name)
         `)
         .order('created_at', { ascending: false });
       
       if (opts?.managerId && opts.managerId !== 'all') {
-        query = query.eq('manager_id', opts.managerId);
+        ordersQuery = ordersQuery.eq('manager_id', opts.managerId);
       }
       
-      const { data, error } = await query;
+      const { data: ordersData, error: ordersError } = await ordersQuery;
       
-      if (error) {
-        console.error('❌ Error fetching orders:', error);
-        throw error;
+      if (ordersError) {
+        console.error('❌ Error fetching orders:', ordersError);
+        throw ordersError;
       }
       
-      console.log(`📊 Fetched ${data?.length || 0} orders with payments data`);
+      console.log(`📊 Fetched ${ordersData?.length || 0} orders`);
+      
+      // Then get payments for all orders
+      const orderIds = ordersData?.map(order => order.id) || [];
+      let paymentsData: any[] = [];
+      
+      if (orderIds.length > 0) {
+        const { data: payments, error: paymentsError } = await supabase
+          .from('order_payments')
+          .select('order_id, payment_amount, payment_date, payment_type')
+          .in('order_id', orderIds);
+        
+        if (paymentsError) {
+          console.error('❌ Error fetching payments:', paymentsError);
+        } else {
+          paymentsData = payments || [];
+          console.log(`💰 Fetched ${paymentsData.length} payments for ${orderIds.length} orders`);
+        }
+      }
       
       // Calculate total_paid for each order
-      const ordersWithPayments = data.map(order => {
-        const total_paid = order.order_payments?.reduce((sum: number, payment: any) => 
-          sum + (payment.payment_amount || 0), 0) || 0;
+      const ordersWithPayments = ordersData?.map(order => {
+        const orderPayments = paymentsData.filter(payment => payment.order_id === order.id);
+        const total_paid = orderPayments.reduce((sum: number, payment: any) => 
+          sum + (payment.payment_amount || 0), 0);
         
-        console.log(`💰 Order ${order.order_number}: ${order.order_payments?.length || 0} payments, total: ${total_paid}`);
+        console.log(`💰 Order ${order.order_number}: ${orderPayments.length} payments, total: ${total_paid}`);
         
         return {
           ...order,
+          order_payments: orderPayments,
           total_paid
         };
-      });
+      }) || [];
       
       return ordersWithPayments;
     },
