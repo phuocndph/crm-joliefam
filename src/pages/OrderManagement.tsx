@@ -815,7 +815,12 @@ export default function OrderManagement() {
   function calculateTotalPaid(order: Order | null): number {
     if (!order) return 0;
     
-    // Calculate from order payments if available
+    // Use the pre-calculated total_paid from useOrders hook
+    if ((order as any).total_paid !== undefined) {
+      return (order as any).total_paid;
+    }
+    
+    // Fallback: Calculate from order_payments if available
     if ((order as any).order_payments) {
       return (order as any).order_payments.reduce((total: number, payment: any) => {
         return total + (payment.payment_amount || 0);
