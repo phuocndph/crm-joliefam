@@ -100,12 +100,15 @@ export default function QuotesPage() {
         schema: 'public', 
         table: 'quotes' 
       }, (payload) => {
-        console.log('Quotes real-time update:', payload);
+        console.log('📝 Quotes real-time update received:', payload.eventType, payload.new);
         loadQuotes(); // Reload quotes when any change occurs
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📝 Quotes real-time subscription status:', status);
+      });
 
     return () => {
+      console.log('📝 Cleaning up quotes real-time subscription');
       supabase.removeChannel(quotesChannel);
     };
   }, [userRole, user]);

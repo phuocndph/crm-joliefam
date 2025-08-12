@@ -7,12 +7,16 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
   useEffect(() => {
     const channel = supabase
       .channel('orders-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+        console.log('📦 Orders real-time update received:', payload.eventType, payload.new);
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📦 Orders real-time subscription status:', status);
+      });
 
     return () => {
+      console.log('📦 Cleaning up orders real-time subscription');
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
