@@ -89,7 +89,25 @@ export default function QuotesPage() {
   useEffect(() => {
     // Chỉ tải khi đã xác định được vai trò và người dùng
     if (!userRole) return;
+    
     loadQuotes();
+    
+    // Set up real-time subscription for quotes
+    const quotesChannel = supabase
+      .channel('quotes-realtime')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'quotes' 
+      }, (payload) => {
+        console.log('Quotes real-time update:', payload);
+        loadQuotes(); // Reload quotes when any change occurs
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(quotesChannel);
+    };
   }, [userRole, user]);
 
   const loadQuotes = async () => {

@@ -210,25 +210,23 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
 
       const order = orders[0];
       
-      // Update the order with the new quote data
+      // Update the order with the new quote data - this will trigger real-time updates
       const { error: updateError } = await supabase
         .from('orders')
         .update({
           total_amount: quote.total_amount,
           items: quote.items,
-          notes: `Được tạo từ báo giá ${quote.quote_number} (đã cập nhật)`,
+          notes: `Được tạo từ báo giá ${quote.quote_number} (đã cập nhật lúc ${new Date().toLocaleString('vi-VN')})`,
           updated_at: new Date().toISOString(),
         })
         .eq('id', order.id);
 
       if (updateError) throw updateError;
 
-      // Invalidate queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      
+      // No need to manually invalidate queries - real-time updates will handle this
       toast({
         title: "Thành công",
-        description: `Đơn hàng ${order.order_number} đã được cập nhật theo báo giá phụ`,
+        description: `Đơn hàng ${order.order_number} đã được cập nhật tự động theo báo giá phụ`,
       });
 
       onUpdate?.();
