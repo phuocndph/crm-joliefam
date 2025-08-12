@@ -582,11 +582,12 @@ export default function QuotesPage() {
       />
 
       {/* Quote Supplement Dialog */}
-      <QuoteSupplementDialog 
-        open={!!supplementQuote}
-        onOpenChange={(open) => !open && setSupplementQuote(null)}
-        quote={supplementQuote}
-      />
+        <QuoteSupplementDialog
+          open={!!supplementQuote}
+          onOpenChange={(open) => !open && setSupplementQuote(null)}
+          quote={supplementQuote}
+          onUpdate={loadQuotes}
+        />
 
       {/* Template Settings Dialog */}
       <QuoteTemplateSettings

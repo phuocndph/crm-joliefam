@@ -15,20 +15,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FileDown, Printer, FileSpreadsheet, Search } from "lucide-react";
+import { FileDown, Printer, FileSpreadsheet, Search, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getTemplateSettings } from "./QuoteTemplateSettings";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface QuoteSupplementDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   quote: any;
+  onUpdate?: () => void;
 }
 
-export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupplementDialogProps) {
+export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: QuoteSupplementDialogProps) {
   const [templateSettings, setTemplateSettings] = useState<any>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [products, setProducts] = useState<any[]>([]);
+  const [isUpdatingOrder, setIsUpdatingOrder] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (open && quote) {
@@ -171,6 +177,74 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupple
     }).format(amount);
   };
 
+  const updateCorrespondingOrder = async () => {
+    if (!quote || quote.status !== 'approved') {
+      toast({
+        title: "Lỗi",
+        description: "Chỉ có thể cập nhật đơn hàng cho báo giá đã được duyệt",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUpdatingOrder(true);
+    
+    try {
+      // Find the order created from this quote
+      const { data: orders, error: orderError } = await supabase
+        .from('orders')
+        .select('*')
+        .ilike('notes', `%${quote.quote_number}%`)
+        .limit(1);
+
+      if (orderError) throw orderError;
+
+      if (!orders || orders.length === 0) {
+        toast({
+          title: "Lỗi",
+          description: "Không tìm thấy đơn hàng tương ứng với báo giá này",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const order = orders[0];
+      
+      // Update the order with the new quote data
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({
+          total_amount: quote.total_amount,
+          items: quote.items,
+          notes: `Được tạo từ báo giá ${quote.quote_number} (đã cập nhật)`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', order.id);
+
+      if (updateError) throw updateError;
+
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      
+      toast({
+        title: "Thành công",
+        description: `Đơn hàng ${order.order_number} đã được cập nhật theo báo giá phụ`,
+      });
+
+      onUpdate?.();
+      
+    } catch (error: any) {
+      console.error('Error updating order:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể cập nhật đơn hàng",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingOrder(false);
+    }
+  };
+
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     if (printWindow) {
@@ -286,6 +360,18 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote }: QuoteSupple
           <DialogTitle className="flex items-center justify-between">
             <span>Báo giá phụ - {quote.quote_number || `QUOTE-${quote.id.slice(0, 8)}`}</span>
             <div className="flex gap-2">
+              {quote?.status === 'approved' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={updateCorrespondingOrder}
+                  disabled={isUpdatingOrder}
+                  className="gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isUpdatingOrder ? 'animate-spin' : ''}`} />
+                  {isUpdatingOrder ? 'Đang cập nhật...' : 'Cập nhật đơn hàng'}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
