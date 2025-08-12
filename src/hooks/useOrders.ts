@@ -51,7 +51,7 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
         throw ordersError;
       }
       
-      console.log(`📊 Fetched ${ordersData?.length || 0} orders`);
+      console.log(`📊 Fetched ${ordersData?.length || 0} orders:`, ordersData?.map(o => o.order_number));
       
       // Then get payments for all orders
       const orderIds = ordersData?.map(order => order.id) || [];
