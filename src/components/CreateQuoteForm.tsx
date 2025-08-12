@@ -670,10 +670,10 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
   const watchedValues = form.watch();
   const rawSubtotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
   
-  // Calculate correct subtotal and VAT based on includeVAT setting
-  const subtotal = watchedValues.includeVAT ? rawSubtotal / (1 + watchedValues.vatRate / 100) : rawSubtotal;
-  const vatAmount = watchedValues.includeVAT ? rawSubtotal - subtotal : (rawSubtotal * watchedValues.vatRate) / 100;
-  const total = watchedValues.includeVAT ? rawSubtotal : rawSubtotal + vatAmount;
+  // Calculate VAT according to user requirements
+  const subtotal = rawSubtotal; // This is "TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT"
+  const vatAmount = watchedValues.includeVAT ? (subtotal * watchedValues.vatRate) / 100 : 0;
+  const total = subtotal + vatAmount; // This is "TỔNG TIỀN ĐÃ BAO GỒM GTGT"
   const remaining = total - (watchedValues.payment1 + watchedValues.payment2);
 
   return (

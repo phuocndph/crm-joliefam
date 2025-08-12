@@ -319,7 +319,7 @@ export function InlineOrderEditTable({
           </div>;
       case "payment_status":
         const totalPaid = order.total_paid || 0;
-        const remainingAmount = (order.total_amount || 0) - totalPaid;
+        const remainingAmount = (order.total_amount || 0) - totalPaid; // "CÒN LẠI = TỔNG TIỀN ĐÃ BAO GỒM GTGT - THANH TOÁN ĐÃ NHẬN"
         return <div className="text-sm space-y-1">
             <div className="flex items-center gap-1">
               <span className="text-green-600">Đã thanh toán:</span>
@@ -426,7 +426,7 @@ export function InlineOrderEditTable({
                   </div>
                   {(() => {
                 const totalPaid = order.order_payments?.reduce((total: number, payment: any) => total + (payment.payment_amount || 0), 0) || 0;
-                const remaining = Math.max(0, (order.total_amount || 0) - totalPaid);
+                const remaining = Math.max(0, (order.total_amount || 0) - totalPaid); // "CÒN LẠI = TỔNG TIỀN - THANH TOÁN ĐÃ NHẬN"
                 return remaining > 0 ? <div className="text-sm text-muted-foreground">
                         Còn: {formatCurrency(remaining)}
                       </div> : null;

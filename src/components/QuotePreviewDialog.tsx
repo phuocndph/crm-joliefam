@@ -95,13 +95,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   // Calculate VAT amount based on whether VAT is included
   let vatAmount = 0;
   if (includeVAT) {
-    if (hasVAT && quoteTotalAmount > subtotal) {
-      // VAT amount is the difference between total and subtotal
-      vatAmount = quoteTotalAmount - subtotal;
-    } else {
-      // Calculate VAT from subtotal
-      vatAmount = Math.round(subtotal * vatRate / 100);
-    }
+    // Calculate VAT from subtotal (subtotal is "TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT")
+    vatAmount = Math.round(subtotal * vatRate / 100);
   }
   
   const payment1 = quoteData.payment1 || 0;
