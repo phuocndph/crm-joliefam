@@ -732,12 +732,16 @@ export default function OrderManagement() {
                                </div>
                              </>
                            )}
-                           <div className="flex justify-between text-sm font-bold">
-                             <span className="text-purple-600">THANH TOÁN ĐÃ NHẬN</span>
-                             <span className="text-purple-600">
-                               {calculateTotalPaid(selectedOrder).toLocaleString()}đ
-                             </span>
-                           </div>
+                            <div className="flex justify-between text-sm font-bold bg-purple-50 p-2 rounded">
+                              <span className="text-purple-600">THANH TOÁN ĐÃ NHẬN</span>
+                              <span className="text-purple-600">
+                                {(() => {
+                                  const totalPaid = calculateTotalPaid(selectedOrder);
+                                  console.log('💰 Display total paid for order:', selectedOrder?.order_number, totalPaid);
+                                  return totalPaid.toLocaleString();
+                                })()}đ
+                              </span>
+                            </div>
                            <div className="bg-yellow-100 p-3 rounded">
                              <div className="flex justify-between text-sm font-bold">
                                <span className="text-red-600">CÒN LẠI</span>
@@ -815,25 +819,35 @@ export default function OrderManagement() {
   function calculateTotalPaid(order: Order | null): number {
     if (!order) return 0;
     
+    console.log('🔍 calculateTotalPaid for order:', order.order_number, {
+      total_paid: (order as any).total_paid,
+      order_payments: (order as any).order_payments,
+      payment_status: order.payment_status
+    });
+    
     // Use the pre-calculated total_paid from useOrders hook
     if ((order as any).total_paid !== undefined) {
+      console.log('✅ Using pre-calculated total_paid:', (order as any).total_paid);
       return (order as any).total_paid;
     }
     
     // Fallback: Calculate from order_payments if available
-    if ((order as any).order_payments) {
-      return (order as any).order_payments.reduce((total: number, payment: any) => {
-        return total + (payment.payment_amount || 0);
+    if ((order as any).order_payments && Array.isArray((order as any).order_payments)) {
+      const total = (order as any).order_payments.reduce((sum: number, payment: any) => {
+        console.log('💰 Adding payment:', payment.payment_amount, payment.payment_type);
+        return sum + (payment.payment_amount || 0);
       }, 0);
+      console.log('✅ Calculated from order_payments:', total);
+      return total;
     }
     
     // If order is marked as paid, assume full amount is paid
     if (order.payment_status === 'paid') {
+      console.log('✅ Using full amount as order is marked paid:', order.total_amount);
       return order.total_amount || 0;
     }
     
-    // For partial payments, we need to check the database
-    // For now, return 0 if no payment data available
+    console.log('❌ No payment data available, returning 0');
     return 0;
   }
 }
