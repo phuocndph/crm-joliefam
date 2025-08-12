@@ -582,8 +582,8 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
             const order = relatedOrders[0];
             console.log('📝 Cập nhật đơn hàng hiện có:', order.order_number);
             
-            // Use subtotal if quote doesn't include VAT, otherwise use total with VAT
-            const orderTotal = data.includeVAT ? calculatedTotal : subtotal;
+            // Always use total with VAT when VAT is included, subtotal when not
+            const orderTotal = calculatedTotal; // This is always correct: subtotal + VAT (if included)
             
             const orderUpdateData = {
               items: JSON.stringify(selectedProducts),
@@ -607,8 +607,8 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
             // Create new order if none exists
             console.log('➕ Tạo đơn hàng mới từ báo giá cập nhật');
             
-            // Use subtotal if quote doesn't include VAT, otherwise use total with VAT
-            const orderTotal = data.includeVAT ? calculatedTotal : subtotal;
+             // Always use total with VAT when VAT is included, subtotal when not
+             const orderTotal = calculatedTotal; // This is always correct: subtotal + VAT (if included)
             
             const orderNumber = `ORD-${Date.now()}`;
             const { error: createError } = await supabase

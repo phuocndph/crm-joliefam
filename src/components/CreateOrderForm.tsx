@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Minus, Plus, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +45,8 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+  const [includeVAT, setIncludeVAT] = useState(false);
+  const [vatRate, setVatRate] = useState(8);
   const [notes, setNotes] = useState("");
   const [loadingData, setLoadingData] = useState(true);
   const { toast } = useToast();
@@ -132,8 +135,14 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
     setOrderItems(items => items.filter(item => item.product.id !== productId));
   };
 
-  const calculateTotal = () => {
+  const calculateSubtotal = () => {
     return orderItems.reduce((sum, item) => sum + item.total, 0);
+  };
+
+  const calculateTotal = () => {
+    const subtotal = calculateSubtotal();
+    const vatAmount = includeVAT ? (subtotal * vatRate) / 100 : 0;
+    return subtotal + vatAmount;
   };
 
   const generateOrderNumber = () => {
@@ -324,9 +333,45 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
               </TableBody>
             </Table>
             
+            {/* VAT Settings */}
+            <div className="space-y-4 pt-4 border-t">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="includeVAT" 
+                  checked={includeVAT} 
+                  onCheckedChange={(checked) => setIncludeVAT(checked === true)}
+                />
+                <Label htmlFor="includeVAT">Bao gồm VAT</Label>
+              </div>
+              
+              {includeVAT && (
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="vatRate">Thuế VAT (%):</Label>
+                  <Input
+                    id="vatRate"
+                    type="number"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value))}
+                    className="w-20"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Total */}
             <div className="flex justify-end mt-4 pt-4 border-t">
-              <div className="text-right">
+              <div className="text-right space-y-1">
+                <div className="text-sm text-muted-foreground">
+                  Tổng chưa VAT: {calculateSubtotal().toLocaleString()} ₫
+                </div>
+                {includeVAT && (
+                  <div className="text-sm text-muted-foreground">
+                    VAT ({vatRate}%): {(calculateSubtotal() * vatRate / 100).toLocaleString()} ₫
+                  </div>
+                )}
                 <div className="text-lg font-semibold">
                   Tổng cộng: {calculateTotal().toLocaleString()} ₫
                 </div>
