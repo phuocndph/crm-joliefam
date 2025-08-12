@@ -6,17 +6,21 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
 
   useEffect(() => {
     const channel = supabase
-      .channel('orders-realtime')
+      .channel('orders-and-payments-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
         console.log('📦 Orders real-time update received:', payload.eventType, payload.new);
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_payments' }, (payload) => {
+        console.log('💰 Order payments real-time update received:', payload.eventType, payload.new);
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+      })
       .subscribe((status) => {
-        console.log('📦 Orders real-time subscription status:', status);
+        console.log('📦 Orders and payments real-time subscription status:', status);
       });
 
     return () => {
-      console.log('📦 Cleaning up orders real-time subscription');
+      console.log('📦 Cleaning up orders and payments real-time subscription');
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
@@ -40,12 +44,19 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
       
       const { data, error } = await query;
       
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching orders:', error);
+        throw error;
+      }
+      
+      console.log(`📊 Fetched ${data?.length || 0} orders with payments data`);
       
       // Calculate total_paid for each order
       const ordersWithPayments = data.map(order => {
         const total_paid = order.order_payments?.reduce((sum: number, payment: any) => 
           sum + (payment.payment_amount || 0), 0) || 0;
+        
+        console.log(`💰 Order ${order.order_number}: ${order.order_payments?.length || 0} payments, total: ${total_paid}`);
         
         return {
           ...order,
@@ -55,8 +66,8 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
       
       return ordersWithPayments;
     },
-    staleTime: 5 * 60 * 1000, // 5 phút
-    gcTime: 10 * 60 * 1000, // 10 phút
+    staleTime: 30 * 1000, // 30 seconds for fresher data
+    gcTime: 2 * 60 * 1000, // 2 minutes
   });
 };
 

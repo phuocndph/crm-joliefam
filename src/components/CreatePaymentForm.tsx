@@ -116,14 +116,20 @@ export function CreatePaymentForm({
         tenant_id: 'default',
       };
 
+      console.log('💰 Creating payment:', paymentData);
       const { error } = await supabase
         .from("order_payments")
         .insert(paymentData);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error inserting payment:', error);
+        throw error;
+      }
+
+      console.log('✅ Payment inserted successfully');
 
       // Also create a transaction record
-      await supabase.from('transactions').insert({
+      const transactionData = {
         amount: data.paymentAmount,
         type: 'income',
         category: 'order_payment',
@@ -135,7 +141,17 @@ export function CreatePaymentForm({
         total_installments: 1,
         remaining_amount: remainingAmount - data.paymentAmount,
         tenant_id: 'default',
-      });
+      };
+
+      console.log('📊 Creating transaction:', transactionData);
+      const { error: transactionError } = await supabase.from('transactions').insert(transactionData);
+
+      if (transactionError) {
+        console.error('❌ Error inserting transaction:', transactionError);
+        throw transactionError;
+      }
+
+      console.log('✅ Transaction inserted successfully');
 
       // Calculate new payment status
       const newTotalPaid = totalPaid + data.paymentAmount;
@@ -143,14 +159,25 @@ export function CreatePaymentForm({
                               newTotalPaid > 0 ? 'partial' : 'pending';
 
       // Update order payment status
-      await supabase
+      const orderUpdateData = {
+        payment_status: newPaymentStatus,
+        payment_date: newPaymentStatus === 'paid' ? data.paymentDate.toISOString() : null
+      };
+
+      console.log('📦 Updating order:', orderId, orderUpdateData);
+      const { error: updateError } = await supabase
         .from('orders')
-        .update({
-          payment_status: newPaymentStatus,
-          payment_date: newPaymentStatus === 'paid' ? data.paymentDate.toISOString() : null
-        })
+        .update(orderUpdateData)
         .eq('id', orderId);
 
+      if (updateError) {
+        console.error('❌ Error updating order:', updateError);
+        throw updateError;
+      }
+
+      console.log('✅ Order updated successfully');
+
+      console.log('✅ Payment creation completed successfully');
       toast({
         title: "Thành công",
         description: "Đã thêm thanh toán thành công",
@@ -159,9 +186,9 @@ export function CreatePaymentForm({
       onSubmit();
       onClose();
     } catch (error: any) {
-      console.error("Error creating payment:", error);
+      console.error("❌ Error creating payment:", error);
       toast({
-        title: "Lỗi",
+        title: "Lỗi", 
         description: error.message || "Không thể tạo thanh toán",
         variant: "destructive",
       });
