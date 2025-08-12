@@ -36,7 +36,8 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
         .select(`
           *,
           customers:customer_id (name, email, phone, company, customer_code),
-          assignees:assignee_id (name)
+          assignees:assignee_id (name),
+          quotes:quote_id (quote_data)
         `)
         .order('created_at', { ascending: false });
       
@@ -74,8 +75,25 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
       // Calculate total_paid for each order
       const ordersWithPayments = ordersData?.map(order => {
         const orderPayments = paymentsData.filter(payment => payment.order_id === order.id);
-        const total_paid = orderPayments.reduce((sum: number, payment: any) => 
+        let total_paid = orderPayments.reduce((sum: number, payment: any) => 
           sum + (payment.payment_amount || 0), 0);
+        
+        // If no order payments but has quote data with payment1, use that
+        if (total_paid === 0 && order.quotes && order.quotes.quote_data) {
+          try {
+            const quoteDataStr = typeof order.quotes.quote_data === 'string' 
+              ? order.quotes.quote_data 
+              : JSON.stringify(order.quotes.quote_data);
+            const quoteData = JSON.parse(quoteDataStr);
+            const payment1 = quoteData.payment1 || 0;
+            if (payment1 > 0) {
+              total_paid = payment1;
+              console.log(`💰 Order ${order.order_number}: Using quote payment ${payment1} (no order payments found)`);
+            }
+          } catch (error) {
+            console.error('Error parsing quote_data:', error);
+          }
+        }
         
         console.log(`💰 Order ${order.order_number}: ${orderPayments.length} payments, total: ${total_paid}`);
         

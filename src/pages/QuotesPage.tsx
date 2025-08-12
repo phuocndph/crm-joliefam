@@ -289,7 +289,7 @@ export default function QuotesPage() {
 
       // Create order from approved quote
       const orderNumber = `ORD-${Date.now()}`;
-      const { error: orderError } = await supabase
+      const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
           order_number: orderNumber,
@@ -302,9 +302,61 @@ export default function QuotesPage() {
           notes: `Được tạo từ báo giá ${quote.quote_number}`,
           tenant_id: 'default',
           quote_id: quote.id, // Link directly to quote
-        });
+        })
+        .select('id')
+        .single();
 
       if (orderError) throw orderError;
+
+      // Transfer payment information from quote to order if exists
+      const quoteData = quote.quote_data ? JSON.parse(quote.quote_data) : {};
+      const payment1 = quoteData.payment1 || 0;
+      
+      if (payment1 > 0) {
+        // Create payment record
+        const { error: paymentError } = await supabase
+          .from('order_payments')
+          .insert({
+            order_id: orderData.id,
+            payment_amount: payment1,
+            payment_date: new Date().toISOString().split('T')[0],
+            payment_type: 'deposit',
+            payment_method: 'cash',
+            notes: `Cọc từ báo giá ${quote.quote_number} - tự động tạo`
+          });
+        
+        if (paymentError) {
+          console.error('Error creating payment record:', paymentError);
+        } else {
+          // Create corresponding transaction record
+          const { error: transactionError } = await supabase
+            .from('transactions')
+            .insert({
+              amount: payment1,
+              date: new Date().toISOString(),
+              type: 'income',
+              description: `Cọc đơn hàng ${orderNumber}`,
+              category: 'order_payment',
+              payment_type: 'deposit',
+              order_id: orderData.id,
+              manager_id: managerIdToUse,
+              tenant_id: 'default'
+            });
+
+          if (transactionError) {
+            console.error('Error creating transaction record:', transactionError);
+          } else {
+            // Update order payment status
+            await supabase
+              .from('orders')
+              .update({
+                payment_status: payment1 >= quote.total_amount ? 'paid' : 'partial',
+                payment_date: payment1 >= quote.total_amount ? new Date().toISOString().split('T')[0] : null
+              })
+              .eq('id', orderData.id);
+          }
+        }
+      }
 
       await loadQuotes();
       
