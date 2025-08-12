@@ -82,15 +82,15 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   console.log('QuotePreviewDialog - quote:', quote);
   console.log('QuotePreviewDialog - quoteData:', quoteData);
   
-  // Calculate totals based on items
-  const subtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
+  // Calculate totals based on items - this should be the raw subtotal
+  const rawSubtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
   
-  // Auto-detect VAT: check if there's a difference between subtotal and total_amount
-  // indicating VAT has been included
-  const quoteTotalAmount = quote.total_amount || subtotal;
-  const hasVAT = quoteTotalAmount > subtotal;
-  const includeVAT = quoteData.includeVAT || hasVAT;
+  // Get saved quote data
+  const includeVAT = quoteData.includeVAT || false;
   const vatRate = quoteData.vatRate || 8;
+  
+  // Subtotal is always the pre-VAT amount (TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT)
+  const subtotal = rawSubtotal;
   
   // Calculate VAT amount based on whether VAT is included
   let vatAmount = 0;
