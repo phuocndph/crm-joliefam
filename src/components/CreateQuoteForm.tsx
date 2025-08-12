@@ -400,6 +400,27 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
     );
   };
 
+  // Function to update price
+  const updatePrice = (productId: string, price: number) => {
+    setSelectedProducts(prev =>
+      prev.map(item =>
+        item.id === productId
+          ? { ...item, price, total: item.quantity * price }
+          : item
+      )
+    );
+  };
+
+  // Function to recalculate all totals to fix any inconsistencies
+  const recalculateAllTotals = () => {
+    setSelectedProducts(prev =>
+      prev.map(item => ({
+        ...item,
+        total: item.quantity * item.price
+      }))
+    );
+  };
+
   const removeProduct = (productId: string) => {
     setSelectedProducts(prev => prev.filter(item => item.id !== productId));
   };
@@ -668,13 +689,32 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
   };
 
   const watchedValues = form.watch();
-  const rawSubtotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
+  
+  // Ensure all totals are correctly calculated
+  const correctedProducts = selectedProducts.map(item => ({
+    ...item,
+    total: item.quantity * item.price // Always recalculate to ensure accuracy
+  }));
+  
+  const rawSubtotal = correctedProducts.reduce((sum, item) => sum + item.total, 0);
   
   // Calculate VAT according to user requirements
   const subtotal = rawSubtotal; // This is "TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT"
   const vatAmount = watchedValues.includeVAT ? (subtotal * watchedValues.vatRate) / 100 : 0;
   const total = subtotal + vatAmount; // This is "TỔNG TIỀN ĐÃ BAO GỒM GTGT"
   const remaining = total - (watchedValues.payment1 + watchedValues.payment2);
+
+  // Add debugging info
+  console.log('CreateQuoteForm calculation debug:', {
+    selectedProducts: selectedProducts.length,
+    correctedProducts: correctedProducts.map(p => ({ name: p.name, quantity: p.quantity, price: p.price, total: p.total })),
+    rawSubtotal,
+    subtotal,
+    vatAmount,
+    total,
+    includeVAT: watchedValues.includeVAT,
+    vatRate: watchedValues.vatRate
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -1295,16 +1335,10 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                             <Input
                               type="number"
                               value={item.price}
-                              onChange={(e) => {
-                                const price = parseFloat(e.target.value) || 0;
-                                const newProducts = [...selectedProducts];
-                                newProducts[index] = { 
-                                  ...item, 
-                                  price, 
-                                  total: price * item.quantity 
-                                };
-                                setSelectedProducts(newProducts);
-                              }}
+                               onChange={(e) => {
+                                 const price = parseFloat(e.target.value) || 0;
+                                 updatePrice(item.id, price);
+                               }}
                                className="w-24 text-right font-mono text-blue-600 font-semibold border-gray-200 focus:border-blue-500"
                                min="0"
                               step="1000"
@@ -1315,16 +1349,10 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                              <Input
                               type="number"
                               value={item.quantity}
-                              onChange={(e) => {
-                                const quantity = parseInt(e.target.value) || 1;
-                                const newProducts = [...selectedProducts];
-                                newProducts[index] = { 
-                                  ...item, 
-                                  quantity, 
-                                  total: item.price * quantity 
-                                };
-                                setSelectedProducts(newProducts);
-                              }}
+                               onChange={(e) => {
+                                 const quantity = parseInt(e.target.value) || 1;
+                                 updateQuantity(item.id, quantity);
+                               }}
                                className="w-20 h-10 text-center border-2 focus:border-blue-500 text-sm font-semibold"
                                min="1"
                             />
@@ -1443,31 +1471,44 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                   />
                 </div>
 
-                {/* Calculation Summary */}
+                 {/* Calculation Summary */}
                 <div className="border-t pt-4 space-y-2">
                   <div className="flex justify-between text-sm font-medium">
                     <span>TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
-                    <span>{subtotal.toLocaleString()}</span>
+                    <span className="text-blue-600 font-bold">{subtotal.toLocaleString()}đ</span>
                   </div>
                   {watchedValues.includeVAT && (
                     <>
                       <div className="flex justify-between text-sm font-medium">
                         <span>GTGT ({watchedValues.vatRate}%):</span>
-                        <span>{vatAmount.toLocaleString()}</span>
+                        <span className="text-orange-600">{vatAmount.toLocaleString()}đ</span>
                       </div>
                       <div className="flex justify-between text-sm font-medium">
                         <span>TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
-                        <span>{total.toLocaleString()}</span>
+                        <span className="text-green-600 font-bold">{total.toLocaleString()}đ</span>
                       </div>
                     </>
                   )}
                   <div className="flex justify-between text-sm font-medium">
                     <span>THANH TOÁN LẦN 1:</span>
-                    <span>{(watchedValues.payment1 || 0).toLocaleString()}</span>
+                    <span className="text-purple-600">{(watchedValues.payment1 || 0).toLocaleString()}đ</span>
                   </div>
-                  <div className="flex justify-between text-sm font-medium text-blue-600">
+                  <div className="flex justify-between text-sm font-medium text-red-600">
                     <span>CÒN LẠI:</span>
-                    <span>{remaining.toLocaleString()}</span>
+                    <span className="font-bold">{remaining.toLocaleString()}đ</span>
+                  </div>
+                  
+                  {/* Debug button */}
+                  <div className="pt-2 border-t">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={recalculateAllTotals}
+                      className="w-full text-xs"
+                    >
+                      🔄 Tính lại tổng tiền
+                    </Button>
                   </div>
                 </div>
               </CardContent>

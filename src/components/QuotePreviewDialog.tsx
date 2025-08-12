@@ -82,8 +82,14 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   console.log('QuotePreviewDialog - quote:', quote);
   console.log('QuotePreviewDialog - quoteData:', quoteData);
   
-  // Calculate totals based on items - this should be the raw subtotal
-  const rawSubtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
+  // Ensure all item totals are correctly calculated
+  const correctedItems = items.map((item: any) => ({
+    ...item,
+    total: (item.quantity || 1) * (item.price || 0) // Recalculate to ensure accuracy
+  }));
+  
+  // Calculate totals based on corrected items
+  const rawSubtotal = correctedItems.reduce((sum: number, item: any) => sum + item.total, 0);
   
   // Get saved quote data
   const includeVAT = quoteData.includeVAT || false;
@@ -98,6 +104,17 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     // Calculate VAT from subtotal (subtotal is "TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT")
     vatAmount = Math.round(subtotal * vatRate / 100);
   }
+
+  // Add debugging info
+  console.log('QuotePreviewDialog calculation debug:', {
+    originalItems: items.map((item: any) => ({ name: item.name, quantity: item.quantity, price: item.price, total: item.total })),
+    correctedItems: correctedItems.map((item: any) => ({ name: item.name, quantity: item.quantity, price: item.price, total: item.total })),
+    rawSubtotal,
+    subtotal,
+    vatAmount,
+    includeVAT,
+    vatRate
+  });
   
   const payment1 = quoteData.payment1 || 0;
   const payment2 = quoteData.payment2 || 0;
@@ -294,9 +311,9 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       currentRow++;
 
-      // Quote items with Times New Roman font and images
-      for (let index = 0; index < items.length; index++) {
-        const item = items[index];
+      // Quote items with Times New Roman font and images - use corrected items
+      for (let index = 0; index < correctedItems.length; index++) {
+        const item = correctedItems[index];
         const rowData = [
           index + 1,
           item.name || item.sku || '', // Sử dụng tên sản phẩm thay vì SKU
@@ -304,7 +321,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           item.description || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu',
           item.quantity || 144,
           item.price || 140000,
-          item.total || 20160000,
+          item.total, // Use corrected total
           '', // Placeholder cho hình ảnh
           ''
         ];
@@ -853,7 +870,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                 </tr>
               </thead>
               <tbody>
-                ${items.map((item, index) => `
+                 ${correctedItems.map((item, index) => `
                   <tr>
                     <td class="text-center">${index + 1}</td>
                     <td>${item.name || item.sku || ''}</td>
@@ -864,7 +881,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                     <td>${item.category || item.description || ''}</td>
                     <td class="text-center">${item.quantity}</td>
                     <td class="text-right">${parseFloat(item.price).toLocaleString('vi-VN')}</td>
-                    <td class="text-right font-medium">${(parseFloat(item.price) * parseFloat(item.quantity)).toLocaleString('vi-VN')}</td>
+                    <td class="text-right font-medium">${item.total.toLocaleString('vi-VN')}</td>
                     <td>${item.notes || ''}</td>
                   </tr>
                 `).join('')}
@@ -1095,7 +1112,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                   </TableRow>
                 </TableHeader>
                  <TableBody>
-                   {items.map((item: any, index: number) => (
+                   {correctedItems.map((item: any, index: number) => (
                      <TableRow key={index} className="bg-white">
                        <TableCell className="border border-gray-400 text-center">{index + 1}</TableCell>
                        <TableCell className="border border-gray-400">{item.name || item.sku}</TableCell>
