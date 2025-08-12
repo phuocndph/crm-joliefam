@@ -206,9 +206,13 @@ export default function QuotesPage() {
   const handleEditQuote = async () => {
     setEditingQuote(null);
     await loadQuotes();
+    
+    // Invalidate orders cache to refresh orders page if needed
+    queryClient.invalidateQueries({ queryKey: ['orders'] });
+    
     toast({
-      title: "Thành công",
-      description: "Báo giá đã được cập nhật thành công",
+      title: "Thành công", 
+      description: "Báo giá đã được cập nhật và tự động đẩy sang đơn hàng",
     });
   };
 
