@@ -683,41 +683,74 @@ export default function OrderManagement() {
                   </table>
                 </div>
                 
-                {/* Total Summary */}
-                <div className="border-t bg-gray-50">
-                  <div className="p-4 space-y-3">
-                    <div className="flex justify-between text-sm font-bold">
-                      <span className="text-red-600">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT</span>
-                      <span className="text-red-600">
-                        {Math.round((selectedOrder?.total_amount || 0) / 1.08).toLocaleString()}đ
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm font-bold">
-                      <span className="text-red-600">GTGT (8%)</span>
-                      <span className="text-red-600">
-                        {Math.round((selectedOrder?.total_amount || 0) - (selectedOrder?.total_amount || 0) / 1.08).toLocaleString()}đ
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm font-bold">
-                      <span className="text-red-600">TỔNG TIỀN ĐÃ BAO GỒM GTGT</span>
-                      <span className="text-red-600">{(selectedOrder?.total_amount || 0).toLocaleString()}đ</span>
-                    </div>
-                     <div className="flex justify-between text-sm font-bold">
-                       <span className="text-red-600">THANH TOÁN ĐÃ NHẬN</span>
-                       <span className="text-red-600">
-                         {calculateTotalPaid(selectedOrder).toLocaleString()}đ
-                       </span>
-                     </div>
-                    <div className="bg-yellow-100 p-3 rounded">
-                      <div className="flex justify-between text-sm font-bold">
-                        <span className="text-red-600">CÒN LẠI</span>
-                        <span className="text-red-600">
-                          {calculateRemainingAmount(selectedOrder).toLocaleString()}đ
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                 {/* Total Summary */}
+                 <div className="border-t bg-gray-50">
+                   <div className="p-4 space-y-3">
+                     {(() => {
+                       // Calculate correct totals from items
+                       let itemsToCalculate = selectedOrder?.items;
+                       if (typeof selectedOrder?.items === 'string') {
+                         try {
+                           itemsToCalculate = JSON.parse(selectedOrder.items);
+                         } catch (error) {
+                           itemsToCalculate = [];
+                         }
+                       }
+                       
+                       // Calculate actual subtotal from items
+                       const actualSubtotal = Array.isArray(itemsToCalculate) 
+                         ? itemsToCalculate.reduce((sum: number, item: any) => sum + ((item.quantity || 1) * (item.price || 0)), 0)
+                         : (selectedOrder?.total_amount || 0);
+                       
+                       // For now, assume VAT is included in order total if it differs significantly from item subtotal
+                       const orderTotal = selectedOrder?.total_amount || 0;
+                       const hasVAT = Math.abs(orderTotal - actualSubtotal) > actualSubtotal * 0.05; // 5% threshold
+                       
+                       const subtotal = hasVAT ? Math.round(orderTotal / 1.08) : actualSubtotal;
+                       const vatAmount = hasVAT ? Math.round(orderTotal - subtotal) : 0;
+                       const totalWithVAT = subtotal + vatAmount;
+                       
+                       return (
+                         <>
+                           <div className="flex justify-between text-sm font-bold">
+                             <span className="text-blue-600">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT</span>
+                             <span className="text-blue-600">
+                               {subtotal.toLocaleString()}đ
+                             </span>
+                           </div>
+                           {hasVAT && (
+                             <>
+                               <div className="flex justify-between text-sm font-bold">
+                                 <span className="text-orange-600">GTGT (8%)</span>
+                                 <span className="text-orange-600">
+                                   {vatAmount.toLocaleString()}đ
+                                 </span>
+                               </div>
+                               <div className="flex justify-between text-sm font-bold">
+                                 <span className="text-green-600">TỔNG TIỀN ĐÃ BAO GỒM GTGT</span>
+                                 <span className="text-green-600">{totalWithVAT.toLocaleString()}đ</span>
+                               </div>
+                             </>
+                           )}
+                           <div className="flex justify-between text-sm font-bold">
+                             <span className="text-purple-600">THANH TOÁN ĐÃ NHẬN</span>
+                             <span className="text-purple-600">
+                               {calculateTotalPaid(selectedOrder).toLocaleString()}đ
+                             </span>
+                           </div>
+                           <div className="bg-yellow-100 p-3 rounded">
+                             <div className="flex justify-between text-sm font-bold">
+                               <span className="text-red-600">CÒN LẠI</span>
+                               <span className="text-red-600">
+                                 {calculateRemainingAmount(selectedOrder).toLocaleString()}đ
+                               </span>
+                             </div>
+                           </div>
+                         </>
+                       );
+                     })()}
+                   </div>
+                 </div>
                 
                 {/* Terms and Conditions */}
                 <div className="bg-white p-4 border-t text-sm">
