@@ -882,6 +882,7 @@ export type Database = {
           payment_status: string | null
           profit_after: number | null
           profit_before: number | null
+          quote_id: string | null
           status: string
           tenant_id: string
           total_amount: number | null
@@ -904,6 +905,7 @@ export type Database = {
           payment_status?: string | null
           profit_after?: number | null
           profit_before?: number | null
+          quote_id?: string | null
           status?: string
           tenant_id?: string
           total_amount?: number | null
@@ -926,6 +928,7 @@ export type Database = {
           payment_status?: string | null
           profit_after?: number | null
           profit_before?: number | null
+          quote_id?: string | null
           status?: string
           tenant_id?: string
           total_amount?: number | null
@@ -944,6 +947,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
             referencedColumns: ["id"]
           },
         ]

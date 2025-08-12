@@ -190,40 +190,49 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
     setIsUpdatingOrder(true);
     
     try {
-      console.log('Tìm kiếm đơn hàng cho báo giá:', quote.quote_number);
+      console.log('🔍 Tìm kiếm đơn hàng cho báo giá:', quote.quote_number, 'với ID:', quote.id);
       
-      // Find the order created from this quote - use multiple search methods
-      let orders = [];
-      
-      // Method 1: Search by quote number in notes
-      const { data: ordersByNotes, error: notesError } = await supabase
+      // Method 1: Find order by quote_id (direct link - most reliable)
+      const { data: ordersByQuoteId, error: quoteIdError } = await supabase
         .from('orders')
         .select('*')
-        .ilike('notes', `%${quote.quote_number}%`);
+        .eq('quote_id', quote.id);
       
-      if (!notesError && ordersByNotes && ordersByNotes.length > 0) {
-        orders = ordersByNotes;
-        console.log('Tìm thấy đơn hàng qua notes:', orders);
+      if (quoteIdError) {
+        console.error('Lỗi tìm kiếm bằng quote_id:', quoteIdError);
       }
       
-      // Method 2: If not found, search by customer_id and similar total_amount
-      if (orders.length === 0 && quote.customer_id) {
-        const { data: ordersByCustomer, error: customerError } = await supabase
+      let orders = [];
+      
+      if (ordersByQuoteId && ordersByQuoteId.length > 0) {
+        orders = ordersByQuoteId;
+        console.log('✅ Tìm thấy đơn hàng qua quote_id:', orders);
+      } else {
+        console.log('⚠️ Không tìm thấy đơn hàng qua quote_id, thử phương pháp khác...');
+        
+        // Method 2: Search by quote number in notes (fallback)
+        const { data: ordersByNotes, error: notesError } = await supabase
           .from('orders')
           .select('*')
-          .eq('customer_id', quote.customer_id)
-          .eq('total_amount', quote.total_amount)
-          .order('created_at', { ascending: false })
-          .limit(1);
+          .ilike('notes', `%${quote.quote_number}%`);
+        
+        if (!notesError && ordersByNotes && ordersByNotes.length > 0) {
+          orders = ordersByNotes;
+          console.log('✅ Tìm thấy đơn hàng qua notes:', orders);
           
-        if (!customerError && ordersByCustomer && ordersByCustomer.length > 0) {
-          orders = ordersByCustomer;
-          console.log('Tìm thấy đơn hàng qua customer_id và total_amount:', orders);
+          // Update these orders to have the quote_id for future reference
+          for (const order of orders) {
+            await supabase
+              .from('orders')
+              .update({ quote_id: quote.id })
+              .eq('id', order.id);
+          }
+          console.log('🔗 Đã cập nhật quote_id cho đơn hàng');
         }
       }
 
       if (orders.length === 0) {
-        console.log('Không tìm thấy đơn hàng nào');
+        console.log('❌ Không tìm thấy đơn hàng nào');
         toast({
           title: "Lỗi",
           description: "Không tìm thấy đơn hàng tương ứng với báo giá này",
@@ -233,17 +242,18 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
       }
 
       const order = orders[0];
-      console.log('Cập nhật đơn hàng:', order.order_number, 'với dữ liệu mới từ báo giá');
+      console.log('🔄 Cập nhật đơn hàng:', order.order_number, 'với dữ liệu mới từ báo giá');
       
       // Update the order with the new quote data - this will trigger real-time updates
       const updateData = {
         total_amount: quote.total_amount,
         items: quote.items,
-        notes: `Được tạo từ báo giá ${quote.quote_number} (đã cập nhật lúc ${new Date().toLocaleString('vi-VN')})`,
+        notes: `Được tạo từ báo giá ${quote.quote_number} (cập nhật tự động lúc ${new Date().toLocaleString('vi-VN')})`,
         updated_at: new Date().toISOString(),
+        quote_id: quote.id, // Ensure quote_id is set
       };
       
-      console.log('Dữ liệu cập nhật:', updateData);
+      console.log('📝 Dữ liệu cập nhật:', updateData);
       
       const { error: updateError } = await supabase
         .from('orders')
@@ -251,11 +261,11 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
         .eq('id', order.id);
 
       if (updateError) {
-        console.error('Lỗi cập nhật đơn hàng:', updateError);
+        console.error('❌ Lỗi cập nhật đơn hàng:', updateError);
         throw updateError;
       }
 
-      console.log('Đã cập nhật đơn hàng thành công, real-time sẽ tự động refresh UI');
+      console.log('✅ Đã cập nhật đơn hàng thành công, real-time sẽ tự động refresh UI');
 
       // No need to manually invalidate queries - real-time updates will handle this
       toast({

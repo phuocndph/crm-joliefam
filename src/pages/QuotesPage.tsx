@@ -297,6 +297,7 @@ export default function QuotesPage() {
           items: typeof quote.items === 'string' ? JSON.parse(quote.items) : quote.items,
           notes: `Được tạo từ báo giá ${quote.quote_number}`,
           tenant_id: 'default',
+          quote_id: quote.id, // Link directly to quote
         });
 
       if (orderError) throw orderError;
