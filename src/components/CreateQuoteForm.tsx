@@ -540,61 +540,99 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
 
         if (error) throw error;
 
-        // Sync with related orders if quote is approved and an order exists
+        // Automatically push to orders if quote is approved
         if (initialData.status === 'approved') {
-          // Try multiple ways to find the related order
+          console.log('🚀 Tự động đẩy báo giá đã duyệt sang đơn hàng...');
+          
+          // Find existing order by quote_id first
           let relatedOrders = null;
-          
-          // First try to find by quote number in notes
-          const { data: ordersByNotes, error: notesError } = await supabase
+          const { data: ordersByQuoteId, error: quoteIdError } = await supabase
             .from("orders")
-            .select("id")
-            .ilike("notes", `%${data.quoteNumber}%`);
+            .select("*")
+            .eq("quote_id", initialData.id);
           
-          if (!notesError && ordersByNotes && ordersByNotes.length > 0) {
-            relatedOrders = ordersByNotes;
+          if (!quoteIdError && ordersByQuoteId && ordersByQuoteId.length > 0) {
+            relatedOrders = ordersByQuoteId;
+            console.log('✅ Tìm thấy đơn hàng qua quote_id:', relatedOrders);
           } else {
-            // If not found by notes, try to find by customer and similar total amount  
-            const { data: ordersByCustomer, error: customerError } = await supabase
-              .from("orders")
-              .select("id, total_amount")
-              .eq("customer_id", initialData.customer_id)
-              .gte("total_amount", calculatedTotal - 1000)
-              .lte("total_amount", calculatedTotal + 1000);
+            console.log('⚠️ Không tìm thấy đơn hàng qua quote_id, tìm qua notes...');
             
-            if (!customerError && ordersByCustomer && ordersByCustomer.length > 0) {
-              relatedOrders = ordersByCustomer;
+            // Fallback: Find by quote number in notes
+            const { data: ordersByNotes, error: notesError } = await supabase
+              .from("orders")
+              .select("*")
+              .ilike("notes", `%${data.quoteNumber}%`);
+            
+            if (!notesError && ordersByNotes && ordersByNotes.length > 0) {
+              relatedOrders = ordersByNotes;
+              console.log('✅ Tìm thấy đơn hàng qua notes:', relatedOrders);
+              
+              // Update these orders to have quote_id for future reference
+              for (const order of relatedOrders) {
+                await supabase
+                  .from("orders")
+                  .update({ quote_id: initialData.id })
+                  .eq("id", order.id);
+              }
             }
           }
 
           if (relatedOrders && relatedOrders.length > 0) {
-            // Update the related order with the same data
+            // Update existing order
+            const order = relatedOrders[0];
+            console.log('📝 Cập nhật đơn hàng hiện có:', order.order_number);
+            
             const orderUpdateData = {
               items: JSON.stringify(selectedProducts),
               total_amount: calculatedTotal,
-              cost_price: 0,
-              notes: `Cập nhật từ báo giá: ${data.quoteNumber}\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
+              notes: `Được cập nhật từ báo giá ${data.quoteNumber} (${new Date().toLocaleString('vi-VN')})\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
+              updated_at: new Date().toISOString(),
+              quote_id: initialData.id, // Ensure quote_id is set
             };
 
             const { error: updateError } = await supabase
               .from("orders")
               .update(orderUpdateData)
-              .eq('id', relatedOrders[0].id);
+              .eq('id', order.id);
               
             if (updateError) {
-              console.error("Error updating related order:", updateError);
+              console.error("❌ Lỗi cập nhật đơn hàng:", updateError);
             } else {
-              toast({
-                title: "Thành công", 
-                description: "Đã cập nhật cả báo giá và đơn hàng liên quan",
+              console.log('✅ Đã cập nhật đơn hàng thành công');
+            }
+          } else {
+            // Create new order if none exists
+            console.log('➕ Tạo đơn hàng mới từ báo giá cập nhật');
+            
+            const orderNumber = `ORD-${Date.now()}`;
+            const { error: createError } = await supabase
+              .from("orders")
+              .insert({
+                order_number: orderNumber,
+                customer_id: initialData.customer_id,
+                manager_id: user?.id ? user.id.toString() : null,
+                assignee_id: data.responsible || null,
+                total_amount: calculatedTotal,
+                status: 'pending',
+                items: JSON.stringify(selectedProducts),
+                notes: `Được tạo từ báo giá ${data.quoteNumber} (${new Date().toLocaleString('vi-VN')})\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
+                tenant_id: 'default',
+                quote_id: initialData.id,
               });
+
+            if (createError) {
+              console.error("❌ Lỗi tạo đơn hàng mới:", createError);
+            } else {
+              console.log('✅ Đã tạo đơn hàng mới:', orderNumber);
             }
           }
         }
 
         toast({
           title: "Thành công",
-          description: "Báo giá đã được cập nhật thành công",
+          description: initialData.status === 'approved' ? 
+            "Đã cập nhật báo giá và đẩy sang đơn hàng tự động" : 
+            "Báo giá đã được cập nhật thành công",
         });
       } else {
         // Create new quote
