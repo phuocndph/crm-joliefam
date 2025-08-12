@@ -208,10 +208,13 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
         const order = existingOrders[0];
         console.log('📝 Cập nhật đơn hàng hiện có:', order.order_number);
         
+        // Use subtotal if quote doesn't include VAT, otherwise use total with VAT
+        const orderTotal = quote.include_vat ? quote.total_amount : quote.subtotal;
+        
         const { error: updateError } = await supabase
           .from('orders')
           .update({
-            total_amount: quote.total_amount,
+            total_amount: orderTotal,
             items: quote.items,
             notes: `Được cập nhật từ báo giá ${quote.quote_number} (${new Date().toLocaleString('vi-VN')})`,
             updated_at: new Date().toISOString(),
@@ -228,6 +231,9 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
         // Create new order if none exists
         console.log('➕ Tạo đơn hàng mới từ báo giá');
         
+        // Use subtotal if quote doesn't include VAT, otherwise use total with VAT
+        const orderTotal = quote.include_vat ? quote.total_amount : quote.subtotal;
+        
         const orderNumber = `ORD-${Date.now()}`;
         const { error: createError } = await supabase
           .from('orders')
@@ -236,7 +242,7 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
             customer_id: quote.customer_id,
             manager_id: quote.manager_id,
             assignee_id: quote.assignee_id,
-            total_amount: quote.total_amount,
+            total_amount: orderTotal,
             status: 'pending',
             items: quote.items,
             notes: `Được tạo từ báo giá ${quote.quote_number} (${new Date().toLocaleString('vi-VN')})`,
