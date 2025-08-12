@@ -582,9 +582,12 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
             const order = relatedOrders[0];
             console.log('📝 Cập nhật đơn hàng hiện có:', order.order_number);
             
+            // Use subtotal if quote doesn't include VAT, otherwise use total with VAT
+            const orderTotal = data.includeVAT ? calculatedTotal : subtotal;
+            
             const orderUpdateData = {
               items: JSON.stringify(selectedProducts),
-              total_amount: calculatedTotal,
+              total_amount: orderTotal,
               notes: `Được cập nhật từ báo giá ${data.quoteNumber} (${new Date().toLocaleString('vi-VN')})\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
               updated_at: new Date().toISOString(),
               quote_id: initialData.id, // Ensure quote_id is set
@@ -604,6 +607,9 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
             // Create new order if none exists
             console.log('➕ Tạo đơn hàng mới từ báo giá cập nhật');
             
+            // Use subtotal if quote doesn't include VAT, otherwise use total with VAT
+            const orderTotal = data.includeVAT ? calculatedTotal : subtotal;
+            
             const orderNumber = `ORD-${Date.now()}`;
             const { error: createError } = await supabase
               .from("orders")
@@ -612,7 +618,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                 customer_id: initialData.customer_id,
                 manager_id: user?.id ? user.id.toString() : null,
                 assignee_id: data.responsible || null,
-                total_amount: calculatedTotal,
+                total_amount: orderTotal,
                 status: 'pending',
                 items: JSON.stringify(selectedProducts),
                 notes: `Được tạo từ báo giá ${data.quoteNumber} (${new Date().toLocaleString('vi-VN')})\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
