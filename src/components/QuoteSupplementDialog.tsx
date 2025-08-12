@@ -177,11 +177,11 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
     }).format(amount);
   };
 
-  const updateCorrespondingOrder = async () => {
+  const pushToOrdersFlow = async () => {
     if (!quote || quote.status !== 'approved') {
       toast({
         title: "Lỗi",
-        description: "Chỉ có thể cập nhật đơn hàng cho báo giá đã được duyệt",
+        description: "Chỉ có thể đẩy sang đơn hàng cho báo giá đã được duyệt",
         variant: "destructive",
       });
       return;
@@ -190,96 +190,77 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
     setIsUpdatingOrder(true);
     
     try {
-      console.log('🔍 Tìm kiếm đơn hàng cho báo giá:', quote.quote_number, 'với ID:', quote.id);
+      console.log('🚀 Bắt đầu đẩy báo giá sang đơn hàng:', quote.quote_number);
       
-      // Method 1: Find order by quote_id (direct link - most reliable)
-      const { data: ordersByQuoteId, error: quoteIdError } = await supabase
+      // Find existing order by quote_id
+      const { data: existingOrders, error: findError } = await supabase
         .from('orders')
         .select('*')
         .eq('quote_id', quote.id);
       
-      if (quoteIdError) {
-        console.error('Lỗi tìm kiếm bằng quote_id:', quoteIdError);
+      if (findError) {
+        console.error('Lỗi tìm kiếm đơn hàng:', findError);
+        throw findError;
       }
-      
-      let orders = [];
-      
-      if (ordersByQuoteId && ordersByQuoteId.length > 0) {
-        orders = ordersByQuoteId;
-        console.log('✅ Tìm thấy đơn hàng qua quote_id:', orders);
-      } else {
-        console.log('⚠️ Không tìm thấy đơn hàng qua quote_id, thử phương pháp khác...');
+
+      if (existingOrders && existingOrders.length > 0) {
+        // Update existing order
+        const order = existingOrders[0];
+        console.log('📝 Cập nhật đơn hàng hiện có:', order.order_number);
         
-        // Method 2: Search by quote number in notes (fallback)
-        const { data: ordersByNotes, error: notesError } = await supabase
+        const { error: updateError } = await supabase
           .from('orders')
-          .select('*')
-          .ilike('notes', `%${quote.quote_number}%`);
-        
-        if (!notesError && ordersByNotes && ordersByNotes.length > 0) {
-          orders = ordersByNotes;
-          console.log('✅ Tìm thấy đơn hàng qua notes:', orders);
-          
-          // Update these orders to have the quote_id for future reference
-          for (const order of orders) {
-            await supabase
-              .from('orders')
-              .update({ quote_id: quote.id })
-              .eq('id', order.id);
-          }
-          console.log('🔗 Đã cập nhật quote_id cho đơn hàng');
-        }
-      }
+          .update({
+            total_amount: quote.total_amount,
+            items: quote.items,
+            notes: `Được cập nhật từ báo giá ${quote.quote_number} (${new Date().toLocaleString('vi-VN')})`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', order.id);
 
-      if (orders.length === 0) {
-        console.log('❌ Không tìm thấy đơn hàng nào');
+        if (updateError) throw updateError;
+
         toast({
-          title: "Lỗi",
-          description: "Không tìm thấy đơn hàng tương ứng với báo giá này",
-          variant: "destructive",
+          title: "Thành công",
+          description: `Đã cập nhật đơn hàng ${order.order_number} từ báo giá`,
         });
-        return;
+      } else {
+        // Create new order if none exists
+        console.log('➕ Tạo đơn hàng mới từ báo giá');
+        
+        const orderNumber = `ORD-${Date.now()}`;
+        const { error: createError } = await supabase
+          .from('orders')
+          .insert({
+            order_number: orderNumber,
+            customer_id: quote.customer_id,
+            manager_id: quote.manager_id,
+            assignee_id: quote.assignee_id,
+            total_amount: quote.total_amount,
+            status: 'pending',
+            items: quote.items,
+            notes: `Được tạo từ báo giá ${quote.quote_number} (${new Date().toLocaleString('vi-VN')})`,
+            tenant_id: 'default',
+            quote_id: quote.id,
+          });
+
+        if (createError) throw createError;
+
+        toast({
+          title: "Thành công",
+          description: `Đã tạo đơn hàng mới ${orderNumber} từ báo giá`,
+        });
       }
 
-      const order = orders[0];
-      console.log('🔄 Cập nhật đơn hàng:', order.order_number, 'với dữ liệu mới từ báo giá');
-      
-      // Update the order with the new quote data - this will trigger real-time updates
-      const updateData = {
-        total_amount: quote.total_amount,
-        items: quote.items,
-        notes: `Được tạo từ báo giá ${quote.quote_number} (cập nhật tự động lúc ${new Date().toLocaleString('vi-VN')})`,
-        updated_at: new Date().toISOString(),
-        quote_id: quote.id, // Ensure quote_id is set
-      };
-      
-      console.log('📝 Dữ liệu cập nhật:', updateData);
-      
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', order.id);
-
-      if (updateError) {
-        console.error('❌ Lỗi cập nhật đơn hàng:', updateError);
-        throw updateError;
-      }
-
-      console.log('✅ Đã cập nhật đơn hàng thành công, real-time sẽ tự động refresh UI');
-
-      // No need to manually invalidate queries - real-time updates will handle this
-      toast({
-        title: "Thành công",
-        description: `Đơn hàng ${order.order_number} đã được cập nhật tự động theo báo giá phụ`,
-      });
-
+      // Invalidate queries to refresh UI
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       onUpdate?.();
       
     } catch (error: any) {
-      console.error('Error updating order:', error);
+      console.error('❌ Lỗi khi đẩy sang đơn hàng:', error);
       toast({
         title: "Lỗi",
-        description: error.message || "Không thể cập nhật đơn hàng",
+        description: error.message || "Không thể đẩy báo giá sang đơn hàng",
         variant: "destructive",
       });
     } finally {
@@ -404,14 +385,14 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
             <div className="flex gap-2">
               {quote?.status === 'approved' && (
                 <Button
-                  variant="outline"
+                  variant="default"
                   size="sm"
-                  onClick={updateCorrespondingOrder}
+                  onClick={pushToOrdersFlow}
                   disabled={isUpdatingOrder}
                   className="gap-2"
                 >
                   <RefreshCw className={`h-4 w-4 ${isUpdatingOrder ? 'animate-spin' : ''}`} />
-                  {isUpdatingOrder ? 'Đang cập nhật...' : 'Cập nhật đơn hàng'}
+                  {isUpdatingOrder ? 'Đang xử lý...' : 'Đẩy sang đơn hàng'}
                 </Button>
               )}
               <Button
