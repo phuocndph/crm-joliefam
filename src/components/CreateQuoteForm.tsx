@@ -1076,13 +1076,49 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                    {/* Products List */}
                                    <div className="space-y-4 max-h-[70vh] overflow-y-auto">
                                      {(() => {
-                                       // Filter products based on search term
-                                       const filteredProducts = products.filter(product => 
-                                         !searchTerm || 
-                                         product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                         (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                                         (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase()))
-                                       );
+                                        // Fuzzy matching helper function
+                                        const fuzzyMatch = (text: string, pattern: string): boolean => {
+                                          if (pattern.length === 0) return true;
+                                          if (text.length === 0) return false;
+                                          
+                                          let patternIdx = 0;
+                                          let textIdx = 0;
+                                          
+                                          while (textIdx < text.length && patternIdx < pattern.length) {
+                                            if (text[textIdx].toLowerCase() === pattern[patternIdx].toLowerCase()) {
+                                              patternIdx++;
+                                            }
+                                            textIdx++;
+                                          }
+                                          
+                                          return patternIdx === pattern.length;
+                                        };
+
+                                        // Filter products based on search term with fuzzy matching
+                                        const filteredProducts = products.filter(product => {
+                                          if (!searchTerm) return true;
+                                          
+                                          const searchLower = searchTerm.toLowerCase().trim();
+                                          const searchWords = searchLower.split(/\s+/);
+                                          
+                                          // Check if all search words appear in any field
+                                          return searchWords.every(word => {
+                                            const productName = product.name.toLowerCase();
+                                            const productSku = (product.sku || '').toLowerCase();
+                                            const productCategory = (product.category || '').toLowerCase();
+                                            
+                                            // Check partial matches in any field (most flexible)
+                                            return productName.includes(word) || 
+                                                   productSku.includes(word) || 
+                                                   productCategory.includes(word) ||
+                                                   // Fuzzy matching for more flexible search
+                                                   fuzzyMatch(productName, word) ||
+                                                   fuzzyMatch(productSku, word) ||
+                                                   // Also check if word appears anywhere in broken down characters
+                                                   productName.replace(/\s+/g, '').includes(word.replace(/\s+/g, '')) ||
+                                                   productSku.replace(/\s+/g, '').includes(word.replace(/\s+/g, ''));
+                                          });
+                                        });
 
                                        // Group products by category
                                        const groupedProducts = filteredProducts.reduce((groups, product) => {
