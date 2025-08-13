@@ -1073,72 +1073,70 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                     />
                                   </div>
                                   
-                                  {/* Products Grid */}
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
-                                    {products
-                                      .filter(product => 
-                                        !searchTerm || 
-                                        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                        (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase()))
-                                      )
-                                      .map((product) => (
-                                        <Card 
-                                          key={product.id}
-                                          className="cursor-pointer hover:shadow-lg transition-all border-2 hover:border-blue-300"
-                                          onClick={() => {
-                                            console.log('Selected product data:', product);
-                                            const newProducts = [...selectedProducts];
-                                            newProducts[index] = {
-                                              id: product.id,
-                                              name: product.name,
-                                              sku: product.sku || '',
-                                              price: product.price || 0,
-                                              quantity: item.quantity,
-                                              total: (product.price || 0) * item.quantity,
-                                              description: product.description || '',
-                                              specifications: product.specifications || ''
-                                            };
-                                            console.log('New product item:', newProducts[index]);
-                                            setSelectedProducts(newProducts);
-                                            setSearchTerm("");
-                                            toast({
-                                              title: "Thành công",
-                                              description: `Đã chọn ${product.name}`,
-                                            });
-                                          }}
-                                        >
-                                           <CardContent className="p-4">
-                                             <div className="space-y-2">
-                                               <div className="flex items-center justify-between">
-                                                 <h3 className="font-bold text-xl text-blue-800">{product.sku || 'NO-SKU'}</h3>
-                                                 <p className="text-green-600 font-bold text-lg">{(product.price || 0).toLocaleString()}đ</p>
-                                               </div>
-                                               <p className="text-gray-700 font-medium">{product.name}</p>
-                                               <div className="grid grid-cols-1 gap-2 text-sm">
-                                                 {product.category && (
-                                                   <div>
-                                                     <span className="font-medium text-gray-600">Danh mục:</span>
-                                                     <span className="text-gray-800 ml-1">{product.category}</span>
-                                                   </div>
-                                                 )}
-                                               </div>
-                                               {product.description && (
-                                                 <div>
-                                                   <span className="font-medium text-gray-600">Mô tả:</span>
-                                                   <p className="text-gray-700 text-sm">{product.description}</p>
-                                                 </div>
-                                               )}
-                                               {product.specifications && (
-                                                 <div>
-                                                   <span className="font-medium text-gray-600">Quy cách:</span>
-                                                   <p className="text-gray-700 text-sm">{product.specifications}</p>
-                                                 </div>
-                                               )}
-                                             </div>
-                                           </CardContent>
-                                        </Card>
-                                      ))}
-                                  </div>
+                                   {/* Products List */}
+                                   <div className="space-y-2 max-h-96 overflow-y-auto">
+                                     {products
+                                       .filter(product => 
+                                         !searchTerm || 
+                                         product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                         (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase()))
+                                       )
+                                       .map((product) => (
+                                         <Card 
+                                           key={product.id}
+                                           className="cursor-pointer hover:shadow-md transition-all border hover:border-blue-300 hover:bg-blue-50"
+                                           onClick={() => {
+                                             console.log('Selected product data:', product);
+                                             const newProducts = [...selectedProducts];
+                                             newProducts[index] = {
+                                               id: product.id,
+                                               name: product.name,
+                                               sku: product.sku || '',
+                                               price: product.price || 0,
+                                               quantity: item.quantity,
+                                               total: (product.price || 0) * item.quantity,
+                                               description: product.description || '',
+                                               specifications: product.specifications || ''
+                                             };
+                                             console.log('New product item:', newProducts[index]);
+                                             setSelectedProducts(newProducts);
+                                             setSearchTerm("");
+                                             toast({
+                                               title: "Thành công",
+                                               description: `Đã chọn ${product.name}`,
+                                             });
+                                           }}
+                                         >
+                                            <CardContent className="p-3">
+                                              <div className="flex items-center justify-between">
+                                                <div className="flex-1">
+                                                  <div className="flex items-center gap-4">
+                                                    <div className="min-w-0 flex-1">
+                                                      <div className="flex items-center gap-2 mb-1">
+                                                        <h3 className="font-bold text-blue-800 text-sm">{product.sku || 'NO-SKU'}</h3>
+                                                        {product.category && (
+                                                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                                            {product.category}
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                      <p className="text-gray-700 font-medium text-sm truncate">{product.name}</p>
+                                                      {(product.description || product.specifications) && (
+                                                        <p className="text-gray-500 text-xs mt-1 line-clamp-2">
+                                                          {product.description || product.specifications}
+                                                        </p>
+                                                      )}
+                                                    </div>
+                                                    <div className="text-right">
+                                                      <p className="text-green-600 font-bold text-sm">{(product.price || 0).toLocaleString()}đ</p>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </CardContent>
+                                         </Card>
+                                       ))}
+                                   </div>
                                   
                                   {products.filter(product => 
                                     !searchTerm || 
