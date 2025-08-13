@@ -73,7 +73,7 @@ const quoteFormSchema = z.object({
   email: z.string().optional(),
   address: z.string().optional(),
   priceList: z.string().min(1, "Bảng giá là bắt buộc"),
-  responsible: z.string().optional(),
+  responsible: z.string().min(1, "Người phụ trách là bắt buộc"),
   includeVAT: z.boolean().default(false),
   vatRate: z.number().min(0).max(100).default(8),
   payment1: z.number().min(0).default(0),
