@@ -446,7 +446,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
                 <img
                   src={image.url}
                   alt={image.name}
-                  className="w-full h-24 object-cover rounded"
+                  className="w-full h-32 object-contain bg-muted rounded"
                 />
                 {!hideDeleteButton && (
                   <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded flex items-center justify-center transition-all">
