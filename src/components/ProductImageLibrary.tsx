@@ -43,10 +43,33 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
   const [newCategoryName, setNewCategoryName] = useState('');
   const [renamingCategory, setRenamingCategory] = useState(false);
   const [categoryDisplayNames, setCategoryDisplayNames] = useState<{[key: string]: string}>({});
+  const [isDragOver, setIsDragOver] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     fetchImages();
+    
+    // Add paste event listener
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      
+      const imageFiles: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.indexOf('image') !== -1) {
+          const file = item.getAsFile();
+          if (file) imageFiles.push(file);
+        }
+      }
+      
+      if (imageFiles.length > 0) {
+        handleQuickUpload(imageFiles);
+      }
+    };
+    
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
   }, []);
 
   useEffect(() => {
@@ -247,6 +270,85 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
     }
   };
 
+  // Quick upload function for drag & drop and paste
+  const handleQuickUpload = async (files: File[]) => {
+    if (!files.length) return;
+
+    // Use current selected category or default
+    let targetCategory = selectedCategoryFilter !== 'all' ? selectedCategoryFilter : '';
+    
+    // If no category selected, show dialog to select
+    if (!targetCategory) {
+      setShowUploadDialog(true);
+      return;
+    }
+
+    setUploading(true);
+    
+    // Use the existing category
+    const folderName = targetCategory;
+
+    try {
+      const uploadPromises = files.map(async (file) => {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${folderName}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+
+        return fileName;
+      });
+
+      await Promise.all(uploadPromises);
+
+      toast({
+        title: "Thành công",
+        description: `Đã tải lên ${files.length} hình ảnh vào thư mục "${categoryDisplayNames[targetCategory] || targetCategory}"`,
+      });
+
+      fetchImages();
+    } catch (error) {
+      console.error('Error uploading files:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải lên hình ảnh",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files).filter(file => 
+      file.type.startsWith('image/')
+    );
+
+    if (files.length > 0) {
+      handleQuickUpload(files);
+    }
+  };
+
   const handleDeleteImage = async (imagePath: string) => {
     try {
       const { error } = await supabase.storage
@@ -382,7 +484,32 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
   }
 
   return (
-    <div className="space-y-4">
+    <div 
+      className={`space-y-4 relative ${isDragOver ? 'bg-blue-50 border-2 border-dashed border-blue-400 rounded-lg' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag & Drop Overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-blue-100/80 border-2 border-dashed border-blue-400 rounded-lg z-50 flex items-center justify-center">
+          <div className="text-center">
+            <Upload className="h-12 w-12 text-blue-500 mx-auto mb-2" />
+            <p className="text-lg font-semibold text-blue-700">Thả hình ảnh vào đây</p>
+            <p className="text-sm text-blue-600">
+              {selectedCategoryFilter !== 'all' 
+                ? `Sẽ tải lên vào thư mục "${categoryDisplayNames[selectedCategoryFilter] || selectedCategoryFilter}"`
+                : 'Sẽ mở hộp thoại chọn thư mục'
+              }
+            </p>
+          </div>
+        </div>
+      )}
+      
+      {/* Instructions */}
+      <div className="bg-muted/50 rounded-lg p-3 text-sm text-muted-foreground">
+        💡 <strong>Mẹo:</strong> Bạn có thể kéo thả hình ảnh trực tiếp vào đây hoặc dùng <kbd className="px-1.5 py-0.5 bg-muted text-xs rounded">Ctrl+V</kbd> để dán hình ảnh từ clipboard
+      </div>
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold flex items-center gap-2">
           <Image className="h-5 w-5" />
