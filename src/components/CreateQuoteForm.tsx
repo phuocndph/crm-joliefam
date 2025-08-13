@@ -943,17 +943,19 @@ export function CreateQuoteForm({
                                                     <div className="flex-1">
                                                       <div className="flex items-center gap-4">
                                                         <div className="min-w-0 flex-1">
-                                                          <div className="flex items-center gap-2 mb-1">
-                                                            <h3 className="font-bold text-blue-800 text-sm" dangerouslySetInnerHTML={{
-                                                    __html: highlightSearchTerms(product.sku || 'NO-SKU', debouncedSearchTerm)
-                                                  }} />
-                                                          </div>
-                                                          <p className="text-gray-700 font-medium text-sm truncate" dangerouslySetInnerHTML={{
-                                                  __html: highlightSearchTerms(product.name, debouncedSearchTerm)
-                                                }} />
-                                                          {(product.description || product.specifications) && <p className="text-gray-500 text-xs mt-1 line-clamp-2" dangerouslySetInnerHTML={{
-                                                  __html: highlightSearchTerms(product.description || product.specifications || '', debouncedSearchTerm)
-                                                }} />}
+                                                           <div className="flex items-center gap-2 mb-1">
+                                                             <h3 className="font-bold text-blue-800 text-sm">
+                                                               {product.sku || 'NO-SKU'}
+                                                             </h3>
+                                                           </div>
+                                                           <p className="text-gray-700 font-medium text-sm truncate">
+                                                             {product.name}
+                                                           </p>
+                                                           {(product.description || product.specifications) && (
+                                                             <p className="text-gray-500 text-xs mt-1 line-clamp-2">
+                                                               {product.description || product.specifications || ''}
+                                                             </p>
+                                                           )}
                                                         </div>
                                                         <div className="text-right">
                                                           <p className="text-green-600 font-bold text-sm">{(product.price || 0).toLocaleString()}đ</p>
