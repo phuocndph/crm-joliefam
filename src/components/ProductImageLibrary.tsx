@@ -531,7 +531,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
             <SelectValue placeholder="Chọn thư mục" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tất cả thư mục</SelectItem>
+            <SelectItem value="all">Tất cả</SelectItem>
             {categories.map((category) => (
               <SelectItem key={category.safeName} value={category.safeName}>
                 <div className="flex items-center gap-2">
