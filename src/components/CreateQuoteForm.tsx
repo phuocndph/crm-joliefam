@@ -239,7 +239,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
     },
   });
 
-  // Fuzzy matching helper function
+  // Advanced fuzzy matching helper function
   const fuzzyMatch = (text: string, pattern: string): boolean => {
     if (pattern.length === 0) return true;
     if (text.length === 0) return false;
@@ -255,6 +255,37 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
     }
     
     return patternIdx === pattern.length;
+  };
+
+  // Advanced search scoring function
+  const calculateSearchScore = (product: any, searchWords: string[]): number => {
+    let score = 0;
+    const productName = product.name.toLowerCase();
+    const productSku = (product.sku || '').toLowerCase();
+    const productCategory = (product.category || '').toLowerCase();
+    const fullText = `${productName} ${productSku} ${productCategory}`;
+    
+    searchWords.forEach(word => {
+      const wordLower = word.toLowerCase();
+      
+      // Exact matches get highest score
+      if (productName.includes(wordLower)) score += 10;
+      if (productSku.includes(wordLower)) score += 15; // SKU matches are more important
+      if (productCategory.includes(wordLower)) score += 5;
+      
+      // Fuzzy matches get lower score
+      if (fuzzyMatch(productName, wordLower)) score += 3;
+      if (fuzzyMatch(productSku, wordLower)) score += 5;
+      
+      // Word boundary matches (better than fuzzy)
+      const wordBoundaryRegex = new RegExp(`\\b${wordLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+      if (wordBoundaryRegex.test(fullText)) score += 7;
+      
+      // Character sequence matches (for partial typing)
+      if (fullText.replace(/\s+/g, '').includes(wordLower.replace(/\s+/g, ''))) score += 2;
+    });
+    
+    return score;
   };
 
   // Load price lists and products
@@ -1094,34 +1125,19 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                    {/* Products List */}
                                    <div className="space-y-4 max-h-[70vh] overflow-y-auto">
                                      {(() => {
-                                         // Filter products based on search term with fuzzy matching
-                                        const filteredProducts = products.filter(product => {
-                                          if (!searchTerm) return true;
-                                          
-                                          const searchLower = searchTerm.toLowerCase().trim();
-                                          const searchWords = searchLower.split(/\s+/);
-                                          
-                                          // Check if all search words appear in any field
-                                          return searchWords.every(word => {
-                                            const productName = product.name.toLowerCase();
-                                            const productSku = (product.sku || '').toLowerCase();
-                                            const productCategory = (product.category || '').toLowerCase();
-                                            
-                                            // Check partial matches in any field (most flexible)
-                                            return productName.includes(word) || 
-                                                   productSku.includes(word) || 
-                                                   productCategory.includes(word) ||
-                                                   // Fuzzy matching for more flexible search
-                                                   fuzzyMatch(productName, word) ||
-                                                   fuzzyMatch(productSku, word) ||
-                                                   // Also check if word appears anywhere in broken down characters
-                                                   productName.replace(/\s+/g, '').includes(word.replace(/\s+/g, '')) ||
-                                                   productSku.replace(/\s+/g, '').includes(word.replace(/\s+/g, ''));
-                                          });
-                                        });
+                                         // Advanced search with scoring and sorting
+                                        const searchResults = searchTerm ? 
+                                          products.map(product => ({
+                                            product,
+                                            score: calculateSearchScore(product, searchTerm.toLowerCase().trim().split(/\s+/))
+                                          }))
+                                          .filter(result => result.score > 0)
+                                          .sort((a, b) => b.score - a.score) // Sort by score descending
+                                          .map(result => result.product)
+                                        : products;
 
-                                       // Group products by category
-                                       const groupedProducts = filteredProducts.reduce((groups, product) => {
+                                        // Group search results by category
+                                        const groupedProducts = searchResults.reduce((groups, product) => {
                                          const category = product.category || 'Không phân loại';
                                          if (!groups[category]) {
                                            groups[category] = [];
