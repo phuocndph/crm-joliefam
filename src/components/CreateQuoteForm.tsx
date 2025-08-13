@@ -1352,10 +1352,11 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                           </TableCell>
                           <TableCell className="w-28 p-2">
                             <Input
-                              type="number"
-                              value={item.price}
+                              type="text"
+                              value={item.price ? item.price.toLocaleString('vi-VN') : ''}
                                onChange={(e) => {
-                                 const price = parseFloat(e.target.value) || 0;
+                                 const numericValue = e.target.value.replace(/\./g, '');
+                                 const price = parseFloat(numericValue) || 0;
                                  updatePrice(item.id, price);
                                }}
                                className="w-24 text-right font-mono text-blue-600 font-semibold border-gray-200 focus:border-blue-500"
