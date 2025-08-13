@@ -82,6 +82,10 @@ const ProductManagement = () => {
   const [deletingPriceList, setDeletingPriceList] = useState<PriceList | null>(null);
   const [deletePriceListLoading, setDeletePriceListLoading] = useState(false);
 
+  // Delete All Products state
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const [deleteAllLoading, setDeleteAllLoading] = useState(false);
+
   // Product Form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -405,6 +409,45 @@ const ProductManagement = () => {
         variant: "destructive",
       });
       return;
+    }
+  };
+
+  const handleDeleteAllProducts = async () => {
+    if (!selectedPriceList) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng chọn bảng giá trước",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDeleteAllLoading(true);
+
+    try {
+      const { error } = await (supabase as any)
+        .from('products')
+        .delete()
+        .eq('price_list_id', selectedPriceList);
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: `Đã xóa toàn bộ sản phẩm trong bảng giá thành công`,
+      });
+
+      setShowDeleteAllDialog(false);
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Error deleting all products:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xóa toàn bộ sản phẩm",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteAllLoading(false);
     }
 
     setCreateProductLoading(true);
@@ -1028,15 +1071,28 @@ const ProductManagement = () => {
               {/* Products List */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Package className="h-5 w-5" />
-                      Danh sách sản phẩm
-                    </div>
-                    <Badge variant="outline" className="text-sm">
-                      {filteredProducts.length} sản phẩm
-                    </Badge>
-                  </CardTitle>
+                   <CardTitle className="flex items-center justify-between">
+                     <div className="flex items-center gap-2">
+                       <Package className="h-5 w-5" />
+                       Danh sách sản phẩm
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <Badge variant="outline" className="text-sm">
+                         {filteredProducts.length} sản phẩm
+                       </Badge>
+                       {filteredProducts.length > 0 && (
+                         <Button
+                           variant="destructive"
+                           size="sm"
+                           onClick={() => setShowDeleteAllDialog(true)}
+                           className="flex items-center gap-2"
+                         >
+                           <Trash2 className="h-4 w-4" />
+                           Xóa toàn bộ
+                         </Button>
+                       )}
+                     </div>
+                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
                   {filteredProducts.length === 0 ? (
@@ -1329,6 +1385,40 @@ const ProductManagement = () => {
                 disabled={deletePriceListLoading}
               >
                 {deletePriceListLoading ? 'Đang xóa...' : 'Xóa'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete All Products Dialog */}
+      {showDeleteAllDialog && (
+        <Dialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Xác nhận xóa toàn bộ sản phẩm</DialogTitle>
+              <DialogDescription>
+                Bạn có chắc chắn muốn xóa <strong>toàn bộ {filteredProducts.length} sản phẩm</strong> trong bảng giá này?
+                <div className="mt-3 p-3 bg-destructive/10 rounded text-sm">
+                  <strong>⚠️ Cảnh báo:</strong> Hành động này sẽ xóa vĩnh viễn tất cả sản phẩm và không thể hoàn tác.
+                </div>
+                {selectedPriceList && (
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    Bảng giá: <strong>{priceLists.find(p => p.id === selectedPriceList)?.name}</strong>
+                  </div>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowDeleteAllDialog(false)}>
+                Hủy
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteAllProducts}
+                disabled={deleteAllLoading}
+              >
+                {deleteAllLoading ? 'Đang xóa...' : 'Xóa toàn bộ'}
               </Button>
             </DialogFooter>
           </DialogContent>
