@@ -568,14 +568,26 @@ const ProductManagement = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => openEditDialog}
+                            onClick={() => {
+                              // Edit price list functionality to be implemented
+                              toast({
+                                title: "Thông báo",
+                                description: "Chức năng chỉnh sửa bảng giá đang phát triển",
+                              });
+                            }}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setDeletingProduct}
+                            onClick={() => {
+                              // Delete price list functionality to be implemented
+                              toast({
+                                title: "Thông báo",
+                                description: "Chức năng xóa bảng giá đang phát triển",
+                              });
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
