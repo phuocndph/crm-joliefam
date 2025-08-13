@@ -239,6 +239,24 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
     },
   });
 
+  // Fuzzy matching helper function
+  const fuzzyMatch = (text: string, pattern: string): boolean => {
+    if (pattern.length === 0) return true;
+    if (text.length === 0) return false;
+    
+    let patternIdx = 0;
+    let textIdx = 0;
+    
+    while (textIdx < text.length && patternIdx < pattern.length) {
+      if (text[textIdx].toLowerCase() === pattern[patternIdx].toLowerCase()) {
+        patternIdx++;
+      }
+      textIdx++;
+    }
+    
+    return patternIdx === pattern.length;
+  };
+
   // Load price lists and products
   useEffect(() => {
     loadPriceLists();
@@ -1076,25 +1094,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                    {/* Products List */}
                                    <div className="space-y-4 max-h-[70vh] overflow-y-auto">
                                      {(() => {
-                                        // Fuzzy matching helper function
-                                        const fuzzyMatch = (text: string, pattern: string): boolean => {
-                                          if (pattern.length === 0) return true;
-                                          if (text.length === 0) return false;
-                                          
-                                          let patternIdx = 0;
-                                          let textIdx = 0;
-                                          
-                                          while (textIdx < text.length && patternIdx < pattern.length) {
-                                            if (text[textIdx].toLowerCase() === pattern[patternIdx].toLowerCase()) {
-                                              patternIdx++;
-                                            }
-                                            textIdx++;
-                                          }
-                                          
-                                          return patternIdx === pattern.length;
-                                        };
-
-                                        // Filter products based on search term with fuzzy matching
+                                         // Filter products based on search term with fuzzy matching
                                         const filteredProducts = products.filter(product => {
                                           if (!searchTerm) return true;
                                           
