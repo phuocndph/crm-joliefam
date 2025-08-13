@@ -1074,68 +1074,113 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                   </div>
                                   
                                    {/* Products List */}
-                                   <div className="space-y-2 max-h-[70vh] overflow-y-auto">
-                                     {products
-                                       .filter(product => 
+                                   <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+                                     {(() => {
+                                       // Filter products based on search term
+                                       const filteredProducts = products.filter(product => 
                                          !searchTerm || 
                                          product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                         (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase()))
-                                       )
-                                       .map((product) => (
-                                         <Card 
-                                           key={product.id}
-                                           className="cursor-pointer hover:shadow-md transition-all border hover:border-blue-300 hover:bg-blue-50"
-                                           onClick={() => {
-                                             console.log('Selected product data:', product);
-                                             const newProducts = [...selectedProducts];
-                                             newProducts[index] = {
-                                               id: product.id,
-                                               name: product.name,
-                                               sku: product.sku || '',
-                                               price: product.price || 0,
-                                               quantity: item.quantity,
-                                               total: (product.price || 0) * item.quantity,
-                                               description: product.description || '',
-                                               specifications: product.specifications || ''
-                                             };
-                                             console.log('New product item:', newProducts[index]);
-                                             setSelectedProducts(newProducts);
-                                             setSearchTerm("");
-                                             toast({
-                                               title: "Thành công",
-                                               description: `Đã chọn ${product.name}`,
-                                             });
-                                           }}
-                                         >
-                                            <CardContent className="p-3">
-                                              <div className="flex items-center justify-between">
-                                                <div className="flex-1">
-                                                  <div className="flex items-center gap-4">
-                                                    <div className="min-w-0 flex-1">
-                                                      <div className="flex items-center gap-2 mb-1">
-                                                        <h3 className="font-bold text-blue-800 text-sm">{product.sku || 'NO-SKU'}</h3>
-                                                        {product.category && (
-                                                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                                                            {product.category}
-                                                          </span>
-                                                        )}
+                                         (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                                         (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase()))
+                                       );
+
+                                       // Group products by category
+                                       const groupedProducts = filteredProducts.reduce((groups, product) => {
+                                         const category = product.category || 'Không phân loại';
+                                         if (!groups[category]) {
+                                           groups[category] = [];
+                                         }
+                                         groups[category].push(product);
+                                         return groups;
+                                       }, {} as Record<string, typeof products>);
+
+                                       // Sort categories alphabetically
+                                       const sortedCategories = Object.keys(groupedProducts).sort((a, b) => {
+                                         if (a === 'Không phân loại') return 1;
+                                         if (b === 'Không phân loại') return -1;
+                                         return a.localeCompare(b, 'vi');
+                                       });
+
+                                       return sortedCategories.map(category => {
+                                         // Sort products within each category by SKU, then by name
+                                         const sortedProducts = groupedProducts[category].sort((a, b) => {
+                                           // First sort by SKU if both have it
+                                           if (a.sku && b.sku) {
+                                             return a.sku.localeCompare(b.sku, 'vi');
+                                           }
+                                           // If only one has SKU, prioritize it
+                                           if (a.sku && !b.sku) return -1;
+                                           if (!a.sku && b.sku) return 1;
+                                           // If neither has SKU, sort by name
+                                           return a.name.localeCompare(b.name, 'vi');
+                                         });
+
+                                         return (
+                                           <div key={category} className="space-y-2">
+                                             <div className="sticky top-0 bg-blue-100 px-3 py-2 rounded-md border-l-4 border-blue-500 z-10">
+                                               <h4 className="font-semibold text-blue-800 text-sm flex items-center gap-2">
+                                                 <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
+                                                   {sortedProducts.length}
+                                                 </span>
+                                                 {category}
+                                               </h4>
+                                             </div>
+                                             <div className="space-y-1 pl-2">
+                                               {sortedProducts.map((product) => (
+                                                 <Card 
+                                                   key={product.id}
+                                                   className="cursor-pointer hover:shadow-md transition-all border hover:border-blue-300 hover:bg-blue-50"
+                                                   onClick={() => {
+                                                     console.log('Selected product data:', product);
+                                                     const newProducts = [...selectedProducts];
+                                                     newProducts[index] = {
+                                                       id: product.id,
+                                                       name: product.name,
+                                                       sku: product.sku || '',
+                                                       price: product.price || 0,
+                                                       quantity: item.quantity,
+                                                       total: (product.price || 0) * item.quantity,
+                                                       description: product.description || '',
+                                                       specifications: product.specifications || ''
+                                                     };
+                                                     console.log('New product item:', newProducts[index]);
+                                                     setSelectedProducts(newProducts);
+                                                     setSearchTerm("");
+                                                     toast({
+                                                       title: "Thành công",
+                                                       description: `Đã chọn ${product.name}`,
+                                                     });
+                                                   }}
+                                                 >
+                                                    <CardContent className="p-3">
+                                                      <div className="flex items-center justify-between">
+                                                        <div className="flex-1">
+                                                          <div className="flex items-center gap-4">
+                                                            <div className="min-w-0 flex-1">
+                                                              <div className="flex items-center gap-2 mb-1">
+                                                                <h3 className="font-bold text-blue-800 text-sm">{product.sku || 'NO-SKU'}</h3>
+                                                              </div>
+                                                              <p className="text-gray-700 font-medium text-sm truncate">{product.name}</p>
+                                                              {(product.description || product.specifications) && (
+                                                                <p className="text-gray-500 text-xs mt-1 line-clamp-2">
+                                                                  {product.description || product.specifications}
+                                                                </p>
+                                                              )}
+                                                            </div>
+                                                            <div className="text-right">
+                                                              <p className="text-green-600 font-bold text-sm">{(product.price || 0).toLocaleString()}đ</p>
+                                                            </div>
+                                                          </div>
+                                                        </div>
                                                       </div>
-                                                      <p className="text-gray-700 font-medium text-sm truncate">{product.name}</p>
-                                                      {(product.description || product.specifications) && (
-                                                        <p className="text-gray-500 text-xs mt-1 line-clamp-2">
-                                                          {product.description || product.specifications}
-                                                        </p>
-                                                      )}
-                                                    </div>
-                                                    <div className="text-right">
-                                                      <p className="text-green-600 font-bold text-sm">{(product.price || 0).toLocaleString()}đ</p>
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            </CardContent>
-                                         </Card>
-                                       ))}
+                                                    </CardContent>
+                                                 </Card>
+                                               ))}
+                                             </div>
+                                           </div>
+                                         );
+                                       });
+                                     })()}
                                    </div>
                                   
                                   {products.filter(product => 
