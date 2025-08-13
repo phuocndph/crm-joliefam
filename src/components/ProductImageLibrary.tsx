@@ -44,6 +44,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
   const [renamingCategory, setRenamingCategory] = useState(false);
   const [categoryDisplayNames, setCategoryDisplayNames] = useState<{[key: string]: string}>({});
   const [isDragOver, setIsDragOver] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -277,8 +278,9 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
     // Use current selected category or default
     let targetCategory = selectedCategoryFilter !== 'all' ? selectedCategoryFilter : '';
     
-    // If no category selected, show dialog to select
+    // If no category selected, store files and show dialog to select
     if (!targetCategory) {
+      setPendingFiles(files);
       setShowUploadDialog(true);
       return;
     }
@@ -676,30 +678,71 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
 
             <div className="space-y-2">
               <Label htmlFor="images">Chọn hình ảnh</Label>
-              <Input
-                id="images"
-                type="file"
-                multiple
-                accept="image/*"
-                disabled={uploading}
-              />
-              <Button
-                onClick={() => {
-                  const input = document.getElementById('images') as HTMLInputElement;
-                  if (input && input.files) {
-                    handleFileUpload(input.files);
-                  }
-                }}
-                disabled={uploading || (!uploadCategory && !showNewCategoryInput) || (showNewCategoryInput && !newCategory)}
-                className="w-full"
-              >
-                {uploading ? "Đang tải lên..." : "Tải lên hình ảnh"}
-              </Button>
+              {pendingFiles.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    <p className="text-sm font-medium text-blue-700 mb-2">
+                      📁 {pendingFiles.length} hình ảnh đã sẵn sàng:
+                    </p>
+                    <div className="space-y-1">
+                      {pendingFiles.map((file, index) => (
+                        <div key={index} className="text-xs text-blue-600 flex items-center gap-2">
+                          <Image className="h-3 w-3" />
+                          {file.name} ({formatFileSize(file.size)})
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      const category = showNewCategoryInput ? newCategory : uploadCategory;
+                      if (category && pendingFiles.length > 0) {
+                        const fileList = new DataTransfer();
+                        pendingFiles.forEach(file => fileList.items.add(file));
+                        handleFileUpload(fileList.files);
+                        setPendingFiles([]);
+                      }
+                    }}
+                    disabled={uploading || (!uploadCategory && !showNewCategoryInput) || (showNewCategoryInput && !newCategory)}
+                    className="w-full"
+                  >
+                    {uploading ? "Đang tải lên..." : "Tải lên hình ảnh"}
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    id="images"
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    disabled={uploading}
+                  />
+                  <Button
+                    onClick={() => {
+                      const input = document.getElementById('images') as HTMLInputElement;
+                      if (input && input.files) {
+                        handleFileUpload(input.files);
+                      }
+                    }}
+                    disabled={uploading || (!uploadCategory && !showNewCategoryInput) || (showNewCategoryInput && !newCategory)}
+                    className="w-full"
+                  >
+                    {uploading ? "Đang tải lên..." : "Tải lên hình ảnh"}
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUploadDialog(false)}>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowUploadDialog(false);
+                setPendingFiles([]);
+              }}
+            >
               Hủy
             </Button>
           </DialogFooter>
