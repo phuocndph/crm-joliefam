@@ -1054,7 +1054,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                    </span>
                                 </Button>
                               </DialogTrigger>
-                               <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+                               <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-y-auto w-full">
                                 <DialogHeader>
                                   <DialogTitle className="flex items-center gap-2">
                                     <Search className="h-5 w-5" />
@@ -1074,7 +1074,7 @@ export function CreateQuoteForm({ onClose, onSubmit, initialData }: CreateQuoteF
                                   </div>
                                   
                                    {/* Products List */}
-                                   <div className="space-y-2 max-h-96 overflow-y-auto">
+                                   <div className="space-y-2 max-h-[70vh] overflow-y-auto">
                                      {products
                                        .filter(product => 
                                          !searchTerm || 
