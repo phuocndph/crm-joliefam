@@ -405,7 +405,7 @@ export function InlineOrderEditTable({
                 <div className="text-sm">
                   {order.manager_id ? (
                     <span className="font-medium text-blue-600">
-                      {managerMap.get(order.manager_id) || 'Chưa có thông tin'}
+                      {managerMap.get(order.manager_id) || 'Đang tải...'}
                     </span>
                   ) : (
                     <span className="text-muted-foreground italic">Chưa có thông tin</span>

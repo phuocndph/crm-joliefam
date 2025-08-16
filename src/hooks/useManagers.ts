@@ -16,11 +16,11 @@ export const useManagers = () => {
     queryFn: async () => {
       console.log('useManagers - Starting query...');
       
-      // First get users with manager role
+      // First get users with manager or admin role
       const { data: userRolesData, error: userRolesError } = await supabase
         .from('user_roles')
         .select('user_id')
-        .eq('role', 'manager');
+        .in('role', ['manager', 'admin']);
       
       console.log('useManagers - userRolesData:', userRolesData);
       console.log('useManagers - userRolesError:', userRolesError);
