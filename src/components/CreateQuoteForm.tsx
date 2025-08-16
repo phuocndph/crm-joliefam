@@ -496,7 +496,7 @@ export function CreateQuoteForm({
           payment2: data.payment2 || 0
         }),
         tenant_id: "default",
-        manager_id: user?.id ? user.id.toString() : null
+        manager_id: initialData ? initialData.manager_id : (user?.id ? user.id.toString() : null)
       };
       if (initialData) {
         // Update existing quote
