@@ -53,7 +53,7 @@ serve(async (req) => {
     const csvText = await response.text()
     console.log('CSV data received, length:', csvText.length)
 
-    // Proper CSV parsing function that handles quoted values
+    // Enhanced CSV parsing function that handles quoted values and various formats
     const parseCSVLine = (line: string): string[] => {
       const result = [];
       let current = '';
@@ -83,6 +83,63 @@ serve(async (req) => {
       
       result.push(current.trim());
       return result;
+    };
+
+    // Enhanced number parsing function for flexible price handling
+    const parsePrice = (value: string): number | null => {
+      if (!value || value.trim() === '') return null;
+      
+      // Remove quotes and trim
+      let cleanValue = value.replace(/"/g, '').trim();
+      
+      // Handle various currency symbols and text
+      cleanValue = cleanValue.replace(/[đĐ$€£¥₫]/g, '');
+      
+      // Handle different thousand separators and decimal points
+      // Check if it's Vietnamese format (123.456,78) or US format (123,456.78)
+      const commaCount = (cleanValue.match(/,/g) || []).length;
+      const dotCount = (cleanValue.match(/\./g) || []).length;
+      
+      if (commaCount > 0 && dotCount > 0) {
+        // Mixed format - determine which is decimal separator
+        const lastCommaIndex = cleanValue.lastIndexOf(',');
+        const lastDotIndex = cleanValue.lastIndexOf('.');
+        
+        if (lastDotIndex > lastCommaIndex) {
+          // US format: 1,234.56
+          cleanValue = cleanValue.replace(/,/g, '');
+        } else {
+          // Vietnamese format: 1.234,56
+          cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+        }
+      } else if (commaCount > 0) {
+        // Only commas - could be thousands separator or decimal
+        const parts = cleanValue.split(',');
+        if (parts.length === 2 && parts[1].length <= 2) {
+          // Likely decimal: 123,45
+          cleanValue = cleanValue.replace(',', '.');
+        } else {
+          // Likely thousands: 123,456 or 1,234,567
+          cleanValue = cleanValue.replace(/,/g, '');
+        }
+      } else if (dotCount > 1) {
+        // Multiple dots - thousands separator: 123.456.789
+        const parts = cleanValue.split('.');
+        const lastPart = parts[parts.length - 1];
+        if (lastPart.length <= 2) {
+          // Last part is decimal: 123.456.78
+          cleanValue = parts.slice(0, -1).join('') + '.' + lastPart;
+        } else {
+          // All are thousands: 123.456.789
+          cleanValue = cleanValue.replace(/\./g, '');
+        }
+      }
+      
+      // Remove any remaining non-numeric characters except decimal point
+      cleanValue = cleanValue.replace(/[^\d.-]/g, '');
+      
+      const parsed = parseFloat(cleanValue);
+      return isNaN(parsed) ? null : parsed;
     };
 
     // Parse CSV data
@@ -162,10 +219,10 @@ serve(async (req) => {
                 product.specifications = value
                 break
               case 'cost_price':
-                product.cost_price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                product.cost_price = parsePrice(value)
                 break
               case 'price':
-                product.price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                product.price = parsePrice(value)
                 break
               case 'description':
                 product.description = value
@@ -191,10 +248,10 @@ serve(async (req) => {
                 product.specifications = value
                 break
               case 'Giá gốc':
-                product.cost_price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                product.cost_price = parsePrice(value)
                 break
               case 'Giá bán':
-                product.price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                product.price = parsePrice(value)
                 break
               case 'Mô tả':
                 product.description = value
