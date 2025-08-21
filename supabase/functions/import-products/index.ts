@@ -53,6 +53,38 @@ serve(async (req) => {
     const csvText = await response.text()
     console.log('CSV data received, length:', csvText.length)
 
+    // Proper CSV parsing function that handles quoted values
+    const parseCSVLine = (line: string): string[] => {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+        
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            // Escaped quote
+            current += '"';
+            i++; // Skip next quote
+          } else {
+            // Toggle quote state
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          // Column separator outside of quotes
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      
+      result.push(current.trim());
+      return result;
+    };
+
     // Parse CSV data
     const lines = csvText.trim().split('\n')
     if (lines.length < 2) {
@@ -60,7 +92,7 @@ serve(async (req) => {
     }
 
     // Parse header
-    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim())
+    const headers = parseCSVLine(lines[0])
     console.log('Headers:', headers)
 
     // Expected headers - support multiple formats
@@ -102,7 +134,7 @@ serve(async (req) => {
     // Parse data rows using column mapping if provided
     const products = []
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.replace(/"/g, '').trim())
+      const values = parseCSVLine(lines[i])
       
       if (values.length > 0 && values[0]) { // Skip empty rows
         const product: any = {
