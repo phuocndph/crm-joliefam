@@ -91,55 +91,97 @@ serve(async (req) => {
       
       // Remove quotes and trim
       let cleanValue = value.replace(/"/g, '').trim();
+      console.log('Original price value:', value, '-> Clean value:', cleanValue);
       
       // Handle various currency symbols and text
-      cleanValue = cleanValue.replace(/[đĐ$€£¥₫]/g, '');
+      cleanValue = cleanValue.replace(/[đĐ$€£¥₫\s]/g, '');
+      
+      // Remove any non-numeric characters except commas, dots, and minus
+      cleanValue = cleanValue.replace(/[^\d.,-]/g, '');
+      
+      if (!cleanValue) return null;
+      
+      console.log('After symbol removal:', cleanValue);
       
       // Handle different thousand separators and decimal points
-      // Check if it's Vietnamese format (123.456,78) or US format (123,456.78)
       const commaCount = (cleanValue.match(/,/g) || []).length;
       const dotCount = (cleanValue.match(/\./g) || []).length;
       
+      let finalValue = cleanValue;
+      
       if (commaCount > 0 && dotCount > 0) {
-        // Mixed format - determine which is decimal separator
+        // Mixed format - determine which is decimal separator based on position
         const lastCommaIndex = cleanValue.lastIndexOf(',');
         const lastDotIndex = cleanValue.lastIndexOf('.');
         
         if (lastDotIndex > lastCommaIndex) {
-          // US format: 1,234.56
-          cleanValue = cleanValue.replace(/,/g, '');
+          // US format: 1,234.56 - dot is decimal
+          finalValue = cleanValue.replace(/,/g, '');
         } else {
-          // Vietnamese format: 1.234,56
-          cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+          // European/Vietnamese format: 1.234,56 - comma is decimal
+          finalValue = cleanValue.replace(/\./g, '').replace(/,/g, '.');
         }
-      } else if (commaCount > 0) {
-        // Only commas - could be thousands separator or decimal
+      } else if (commaCount === 1 && dotCount === 0) {
+        // Only one comma - check if it's decimal or thousands
         const parts = cleanValue.split(',');
-        if (parts.length === 2 && parts[1].length <= 2) {
-          // Likely decimal: 123,45
-          cleanValue = cleanValue.replace(',', '.');
-        } else {
-          // Likely thousands: 123,456 or 1,234,567
-          cleanValue = cleanValue.replace(/,/g, '');
+        if (parts.length === 2) {
+          const beforeComma = parts[0];
+          const afterComma = parts[1];
+          
+          // If after comma has 1-2 digits and before comma has more than 3, likely decimal
+          // Or if after comma has exactly 2 digits, very likely decimal
+          if ((afterComma.length <= 2 && beforeComma.length > 3) || afterComma.length === 2) {
+            finalValue = cleanValue.replace(',', '.');
+          } else if (afterComma.length === 3 && beforeComma.length <= 3) {
+            // Likely thousands: 123,456
+            finalValue = cleanValue.replace(',', '');
+          } else {
+            // Default to decimal for Vietnamese format
+            finalValue = cleanValue.replace(',', '.');
+          }
+        }
+      } else if (dotCount === 1 && commaCount === 0) {
+        // Only one dot - check if it's decimal or thousands
+        const parts = cleanValue.split('.');
+        if (parts.length === 2) {
+          const beforeDot = parts[0];
+          const afterDot = parts[1];
+          
+          // If after dot has 1-2 digits, likely decimal
+          if (afterDot.length <= 2) {
+            finalValue = cleanValue; // Keep as is
+          } else if (afterDot.length === 3 && beforeDot.length <= 3) {
+            // Likely thousands: 123.456
+            finalValue = cleanValue.replace('.', '');
+          } else {
+            // Default to keeping as decimal
+            finalValue = cleanValue;
+          }
         }
       } else if (dotCount > 1) {
-        // Multiple dots - thousands separator: 123.456.789
+        // Multiple dots - likely thousands separators: 1.234.567
         const parts = cleanValue.split('.');
         const lastPart = parts[parts.length - 1];
-        if (lastPart.length <= 2) {
-          // Last part is decimal: 123.456.78
-          cleanValue = parts.slice(0, -1).join('') + '.' + lastPart;
+        
+        if (lastPart.length <= 2 && parts.length > 2) {
+          // Last part looks like decimal: 1.234.567.89
+          finalValue = parts.slice(0, -1).join('') + '.' + lastPart;
         } else {
-          // All are thousands: 123.456.789
-          cleanValue = cleanValue.replace(/\./g, '');
+          // All are thousands separators: 1.234.567
+          finalValue = cleanValue.replace(/\./g, '');
         }
+      } else if (commaCount > 1) {
+        // Multiple commas - likely thousands separators in some format
+        finalValue = cleanValue.replace(/,/g, '');
       }
       
-      // Remove any remaining non-numeric characters except decimal point
-      cleanValue = cleanValue.replace(/[^\d.-]/g, '');
+      console.log('Final processed value:', finalValue);
       
-      const parsed = parseFloat(cleanValue);
-      return isNaN(parsed) ? null : parsed;
+      const parsed = parseFloat(finalValue);
+      const result = isNaN(parsed) ? null : parsed;
+      console.log('Parsed result:', result);
+      
+      return result;
     };
 
     // Parse CSV data
