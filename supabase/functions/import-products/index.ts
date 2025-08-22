@@ -109,7 +109,7 @@ serve(async (req) => {
       
       let finalValue = cleanValue;
       
-      // Vietnamese format prioritization - improved logic for millions
+      // Vietnamese format prioritization - CRITICAL FIX for millions
       if (dotCount > 1) {
         // Multiple dots like 2.235.000 or 1.234.567.89
         const parts = cleanValue.split('.');
@@ -120,7 +120,7 @@ serve(async (req) => {
         if (lastPart === '000' || (lastPart.length === 3 && /^\d+$/.test(lastPart))) {
           // This is Vietnamese thousands/millions format: 2.235.000 -> 2235000
           finalValue = cleanValue.replace(/\./g, '');
-          console.log('Detected Vietnamese millions format:', finalValue);
+          console.log('Detected Vietnamese millions format (multi-dot):', finalValue);
         } else if (lastPart.length <= 2 && parts.length > 2) {
           // Has decimal part: 1.234.567.89 -> 1234567.89
           finalValue = parts.slice(0, -1).join('') + '.' + lastPart;
@@ -129,20 +129,34 @@ serve(async (req) => {
           finalValue = cleanValue.replace(/\./g, '');
         }
       } else if (dotCount === 1) {
-        // Single dot: could be thousands or decimal
+        // Single dot: CRITICAL - Vietnamese thousands/millions detection
         const parts = cleanValue.split('.');
         if (parts.length === 2) {
           const beforeDot = parts[0];
           const afterDot = parts[1];
           
-          // Vietnamese format rules - enhanced for millions detection:
-          // - If after dot is "000": definitely thousands (2.235.000 pattern, but split as 235.000)
-          // - If after dot has exactly 3 digits: likely thousands (123.456)
-          // - If after dot has 1-2 digits: decimal (123.45)
-          if (afterDot === '000' || (afterDot.length === 3 && beforeDot.length >= 1)) {
-            // Vietnamese thousands format: 235.000 or 123.456 -> remove dot
+          // ENHANCED Vietnamese format rules for millions:
+          // Pattern 1: X.XXX (like 1.430, 2.235) - ALWAYS treat as thousands in Vietnamese context
+          // Pattern 2: XXX.00 or XXX.000 - treat as thousands  
+          // Pattern 3: XXX.X or XXX.XX - treat as decimal
+          
+          if (afterDot.length === 3 && /^\d+$/.test(afterDot)) {
+            // Vietnamese thousands: 1.430 -> 1430000 (multiply by 1000 for millions)
+            // OR if it's actually hundreds of thousands like 1.430 = 1,430,000
+            const numberValue = parseInt(beforeDot + afterDot);
+            
+            // Smart detection: if the number seems too small for the product context, multiply by 1000
+            if (numberValue < 10000) { // Numbers like 1430, 2235 etc.
+              finalValue = (numberValue * 1000).toString();
+              console.log('Detected Vietnamese thousands format, converted to millions:', finalValue);
+            } else {
+              finalValue = numberValue.toString();
+              console.log('Detected Vietnamese thousands format (large):', finalValue);
+            }
+          } else if (afterDot === '000') {
+            // Definitely thousands: 235.000 -> 235000
             finalValue = beforeDot + afterDot;
-            console.log('Detected Vietnamese thousands with single dot:', finalValue);
+            console.log('Detected Vietnamese thousands with .000:', finalValue);
           } else if (afterDot.length <= 2) {
             // Decimal: 123.45
             finalValue = cleanValue;
