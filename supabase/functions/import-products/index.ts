@@ -109,17 +109,23 @@ serve(async (req) => {
       
       let finalValue = cleanValue;
       
-      // Handle Vietnamese format prioritization
+      // Vietnamese format prioritization - improved logic for millions
       if (dotCount > 1) {
-        // Multiple dots: 3.800.000 or 1.234.567.89
+        // Multiple dots like 2.235.000 or 1.234.567.89
         const parts = cleanValue.split('.');
         const lastPart = parts[parts.length - 1];
         
-        if (lastPart.length <= 2 && parts.length > 2) {
+        // Check if this looks like Vietnamese millions format
+        // Pattern: X.XXX.000 or XX.XXX.000 etc.
+        if (lastPart === '000' || (lastPart.length === 3 && /^\d+$/.test(lastPart))) {
+          // This is Vietnamese thousands/millions format: 2.235.000 -> 2235000
+          finalValue = cleanValue.replace(/\./g, '');
+          console.log('Detected Vietnamese millions format:', finalValue);
+        } else if (lastPart.length <= 2 && parts.length > 2) {
           // Has decimal part: 1.234.567.89 -> 1234567.89
           finalValue = parts.slice(0, -1).join('') + '.' + lastPart;
         } else {
-          // All are thousands separators: 3.800.000 -> 3800000
+          // All are thousands separators: treat as whole number
           finalValue = cleanValue.replace(/\./g, '');
         }
       } else if (dotCount === 1) {
@@ -129,13 +135,14 @@ serve(async (req) => {
           const beforeDot = parts[0];
           const afterDot = parts[1];
           
-          // Vietnamese format rules:
-          // - If after dot has exactly 3 digits and before dot ≤ 3 digits: thousands (123.456)
+          // Vietnamese format rules - enhanced for millions detection:
+          // - If after dot is "000": definitely thousands (2.235.000 pattern, but split as 235.000)
+          // - If after dot has exactly 3 digits: likely thousands (123.456)
           // - If after dot has 1-2 digits: decimal (123.45)
-          // - If after dot has >3 digits: likely thousands concatenated (123.456789 -> 123456789)
-          if (afterDot.length === 3 && beforeDot.length <= 4) {
-            // Likely thousands: 123.456, 1.234.000 pattern
+          if (afterDot === '000' || (afterDot.length === 3 && beforeDot.length >= 1)) {
+            // Vietnamese thousands format: 235.000 or 123.456 -> remove dot
             finalValue = beforeDot + afterDot;
+            console.log('Detected Vietnamese thousands with single dot:', finalValue);
           } else if (afterDot.length <= 2) {
             // Decimal: 123.45
             finalValue = cleanValue;
