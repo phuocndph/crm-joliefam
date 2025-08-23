@@ -322,8 +322,17 @@ serve(async (req) => {
           })
         }
 
-        if (product.name && product.sku) { // Only add if has required fields
-          products.push(product)
+        // Validate required fields and price constraints
+        if (product.name && product.sku) {
+          // Check if prices are reasonable (not too low to be likely errors)
+          const hasValidPrice = !product.price || product.price >= 1000; // At least 1000 VND
+          const hasValidCostPrice = !product.cost_price || product.cost_price >= 1000; // At least 1000 VND
+          
+          if (hasValidPrice && hasValidCostPrice) {
+            products.push(product);
+          } else {
+            console.log('Skipping product due to invalid price:', product.name, 'Price:', product.price, 'Cost Price:', product.cost_price);
+          }
         }
       }
     }
