@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Package, Plus, Edit, Trash2, Search, Filter, FileSpreadsheet, Users, Calendar, Settings, Image } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { ColumnMappingDialog } from '@/components/ColumnMappingDialog';
 import ProductImageLibrary from '@/components/ProductImageLibrary';
 
@@ -930,23 +931,19 @@ const ProductManagement = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="costPrice">Giá gốc (VND)</Label>
-                        <Input
+                        <CurrencyInput
                           id="costPrice"
-                          type="number"
-                          step="1000"
-                          value={costPrice}
-                          onChange={(e) => setCostPrice(e.target.value)}
+                          value={costPrice ? parseFloat(costPrice) : undefined}
+                          onChange={(value) => setCostPrice(value.toString())}
                           placeholder="0"
                         />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="price">Giá bán (VND)</Label>
-                        <Input
+                        <CurrencyInput
                           id="price"
-                          type="number"
-                          step="1000"
-                          value={price}
-                          onChange={(e) => setPrice(e.target.value)}
+                          value={price ? parseFloat(price) : undefined}
+                          onChange={(value) => setPrice(value.toString())}
                           placeholder="0"
                         />
                       </div>
@@ -1237,23 +1234,21 @@ const ProductManagement = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="editCostPrice">Giá gốc</Label>
-                  <Input
+                  <Label htmlFor="editCostPrice">Giá gốc (VND)</Label>
+                  <CurrencyInput
                     id="editCostPrice"
-                    type="number"
-                    step="0.01"
-                    value={editCostPrice}
-                    onChange={(e) => setEditCostPrice(e.target.value)}
+                    value={editCostPrice ? parseFloat(editCostPrice) : undefined}
+                    onChange={(value) => setEditCostPrice(value.toString())}
+                    placeholder="0"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="editPrice">Giá bán</Label>
-                  <Input
+                  <Label htmlFor="editPrice">Giá bán (VND)</Label>
+                  <CurrencyInput
                     id="editPrice"
-                    type="number"
-                    step="0.01"
-                    value={editPrice}
-                    onChange={(e) => setEditPrice(e.target.value)}
+                    value={editPrice ? parseFloat(editPrice) : undefined}
+                    onChange={(value) => setEditPrice(value.toString())}
+                    placeholder="0"
                   />
                 </div>
               </div>
