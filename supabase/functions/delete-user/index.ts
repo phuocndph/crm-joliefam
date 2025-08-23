@@ -13,13 +13,13 @@ serve(async (req) => {
   }
 
   try {
-    const { userId } = await req.json();
-
-    if (!userId) {
+    // SECURITY FIX: Add proper authorization checks
+    const authHeader = req.headers.get('Authorization')?.replace('Bearer ', '');
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'User ID is required' }),
+        JSON.stringify({ error: 'Unauthorized' }),
         { 
-          status: 400, 
+          status: 401, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
@@ -46,7 +46,85 @@ serve(async (req) => {
       }
     });
 
-    console.log('Attempting to delete user:', userId);
+    // Verify the caller's authentication and get their role
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(authHeader);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid token' }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    const { userId } = await req.json();
+
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: 'User ID is required' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Get caller's role
+    const { data: callerRole } = await supabaseAdmin
+      .from('user_roles')
+      .select('role, assigned_by')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!callerRole) {
+      return new Response(
+        JSON.stringify({ error: 'User role not found' }),
+        { 
+          status: 404, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Get target user's role
+    const { data: targetUserRole } = await supabaseAdmin
+      .from('user_roles')
+      .select('role, assigned_by')
+      .eq('user_id', userId)
+      .single();
+
+    if (!targetUserRole) {
+      return new Response(
+        JSON.stringify({ error: 'Target user not found' }),
+        { 
+          status: 404, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Authorization checks
+    let canDelete = false;
+
+    if (callerRole.role === 'admin') {
+      canDelete = true;
+    } else if (callerRole.role === 'manager' && targetUserRole.role === 'employee' && targetUserRole.assigned_by === user.id) {
+      canDelete = true;
+    }
+
+    if (!canDelete) {
+      return new Response(
+        JSON.stringify({ error: 'You do not have permission to delete this user' }),
+        { 
+          status: 403, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    console.log(`Authorized deletion of user ${userId} by ${user.email} (${callerRole.role})`);
+
 
     // Delete user roles first
     const { error: roleError } = await supabaseAdmin

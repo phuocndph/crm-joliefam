@@ -178,15 +178,6 @@ const Auth = () => {
                   </Button>
                 </form>
 
-                <div className="mt-6 p-4 bg-muted rounded-lg">
-                  <p className="text-sm font-medium text-muted-foreground mb-2">
-                    Tài khoản demo:
-                  </p>
-                  <div className="space-y-1 text-xs">
-                    <p><strong>Email:</strong> admin@company.com</p>
-                    <p><strong>Password:</strong> SuperAdmin123!</p>
-                  </div>
-                </div>
               </TabsContent>
               
               <TabsContent value="signup">
