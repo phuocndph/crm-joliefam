@@ -86,6 +86,9 @@ const ProductManagement = () => {
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
   const [deleteAllLoading, setDeleteAllLoading] = useState(false);
 
+  // Create form collapse state
+  const [showCreateForm, setShowCreateForm] = useState(false);
+
   // Product Form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -420,45 +423,6 @@ const ProductManagement = () => {
       });
       return;
     }
-  };
-
-  const handleDeleteAllProducts = async () => {
-    if (!selectedPriceList) {
-      toast({
-        title: "Lỗi",
-        description: "Vui lòng chọn bảng giá trước",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setDeleteAllLoading(true);
-
-    try {
-      const { error } = await (supabase as any)
-        .from('products')
-        .delete()
-        .eq('price_list_id', selectedPriceList);
-
-      if (error) throw error;
-
-      toast({
-        title: "Thành công",
-        description: `Đã xóa toàn bộ sản phẩm trong bảng giá thành công`,
-      });
-
-      setShowDeleteAllDialog(false);
-      fetchProducts();
-    } catch (error: any) {
-      console.error('Error deleting all products:', error);
-      toast({
-        title: "Lỗi",
-        description: error.message || "Không thể xóa toàn bộ sản phẩm",
-        variant: "destructive",
-      });
-    } finally {
-      setDeleteAllLoading(false);
-    }
 
     setCreateProductLoading(true);
 
@@ -505,6 +469,45 @@ const ProductManagement = () => {
       });
     } finally {
       setCreateProductLoading(false);
+    }
+  };
+
+  const handleDeleteAllProducts = async () => {
+    if (!selectedPriceList) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng chọn bảng giá trước",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDeleteAllLoading(true);
+
+    try {
+      const { error } = await (supabase as any)
+        .from('products')
+        .delete()
+        .eq('price_list_id', selectedPriceList);
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: `Đã xóa toàn bộ sản phẩm trong bảng giá thành công`,
+      });
+
+      setShowDeleteAllDialog(false);
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Error deleting all products:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xóa toàn bộ sản phẩm",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteAllLoading(false);
     }
   };
 
@@ -871,7 +874,10 @@ const ProductManagement = () => {
                       Import
                     </Button>
                     <Button
-                      onClick={() => document.getElementById('create-product-form')?.scrollIntoView({ behavior: 'smooth' })}
+                      onClick={() => {
+                        setShowCreateForm(true);
+                        document.getElementById('create-product-form')?.scrollIntoView({ behavior: 'smooth' });
+                      }}
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Thêm SP
@@ -886,127 +892,137 @@ const ProductManagement = () => {
             <>
               {/* Create Product Form */}
               <Card id="create-product-form">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Plus className="h-5 w-5" />
-                    Thêm sản phẩm mới
+                <CardHeader 
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setShowCreateForm(!showCreateForm)}
+                >
+                  <CardTitle className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Plus className="h-5 w-5" />
+                      Thêm sản phẩm mới
+                    </div>
+                    <Button variant="ghost" size="sm" type="button">
+                      {showCreateForm ? 'Thu gọn' : 'Mở rộng'}
+                    </Button>
                   </CardTitle>
                   <CardDescription>
                     Điền thông tin để tạo sản phẩm mới trong bảng giá đã chọn
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleCreateProduct} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="sku">Mã SP *</Label>
-                        <Input
-                          id="sku"
-                          value={sku}
-                          onChange={(e) => setSku(e.target.value)}
-                          required
-                          placeholder="VD: SP001"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Tên sản phẩm *</Label>
-                        <Input
-                          id="name"
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          required
-                          placeholder="Tên sản phẩm"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="category">Danh mục</Label>
-                        <Input
-                          id="category"
-                          value={category}
-                          onChange={(e) => setCategory(e.target.value)}
-                          placeholder="Danh mục"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="specifications">Quy cách</Label>
-                        <Input
-                          id="specifications"
-                          value={specifications}
-                          onChange={(e) => setSpecifications(e.target.value)}
-                          placeholder="Quy cách"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="costPrice">Giá gốc (VND)</Label>
-                        <Input
-                          id="costPrice"
-                          type="number"
-                          step="1000"
-                          value={costPrice}
-                          onChange={(e) => setCostPrice(e.target.value)}
-                          placeholder="0"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="price">Giá bán (VND)</Label>
-                        <Input
-                          id="price"
-                          type="number"
-                          step="1000"
-                          value={price}
-                          onChange={(e) => setPrice(e.target.value)}
-                          placeholder="0"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="inStock">Tình trạng</Label>
-                        <div className="flex items-center space-x-2 h-10">
-                          <Switch
-                            id="inStock"
-                            checked={inStock}
-                            onCheckedChange={setInStock}
+                {showCreateForm && (
+                  <CardContent>
+                    <form onSubmit={handleCreateProduct} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="sku">Mã SP *</Label>
+                          <Input
+                            id="sku"
+                            value={sku}
+                            onChange={(e) => setSku(e.target.value)}
+                            required
+                            placeholder="VD: SP001"
                           />
-                          <Label htmlFor="inStock" className="text-sm">
-                            {inStock ? 'Còn hàng' : 'Hết hàng'}
-                          </Label>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="name">Tên sản phẩm *</Label>
+                          <Input
+                            id="name"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            required
+                            placeholder="Tên sản phẩm"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="category">Danh mục</Label>
+                          <Input
+                            id="category"
+                            value={category}
+                            onChange={(e) => setCategory(e.target.value)}
+                            placeholder="Danh mục"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="specifications">Quy cách</Label>
+                          <Input
+                            id="specifications"
+                            value={specifications}
+                            onChange={(e) => setSpecifications(e.target.value)}
+                            placeholder="Quy cách"
+                          />
                         </div>
                       </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Mô tả</Label>
-                      <Textarea
-                        id="description"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        rows={2}
-                        placeholder="Mô tả chi tiết sản phẩm..."
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button type="submit" disabled={createProductLoading}>
-                        {createProductLoading ? 'Đang tạo...' : 'Tạo sản phẩm'}
-                      </Button>
-                      <Button 
-                        type="button" 
-                        variant="outline"
-                        onClick={() => {
-                          setName('');
-                          setDescription('');
-                          setPrice('');
-                          setCostPrice('');
-                          setSku('');
-                          setCategory('');
-                          setSpecifications('');
-                          setInStock(true);
-                        }}
-                      >
-                        Xóa form
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="costPrice">Giá gốc (VND)</Label>
+                          <Input
+                            id="costPrice"
+                            type="number"
+                            step="1000"
+                            value={costPrice}
+                            onChange={(e) => setCostPrice(e.target.value)}
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="price">Giá bán (VND)</Label>
+                          <Input
+                            id="price"
+                            type="number"
+                            step="1000"
+                            value={price}
+                            onChange={(e) => setPrice(e.target.value)}
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="inStock">Tình trạng</Label>
+                          <div className="flex items-center space-x-2 h-10">
+                            <Switch
+                              id="inStock"
+                              checked={inStock}
+                              onCheckedChange={setInStock}
+                            />
+                            <Label htmlFor="inStock" className="text-sm">
+                              {inStock ? 'Còn hàng' : 'Hết hàng'}
+                            </Label>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="description">Mô tả</Label>
+                        <Textarea
+                          id="description"
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          rows={2}
+                          placeholder="Mô tả chi tiết sản phẩm..."
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="submit" disabled={createProductLoading}>
+                          {createProductLoading ? 'Đang tạo...' : 'Tạo sản phẩm'}
+                        </Button>
+                        <Button 
+                          type="button" 
+                          variant="outline"
+                          onClick={() => {
+                            setName('');
+                            setDescription('');
+                            setPrice('');
+                            setCostPrice('');
+                            setSku('');
+                            setCategory('');
+                            setSpecifications('');
+                            setInStock(true);
+                          }}
+                        >
+                          Xóa form
+                        </Button>
+                      </div>
+                    </form>
+                  </CardContent>
+                )}
               </Card>
 
               {/* Search and Filter */}
