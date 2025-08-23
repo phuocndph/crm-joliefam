@@ -60,11 +60,16 @@ export function parseVietnameseCurrency(value: string | number): number | null {
     const commaIndex = cleaned.lastIndexOf(',')
     const afterComma = cleaned.substring(commaIndex + 1)
     
-    if (afterComma.length <= 2 && afterComma.length > 0) {
+    // Improved logic: Check if it's likely a decimal based on patterns
+    // If after comma is exactly 2 digits and before comma has no thousands pattern, likely decimal
+    // If after comma is 3+ digits or before comma looks like thousands (3+ digits), likely thousands separator
+    const beforeComma = cleaned.substring(0, commaIndex)
+    
+    if (afterComma.length === 2 && beforeComma.length <= 3 && !beforeComma.includes('.')) {
       // Likely decimal: 120,50 -> 120.50
       cleaned = cleaned.replace(',', '.')
     } else {
-      // Likely thousands separator: 120,000 -> 120000
+      // Likely thousands separator: 120,000 or 1.234,000 -> 120000 or 1234000
       cleaned = cleaned.replace(/,/g, '')
     }
   } else if (cleaned.includes('.')) {
@@ -73,8 +78,18 @@ export function parseVietnameseCurrency(value: string | number): number | null {
     if (dotCount > 1) {
       // Multiple dots = thousands separators: 1.234.567 -> 1234567
       cleaned = cleaned.replace(/\./g, '')
+    } else {
+      // Single dot - check if it's likely thousands separator or decimal
+      const parts = cleaned.split('.')
+      const afterDot = parts[1]
+      
+      // If after dot is exactly 3 digits, likely thousands separator
+      if (afterDot && afterDot.length === 3 && /^\d{3}$/.test(afterDot)) {
+        // Format: 123.000 -> 123000
+        cleaned = cleaned.replace('.', '')
+      }
+      // Otherwise keep as decimal point
     }
-    // Single dot assumed to be decimal point, keep as is
   }
   
   // Remove any remaining non-digit characters except decimal point
