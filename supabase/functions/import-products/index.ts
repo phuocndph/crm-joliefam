@@ -280,7 +280,17 @@ serve(async (req) => {
     })
     const deduplicatedProducts = Array.from(uniqueProducts.values())
     
-    console.log(`After deduplication: ${deduplicatedProducts.length} unique products`)
+    // Sort products: first by category, then by SKU (ascending) to maintain consistent order
+    deduplicatedProducts.sort((a, b) => {
+      // Primary sort: category (alphabetical)
+      const categoryCompare = (a.category || '').localeCompare(b.category || '', 'vi', { numeric: true });
+      if (categoryCompare !== 0) return categoryCompare;
+      
+      // Secondary sort: SKU (alphabetical/numerical)
+      return (a.sku || '').localeCompare(b.sku || '', 'vi', { numeric: true });
+    });
+    
+    console.log(`After deduplication and sorting: ${deduplicatedProducts.length} unique products`)
 
     // Use upsert approach to handle existing products gracefully
     const { data, error } = await supabase

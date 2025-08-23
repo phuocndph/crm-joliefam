@@ -214,6 +214,16 @@ const ProductManagement = () => {
       }
     }
 
+    // Sort products: first by category, then by SKU (ascending)
+    filtered.sort((a, b) => {
+      // Primary sort: category (alphabetical)
+      const categoryCompare = (a.category || '').localeCompare(b.category || '', 'vi', { numeric: true });
+      if (categoryCompare !== 0) return categoryCompare;
+      
+      // Secondary sort: SKU (alphabetical/numerical)
+      return (a.sku || '').localeCompare(b.sku || '', 'vi', { numeric: true });
+    });
+
     console.log('Final filtered products:', filtered.length);
     setFilteredProducts(filtered);
   };
