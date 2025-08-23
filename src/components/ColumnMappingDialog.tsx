@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { parseCsvLine, parseVietnameseCurrency, formatVietnameseCurrency } from "@/lib/csvUtils";
 
 interface ColumnMappingDialogProps {
   open: boolean;
@@ -71,9 +72,20 @@ export function ColumnMappingDialog({
         return;
       }
 
-      const parsedHeaders = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+      // Use shared CSV parsing logic
+      const parsedHeaders = parseCsvLine(lines[0]).map(h => h.replace(/"/g, '').trim());
       const parsedSampleData = lines.slice(1, 6).map(line => 
-        line.split(',').map(cell => cell.replace(/"/g, '').trim())
+        parseCsvLine(line).map(cell => {
+          const cleanCell = cell.replace(/"/g, '').trim();
+          // Format currency values for better preview
+          if (cleanCell && /[\d,.]/.test(cleanCell)) {
+            const parsed = parseVietnameseCurrency(cleanCell);
+            if (parsed !== null && parsed > 1000) {
+              return formatVietnameseCurrency(parsed);
+            }
+          }
+          return cleanCell;
+        })
       );
 
       setHeaders(parsedHeaders);

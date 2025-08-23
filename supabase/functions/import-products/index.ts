@@ -129,24 +129,26 @@ serve(async (req) => {
     }
 
     // Helper function to parse Vietnamese currency format
-    const parseVietnameseCurrency = (value: string): number | null => {
-      if (!value) return null
+    const parseVietnameseCurrency = (value: string | number): number | null => {
+      if (!value && value !== 0) return null
       
-      // Remove all non-digit characters except dots and commas
-      // Handle Vietnamese format: 1.234.567,89 or 1,234,567.89 or 120,000
       let cleaned = value.toString().trim()
       
-      // If value contains both dots and commas, assume Vietnamese format (dots for thousands, comma for decimal)
+      // Remove currency symbols and extra spaces
+      cleaned = cleaned.replace(/[₫VNĐ\s]/g, '')
+      
+      if (!cleaned) return null
+      
+      // Handle Vietnamese format: 1.234.567,89 (dots for thousands, comma for decimal)
       if (cleaned.includes('.') && cleaned.includes(',')) {
         // Format: 1.234.567,89 -> 1234567.89
         cleaned = cleaned.replace(/\./g, '').replace(',', '.')
       } else if (cleaned.includes(',') && !cleaned.includes('.')) {
-        // Format: 120,000 (Vietnamese thousands separator) -> 120000
-        // But could also be 120,50 (decimal), need to check position
+        // Format could be: 120,000 (thousands) or 120,50 (decimal)
         const commaIndex = cleaned.lastIndexOf(',')
         const afterComma = cleaned.substring(commaIndex + 1)
         
-        if (afterComma.length <= 2) {
+        if (afterComma.length <= 2 && afterComma.length > 0) {
           // Likely decimal: 120,50 -> 120.50
           cleaned = cleaned.replace(',', '.')
         } else {
@@ -254,21 +256,24 @@ serve(async (req) => {
       throw new Error('Không tìm thấy sản phẩm hợp lệ trong Google Sheets')
     }
 
-    // Delete existing products for this price list first
-    const { error: deleteError } = await supabase
-      .from('products')
-      .delete()
-      .eq('price_list_id', priceListId)
+    // Remove duplicates within the same import based on SKU
+    const uniqueProducts = new Map()
+    products.forEach(product => {
+      if (product.sku && !uniqueProducts.has(product.sku)) {
+        uniqueProducts.set(product.sku, product)
+      }
+    })
+    const deduplicatedProducts = Array.from(uniqueProducts.values())
+    
+    console.log(`After deduplication: ${deduplicatedProducts.length} unique products`)
 
-    if (deleteError) {
-      console.error('Delete error:', deleteError)
-      throw new Error(`Lỗi khi xóa sản phẩm cũ: ${deleteError.message}`)
-    }
-
-    // Insert new products into database
+    // Use upsert approach to handle existing products gracefully
     const { data, error } = await supabase
       .from('products')
-      .insert(products)
+      .upsert(deduplicatedProducts, { 
+        onConflict: 'sku,price_list_id',
+        ignoreDuplicates: false 
+      })
       .select()
 
     if (error) {
