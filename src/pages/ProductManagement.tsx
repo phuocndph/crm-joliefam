@@ -1134,81 +1134,105 @@ const ProductManagement = () => {
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="border-b bg-muted/50">
-                            <TableHead className="w-20 font-semibold">Mã SP</TableHead>
-                            <TableHead className="w-24 font-semibold">Danh mục</TableHead>
-                            <TableHead className="w-48 font-semibold">Tên sản phẩm</TableHead>
-                            <TableHead className="w-32 font-semibold">Quy cách</TableHead>
-                            <TableHead className="w-24 text-right font-semibold">Giá gốc</TableHead>
-                            <TableHead className="w-24 text-right font-semibold">Giá bán</TableHead>
-                            <TableHead className="w-16 text-center font-semibold">Kho</TableHead>
-                            <TableHead className="w-48 font-semibold">Mô tả</TableHead>
-                            <TableHead className="w-20 text-center font-semibold">Thao tác</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredProducts.map((product) => (
-                            <TableRow key={product.id} className="hover:bg-muted/30 transition-colors">
-                              <TableCell className="font-mono text-sm font-medium">
-                                {product.sku || '-'}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="text-xs">
-                                  {product.category || 'Chưa phân loại'}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="font-medium">
-                                <div className="line-clamp-2 max-w-48">
-                                  {product.name}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">
-                                <div className="line-clamp-1 max-w-32">
-                                  {product.specifications || '-'}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right font-medium text-muted-foreground">
-                                {product.cost_price ? formatPrice(product.cost_price) : '-'}
-                              </TableCell>
-                              <TableCell className="text-right font-bold text-primary">
-                                {product.price ? formatPrice(product.price) : '-'}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Badge variant={product.in_stock ? 'default' : 'destructive'} className="text-xs">
-                                  {product.in_stock ? 'Còn' : 'Hết'}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">
-                                <div className="line-clamp-2 max-w-48">
-                                  {product.description || '-'}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <div className="flex justify-center gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => openEditDialog(product)}
-                                    className="h-8 w-8 p-0"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setDeletingProduct(product)}
-                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                       <Table>
+                         <TableHeader>
+                           <TableRow className="border-b border-border bg-muted/30">
+                             <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[100px]">
+                               Mã SP
+                             </TableHead>
+                             <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
+                               Danh mục
+                             </TableHead>
+                             <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 min-w-[200px]">
+                               Tên sản phẩm
+                             </TableHead>
+                             <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[140px]">
+                               Quy cách
+                             </TableHead>
+                             <TableHead className="h-12 px-4 text-right align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
+                               Giá gốc
+                             </TableHead>
+                             <TableHead className="h-12 px-4 text-right align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
+                               Giá bán
+                             </TableHead>
+                             <TableHead className="h-12 px-4 text-center align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[80px]">
+                               Kho
+                             </TableHead>
+                             <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 min-w-[180px]">
+                               Mô tả
+                             </TableHead>
+                             <TableHead className="h-12 px-4 text-center align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[100px]">
+                               Thao tác
+                             </TableHead>
+                           </TableRow>
+                         </TableHeader>
+                         <TableBody>
+                           {filteredProducts.map((product) => (
+                             <TableRow 
+                               key={product.id} 
+                               className="border-b border-border hover:bg-white hover:text-accent transition-colors duration-200 group"
+                             >
+                               <TableCell className="p-4 align-middle font-mono text-sm font-medium">
+                                 {product.sku || '-'}
+                               </TableCell>
+                               <TableCell className="p-4 align-middle">
+                                 <Badge variant="outline" className="text-xs bg-muted/50 group-hover:bg-accent/10 group-hover:text-accent group-hover:border-accent/30">
+                                   {product.category || 'Chưa phân loại'}
+                                 </Badge>
+                               </TableCell>
+                               <TableCell className="p-4 align-middle font-medium">
+                                 <div className="line-clamp-2 leading-relaxed">
+                                   {product.name}
+                                 </div>
+                               </TableCell>
+                               <TableCell className="p-4 align-middle text-sm text-muted-foreground group-hover:text-accent/80">
+                                 <div className="line-clamp-1">
+                                   {product.specifications || '-'}
+                                 </div>
+                               </TableCell>
+                               <TableCell className="p-4 align-middle text-right font-medium text-muted-foreground group-hover:text-accent/80">
+                                 {product.cost_price ? formatPrice(product.cost_price) : '-'}
+                               </TableCell>
+                               <TableCell className="p-4 align-middle text-right font-bold text-primary group-hover:text-accent">
+                                 {product.price ? formatPrice(product.price) : '-'}
+                               </TableCell>
+                               <TableCell className="p-4 align-middle text-center">
+                                 <Badge 
+                                   variant={product.in_stock ? 'default' : 'destructive'} 
+                                   className="text-xs group-hover:bg-accent/10 group-hover:text-accent group-hover:border-accent/30"
+                                 >
+                                   {product.in_stock ? 'Còn' : 'Hết'}
+                                 </Badge>
+                               </TableCell>
+                               <TableCell className="p-4 align-middle text-sm text-muted-foreground group-hover:text-accent/80">
+                                 <div className="line-clamp-2 leading-relaxed">
+                                   {product.description || '-'}
+                                 </div>
+                               </TableCell>
+                               <TableCell className="p-4 align-middle text-center">
+                                 <div className="flex justify-center gap-1">
+                                   <Button
+                                     variant="ghost"
+                                     size="sm"
+                                     onClick={() => openEditDialog(product)}
+                                     className="h-8 w-8 p-0 hover:bg-accent/10 hover:text-accent"
+                                   >
+                                     <Edit className="h-4 w-4" />
+                                   </Button>
+                                   <Button
+                                     variant="ghost"
+                                     size="sm"
+                                     onClick={() => setDeletingProduct(product)}
+                                     className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                   >
+                                     <Trash2 className="h-4 w-4" />
+                                   </Button>
+                                 </div>
+                               </TableCell>
+                             </TableRow>
+                           ))}
+                         </TableBody>
+                       </Table>
                     </div>
                   )}
                 </CardContent>
@@ -1391,15 +1415,15 @@ const ProductManagement = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Xác nhận xóa</DialogTitle>
-              <DialogDescription>
-                Bạn có chắc chắn muốn xóa bảng giá "{deletingPriceList.name}"? 
-                Hành động này sẽ xóa bảng giá và không thể hoàn tác.
-                {priceLists.length > 0 && (
-                  <div className="mt-2 p-2 bg-warning/10 rounded text-sm">
-                    <strong>Lưu ý:</strong> Bảng giá chỉ có thể xóa khi không còn sản phẩm nào.
-                  </div>
-                )}
-              </DialogDescription>
+               <DialogDescription>
+                 Bạn có chắc chắn muốn xóa bảng giá "{deletingPriceList.name}"? 
+                 Hành động này sẽ xóa bảng giá và không thể hoàn tác.
+               </DialogDescription>
+               {priceLists.length > 0 && (
+                 <div className="mt-2 p-2 bg-warning/10 rounded text-sm">
+                   <strong>Lưu ý:</strong> Bảng giá chỉ có thể xóa khi không còn sản phẩm nào.
+                 </div>
+               )}
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDeletingPriceList(null)}>
