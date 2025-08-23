@@ -53,14 +53,43 @@ serve(async (req) => {
     const csvText = await response.text()
     console.log('CSV data received, length:', csvText.length)
 
-    // Parse CSV data
+    // Parse CSV data properly handling quoted values
     const lines = csvText.trim().split('\n')
     if (lines.length < 2) {
       throw new Error('Google Sheets không có dữ liệu')
     }
 
+    // Helper function to parse CSV line properly
+    const parseCsvLine = (line: string): string[] => {
+      const result = []
+      let current = ''
+      let inQuotes = false
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i]
+        
+        if (char === '"') {
+          // Handle escaped quotes
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"'
+            i++ // Skip next quote
+          } else {
+            inQuotes = !inQuotes
+          }
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim())
+          current = ''
+        } else {
+          current += char
+        }
+      }
+      
+      result.push(current.trim())
+      return result
+    }
+
     // Parse header
-    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim())
+    const headers = parseCsvLine(lines[0]).map(h => h.replace(/"/g, '').trim())
     console.log('Headers:', headers)
 
     // Expected headers - support multiple formats
@@ -99,10 +128,52 @@ serve(async (req) => {
       throw new Error(`Không tìm thấy các cột: ${missingHeaders.join(', ')}. Headers có sẵn: ${headers.join(', ')}`)
     }
 
+    // Helper function to parse Vietnamese currency format
+    const parseVietnameseCurrency = (value: string): number | null => {
+      if (!value) return null
+      
+      // Remove all non-digit characters except dots and commas
+      // Handle Vietnamese format: 1.234.567,89 or 1,234,567.89 or 120,000
+      let cleaned = value.toString().trim()
+      
+      // If value contains both dots and commas, assume Vietnamese format (dots for thousands, comma for decimal)
+      if (cleaned.includes('.') && cleaned.includes(',')) {
+        // Format: 1.234.567,89 -> 1234567.89
+        cleaned = cleaned.replace(/\./g, '').replace(',', '.')
+      } else if (cleaned.includes(',') && !cleaned.includes('.')) {
+        // Format: 120,000 (Vietnamese thousands separator) -> 120000
+        // But could also be 120,50 (decimal), need to check position
+        const commaIndex = cleaned.lastIndexOf(',')
+        const afterComma = cleaned.substring(commaIndex + 1)
+        
+        if (afterComma.length <= 2) {
+          // Likely decimal: 120,50 -> 120.50
+          cleaned = cleaned.replace(',', '.')
+        } else {
+          // Likely thousands separator: 120,000 -> 120000
+          cleaned = cleaned.replace(/,/g, '')
+        }
+      } else if (cleaned.includes('.')) {
+        // Could be thousands separator (1.234.567) or decimal (1234.56)
+        const dotCount = (cleaned.match(/\./g) || []).length
+        if (dotCount > 1) {
+          // Multiple dots = thousands separators: 1.234.567 -> 1234567
+          cleaned = cleaned.replace(/\./g, '')
+        }
+        // Single dot assumed to be decimal point, keep as is
+      }
+      
+      // Remove any remaining non-digit characters except decimal point
+      cleaned = cleaned.replace(/[^\d.]/g, '')
+      
+      const parsed = parseFloat(cleaned)
+      return isNaN(parsed) ? null : parsed
+    }
+
     // Parse data rows using column mapping if provided
     const products = []
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.replace(/"/g, '').trim())
+      const values = parseCsvLine(lines[i]).map(v => v.replace(/"/g, '').trim())
       
       if (values.length > 0 && values[0]) { // Skip empty rows
         const product: any = {
@@ -130,10 +201,10 @@ serve(async (req) => {
                 product.specifications = value
                 break
               case 'cost_price':
-                product.cost_price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                product.cost_price = parseVietnameseCurrency(value)
                 break
               case 'price':
-                product.price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                product.price = parseVietnameseCurrency(value)
                 break
               case 'description':
                 product.description = value
@@ -159,10 +230,10 @@ serve(async (req) => {
                 product.specifications = value
                 break
               case 'Giá gốc':
-                product.cost_price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                product.cost_price = parseVietnameseCurrency(value)
                 break
               case 'Giá bán':
-                product.price = value ? parseFloat(value.replace(/[^\d.]/g, '')) : null
+                product.price = parseVietnameseCurrency(value)
                 break
               case 'Mô tả':
                 product.description = value
