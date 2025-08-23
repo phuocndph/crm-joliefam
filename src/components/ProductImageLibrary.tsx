@@ -5,9 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, Folder, Image, Trash2, Plus, FolderOpen, Edit2 } from 'lucide-react';
+import { Upload, Folder, Image, Trash2, Plus, FolderOpen, Edit2, Eye, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface ProductImage {
@@ -45,6 +46,10 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
   const [categoryDisplayNames, setCategoryDisplayNames] = useState<{[key: string]: string}>({});
   const [isDragOver, setIsDragOver] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [imageToDelete, setImageToDelete] = useState<string>('');
+  const [showImageViewer, setShowImageViewer] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState('');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -351,11 +356,16 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
     }
   };
 
-  const handleDeleteImage = async (imagePath: string) => {
+  const confirmDeleteImage = (imagePath: string) => {
+    setImageToDelete(imagePath);
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteImage = async () => {
     try {
       const { error } = await supabase.storage
         .from('product-images')
-        .remove([imagePath]);
+        .remove([imageToDelete]);
 
       if (error) throw error;
 
@@ -364,6 +374,8 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
         description: "Đã xóa hình ảnh",
       });
 
+      setShowDeleteDialog(false);
+      setImageToDelete('');
       fetchImages();
     } catch (error) {
       console.error('Error deleting image:', error);
@@ -373,6 +385,11 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
         variant: "destructive",
       });
     }
+  };
+
+  const handleImageClick = (imageUrl: string) => {
+    setSelectedImageUrl(imageUrl);
+    setShowImageViewer(true);
   };
 
   const handleRenameCategory = async () => {
@@ -577,21 +594,32 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
                   alt={image.name}
                   className="w-full h-32 object-contain bg-muted rounded"
                 />
-                {!hideDeleteButton && (
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded flex items-center justify-center transition-all">
+                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded flex items-center justify-center gap-2 transition-all">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleImageClick(image.url);
+                    }}
+                  >
+                    <Eye className="h-3 w-3" />
+                  </Button>
+                  {!hideDeleteButton && (
                     <Button
                       size="sm"
                       variant="destructive"
                       className="opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteImage(image.fullPath);
+                        confirmDeleteImage(image.fullPath);
                       }}
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
               <div className="mt-2 space-y-1">
                 <p className="text-xs text-muted-foreground truncate" title={image.name}>
@@ -787,6 +815,47 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
               {renamingCategory ? "Đang đổi tên..." : "Đổi tên"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa hình ảnh</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa hình ảnh này không? Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowDeleteDialog(false)}>
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteImage}>
+              Xóa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Image Viewer Dialog */}
+      <Dialog open={showImageViewer} onOpenChange={setShowImageViewer}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0">
+          <div className="relative">
+            <img
+              src={selectedImageUrl}
+              alt="Xem hình ảnh"
+              className="w-full h-auto max-h-[85vh] object-contain"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              className="absolute top-2 right-2"
+              onClick={() => setShowImageViewer(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
