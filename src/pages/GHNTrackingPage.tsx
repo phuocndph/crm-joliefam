@@ -91,10 +91,14 @@ export default function GHNTrackingPage() {
     getCurrentUser();
   }, []);
 
-  // Load tracking data from database
+  // Load tracking data from database and auto-update incomplete orders
   useEffect(() => {
     if (user) {
       loadTrackingData();
+      // Auto-load incomplete orders after initial data load
+      setTimeout(() => {
+        autoLoadIncompleteOrders();
+      }, 1000);
     }
   }, [user]);
 
@@ -169,6 +173,64 @@ export default function GHNTrackingPage() {
     } catch (error) {
       console.error('Error loading tracking data:', error);
       toast.error('Lỗi tải dữ liệu tracking');
+    }
+  };
+
+  // Auto-load incomplete orders when login
+  const autoLoadIncompleteOrders = async () => {
+    if (!user) return;
+
+    // Find orders that don't have final delivery status
+    const incompleteStatuses = ['delivered', 'returned', 'cancel', 'lost', 'damage'];
+    const incompleteOrders = trackingData.filter(order => 
+      !incompleteStatuses.includes(order.ghn_status || '')
+    );
+
+    if (incompleteOrders.length === 0) {
+      console.log('Không có đơn hàng chưa hoàn thành');
+      return;
+    }
+
+    console.log(`Tự động cập nhật ${incompleteOrders.length} đơn hàng chưa hoàn thành...`);
+    
+    try {
+      let updatedCount = 0;
+      const batchSize = 5; // Process in batches to avoid overloading
+
+      for (let i = 0; i < incompleteOrders.length; i += batchSize) {
+        const batch = incompleteOrders.slice(i, i + batchSize);
+        
+        await Promise.all(batch.map(async (order) => {
+          try {
+            const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+              body: {
+                action: 'save_tracking',
+                orderCode: order.ghn_order_code,
+                userId: user.id,
+                managerId: user.id
+              }
+            });
+
+            if (!error && data.success) {
+              updatedCount++;
+            }
+          } catch (error) {
+            console.error(`Lỗi cập nhật đơn ${order.ghn_order_code}:`, error);
+          }
+        }));
+
+        // Small delay between batches
+        if (i + batchSize < incompleteOrders.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      if (updatedCount > 0) {
+        toast.success(`Đã tự động cập nhật ${updatedCount} đơn hàng chưa hoàn thành`);
+        await loadTrackingData();
+      }
+    } catch (error) {
+      console.error('Lỗi tự động cập nhật:', error);
     }
   };
 
