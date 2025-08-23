@@ -162,7 +162,7 @@ const EditUserDialog = ({ open, onOpenChange, profile, currentUserRole, onUserUp
             <Select 
               value={selectedRole || ''} 
               onValueChange={(value) => setSelectedRole(value as UserRole)}
-              disabled={!canEditRole(profile?.user_roles?.[0]?.role || 'employee')}
+              disabled={!canEditRole(selectedRole)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Chọn vai trò" />

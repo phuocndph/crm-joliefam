@@ -98,47 +98,6 @@ export default function GHNTrackingPage() {
     }
   }, [user]);
 
-  // Real-time subscription for GHN tracking updates
-  useEffect(() => {
-    if (!user) return;
-
-    console.log('📦 Setting up GHN tracking real-time subscription');
-    
-    const channel = supabase
-      .channel('ghn-tracking-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ghn_tracking'
-        },
-        async (payload) => {
-          console.log('📦 GHN tracking real-time update received:', payload.eventType, payload);
-          
-          // Reload data when there are changes
-          await loadTrackingData();
-          
-          // Show notification for updates
-          if (payload.eventType === 'INSERT') {
-            toast.success('Đã thêm đơn hàng tracking mới');
-          } else if (payload.eventType === 'UPDATE') {
-            toast.info('Cập nhật trạng thái đơn hàng');
-          } else if (payload.eventType === 'DELETE') {
-            toast.info('Đã xóa đơn hàng tracking');
-          }
-        }
-      )
-      .subscribe((status) => {
-        console.log('📦 GHN tracking real-time subscription status:', status);
-      });
-
-    return () => {
-      console.log('📦 Cleaning up GHN tracking real-time subscription');
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
-
   // Auto-update tracking data every 60 minutes
   useEffect(() => {
     if (!user || trackingData.length === 0) return;
