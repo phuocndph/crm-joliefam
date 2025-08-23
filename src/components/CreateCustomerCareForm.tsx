@@ -189,15 +189,15 @@ const { toast } = useToast();
                 <SelectTrigger>
                   <SelectValue placeholder="Chọn người phụ trách" />
                 </SelectTrigger>
-<SelectContent>
+                <SelectContent>
                   {assigneesLoading ? (
-                    <SelectItem value="" disabled>Đang tải...</SelectItem>
+                    <SelectItem value="loading" disabled>Đang tải...</SelectItem>
                   ) : assigneesData && assigneesData.length > 0 ? (
                     assigneesData.map((a) => (
                       <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                     ))
                   ) : (
-                    <SelectItem value="" disabled>Chưa có người phụ trách</SelectItem>
+                    <SelectItem value="no-assignees" disabled>Chưa có người phụ trách</SelectItem>
                   )}
                 </SelectContent>
               </Select>

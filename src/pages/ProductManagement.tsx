@@ -71,6 +71,20 @@ const ProductManagement = () => {
   const [priceListYear, setPriceListYear] = useState(new Date().getFullYear().toString());
   const [createPriceListLoading, setCreatePriceListLoading] = useState(false);
   const [showCreatePriceListDialog, setShowCreatePriceListDialog] = useState(false);
+  
+  // Edit Price List state
+  const [editingPriceList, setEditingPriceList] = useState<PriceList | null>(null);
+  const [editPriceListName, setEditPriceListName] = useState('');
+  const [editPriceListYear, setEditPriceListYear] = useState('');
+  const [editPriceListLoading, setEditPriceListLoading] = useState(false);
+  
+  // Delete Price List state
+  const [deletingPriceList, setDeletingPriceList] = useState<PriceList | null>(null);
+  const [deletePriceListLoading, setDeletePriceListLoading] = useState(false);
+
+  // Delete All Products state
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const [deleteAllLoading, setDeleteAllLoading] = useState(false);
 
   // Product Form state
   const [name, setName] = useState('');
@@ -241,6 +255,105 @@ const ProductManagement = () => {
     }
   };
 
+  const openEditPriceListDialog = (priceList: PriceList) => {
+    setEditingPriceList(priceList);
+    setEditPriceListName(priceList.name);
+    setEditPriceListYear(priceList.year.toString());
+  };
+
+  const handleEditPriceList = async () => {
+    if (!editingPriceList) return;
+    
+    setEditPriceListLoading(true);
+
+    try {
+      const { error } = await (supabase as any)
+        .from('price_lists')
+        .update({
+          name: editPriceListName,
+          year: parseInt(editPriceListYear),
+        })
+        .eq('id', editingPriceList.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: "Đã cập nhật bảng giá thành công",
+      });
+
+      setEditingPriceList(null);
+      setEditPriceListName('');
+      setEditPriceListYear('');
+      fetchPriceLists();
+    } catch (error: any) {
+      console.error('Error updating price list:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể cập nhật bảng giá",
+        variant: "destructive",
+      });
+    } finally {
+      setEditPriceListLoading(false);
+    }
+  };
+
+  const handleDeletePriceList = async () => {
+    if (!deletingPriceList) return;
+    
+    setDeletePriceListLoading(true);
+
+    try {
+      // Check if price list has products
+      const { data: productsData, error: productsError } = await supabase
+        .from('products' as any)
+        .select('id')
+        .eq('price_list_id', deletingPriceList.id)
+        .limit(1);
+
+      if (productsError) throw productsError;
+
+      if (productsData && productsData.length > 0) {
+        toast({
+          title: "Không thể xóa",
+          description: "Không thể xóa bảng giá đang có sản phẩm. Vui lòng xóa tất cả sản phẩm trước.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await (supabase as any)
+        .from('price_lists')
+        .delete()
+        .eq('id', deletingPriceList.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: "Đã xóa bảng giá thành công",
+      });
+
+      setDeletingPriceList(null);
+      
+      // If deleted price list was selected, clear selection
+      if (selectedPriceList === deletingPriceList.id) {
+        setSelectedPriceList('');
+      }
+      
+      fetchPriceLists();
+    } catch (error: any) {
+      console.error('Error deleting price list:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xóa bảng giá",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletePriceListLoading(false);
+    }
+  };
+
   const handleImportFromGoogleSheets = async () => {
     if (!googleSheetsUrl || !selectedPriceList) {
       toast({
@@ -296,6 +409,45 @@ const ProductManagement = () => {
         variant: "destructive",
       });
       return;
+    }
+  };
+
+  const handleDeleteAllProducts = async () => {
+    if (!selectedPriceList) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng chọn bảng giá trước",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDeleteAllLoading(true);
+
+    try {
+      const { error } = await (supabase as any)
+        .from('products')
+        .delete()
+        .eq('price_list_id', selectedPriceList);
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: `Đã xóa toàn bộ sản phẩm trong bảng giá thành công`,
+      });
+
+      setShowDeleteAllDialog(false);
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Error deleting all products:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xóa toàn bộ sản phẩm",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteAllLoading(false);
     }
 
     setCreateProductLoading(true);
@@ -565,20 +717,20 @@ const ProductManagement = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditDialog}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeletingProduct}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                           <Button
+                             variant="ghost"
+                             size="sm"
+                             onClick={() => openEditPriceListDialog(priceList)}
+                           >
+                             <Edit className="h-4 w-4" />
+                           </Button>
+                           <Button
+                             variant="ghost"
+                             size="sm"
+                             onClick={() => setDeletingPriceList(priceList)}
+                           >
+                             <Trash2 className="h-4 w-4" />
+                           </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -919,15 +1071,28 @@ const ProductManagement = () => {
               {/* Products List */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Package className="h-5 w-5" />
-                      Danh sách sản phẩm
-                    </div>
-                    <Badge variant="outline" className="text-sm">
-                      {filteredProducts.length} sản phẩm
-                    </Badge>
-                  </CardTitle>
+                   <CardTitle className="flex items-center justify-between">
+                     <div className="flex items-center gap-2">
+                       <Package className="h-5 w-5" />
+                       Danh sách sản phẩm
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <Badge variant="outline" className="text-sm">
+                         {filteredProducts.length} sản phẩm
+                       </Badge>
+                       {filteredProducts.length > 0 && (
+                         <Button
+                           variant="destructive"
+                           size="sm"
+                           onClick={() => setShowDeleteAllDialog(true)}
+                           className="flex items-center gap-2"
+                         >
+                           <Trash2 className="h-4 w-4" />
+                           Xóa toàn bộ
+                         </Button>
+                       )}
+                     </div>
+                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
                   {filteredProducts.length === 0 ? (
@@ -1144,6 +1309,116 @@ const ProductManagement = () => {
               </Button>
               <Button variant="destructive" onClick={handleDeleteProduct}>
                 Xóa
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit Price List Dialog */}
+      {editingPriceList && (
+        <Dialog open={!!editingPriceList} onOpenChange={() => setEditingPriceList(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Chỉnh sửa bảng giá</DialogTitle>
+              <DialogDescription>
+                Cập nhật thông tin bảng giá
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="editPriceListName">Tên bảng giá *</Label>
+                <Input
+                  id="editPriceListName"
+                  value={editPriceListName}
+                  onChange={(e) => setEditPriceListName(e.target.value)}
+                  placeholder="Bảng giá bán lẻ"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editPriceListYear">Năm *</Label>
+                <Input
+                  id="editPriceListYear"
+                  type="number"
+                  value={editPriceListYear}
+                  onChange={(e) => setEditPriceListYear(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditingPriceList(null)}>
+                Hủy
+              </Button>
+              <Button onClick={handleEditPriceList} disabled={editPriceListLoading}>
+                {editPriceListLoading ? 'Đang cập nhật...' : 'Cập nhật'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete Price List Dialog */}
+      {deletingPriceList && (
+        <Dialog open={!!deletingPriceList} onOpenChange={() => setDeletingPriceList(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Xác nhận xóa</DialogTitle>
+              <DialogDescription>
+                Bạn có chắc chắn muốn xóa bảng giá "{deletingPriceList.name}"? 
+                Hành động này sẽ xóa bảng giá và không thể hoàn tác.
+                {priceLists.length > 0 && (
+                  <div className="mt-2 p-2 bg-warning/10 rounded text-sm">
+                    <strong>Lưu ý:</strong> Bảng giá chỉ có thể xóa khi không còn sản phẩm nào.
+                  </div>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeletingPriceList(null)}>
+                Hủy
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeletePriceList}
+                disabled={deletePriceListLoading}
+              >
+                {deletePriceListLoading ? 'Đang xóa...' : 'Xóa'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete All Products Dialog */}
+      {showDeleteAllDialog && (
+        <Dialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Xác nhận xóa toàn bộ sản phẩm</DialogTitle>
+              <DialogDescription>
+                Bạn có chắc chắn muốn xóa <strong>toàn bộ {filteredProducts.length} sản phẩm</strong> trong bảng giá này?
+                <div className="mt-3 p-3 bg-destructive/10 rounded text-sm">
+                  <strong>⚠️ Cảnh báo:</strong> Hành động này sẽ xóa vĩnh viễn tất cả sản phẩm và không thể hoàn tác.
+                </div>
+                {selectedPriceList && (
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    Bảng giá: <strong>{priceLists.find(p => p.id === selectedPriceList)?.name}</strong>
+                  </div>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowDeleteAllDialog(false)}>
+                Hủy
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteAllProducts}
+                disabled={deleteAllLoading}
+              >
+                {deleteAllLoading ? 'Đang xóa...' : 'Xóa toàn bộ'}
               </Button>
             </DialogFooter>
           </DialogContent>
