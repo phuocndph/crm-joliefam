@@ -34,6 +34,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
   const [categories, setCategories] = useState<{safeName: string, displayName: string}[]>([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false); // Track if data has been loaded
   const [uploading, setUploading] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [uploadCategory, setUploadCategory] = useState(selectedCategory || '');
@@ -53,7 +54,14 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchImages();
+    // Only fetch if data hasn't been loaded yet
+    if (!dataLoaded) {
+      fetchImages();
+    } else {
+      // If data is already loaded, just set loading to false and filter images
+      setLoading(false);
+      filterImages();
+    }
     
     // Add paste event listener
     const handlePaste = (e: ClipboardEvent) => {
@@ -76,7 +84,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
     
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, []);
+  }, [dataLoaded]);
 
   useEffect(() => {
     if (selectedCategory) {
@@ -178,6 +186,9 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
         displayName: categoryMap[safeName]
       }));
       setCategories(uniqueCategories);
+      
+      // Mark data as loaded
+      setDataLoaded(true);
     } catch (error) {
       console.error('Error fetching images:', error);
       toast({
@@ -263,7 +274,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
       setShowUploadDialog(false);
       setNewCategory('');
       setShowNewCategoryInput(false);
-      fetchImages();
+      fetchImages(); // Refresh data after upload and update cache
     } catch (error) {
       console.error('Error uploading files:', error);
       toast({
@@ -316,7 +327,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
         description: `Đã tải lên ${files.length} hình ảnh vào thư mục "${categoryDisplayNames[targetCategory] || targetCategory}"`,
       });
 
-      fetchImages();
+      fetchImages(); // Refresh data after quick upload and update cache
     } catch (error) {
       console.error('Error uploading files:', error);
       toast({
@@ -376,7 +387,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
 
       setShowDeleteDialog(false);
       setImageToDelete('');
-      fetchImages();
+      fetchImages(); // Refresh data after deletion and update cache
     } catch (error) {
       console.error('Error deleting image:', error);
       toast({
@@ -470,7 +481,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
       setShowRenameCategoryDialog(false);
       setCategoryToRename('');
       setNewCategoryName('');
-      fetchImages();
+      fetchImages(); // Refresh data after rename and update cache
     } catch (error) {
       console.error('Error renaming category:', error);
       toast({
