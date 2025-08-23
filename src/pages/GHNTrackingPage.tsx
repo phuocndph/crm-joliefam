@@ -91,16 +91,24 @@ export default function GHNTrackingPage() {
     getCurrentUser();
   }, []);
 
-  // Load tracking data from database and auto-update incomplete orders
+  // Load tracking data from database
   useEffect(() => {
     if (user) {
       loadTrackingData();
-      // Auto-load incomplete orders after initial data load
-      setTimeout(() => {
-        autoLoadIncompleteOrders();
-      }, 1000);
     }
   }, [user]);
+
+  // Auto-load incomplete orders when accessing the page
+  useEffect(() => {
+    if (user && trackingData.length > 0) {
+      // Auto-load incomplete orders after data is loaded
+      const timer = setTimeout(() => {
+        autoLoadIncompleteOrders();
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [user, trackingData.length]); // Trigger when user is available and data is loaded
 
   // Real-time subscription for GHN tracking updates
   useEffect(() => {
@@ -176,9 +184,9 @@ export default function GHNTrackingPage() {
     }
   };
 
-  // Auto-load incomplete orders when login
+  // Auto-load incomplete orders when accessing the page
   const autoLoadIncompleteOrders = async () => {
-    if (!user) return;
+    if (!user || trackingData.length === 0) return;
 
     // Find orders that don't have final delivery status
     const incompleteStatuses = ['delivered', 'returned', 'cancel', 'lost', 'damage'];
@@ -187,11 +195,11 @@ export default function GHNTrackingPage() {
     );
 
     if (incompleteOrders.length === 0) {
-      console.log('Không có đơn hàng chưa hoàn thành');
+      console.log('Không có đơn hàng chưa hoàn thành để cập nhật');
       return;
     }
 
-    console.log(`Tự động cập nhật ${incompleteOrders.length} đơn hàng chưa hoàn thành...`);
+    console.log(`Tự động cập nhật ${incompleteOrders.length} đơn hàng chưa hoàn thành khi truy cập trang...`);
     
     try {
       let updatedCount = 0;
