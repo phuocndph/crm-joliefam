@@ -16,45 +16,46 @@ import AINextActionCell from "@/components/AINextActionCell";
 import PredictiveAnalyticsCell from "@/components/PredictiveAnalyticsCell";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCustomers } from "@/hooks/useCustomers";
+import { useUserRole } from "@/hooks/useUserRole";
+import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { format } from "date-fns";
 
 const CustomerCare = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedSource, setSelectedSource] = useState("all");
-  const [customers, setCustomers] = useState<any[]>([]);
   const [assignees, setAssignees] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("customers");
   const { toast } = useToast();
+  
+  // Get current user and check permissions
+  const [user, setUser] = useState<any>(null);
+  const { role: userRole } = useUserRole(user);
+  const { hasPermission } = useEmployeePermissions(user, userRole);
+  
+  // Use customers hook for data fetching
+  const { data: customersData = [], isLoading: loading, refetch: refetchCustomers } = useCustomers();
 
-  const fetchCustomers = async () => {
+  // Get current user
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getCurrentUser();
+  }, []);
+
+  // Enhanced customers data with purchase statistics
+  const [enhancedCustomers, setEnhancedCustomers] = useState<any[]>([]);
+
+  const fetchEnhancedCustomerData = async () => {
+    if (!customersData) return;
+    
     try {
-      setLoading(true);
-      console.log('Starting to fetch customer care data...');
-      
-      // Fetch customers
-      const { data: customersData, error: customersError } = await supabase
-        .from('customers')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      console.log('Customers fetch result:', { customersData, customersError });
-
-      if (customersError) {
-        console.error('Error fetching customers:', customersError);
-        toast({
-          title: "Lỗi",
-          description: "Không thể tải danh sách khách hàng",
-          variant: "destructive",
-        });
-        setLoading(false);
-        return;
-      }
-
       // Fetch orders to get real purchase data
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
@@ -66,16 +67,13 @@ const CustomerCare = () => {
         console.error('Error fetching orders:', ordersError);
       }
 
-      // Fetch assignees using raw query to bypass type restrictions
+      // Fetch assignees
       const { data: assigneesData, error: assigneesError } = await supabase
-        .from('assignees' as any)
+        .from('assignees')
         .select('id, name');
 
       if (!assigneesError && assigneesData) {
         setAssignees(assigneesData);
-      } else {
-        console.log('Could not fetch assignees:', assigneesError);
-        setAssignees([]);
       }
 
       // Calculate real purchase statistics for each customer
@@ -92,7 +90,7 @@ const CustomerCare = () => {
           acc[order.customer_id].count += 1;
           acc[order.customer_id].totalSpent += Number(order.total_amount) || 0;
           
-          // Find the latest purchase date (use payment_date if available, otherwise created_at)
+          // Find the latest purchase date
           const purchaseDate = order.payment_date || order.created_at;
           if (!acc[order.customer_id].lastPurchase || new Date(purchaseDate) > new Date(acc[order.customer_id].lastPurchase)) {
             acc[order.customer_id].lastPurchase = purchaseDate;
@@ -100,10 +98,6 @@ const CustomerCare = () => {
           
           return acc;
         }, {});
-
-        console.log('Orders data:', ordersData);
-        console.log('Customers data:', customersData);
-        console.log('Orders by customer:', ordersByCustomer);
 
         // Update customers with real purchase data
         const updatedCustomers = customersData.map(customer => {
@@ -113,16 +107,6 @@ const CustomerCare = () => {
             lastPurchase: null
           };
 
-          console.log(`Customer ${customer.name}:`, {
-            id: customer.id,
-            orderStats,
-            finalStats: {
-              purchase_count: orderStats.count,
-              total_spent: orderStats.totalSpent,
-              last_purchase_date: orderStats.lastPurchase
-            }
-          });
-
           return {
             ...customer,
             purchase_count: orderStats.count,
@@ -131,23 +115,22 @@ const CustomerCare = () => {
           };
         });
 
-        setCustomers(updatedCustomers);
+        setEnhancedCustomers(updatedCustomers);
       } else {
-        setCustomers(customersData || []);
+        setEnhancedCustomers(customersData || []);
       }
     } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error fetching enhanced data:', error);
+      setEnhancedCustomers(customersData || []);
     }
   };
 
   useEffect(() => {
-    fetchCustomers();
-  }, []);
+    fetchEnhancedCustomerData();
+  }, [customersData]);
 
   const handleCustomerAdded = () => {
-    fetchCustomers(); // Refresh the list when a new customer is added
+    refetchCustomers(); // Refresh the list when a new customer is added
   };
 
   const handleEditCustomer = (customer: any) => {
@@ -163,7 +146,7 @@ const CustomerCare = () => {
   const handleEditSubmit = () => {
     setEditDialogOpen(false);
     setSelectedCustomer(null);
-    fetchCustomers(); // Refresh the list
+    refetchCustomers(); // Refresh the list
     toast({
       title: "Thành công",
       description: "Đã cập nhật thông tin khách hàng",
@@ -173,7 +156,7 @@ const CustomerCare = () => {
   const handleDeleteConfirm = () => {
     setDeleteDialogOpen(false);
     setSelectedCustomer(null);
-    fetchCustomers(); // Refresh the list
+    refetchCustomers(); // Refresh the list
     toast({
       title: "Thành công",
       description: "Đã xóa khách hàng",
@@ -244,7 +227,7 @@ const CustomerCare = () => {
 
               {/* Total customers */}
               <p className="text-sm text-muted-foreground">
-                Tổng: <span className="font-medium">{customers.length} khách hàng</span>
+                Tổng: <span className="font-medium">{enhancedCustomers.length} khách hàng</span>
               </p>
 
               {/* Filters */}
@@ -348,7 +331,7 @@ const CustomerCare = () => {
                            </div>
                          </TableCell>
                        </TableRow>
-                     ) : customers.length === 0 ? (
+                     ) : enhancedCustomers.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={10} className="text-center py-12">
                            <div className="flex flex-col items-center gap-2">
@@ -362,8 +345,8 @@ const CustomerCare = () => {
                            </div>
                          </TableCell>
                        </TableRow>
-                     ) : (
-                       customers
+                      ) : (
+                        enhancedCustomers
                          .filter(customer => {
                            // Filter by search term
                            const matchesSearch = searchTerm === "" || 
@@ -532,14 +515,14 @@ const CustomerCare = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold">{customers.length}</div>
+                <div className="text-2xl font-bold">{enhancedCustomers.length}</div>
                 <p className="text-sm text-muted-foreground">Tổng khách hàng</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="text-2xl font-bold">
-                  {customers.filter(c => {
+                  {enhancedCustomers.filter(c => {
                     const createdDate = new Date(c.created_at);
                     const today = new Date();
                     const diffTime = Math.abs(today.getTime() - createdDate.getTime());
@@ -553,7 +536,7 @@ const CustomerCare = () => {
             <Card>
               <CardContent className="p-4">
                 <div className="text-2xl font-bold">
-                  {customers.filter(c => c.manager_id).length}
+                  {enhancedCustomers.filter(c => c.manager_id).length}
                 </div>
                 <p className="text-sm text-muted-foreground">Đã phân công</p>
               </CardContent>
@@ -561,7 +544,7 @@ const CustomerCare = () => {
             <Card>
               <CardContent className="p-4">
                 <div className="text-2xl font-bold">
-                  {customers.filter(c => !c.manager_id).length}
+                  {enhancedCustomers.filter(c => !c.manager_id).length}
                 </div>
                 <p className="text-sm text-muted-foreground">Chưa phân công</p>
               </CardContent>
@@ -581,7 +564,7 @@ const CustomerCare = () => {
               <CardContent>
                 <div className="space-y-4">
                   {(() => {
-                    const statusCounts = customers.reduce((acc, customer) => {
+                     const statusCounts = enhancedCustomers.reduce((acc, customer) => {
                       const status = customer.current_status || 'waiting-payment';
                       acc[status] = (acc[status] || 0) + 1;
                       return acc;
@@ -623,7 +606,7 @@ const CustomerCare = () => {
                        'follow-up': 'bg-orange-500',
                      };
 
-                    const total = customers.length;
+                     const total = enhancedCustomers.length;
 
                      return Object.entries(statusCounts).map(([status, count]) => {
                        const percentage = total > 0 ? ((Number(count) / total) * 100).toFixed(1) : '0';
@@ -662,7 +645,7 @@ const CustomerCare = () => {
               <CardContent>
                 <div className="space-y-4">
                   {(() => {
-                    const assigneeCounts = customers.reduce((acc, customer) => {
+                    const assigneeCounts = enhancedCustomers.reduce((acc, customer) => {
                       const assigneeId = customer.manager_id;
                       if (assigneeId) {
                         const assignee = assignees.find(a => a.id === assigneeId);
@@ -674,7 +657,7 @@ const CustomerCare = () => {
                       return acc;
                     }, {} as Record<string, number>);
 
-                    const total = customers.length;
+                    const total = enhancedCustomers.length;
 
                      return Object.entries(assigneeCounts)
                        .sort(([, a], [, b]) => Number(b) - Number(a))
@@ -713,7 +696,7 @@ const CustomerCare = () => {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(() => {
-                  const statusCounts = customers.reduce((acc, customer) => {
+                  const statusCounts = enhancedCustomers.reduce((acc, customer) => {
                     const status = customer.current_status || 'waiting-payment';
                     acc[status] = (acc[status] || 0) + 1;
                     return acc;
