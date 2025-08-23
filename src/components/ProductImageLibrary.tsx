@@ -28,13 +28,17 @@ interface ProductImageLibraryProps {
   hideDeleteButton?: boolean; // Ẩn nút xóa khi chọn hình ảnh cho sản phẩm
 }
 
+// Cache key for localStorage
+const CACHE_KEY = 'productImageLibrary_cache';
+const CACHE_EXPIRY_KEY = 'productImageLibrary_cache_expiry';
+const CACHE_DURATION = 5 * 60 * 1000; // 5 phút
+
 const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton = false }: ProductImageLibraryProps) => {
   const [images, setImages] = useState<ProductImage[]>([]);
   const [filteredImages, setFilteredImages] = useState<ProductImage[]>([]);
   const [categories, setCategories] = useState<{safeName: string, displayName: string}[]>([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
-  const [dataLoaded, setDataLoaded] = useState(false); // Track if data has been loaded
   const [uploading, setUploading] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [uploadCategory, setUploadCategory] = useState(selectedCategory || '');
@@ -53,15 +57,67 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
   const [selectedImageUrl, setSelectedImageUrl] = useState('');
   const { toast } = useToast();
 
-  useEffect(() => {
-    // Only fetch if data hasn't been loaded yet
-    if (!dataLoaded) {
-      fetchImages();
-    } else {
-      // If data is already loaded, just set loading to false and filter images
-      setLoading(false);
-      filterImages();
+  // Check if cache is valid
+  const isCacheValid = () => {
+    try {
+      const cacheExpiry = localStorage.getItem(CACHE_EXPIRY_KEY);
+      if (!cacheExpiry) return false;
+      return Date.now() < parseInt(cacheExpiry);
+    } catch {
+      return false;
     }
+  };
+
+  // Load data from cache
+  const loadFromCache = () => {
+    try {
+      const cachedData = localStorage.getItem(CACHE_KEY);
+      if (!cachedData) return false;
+      
+      const { images: cachedImages, categories: cachedCategories, categoryDisplayNames: cachedDisplayNames } = JSON.parse(cachedData);
+      
+      setImages(cachedImages);
+      setCategories(cachedCategories);
+      setCategoryDisplayNames(cachedDisplayNames);
+      setLoading(false);
+      return true;
+    } catch (error) {
+      console.error('Error loading cache:', error);
+      return false;
+    }
+  };
+
+  // Save data to cache
+  const saveToCache = (imagesToCache: ProductImage[], categoriesToCache: {safeName: string, displayName: string}[], displayNamesToCache: {[key: string]: string}) => {
+    try {
+      const cacheData = {
+        images: imagesToCache,
+        categories: categoriesToCache,
+        categoryDisplayNames: displayNamesToCache
+      };
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+      localStorage.setItem(CACHE_EXPIRY_KEY, (Date.now() + CACHE_DURATION).toString());
+    } catch (error) {
+      console.error('Error saving cache:', error);
+    }
+  };
+
+  // Clear cache
+  const clearCache = () => {
+    localStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(CACHE_EXPIRY_KEY);
+  };
+
+  useEffect(() => {
+    // Try to load from cache first
+    if (isCacheValid() && loadFromCache()) {
+      // Cache is valid, no need to fetch from server
+      console.log('Loaded images from cache');
+      return;
+    }
+    
+    // Cache is invalid or doesn't exist, fetch from server
+    fetchImages();
     
     // Add paste event listener
     const handlePaste = (e: ClipboardEvent) => {
@@ -84,7 +140,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
     
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [dataLoaded]);
+  }, []);
 
   useEffect(() => {
     if (selectedCategory) {
@@ -187,8 +243,10 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
       }));
       setCategories(uniqueCategories);
       
-      // Mark data as loaded
-      setDataLoaded(true);
+      // Save to cache
+      saveToCache(allFiles, uniqueCategories, categoryMap);
+      
+      console.log('Loaded images from server and saved to cache');
     } catch (error) {
       console.error('Error fetching images:', error);
       toast({
@@ -274,6 +332,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
       setShowUploadDialog(false);
       setNewCategory('');
       setShowNewCategoryInput(false);
+      clearCache(); // Clear cache when uploading
       fetchImages(); // Refresh data after upload and update cache
     } catch (error) {
       console.error('Error uploading files:', error);
@@ -327,6 +386,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
         description: `Đã tải lên ${files.length} hình ảnh vào thư mục "${categoryDisplayNames[targetCategory] || targetCategory}"`,
       });
 
+      clearCache(); // Clear cache when quick uploading
       fetchImages(); // Refresh data after quick upload and update cache
     } catch (error) {
       console.error('Error uploading files:', error);
@@ -387,6 +447,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
 
       setShowDeleteDialog(false);
       setImageToDelete('');
+      clearCache(); // Clear cache when deleting
       fetchImages(); // Refresh data after deletion and update cache
     } catch (error) {
       console.error('Error deleting image:', error);
@@ -481,6 +542,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
       setShowRenameCategoryDialog(false);
       setCategoryToRename('');
       setNewCategoryName('');
+      clearCache(); // Clear cache when renaming
       fetchImages(); // Refresh data after rename and update cache
     } catch (error) {
       console.error('Error renaming category:', error);
