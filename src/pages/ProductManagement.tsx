@@ -773,41 +773,64 @@ const ProductManagement = () => {
         <TabsContent value="products" className="space-y-6">
           {/* Price List Selection & Stats */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-2 bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-primary"></div>
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl font-bold flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Package className="h-4 w-4 text-primary" />
+                  </div>
                   Chọn bảng giá để xem sản phẩm
                 </CardTitle>
+                <CardDescription className="text-sm">
+                  Chọn bảng giá để hiển thị danh sách sản phẩm tương ứng
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Select value={selectedPriceList} onValueChange={setSelectedPriceList}>
-                  <SelectTrigger className="w-full h-12 bg-background/80 hover:bg-background transition-colors border-2 hover:border-primary/30">
-                    <SelectValue placeholder="Chọn bảng giá..." />
+                  <SelectTrigger className="w-full h-14 bg-muted/30 hover:bg-muted/50 transition-all duration-200 border-2 hover:border-primary/40 focus:border-primary">
+                    <SelectValue placeholder="Chọn bảng giá để bắt đầu..." />
                   </SelectTrigger>
-                  <SelectContent className="bg-background border-2 border-border/50 shadow-lg">
+                  <SelectContent className="bg-background border shadow-lg max-h-[300px] z-50">
                     {priceLists.map((priceList) => (
                       <SelectItem 
                         key={priceList.id} 
                         value={priceList.id}
-                        className="hover:bg-accent/80 cursor-pointer py-3"
+                        className="hover:bg-accent/60 focus:bg-accent/60 cursor-pointer py-4 px-3 transition-colors"
                       >
                         <div className="flex items-center justify-between w-full min-w-0">
-                          <div className="flex flex-col items-start min-w-0 flex-1">
-                            <span className="font-semibold text-foreground truncate">{priceList.name}</span>
-                            <span className="text-xs text-muted-foreground">Năm {priceList.year}</span>
+                          <div className="flex flex-col items-start min-w-0 flex-1 mr-3">
+                            <div className="flex items-center gap-2 w-full">
+                              <span className="font-semibold text-foreground text-base truncate">
+                                {priceList.name}
+                              </span>
+                              <Badge 
+                                variant={priceList.status === 'active' ? 'default' : 'secondary'} 
+                                className="text-xs font-medium shrink-0"
+                              >
+                                {priceList.status === 'active' ? 'Đang dùng' : 'Nháp'}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Calendar className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-sm text-muted-foreground">Năm {priceList.year}</span>
+                            </div>
                           </div>
-                          <Badge 
-                            variant={priceList.status === 'active' ? 'default' : 'secondary'} 
-                            className="text-xs shrink-0 ml-2"
-                          >
-                            {priceList.status === 'active' ? 'Đang dùng' : 'Nháp'}
-                          </Badge>
                         </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                
+                {selectedPriceList && (
+                  <div className="mt-4 p-3 bg-primary/5 rounded-lg border border-primary/10">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
+                      <span className="text-sm font-medium text-primary">
+                        Đang hiển thị sản phẩm từ: {priceLists.find(p => p.id === selectedPriceList)?.name}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
             
