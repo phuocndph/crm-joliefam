@@ -55,10 +55,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { role: userRole, loading: roleLoading } = useUserRole(user);
 
-  // Return mobile version if on mobile device
-  if (isMobile) {
-    return <MobileDashboard />;
-  }
+  // All hooks must be called before any conditional returns!
 
   useEffect(() => {
     // Get current user
@@ -273,6 +270,11 @@ const Dashboard = () => {
       link: "/cash-flow"
     },
   ];
+
+  // Return mobile version if on mobile device
+  if (isMobile) {
+    return <MobileDashboard />;
+  }
 
   return (
     <div className="space-y-6">
