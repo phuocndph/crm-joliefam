@@ -110,14 +110,20 @@ const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: R
 
   const generateStrongPassword = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('change-password', {
+      // Call the password generation endpoint
+      const response = await fetch('https://kmxfljxsmnozvvgypdei.supabase.co/functions/v1/change-password/generate', {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          'Content-Type': 'application/json'
         }
       });
       
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
       
       setNewPassword(data.password);
       setConfirmPassword(data.password);
