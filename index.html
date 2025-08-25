@@ -14,13 +14,25 @@
     
     <!-- iOS PWA Support -->
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Joliefam">
+    <meta name="apple-touch-fullscreen" content="yes">
     <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="apple-touch-startup-image" href="/icon-512.png">
     
     <!-- Additional PWA Meta Tags -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="application-name" content="Joliefam">
+    <meta name="msapplication-TileColor" content="#000000">
+    <meta name="msapplication-TileImage" content="/icon-192.png">
+    <meta name="msapplication-starturl" content="/?source=pwa">
+    
+    <!-- Prevent zoom and ensure app-like behavior -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- Hide Safari UI elements -->
+    <meta name="format-detection" content="telephone=no">
+    <meta name="format-detection" content="address=no">
 
     <meta property="og:title" content="CRM Joliefam" />
     <meta property="og:description" content="Công cụ quản lý khách hàng toàn diện" />
@@ -35,5 +47,20 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Register Service Worker for PWA -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('SW registered: ', registration);
+            })
+            .catch((registrationError) => {
+              console.log('SW registration failed: ', registrationError);
+            });
+        });
+      }
+    </script>
   </body>
 </html>

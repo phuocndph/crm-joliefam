@@ -2,12 +2,16 @@
   "name": "CRM Joliefam",
   "short_name": "Joliefam",
   "description": "Công cụ quản lý khách hàng toàn diện",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#ffffff",
   "theme_color": "#000000",
   "orientation": "portrait-primary",
   "scope": "/",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
   "icons": [
     {
       "src": "/icon-192.png",
@@ -23,5 +27,17 @@
     }
   ],
   "categories": ["business", "productivity"],
-  "lang": "vi"
+  "lang": "vi",
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Xem tổng quan",
+      "url": "/dashboard?source=pwa",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
 }
