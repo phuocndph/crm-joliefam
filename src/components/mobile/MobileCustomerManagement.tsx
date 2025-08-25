@@ -134,6 +134,10 @@ const MobileCustomerManagement: React.FC = () => {
             <div className="mt-6">
               <CreateCustomerForm 
                 onClose={() => setShowCreateForm(false)}
+                onSubmit={() => {
+                  setShowCreateForm(false);
+                  loadCustomers();
+                }}
               />
             </div>
           </SheetContent>
@@ -232,12 +236,20 @@ const MobileCustomerManagement: React.FC = () => {
         customer={selectedCustomer}
         open={showEditDialog}
         onOpenChange={setShowEditDialog}
+        onSubmit={() => {
+          setShowEditDialog(false);
+          loadCustomers();
+        }}
       />
 
       <DeleteCustomerDialog
         customer={selectedCustomer}
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
+        onConfirm={() => {
+          setShowDeleteDialog(false);
+          loadCustomers();
+        }}
       />
     </div>
   );
