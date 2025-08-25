@@ -346,7 +346,7 @@ const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: R
             </Button>
             <Button 
               type="submit" 
-              disabled={loading || passwordStrength.score < 100 || !canResetUser()}
+              disabled={loading || newPassword !== confirmPassword || newPassword.length === 0}
               variant="destructive"
             >
               {loading ? (
