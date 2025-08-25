@@ -12,10 +12,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Package, Plus, Edit, Trash2, Search, Filter, FileSpreadsheet, Users, Calendar, Settings, Image } from 'lucide-react';
+import { Package, Plus, Edit, Trash2, Search, Filter, FileSpreadsheet, Users, Calendar, Settings, Image, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { ColumnMappingDialog } from '@/components/ColumnMappingDialog';
 import ProductImageLibrary from '@/components/ProductImageLibrary';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface Product {
   id: string;
@@ -53,6 +55,12 @@ const ProductManagement = () => {
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const itemsPerPage = 50;
   const [createProductLoading, setCreateProductLoading] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
@@ -60,6 +68,9 @@ const ProductManagement = () => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
   const [selectedPriceList, setSelectedPriceList] = useState<string>('');
+  
+  // Debounced search for performance
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [importLoading, setImportLoading] = useState(false);
   const [googleSheetsUrl, setGoogleSheetsUrl] = useState('');
   const [showColumnMapping, setShowColumnMapping] = useState(false);
@@ -123,8 +134,13 @@ const ProductManagement = () => {
   }, [currentUserRole, roleLoading]);
 
   useEffect(() => {
-    filterProducts();
-  }, [products, searchTerm, categoryFilter, stockFilter, selectedPriceList]);
+    setCurrentPage(1); // Reset to first page when filters change
+    fetchProducts();
+  }, [debouncedSearchTerm, categoryFilter, stockFilter, selectedPriceList]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [currentPage]);
 
   // Tự động chọn bảng giá đầu tiên khi có dữ liệu
   useEffect(() => {
@@ -155,16 +171,46 @@ const ProductManagement = () => {
   };
 
   const fetchProducts = async () => {
+    setLoading(true);
     try {
+      const offset = (currentPage - 1) * itemsPerPage;
+      
       let query = supabase
         .from('products' as any)
-        .select('*');
+        .select('*', { count: 'exact' });
 
-      // RLS sẽ tự động filter dữ liệu theo role, không cần thêm filter manual
-      const { data, error } = await query.order('created_at', { ascending: false });
+      // Apply filters at database level
+      if (selectedPriceList) {
+        query = query.eq('price_list_id', selectedPriceList);
+      }
+
+      if (debouncedSearchTerm) {
+        query = query.or(`name.ilike.%${debouncedSearchTerm}%,sku.ilike.%${debouncedSearchTerm}%,description.ilike.%${debouncedSearchTerm}%`);
+      }
+
+      if (categoryFilter && categoryFilter !== 'all') {
+        query = query.eq('category', categoryFilter);
+      }
+
+      if (stockFilter && stockFilter !== 'all') {
+        const inStock = stockFilter === 'in-stock';
+        query = query.eq('in_stock', inStock);
+      }
+
+      // Add pagination
+      query = query
+        .range(offset, offset + itemsPerPage - 1)
+        .order('category', { ascending: true })
+        .order('sku', { ascending: true });
+
+      const { data, error, count } = await query;
 
       if (error) throw error;
+      
       setProducts((data as unknown as Product[]) || []);
+      setTotalProducts(count || 0);
+      setTotalPages(Math.ceil((count || 0) / itemsPerPage));
+      
     } catch (error) {
       console.error('Error fetching products:', error);
       toast({
@@ -177,58 +223,13 @@ const ProductManagement = () => {
     }
   };
 
-  const filterProducts = () => {
-    console.log('Filtering products:', {
-      totalProducts: products.length,
-      selectedPriceList,
-      searchTerm,
-      categoryFilter,
-      stockFilter
-    });
-    
-    let filtered = products;
-
-    if (selectedPriceList) {
-      console.log('Filtering by price list:', selectedPriceList);
-      filtered = filtered.filter(product => {
-        console.log('Product:', product.name, 'Price List ID:', product.price_list_id);
-        return product.price_list_id === selectedPriceList;
-      });
-      console.log('Filtered by price list:', filtered.length);
-    }
-
-    if (searchTerm) {
-      filtered = filtered.filter(product => 
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.description?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    if (categoryFilter && categoryFilter !== 'all') {
-      filtered = filtered.filter(product => product.category === categoryFilter);
-    }
-
-    if (stockFilter && stockFilter !== 'all') {
-      if (stockFilter === 'in-stock') {
-        filtered = filtered.filter(product => product.in_stock);
-      } else if (stockFilter === 'out-of-stock') {
-        filtered = filtered.filter(product => !product.in_stock);
-      }
-    }
-
-    // Sort products: first by category, then by SKU (ascending)
-    filtered.sort((a, b) => {
-      // Primary sort: category (alphabetical)
-      const categoryCompare = (a.category || '').localeCompare(b.category || '', 'vi', { numeric: true });
-      if (categoryCompare !== 0) return categoryCompare;
-      
-      // Secondary sort: SKU (alphabetical/numerical)
-      return (a.sku || '').localeCompare(b.sku || '', 'vi', { numeric: true });
-    });
-
-    console.log('Final filtered products:', filtered.length);
-    setFilteredProducts(filtered);
+  // Get unique categories for filter dropdown
+  const getUniqueCategories = () => {
+    const categories = products
+      .map(p => p.category)
+      .filter(Boolean)
+      .filter((value, index, self) => self.indexOf(value) === index);
+    return categories;
   };
 
   const handleCreatePriceList = async (e: React.FormEvent) => {
@@ -396,6 +397,7 @@ const ProductManagement = () => {
         });
         setGoogleSheetsUrl('');
         // Force refresh products to show updated data
+        setCurrentPage(1);
         await fetchProducts();
       } else {
         throw new Error(data.error);
@@ -459,6 +461,7 @@ const ProductManagement = () => {
       setSpecifications('');
       setInStock(true);
       
+      setCurrentPage(1);
       fetchProducts();
     } catch (error: any) {
       console.error('Error creating product:', error);
@@ -498,6 +501,7 @@ const ProductManagement = () => {
       });
 
       setShowDeleteAllDialog(false);
+      setCurrentPage(1);
       fetchProducts();
     } catch (error: any) {
       console.error('Error deleting all products:', error);
@@ -596,13 +600,7 @@ const ProductManagement = () => {
     }).format(price);
   };
 
-  const getUniqueCategories = () => {
-    const categories = products
-      .map(p => p.category)
-      .filter(Boolean)
-      .filter((value, index, self) => self.indexOf(value) === index);
-    return categories;
-  };
+  // Remove this function as it's now handled by getUniqueCategories async function above
 
   if (roleLoading || loading) {
     return <div className="flex justify-center items-center h-64">Đang tải...</div>;
@@ -841,15 +839,15 @@ const ProductManagement = () => {
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Tổng sản phẩm:</span>
-                  <span className="font-bold text-primary">{filteredProducts.length}</span>
+                  <span className="font-bold text-primary">{totalProducts}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Còn hàng:</span>
-                  <span className="font-medium text-success">{filteredProducts.filter(p => p.in_stock).length}</span>
+                  <span className="text-sm text-muted-foreground">Trang hiện tại:</span>
+                  <span className="font-medium text-accent">{products.length} sản phẩm</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Hết hàng:</span>
-                  <span className="font-medium text-warning">{filteredProducts.filter(p => !p.in_stock).length}</span>
+                  <span className="text-sm text-muted-foreground">Trang:</span>
+                  <span className="font-medium text-muted-foreground">{currentPage}/{totalPages}</span>
                 </div>
                 {selectedPriceList && (
                   <div className="pt-2 border-t">
@@ -1077,14 +1075,14 @@ const ProductManagement = () => {
                         <SelectTrigger>
                           <SelectValue placeholder="Tất cả danh mục" />
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Tất cả danh mục</SelectItem>
-                          {getUniqueCategories().map((cat) => (
-                            <SelectItem key={cat} value={cat!}>
-                              {cat}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
+                         <SelectContent>
+                           <SelectItem value="all">Tất cả danh mục</SelectItem>
+                           {getUniqueCategories().map((cat) => (
+                             <SelectItem key={cat} value={cat!}>
+                               {cat}
+                             </SelectItem>
+                           ))}
+                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
@@ -1101,17 +1099,18 @@ const ProductManagement = () => {
                       </Select>
                     </div>
                     <div className="flex items-end">
-                      <Button 
-                        variant="outline" 
-                        onClick={() => {
-                          setSearchTerm('');
-                          setCategoryFilter('all');
-                          setStockFilter('all');
-                        }}
-                        className="w-full"
-                      >
-                        Xóa bộ lọc
-                      </Button>
+                       <Button 
+                         variant="outline" 
+                         onClick={() => {
+                           setSearchTerm('');
+                           setCategoryFilter('all');
+                           setStockFilter('all');
+                           setCurrentPage(1);
+                         }}
+                         className="w-full"
+                       >
+                         Xóa bộ lọc
+                       </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -1126,10 +1125,10 @@ const ProductManagement = () => {
                        Danh sách sản phẩm
                      </div>
                      <div className="flex items-center gap-2">
-                       <Badge variant="outline" className="text-sm">
-                         {filteredProducts.length} sản phẩm
-                       </Badge>
-                       {filteredProducts.length > 0 && (
+                        <Badge variant="outline" className="text-sm">
+                          Trang {currentPage}/{totalPages} - {products.length}/{totalProducts} sản phẩm
+                        </Badge>
+                        {products.length > 0 && (
                          <Button
                            variant="destructive"
                            size="sm"
@@ -1143,122 +1142,182 @@ const ProductManagement = () => {
                      </div>
                    </CardTitle>
                 </CardHeader>
-                <CardContent className="p-0">
-                  {filteredProducts.length === 0 ? (
-                    <div className="text-center py-12 px-6 text-muted-foreground">
-                      <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p className="text-lg font-medium mb-2">Không có sản phẩm</p>
-                      <p className="text-sm">
-                        {selectedPriceList 
-                          ? `Không có sản phẩm nào trong bảng giá "${priceLists.find(p => p.id === selectedPriceList)?.name}"`
-                          : "Vui lòng chọn bảng giá để xem sản phẩm"
-                        }
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                       <Table>
-                         <TableHeader>
-                           <TableRow className="border-b border-border bg-muted/30">
-                             <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[100px]">
-                               Mã SP
-                             </TableHead>
-                             <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
-                               Danh mục
-                             </TableHead>
-                             <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 min-w-[200px]">
-                               Tên sản phẩm
-                             </TableHead>
-                             <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[140px]">
-                               Quy cách
-                             </TableHead>
-                             <TableHead className="h-12 px-4 text-right align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
-                               Giá gốc
-                             </TableHead>
-                             <TableHead className="h-12 px-4 text-right align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
-                               Giá bán
-                             </TableHead>
-                             <TableHead className="h-12 px-4 text-center align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[80px]">
-                               Kho
-                             </TableHead>
-                             <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 min-w-[180px]">
-                               Mô tả
-                             </TableHead>
-                             <TableHead className="h-12 px-4 text-center align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[100px]">
-                               Thao tác
-                             </TableHead>
-                           </TableRow>
-                         </TableHeader>
-                         <TableBody>
-                           {filteredProducts.map((product) => (
-                             <TableRow 
-                               key={product.id} 
-                               className="border-b border-border hover:bg-white hover:text-accent transition-colors duration-200 group"
-                             >
-                               <TableCell className="p-4 align-middle font-mono text-sm font-medium">
-                                 {product.sku || '-'}
-                               </TableCell>
-                               <TableCell className="p-4 align-middle">
-                                 <Badge variant="outline" className="text-xs bg-muted/50 group-hover:bg-accent/10 group-hover:text-accent group-hover:border-accent/30">
-                                   {product.category || 'Chưa phân loại'}
-                                 </Badge>
-                               </TableCell>
-                               <TableCell className="p-4 align-middle font-medium">
-                                 <div className="line-clamp-2 leading-relaxed">
-                                   {product.name}
-                                 </div>
-                               </TableCell>
-                               <TableCell className="p-4 align-middle text-sm text-muted-foreground group-hover:text-accent/80">
-                                 <div className="line-clamp-1">
-                                   {product.specifications || '-'}
-                                 </div>
-                               </TableCell>
-                               <TableCell className="p-4 align-middle text-right font-medium text-muted-foreground group-hover:text-accent/80">
-                                 {product.cost_price ? formatPrice(product.cost_price) : '-'}
-                               </TableCell>
-                               <TableCell className="p-4 align-middle text-right font-bold text-primary group-hover:text-accent">
-                                 {product.price ? formatPrice(product.price) : '-'}
-                               </TableCell>
-                               <TableCell className="p-4 align-middle text-center">
-                                 <Badge 
-                                   variant={product.in_stock ? 'default' : 'destructive'} 
-                                   className="text-xs group-hover:bg-accent/10 group-hover:text-accent group-hover:border-accent/30"
-                                 >
-                                   {product.in_stock ? 'Còn' : 'Hết'}
-                                 </Badge>
-                               </TableCell>
-                               <TableCell className="p-4 align-middle text-sm text-muted-foreground group-hover:text-accent/80">
-                                 <div className="line-clamp-2 leading-relaxed">
-                                   {product.description || '-'}
-                                 </div>
-                               </TableCell>
-                               <TableCell className="p-4 align-middle text-center">
-                                 <div className="flex justify-center gap-1">
-                                   <Button
-                                     variant="ghost"
-                                     size="sm"
-                                     onClick={() => openEditDialog(product)}
-                                     className="h-8 w-8 p-0 hover:bg-accent/10 hover:text-accent"
-                                   >
-                                     <Edit className="h-4 w-4" />
-                                   </Button>
-                                   <Button
-                                     variant="ghost"
-                                     size="sm"
-                                     onClick={() => setDeletingProduct(product)}
-                                     className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                   >
-                                     <Trash2 className="h-4 w-4" />
-                                   </Button>
-                                 </div>
-                               </TableCell>
-                             </TableRow>
-                           ))}
-                         </TableBody>
-                       </Table>
-                    </div>
-                  )}
-                </CardContent>
+                 <CardContent className="p-0">
+                   {loading ? (
+                     <div className="text-center py-12 px-6">
+                       <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                       <p className="text-muted-foreground">Đang tải sản phẩm...</p>
+                     </div>
+                   ) : products.length === 0 ? (
+                     <div className="text-center py-12 px-6 text-muted-foreground">
+                       <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                       <p className="text-lg font-medium mb-2">Không có sản phẩm</p>
+                       <p className="text-sm">
+                         {selectedPriceList 
+                           ? `Không có sản phẩm nào trong bảng giá "${priceLists.find(p => p.id === selectedPriceList)?.name}"`
+                           : "Vui lòng chọn bảng giá để xem sản phẩm"
+                         }
+                       </p>
+                     </div>
+                   ) : (
+                     <>
+                       <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="border-b border-border bg-muted/30">
+                                <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[100px]">
+                                  Mã SP
+                                </TableHead>
+                                <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
+                                  Danh mục
+                                </TableHead>
+                                <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 min-w-[200px]">
+                                  Tên sản phẩm
+                                </TableHead>
+                                <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[140px]">
+                                  Quy cách
+                                </TableHead>
+                                <TableHead className="h-12 px-4 text-right align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
+                                  Giá gốc
+                                </TableHead>
+                                <TableHead className="h-12 px-4 text-right align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
+                                  Giá bán
+                                </TableHead>
+                                <TableHead className="h-12 px-4 text-center align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[80px]">
+                                  Kho
+                                </TableHead>
+                                <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 min-w-[180px]">
+                                  Mô tả
+                                </TableHead>
+                                <TableHead className="h-12 px-4 text-center align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[100px]">
+                                  Thao tác
+                                </TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {products.map((product) => (
+                                <TableRow 
+                                  key={product.id} 
+                                  className="border-b border-border hover:bg-white hover:text-accent transition-colors duration-200 group"
+                                >
+                                  <TableCell className="p-4 align-middle font-mono text-sm font-medium">
+                                    {product.sku || '-'}
+                                  </TableCell>
+                                  <TableCell className="p-4 align-middle">
+                                    <Badge variant="outline" className="text-xs bg-muted/50 group-hover:bg-accent/10 group-hover:text-accent group-hover:border-accent/30">
+                                      {product.category || 'Chưa phân loại'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="p-4 align-middle font-medium">
+                                    <div className="line-clamp-2 leading-relaxed">
+                                      {product.name}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="p-4 align-middle text-sm text-muted-foreground group-hover:text-accent/80">
+                                    <div className="line-clamp-1">
+                                      {product.specifications || '-'}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="p-4 align-middle text-right font-medium text-muted-foreground group-hover:text-accent/80">
+                                    {product.cost_price ? formatPrice(product.cost_price) : '-'}
+                                  </TableCell>
+                                  <TableCell className="p-4 align-middle text-right font-bold text-primary group-hover:text-accent">
+                                    {product.price ? formatPrice(product.price) : '-'}
+                                  </TableCell>
+                                  <TableCell className="p-4 align-middle text-center">
+                                    <Badge 
+                                      variant={product.in_stock ? 'default' : 'destructive'} 
+                                      className="text-xs group-hover:bg-accent/10 group-hover:text-accent group-hover:border-accent/30"
+                                    >
+                                      {product.in_stock ? 'Còn' : 'Hết'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="p-4 align-middle text-sm text-muted-foreground group-hover:text-accent/80">
+                                    <div className="line-clamp-2 leading-relaxed">
+                                      {product.description || '-'}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="p-4 align-middle text-center">
+                                    <div className="flex justify-center gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => openEditDialog(product)}
+                                        className="h-8 w-8 p-0 hover:bg-accent/10 hover:text-accent"
+                                      >
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setDeletingProduct(product)}
+                                        className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                       </div>
+                       
+                       {/* Pagination Controls */}
+                       {totalPages > 1 && (
+                         <div className="flex items-center justify-between px-6 py-4 border-t">
+                           <div className="text-sm text-muted-foreground">
+                             Hiển thị {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, totalProducts)} của {totalProducts} sản phẩm
+                           </div>
+                           
+                           <Pagination>
+                             <PaginationContent>
+                               <PaginationItem>
+                                 <PaginationPrevious 
+                                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                   className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                 />
+                               </PaginationItem>
+                               
+                               {/* Page numbers */}
+                               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                 let pageNum;
+                                 if (totalPages <= 5) {
+                                   pageNum = i + 1;
+                                 } else if (currentPage <= 3) {
+                                   pageNum = i + 1;
+                                 } else if (currentPage >= totalPages - 2) {
+                                   pageNum = totalPages - 4 + i;
+                                 } else {
+                                   pageNum = currentPage - 2 + i;
+                                 }
+                                 
+                                 return (
+                                   <PaginationItem key={pageNum}>
+                                     <PaginationLink
+                                       onClick={() => setCurrentPage(pageNum)}
+                                       isActive={pageNum === currentPage}
+                                       className="cursor-pointer"
+                                     >
+                                       {pageNum}
+                                     </PaginationLink>
+                                   </PaginationItem>
+                                 );
+                               })}
+                               
+                               <PaginationItem>
+                                 <PaginationNext 
+                                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                   className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                 />
+                               </PaginationItem>
+                             </PaginationContent>
+                           </Pagination>
+                         </div>
+                       )}
+                     </>
+                   )}
+                 </CardContent>
               </Card>
             </>
           )}
