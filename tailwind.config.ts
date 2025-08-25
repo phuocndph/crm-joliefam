@@ -129,6 +129,16 @@ export default {
 				'slide-in': 'slide-in 0.3s ease-out',
 				'scale-in': 'scale-in 0.2s ease-out',
 				'pulse-glow': 'pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+			},
+			spacing: {
+				'safe-top': 'env(safe-area-inset-top)',
+				'safe-bottom': 'env(safe-area-inset-bottom)',
+				'safe-left': 'env(safe-area-inset-left)',
+				'safe-right': 'env(safe-area-inset-right)',
+			},
+			screens: {
+				'xs': '475px',
+				'touch': { 'raw': '(hover: none) and (pointer: coarse)' },
 			}
 		}
 	},

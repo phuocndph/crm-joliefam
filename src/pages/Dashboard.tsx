@@ -2,8 +2,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import MobileDashboard from "@/components/mobile/MobileDashboard";
 import { 
   Users, 
   TrendingUp, 
@@ -35,6 +37,7 @@ interface DashboardStats {
 }
 
 const Dashboard = () => {
+  const isMobile = useIsMobile();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
@@ -51,6 +54,11 @@ const Dashboard = () => {
   });
   const navigate = useNavigate();
   const { role: userRole, loading: roleLoading } = useUserRole(user);
+
+  // Return mobile version if on mobile device
+  if (isMobile) {
+    return <MobileDashboard />;
+  }
 
   useEffect(() => {
     // Get current user
