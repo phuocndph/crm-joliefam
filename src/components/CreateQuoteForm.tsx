@@ -340,20 +340,17 @@ export function CreateQuoteForm({
       description: product.description || '',
       specifications: product.specifications || ''
     };
-    console.log('Selected product data:', product);
-    console.log('New product item:', newItem);
     setSelectedProducts(prev => [...prev, newItem]);
     setShowProductDialog(false);
   };
+  
   const updateQuantity = (productId: string, quantity: number) => {
     if (quantity <= 0) {
       removeProduct(productId);
       return;
     }
-    console.log(`Updating quantity for product ${productId} to ${quantity}`);
     setSelectedProducts(prev => prev.map(item => {
       if (item.id === productId) {
-        console.log(`Found product to update:`, item);
         return {
           ...item,
           quantity,
@@ -366,10 +363,8 @@ export function CreateQuoteForm({
 
   // Function to update price
   const updatePrice = (productId: string, price: number) => {
-    console.log(`Updating price for product ${productId} to ${price}`);
     setSelectedProducts(prev => prev.map(item => {
       if (item.id === productId) {
-        console.log(`Found product to update:`, item);
         return {
           ...item,
           price,
