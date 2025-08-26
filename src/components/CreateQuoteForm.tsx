@@ -25,7 +25,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ProductCard } from "./ProductCard";
+import { EmptyProductCard } from "./EmptyProductCard";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 const quoteFormSchema = z.object({
   title: z.string().min(1, "Tiêu đề báo giá là bắt buộc"),
@@ -415,20 +416,14 @@ export function CreateQuoteForm({
     setSelectedProducts(prev => prev.filter(item => item.id !== productId));
   };
 
-  // Drag and drop functions
+  // Drag and drop functions with smooth animations
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedItemIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/html', '');
-    
-    // Add visual feedback without opacity changes
-    const dragElement = e.currentTarget as HTMLElement;
-    dragElement.style.transform = 'rotate(2deg)';
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
-    const dragElement = e.currentTarget as HTMLElement;
-    dragElement.style.transform = '';
     setDraggedItemIndex(null);
   };
 
@@ -448,6 +443,11 @@ export function CreateQuoteForm({
     
     setSelectedProducts(newProducts);
     setDraggedItemIndex(null);
+    
+    toast({
+      title: "Thành công",
+      description: "Đã di chuyển sản phẩm"
+    });
   };
 
   // Add new row after specific index
@@ -464,6 +464,11 @@ export function CreateQuoteForm({
     const newProducts = [...selectedProducts];
     newProducts.splice(index + 1, 0, newItem);
     setSelectedProducts(newProducts);
+    
+    toast({
+      title: "Thành công", 
+      description: "Đã thêm dòng mới"
+    });
   };
 
   // Handle creating new product
@@ -943,317 +948,65 @@ export function CreateQuoteForm({
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table className="table-fixed w-full">
-                      <TableHeader>
-                        <TableRow className="bg-gray-50">
-                          <TableHead className="font-bold text-base w-56 min-w-56">Tên sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-24 min-w-24">Hình ảnh</TableHead>
-                          <TableHead className="font-bold text-base w-48 min-w-48">Mô tả sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-40 min-w-40">Quy cách</TableHead>
-                          <TableHead className="font-bold text-base text-right w-32 min-w-32">Đơn giá</TableHead>
-                          <TableHead className="font-bold text-base text-center w-28 min-w-28">Số lượng</TableHead>
-                          <TableHead className="font-bold text-base text-right w-36 min-w-36">Thành tiền</TableHead>
-                          <TableHead className="font-bold text-base text-center w-24 min-w-24">Thao tác</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                    <TableBody>
-                       {selectedProducts.map((item, index) => <TableRow 
-                         key={item.id} 
-                         className={`h-24 transition-all duration-200 cursor-move select-none relative group ${draggedItemIndex === index ? 'shadow-2xl ring-2 ring-blue-500 bg-blue-50 transform scale-105 z-50' : 'hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-transparent hover:shadow-sm'}`}
-                         draggable
-                         onDragStart={(e) => handleDragStart(e, index)}
-                         onDragEnd={handleDragEnd}
-                         onDragOver={handleDragOver}
-                         onDrop={(e) => handleDrop(e, index)}
-                       >
-                           {/* Add Row Button - always present but hidden with opacity */}
-                           <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                             <Button
-                               type="button"
-                               size="sm"
-                               variant="outline"
-                               className="h-6 w-6 p-0 rounded-full bg-green-500 hover:bg-green-600 text-white border-green-500 shadow-lg"
-                               onClick={() => addRowAfter(index)}
-                             >
-                               <Plus className="h-3 w-3" />
-                             </Button>
-                           </div>
-                           
-                          <TableCell className="w-56 min-w-56 p-4">
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button variant="outline" size="sm" className="text-left justify-start gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50 hover:bg-blue-100" onClick={() => setCurrentEditingIndex(index)}>
-                                  <Search className="h-4 w-4 text-blue-600" />
-                                   <span className="text-blue-600 text-xs">
-                                     {item.sku ? item.sku : 'Chọn từ danh sách'}
-                                   </span>
-                                </Button>
-                              </DialogTrigger>
-                               <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-y-auto w-full">
-                                <DialogHeader>
-                                  <DialogTitle className="flex items-center gap-2">
-                                    <Search className="h-5 w-5" />
-                                    Chọn sản phẩm từ danh sách
-                                  </DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                  {/* Search Input */}
-                                  <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                                    <Input placeholder="Tìm kiếm theo tên, mã sản phẩm..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 h-12 text-base border-2 focus:border-blue-500" />
-                                  </div>
-                                  
-                                    {/* Search Results Summary */}
-                                    {debouncedSearchTerm && <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-md">
-                                        <p className="text-sm text-blue-700">
-                                          Tìm thấy <strong>{searchResult.resultCount}</strong> sản phẩm cho "{debouncedSearchTerm}"
-                                        </p>
-                                      </div>}
+              <CardContent className="p-6">
+                {selectedProducts.length === 0 ? (
+                  <EmptyProductCard onAddProduct={() => setShowProductDialog(true)} />
+                ) : (
+                  <div className="space-y-6">
+                    {/* Products Grid */}
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                      {selectedProducts.map((item, index) => (
+                        <div key={item.id} className="transition-all duration-300 animate-fade-in">
+                          <ProductCard
+                            item={item}
+                            index={index}
+                            isDragging={draggedItemIndex === index}
+                            onUpdateQuantity={updateQuantity}
+                            onUpdatePrice={updatePrice}
+                            onRemove={removeProduct}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={handleDragOver}
+                            onDrop={handleDrop}
+                            onAddAfter={addRowAfter}
+                            onImageSelect={(index) => {
+                              setCurrentImageEditingIndex(index);
+                              setShowImageLibrary(true);
+                            }}
+                            onDuplicate={(index) => {
+                              const itemToDuplicate = selectedProducts[index];
+                              const duplicatedItem: QuoteItem = {
+                                ...itemToDuplicate,
+                                id: `${itemToDuplicate.originalProductId || itemToDuplicate.id}-${Date.now()}-${Math.random()}`,
+                              };
+                              const newProducts = [...selectedProducts];
+                              newProducts.splice(index + 1, 0, duplicatedItem);
+                              setSelectedProducts(newProducts);
+                              toast({
+                                title: "Thành công",
+                                description: "Đã sao chép sản phẩm"
+                              });
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
 
-                                    {/* Products List */}
-                                    <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-                                      {Object.entries(searchResult.groupedResults).map(([category, categoryProducts]) => <div key={category} className="space-y-2">
-                                          <div className="sticky top-0 bg-blue-100 px-3 py-2 rounded-md border-l-4 border-blue-500 z-10">
-                                            <h4 className="font-semibold text-blue-800 text-sm flex items-center gap-2">
-                                              <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
-                                                {categoryProducts.length}
-                                              </span>
-                                              {category}
-                                            </h4>
-                                          </div>
-                                          <div className="space-y-1 pl-2">
-                                            {categoryProducts.map(product => <Card key={product.id} className="cursor-pointer hover:shadow-md transition-all border hover:border-blue-300 hover:bg-blue-50" onClick={() => {
-                                      console.log('Selected product data:', product);
-                                       const newProducts = [...selectedProducts];
-                                       newProducts[index] = {
-                                         id: `${product.id}-${Date.now()}-${Math.random()}`, // Create unique ID for each instance
-                                         name: product.name,
-                                         sku: product.sku || '',
-                                         price: product.price || 0,
-                                         quantity: item.quantity,
-                                         total: (product.price || 0) * item.quantity,
-                                         originalProductId: product.id, // Keep reference to original product
-                                         description: product.description || '',
-                                         specifications: product.specifications || ''
-                                       };
-                                      console.log('New product item:', newProducts[index]);
-                                      setSelectedProducts(newProducts);
-                                      setSearchTerm("");
-                                      toast({
-                                        title: "Thành công",
-                                        description: `Đã chọn ${product.name}`
-                                      });
-                                    }}>
-                                                <CardContent className="p-3">
-                                                  <div className="flex items-center justify-between">
-                                                    <div className="flex-1">
-                                                      <div className="flex items-center gap-4">
-                                                        <div className="min-w-0 flex-1">
-                                                           <div className="flex items-center gap-2 mb-1">
-                                                             <h3 className="font-bold text-blue-800 text-sm">
-                                                               {product.sku || 'NO-SKU'}
-                                                             </h3>
-                                                           </div>
-                                                           <p className="text-gray-700 font-medium text-sm truncate">
-                                                             {product.name}
-                                                           </p>
-                                                           {(product.description || product.specifications) && (
-                                                             <p className="text-gray-500 text-xs mt-1 line-clamp-2">
-                                                               {product.description || product.specifications || ''}
-                                                             </p>
-                                                           )}
-                                                        </div>
-                                                        <div className="text-right">
-                                                          <p className="text-green-600 font-bold text-sm">{(product.price || 0).toLocaleString()}đ</p>
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                </CardContent>
-                                              </Card>)}
-                                          </div>
-                                        </div>)}
-                                   </div>
-                                  
-                                   {searchResult.resultCount === 0 && debouncedSearchTerm && <div className="text-center py-8 text-gray-500">
-                                       <Search className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                                       <p>Không tìm thấy sản phẩm nào với từ khóa "{debouncedSearchTerm}"</p>
-                                       <p className="text-xs mt-2">Hãy thử tìm kiếm với từ khóa khác hoặc kiểm tra chính tả</p>
-                                     </div>}
-                                </div>
-                              </DialogContent>
-                            </Dialog>
-                           </TableCell>
-                            <TableCell className="w-48 min-w-48 p-2">
-                             <Textarea value={item.name} onChange={e => {
-                          const newProducts = [...selectedProducts];
-                          newProducts[index] = {
-                            ...item,
-                            name: e.target.value
-                          };
-                          setSelectedProducts(newProducts);
-                        }} placeholder="Tên sản phẩm" className="border-gray-200 focus:border-blue-500 font-medium text-sm w-full min-h-[2.5rem] resize-none" rows={2} />
-                           </TableCell>
-                           <TableCell className="w-24 min-w-24 p-2">
-                             <Dialog open={imageDialogOpen[index] || false} onOpenChange={open => {
-                          setImageDialogOpen(prev => ({
-                            ...prev,
-                            [index]: open
-                          }));
-                        }}>
-                              <DialogTrigger asChild>
-                                 <Button variant="outline" size="sm" className="h-12 w-16 border-2 border-dashed border-gray-300 hover:border-blue-500 flex flex-col items-center justify-center gap-1" type="button">
-                                  {item.selectedImage ? <img src={item.selectedImage} alt="Selected" className="w-12 h-12 object-cover rounded" /> : <>
-                                      <Image className="h-4 w-4 text-gray-400" />
-                                      <span className="text-xs text-gray-500">Chọn ảnh</span>
-                                    </>}
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
-                                <DialogHeader>
-                                  <DialogTitle>Chọn hình ảnh sản phẩm</DialogTitle>
-                                </DialogHeader>
-                                <div className="h-[70vh] overflow-y-auto">
-                                  <ProductImageLibrary hideDeleteButton={true} onSelectImage={imageUrl => {
-                                const newProducts = [...selectedProducts];
-                                newProducts[index] = {
-                                  ...newProducts[index],
-                                  selectedImage: imageUrl
-                                };
-                                setSelectedProducts(newProducts);
-
-                                // Đóng dialog ngay lập tức
-                                setImageDialogOpen(prev => ({
-                                  ...prev,
-                                  [index]: false
-                                }));
-                                toast({
-                                  title: "Thành công",
-                                  description: "Đã chọn hình ảnh cho sản phẩm"
-                                });
-                              }} />
-                                </div>
-                              </DialogContent>
-                            </Dialog>
-                          </TableCell>
-                            <TableCell className="w-40 min-w-40 p-2">
-                              <div className="flex items-start space-x-1">
-                               <Textarea value={item.description || ''} onChange={e => {
-                            const newProducts = [...selectedProducts];
-                            newProducts[index] = {
-                              ...item,
-                              description: e.target.value
-                            };
-                            setSelectedProducts(newProducts);
-                          }} placeholder="Mô tả sản phẩm" className="border-gray-200 focus:border-blue-500 flex-1 min-h-[2.5rem] resize-none" rows={2} />
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa mô tả chi tiết">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                      <path d="M12 20h9" />
-                                      <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
-                                    </svg>
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-md">
-                                  <DialogHeader>
-                                    <DialogTitle>Chỉnh sửa mô tả sản phẩm</DialogTitle>
-                                  </DialogHeader>
-                                  <div className="space-y-4">
-                                    <div>
-                                      <Label htmlFor={`description-${index}`}>Mô tả chi tiết</Label>
-                                      <Textarea id={`description-${index}`} value={item.description || ''} onChange={e => {
-                                    const newProducts = [...selectedProducts];
-                                    newProducts[index] = {
-                                      ...item,
-                                      description: e.target.value
-                                    };
-                                    setSelectedProducts(newProducts);
-                                  }} placeholder="Nhập mô tả chi tiết sản phẩm..." className="min-h-32 resize-none" />
-                                    </div>
-                                  </div>
-                                </DialogContent>
-                              </Dialog>
-                            </div>
-                          </TableCell>
-                            <TableCell className="w-32 min-w-32 p-2">
-                              <div className="flex items-start space-x-1">
-                               <Textarea value={(item as any).specifications || ''} onChange={e => {
-                            const newProducts = [...selectedProducts];
-                            newProducts[index] = {
-                              ...item,
-                              specifications: e.target.value
-                            };
-                            setSelectedProducts(newProducts);
-                          }} placeholder="Quy cách" className="border-gray-200 focus:border-blue-500 flex-1 min-h-[2.5rem] resize-none" rows={2} />
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa quy cách chi tiết">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                      <path d="M12 20h9" />
-                                      <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
-                                    </svg>
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-md">
-                                  <DialogHeader>
-                                    <DialogTitle>Chỉnh sửa quy cách sản phẩm</DialogTitle>
-                                  </DialogHeader>
-                                  <div className="space-y-4">
-                                    <div>
-                                      <Label htmlFor={`specifications-${index}`}>Quy cách chi tiết</Label>
-                                      <Textarea id={`specifications-${index}`} value={(item as any).specifications || ''} onChange={e => {
-                                    const newProducts = [...selectedProducts];
-                                    newProducts[index] = {
-                                      ...item,
-                                      specifications: e.target.value
-                                    };
-                                    setSelectedProducts(newProducts);
-                                  }} placeholder="Nhập quy cách chi tiết sản phẩm..." className="min-h-32 resize-none" />
-                                    </div>
-                                  </div>
-                                </DialogContent>
-                              </Dialog>
-                            </div>
-                          </TableCell>
-                           <TableCell className="w-28 min-w-28 text-right p-2">
-                             <Input 
-                               type="text" 
-                               value={item.price.toLocaleString('vi-VN')} 
-                               onChange={e => {
-                                 const value = e.target.value.replace(/[^\d]/g, ''); // Remove non-digits
-                                 const price = parseFloat(value) || 0;
-                                 updatePrice(item.id, price);
-                               }} 
-                               className="w-24 text-right font-mono text-blue-600 font-semibold border-gray-200 focus:border-blue-500" 
-                               placeholder="0" 
-                             />
-                           </TableCell>
-                           <TableCell className="w-24 min-w-24 text-center p-2">
-                             <Input type="number" value={item.quantity} onChange={e => {
-                          const quantity = parseInt(e.target.value) || 1;
-                          updateQuantity(item.id, quantity);
-                        }} className="w-20 h-10 text-center border-2 focus:border-blue-500 text-sm font-semibold" min="1" />
-                          </TableCell>
-                            <TableCell className="w-32 min-w-32 text-right font-mono font-bold text-green-600 text-sm p-2">
-                              {item.total.toLocaleString('vi-VN')}đ
-                           </TableCell>
-                           <TableCell className="w-20 min-w-20 text-center p-2">
-                             <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
-                              <Trash2 className="w-5 h-5" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>)}
-                       {selectedProducts.length === 0 && <TableRow>
-                           <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                             Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
-                           </TableCell>
-                         </TableRow>}
-                    </TableBody>
-                  </Table>
-                </div>
+                    {/* Quick Add Product Button */}
+                    <div className="flex justify-center pt-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        onClick={() => setShowProductDialog(true)}
+                        className="border-dashed border-2 border-primary/30 hover:border-primary hover:bg-primary/5 transition-all duration-200"
+                      >
+                        <Plus className="h-5 w-5 mr-2" />
+                        Thêm sản phẩm mới
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1359,7 +1112,137 @@ export function CreateQuoteForm({
         </Form>
       </div>
 
-      {/* Create New Product Dialog */}
+      {/* Product Selection Dialog */}
+      <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5" />
+              Chọn sản phẩm từ danh sách
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input 
+                placeholder="Tìm kiếm theo tên, mã sản phẩm..." 
+                value={searchTerm} 
+                onChange={e => setSearchTerm(e.target.value)} 
+                className="pl-10 h-12 text-base border-2 focus:border-blue-500" 
+              />
+            </div>
+            
+            {/* Search Results Summary */}
+            {debouncedSearchTerm && (
+              <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm text-blue-700">
+                  Tìm thấy <strong>{searchResult.resultCount}</strong> sản phẩm cho "{debouncedSearchTerm}"
+                </p>
+              </div>
+            )}
+
+            {/* Products List */}
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+              {Object.entries(searchResult.groupedResults).map(([category, categoryProducts]) => (
+                <div key={category} className="space-y-2">
+                  <div className="sticky top-0 bg-blue-100 px-3 py-2 rounded-md border-l-4 border-blue-500 z-10">
+                    <h4 className="font-semibold text-blue-800 text-sm flex items-center gap-2">
+                      <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
+                        {categoryProducts.length}
+                      </span>
+                      {category}
+                    </h4>
+                  </div>
+                  <div className="space-y-1 pl-2">
+                    {categoryProducts.map(product => (
+                      <Card 
+                        key={product.id} 
+                        className="cursor-pointer hover:shadow-md transition-all border hover:border-blue-300 hover:bg-blue-50" 
+                        onClick={() => {
+                          addProduct(product as Product);
+                          setSearchTerm("");
+                          toast({
+                            title: "Thành công",
+                            description: `Đã thêm ${product.name}`
+                          });
+                        }}
+                      >
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-4">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h3 className="font-bold text-blue-800 text-sm">
+                                      {product.sku || 'NO-SKU'}
+                                    </h3>
+                                  </div>
+                                  <p className="text-gray-700 font-medium text-sm truncate">
+                                    {product.name}
+                                  </p>
+                                  {(product.description || product.specifications) && (
+                                    <p className="text-gray-500 text-xs mt-1 line-clamp-2">
+                                      {product.description || product.specifications || ''}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-green-600 font-bold text-sm">
+                                    {(product.price || 0).toLocaleString()}đ
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {searchResult.resultCount === 0 && debouncedSearchTerm && (
+              <div className="text-center py-8 text-gray-500">
+                <Search className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>Không tìm thấy sản phẩm nào với từ khóa "{debouncedSearchTerm}"</p>
+                <p className="text-xs mt-2">Hãy thử tìm kiếm với từ khóa khác hoặc kiểm tra chính tả</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Image Library Dialog */}
+      <Dialog open={showImageLibrary} onOpenChange={setShowImageLibrary}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Chọn hình ảnh sản phẩm</DialogTitle>
+          </DialogHeader>
+          <div className="h-[70vh] overflow-y-auto">
+            <ProductImageLibrary 
+              hideDeleteButton={true} 
+              onSelectImage={(imageUrl) => {
+                if (currentImageEditingIndex >= 0) {
+                  const newProducts = [...selectedProducts];
+                  newProducts[currentImageEditingIndex] = {
+                    ...newProducts[currentImageEditingIndex],
+                    selectedImage: imageUrl
+                  };
+                  setSelectedProducts(newProducts);
+                  setShowImageLibrary(false);
+                  setCurrentImageEditingIndex(-1);
+                  toast({
+                    title: "Thành công",
+                    description: "Đã chọn hình ảnh cho sản phẩm"
+                  });
+                }
+              }} 
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={showCreateProduct} onOpenChange={setShowCreateProduct}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
