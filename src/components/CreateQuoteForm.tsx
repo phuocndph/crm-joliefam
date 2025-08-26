@@ -108,7 +108,6 @@ export function CreateQuoteForm({
   
   // Drag and drop states
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
-  const [hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
   
   const {
     toast
@@ -974,23 +973,19 @@ export function CreateQuoteForm({
                          onDragEnd={handleDragEnd}
                          onDragOver={handleDragOver}
                          onDrop={(e) => handleDrop(e, index)}
-                         onMouseEnter={() => setHoveredRowIndex(index)}
-                         onMouseLeave={() => setHoveredRowIndex(null)}
                        >
-                           {/* Add Row Button - appears on hover */}
-                           {hoveredRowIndex === index && (
-                             <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 z-10">
-                               <Button
-                                 type="button"
-                                 size="sm"
-                                 variant="outline"
-                                 className="h-6 w-6 p-0 rounded-full bg-green-500 hover:bg-green-600 text-white border-green-500 shadow-lg"
-                                 onClick={() => addRowAfter(index)}
-                               >
-                                 <Plus className="h-3 w-3" />
-                               </Button>
-                             </div>
-                           )}
+                           {/* Add Row Button - always present but hidden with opacity */}
+                           <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                             <Button
+                               type="button"
+                               size="sm"
+                               variant="outline"
+                               className="h-6 w-6 p-0 rounded-full bg-green-500 hover:bg-green-600 text-white border-green-500 shadow-lg"
+                               onClick={() => addRowAfter(index)}
+                             >
+                               <Plus className="h-3 w-3" />
+                             </Button>
+                           </div>
                            
                           <TableCell className="w-32 min-w-32 p-4">
                             <Dialog>
