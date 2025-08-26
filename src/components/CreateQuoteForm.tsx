@@ -221,10 +221,13 @@ export function CreateQuoteForm({
 
   // Update form when initialData changes
   useEffect(() => {
+    console.log('CreateQuoteForm useEffect triggered with initialData:', initialData);
     if (initialData) {
       try {
+        console.log('Processing initialData:', initialData);
         // Parse items
         const items = typeof initialData.items === 'string' ? JSON.parse(initialData.items) : initialData.items || [];
+        console.log('Parsed items:', items, 'items length:', items.length);
         
         // Ensure each item has unique ID and required fields for editing
         const processedItems = items.map((item: any) => ({
@@ -235,6 +238,7 @@ export function CreateQuoteForm({
           specifications: item.specifications || ''
         }));
         
+        console.log('Processed items for selectedProducts:', processedItems);
         setSelectedProducts(processedItems);
 
         // Parse quote_data for payment info
@@ -281,11 +285,14 @@ export function CreateQuoteForm({
     if (selectedPriceList) {
       loadProducts(selectedPriceList);
     } else {
-      // Clear products if no price list is selected
+      // Clear products if no price list is selected, but don't clear selectedProducts when editing
       setProducts([]);
-      setSelectedProducts([]);
+      // Only clear selectedProducts if we're not editing an existing quote
+      if (!initialData) {
+        setSelectedProducts([]);
+      }
     }
-  }, [form.watch("priceList")]);
+  }, [form.watch("priceList"), initialData]);
 
   // Filter selected products when products change
   useEffect(() => {
