@@ -225,7 +225,17 @@ export function CreateQuoteForm({
       try {
         // Parse items
         const items = typeof initialData.items === 'string' ? JSON.parse(initialData.items) : initialData.items || [];
-        setSelectedProducts(items);
+        
+        // Ensure each item has unique ID and required fields for editing
+        const processedItems = items.map((item: any) => ({
+          ...item,
+          id: item.id || `${item.originalProductId || item.id}-${Date.now()}-${Math.random()}`, // Ensure unique ID
+          originalProductId: item.originalProductId || item.id, // Keep reference to original product
+          description: item.description || '',
+          specifications: item.specifications || ''
+        }));
+        
+        setSelectedProducts(processedItems);
 
         // Parse quote_data for payment info
         let paymentData = {
