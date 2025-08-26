@@ -420,12 +420,21 @@ export function CreateQuoteForm({
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedItemIndex(index);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', (e.currentTarget as HTMLElement).outerHTML);
-    (e.currentTarget as HTMLElement).style.opacity = '0.5';
+    e.dataTransfer.setData('text/html', '');
+    
+    // Create a custom drag image for better visual feedback
+    const dragElement = e.currentTarget as HTMLElement;
+    const rect = dragElement.getBoundingClientRect();
+    
+    // Apply visual feedback
+    setTimeout(() => {
+      dragElement.style.transform = 'scale(0.98)';
+    }, 0);
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
-    (e.currentTarget as HTMLElement).style.opacity = '1';
+    const dragElement = e.currentTarget as HTMLElement;
+    dragElement.style.transform = '';
     setDraggedItemIndex(null);
   };
 
@@ -945,7 +954,6 @@ export function CreateQuoteForm({
                   <Table>
                       <TableHeader>
                         <TableRow className="bg-gray-50">
-                          <TableHead className="font-bold text-base w-8 text-center">Kéo</TableHead>
                           <TableHead className="font-bold text-base w-32">Chọn sản phẩm</TableHead>
                           <TableHead className="font-bold text-base w-48">Tên sản phẩm</TableHead>
                           <TableHead className="font-bold text-base w-20">Hình ảnh</TableHead>
@@ -960,7 +968,7 @@ export function CreateQuoteForm({
                     <TableBody>
                        {selectedProducts.map((item, index) => <TableRow 
                          key={item.id} 
-                         className={`h-24 transition-all duration-200 cursor-move relative group ${draggedItemIndex === index ? 'opacity-50' : 'hover:bg-blue-50'}`}
+                         className={`h-24 transition-all duration-300 cursor-move select-none relative group ${draggedItemIndex === index ? 'opacity-50 scale-[0.98] shadow-lg ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-transparent hover:shadow-sm'}`}
                          draggable
                          onDragStart={(e) => handleDragStart(e, index)}
                          onDragEnd={handleDragEnd}
@@ -984,24 +992,6 @@ export function CreateQuoteForm({
                              </div>
                            )}
                            
-                           {/* Drag Handle */}
-                           <TableCell className="w-8 p-2 text-center">
-                             <div className="flex items-center justify-center cursor-move">
-                               <svg
-                                 className="w-4 h-4 text-gray-400 hover:text-gray-600"
-                                 fill="none"
-                                 stroke="currentColor"
-                                 viewBox="0 0 24 24"
-                               >
-                                 <path
-                                   strokeLinecap="round"
-                                   strokeLinejoin="round"
-                                   strokeWidth={2}
-                                   d="M8 9l4-4 4 4m0 6l-4 4-4-4"
-                                 />
-                               </svg>
-                             </div>
-                           </TableCell>
                           <TableCell className="p-4">
                             <Dialog>
                               <DialogTrigger asChild>
