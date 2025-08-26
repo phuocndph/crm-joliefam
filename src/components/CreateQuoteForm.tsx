@@ -74,6 +74,7 @@ interface QuoteItem {
   description?: string;
   specifications?: string;
   selectedImage?: string; // URL của hình ảnh đã chọn
+  originalProductId?: string; // Reference to original product ID
 }
 interface PriceList {
   id: string;
@@ -327,24 +328,17 @@ export function CreateQuoteForm({
     }
   };
   const addProduct = (product: Product) => {
-    const existingItem = selectedProducts.find(item => item.id === product.id);
-    if (existingItem) {
-      setSelectedProducts(prev => prev.map(item => item.id === product.id ? {
-        ...item,
-        quantity: item.quantity + 1,
-        total: (item.quantity + 1) * item.price
-      } : item));
-    } else {
-      const newItem: QuoteItem = {
-        id: product.id,
-        name: product.name,
-        sku: product.sku || '',
-        price: product.price || 0,
-        quantity: 1,
-        total: product.price || 0
-      };
-      setSelectedProducts(prev => [...prev, newItem]);
-    }
+    // Always create a new item with unique ID to allow multiple instances of same product
+    const newItem: QuoteItem = {
+      id: `${product.id}-${Date.now()}-${Math.random()}`, // Create unique ID for each instance
+      name: product.name,
+      sku: product.sku || '',
+      price: product.price || 0,
+      quantity: 1,
+      total: product.price || 0,
+      originalProductId: product.id // Keep reference to original product
+    };
+    setSelectedProducts(prev => [...prev, newItem]);
     setShowProductDialog(false);
   };
   const updateQuantity = (productId: string, quantity: number) => {
@@ -1110,21 +1104,28 @@ export function CreateQuoteForm({
                               </Dialog>
                             </div>
                           </TableCell>
-                          <TableCell className="w-28 p-2">
-                            <Input type="number" value={item.price} onChange={e => {
-                          const price = parseFloat(e.target.value) || 0;
-                          updatePrice(item.id, price);
-                        }} className="w-24 text-right font-mono text-blue-600 font-semibold border-gray-200 focus:border-blue-500" min="0" step="1000" placeholder="0" />
-                          </TableCell>
+                           <TableCell className="w-28 p-2">
+                             <Input 
+                               type="text" 
+                               value={item.price.toLocaleString('vi-VN')} 
+                               onChange={e => {
+                                 const value = e.target.value.replace(/[^\d]/g, ''); // Remove non-digits
+                                 const price = parseFloat(value) || 0;
+                                 updatePrice(item.id, price);
+                               }} 
+                               className="w-24 text-right font-mono text-blue-600 font-semibold border-gray-200 focus:border-blue-500" 
+                               placeholder="0" 
+                             />
+                           </TableCell>
                            <TableCell className="w-24 p-2">
                              <Input type="number" value={item.quantity} onChange={e => {
                           const quantity = parseInt(e.target.value) || 1;
                           updateQuantity(item.id, quantity);
                         }} className="w-20 h-10 text-center border-2 focus:border-blue-500 text-sm font-semibold" min="1" />
                           </TableCell>
-                           <TableCell className="w-32 text-right font-mono font-bold text-green-600 text-sm p-2">
-                             {item.total.toLocaleString()}đ
-                          </TableCell>
+                            <TableCell className="w-32 text-right font-mono font-bold text-green-600 text-sm p-2">
+                              {item.total.toLocaleString('vi-VN')}đ
+                           </TableCell>
                            <TableCell className="w-20 text-center p-2">
                              <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
                               <Trash2 className="w-5 h-5" />
