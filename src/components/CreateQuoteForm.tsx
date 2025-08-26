@@ -294,12 +294,20 @@ export function CreateQuoteForm({
     }
   }, [form.watch("priceList"), initialData]);
 
-  // Filter selected products when products change
+  // Filter selected products when products change - but don't filter when editing existing quote
   useEffect(() => {
-    if (products.length > 0) {
-      setSelectedProducts(prevSelected => prevSelected.filter(selectedItem => products.some(product => product.id === selectedItem.id)));
+    console.log('Products filter useEffect triggered, products.length:', products.length, 'selectedProducts.length:', selectedProducts.length, 'initialData:', !!initialData);
+    if (products.length > 0 && !initialData) {
+      // Only filter when creating new quotes, not when editing existing ones
+      setSelectedProducts(prevSelected => {
+        const filtered = prevSelected.filter(selectedItem => 
+          products.some(product => product.id === (selectedItem.originalProductId || selectedItem.id))
+        );
+        console.log('Filtered selectedProducts from', prevSelected.length, 'to', filtered.length);
+        return filtered;
+      });
     }
-  }, [products]);
+  }, [products, initialData]);
   const loadPriceLists = async () => {
     try {
       const {
