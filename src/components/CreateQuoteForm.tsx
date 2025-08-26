@@ -421,14 +421,9 @@ export function CreateQuoteForm({
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/html', '');
     
-    // Create a custom drag image for better visual feedback
+    // Add visual feedback without opacity changes
     const dragElement = e.currentTarget as HTMLElement;
-    const rect = dragElement.getBoundingClientRect();
-    
-    // Apply visual feedback
-    setTimeout(() => {
-      dragElement.style.transform = 'scale(0.98)';
-    }, 0);
+    dragElement.style.transform = 'rotate(2deg)';
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
@@ -953,21 +948,20 @@ export function CreateQuoteForm({
                   <Table className="table-fixed w-full">
                       <TableHeader>
                         <TableRow className="bg-gray-50">
-                          <TableHead className="font-bold text-base w-32 min-w-32">Chọn sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-48 min-w-48">Tên sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-20 min-w-20">Hình ảnh</TableHead>
-                          <TableHead className="font-bold text-base w-40 min-w-40">Mô tả sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-32 min-w-32">Quy cách</TableHead>
-                          <TableHead className="font-bold text-base text-right w-28 min-w-28">Đơn giá</TableHead>
-                          <TableHead className="font-bold text-base text-center w-24 min-w-24">Số lượng</TableHead>
-                          <TableHead className="font-bold text-base text-right w-32 min-w-32">Thành tiền</TableHead>
-                          <TableHead className="font-bold text-base text-center w-20 min-w-20">Thao tác</TableHead>
+                          <TableHead className="font-bold text-base w-56 min-w-56">Tên sản phẩm</TableHead>
+                          <TableHead className="font-bold text-base w-24 min-w-24">Hình ảnh</TableHead>
+                          <TableHead className="font-bold text-base w-48 min-w-48">Mô tả sản phẩm</TableHead>
+                          <TableHead className="font-bold text-base w-40 min-w-40">Quy cách</TableHead>
+                          <TableHead className="font-bold text-base text-right w-32 min-w-32">Đơn giá</TableHead>
+                          <TableHead className="font-bold text-base text-center w-28 min-w-28">Số lượng</TableHead>
+                          <TableHead className="font-bold text-base text-right w-36 min-w-36">Thành tiền</TableHead>
+                          <TableHead className="font-bold text-base text-center w-24 min-w-24">Thao tác</TableHead>
                         </TableRow>
                       </TableHeader>
                     <TableBody>
                        {selectedProducts.map((item, index) => <TableRow 
                          key={item.id} 
-                         className={`h-24 transition-all duration-300 cursor-move select-none relative group ${draggedItemIndex === index ? 'opacity-50 scale-[0.98] shadow-lg ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-transparent hover:shadow-sm'}`}
+                         className={`h-24 transition-all duration-200 cursor-move select-none relative group ${draggedItemIndex === index ? 'shadow-2xl ring-2 ring-blue-500 bg-blue-50 transform scale-105 z-50' : 'hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-transparent hover:shadow-sm'}`}
                          draggable
                          onDragStart={(e) => handleDragStart(e, index)}
                          onDragEnd={handleDragEnd}
@@ -987,13 +981,13 @@ export function CreateQuoteForm({
                              </Button>
                            </div>
                            
-                          <TableCell className="w-32 min-w-32 p-4">
+                          <TableCell className="w-56 min-w-56 p-4">
                             <Dialog>
                               <DialogTrigger asChild>
-                                <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50 hover:bg-blue-100" onClick={() => setCurrentEditingIndex(index)}>
+                                <Button variant="outline" size="sm" className="text-left justify-start gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50 hover:bg-blue-100" onClick={() => setCurrentEditingIndex(index)}>
                                   <Search className="h-4 w-4 text-blue-600" />
-                                   <span className="text-blue-600">
-                                     {item.sku ? item.sku : item.name ? `${item.name.substring(0, 15)}...` : 'Chọn sản phẩm từ danh sách'}
+                                   <span className="text-blue-600 text-xs">
+                                     {item.sku ? item.sku : 'Chọn từ danh sách'}
                                    </span>
                                 </Button>
                               </DialogTrigger>
@@ -1102,7 +1096,7 @@ export function CreateQuoteForm({
                           setSelectedProducts(newProducts);
                         }} placeholder="Tên sản phẩm" className="border-gray-200 focus:border-blue-500 font-medium text-sm w-full min-h-[2.5rem] resize-none" rows={2} />
                            </TableCell>
-                           <TableCell className="w-20 min-w-20 p-2">
+                           <TableCell className="w-24 min-w-24 p-2">
                              <Dialog open={imageDialogOpen[index] || false} onOpenChange={open => {
                           setImageDialogOpen(prev => ({
                             ...prev,
@@ -1253,7 +1247,7 @@ export function CreateQuoteForm({
                           </TableCell>
                         </TableRow>)}
                        {selectedProducts.length === 0 && <TableRow>
-                           <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                           <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                              Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
                            </TableCell>
                          </TableRow>}
