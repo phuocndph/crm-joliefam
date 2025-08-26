@@ -105,6 +105,11 @@ export function CreateQuoteForm({
   const [imageDialogOpen, setImageDialogOpen] = useState<{
     [key: number]: boolean;
   }>({});
+  
+  // Drag and drop states
+  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
+  const [hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
+  
   const {
     toast
   } = useToast();
@@ -409,6 +414,53 @@ export function CreateQuoteForm({
   };
   const removeProduct = (productId: string) => {
     setSelectedProducts(prev => prev.filter(item => item.id !== productId));
+  };
+
+  // Drag and drop functions
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedItemIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', (e.currentTarget as HTMLElement).outerHTML);
+    (e.currentTarget as HTMLElement).style.opacity = '0.5';
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    (e.currentTarget as HTMLElement).style.opacity = '1';
+    setDraggedItemIndex(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    
+    if (draggedItemIndex === null || draggedItemIndex === dropIndex) return;
+
+    const newProducts = [...selectedProducts];
+    const [draggedItem] = newProducts.splice(draggedItemIndex, 1);
+    newProducts.splice(dropIndex, 0, draggedItem);
+    
+    setSelectedProducts(newProducts);
+    setDraggedItemIndex(null);
+  };
+
+  // Add new row after specific index
+  const addRowAfter = (index: number) => {
+    const newItem: QuoteItem = {
+      id: `temp-${Date.now()}-${Math.random()}`,
+      name: '',
+      sku: '',
+      price: 0,
+      quantity: 1,
+      total: 0
+    };
+    
+    const newProducts = [...selectedProducts];
+    newProducts.splice(index + 1, 0, newItem);
+    setSelectedProducts(newProducts);
   };
 
   // Handle creating new product
@@ -891,21 +943,65 @@ export function CreateQuoteForm({
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <Table>
-                     <TableHeader>
-                       <TableRow className="bg-gray-50">
-                         <TableHead className="font-bold text-base w-32">Chọn sản phẩm</TableHead>
-                         <TableHead className="font-bold text-base w-48">Tên sản phẩm</TableHead>
-                         <TableHead className="font-bold text-base w-20">Hình ảnh</TableHead>
-                         <TableHead className="font-bold text-base w-40">Mô tả sản phẩm</TableHead>
-                         <TableHead className="font-bold text-base w-32">Quy cách</TableHead>
-                         <TableHead className="font-bold text-base text-right w-28">Đơn giá</TableHead>
-                         <TableHead className="font-bold text-base text-center w-24">Số lượng</TableHead>
-                         <TableHead className="font-bold text-base text-right w-32">Thành tiền</TableHead>
-                         <TableHead className="font-bold text-base text-center w-20">Thao tác</TableHead>
-                       </TableRow>
-                     </TableHeader>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-bold text-base w-8 text-center">Kéo</TableHead>
+                          <TableHead className="font-bold text-base w-32">Chọn sản phẩm</TableHead>
+                          <TableHead className="font-bold text-base w-48">Tên sản phẩm</TableHead>
+                          <TableHead className="font-bold text-base w-20">Hình ảnh</TableHead>
+                          <TableHead className="font-bold text-base w-40">Mô tả sản phẩm</TableHead>
+                          <TableHead className="font-bold text-base w-32">Quy cách</TableHead>
+                          <TableHead className="font-bold text-base text-right w-28">Đơn giá</TableHead>
+                          <TableHead className="font-bold text-base text-center w-24">Số lượng</TableHead>
+                          <TableHead className="font-bold text-base text-right w-32">Thành tiền</TableHead>
+                          <TableHead className="font-bold text-base text-center w-20">Thao tác</TableHead>
+                        </TableRow>
+                      </TableHeader>
                     <TableBody>
-                      {selectedProducts.map((item, index) => <TableRow key={item.id} className="h-24">
+                       {selectedProducts.map((item, index) => <TableRow 
+                         key={item.id} 
+                         className={`h-24 transition-all duration-200 cursor-move relative group ${draggedItemIndex === index ? 'opacity-50' : 'hover:bg-blue-50'}`}
+                         draggable
+                         onDragStart={(e) => handleDragStart(e, index)}
+                         onDragEnd={handleDragEnd}
+                         onDragOver={handleDragOver}
+                         onDrop={(e) => handleDrop(e, index)}
+                         onMouseEnter={() => setHoveredRowIndex(index)}
+                         onMouseLeave={() => setHoveredRowIndex(null)}
+                       >
+                           {/* Add Row Button - appears on hover */}
+                           {hoveredRowIndex === index && (
+                             <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 z-10">
+                               <Button
+                                 type="button"
+                                 size="sm"
+                                 variant="outline"
+                                 className="h-6 w-6 p-0 rounded-full bg-green-500 hover:bg-green-600 text-white border-green-500 shadow-lg"
+                                 onClick={() => addRowAfter(index)}
+                               >
+                                 <Plus className="h-3 w-3" />
+                               </Button>
+                             </div>
+                           )}
+                           
+                           {/* Drag Handle */}
+                           <TableCell className="w-8 p-2 text-center">
+                             <div className="flex items-center justify-center cursor-move">
+                               <svg
+                                 className="w-4 h-4 text-gray-400 hover:text-gray-600"
+                                 fill="none"
+                                 stroke="currentColor"
+                                 viewBox="0 0 24 24"
+                               >
+                                 <path
+                                   strokeLinecap="round"
+                                   strokeLinejoin="round"
+                                   strokeWidth={2}
+                                   d="M8 9l4-4 4 4m0 6l-4 4-4-4"
+                                 />
+                               </svg>
+                             </div>
+                           </TableCell>
                           <TableCell className="p-4">
                             <Dialog>
                               <DialogTrigger asChild>
@@ -1171,11 +1267,11 @@ export function CreateQuoteForm({
                             </Button>
                           </TableCell>
                         </TableRow>)}
-                      {selectedProducts.length === 0 && <TableRow>
-                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                            Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
-                          </TableCell>
-                        </TableRow>}
+                       {selectedProducts.length === 0 && <TableRow>
+                           <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                             Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
+                           </TableCell>
+                         </TableRow>}
                     </TableBody>
                   </Table>
                 </div>
