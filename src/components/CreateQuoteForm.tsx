@@ -336,8 +336,12 @@ export function CreateQuoteForm({
       price: product.price || 0,
       quantity: 1,
       total: product.price || 0,
-      originalProductId: product.id // Keep reference to original product
+      originalProductId: product.id, // Keep reference to original product
+      description: product.description || '',
+      specifications: product.specifications || ''
     };
+    console.log('Selected product data:', product);
+    console.log('New product item:', newItem);
     setSelectedProducts(prev => [...prev, newItem]);
     setShowProductDialog(false);
   };
@@ -346,20 +350,34 @@ export function CreateQuoteForm({
       removeProduct(productId);
       return;
     }
-    setSelectedProducts(prev => prev.map(item => item.id === productId ? {
-      ...item,
-      quantity,
-      total: quantity * item.price
-    } : item));
+    console.log(`Updating quantity for product ${productId} to ${quantity}`);
+    setSelectedProducts(prev => prev.map(item => {
+      if (item.id === productId) {
+        console.log(`Found product to update:`, item);
+        return {
+          ...item,
+          quantity,
+          total: quantity * item.price
+        };
+      }
+      return item;
+    }));
   };
 
   // Function to update price
   const updatePrice = (productId: string, price: number) => {
-    setSelectedProducts(prev => prev.map(item => item.id === productId ? {
-      ...item,
-      price,
-      total: item.quantity * price
-    } : item));
+    console.log(`Updating price for product ${productId} to ${price}`);
+    setSelectedProducts(prev => prev.map(item => {
+      if (item.id === productId) {
+        console.log(`Found product to update:`, item);
+        return {
+          ...item,
+          price,
+          total: item.quantity * price
+        };
+      }
+      return item;
+    }));
   };
 
   // Function to recalculate all totals to fix any inconsistencies
