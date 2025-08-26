@@ -926,17 +926,18 @@ export function CreateQuoteForm({
                                           <div className="space-y-1 pl-2">
                                             {categoryProducts.map(product => <Card key={product.id} className="cursor-pointer hover:shadow-md transition-all border hover:border-blue-300 hover:bg-blue-50" onClick={() => {
                                       console.log('Selected product data:', product);
-                                      const newProducts = [...selectedProducts];
-                                      newProducts[index] = {
-                                        id: product.id,
-                                        name: product.name,
-                                        sku: product.sku || '',
-                                        price: product.price || 0,
-                                        quantity: item.quantity,
-                                        total: (product.price || 0) * item.quantity,
-                                        description: product.description || '',
-                                        specifications: product.specifications || ''
-                                      };
+                                       const newProducts = [...selectedProducts];
+                                       newProducts[index] = {
+                                         id: `${product.id}-${Date.now()}-${Math.random()}`, // Create unique ID for each instance
+                                         name: product.name,
+                                         sku: product.sku || '',
+                                         price: product.price || 0,
+                                         quantity: item.quantity,
+                                         total: (product.price || 0) * item.quantity,
+                                         originalProductId: product.id, // Keep reference to original product
+                                         description: product.description || '',
+                                         specifications: product.specifications || ''
+                                       };
                                       console.log('New product item:', newProducts[index]);
                                       setSelectedProducts(newProducts);
                                       setSearchTerm("");
