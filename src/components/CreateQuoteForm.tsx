@@ -951,18 +951,18 @@ export function CreateQuoteForm({
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <Table>
+                  <Table className="table-fixed w-full">
                       <TableHeader>
                         <TableRow className="bg-gray-50">
-                          <TableHead className="font-bold text-base w-32">Chọn sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-48">Tên sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-20">Hình ảnh</TableHead>
-                          <TableHead className="font-bold text-base w-40">Mô tả sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-32">Quy cách</TableHead>
-                          <TableHead className="font-bold text-base text-right w-28">Đơn giá</TableHead>
-                          <TableHead className="font-bold text-base text-center w-24">Số lượng</TableHead>
-                          <TableHead className="font-bold text-base text-right w-32">Thành tiền</TableHead>
-                          <TableHead className="font-bold text-base text-center w-20">Thao tác</TableHead>
+                          <TableHead className="font-bold text-base w-32 min-w-32">Chọn sản phẩm</TableHead>
+                          <TableHead className="font-bold text-base w-48 min-w-48">Tên sản phẩm</TableHead>
+                          <TableHead className="font-bold text-base w-20 min-w-20">Hình ảnh</TableHead>
+                          <TableHead className="font-bold text-base w-40 min-w-40">Mô tả sản phẩm</TableHead>
+                          <TableHead className="font-bold text-base w-32 min-w-32">Quy cách</TableHead>
+                          <TableHead className="font-bold text-base text-right w-28 min-w-28">Đơn giá</TableHead>
+                          <TableHead className="font-bold text-base text-center w-24 min-w-24">Số lượng</TableHead>
+                          <TableHead className="font-bold text-base text-right w-32 min-w-32">Thành tiền</TableHead>
+                          <TableHead className="font-bold text-base text-center w-20 min-w-20">Thao tác</TableHead>
                         </TableRow>
                       </TableHeader>
                     <TableBody>
@@ -992,7 +992,7 @@ export function CreateQuoteForm({
                              </div>
                            )}
                            
-                          <TableCell className="p-4">
+                          <TableCell className="w-32 min-w-32 p-4">
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50 hover:bg-blue-100" onClick={() => setCurrentEditingIndex(index)}>
@@ -1097,7 +1097,7 @@ export function CreateQuoteForm({
                               </DialogContent>
                             </Dialog>
                            </TableCell>
-                            <TableCell className="min-w-48 p-2">
+                            <TableCell className="w-48 min-w-48 p-2">
                              <Textarea value={item.name} onChange={e => {
                           const newProducts = [...selectedProducts];
                           newProducts[index] = {
@@ -1107,7 +1107,7 @@ export function CreateQuoteForm({
                           setSelectedProducts(newProducts);
                         }} placeholder="Tên sản phẩm" className="border-gray-200 focus:border-blue-500 font-medium text-sm w-full min-h-[2.5rem] resize-none" rows={2} />
                            </TableCell>
-                           <TableCell className="w-20 p-2">
+                           <TableCell className="w-20 min-w-20 p-2">
                              <Dialog open={imageDialogOpen[index] || false} onOpenChange={open => {
                           setImageDialogOpen(prev => ({
                             ...prev,
@@ -1149,7 +1149,7 @@ export function CreateQuoteForm({
                               </DialogContent>
                             </Dialog>
                           </TableCell>
-                            <TableCell className="min-w-40 p-2">
+                            <TableCell className="w-40 min-w-40 p-2">
                               <div className="flex items-start space-x-1">
                                <Textarea value={item.description || ''} onChange={e => {
                             const newProducts = [...selectedProducts];
@@ -1189,7 +1189,7 @@ export function CreateQuoteForm({
                               </Dialog>
                             </div>
                           </TableCell>
-                            <TableCell className="min-w-32 p-2">
+                            <TableCell className="w-32 min-w-32 p-2">
                               <div className="flex items-start space-x-1">
                                <Textarea value={(item as any).specifications || ''} onChange={e => {
                             const newProducts = [...selectedProducts];
@@ -1229,7 +1229,7 @@ export function CreateQuoteForm({
                               </Dialog>
                             </div>
                           </TableCell>
-                           <TableCell className="w-28 p-2">
+                           <TableCell className="w-28 min-w-28 text-right p-2">
                              <Input 
                                type="text" 
                                value={item.price.toLocaleString('vi-VN')} 
@@ -1242,23 +1242,23 @@ export function CreateQuoteForm({
                                placeholder="0" 
                              />
                            </TableCell>
-                           <TableCell className="w-24 p-2">
+                           <TableCell className="w-24 min-w-24 text-center p-2">
                              <Input type="number" value={item.quantity} onChange={e => {
                           const quantity = parseInt(e.target.value) || 1;
                           updateQuantity(item.id, quantity);
                         }} className="w-20 h-10 text-center border-2 focus:border-blue-500 text-sm font-semibold" min="1" />
                           </TableCell>
-                            <TableCell className="w-32 text-right font-mono font-bold text-green-600 text-sm p-2">
+                            <TableCell className="w-32 min-w-32 text-right font-mono font-bold text-green-600 text-sm p-2">
                               {item.total.toLocaleString('vi-VN')}đ
                            </TableCell>
-                           <TableCell className="w-20 text-center p-2">
+                           <TableCell className="w-20 min-w-20 text-center p-2">
                              <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
                               <Trash2 className="w-5 h-5" />
                             </Button>
                           </TableCell>
                         </TableRow>)}
                        {selectedProducts.length === 0 && <TableRow>
-                           <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                           <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                              Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
                            </TableCell>
                          </TableRow>}
