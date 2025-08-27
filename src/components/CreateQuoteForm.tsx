@@ -954,7 +954,7 @@ export function CreateQuoteForm({
                 ) : (
                   <div className="space-y-6">
                     {/* Products Grid */}
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                    <div className="space-y-4">
                       {selectedProducts.map((item, index) => (
                         <div key={item.id} className="transition-all duration-300 animate-fade-in">
                           <ProductCard
