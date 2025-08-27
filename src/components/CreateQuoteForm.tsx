@@ -7,6 +7,7 @@ import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image } from "lucide-r
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
 import { AssigneeManagement } from './AssigneeManagement';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -416,37 +417,16 @@ export function CreateQuoteForm({
     setSelectedProducts(prev => prev.filter(item => item.id !== productId));
   };
 
-  // Drag and drop functions
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    setDraggedItemIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', '');
+  // React Beautiful DnD handler
+  const handleOnDragEnd = (result: any) => {
+    if (!result.destination) return;
     
-    // Create a custom drag image for better visual feedback
-    const dragElement = e.currentTarget as HTMLElement;
-    const rect = dragElement.getBoundingClientRect();
+    const items = Array.from(selectedProducts);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
     
-    // Apply visual feedback
-    setTimeout(() => {
-      dragElement.style.transform = 'scale(0.98)';
-    }, 0);
+    setSelectedProducts(items);
   };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    const dragElement = e.currentTarget as HTMLElement;
-    dragElement.style.transform = '';
-    setDraggedItemIndex(null);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
-    e.preventDefault();
-    
-    if (draggedItemIndex === null || draggedItemIndex === dropIndex) return;
 
     const newProducts = [...selectedProducts];
     const [draggedItem] = newProducts.splice(draggedItemIndex, 1);
@@ -950,7 +930,7 @@ export function CreateQuoteForm({
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                 <div className="overflow-x-auto">
                   <Table className="w-full border-collapse border border-gray-200">
                       <TableHeader>
                         <TableRow className="bg-gray-50">
@@ -965,17 +945,40 @@ export function CreateQuoteForm({
                           <TableHead className="font-bold text-base text-center w-20 min-w-20">Thao tác</TableHead>
                         </TableRow>
                       </TableHeader>
-                    <TableBody>
-                       {selectedProducts.map((item, index) => <TableRow 
-                         key={item.id} 
-                         className={`h-24 border border-gray-200 ${draggedItemIndex === index ? 'opacity-50 bg-blue-50' : 'hover:bg-gray-50'}`}
-                          >
-                           {/* Removed add row button and drag/drop functionality to prevent shifting */}
+                    <DragDropContext onDragEnd={handleOnDragEnd}>
+                      <Droppable droppableId="products">
+                        {(provided) => (
+                          <TableBody {...provided.droppableProps} ref={provided.innerRef}>
+                            {selectedProducts.map((item, index) => (
+                              <Draggable key={item.id} draggableId={item.id} index={index}>
+                                {(provided, snapshot) => (
+                                  <TableRow 
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    className={`h-24 border border-gray-200 relative ${snapshot.isDragging ? 'opacity-75 bg-blue-50 shadow-lg' : 'hover:bg-gray-50'}`}
+                                    onMouseEnter={() => setHoveredRowIndex(index)}
+                                    onMouseLeave={() => setHoveredRowIndex(null)}
+                                  >
+                                    {/* Add Row Button - appears on hover at end of row */}
+                                    {hoveredRowIndex === index && (
+                                      <div className="absolute right-2 top-1/2 transform -translate-y-1/2 z-10">
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-8 w-8 p-0 rounded-full bg-green-500 hover:bg-green-600 text-white border-green-500 shadow-lg"
+                                          onClick={() => addRowAfter(index)}
+                                        >
+                                          <Plus className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    )}
                            
-                          <TableCell className="w-32 min-w-32 p-4">
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => setCurrentEditingIndex(index)}>
+                                    <TableCell className="w-32 min-w-32 p-4">
+                                      <Dialog>
+                                        <DialogTrigger asChild>
+                                          <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => setCurrentEditingIndex(index)}>
                                   <Search className="h-4 w-4 text-blue-600" />
                                    <span className="text-blue-600">
                                      {item.sku ? item.sku : item.name ? `${item.name.substring(0, 15)}...` : 'Chọn sản phẩm từ danh sách'}
@@ -1236,13 +1239,22 @@ export function CreateQuoteForm({
                               <Trash2 className="w-5 h-5" />
                             </Button>
                           </TableCell>
-                        </TableRow>)}
-                       {selectedProducts.length === 0 && <TableRow>
-                           <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                             Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
-                           </TableCell>
-                         </TableRow>}
-                    </TableBody>
+                                  </TableRow>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                            {selectedProducts.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                                  Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        )}
+                      </Droppable>
+                    </DragDropContext>
                   </Table>
                 </div>
               </CardContent>
@@ -1412,5 +1424,6 @@ export function CreateQuoteForm({
           </form>
         </DialogContent>
       </Dialog>
-    </div>;
+    </div>
+  );
 }
