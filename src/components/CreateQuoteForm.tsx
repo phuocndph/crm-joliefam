@@ -968,7 +968,7 @@ export function CreateQuoteForm({
                     <TableBody>
                        {selectedProducts.map((item, index) => <TableRow 
                          key={item.id} 
-                         className={`h-24 transition-all duration-300 cursor-move select-none relative group ${draggedItemIndex === index ? 'opacity-50 scale-[0.98] shadow-lg ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-transparent hover:shadow-sm'}`}
+                         className={`h-24 cursor-move select-none relative group ${draggedItemIndex === index ? 'opacity-50 shadow-lg ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-blue-50/50'}`}
                          draggable
                          onDragStart={(e) => handleDragStart(e, index)}
                          onDragEnd={handleDragEnd}
