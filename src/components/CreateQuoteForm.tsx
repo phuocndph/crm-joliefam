@@ -946,18 +946,19 @@ export function CreateQuoteForm({
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <Table className="table-fixed w-full">
-                      <TableHeader>
-                        <TableRow className="bg-gray-50 border-b">
-                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-left border-r">Tên sản phẩm</TableHead>
-                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Hình ảnh</TableHead>
-                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-left border-r">Mô tả sản phẩm</TableHead>
-                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-left border-r">Quy cách</TableHead>
-                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Đơn giá</TableHead>
-                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Số lượng</TableHead>
-                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Thành tiền</TableHead>
-                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center">Thao tác</TableHead>
-                        </TableRow>
-                      </TableHeader>
+                       <TableHeader>
+                         <TableRow className="bg-gray-50 border-b">
+                           <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Chọn sản phẩm</TableHead>
+                           <TableHead className="font-semibold text-sm text-gray-700 p-4 text-left border-r">Tên sản phẩm</TableHead>
+                           <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Hình ảnh</TableHead>
+                           <TableHead className="font-semibold text-sm text-gray-700 p-4 text-left border-r">Mô tả sản phẩm</TableHead>
+                           <TableHead className="font-semibold text-sm text-gray-700 p-4 text-left border-r">Quy cách</TableHead>
+                           <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Đơn giá</TableHead>
+                           <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Số lượng</TableHead>
+                           <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Thành tiền</TableHead>
+                           <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center">Thao tác</TableHead>
+                         </TableRow>
+                       </TableHeader>
                     <TableBody>
                        {selectedProducts.map((item, index) => <TableRow 
                          key={item.id} 
@@ -981,8 +982,18 @@ export function CreateQuoteForm({
                              </Button>
                            </div>
                            
-                           {/* Tên sản phẩm */}
-                           <TableCell className="p-4 border-r align-top">
+                            {/* Chọn sản phẩm */}
+                            <TableCell className="p-4 border-r text-center align-top">
+                              <div className="border-2 border-dashed border-blue-300 rounded-md p-3 text-center bg-blue-50/50">
+                                <div className="text-xs text-blue-600 font-medium mb-1">
+                                  {item.sku || 'BVDCBT-IM2'}
+                                </div>
+                                <Search className="h-4 w-4 text-blue-500 mx-auto" />
+                              </div>
+                            </TableCell>
+
+                            {/* Tên sản phẩm */}
+                            <TableCell className="p-4 border-r align-top">
                               <Textarea 
                                 value={item.name} 
                                 onChange={e => {
@@ -1295,8 +1306,8 @@ export function CreateQuoteForm({
                              </Button>
                            </TableCell>
                          </TableRow>)}
-                       {selectedProducts.length === 0 && <TableRow>
-                           <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        {selectedProducts.length === 0 && <TableRow>
+                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                              Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
                            </TableCell>
                          </TableRow>}
