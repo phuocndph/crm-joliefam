@@ -951,7 +951,7 @@ export function CreateQuoteForm({
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <Table className="table-fixed w-full">
+                  <Table className="w-full border-collapse border border-gray-200">
                       <TableHeader>
                         <TableRow className="bg-gray-50">
                           <TableHead className="font-bold text-base w-32 min-w-32">Chọn sản phẩm</TableHead>
@@ -968,34 +968,14 @@ export function CreateQuoteForm({
                     <TableBody>
                        {selectedProducts.map((item, index) => <TableRow 
                          key={item.id} 
-                         className={`h-24 cursor-move select-none relative group ${draggedItemIndex === index ? 'opacity-50 shadow-lg ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-blue-50/50'}`}
-                         draggable
-                         onDragStart={(e) => handleDragStart(e, index)}
-                         onDragEnd={handleDragEnd}
-                         onDragOver={handleDragOver}
-                         onDrop={(e) => handleDrop(e, index)}
-                         onMouseEnter={() => setHoveredRowIndex(index)}
-                         onMouseLeave={() => setHoveredRowIndex(null)}
-                       >
-                           {/* Add Row Button - appears on hover */}
-                           {hoveredRowIndex === index && (
-                             <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 z-10">
-                               <Button
-                                 type="button"
-                                 size="sm"
-                                 variant="outline"
-                                 className="h-6 w-6 p-0 rounded-full bg-green-500 hover:bg-green-600 text-white border-green-500 shadow-lg"
-                                 onClick={() => addRowAfter(index)}
-                               >
-                                 <Plus className="h-3 w-3" />
-                               </Button>
-                             </div>
-                           )}
+                         className={`h-24 border border-gray-200 ${draggedItemIndex === index ? 'opacity-50 bg-blue-50' : 'hover:bg-gray-50'}`}
+                          >
+                           {/* Removed add row button and drag/drop functionality to prevent shifting */}
                            
                           <TableCell className="w-32 min-w-32 p-4">
                             <Dialog>
                               <DialogTrigger asChild>
-                                <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50 hover:bg-blue-100" onClick={() => setCurrentEditingIndex(index)}>
+                                <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => setCurrentEditingIndex(index)}>
                                   <Search className="h-4 w-4 text-blue-600" />
                                    <span className="text-blue-600">
                                      {item.sku ? item.sku : item.name ? `${item.name.substring(0, 15)}...` : 'Chọn sản phẩm từ danh sách'}
