@@ -995,10 +995,10 @@ export function CreateQuoteForm({
                                             <DialogTitle>Chọn hình ảnh sản phẩm</DialogTitle>
                                           </DialogHeader>
                                           <div className="overflow-y-auto max-h-[70vh]">
-                                            <ProductImageLibrary
-                                              onImageSelect={(imageUrl) => handleImageSelect(imageUrl, index)}
-                                              selectedProductId={item.originalProductId}
-                                            />
+                                             <ProductImageLibrary
+                                               onSelectImage={(imageUrl) => handleImageSelect(imageUrl, index)}
+                                               hideDeleteButton={true}
+                                             />
                                           </div>
                                         </DialogContent>
                                       </Dialog>
