@@ -947,21 +947,21 @@ export function CreateQuoteForm({
                 <div className="overflow-x-auto">
                   <Table className="table-fixed w-full">
                       <TableHeader>
-                        <TableRow className="bg-gray-50">
-                          <TableHead className="font-bold text-base w-56 min-w-56">Tên sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-24 min-w-24">Hình ảnh</TableHead>
-                          <TableHead className="font-bold text-base w-48 min-w-48">Mô tả sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-40 min-w-40">Quy cách</TableHead>
-                          <TableHead className="font-bold text-base text-right w-32 min-w-32">Đơn giá</TableHead>
-                          <TableHead className="font-bold text-base text-center w-28 min-w-28">Số lượng</TableHead>
-                          <TableHead className="font-bold text-base text-right w-36 min-w-36">Thành tiền</TableHead>
-                          <TableHead className="font-bold text-base text-center w-24 min-w-24">Thao tác</TableHead>
+                        <TableRow className="bg-gray-50 border-b">
+                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-left border-r">Tên sản phẩm</TableHead>
+                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Hình ảnh</TableHead>
+                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-left border-r">Mô tả sản phẩm</TableHead>
+                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-left border-r">Quy cách</TableHead>
+                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Đơn giá</TableHead>
+                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Số lượng</TableHead>
+                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center border-r">Thành tiền</TableHead>
+                          <TableHead className="font-semibold text-sm text-gray-700 p-4 text-center">Thao tác</TableHead>
                         </TableRow>
                       </TableHeader>
                     <TableBody>
                        {selectedProducts.map((item, index) => <TableRow 
                          key={item.id} 
-                         className={`h-24 transition-all duration-200 cursor-move select-none relative group ${draggedItemIndex === index ? 'shadow-2xl ring-2 ring-blue-500 bg-blue-50 transform scale-105 z-50' : 'hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-transparent hover:shadow-sm'}`}
+                         className={`border-b hover:bg-gray-50 transition-colors ${draggedItemIndex === index ? 'bg-blue-50 shadow-lg' : ''}`}
                          draggable
                          onDragStart={(e) => handleDragStart(e, index)}
                          onDragEnd={handleDragEnd}
@@ -982,22 +982,33 @@ export function CreateQuoteForm({
                            </div>
                            
                            {/* Tên sản phẩm */}
-                           <TableCell className="w-56 min-w-56 p-2">
-                              <Textarea value={item.name} onChange={e => {
-                           const newProducts = [...selectedProducts];
-                           newProducts[index] = {
-                             ...item,
-                             name: e.target.value
-                           };
-                           setSelectedProducts(newProducts);
-                         }} placeholder="Tên sản phẩm" className="border-gray-200 focus:border-blue-500 font-medium text-sm w-full min-h-[2.5rem] resize-none" rows={2} />
+                           <TableCell className="p-4 border-r align-top">
+                              <Textarea 
+                                value={item.name} 
+                                onChange={e => {
+                                  const newProducts = [...selectedProducts];
+                                  newProducts[index] = {
+                                    ...item,
+                                    name: e.target.value
+                                  };
+                                  setSelectedProducts(newProducts);
+                                }} 
+                                placeholder="Tên sản phẩm" 
+                                className="w-full min-h-[2.5rem] resize-none border-gray-300 text-sm" 
+                                rows={2} 
+                              />
                              <Dialog>
                                <DialogTrigger asChild>
-                                 <Button variant="outline" size="sm" className="text-left justify-start gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50 hover:bg-blue-100 mt-2" onClick={() => setCurrentEditingIndex(index)}>
-                                   <Search className="h-4 w-4 text-blue-600" />
-                                    <span className="text-blue-600 text-xs">
-                                      {item.sku ? `Mã: ${item.sku}` : 'Chọn từ danh sách'}
-                                    </span>
+                                 <Button 
+                                   variant="outline" 
+                                   size="sm" 
+                                   className="w-full mt-2 text-left justify-start gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 text-blue-600" 
+                                   onClick={() => setCurrentEditingIndex(index)}
+                                 >
+                                   <Search className="h-4 w-4" />
+                                   <span className="text-xs">
+                                     {item.sku ? item.sku : 'Chọn từ danh sách'}
+                                   </span>
                                  </Button>
                                </DialogTrigger>
                                 <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-y-auto w-full">
@@ -1097,7 +1108,7 @@ export function CreateQuoteForm({
                            </TableCell>
 
                            {/* Hình ảnh */}
-                           <TableCell className="w-24 min-w-24 p-2">
+                           <TableCell className="p-4 border-r text-center align-top">
                               <Dialog open={imageDialogOpen[index] || false} onOpenChange={open => {
                            setImageDialogOpen(prev => ({
                              ...prev,
@@ -1105,7 +1116,7 @@ export function CreateQuoteForm({
                            }));
                          }}>
                                <DialogTrigger asChild>
-                                  <Button variant="outline" size="sm" className="h-12 w-16 border-2 border-dashed border-gray-300 hover:border-blue-500 flex flex-col items-center justify-center gap-1" type="button">
+                                  <Button variant="outline" size="sm" className="h-16 w-16 border-2 border-dashed border-gray-300 hover:border-blue-500 flex flex-col items-center justify-center gap-1" type="button">
                                    {item.selectedImage ? <img src={item.selectedImage} alt="Selected" className="w-12 h-12 object-cover rounded" /> : <>
                                        <Image className="h-4 w-4 text-gray-400" />
                                        <span className="text-xs text-gray-500">Chọn ảnh</span>
@@ -1141,20 +1152,26 @@ export function CreateQuoteForm({
                            </TableCell>
 
                            {/* Mô tả sản phẩm */}
-                           <TableCell className="w-48 min-w-48 p-2">
+                           <TableCell className="p-4 border-r align-top">
                                <div className="flex items-start space-x-1">
-                                <Textarea value={item.description || ''} onChange={e => {
-                             const newProducts = [...selectedProducts];
-                             newProducts[index] = {
-                               ...item,
-                               description: e.target.value
-                             };
-                             setSelectedProducts(newProducts);
-                           }} placeholder="Mô tả sản phẩm" className="border-gray-200 focus:border-blue-500 flex-1 min-h-[2.5rem] resize-none" rows={2} />
+                                <Textarea 
+                                  value={item.description || ''} 
+                                  onChange={e => {
+                                    const newProducts = [...selectedProducts];
+                                    newProducts[index] = {
+                                      ...item,
+                                      description: e.target.value
+                                    };
+                                    setSelectedProducts(newProducts);
+                                  }} 
+                                  placeholder="Mô tả sản phẩm" 
+                                  className="flex-1 min-h-[2.5rem] resize-none border-gray-300 text-sm" 
+                                  rows={2} 
+                                />
                                <Dialog>
                                  <DialogTrigger asChild>
-                                   <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa mô tả chi tiết">
-                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                   <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-1" title="Chỉnh sửa mô tả chi tiết">
+                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                        <path d="M12 20h9" />
                                        <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
                                      </svg>
@@ -1183,20 +1200,26 @@ export function CreateQuoteForm({
                            </TableCell>
 
                            {/* Quy cách */}
-                           <TableCell className="w-40 min-w-40 p-2">
+                           <TableCell className="p-4 border-r align-top">
                                <div className="flex items-start space-x-1">
-                                <Textarea value={(item as any).specifications || ''} onChange={e => {
-                             const newProducts = [...selectedProducts];
-                             newProducts[index] = {
-                               ...item,
-                               specifications: e.target.value
-                             };
-                             setSelectedProducts(newProducts);
-                           }} placeholder="Quy cách" className="border-gray-200 focus:border-blue-500 flex-1 min-h-[2.5rem] resize-none" rows={2} />
+                                <Textarea 
+                                  value={(item as any).specifications || ''} 
+                                  onChange={e => {
+                                    const newProducts = [...selectedProducts];
+                                    newProducts[index] = {
+                                      ...item,
+                                      specifications: e.target.value
+                                    };
+                                    setSelectedProducts(newProducts);
+                                  }} 
+                                  placeholder="Quy cách" 
+                                  className="flex-1 min-h-[2.5rem] resize-none border-gray-300 text-sm" 
+                                  rows={2} 
+                                />
                                <Dialog>
                                  <DialogTrigger asChild>
-                                   <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa quy cách chi tiết">
-                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                   <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-1" title="Chỉnh sửa quy cách chi tiết">
+                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                        <path d="M12 20h9" />
                                        <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
                                      </svg>
@@ -1223,34 +1246,55 @@ export function CreateQuoteForm({
                                </Dialog>
                              </div>
                            </TableCell>
-                           <TableCell className="w-28 min-w-28 text-right p-2">
-                             <Input 
-                               type="text" 
-                               value={item.price.toLocaleString('vi-VN')} 
-                               onChange={e => {
-                                 const value = e.target.value.replace(/[^\d]/g, ''); // Remove non-digits
-                                 const price = parseFloat(value) || 0;
-                                 updatePrice(item.id, price);
-                               }} 
-                               className="w-24 text-right font-mono text-blue-600 font-semibold border-gray-200 focus:border-blue-500" 
-                               placeholder="0" 
-                             />
+
+                           {/* Đơn giá */}
+                           <TableCell className="p-4 border-r text-center align-top">
+                              <Input 
+                                type="text" 
+                                value={item.price.toLocaleString('vi-VN')} 
+                                onChange={e => {
+                                  const value = e.target.value.replace(/[^\d]/g, '');
+                                  const price = parseFloat(value) || 0;
+                                  updatePrice(item.id, price);
+                                }} 
+                                className="w-full text-center border-gray-300 text-sm" 
+                                placeholder="0" 
+                              />
                            </TableCell>
-                           <TableCell className="w-24 min-w-24 text-center p-2">
-                             <Input type="number" value={item.quantity} onChange={e => {
-                          const quantity = parseInt(e.target.value) || 1;
-                          updateQuantity(item.id, quantity);
-                        }} className="w-20 h-10 text-center border-2 focus:border-blue-500 text-sm font-semibold" min="1" />
-                          </TableCell>
-                            <TableCell className="w-32 min-w-32 text-right font-mono font-bold text-green-600 text-sm p-2">
-                              {item.total.toLocaleString('vi-VN')}đ
+
+                           {/* Số lượng */}
+                           <TableCell className="p-4 border-r text-center align-top">
+                              <Input 
+                                type="number" 
+                                value={item.quantity} 
+                                onChange={e => {
+                                  const quantity = parseInt(e.target.value) || 1;
+                                  updateQuantity(item.id, quantity);
+                                }} 
+                                className="w-full text-center border-gray-300 text-sm" 
+                                min="1" 
+                              />
                            </TableCell>
-                           <TableCell className="w-20 min-w-20 text-center p-2">
-                             <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
-                              <Trash2 className="w-5 h-5" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>)}
+
+                           {/* Thành tiền */}
+                           <TableCell className="p-4 border-r text-center align-top">
+                               <span className="font-semibold text-green-600 text-sm">
+                                 {item.total.toLocaleString('vi-VN')}đ
+                               </span>
+                           </TableCell>
+
+                           {/* Thao tác */}
+                           <TableCell className="p-4 text-center align-top">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-red-600 hover:bg-red-50 h-8 w-8" 
+                                onClick={() => removeProduct(item.id)}
+                              >
+                               <Trash2 className="w-4 h-4" />
+                             </Button>
+                           </TableCell>
+                         </TableRow>)}
                        {selectedProducts.length === 0 && <TableRow>
                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                              Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
