@@ -906,17 +906,17 @@ export function CreateQuoteForm({
                 <div className="overflow-x-auto">
                   <Table className="w-full border-collapse border border-gray-200">
                       <TableHeader>
-                        <TableRow className="bg-gray-50">
-                          <TableHead className="font-bold text-base w-12 min-w-12">Sắp xếp</TableHead>
-                          <TableHead className="font-bold text-base w-32 min-w-32">Chọn sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-48 min-w-48">Tên sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-20 min-w-20">Hình ảnh</TableHead>
-                          <TableHead className="font-bold text-base w-40 min-w-40">Mô tả sản phẩm</TableHead>
-                          <TableHead className="font-bold text-base w-32 min-w-32">Quy cách</TableHead>
-                          <TableHead className="font-bold text-base text-right w-28 min-w-28">Đơn giá</TableHead>
-                          <TableHead className="font-bold text-base text-center w-24 min-w-24">Số lượng</TableHead>
-                          <TableHead className="font-bold text-base text-right w-32 min-w-32">Thành tiền</TableHead>
-                          <TableHead className="font-bold text-base text-center w-20 min-w-20">Thao tác</TableHead>
+                        <TableRow className="bg-gray-50 border-b-2 border-gray-200">
+                          <TableHead className="font-bold text-center w-16 min-w-16 text-gray-700">STT</TableHead>
+                          <TableHead className="font-bold text-center w-32 min-w-32 text-gray-700">Chọn sản phẩm</TableHead>
+                          <TableHead className="font-bold w-48 min-w-48 text-gray-700">Tên sản phẩm</TableHead>
+                          <TableHead className="font-bold text-center w-20 min-w-20 text-gray-700">Hình ảnh</TableHead>
+                          <TableHead className="font-bold w-40 min-w-40 text-gray-700">Mô tả sản phẩm</TableHead>
+                          <TableHead className="font-bold w-32 min-w-32 text-gray-700">Quy cách</TableHead>
+                          <TableHead className="font-bold text-right w-28 min-w-28 text-gray-700">Đơn giá</TableHead>
+                          <TableHead className="font-bold text-center w-24 min-w-24 text-gray-700">Số lượng</TableHead>
+                          <TableHead className="font-bold text-right w-32 min-w-32 text-gray-700">Thành tiền</TableHead>
+                          <TableHead className="font-bold text-center w-20 min-w-20 text-gray-700">Thao tác</TableHead>
                         </TableRow>
                      </TableHeader>
                     <DragDropContext onDragEnd={handleDragEnd}>
@@ -933,24 +933,23 @@ export function CreateQuoteForm({
                                   <TableRow 
                                     ref={provided.innerRef}
                                     {...provided.draggableProps}
-                                    className={`h-24 border border-gray-200 ${
+                                    className={`h-20 border-b border-gray-200 ${
                                       snapshot.isDragging 
-                                        ? 'opacity-95 bg-white shadow-xl z-50 transform rotate-1' 
-                                        : 'hover:bg-gray-50'
+                                        ? 'opacity-95 bg-white shadow-2xl z-50 border-blue-300 border-2' 
+                                        : 'hover:bg-blue-50/30'
                                     }`}
                                     style={{
                                       ...provided.draggableProps.style,
-                                      transform: snapshot.isDragging 
-                                        ? `${provided.draggableProps.style?.transform} rotate(2deg)` 
-                                        : provided.draggableProps.style?.transform,
                                     }}
                                   >
-                                    <TableCell className="w-12 min-w-12 p-2 text-center">
-                                      <div 
-                                        {...provided.dragHandleProps}
-                                        className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-blue-600 p-2 rounded-md hover:bg-blue-50 transition-all duration-150 flex items-center justify-center"
-                                      >
-                                        <GripVertical className="w-4 h-4" />
+                                    <TableCell className="w-16 min-w-16 p-3 text-center">
+                                      <div className="flex items-center justify-center">
+                                        <div 
+                                          {...provided.dragHandleProps}
+                                          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-blue-600 p-1 rounded transition-colors duration-150"
+                                        >
+                                          <span className="text-sm font-mono text-gray-500">{index + 1}</span>
+                                        </div>
                                       </div>
                                     </TableCell>
                                     <TableCell className="w-32 min-w-32 p-4">
