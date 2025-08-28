@@ -3,7 +3,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, ChevronUp, ChevronDown } from "lucide-react";
+import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical } from "lucide-react";
+import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
 import { AssigneeManagement } from './AssigneeManagement';
@@ -106,28 +107,14 @@ export function CreateQuoteForm({
     [key: number]: boolean;
   }>({});
   
-  // Move product up/down functionality
-  const moveProductUp = (index: number) => {
-    if (index === 0) return;
-    const items = [...selectedProducts];
-    [items[index], items[index - 1]] = [items[index - 1], items[index]];
-    setSelectedProducts(items);
-  };
+  // Drag and drop functionality
+  const handleDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
 
-  const moveProductDown = (index: number) => {
-    if (index === selectedProducts.length - 1) return;
-    const items = [...selectedProducts];
-    [items[index], items[index + 1]] = [items[index + 1], items[index]];
-    setSelectedProducts(items);
-  };
+    const items = Array.from(selectedProducts);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
 
-  // Move product to specific position
-  const moveProductToPosition = (fromIndex: number, toPosition: number) => {
-    if (toPosition < 1 || toPosition > selectedProducts.length || toPosition === fromIndex + 1) return;
-    
-    const items = [...selectedProducts];
-    const [movedItem] = items.splice(fromIndex, 1);
-    items.splice(toPosition - 1, 0, movedItem);
     setSelectedProducts(items);
   };
   
@@ -932,47 +919,28 @@ export function CreateQuoteForm({
                           <TableHead className="font-bold text-base text-center w-20 min-w-20">Thao tác</TableHead>
                         </TableRow>
                      </TableHeader>
-                    <TableBody>
+                    <DragDropContext onDragEnd={handleDragEnd}>
+                      <Droppable droppableId="products">
+                        {(provided) => (
+                          <TableBody {...provided.droppableProps} ref={provided.innerRef}>
                             {selectedProducts.map((item, index) => (
+                              <Draggable key={item.id} draggableId={item.id} index={index}>
+                                {(provided, snapshot) => (
                                   <TableRow 
-                                    key={item.id}
-                                    className="h-24 border border-gray-200 hover:bg-gray-50"
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    className={`h-24 border border-gray-200 transition-all duration-200 ${
+                                      snapshot.isDragging 
+                                        ? 'opacity-90 bg-blue-50 shadow-lg scale-105 rotate-1' 
+                                        : 'hover:bg-gray-50'
+                                    }`}
                                   >
                                     <TableCell className="w-12 min-w-12 p-2 text-center">
-                                      <div className="flex flex-col items-center gap-1">
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-6 w-6 p-0"
-                                          onClick={() => moveProductUp(index)}
-                                          disabled={index === 0}
-                                        >
-                                          <ChevronUp className="h-3 w-3" />
-                                        </Button>
-                                        <Input
-                                          type="number"
-                                          value={index + 1}
-                                          onChange={(e) => {
-                                            const newPosition = parseInt(e.target.value);
-                                            if (newPosition && newPosition !== index + 1) {
-                                              moveProductToPosition(index, newPosition);
-                                            }
-                                          }}
-                                          className="h-6 w-8 text-xs text-center p-0 border-0 bg-gray-100"
-                                          min="1"
-                                          max={selectedProducts.length}
-                                        />
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-6 w-6 p-0"
-                                          onClick={() => moveProductDown(index)}
-                                          disabled={index === selectedProducts.length - 1}
-                                        >
-                                          <ChevronDown className="h-3 w-3" />
-                                        </Button>
+                                      <div 
+                                        {...provided.dragHandleProps}
+                                        className="cursor-grab hover:cursor-grabbing text-gray-400 hover:text-gray-600 p-2 rounded-md hover:bg-gray-100 transition-colors duration-200"
+                                      >
+                                        <GripVertical className="w-4 h-4" />
                                       </div>
                                     </TableCell>
                                     <TableCell className="w-32 min-w-32 p-4">
@@ -1239,16 +1207,22 @@ export function CreateQuoteForm({
                               <Trash2 className="w-5 h-5" />
                             </Button>
                                      </TableCell>
-                                   </TableRow>
-                             ))}
-                             {selectedProducts.length === 0 && (
-                               <TableRow>
-                                 <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                                   Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
-                                 </TableCell>
-                               </TableRow>
-                             )}
-                           </TableBody>
+                                    </TableRow>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                            {selectedProducts.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                                  Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        )}
+                      </Droppable>
+                    </DragDropContext>
                   </Table>
                 </div>
               </CardContent>
