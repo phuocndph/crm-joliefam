@@ -3,8 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical } from "lucide-react";
-import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
+import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, ChevronUp, ChevronDown } from "lucide-react";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
 import { AssigneeManagement } from './AssigneeManagement';
@@ -107,14 +106,18 @@ export function CreateQuoteForm({
     [key: number]: boolean;
   }>({});
   
-  // Drag and drop functionality
-  const handleDragEnd = (result: DropResult) => {
-    if (!result.destination) return;
+  // Move product up/down functionality
+  const moveProductUp = (index: number) => {
+    if (index === 0) return;
+    const items = [...selectedProducts];
+    [items[index], items[index - 1]] = [items[index - 1], items[index]];
+    setSelectedProducts(items);
+  };
 
-    const items = Array.from(selectedProducts);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-
+  const moveProductDown = (index: number) => {
+    if (index === selectedProducts.length - 1) return;
+    const items = [...selectedProducts];
+    [items[index], items[index + 1]] = [items[index + 1], items[index]];
     setSelectedProducts(items);
   };
   
@@ -919,24 +922,34 @@ export function CreateQuoteForm({
                           <TableHead className="font-bold text-base text-center w-20 min-w-20">Thao tác</TableHead>
                         </TableRow>
                      </TableHeader>
-                    <DragDropContext onDragEnd={handleDragEnd}>
-                      <Droppable droppableId="products">
-                        {(provided) => (
-                          <TableBody {...provided.droppableProps} ref={provided.innerRef}>
+                    <TableBody>
                             {selectedProducts.map((item, index) => (
-                              <Draggable key={item.id} draggableId={item.id} index={index}>
-                                {(provided, snapshot) => (
                                   <TableRow 
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    className={`h-24 border border-gray-200 ${snapshot.isDragging ? 'opacity-80 bg-blue-50 shadow-lg' : 'hover:bg-gray-50'}`}
+                                    key={item.id}
+                                    className="h-24 border border-gray-200 hover:bg-gray-50"
                                   >
                                     <TableCell className="w-12 min-w-12 p-2 text-center">
-                                      <div 
-                                        {...provided.dragHandleProps}
-                                        className="cursor-grab hover:cursor-grabbing text-gray-400 hover:text-gray-600 p-1"
-                                      >
-                                        <GripVertical className="w-4 h-4" />
+                                      <div className="flex flex-col gap-1">
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-6 w-6 p-0"
+                                          onClick={() => moveProductUp(index)}
+                                          disabled={index === 0}
+                                        >
+                                          <ChevronUp className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-6 w-6 p-0"
+                                          onClick={() => moveProductDown(index)}
+                                          disabled={index === selectedProducts.length - 1}
+                                        >
+                                          <ChevronDown className="h-3 w-3" />
+                                        </Button>
                                       </div>
                                     </TableCell>
                                     <TableCell className="w-32 min-w-32 p-4">
@@ -1202,23 +1215,17 @@ export function CreateQuoteForm({
                              <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
                               <Trash2 className="w-5 h-5" />
                             </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                )}
-                              </Draggable>
-                            ))}
-                            {provided.placeholder}
-                            {selectedProducts.length === 0 && (
-                              <TableRow>
-                                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                                  Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </TableBody>
-                        )}
-                      </Droppable>
-                    </DragDropContext>
+                                     </TableCell>
+                                   </TableRow>
+                             ))}
+                             {selectedProducts.length === 0 && (
+                               <TableRow>
+                                 <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                                   Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
+                                 </TableCell>
+                               </TableRow>
+                             )}
+                           </TableBody>
                   </Table>
                 </div>
               </CardContent>
