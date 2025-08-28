@@ -883,7 +883,7 @@ export function CreateQuoteForm({
                                             
             <ProductSelectionForm 
               products={searchResult.results} 
-              onSelectProduct={(product) => {
+              onAddProduct={(product) => {
                 const newProducts = [...selectedProducts];
                 newProducts[index] = {
                   ...newProducts[index],
@@ -900,7 +900,6 @@ export function CreateQuoteForm({
                 };
                 setSelectedProducts(newProducts);
               }} 
-              className="max-h-96 overflow-y-auto" 
             />
                                             
                                             {searchResult.resultCount === 0 && debouncedSearchTerm && (
@@ -1341,8 +1340,7 @@ export function CreateQuoteForm({
             
             <ProductSelectionForm 
               products={searchResult.results} 
-              onSelectProduct={addProduct} 
-              className="max-h-96 overflow-y-auto" 
+              onAddProduct={addProduct} 
             />
             
             {searchResult.resultCount === 0 && debouncedSearchTerm && (
