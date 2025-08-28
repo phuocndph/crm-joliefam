@@ -921,24 +921,34 @@ export function CreateQuoteForm({
                      </TableHeader>
                     <DragDropContext onDragEnd={handleDragEnd}>
                       <Droppable droppableId="products">
-                        {(provided) => (
-                          <TableBody {...provided.droppableProps} ref={provided.innerRef}>
+                        {(provided, snapshot) => (
+                          <TableBody 
+                            {...provided.droppableProps} 
+                            ref={provided.innerRef}
+                            className={snapshot.isDraggingOver ? "bg-blue-50/30" : ""}
+                          >
                             {selectedProducts.map((item, index) => (
                               <Draggable key={item.id} draggableId={item.id} index={index}>
                                 {(provided, snapshot) => (
                                   <TableRow 
                                     ref={provided.innerRef}
                                     {...provided.draggableProps}
-                                    className={`h-24 border border-gray-200 transition-all duration-200 ${
+                                    className={`h-24 border border-gray-200 ${
                                       snapshot.isDragging 
-                                        ? 'opacity-90 bg-blue-50 shadow-lg scale-105 rotate-1' 
+                                        ? 'opacity-95 bg-white shadow-xl z-50 transform rotate-1' 
                                         : 'hover:bg-gray-50'
                                     }`}
+                                    style={{
+                                      ...provided.draggableProps.style,
+                                      transform: snapshot.isDragging 
+                                        ? `${provided.draggableProps.style?.transform} rotate(2deg)` 
+                                        : provided.draggableProps.style?.transform,
+                                    }}
                                   >
                                     <TableCell className="w-12 min-w-12 p-2 text-center">
                                       <div 
                                         {...provided.dragHandleProps}
-                                        className="cursor-grab hover:cursor-grabbing text-gray-400 hover:text-gray-600 p-2 rounded-md hover:bg-gray-100 transition-colors duration-200"
+                                        className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-blue-600 p-2 rounded-md hover:bg-blue-50 transition-all duration-150 flex items-center justify-center"
                                       >
                                         <GripVertical className="w-4 h-4" />
                                       </div>
