@@ -120,6 +120,16 @@ export function CreateQuoteForm({
     [items[index], items[index + 1]] = [items[index + 1], items[index]];
     setSelectedProducts(items);
   };
+
+  // Move product to specific position
+  const moveProductToPosition = (fromIndex: number, toPosition: number) => {
+    if (toPosition < 1 || toPosition > selectedProducts.length || toPosition === fromIndex + 1) return;
+    
+    const items = [...selectedProducts];
+    const [movedItem] = items.splice(fromIndex, 1);
+    items.splice(toPosition - 1, 0, movedItem);
+    setSelectedProducts(items);
+  };
   
   const {
     toast
@@ -929,7 +939,7 @@ export function CreateQuoteForm({
                                     className="h-24 border border-gray-200 hover:bg-gray-50"
                                   >
                                     <TableCell className="w-12 min-w-12 p-2 text-center">
-                                      <div className="flex flex-col gap-1">
+                                      <div className="flex flex-col items-center gap-1">
                                         <Button
                                           type="button"
                                           variant="ghost"
@@ -940,6 +950,19 @@ export function CreateQuoteForm({
                                         >
                                           <ChevronUp className="h-3 w-3" />
                                         </Button>
+                                        <Input
+                                          type="number"
+                                          value={index + 1}
+                                          onChange={(e) => {
+                                            const newPosition = parseInt(e.target.value);
+                                            if (newPosition && newPosition !== index + 1) {
+                                              moveProductToPosition(index, newPosition);
+                                            }
+                                          }}
+                                          className="h-6 w-8 text-xs text-center p-0 border-0 bg-gray-100"
+                                          min="1"
+                                          max={selectedProducts.length}
+                                        />
                                         <Button
                                           type="button"
                                           variant="ghost"
