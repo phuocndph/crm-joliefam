@@ -903,60 +903,56 @@ export function CreateQuoteForm({
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="border border-border rounded-lg">
-                  {/* Header Row */}
-                  <div className="grid grid-cols-10 gap-2 p-4 bg-muted/50 border-b border-border font-semibold text-sm">
-                    <div className="text-center">STT</div>
-                    <div className="text-center">Chọn sản phẩm</div>
-                    <div>Tên sản phẩm</div>
-                    <div className="text-center">Hình ảnh</div>
-                    <div>Mô tả sản phẩm</div>
-                    <div>Quy cách</div>
-                    <div className="text-right">Đơn giá</div>
-                    <div className="text-center">Số lượng</div>
-                    <div className="text-right">Thành tiền</div>
-                    <div className="text-center">Thao tác</div>
-                  </div>
-                  
-                  {/* Draggable Items */}
-                  <DragDropContext onDragEnd={handleDragEnd}>
-                    <Droppable droppableId="products">
-                      {(provided, snapshot) => (
-                        <div 
-                          {...provided.droppableProps} 
-                          ref={provided.innerRef}
-                          className={cn(
-                            "min-h-[100px]",
-                            snapshot.isDraggingOver && "bg-accent/10"
-                          )}
-                        >
-                          {selectedProducts.map((item, index) => (
-                            <Draggable key={item.id} draggableId={item.id} index={index}>
-                              {(provided, snapshot) => (
-                                <div 
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  className={cn(
-                                    "grid grid-cols-10 gap-2 p-4 border-b border-border hover:bg-accent/20",
-                                    snapshot.isDragging && "bg-card shadow-lg border-primary/30 rounded-lg z-50"
-                                  )}
-                                  style={provided.draggableProps.style}
-                                >
-                                  {/* STT Column */}
-                                  <div className="flex items-center justify-center gap-2">
-                                    <div 
-                                      {...provided.dragHandleProps}
-                                      className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-accent/30"
-                                    >
-                                      <GripVertical className="h-4 w-4 text-muted-foreground" />
-                                    </div>
-                                    <span className="text-sm font-medium text-muted-foreground/70">
-                                      {index + 1}
-                                    </span>
-                                  </div>
-                                  
-                                  {/* Chọn sản phẩm Column */}
-                                  <div className="flex items-center">
+                <div className="overflow-x-auto">
+                  <Table className="w-full border-collapse border border-gray-200">
+                      <TableHeader>
+                        <TableRow className="bg-gray-50 border-b-2 border-gray-200">
+                          <TableHead className="font-bold text-center w-16 min-w-16 text-gray-700">STT</TableHead>
+                          <TableHead className="font-bold text-center w-32 min-w-32 text-gray-700">Chọn sản phẩm</TableHead>
+                          <TableHead className="font-bold w-48 min-w-48 text-gray-700">Tên sản phẩm</TableHead>
+                          <TableHead className="font-bold text-center w-20 min-w-20 text-gray-700">Hình ảnh</TableHead>
+                          <TableHead className="font-bold w-40 min-w-40 text-gray-700">Mô tả sản phẩm</TableHead>
+                          <TableHead className="font-bold w-32 min-w-32 text-gray-700">Quy cách</TableHead>
+                          <TableHead className="font-bold text-right w-28 min-w-28 text-gray-700">Đơn giá</TableHead>
+                          <TableHead className="font-bold text-center w-24 min-w-24 text-gray-700">Số lượng</TableHead>
+                          <TableHead className="font-bold text-right w-32 min-w-32 text-gray-700">Thành tiền</TableHead>
+                          <TableHead className="font-bold text-center w-20 min-w-20 text-gray-700">Thao tác</TableHead>
+                        </TableRow>
+                     </TableHeader>
+                     <DragDropContext onDragEnd={handleDragEnd}>
+                       <Droppable droppableId="products">
+                         {(provided, snapshot) => (
+                           <TableBody 
+                             {...provided.droppableProps} 
+                             ref={provided.innerRef}
+                             className={snapshot.isDraggingOver ? "bg-accent/20" : ""}
+                           >
+                             {selectedProducts.map((item, index) => (
+                               <Draggable key={item.id} draggableId={item.id} index={index}>
+                                 {(provided, snapshot) => (
+                                   <TableRow 
+                                     ref={provided.innerRef}
+                                     {...provided.draggableProps}
+                                     className={cn(
+                                       "h-20 border-b hover:bg-accent/20",
+                                       snapshot.isDragging && "bg-card shadow-md border-primary/20 z-50"
+                                     )}
+                                     style={provided.draggableProps.style}
+                                   >
+                                     <TableCell className="w-16 min-w-16 p-3 text-center">
+                                       <div className="flex items-center justify-center gap-2">
+                                         <div 
+                                           {...provided.dragHandleProps}
+                                           className="cursor-grab active:cursor-grabbing p-2 rounded hover:bg-accent/30"
+                                         >
+                                           <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                         </div>
+                                         <span className="text-sm font-medium text-muted-foreground/70 min-w-[1.5rem]">
+                                           {index + 1}
+                                         </span>
+                                       </div>
+                                     </TableCell>
+                                    <TableCell className="w-32 min-w-32 p-4">
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => setCurrentEditingIndex(index)}>
