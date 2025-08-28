@@ -925,10 +925,7 @@ export function CreateQuoteForm({
                            <TableBody 
                              {...provided.droppableProps} 
                              ref={provided.innerRef}
-                             className={cn(
-                               "transition-all duration-300 ease-out",
-                               snapshot.isDraggingOver && "bg-primary/5 border-primary/20"
-                             )}
+                             className={snapshot.isDraggingOver ? "bg-accent/20" : ""}
                            >
                              {selectedProducts.map((item, index) => (
                                <Draggable key={item.id} draggableId={item.id} index={index}>
@@ -937,35 +934,16 @@ export function CreateQuoteForm({
                                      ref={provided.innerRef}
                                      {...provided.draggableProps}
                                      className={cn(
-                                       "group h-20 border-b transition-all duration-200 ease-out",
-                                       "hover:bg-accent/30 hover:shadow-sm",
-                                       snapshot.isDragging && [
-                                         "!bg-card shadow-lg border-primary/30 z-[100]",
-                                         "transform-gpu scale-[1.01]",
-                                         "!transition-none !duration-0"
-                                       ]
+                                       "h-20 border-b hover:bg-accent/20",
+                                       snapshot.isDragging && "bg-card shadow-md border-primary/20 z-50"
                                      )}
-                                     style={{
-                                       ...provided.draggableProps.style,
-                                       ...(snapshot.isDragging && {
-                                         borderRadius: '8px',
-                                         boxShadow: '0 8px 25px -5px rgba(var(--primary) / 0.15), 0 4px 15px -3px rgba(var(--primary) / 0.1)',
-                                         transform: `${provided.draggableProps.style?.transform || ''} scale(1.01)`,
-                                         zIndex: 1000
-                                       })
-                                     }}
+                                     style={provided.draggableProps.style}
                                    >
                                      <TableCell className="w-16 min-w-16 p-3 text-center">
                                        <div className="flex items-center justify-center gap-2">
                                          <div 
                                            {...provided.dragHandleProps}
-                                           className={cn(
-                                             "cursor-grab active:cursor-grabbing p-2 rounded-md",
-                                             "hover:bg-accent/50 transition-all duration-150",
-                                             "group-hover:text-primary border border-transparent",
-                                             "hover:border-primary/20",
-                                             snapshot.isDragging && "cursor-grabbing bg-primary/10"
-                                           )}
+                                           className="cursor-grab active:cursor-grabbing p-2 rounded hover:bg-accent/30"
                                          >
                                            <GripVertical className="h-4 w-4 text-muted-foreground" />
                                          </div>
