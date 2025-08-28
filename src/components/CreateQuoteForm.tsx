@@ -3,9 +3,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical } from "lucide-react";
-import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
-import { ProductSelectionForm } from './ProductSelectionForm';
+import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical, ChevronUp, ChevronDown } from "lucide-react";
+
+import { ProductRowItem } from './ProductRowItem';
 import ProductImageLibrary from './ProductImageLibrary';
 import { AssigneeManagement } from './AssigneeManagement';
 import { supabase } from "@/integrations/supabase/client";
@@ -107,15 +107,30 @@ export function CreateQuoteForm({
     [key: number]: boolean;
   }>({});
   
-  // Drag and drop functionality
-  const handleDragEnd = (result: DropResult) => {
-    if (!result.destination) return;
-
-    const items = Array.from(selectedProducts);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-
+  // Simple visual drag handle (without full drag functionality for stability)
+  const [hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
+  
+  // Move item up/down functions
+  const moveItemUp = (index: number) => {
+    if (index === 0) return;
+    const items = [...selectedProducts];
+    [items[index], items[index - 1]] = [items[index - 1], items[index]];
     setSelectedProducts(items);
+    toast({
+      title: "Thành công",
+      description: "Đã di chuyển sản phẩm lên trên"
+    });
+  };
+
+  const moveItemDown = (index: number) => {
+    if (index === selectedProducts.length - 1) return;
+    const items = [...selectedProducts];
+    [items[index], items[index + 1]] = [items[index + 1], items[index]];
+    setSelectedProducts(items);
+    toast({
+      title: "Thành công", 
+      description: "Đã di chuyển sản phẩm xuống dưới"
+    });
   };
   
   const {
@@ -694,7 +709,8 @@ export function CreateQuoteForm({
     includeVAT: watchedValues.includeVAT,
     vatRate: watchedValues.vatRate
   });
-  return <div className="min-h-screen bg-background">
+  return (
+    <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
@@ -871,6 +887,7 @@ export function CreateQuoteForm({
             </Card>
 
             {/* Danh sách sản phẩm */}
+            {/* Tổng kết thanh toán */}
             <Card>
               <CardHeader className="bg-green-50">
                 <div className="flex items-center justify-between">
@@ -919,26 +936,37 @@ export function CreateQuoteForm({
                           <TableHead className="font-bold text-base text-center w-20 min-w-20">Thao tác</TableHead>
                         </TableRow>
                      </TableHeader>
-                    <DragDropContext onDragEnd={handleDragEnd}>
-                      <Droppable droppableId="products">
-                        {(provided) => (
-                          <TableBody {...provided.droppableProps} ref={provided.innerRef}>
-                            {selectedProducts.map((item, index) => (
-                              <Draggable key={item.id} draggableId={item.id} index={index}>
-                                {(provided, snapshot) => (
-                                  <TableRow 
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    className={`h-24 border border-gray-200 ${snapshot.isDragging ? 'opacity-80 bg-blue-50 shadow-lg' : 'hover:bg-gray-50'}`}
-                                  >
-                                    <TableCell className="w-12 min-w-12 p-2 text-center">
-                                      <div 
-                                        {...provided.dragHandleProps}
-                                        className="cursor-grab hover:cursor-grabbing text-gray-400 hover:text-gray-600 p-1"
-                                      >
-                                        <GripVertical className="w-4 h-4" />
-                                      </div>
-                                    </TableCell>
+                    <TableBody>
+                      {selectedProducts.map((item, index) => (
+                        <TableRow 
+                          key={item.id} 
+                          className="h-24 border border-gray-200 hover:bg-gray-50"
+                          onMouseEnter={() => setHoveredRowIndex(index)}
+                          onMouseLeave={() => setHoveredRowIndex(null)}
+                        >
+                          <TableCell className="w-12 min-w-12 p-2 text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => moveItemUp(index)}
+                                disabled={index === 0}
+                                className={`p-1 rounded hover:bg-gray-200 ${index === 0 ? 'opacity-30 cursor-not-allowed' : 'text-gray-600 hover:text-blue-600'}`}
+                                title="Di chuyển lên"
+                              >
+                                <ChevronUp className="w-3 h-3" />
+                              </button>
+                              <GripVertical className="w-4 h-4 text-gray-400" />
+                              <button
+                                type="button"
+                                onClick={() => moveItemDown(index)}
+                                disabled={index === selectedProducts.length - 1}
+                                className={`p-1 rounded hover:bg-gray-200 ${index === selectedProducts.length - 1 ? 'opacity-30 cursor-not-allowed' : 'text-gray-600 hover:text-blue-600'}`}
+                                title="Di chuyển xuống"
+                              >
+                                <ChevronDown className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </TableCell>
                                     <TableCell className="w-32 min-w-32 p-4">
                             <Dialog>
                               <DialogTrigger asChild>
@@ -1202,31 +1230,21 @@ export function CreateQuoteForm({
                              <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
                               <Trash2 className="w-5 h-5" />
                             </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                )}
-                              </Draggable>
-                            ))}
-                            {provided.placeholder}
-                            {selectedProducts.length === 0 && (
-                              <TableRow>
-                                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                                  Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </TableBody>
-                        )}
-                      </Droppable>
-                    </DragDropContext>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {selectedProducts.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                            Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
                   </Table>
                 </div>
               </CardContent>
             </Card>
-
-
-            {/* Tổng kết thanh toán */}
-            <Card>
               <CardHeader className="bg-purple-50">
                 <CardTitle className="text-purple-700">Tổng kết thanh toán</CardTitle>
               </CardHeader>
@@ -1388,5 +1406,6 @@ export function CreateQuoteForm({
           </form>
         </DialogContent>
       </Dialog>
-    </div>;
+    </div>
+  );
 }
