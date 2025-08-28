@@ -919,39 +919,61 @@ export function CreateQuoteForm({
                           <TableHead className="font-bold text-center w-20 min-w-20 text-gray-700">Thao tác</TableHead>
                         </TableRow>
                      </TableHeader>
-                    <DragDropContext onDragEnd={handleDragEnd}>
-                      <Droppable droppableId="products">
-                        {(provided, snapshot) => (
-                          <TableBody 
-                            {...provided.droppableProps} 
-                            ref={provided.innerRef}
-                            className={snapshot.isDraggingOver ? "bg-blue-50/30" : ""}
-                          >
-                            {selectedProducts.map((item, index) => (
-                              <Draggable key={item.id} draggableId={item.id} index={index}>
-                                {(provided, snapshot) => (
-                                  <TableRow 
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    className={`h-20 border-b border-gray-200 ${
-                                      snapshot.isDragging 
-                                        ? 'opacity-95 bg-white shadow-2xl z-50 border-blue-300 border-2' 
-                                        : 'hover:bg-blue-50/30'
-                                    }`}
-                                    style={{
-                                      ...provided.draggableProps.style,
-                                    }}
-                                  >
-                                    <TableCell className="w-16 min-w-16 p-3 text-center">
-                                      <div className="flex items-center justify-center">
-                                        <div 
-                                          {...provided.dragHandleProps}
-                                          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-blue-600 p-1 rounded transition-colors duration-150"
-                                        >
-                                          <span className="text-sm font-mono text-gray-500">{index + 1}</span>
-                                        </div>
-                                      </div>
-                                    </TableCell>
+                     <DragDropContext onDragEnd={handleDragEnd}>
+                       <Droppable droppableId="products">
+                         {(provided, snapshot) => (
+                           <TableBody 
+                             {...provided.droppableProps} 
+                             ref={provided.innerRef}
+                             className={cn(
+                               "transition-all duration-300 ease-out",
+                               snapshot.isDraggingOver && "bg-primary/5 border-primary/20"
+                             )}
+                           >
+                             {selectedProducts.map((item, index) => (
+                               <Draggable key={item.id} draggableId={item.id} index={index}>
+                                 {(provided, snapshot) => (
+                                   <TableRow 
+                                     ref={provided.innerRef}
+                                     {...provided.draggableProps}
+                                     className={cn(
+                                       "group h-20 border-b transition-all duration-200 ease-out",
+                                       "hover:bg-accent/30 hover:shadow-sm",
+                                       snapshot.isDragging && [
+                                         "!bg-card shadow-lg border-primary/30 z-[100]",
+                                         "transform-gpu scale-[1.01]",
+                                         "!transition-none !duration-0"
+                                       ]
+                                     )}
+                                     style={{
+                                       ...provided.draggableProps.style,
+                                       ...(snapshot.isDragging && {
+                                         borderRadius: '8px',
+                                         boxShadow: '0 8px 25px -5px rgba(var(--primary) / 0.15), 0 4px 15px -3px rgba(var(--primary) / 0.1)',
+                                         transform: `${provided.draggableProps.style?.transform || ''} scale(1.01)`,
+                                         zIndex: 1000
+                                       })
+                                     }}
+                                   >
+                                     <TableCell className="w-16 min-w-16 p-3 text-center">
+                                       <div className="flex items-center justify-center gap-2">
+                                         <div 
+                                           {...provided.dragHandleProps}
+                                           className={cn(
+                                             "cursor-grab active:cursor-grabbing p-2 rounded-md",
+                                             "hover:bg-accent/50 transition-all duration-150",
+                                             "group-hover:text-primary border border-transparent",
+                                             "hover:border-primary/20",
+                                             snapshot.isDragging && "cursor-grabbing bg-primary/10"
+                                           )}
+                                         >
+                                           <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                         </div>
+                                         <span className="text-sm font-medium text-muted-foreground/70 min-w-[1.5rem]">
+                                           {index + 1}
+                                         </span>
+                                       </div>
+                                     </TableCell>
                                     <TableCell className="w-32 min-w-32 p-4">
                             <Dialog>
                               <DialogTrigger asChild>
