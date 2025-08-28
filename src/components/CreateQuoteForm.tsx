@@ -3,7 +3,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image } from "lucide-react";
+import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical } from "lucide-react";
+import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
 import { AssigneeManagement } from './AssigneeManagement';
@@ -106,9 +107,16 @@ export function CreateQuoteForm({
     [key: number]: boolean;
   }>({});
   
-  // Drag and drop states
-  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
-  const [hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
+  // Drag and drop functionality
+  const handleDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+
+    const items = Array.from(selectedProducts);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+
+    setSelectedProducts(items);
+  };
   
   const {
     toast
@@ -416,61 +424,6 @@ export function CreateQuoteForm({
     setSelectedProducts(prev => prev.filter(item => item.id !== productId));
   };
 
-  // Drag and drop functions
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    setDraggedItemIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', '');
-    
-    // Create a custom drag image for better visual feedback
-    const dragElement = e.currentTarget as HTMLElement;
-    const rect = dragElement.getBoundingClientRect();
-    
-    // Apply visual feedback
-    setTimeout(() => {
-      dragElement.style.transform = 'scale(0.98)';
-    }, 0);
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    const dragElement = e.currentTarget as HTMLElement;
-    dragElement.style.transform = '';
-    setDraggedItemIndex(null);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
-    e.preventDefault();
-    
-    if (draggedItemIndex === null || draggedItemIndex === dropIndex) return;
-
-    const newProducts = [...selectedProducts];
-    const [draggedItem] = newProducts.splice(draggedItemIndex, 1);
-    newProducts.splice(dropIndex, 0, draggedItem);
-    
-    setSelectedProducts(newProducts);
-    setDraggedItemIndex(null);
-  };
-
-  // Add new row after specific index
-  const addRowAfter = (index: number) => {
-    const newItem: QuoteItem = {
-      id: `temp-${Date.now()}-${Math.random()}`,
-      name: '',
-      sku: '',
-      price: 0,
-      quantity: 1,
-      total: 0
-    };
-    
-    const newProducts = [...selectedProducts];
-    newProducts.splice(index + 1, 0, newItem);
-    setSelectedProducts(newProducts);
-  };
 
   // Handle creating new product
   const handleCreateProduct = async (e: React.FormEvent) => {
@@ -954,6 +907,7 @@ export function CreateQuoteForm({
                   <Table className="w-full border-collapse border border-gray-200">
                       <TableHeader>
                         <TableRow className="bg-gray-50">
+                          <TableHead className="font-bold text-base w-12 min-w-12">Sắp xếp</TableHead>
                           <TableHead className="font-bold text-base w-32 min-w-32">Chọn sản phẩm</TableHead>
                           <TableHead className="font-bold text-base w-48 min-w-48">Tên sản phẩm</TableHead>
                           <TableHead className="font-bold text-base w-20 min-w-20">Hình ảnh</TableHead>
@@ -964,15 +918,28 @@ export function CreateQuoteForm({
                           <TableHead className="font-bold text-base text-right w-32 min-w-32">Thành tiền</TableHead>
                           <TableHead className="font-bold text-base text-center w-20 min-w-20">Thao tác</TableHead>
                         </TableRow>
-                      </TableHeader>
-                    <TableBody>
-                       {selectedProducts.map((item, index) => <TableRow 
-                         key={item.id} 
-                         className={`h-24 border border-gray-200 ${draggedItemIndex === index ? 'opacity-50 bg-blue-50' : 'hover:bg-gray-50'}`}
-                          >
-                           {/* Removed add row button and drag/drop functionality to prevent shifting */}
-                           
-                          <TableCell className="w-32 min-w-32 p-4">
+                     </TableHeader>
+                    <DragDropContext onDragEnd={handleDragEnd}>
+                      <Droppable droppableId="products">
+                        {(provided) => (
+                          <TableBody {...provided.droppableProps} ref={provided.innerRef}>
+                            {selectedProducts.map((item, index) => (
+                              <Draggable key={item.id} draggableId={item.id} index={index}>
+                                {(provided, snapshot) => (
+                                  <TableRow 
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    className={`h-24 border border-gray-200 ${snapshot.isDragging ? 'opacity-80 bg-blue-50 shadow-lg' : 'hover:bg-gray-50'}`}
+                                  >
+                                    <TableCell className="w-12 min-w-12 p-2 text-center">
+                                      <div 
+                                        {...provided.dragHandleProps}
+                                        className="cursor-grab hover:cursor-grabbing text-gray-400 hover:text-gray-600 p-1"
+                                      >
+                                        <GripVertical className="w-4 h-4" />
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="w-32 min-w-32 p-4">
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => setCurrentEditingIndex(index)}>
@@ -1235,14 +1202,23 @@ export function CreateQuoteForm({
                              <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
                               <Trash2 className="w-5 h-5" />
                             </Button>
-                          </TableCell>
-                        </TableRow>)}
-                       {selectedProducts.length === 0 && <TableRow>
-                           <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                             Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
-                           </TableCell>
-                         </TableRow>}
-                    </TableBody>
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                            {selectedProducts.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                                  Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        )}
+                      </Droppable>
+                    </DragDropContext>
                   </Table>
                 </div>
               </CardContent>
