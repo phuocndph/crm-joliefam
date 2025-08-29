@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { TrendingUp, TrendingDown, DollarSign, Plus, Filter, Search, Eye, Edit, Trash2, MoreHorizontal } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ManagerSelector } from "@/components/ManagerSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -133,6 +134,7 @@ export default function CashFlowManagement() {
   const [user, setUser] = useState<any>(null);
   const { toast } = useToast();
   const { role, loading: roleLoading } = useUserRole(user);
+  const queryClient = useQueryClient();
   
   // Get current user
   useEffect(() => {
@@ -210,17 +212,15 @@ export default function CashFlowManagement() {
     return `${amount.toLocaleString()}đ`;
   };
 
-  // Optimized data loading functions with error handling
-  const loadExpenses = useCallback(async () => {
-    try {
+  // Use React Query for expenses
+  const { data: expensesData = [], isLoading: expensesLoading } = useQuery({
+    queryKey: ['expenses', selectedManagerId, selectedYear, selectedMonth, filterPeriod, dateRange],
+    queryFn: async () => {
       const dateRange = getDateRange();
       
       let expensesQuery = supabase
         .from('expenses')
         .select('*');
-
-      // Debug log
-      console.log('loadExpenses - selectedManagerId:', selectedManagerId);
 
       if (selectedManagerId && selectedManagerId !== 'all') {
         expensesQuery = expensesQuery.eq('manager_id', selectedManagerId);
@@ -232,22 +232,15 @@ export default function CashFlowManagement() {
         .order('expense_date', { ascending: false });
 
       if (error) throw error;
-      setExpenses(data || []);
-    } catch (error) {
-      console.error('Error loading expenses:', error);
-      // Only show toast for actual errors, not aborted requests
-      if (error.name !== 'AbortError') {
-        toast({
-          title: "Lỗi",
-          description: "Không thể tải dữ liệu chi phí",
-          variant: "destructive",
-        });
-      }
-    }
-  }, [getDateRange, toast, selectedManagerId]);
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-  const loadOrders = useCallback(async () => {
-    try {
+  // Use React Query for orders  
+  const { data: ordersData = [], isLoading: ordersLoading } = useQuery({
+    queryKey: ['orders', selectedManagerId, selectedYear, selectedMonth, filterPeriod, dateRange],
+    queryFn: async () => {
       const dateRange = getDateRange();
       
       let ordersQuery = supabase
@@ -267,9 +260,6 @@ export default function CashFlowManagement() {
           manager_id
         `);
 
-      // Debug log
-      console.log('loadOrders - selectedManagerId:', selectedManagerId);
-
       if (selectedManagerId && selectedManagerId !== 'all') {
         ordersQuery = ordersQuery.eq('manager_id', selectedManagerId);
       }
@@ -280,19 +270,10 @@ export default function CashFlowManagement() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setOrders(data || []);
-    } catch (error) {
-      console.error('Error loading orders:', error);
-      // Only show toast for actual errors, not aborted requests
-      if (error.name !== 'AbortError') {
-        toast({
-          title: "Lỗi",
-          description: "Không thể tải dữ liệu đơn hàng",
-          variant: "destructive",
-        });
-      }
-    }
-  }, [getDateRange, toast, selectedManagerId]);
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   const calculateCashFlowStats = useCallback(async () => {
     // Tính từ đơn hàng đã giao (delivered orders) - tính giá gốc thực tế
@@ -467,36 +448,12 @@ export default function CashFlowManagement() {
     setOrderProfits(orderProfitResults);
   }, [orders, expenses]);
 
-  // Load all data
-  const loadAllData = useCallback(async () => {
-    setLoading(true);
-    try {
-      await Promise.all([loadExpenses(), loadOrders()]);
-    } finally {
-      setLoading(false);
-    }
-  }, [loadExpenses, loadOrders]);
-
-  // Effects with debounced loading
+  // Update local state when data changes
   useEffect(() => {
-    const controller = new AbortController();
-    
-    // Debounce data loading to prevent excessive API calls
-    const timeoutId = setTimeout(async () => {
-      try {
-        await loadAllData();
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          console.error('Error loading data:', error);
-        }
-      }
-    }, 300); // 300ms debounce
-    
-    return () => {
-      controller.abort();
-      clearTimeout(timeoutId);
-    };
-  }, [selectedYear, selectedMonth, filterPeriod, dateRange, selectedManagerId]);
+    setExpenses(expensesData);
+    setOrders(ordersData);
+    setLoading(expensesLoading || ordersLoading);
+  }, [expensesData, ordersData, expensesLoading, ordersLoading]);
 
   // Optimize calculations with useMemo
   useEffect(() => {
@@ -511,7 +468,7 @@ export default function CashFlowManagement() {
 
   // Event handlers
   const handleCreateExpense = async () => {
-    await loadAllData();
+    await queryClient.invalidateQueries({ queryKey: ['expenses'] });
     setShowCreateForm(false);
     toast({
       title: "Thành công",
@@ -520,7 +477,7 @@ export default function CashFlowManagement() {
   };
 
   const handleEditExpense = async () => {
-    await loadAllData();
+    await queryClient.invalidateQueries({ queryKey: ['expenses'] });
     setExpenseToEdit(null);
     toast({
       title: "Thành công",
@@ -539,7 +496,7 @@ export default function CashFlowManagement() {
 
       if (error) throw error;
 
-      await loadAllData();
+      await queryClient.invalidateQueries({ queryKey: ['expenses'] });
       setExpenseToDelete(null);
       toast({
         title: "Thành công",

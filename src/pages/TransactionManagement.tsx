@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,7 @@ const TransactionManagement = () => {
   const [loading, setLoading] = useState(true);
   const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [user, setUser] = useState(null);
   const { role: userRole } = useUserRole(user);
@@ -74,15 +76,10 @@ const TransactionManagement = () => {
     });
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [selectedManagerId]);
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      
-      // Load orders with customer information and manager filter
+  // Use React Query for orders
+  const { data: ordersData = [], isLoading: ordersLoading } = useQuery({
+    queryKey: ['orders', selectedManagerId],
+    queryFn: async () => {
       let ordersQuery = supabase
         .from("orders")
         .select(`
@@ -98,32 +95,35 @@ const TransactionManagement = () => {
         ordersQuery = ordersQuery.eq('manager_id', selectedManagerId);
       }
 
-      const { data: ordersData, error: ordersError } = await ordersQuery
+      const { data, error } = await ordersQuery
         .order("created_at", { ascending: false });
       
-      if (ordersError) throw ordersError;
-      setOrders(ordersData || []);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-      // Load all order payments
-      const { data: paymentsData, error: paymentsError } = await supabase
+  // Use React Query for order payments
+  const { data: orderPaymentsData = [], isLoading: paymentsLoading } = useQuery({
+    queryKey: ['order-payments'],
+    queryFn: async () => {
+      const { data, error } = await supabase
         .from("order_payments")
         .select("*")
         .order("payment_date", { ascending: false });
       
-      if (paymentsError) throw paymentsError;
-      setOrderPayments(paymentsData || []);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-    } catch (error) {
-      console.error('Error loading data:', error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải dữ liệu đơn hàng",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    setOrders(ordersData);
+    setOrderPayments(orderPaymentsData);
+    setLoading(ordersLoading || paymentsLoading);
+  }, [ordersData, orderPaymentsData, ordersLoading, paymentsLoading]);
 
   const loadOrderPaymentDetails = async (orderId: string) => {
     try {
@@ -162,7 +162,7 @@ const TransactionManagement = () => {
         description: "Đã cập nhật trạng thái thanh toán",
       });
 
-      await loadData();
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
     } catch (error) {
       console.error('Error updating payment status:', error);
       toast({
@@ -577,7 +577,8 @@ const TransactionManagement = () => {
               onClose={() => setShowPaymentForm(false)}
               onSubmit={() => {
                 setShowPaymentForm(false);
-                loadData();
+                queryClient.invalidateQueries({ queryKey: ['orders'] });
+                queryClient.invalidateQueries({ queryKey: ['order-payments'] });
                 toast({
                   title: "Thành công",
                   description: "Đã thêm thanh toán mới",
