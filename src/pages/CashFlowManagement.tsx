@@ -238,7 +238,7 @@ export default function CashFlowManagement() {
   });
 
   // Use React Query for orders  
-  const { data: ordersData = [], isLoading: ordersLoading } = useQuery({
+  const { data: ordersData = [], isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['orders', selectedManagerId, selectedYear, selectedMonth, filterPeriod, dateRange],
     queryFn: async () => {
       const dateRange = getDateRange();
@@ -272,8 +272,31 @@ export default function CashFlowManagement() {
       if (error) throw error;
       return data || [];
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 0, // Don't cache to always get fresh data
+    gcTime: 0, // Don't keep in memory to always refetch
   });
+
+  // Real-time subscription for orders updates
+  useEffect(() => {
+    const channel = supabase
+      .channel('orders-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders'
+        },
+        () => {
+          refetchOrders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetchOrders]);
 
   const calculateCashFlowStats = useCallback(async () => {
     // Tính từ đơn hàng đã giao (delivered orders) - tính giá gốc thực tế
