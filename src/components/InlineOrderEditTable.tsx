@@ -143,17 +143,17 @@ export function InlineOrderEditTable({
   const handleCellEdit = (orderId: string, field: string, currentValue: any) => {
     setEditingCell(`${orderId}-${field}`);
     setEditValue(currentValue || "");
-    if (field === "delivery_date" && currentValue) {
+    if ((field === "delivery_date" || field === "created_at") && currentValue) {
       setSelectedDate(new Date(currentValue));
     }
   };
   const handleSave = async (orderId: string, field: string, dateValue?: Date, newValue?: any) => {
     try {
       let valueToSave = newValue !== undefined ? newValue : editValue;
-      if (field === "delivery_date") {
+      if (field === "delivery_date" || field === "created_at") {
         const dateToUse = dateValue || selectedDate;
         if (dateToUse) {
-          valueToSave = dateToUse.toISOString().split('T')[0];
+          valueToSave = dateToUse.toISOString();
         }
       }
 
@@ -268,6 +268,7 @@ export function InlineOrderEditTable({
           // Payment status is now read-only, no editing needed
           return null;
         case "delivery_date":
+        case "created_at":
           return <Popover open={true} onOpenChange={open => !open && handleCancel()}>
               <PopoverTrigger asChild>
                 <div className="w-40" />
@@ -339,6 +340,12 @@ export function InlineOrderEditTable({
               {dateInfo.text}
             </span>
           </div>;
+      case "created_at":
+        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.created_at)}>
+            <span className="text-sm">
+              {format(new Date(order.created_at), "dd/MM/yyyy", { locale: vi })}
+            </span>
+          </div>;
       case "assignee_id":
         const assigneeName = order.assignees?.name || 'Chưa phân công';
         return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.assignee_id || "unassigned")}>
@@ -397,9 +404,7 @@ export function InlineOrderEditTable({
                 {getCellContent(order, "order_number")}
               </TableCell>
               <TableCell className="min-w-[110px]">
-                {format(new Date(order.created_at), "dd/MM/yyyy", {
-              locale: vi
-            })}
+                {getCellContent(order, "created_at")}
               </TableCell>
               <TableCell className="min-w-[150px]">
                 <div className="text-sm">
