@@ -15,12 +15,16 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
         console.log('💰 Order payments real-time update received:', payload.eventType, payload.new);
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotes' }, (payload) => {
+        console.log('📝 Quotes real-time update received:', payload.eventType, payload.new);
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+      })
       .subscribe((status) => {
-        console.log('📦 Orders and payments real-time subscription status:', status);
+        console.log('📦 Orders, payments and quotes real-time subscription status:', status);
       });
 
     return () => {
-      console.log('📦 Cleaning up orders and payments real-time subscription');
+      console.log('📦 Cleaning up orders, payments and quotes real-time subscription');
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
