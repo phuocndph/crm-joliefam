@@ -15,7 +15,12 @@ function Calendar({
   showOutsideDays = true,
   ...props
 }: CalendarProps) {
-  const [currentMonth, setCurrentMonth] = React.useState<Date>(props.selected as Date || new Date());
+  const [currentMonth, setCurrentMonth] = React.useState<Date>(() => {
+    if (props.selected instanceof Date) {
+      return props.selected;
+    }
+    return new Date();
+  });
   
   const years = React.useMemo(() => {
     const currentYear = new Date().getFullYear();
