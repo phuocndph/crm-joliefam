@@ -35,6 +35,7 @@ import { CreateQuoteForm } from "@/components/CreateQuoteForm";
 import { QuotePreviewDialog } from "@/components/QuotePreviewDialog";
 import { QuoteSupplementDialog } from "@/components/QuoteSupplementDialog";
 import { QuoteTemplateSettings } from "@/components/QuoteTemplateSettings";
+import { EditQuoteDetailsDialog } from "@/components/EditQuoteDetailsDialog";
 import CreateAssigneeForm from "@/components/CreateAssigneeForm";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -55,6 +56,7 @@ import {
   AlertCircle,
   Settings,
   Calculator,
+  Calendar,
 } from "lucide-react";
 
 const statusLabels = {
@@ -73,6 +75,7 @@ export default function QuotesPage() {
   const [selectedQuote, setSelectedQuote] = useState<any>(null);
   const [supplementQuote, setSupplementQuote] = useState<any>(null);
   const [editingQuote, setEditingQuote] = useState<any>(null);
+  const [editingQuoteDetails, setEditingQuoteDetails] = useState<any>(null);
   const [quotes, setQuotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -613,6 +616,13 @@ export default function QuotesPage() {
                               Sửa
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              onClick={() => setEditingQuoteDetails(quote)}
+                              className="hover:bg-primary hover:text-primary-foreground transition-colors"
+                            >
+                              <Calendar className="mr-2 h-4 w-4" />
+                              Sửa ngày & trạng thái
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() => handleDeleteQuote(quote.id)}
                               className="text-red-600 hover:bg-red-600 hover:text-white transition-colors"
                             >
@@ -666,6 +676,14 @@ export default function QuotesPage() {
           quote={supplementQuote}
           onUpdate={loadQuotes}
         />
+
+      {/* Edit Quote Details Dialog */}
+      <EditQuoteDetailsDialog
+        open={!!editingQuoteDetails}
+        onOpenChange={(open) => !open && setEditingQuoteDetails(null)}
+        quote={editingQuoteDetails}
+        onUpdate={loadQuotes}
+      />
 
       {/* Template Settings Dialog */}
       <QuoteTemplateSettings
