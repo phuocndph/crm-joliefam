@@ -918,20 +918,20 @@ export function CreateQuoteForm({
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table className="w-full border-collapse border border-gray-200">
+                <div className="overflow-x-auto border border-gray-300 rounded-lg bg-white">
+                  <Table className="w-full border-collapse">
                       <TableHeader>
-                        <TableRow className="bg-gray-50 border-b-2 border-gray-200">
-                          <TableHead className="font-bold text-center w-16 min-w-16 text-gray-700">STT</TableHead>
-                          <TableHead className="font-bold text-center w-32 min-w-32 text-gray-700">Chọn sản phẩm</TableHead>
-                          <TableHead className="font-bold w-48 min-w-48 text-gray-700">Tên sản phẩm</TableHead>
-                          <TableHead className="font-bold text-center w-20 min-w-20 text-gray-700">Hình ảnh</TableHead>
-                          <TableHead className="font-bold w-40 min-w-40 text-gray-700">Mô tả sản phẩm</TableHead>
-                          <TableHead className="font-bold w-32 min-w-32 text-gray-700">Quy cách</TableHead>
-                          <TableHead className="font-bold text-right w-28 min-w-28 text-gray-700">Đơn giá</TableHead>
-                          <TableHead className="font-bold text-center w-24 min-w-24 text-gray-700">Số lượng</TableHead>
-                          <TableHead className="font-bold text-right w-32 min-w-32 text-gray-700">Thành tiền</TableHead>
-                          <TableHead className="font-bold text-center w-20 min-w-20 text-gray-700">Thao tác</TableHead>
+                        <TableRow className="bg-gray-100 border-b border-gray-300">
+                          <TableHead className="font-semibold text-center w-16 min-w-16 text-gray-800 border-r border-gray-300 p-3 h-12">STT</TableHead>
+                          <TableHead className="font-semibold text-center w-32 min-w-32 text-gray-800 border-r border-gray-300 p-3 h-12">Chọn sản phẩm</TableHead>
+                          <TableHead className="font-semibold w-48 min-w-48 text-gray-800 border-r border-gray-300 p-3 h-12">Tên sản phẩm</TableHead>
+                          <TableHead className="font-semibold text-center w-20 min-w-20 text-gray-800 border-r border-gray-300 p-3 h-12">Hình ảnh</TableHead>
+                          <TableHead className="font-semibold w-40 min-w-40 text-gray-800 border-r border-gray-300 p-3 h-12">Mô tả sản phẩm</TableHead>
+                          <TableHead className="font-semibold w-32 min-w-32 text-gray-800 border-r border-gray-300 p-3 h-12">Quy cách</TableHead>
+                          <TableHead className="font-semibold text-right w-28 min-w-28 text-gray-800 border-r border-gray-300 p-3 h-12">Đơn giá</TableHead>
+                          <TableHead className="font-semibold text-center w-24 min-w-24 text-gray-800 border-r border-gray-300 p-3 h-12">Số lượng</TableHead>
+                          <TableHead className="font-semibold text-right w-32 min-w-32 text-gray-800 border-r border-gray-300 p-3 h-12">Thành tiền</TableHead>
+                          <TableHead className="font-semibold text-center w-20 min-w-20 text-gray-800 p-3 h-12">Thao tác</TableHead>
                         </TableRow>
                      </TableHeader>
                      <DragDropContext onDragEnd={handleDragEnd}>
@@ -945,29 +945,29 @@ export function CreateQuoteForm({
                              {selectedProducts.map((item, index) => (
                                <Draggable key={item.id} draggableId={item.id} index={index}>
                                  {(provided, snapshot) => (
-                                   <TableRow 
-                                     ref={provided.innerRef}
-                                     {...provided.draggableProps}
-                                     className={cn(
-                                       "h-20 border-b hover:bg-accent/20",
-                                       snapshot.isDragging && "bg-card shadow-md border-primary/20 z-50"
-                                     )}
-                                     style={provided.draggableProps.style}
-                                   >
-                                     <TableCell className="w-16 min-w-16 p-3 text-center">
-                                       <div className="flex items-center justify-center gap-2">
-                                         <div 
-                                           {...provided.dragHandleProps}
-                                           className="cursor-grab active:cursor-grabbing p-2 rounded hover:bg-accent/30"
-                                         >
-                                           <GripVertical className="h-4 w-4 text-muted-foreground" />
-                                         </div>
-                                         <span className="text-sm font-medium text-muted-foreground/70 min-w-[1.5rem]">
-                                           {index + 1}
-                                         </span>
-                                       </div>
-                                     </TableCell>
-                                    <TableCell className="w-32 min-w-32 p-4">
+                                    <TableRow 
+                                      ref={provided.innerRef}
+                                      {...provided.draggableProps}
+                                      className={cn(
+                                        "h-20 border-b border-gray-300 hover:bg-gray-50",
+                                        snapshot.isDragging && "bg-white shadow-lg border-primary/20 z-50"
+                                      )}
+                                      style={provided.draggableProps.style}
+                                    >
+                                      <TableCell className="w-16 min-w-16 p-3 text-center border-r border-gray-300 bg-gray-50">
+                                        <div className="flex items-center justify-center gap-2">
+                                          <div 
+                                            {...provided.dragHandleProps}
+                                            className="cursor-grab active:cursor-grabbing p-2 rounded hover:bg-gray-200"
+                                          >
+                                            <GripVertical className="h-4 w-4 text-gray-600" />
+                                          </div>
+                                          <span className="text-sm font-medium text-gray-700 min-w-[1.5rem]">
+                                            {index + 1}
+                                          </span>
+                                        </div>
+                                      </TableCell>
+                                     <TableCell className="w-32 min-w-32 p-3 border-r border-gray-300">
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => setCurrentEditingIndex(index)}>
@@ -1076,18 +1076,18 @@ export function CreateQuoteForm({
                                 </div>
                               </DialogContent>
                             </Dialog>
-                           </TableCell>
-                            <TableCell className="w-48 min-w-48 p-2">
-                             <Textarea value={item.name} onChange={e => {
-                          const newProducts = [...selectedProducts];
-                          newProducts[index] = {
-                            ...item,
-                            name: e.target.value
-                          };
-                          setSelectedProducts(newProducts);
-                        }} placeholder="Tên sản phẩm" className="border-gray-200 focus:border-blue-500 font-medium text-sm w-full min-h-[2.5rem] resize-none" rows={2} />
-                           </TableCell>
-                           <TableCell className="w-20 min-w-20 p-2">
+                            </TableCell>
+                             <TableCell className="w-48 min-w-48 p-2 border-r border-gray-300">
+                              <Textarea value={item.name} onChange={e => {
+                           const newProducts = [...selectedProducts];
+                           newProducts[index] = {
+                             ...item,
+                             name: e.target.value
+                           };
+                           setSelectedProducts(newProducts);
+                         }} placeholder="Tên sản phẩm" className="border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-medium text-sm w-full min-h-[2.5rem] resize-none rounded-none bg-white" rows={2} />
+                            </TableCell>
+                            <TableCell className="w-20 min-w-20 p-2 border-r border-gray-300">
                              <Dialog open={imageDialogOpen[index] || false} onOpenChange={open => {
                           setImageDialogOpen(prev => ({
                             ...prev,
@@ -1129,16 +1129,16 @@ export function CreateQuoteForm({
                               </DialogContent>
                             </Dialog>
                           </TableCell>
-                            <TableCell className="w-40 min-w-40 p-2">
-                              <div className="flex items-start space-x-1">
-                               <Textarea value={item.description || ''} onChange={e => {
-                            const newProducts = [...selectedProducts];
-                            newProducts[index] = {
-                              ...item,
-                              description: e.target.value
-                            };
-                            setSelectedProducts(newProducts);
-                          }} placeholder="Mô tả sản phẩm" className="border-gray-200 focus:border-blue-500 flex-1 min-h-[2.5rem] resize-none" rows={2} />
+                             <TableCell className="w-40 min-w-40 p-2 border-r border-gray-300">
+                               <div className="flex items-start space-x-1">
+                                <Textarea value={item.description || ''} onChange={e => {
+                             const newProducts = [...selectedProducts];
+                             newProducts[index] = {
+                               ...item,
+                               description: e.target.value
+                             };
+                             setSelectedProducts(newProducts);
+                           }} placeholder="Mô tả sản phẩm" className="border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 flex-1 min-h-[2.5rem] resize-none rounded-none bg-white" rows={2} />
                               <Dialog>
                                 <DialogTrigger asChild>
                                   <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa mô tả chi tiết">
@@ -1169,16 +1169,16 @@ export function CreateQuoteForm({
                               </Dialog>
                             </div>
                           </TableCell>
-                            <TableCell className="w-32 min-w-32 p-2">
-                              <div className="flex items-start space-x-1">
-                               <Textarea value={(item as any).specifications || ''} onChange={e => {
-                            const newProducts = [...selectedProducts];
-                            newProducts[index] = {
-                              ...item,
-                              specifications: e.target.value
-                            };
-                            setSelectedProducts(newProducts);
-                          }} placeholder="Quy cách" className="border-gray-200 focus:border-blue-500 flex-1 min-h-[2.5rem] resize-none" rows={2} />
+                             <TableCell className="w-32 min-w-32 p-2 border-r border-gray-300">
+                               <div className="flex items-start space-x-1">
+                                <Textarea value={(item as any).specifications || ''} onChange={e => {
+                             const newProducts = [...selectedProducts];
+                             newProducts[index] = {
+                               ...item,
+                               specifications: e.target.value
+                             };
+                             setSelectedProducts(newProducts);
+                           }} placeholder="Quy cách" className="border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 flex-1 min-h-[2.5rem] resize-none rounded-none bg-white" rows={2} />
                               <Dialog>
                                 <DialogTrigger asChild>
                                   <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa quy cách chi tiết">
@@ -1209,29 +1209,29 @@ export function CreateQuoteForm({
                               </Dialog>
                             </div>
                           </TableCell>
-                           <TableCell className="w-28 min-w-28 text-right p-2">
-                             <Input 
-                               type="text" 
-                               value={item.price.toLocaleString('vi-VN')} 
-                               onChange={e => {
-                                 const value = e.target.value.replace(/[^\d]/g, ''); // Remove non-digits
-                                 const price = parseFloat(value) || 0;
-                                 updatePrice(item.id, price);
-                               }} 
-                               className="w-24 text-right font-mono text-blue-600 font-semibold border-gray-200 focus:border-blue-500" 
-                               placeholder="0" 
-                             />
+                            <TableCell className="w-28 min-w-28 text-right p-2 border-r border-gray-300">
+                              <Input 
+                                type="text" 
+                                value={item.price.toLocaleString('vi-VN')} 
+                                onChange={e => {
+                                  const value = e.target.value.replace(/[^\d]/g, ''); // Remove non-digits
+                                  const price = parseFloat(value) || 0;
+                                  updatePrice(item.id, price);
+                                }} 
+                                className="w-full text-right font-mono text-blue-600 font-semibold border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-none bg-white" 
+                                placeholder="0" 
+                              />
+                            </TableCell>
+                            <TableCell className="w-24 min-w-24 text-center p-2 border-r border-gray-300">
+                              <Input type="number" value={item.quantity} onChange={e => {
+                           const quantity = parseInt(e.target.value) || 1;
+                           updateQuantity(item.id, quantity);
+                         }} className="w-full h-10 text-center border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm font-semibold rounded-none bg-white" min="1" />
                            </TableCell>
-                           <TableCell className="w-24 min-w-24 text-center p-2">
-                             <Input type="number" value={item.quantity} onChange={e => {
-                          const quantity = parseInt(e.target.value) || 1;
-                          updateQuantity(item.id, quantity);
-                        }} className="w-20 h-10 text-center border-2 focus:border-blue-500 text-sm font-semibold" min="1" />
-                          </TableCell>
-                            <TableCell className="w-32 min-w-32 text-right font-mono font-bold text-green-600 text-sm p-2">
-                              {item.total.toLocaleString('vi-VN')}đ
-                           </TableCell>
-                           <TableCell className="w-20 min-w-20 text-center p-2">
+                             <TableCell className="w-32 min-w-32 text-right font-mono font-bold text-green-600 text-sm p-2 border-r border-gray-300 bg-green-50">
+                               {item.total.toLocaleString('vi-VN')}đ
+                            </TableCell>
+                            <TableCell className="w-20 min-w-20 text-center p-2">
                              <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
                               <Trash2 className="w-5 h-5" />
                             </Button>
