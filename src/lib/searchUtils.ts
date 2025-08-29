@@ -110,7 +110,7 @@ export const calculateSearchScore = (product: SearchableProduct, searchTerm: str
   return score;
 };
 
-// Enhanced search hook with debouncing and sorting
+// Enhanced search hook with improved relevance filtering
 export const useProductSearch = (products: SearchableProduct[], searchTerm: string, debounceMs = 300) => {
   return useMemo(() => {
     if (!searchTerm.trim()) {
@@ -144,13 +144,17 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
       };
     }
     
-    // When searching, calculate scores and sort by relevance
+    // When searching, calculate scores and apply relevance threshold
     const scoredProducts = products
       .map(product => ({
         ...product,
         searchScore: calculateSearchScore(product, searchTerm)
       }))
-      .filter(product => product.searchScore > 0)
+      .filter(product => {
+        // Only show products with minimum relevance score
+        const minScore = searchTerm.length <= 2 ? 8 : 5; // Higher threshold for short searches
+        return product.searchScore >= minScore;
+      })
       .sort((a, b) => {
         // Primary sort: by score (descending)
         const scoreDiff = b.searchScore - a.searchScore;
@@ -164,8 +168,11 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
         return (a.sku || '').localeCompare(b.sku || '', 'vi', { numeric: true });
       });
     
+    // Only show top 20 most relevant results to avoid overwhelming the user
+    const topResults = scoredProducts.slice(0, 20);
+    
     // Group search results by category but maintain relevance order within groups
-    const groupedResults = scoredProducts.reduce((acc, product) => {
+    const groupedResults = topResults.reduce((acc, product) => {
       const category = product.category || 'Khác';
       if (!acc[category]) acc[category] = [];
       acc[category].push(product);
@@ -173,10 +180,11 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
     }, {} as Record<string, SearchableProduct[]>);
     
     return {
-      results: scoredProducts,
+      results: topResults,
       groupedResults,
       hasSearch: true,
-      resultCount: scoredProducts.length
+      resultCount: topResults.length,
+      totalMatches: scoredProducts.length // Track total matches before limiting
     };
   }, [products, searchTerm]);
 };

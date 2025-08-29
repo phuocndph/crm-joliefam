@@ -994,7 +994,12 @@ export function CreateQuoteForm({
                                     {/* Search Results Summary */}
                                     {debouncedSearchTerm && <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-md">
                                         <p className="text-sm text-blue-700">
-                                          Tìm thấy <strong>{searchResult.resultCount}</strong> sản phẩm cho "{debouncedSearchTerm}"
+                                          Hiển thị <strong>{searchResult.resultCount}</strong> sản phẩm phù hợp nhất cho "{debouncedSearchTerm}"
+                                          {searchResult.totalMatches && searchResult.totalMatches > searchResult.resultCount && 
+                                            <span className="ml-1 text-blue-600">
+                                              (từ {searchResult.totalMatches} kết quả)
+                                            </span>
+                                          }
                                         </p>
                                       </div>}
 
