@@ -41,7 +41,7 @@ export const fuzzyMatch = (text: string, pattern: string): boolean => {
   return patternIdx === normalizedPattern.length;
 };
 
-// Calculate search relevance score
+// Calculate search relevance score with stricter matching
 export const calculateSearchScore = (product: SearchableProduct, searchTerm: string): number => {
   if (!searchTerm.trim()) return 0;
   
@@ -54,57 +54,97 @@ export const calculateSearchScore = (product: SearchableProduct, searchTerm: str
   
   let score = 0;
   let matchedWords = 0;
+  let exactMatches = 0;
   
   searchWords.forEach(word => {
     const normalizedWord = removeAccents(word);
     let wordScore = 0;
+    let hasExactMatch = false;
     
-    // Exact matches in SKU (highest priority)
-    if (productSku.includes(normalizedWord)) {
-      wordScore += 20;
-      if (productSku === normalizedWord) wordScore += 10; // Exact SKU match
+    // Very high priority for exact SKU matches
+    if (productSku === normalizedWord) {
+      wordScore += 50;
+      hasExactMatch = true;
+      exactMatches++;
+    } else if (productSku.includes(normalizedWord)) {
+      wordScore += 25;
     }
     
-    // Exact matches in product name
-    if (productName.includes(normalizedWord)) {
+    // High priority for exact name word matches
+    const nameWords = productName.split(/\s+/);
+    if (nameWords.includes(normalizedWord)) {
+      wordScore += 40;
+      hasExactMatch = true;
+      exactMatches++;
+    } else if (productName.includes(normalizedWord)) {
+      // Only partial matches if word is significant length (3+ chars)
+      if (normalizedWord.length >= 3) {
+        wordScore += 20;
+        if (productName.startsWith(normalizedWord)) wordScore += 5;
+      }
+    }
+    
+    // Exact word boundary matches (whole words only)
+    const wordBoundaryRegex = new RegExp(`\\b${normalizedWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (wordBoundaryRegex.test(productName)) {
       wordScore += 15;
-      if (productName.startsWith(normalizedWord)) wordScore += 5; // Name starts with word
+      hasExactMatch = true;
+    }
+    if (wordBoundaryRegex.test(productSku)) {
+      wordScore += 18;
+      hasExactMatch = true;
     }
     
-    // Word boundary matches (better than substring)
-    const wordBoundaryRegex = new RegExp(`\\b${normalizedWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
-    if (wordBoundaryRegex.test(productName)) wordScore += 10;
-    if (wordBoundaryRegex.test(productSku)) wordScore += 12;
+    // Category matches (only for significant words)
+    if (normalizedWord.length >= 3 && productCategory.includes(normalizedWord)) {
+      wordScore += 10;
+    }
     
-    // Category matches
-    if (productCategory.includes(normalizedWord)) wordScore += 8;
+    // Description matches (lower priority, only for longer words)
+    if (normalizedWord.length >= 4) {
+      if (productDesc.includes(normalizedWord)) wordScore += 5;
+      if (productSpecs.includes(normalizedWord)) wordScore += 6;
+    }
     
-    // Description and specifications matches
-    if (productDesc.includes(normalizedWord)) wordScore += 5;
-    if (productSpecs.includes(normalizedWord)) wordScore += 6;
-    
-    // Fuzzy matches (lower priority)
-    if (fuzzyMatch(productName, normalizedWord)) wordScore += 3;
-    if (fuzzyMatch(productSku, normalizedWord)) wordScore += 4;
-    
-    // Character sequence matches (for partial typing)
-    const allText = `${productName} ${productSku} ${productCategory}`.replace(/\s+/g, '');
-    if (allText.includes(normalizedWord.replace(/\s+/g, ''))) wordScore += 2;
-    
+    // Only count meaningful matches
     if (wordScore > 0) {
       matchedWords++;
       score += wordScore;
     }
+    
+    // Penalty for very short words with no exact matches
+    if (normalizedWord.length <= 2 && !hasExactMatch) {
+      wordScore = Math.max(0, wordScore - 10);
+    }
   });
   
-  // Bonus for matching all search words
-  if (matchedWords === searchWords.length && searchWords.length > 1) {
-    score += 15;
+  // Require all search words to have some match
+  if (matchedWords < searchWords.length) {
+    return 0;
   }
   
-  // Bonus for short, exact matches
-  if (searchWords.length === 1 && (productSku === removeAccents(searchWords[0]) || productName === removeAccents(searchWords[0]))) {
-    score += 25;
+  // Big bonus for having exact matches for most search words
+  const exactMatchRatio = exactMatches / searchWords.length;
+  if (exactMatchRatio >= 0.7) {
+    score += 30;
+  }
+  
+  // Bonus for matching all search words with high relevance
+  if (matchedWords === searchWords.length && searchWords.length > 1) {
+    score += 20;
+  }
+  
+  // Bonus for exact complete matches
+  const searchPhrase = removeAccents(searchTerm.toLowerCase());
+  if (productName === searchPhrase || productSku === searchPhrase) {
+    score += 40;
+  }
+  
+  // Penalty for products with too many unrelated words
+  const productWordCount = productName.split(/\s+/).length;
+  const searchWordCount = searchWords.length;
+  if (productWordCount > searchWordCount * 3) {
+    score = Math.max(0, score - 10);
   }
   
   return score;
@@ -151,8 +191,8 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
         searchScore: calculateSearchScore(product, searchTerm)
       }))
       .filter(product => {
-        // Only show products with minimum relevance score
-        const minScore = searchTerm.length <= 2 ? 8 : 5; // Higher threshold for short searches
+        // Stricter filtering: require higher scores for more precise results
+        const minScore = searchTerm.length <= 2 ? 25 : 15; // Much higher threshold
         return product.searchScore >= minScore;
       })
       .sort((a, b) => {
