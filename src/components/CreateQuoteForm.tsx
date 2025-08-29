@@ -1003,70 +1003,77 @@ export function CreateQuoteForm({
                                         </p>
                                       </div>}
 
-                                    {/* Products List */}
-                                    <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-                                      {Object.entries(searchResult.groupedResults).map(([category, categoryProducts]) => <div key={category} className="space-y-2">
-                                          <div className="sticky top-0 bg-blue-100 px-3 py-2 rounded-md border-l-4 border-blue-500 z-10">
-                                            <h4 className="font-semibold text-blue-800 text-sm flex items-center gap-2">
-                                              <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
-                                                {categoryProducts.length}
-                                              </span>
-                                              {category}
-                                            </h4>
-                                          </div>
-                                          <div className="space-y-1 pl-2">
-                                            {categoryProducts.map(product => <Card key={product.id} className="cursor-pointer hover:shadow-md transition-all border hover:border-blue-300 hover:bg-blue-50" onClick={() => {
-                                      console.log('Selected product data:', product);
-                                       const newProducts = [...selectedProducts];
-                                       newProducts[index] = {
-                                         id: `${product.id}-${Date.now()}-${Math.random()}`, // Create unique ID for each instance
-                                         name: product.name,
-                                         sku: product.sku || '',
-                                         price: product.price || 0,
-                                         quantity: item.quantity,
-                                         total: (product.price || 0) * item.quantity,
-                                         originalProductId: product.id, // Keep reference to original product
-                                         description: product.description || '',
-                                         specifications: product.specifications || ''
-                                       };
-                                      console.log('New product item:', newProducts[index]);
-                                      setSelectedProducts(newProducts);
-                                      setSearchTerm("");
-                                      toast({
-                                        title: "Thành công",
-                                        description: `Đã chọn ${product.name}`
-                                      });
-                                    }}>
-                                                <CardContent className="p-3">
-                                                  <div className="flex items-center justify-between">
-                                                    <div className="flex-1">
-                                                      <div className="flex items-center gap-4">
-                                                        <div className="min-w-0 flex-1">
-                                                           <div className="flex items-center gap-2 mb-1">
-                                                             <h3 className="font-bold text-blue-800 text-sm">
-                                                               {product.sku || 'NO-SKU'}
-                                                             </h3>
-                                                           </div>
-                                                           <p className="text-gray-700 font-medium text-sm truncate">
-                                                             {product.name}
-                                                           </p>
-                                                           {(product.description || product.specifications) && (
-                                                             <p className="text-gray-500 text-xs mt-1 line-clamp-2">
-                                                               {product.description || product.specifications || ''}
-                                                             </p>
-                                                           )}
-                                                        </div>
-                                                        <div className="text-right">
-                                                          <p className="text-green-600 font-bold text-sm">{(product.price || 0).toLocaleString()}đ</p>
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                </CardContent>
-                                              </Card>)}
-                                          </div>
-                                        </div>)}
-                                   </div>
+                                     {/* Products Table */}
+                                     <div className="max-h-[70vh] overflow-y-auto border border-gray-300 rounded-lg bg-white">
+                                       {Object.entries(searchResult.groupedResults).map(([category, categoryProducts]) => (
+                                         <div key={category} className="border-b border-gray-200 last:border-b-0">
+                                           {/* Category Header */}
+                                           <div className="sticky top-0 bg-gray-100 px-4 py-3 border-b border-gray-300 z-10">
+                                             <h4 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+                                               <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
+                                                 {categoryProducts.length}
+                                               </span>
+                                               {category}
+                                             </h4>
+                                           </div>
+                                           
+                                           {/* Products Table */}
+                                           <Table className="w-full border-collapse">
+                                             <TableHeader>
+                                               <TableRow className="bg-gray-50 border-b border-gray-300">
+                                                 <TableHead className="font-semibold text-gray-800 border-r border-gray-300 p-3 w-24">Mã SP</TableHead>
+                                                 <TableHead className="font-semibold text-gray-800 border-r border-gray-300 p-3">Tên sản phẩm</TableHead>
+                                                 <TableHead className="font-semibold text-gray-800 border-r border-gray-300 p-3">Mô tả</TableHead>
+                                                 <TableHead className="font-semibold text-gray-800 p-3 text-right w-28">Đơn giá</TableHead>
+                                               </TableRow>
+                                             </TableHeader>
+                                             <TableBody>
+                                               {categoryProducts.map(product => (
+                                                 <TableRow 
+                                                   key={product.id} 
+                                                   className="cursor-pointer hover:bg-blue-50 border-b border-gray-300 transition-colors" 
+                                                   onClick={() => {
+                                                     console.log('Selected product data:', product);
+                                                     const newProducts = [...selectedProducts];
+                                                     newProducts[index] = {
+                                                       id: `${product.id}-${Date.now()}-${Math.random()}`,
+                                                       name: product.name,
+                                                       sku: product.sku || '',
+                                                       price: product.price || 0,
+                                                       quantity: item.quantity,
+                                                       total: (product.price || 0) * item.quantity,
+                                                       originalProductId: product.id,
+                                                       description: product.description || '',
+                                                       specifications: product.specifications || ''
+                                                     };
+                                                     console.log('New product item:', newProducts[index]);
+                                                     setSelectedProducts(newProducts);
+                                                     setSearchTerm("");
+                                                     toast({
+                                                       title: "Thành công",
+                                                       description: `Đã chọn ${product.name}`
+                                                     });
+                                                   }}
+                                                 >
+                                                   <TableCell className="border-r border-gray-300 p-3 font-mono text-sm font-semibold text-blue-600">
+                                                     {product.sku || 'NO-SKU'}
+                                                   </TableCell>
+                                                   <TableCell className="border-r border-gray-300 p-3 font-medium text-sm">
+                                                     {product.name}
+                                                   </TableCell>
+                                                   <TableCell className="border-r border-gray-300 p-3 text-xs text-gray-600">
+                                                     {product.description || product.specifications || '-'}
+                                                   </TableCell>
+                                                   <TableCell className="p-3 text-right font-mono font-bold text-green-600 text-sm">
+                                                     {(product.price || 0).toLocaleString()}đ
+                                                   </TableCell>
+                                                 </TableRow>
+                                               ))}
+                                             </TableBody>
+                                           </Table>
+                                         </div>
+                                       ))}
+                                     </div>
                                   
                                    {searchResult.resultCount === 0 && debouncedSearchTerm && <div className="text-center py-8 text-gray-500">
                                        <Search className="h-12 w-12 mx-auto mb-4 text-gray-300" />
