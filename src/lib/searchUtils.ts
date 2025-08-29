@@ -150,11 +150,78 @@ export const calculateSearchScore = (product: SearchableProduct, searchTerm: str
   return score;
 };
 
+// Define the product category hierarchy and order
+const CATEGORY_ORDER = [
+  'GA CHUN LTH TRẮNG SỌC',
+  'GA CHUN T200 TRẮNG TRƠN', 
+  'GA CHUN T250 TRẮNG TRƠN',
+  'GA CHUN T250 TRẮNG SỌC',
+  'GA CHUN T300 TRẮNG TRƠN',
+  'GA CHUN T300 TRẮNG SỌC',
+  'GA CHUN T350 TRẮNG SỌC',
+  'GA CHUN T400 TRẮNG TRƠN',
+  'GA TẤM PHỦ LTH',
+  'GA TẤM PHỦ T200 TRƠN',
+  'GA TẤM PHỦ T250 TRƠN',
+  'GA TẤM PHỦ T250 SỌC',
+  'GA TẤM PHỦ T300 TRƠN',
+  'GA TẤM PHỦ T300 SỌC',
+  'GA TẤM PHỦ T350 SỌC',
+  'GA TẤM PHỦ T400 TRƠN',
+  'VỎ GỐI',
+  'VỎ CHĂN LTH SỌC',
+  'VỎ CHĂN CHẦN LTH SỌC',
+  'CHĂN HÈ CHẦN LTH SỌC',
+  'VỎ CHĂN T200 TRƠN',
+  'VỎ CHĂN CHẦN T200 TRƠN',
+  'CHĂN HÈ T200 TRƠN',
+  'VỎ CHĂN T250 TRƠN',
+  'CHĂN CHẦN T250 TRƠN',
+  'CHĂN HÈ T250 TRƠN',
+  'VỎ CHĂN T250 SỌC',
+  'VỎ CHĂN CHẦN T250 SỌC',
+  'CHĂN HÈ T250 SỌC',
+  'VỎ CHĂN T300 TRƠN',
+  'VỎ CHĂN CHẦN T300 TRƠN',
+  'CHĂN HÈ T300 TRƠN',
+  'VỎ CHĂN T300 SỌC',
+  'VỎ CHĂN CHẦN T300 SỌC',
+  'CHĂN HÈ T300 SỌC',
+  'VỎ CHĂN T350 SỌC',
+  'VỎ CHĂN CHẦN T350 SỌC',
+  'CHĂN HÈ T350 SỌC',
+  'VỎ CHĂN T400 TRƠN',
+  'VỎ CHĂN CHẦN T400 TRƠN',
+  'CHĂN HÈ T400 TRƠN',
+  'RUỘT CHĂN 10OZ',
+  'BVD CHỐNG THẤM',
+  'BVD THƯỜNG',
+  'RUỘT CHĂN MICROFIBE VẢI BÓNG',
+  'ĐỆM LÒ XO ELAN',
+  'TOPPER MICROFIBER',
+  'TOPPER THƯỜNG',
+  'TẤM TRANG TRÍ + GỐI',
+  'RUỘT GỐI',
+  'KHĂN TẮM + KHĂN MẶT DỆT',
+  'KHĂN TẮM + KHĂN MẶT TRƠN',
+  'ĐỆM CAO SU TỔNG HỢP',
+  'ĐỆM LÒ XO TÚI ĐỘC LẬP VIKOSAN',
+  'ĐỆM BÔNG ÉP MIX FOARM',
+  'ĐỆM BÔNG ÉP CỨNG'
+];
+
+// Function to get category order index
+const getCategoryOrderIndex = (category: string | null): number => {
+  if (!category) return 9999;
+  const index = CATEGORY_ORDER.indexOf(category);
+  return index === -1 ? 9999 : index;
+};
+
 // Enhanced search hook with improved relevance filtering
 export const useProductSearch = (products: SearchableProduct[], searchTerm: string, debounceMs = 300) => {
   return useMemo(() => {
     if (!searchTerm.trim()) {
-      // When no search, group by category and sort by SKU within each category
+      // When no search, group by category and sort by predefined order
       const grouped = products.reduce((acc, product) => {
         const category = product.category || 'Khác';
         if (!acc[category]) acc[category] = [];
@@ -162,7 +229,7 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
         return acc;
       }, {} as Record<string, SearchableProduct[]>);
       
-      // Sort categories and products within categories
+      // Sort categories by predefined order and products within categories by SKU
       Object.keys(grouped).forEach(category => {
         grouped[category].sort((a, b) => {
           const skuA = a.sku || '';
@@ -171,14 +238,36 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
         });
       });
       
+      // Sort all products by category order first, then by SKU
+      const sortedProducts = products.sort((a, b) => {
+        const categoryOrderA = getCategoryOrderIndex(a.category);
+        const categoryOrderB = getCategoryOrderIndex(b.category);
+        
+        if (categoryOrderA !== categoryOrderB) {
+          return categoryOrderA - categoryOrderB;
+        }
+        
+        return (a.sku || '').localeCompare(b.sku || '', 'vi', { numeric: true });
+      });
+      
+      // Create ordered grouped results
+      const orderedGrouped: Record<string, SearchableProduct[]> = {};
+      CATEGORY_ORDER.forEach(category => {
+        if (grouped[category]) {
+          orderedGrouped[category] = grouped[category];
+        }
+      });
+      
+      // Add any remaining categories not in the predefined order
+      Object.keys(grouped).forEach(category => {
+        if (!orderedGrouped[category]) {
+          orderedGrouped[category] = grouped[category];
+        }
+      });
+      
       return {
-        results: products.sort((a, b) => {
-          // Sort by category first, then by SKU
-          const categoryCompare = (a.category || 'Khác').localeCompare(b.category || 'Khác', 'vi');
-          if (categoryCompare !== 0) return categoryCompare;
-          return (a.sku || '').localeCompare(b.sku || '', 'vi', { numeric: true });
-        }),
-        groupedResults: grouped,
+        results: sortedProducts,
+        groupedResults: orderedGrouped,
         hasSearch: false,
         resultCount: products.length
       };
