@@ -29,6 +29,7 @@ import { vi } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 const statusOptions = [
   { value: "draft", label: "Nháp" },
@@ -55,6 +56,7 @@ export function EditQuoteDetailsDialog({
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (quote) {
@@ -78,9 +80,19 @@ export function EditQuoteDetailsDialog({
 
       if (error) throw error;
 
+      // Invalidate all related query caches to ensure data consistency
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['quotes'] }),
+        queryClient.invalidateQueries({ queryKey: ['orders'] }),
+        queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['reports'] }),
+        queryClient.invalidateQueries({ queryKey: ['customer-care'] }),
+      ]);
+
       toast({
         title: "Thành công",
-        description: "Thông tin báo giá đã được cập nhật",
+        description: "Thông tin báo giá đã được cập nhật và đồng bộ hóa với tất cả dữ liệu liên quan",
       });
       
       onUpdate();
