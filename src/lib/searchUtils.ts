@@ -208,8 +208,8 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
         return (a.sku || '').localeCompare(b.sku || '', 'vi', { numeric: true });
       });
     
-    // Only show top 20 most relevant results to avoid overwhelming the user
-    const topResults = scoredProducts.slice(0, 20);
+    // Show all relevant results without limiting
+    const topResults = scoredProducts;
     
     // Group search results by category but maintain relevance order within groups
     const groupedResults = topResults.reduce((acc, product) => {

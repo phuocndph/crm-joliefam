@@ -1021,7 +1021,7 @@ export function CreateQuoteForm({
                                            <Table className="w-full border-collapse">
                                              <TableHeader>
                                                <TableRow className="bg-gray-50 border-b border-gray-300">
-                                                 <TableHead className="font-semibold text-gray-800 border-r border-gray-300 p-3 w-24">Mã SP</TableHead>
+                                                 <TableHead className="font-semibold text-gray-800 border-r border-gray-300 p-3 w-32 min-w-32">Mã SP</TableHead>
                                                  <TableHead className="font-semibold text-gray-800 border-r border-gray-300 p-3">Tên sản phẩm</TableHead>
                                                  <TableHead className="font-semibold text-gray-800 border-r border-gray-300 p-3">Mô tả</TableHead>
                                                  <TableHead className="font-semibold text-gray-800 p-3 text-right w-28">Đơn giá</TableHead>
@@ -1055,7 +1055,7 @@ export function CreateQuoteForm({
                                                      });
                                                    }}
                                                  >
-                                                   <TableCell className="border-r border-gray-300 p-3 font-mono text-sm font-semibold text-blue-600">
+                                                   <TableCell className="border-r border-gray-300 p-3 font-mono text-sm font-semibold text-blue-600 w-32 min-w-32 whitespace-nowrap">
                                                      {product.sku || 'NO-SKU'}
                                                    </TableCell>
                                                    <TableCell className="border-r border-gray-300 p-3 font-medium text-sm">
