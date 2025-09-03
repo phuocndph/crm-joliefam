@@ -101,6 +101,8 @@ export function CreateQuoteForm({
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [showSearchHistory, setShowSearchHistory] = useState(false);
   const [currentEditingIndex, setCurrentEditingIndex] = useState<number>(-1);
   const [showImageLibrary, setShowImageLibrary] = useState(false);
   const [currentImageEditingIndex, setCurrentImageEditingIndex] = useState<number>(-1);
@@ -231,6 +233,11 @@ export function CreateQuoteForm({
   // Load price lists and products
   useEffect(() => {
     loadPriceLists();
+    // Load search history from localStorage
+    const savedHistory = localStorage.getItem('product_search_history');
+    if (savedHistory) {
+      setSearchHistory(JSON.parse(savedHistory));
+    }
   }, []);
 
   // Update form when initialData changes
@@ -423,6 +430,24 @@ export function CreateQuoteForm({
   };
   const removeProduct = (productId: string) => {
     setSelectedProducts(prev => prev.filter(item => item.id !== productId));
+  };
+
+  // Save search term to history
+  const saveSearchToHistory = (term: string) => {
+    if (term.trim() && !searchHistory.includes(term.trim())) {
+      const newHistory = [term.trim(), ...searchHistory.slice(0, 9)]; // Keep only 10 most recent
+      setSearchHistory(newHistory);
+      localStorage.setItem('product_search_history', JSON.stringify(newHistory));
+    }
+  };
+
+  // Handle search input change with history saving
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    if (value.trim() && value.length > 2) {
+      // Save to history after a delay
+      setTimeout(() => saveSearchToHistory(value), 1000);
+    }
   };
 
 
@@ -985,11 +1010,42 @@ export function CreateQuoteForm({
                                   </DialogTitle>
                                 </DialogHeader>
                                 <div className="space-y-4">
-                                  {/* Search Input */}
-                                  <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                                    <Input placeholder="Tìm kiếm theo tên, mã sản phẩm..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 h-12 text-base border-2 focus:border-blue-500" />
-                                  </div>
+                                   {/* Search Input */}
+                                   <div className="relative">
+                                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                                     <Input 
+                                       placeholder="Tìm kiếm theo tên, mã sản phẩm..." 
+                                       value={searchTerm} 
+                                       onChange={e => handleSearchChange(e.target.value)}
+                                       onFocus={() => setShowSearchHistory(true)}
+                                       onBlur={() => setTimeout(() => setShowSearchHistory(false), 200)}
+                                       className="pl-10 h-12 text-base border-2 focus:border-blue-500" 
+                                     />
+                                     
+                                     {/* Search History Dropdown */}
+                                     {showSearchHistory && searchHistory.length > 0 && !searchTerm && (
+                                       <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-md shadow-lg z-50 mt-1">
+                                         <div className="p-2 border-b bg-gray-50">
+                                           <span className="text-sm text-gray-600 font-medium">Tìm kiếm gần đây:</span>
+                                         </div>
+                                         {searchHistory.map((term, index) => (
+                                           <div
+                                             key={index}
+                                             className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                                             onClick={() => {
+                                               setSearchTerm(term);
+                                               setShowSearchHistory(false);
+                                             }}
+                                           >
+                                             <div className="flex items-center gap-2">
+                                               <Search className="h-3 w-3 text-gray-400" />
+                                               <span className="text-sm">{term}</span>
+                                             </div>
+                                           </div>
+                                         ))}
+                                       </div>
+                                     )}
+                                   </div>
                                   
                                     {/* Search Results Summary */}
                                     {debouncedSearchTerm && <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-md">
