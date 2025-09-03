@@ -1009,7 +1009,7 @@ export function CreateQuoteForm({
                                          <div key={category} className="border-b border-gray-200 last:border-b-0">
                                            {/* Category Header */}
                                            <div className="sticky top-0 bg-gray-100 px-4 py-3 border-b border-gray-300 z-10">
-                                             <h4 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+                                             <h4 className="font-semibold text-red-600 text-sm flex items-center gap-2">
                                                <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
                                                  {categoryProducts.length}
                                                </span>
