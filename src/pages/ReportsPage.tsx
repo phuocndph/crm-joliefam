@@ -404,12 +404,12 @@ const ReportsPage = () => {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Báo cáo & Thống kê</h1>
         <div className="flex items-center space-x-3">
-          <Select onValueChange={(value) => {
-            const selectedRange = quickDateRanges.find(range => range.label === value);
-            if (selectedRange) {
-              setDateRange(selectedRange.range);
-            }
-          }}>
+           <Select onValueChange={(value) => {
+             const selectedRange = quickDateRanges.find(range => range.label === value);
+             if (selectedRange) {
+               setDateRange(selectedRange.range);
+             }
+           }}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Chọn khoảng thời gian" />
             </SelectTrigger>

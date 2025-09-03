@@ -625,18 +625,13 @@ export default function CashFlowManagement() {
           <CardContent className="p-6 pt-6">
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
               <div className="flex items-center space-x-3">
-                <Select onValueChange={(value) => {
-                  const selectedRange = quickDateRanges.find(range => range.label === value);
-                  if (selectedRange) {
-                    // Batch state updates to prevent multiple re-renders
-                    setTimeout(() => {
-                      setDateRange(selectedRange.range);
-                      setFilterPeriod("month");
-                      setSelectedYear(new Date().getFullYear().toString());
-                      setSelectedMonth((new Date().getMonth() + 1).toString());
-                    }, 0);
-                  }
-                }}>
+                 <Select onValueChange={(value) => {
+                   const selectedRange = quickDateRanges.find(range => range.label === value);
+                   if (selectedRange) {
+                     setDateRange(selectedRange.range);
+                     setFilterPeriod("custom");
+                   }
+                 }}>
                   <SelectTrigger className="w-48">
                     <SelectValue placeholder="Chọn khoảng thời gian" />
                   </SelectTrigger>
@@ -652,47 +647,41 @@ export default function CashFlowManagement() {
                   </SelectContent>
                 </Select>
                 
-                <DatePickerWithRange
-                  date={dateRange}
-                  setDate={(date) => {
-                    // Batch state updates to prevent multiple re-renders
-                    setTimeout(() => {
-                      setDateRange(date);
-                      if (date?.from && date?.to) {
-                        setFilterPeriod("month");
-                        setSelectedYear(new Date().getFullYear().toString());
-                        setSelectedMonth((new Date().getMonth() + 1).toString());
-                      }
-                    }, 0);
-                  }}
-                  className="w-auto"
-                />
+                 <DatePickerWithRange
+                   date={dateRange}
+                   setDate={(date) => {
+                     setDateRange(date);
+                     if (date?.from && date?.to) {
+                       setFilterPeriod("custom");
+                     }
+                   }}
+                   className="w-auto"
+                 />
               </div>
               
               <div className="flex gap-4 items-center">
-                <Select value={filterPeriod} onValueChange={(value) => {
-                  // Batch state updates to prevent multiple re-renders
-                  setTimeout(() => {
-                    setFilterPeriod(value);
-                    setDateRange(undefined);
-                  }, 0);
-                }}>
+                 <Select value={filterPeriod} onValueChange={(value) => {
+                   setFilterPeriod(value);
+                   if (value !== "custom") {
+                     setDateRange(undefined);
+                   }
+                 }}>
                   <SelectTrigger className="w-40">
                     <SelectValue placeholder="Chọn khoảng thời gian" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="month">Theo tháng</SelectItem>
-                    <SelectItem value="year">Theo năm</SelectItem>
+                     <SelectItem value="month">Theo tháng</SelectItem>
+                     <SelectItem value="year">Theo năm</SelectItem>
+                     <SelectItem value="custom">Tùy chỉnh</SelectItem>
                   </SelectContent>
                 </Select>
 
-                <Select value={selectedYear} onValueChange={(value) => {
-                  // Batch state updates to prevent multiple re-renders
-                  setTimeout(() => {
-                    setSelectedYear(value);
-                    setDateRange(undefined);
-                  }, 0);
-                }}>
+                 <Select value={selectedYear} onValueChange={(value) => {
+                   setSelectedYear(value);
+                   if (filterPeriod !== "custom") {
+                     setDateRange(undefined);
+                   }
+                 }}>
                   <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
