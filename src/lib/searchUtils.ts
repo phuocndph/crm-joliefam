@@ -153,7 +153,7 @@ export const calculateSearchScore = (product: SearchableProduct, searchTerm: str
 // Define the product category hierarchy and order
 const CATEGORY_ORDER = [
   'GA CHUN LTH TRẮNG SỌC',
-  'GA CHUN T200 TRẮNG TRƠN', 
+  'GA CHUN T200 TRẮNG TRƠN',
   'GA CHUN T250 TRẮNG TRƠN',
   'GA CHUN T250 TRẮNG SỌC',
   'GA CHUN T300 TRẮNG TRƠN',
