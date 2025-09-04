@@ -57,6 +57,36 @@ export function CreateCustomerForm({ onClose, onSubmit }: CreateCustomerFormProp
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+
+      // Check for duplicate customer name (case-insensitive)
+      const { data: existingCustomers, error: checkError } = await supabase
+        .from('customers')
+        .select('id, name');
+
+      if (checkError) {
+        console.error('Error checking duplicate:', checkError);
+        toast({
+          title: "Lỗi",
+          description: "Không thể kiểm tra tên khách hàng",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Check for exact match after trimming and normalizing case
+      const normalizedName = formData.name.trim().toLowerCase();
+      const duplicateExists = existingCustomers?.some(customer => 
+        customer.name.trim().toLowerCase() === normalizedName
+      );
+
+      if (duplicateExists) {
+        toast({
+          title: "Lỗi",
+          description: "Tên khách hàng đã tồn tại, vui lòng chọn tên khác",
+          variant: "destructive",
+        });
+        return;
+      }
       
       const customerData = {
         name: formData.name.trim(),

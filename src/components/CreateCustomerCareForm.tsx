@@ -62,11 +62,10 @@ const { toast } = useToast();
         return;
       }
 
-      // Check for duplicate customer name
+      // Check for duplicate customer name (case-insensitive)
       const { data: existingCustomers, error: checkError } = await supabase
         .from('customers')
-        .select('id, name')
-        .ilike('name', formData.customerName.trim());
+        .select('id, name');
 
       if (checkError) {
         console.error('Error checking duplicate:', checkError);
@@ -78,7 +77,13 @@ const { toast } = useToast();
         return;
       }
 
-      if (existingCustomers && existingCustomers.length > 0) {
+      // Check for exact match after trimming and normalizing case
+      const normalizedName = formData.customerName.trim().toLowerCase();
+      const duplicateExists = existingCustomers?.some(customer => 
+        customer.name.trim().toLowerCase() === normalizedName
+      );
+
+      if (duplicateExists) {
         toast({
           title: "Lỗi",
           description: "Tên khách hàng đã tồn tại, vui lòng chọn tên khác",
