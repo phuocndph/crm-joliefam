@@ -118,13 +118,13 @@ export function EditQuoteDetailsDialog({
         <DialogHeader>
           <DialogTitle>Chỉnh sửa thông tin báo giá</DialogTitle>
           <DialogDescription>
-            Cập nhật ngày tạo và trạng thái của báo giá {quote?.quote_number}
+            Cập nhật ngày báo giá và trạng thái của báo giá {quote?.quote_number}
           </DialogDescription>
         </DialogHeader>
         
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label htmlFor="created-date">Ngày tạo</Label>
+            <Label htmlFor="created-date">Ngày báo giá</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
