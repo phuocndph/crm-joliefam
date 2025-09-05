@@ -314,7 +314,7 @@ export default function CashFlowManagement() {
       // Nếu cost_price trong order bằng 0, tính từ product data
       if (orderCostPrice === 0 && order.items) {
         try {
-          const orderItems = JSON.parse(order.items);
+          const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
           
           // Lấy tất cả product IDs và SKUs từ order items
           const productIds = orderItems.map((item: any) => item.id).filter((id: any) => id);
@@ -400,7 +400,7 @@ export default function CashFlowManagement() {
       // Nếu cost_price trong order bằng 0, tính từ product data
       if (totalCostPrice === 0 && order.items) {
         try {
-          const orderItems = JSON.parse(order.items);
+          const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
           
           // Lấy tất cả product IDs và SKUs từ order items
           const productIds = orderItems.map((item: any) => item.id).filter((id: any) => id);
