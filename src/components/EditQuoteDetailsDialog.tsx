@@ -90,6 +90,9 @@ export function EditQuoteDetailsDialog({
         queryClient.invalidateQueries({ queryKey: ['customer-care'] }),
       ]);
 
+      // Force a small delay to ensure database update is complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       toast({
         title: "Thành công",
         description: "Thông tin báo giá đã được cập nhật và đồng bộ hóa với tất cả dữ liệu liên quan",
