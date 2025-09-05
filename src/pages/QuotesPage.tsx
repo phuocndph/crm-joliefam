@@ -558,9 +558,9 @@ export default function QuotesPage() {
                           {statusLabels[quote.status]?.label || quote.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        {new Date(quote.created_at).toLocaleDateString("vi-VN")}
-                      </TableCell>
+                       <TableCell>
+                         {new Date(quote.quoteDate || quote.created_at).toLocaleDateString("vi-VN")}
+                       </TableCell>
                       <TableCell>
                         {new Date(quote.expiryDate).toLocaleDateString("vi-VN")}
                       </TableCell>
