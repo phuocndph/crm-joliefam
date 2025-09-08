@@ -623,6 +623,7 @@ export function CreateQuoteForm({
               total_amount: orderTotal,
               notes: `Được cập nhật từ báo giá ${data.quoteNumber} (${new Date().toLocaleString('vi-VN')})\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
               updated_at: new Date().toISOString(),
+              created_at: data.quoteDate.toISOString(), // Đồng bộ ngày tạo với ngày báo giá
               quote_id: initialData.id // Ensure quote_id is set
             };
             const {
@@ -648,6 +649,7 @@ export function CreateQuoteForm({
               customer_id: initialData.customer_id,
               manager_id: user?.id ? user.id.toString() : null,
               assignee_id: data.responsible || null,
+              created_at: data.quoteDate.toISOString(), // Đồng bộ ngày tạo với ngày báo giá
               total_amount: orderTotal,
               status: 'pending',
               items: JSON.stringify(selectedProducts),
