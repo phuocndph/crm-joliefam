@@ -73,7 +73,7 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
 
       // Extract unique product IDs (if available) or SKUs for matching
       const productIds = quoteItems
-        .map((item: any) => item.id)
+        .map((item: any) => item.originalProductId)
         .filter((id: any) => id);
       
       const productSkus = quoteItems
@@ -142,8 +142,8 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
 
   // Helper function to get cost price from products data
   const getCostPrice = (item: any): number => {
-    // Try to match by product ID first
-    let product = products.find(p => p.id === item.id);
+    // Try to match by originalProductId first
+    let product = products.find(p => p.id === item.originalProductId);
     
     // If not found, try to match by SKU
     if (!product && item.sku) {
