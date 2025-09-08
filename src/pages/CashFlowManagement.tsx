@@ -317,7 +317,7 @@ export default function CashFlowManagement() {
           const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
           
           // Lấy tất cả product IDs và SKUs từ order items
-          const productIds = orderItems.map((item: any) => item.id).filter((id: any) => id);
+          const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
           const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
 
           let productsData: any[] = [];
@@ -345,7 +345,7 @@ export default function CashFlowManagement() {
             let costPrice = 0;
 
             // Tìm cost price từ products data
-            let product = productsData.find(p => p.id === item.id);
+            let product = productsData.find(p => p.id === (item.originalProductId || item.id));
             if (!product && item.sku) {
               product = productsData.find(p => p.sku === item.sku);
             }
@@ -403,7 +403,7 @@ export default function CashFlowManagement() {
           const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
           
           // Lấy tất cả product IDs và SKUs từ order items
-          const productIds = orderItems.map((item: any) => item.id).filter((id: any) => id);
+          const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
           const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
 
           let productsData: any[] = [];
@@ -431,7 +431,7 @@ export default function CashFlowManagement() {
             let costPrice = 0;
 
             // Tìm cost price từ products data
-            let product = productsData.find(p => p.id === item.id);
+            let product = productsData.find(p => p.id === (item.originalProductId || item.id));
             if (!product && item.sku) {
               product = productsData.find(p => p.sku === item.sku);
             }
