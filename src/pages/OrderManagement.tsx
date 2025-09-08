@@ -154,7 +154,7 @@ export default function OrderManagement() {
   const sortedOrders = [...filteredOrders].sort((a, b) => {
     switch (sortBy) {
       case "order_number":
-        return getOrderDisplayNumber(a).localeCompare(getOrderDisplayNumber(b), undefined, { numeric: true });
+        return getOrderDisplayNumber(b).localeCompare(getOrderDisplayNumber(a), undefined, { numeric: true });
       case "customer_name":
         return (a.customers?.name || "").localeCompare(b.customers?.name || "");
       case "total_amount":
