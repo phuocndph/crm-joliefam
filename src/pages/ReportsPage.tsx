@@ -11,7 +11,6 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear, differenceInDays, startOfDay, endOfDay } from "date-fns";
 import { vi } from "date-fns/locale";
 import { DateRange } from "react-day-picker";
-
 const ReportsPage = () => {
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: new Date(2020, 0, 1),
@@ -20,83 +19,95 @@ const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState("overview");
 
   // Fetch all required data
-  const { data: transactions = [] } = useQuery({
+  const {
+    data: transactions = []
+  } = useQuery({
     queryKey: ["transactions-reports"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("transactions")
-        .select("*")
-        .order("date", { ascending: true });
-      
+      const {
+        data,
+        error
+      } = await supabase.from("transactions").select("*").order("date", {
+        ascending: true
+      });
       if (error) throw error;
       return data;
-    },
+    }
   });
-
-  const { data: orders = [] } = useQuery({
+  const {
+    data: orders = []
+  } = useQuery({
     queryKey: ["orders-reports"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orders")
-        .select(`
+      const {
+        data,
+        error
+      } = await supabase.from("orders").select(`
           *,
           customers (
             id,
             name,
             customer_code
           )
-        `)
-        .order("created_at", { ascending: true });
-      
+        `).order("created_at", {
+        ascending: true
+      });
       if (error) throw error;
       return data;
-    },
+    }
   });
-
-  const { data: customers = [] } = useQuery({
+  const {
+    data: customers = []
+  } = useQuery({
     queryKey: ["customers-reports"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("customers")
-        .select("*")
-        .order("created_at", { ascending: true });
-      
+      const {
+        data,
+        error
+      } = await supabase.from("customers").select("*").order("created_at", {
+        ascending: true
+      });
       if (error) throw error;
       return data;
-    },
+    }
   });
-
-  const { data: products = [] } = useQuery({
+  const {
+    data: products = []
+  } = useQuery({
     queryKey: ["products-reports"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*");
-      
+      const {
+        data,
+        error
+      } = await supabase.from("products").select("*");
       if (error) throw error;
       return data;
-    },
+    }
   });
-
-  const { data: expenses = [] } = useQuery({
+  const {
+    data: expenses = []
+  } = useQuery({
     queryKey: ["expenses-reports"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("expenses")
-        .select("*")
-        .order("expense_date", { ascending: true });
-      
+      const {
+        data,
+        error
+      } = await supabase.from("expenses").select("*").order("expense_date", {
+        ascending: true
+      });
       if (error) throw error;
       return data;
-    },
+    }
   });
-
-  const { data: orderPayments = [] } = useQuery({
+  const {
+    data: orderPayments = []
+  } = useQuery({
     queryKey: ["order-payments-reports"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("order_payments")
-        .select(`
+      const {
+        data,
+        error
+      } = await supabase.from("order_payments").select(`
           *,
           orders (
             order_number,
@@ -105,12 +116,12 @@ const ReportsPage = () => {
               name
             )
           )
-        `)
-        .order("payment_date", { ascending: true });
-      
+        `).order("payment_date", {
+        ascending: true
+      });
       if (error) throw error;
       return data;
-    },
+    }
   });
 
   // Filter data by date range
@@ -120,14 +131,12 @@ const ReportsPage = () => {
     if (dateRange?.to && transactionDate > dateRange.to) return false;
     return true;
   });
-
   const filteredOrders = orders.filter(o => {
     const orderDate = new Date(o.created_at);
     if (dateRange?.from && orderDate < dateRange.from) return false;
     if (dateRange?.to && orderDate > dateRange.to) return false;
     return true;
   });
-
   const filteredExpenses = expenses.filter(e => {
     const expenseDate = new Date(e.expense_date);
     if (dateRange?.from && expenseDate < dateRange.from) return false;
@@ -143,16 +152,13 @@ const ReportsPage = () => {
     }
     return acc;
   }, {} as Record<string, typeof customers[0]>);
-  
   const deduplicatedCustomers = Object.values(uniqueCustomers);
-  
   const filteredCustomers = deduplicatedCustomers.filter(c => {
     const customerDate = new Date(c.created_at);
     if (dateRange?.from && customerDate < dateRange.from) return false;
     if (dateRange?.to && customerDate > dateRange.to) return false;
     return true;
   });
-
   const filteredPayments = orderPayments.filter(p => {
     const paymentDate = new Date(p.payment_date);
     if (dateRange?.from && paymentDate < dateRange.from) return false;
@@ -164,28 +170,20 @@ const ReportsPage = () => {
   const totalOrderRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   const totalCostPrice = filteredOrders.reduce((sum, o) => sum + Number(o.cost_price || 0), 0);
   const totalExpensesAmount = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
-  
+
   // Calculate actual paid amount - only from payments related to filtered orders
   const filteredOrderIds = new Set(filteredOrders.map(o => o.id));
-  
+
   // Calculate payments for filtered orders (not necessarily in the same time period)
-  const paymentsForFilteredOrders = orderPayments.filter(p => 
-    p.order_id && filteredOrderIds.has(p.order_id)
-  );
-  
-  const actualPaidAmountTotal = paymentsForFilteredOrders.reduce((sum, p) => 
-    sum + Number(p.payment_amount || 0), 0
-  );
-  
+  const paymentsForFilteredOrders = orderPayments.filter(p => p.order_id && filteredOrderIds.has(p.order_id));
+  const actualPaidAmountTotal = paymentsForFilteredOrders.reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
+
   // Calculate payments that happened in the filtered time period
-  const actualPaidAmountInPeriod = filteredPayments
-    .filter(p => !p.order_id || filteredOrderIds.has(p.order_id))
-    .reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
-  
+  const actualPaidAmountInPeriod = filteredPayments.filter(p => !p.order_id || filteredOrderIds.has(p.order_id)).reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
+
   // Calculate remaining amount to collect for filtered orders
   const totalOrderAmount = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   const remainingAmount = Math.max(0, totalOrderAmount - actualPaidAmountTotal);
-  
   console.log('Revenue Calculation Debug:', {
     filteredOrders: filteredOrders.length,
     filteredPayments: filteredPayments.length,
@@ -211,7 +209,6 @@ const ReportsPage = () => {
       payment_date: p.payment_date
     }))
   });
-
   console.log('Profit Calculation:', {
     totalRevenue: totalOrderRevenue,
     totalCostPrice,
@@ -219,10 +216,8 @@ const ReportsPage = () => {
     netProfit: totalOrderRevenue - totalCostPrice - totalExpensesAmount,
     dateRange
   });
-
   const grossProfit = totalOrderRevenue - totalCostPrice;
   const netProfit = grossProfit - totalExpensesAmount;
-
   const completedOrders = filteredOrders.filter(o => o.status === "delivered").length;
   const pendingOrders = filteredOrders.filter(o => o.status === "pending").length;
   const totalOrders = filteredOrders.length;
@@ -235,17 +230,19 @@ const ReportsPage = () => {
   // Customer metrics
   const newCustomers = filteredCustomers.length;
   const totalCustomers = deduplicatedCustomers.length;
-  
+
   // Debug customer data
   console.log('Customer Debug:', {
     allCustomers: customers.length,
     filteredCustomers: filteredCustomers.length,
     dateRange,
-    customerDates: customers.map(c => ({ name: c.name, created_at: c.created_at }))
+    customerDates: customers.map(c => ({
+      name: c.name,
+      created_at: c.created_at
+    }))
   });
   const averageOrderValue = totalOrders > 0 ? totalOrderRevenue / totalOrders : 0;
-  const averageDailyRevenue = dateRange?.from && dateRange?.to ? 
-    totalOrderRevenue / Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1) : 0;
+  const averageDailyRevenue = dateRange?.from && dateRange?.to ? totalOrderRevenue / Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1) : 0;
 
   // Prepare comprehensive chart data
   const monthlyData = [];
@@ -254,24 +251,22 @@ const ReportsPage = () => {
     const month = subMonths(currentDate, i);
     const monthStart = startOfMonth(month);
     const monthEnd = endOfMonth(month);
-    
     const monthOrders = orders.filter(o => {
       const oDate = new Date(o.created_at);
       return oDate >= monthStart && oDate <= monthEnd;
     });
-
     const monthExpenses = expenses.filter(e => {
       const eDate = new Date(e.expense_date);
       return eDate >= monthStart && eDate <= monthEnd;
     });
-
     const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
     const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
     const ordersCount = monthOrders.length;
     const completedCount = monthOrders.filter(o => o.status === "delivered").length;
-
     monthlyData.push({
-      month: format(month, "MMM yyyy", { locale: vi }),
+      month: format(month, "MMM yyyy", {
+        locale: vi
+      }),
       revenue,
       expenses: expensesAmount,
       profit: revenue - expensesAmount,
@@ -281,66 +276,84 @@ const ReportsPage = () => {
   }
 
   // Category and status breakdown
-  const expenseCategories = filteredExpenses
-    .reduce((acc, e) => {
-      const category = e.category || "Khác";
-      if (!acc[category]) {
-        acc[category] = { name: category, value: 0, count: 0 };
-      }
-      acc[category].value += Number(e.amount);
-      acc[category].count += 1;
-      return acc;
-    }, {} as Record<string, { name: string; value: number; count: number }>);
-
+  const expenseCategories = filteredExpenses.reduce((acc, e) => {
+    const category = e.category || "Khác";
+    if (!acc[category]) {
+      acc[category] = {
+        name: category,
+        value: 0,
+        count: 0
+      };
+    }
+    acc[category].value += Number(e.amount);
+    acc[category].count += 1;
+    return acc;
+  }, {} as Record<string, {
+    name: string;
+    value: number;
+    count: number;
+  }>);
   const expenseCategoryData = Object.values(expenseCategories);
 
   // Order status data
-  const orderStatusData = [
-    { name: "Đã giao", value: completedOrders, color: "hsl(var(--success))" },
-    { name: "Đang xử lý", value: pendingOrders, color: "hsl(var(--warning))" },
-    { name: "Khác", value: totalOrders - completedOrders - pendingOrders, color: "hsl(var(--muted-foreground))" }
-  ].filter(item => item.value > 0);
+  const orderStatusData = [{
+    name: "Đã giao",
+    value: completedOrders,
+    color: "hsl(var(--success))"
+  }, {
+    name: "Đang xử lý",
+    value: pendingOrders,
+    color: "hsl(var(--warning))"
+  }, {
+    name: "Khác",
+    value: totalOrders - completedOrders - pendingOrders,
+    color: "hsl(var(--muted-foreground))"
+  }].filter(item => item.value > 0);
 
   // Payment status data
-  const paymentStatusData = [
-    { name: "Đã thanh toán", value: paidOrders, color: "hsl(var(--success))" },
-    { name: "Chờ thanh toán", value: unpaidOrders, color: "hsl(var(--warning))" },
-    { name: "Thanh toán một phần", value: partialPaidOrders, color: "hsl(var(--primary))" }
-  ].filter(item => item.value > 0);
+  const paymentStatusData = [{
+    name: "Đã thanh toán",
+    value: paidOrders,
+    color: "hsl(var(--success))"
+  }, {
+    name: "Chờ thanh toán",
+    value: unpaidOrders,
+    color: "hsl(var(--warning))"
+  }, {
+    name: "Thanh toán một phần",
+    value: partialPaidOrders,
+    color: "hsl(var(--primary))"
+  }].filter(item => item.value > 0);
 
   // Top products by sales
-  const productSales = filteredOrders
-    .flatMap(order => {
-      try {
-        const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
-        return JSON.parse(itemsStr);
-      } catch {
-        return [];
-      }
-    })
-    .reduce((acc: any, item: any) => {
-      const key = item.name || 'Unknown';
-      if (!acc[key]) {
-        acc[key] = { name: key, quantity: 0, revenue: 0 };
-      }
-      acc[key].quantity += Number(item.quantity || 0);
-      acc[key].revenue += Number(item.total || 0);
-      return acc;
-    }, {});
-
-  const topProducts = Object.values(productSales)
-    .sort((a: any, b: any) => b.revenue - a.revenue)
-    .slice(0, 10);
-
+  const productSales = filteredOrders.flatMap(order => {
+    try {
+      const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
+      return JSON.parse(itemsStr);
+    } catch {
+      return [];
+    }
+  }).reduce((acc: any, item: any) => {
+    const key = item.name || 'Unknown';
+    if (!acc[key]) {
+      acc[key] = {
+        name: key,
+        quantity: 0,
+        revenue: 0
+      };
+    }
+    acc[key].quantity += Number(item.quantity || 0);
+    acc[key].revenue += Number(item.total || 0);
+    return acc;
+  }, {});
+  const topProducts = Object.values(productSales).sort((a: any, b: any) => b.revenue - a.revenue).slice(0, 10);
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("vi-VN", {
       style: "currency",
-      currency: "VND",
+      currency: "VND"
     }).format(amount);
   };
-
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
-
   const exportReport = () => {
     const reportData = {
       period: `${format(dateRange?.from || new Date(), "dd/MM/yyyy")} - ${format(dateRange?.to || new Date(), "dd/MM/yyyy")}`,
@@ -367,76 +380,71 @@ const ReportsPage = () => {
       expenseCategories: expenseCategoryData,
       topProducts
     };
-
     const jsonContent = JSON.stringify(reportData, null, 2);
-    const blob = new Blob([jsonContent], { type: "application/json" });
+    const blob = new Blob([jsonContent], {
+      type: "application/json"
+    });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = `bao-cao-${format(new Date(), "dd-MM-yyyy")}.json`;
     link.click();
   };
-
-  const quickDateRanges = [
-    {
-      label: "Hôm nay",
-      range: { from: startOfDay(new Date()), to: endOfDay(new Date()) }
-    },
-    {
-      label: "Từ trước đến nay",
-      range: { from: new Date(2020, 0, 1), to: endOfDay(new Date()) }
-    },
-    {
-      label: "Tháng này",
-      range: { from: startOfMonth(new Date()), to: endOfMonth(new Date()) }
-    },
-    {
-      label: "Tháng trước", 
-      range: { from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) }
-    },
-    {
-      label: "Năm này",
-      range: { from: startOfYear(new Date()), to: endOfYear(new Date()) }
+  const quickDateRanges = [{
+    label: "Hôm nay",
+    range: {
+      from: startOfDay(new Date()),
+      to: endOfDay(new Date())
     }
-  ];
-
-  return (
-    <div className="space-y-6">
+  }, {
+    label: "Từ trước đến nay",
+    range: {
+      from: new Date(2020, 0, 1),
+      to: endOfDay(new Date())
+    }
+  }, {
+    label: "Tháng này",
+    range: {
+      from: startOfMonth(new Date()),
+      to: endOfMonth(new Date())
+    }
+  }, {
+    label: "Tháng trước",
+    range: {
+      from: startOfMonth(subMonths(new Date(), 1)),
+      to: endOfMonth(subMonths(new Date(), 1))
+    }
+  }, {
+    label: "Năm này",
+    range: {
+      from: startOfYear(new Date()),
+      to: endOfYear(new Date())
+    }
+  }];
+  return <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Báo cáo & Thống kê</h1>
         <div className="flex items-center space-x-3">
-           <Select onValueChange={(value) => {
-             const selectedRange = quickDateRanges.find(range => range.label === value);
-             if (selectedRange) {
-               setDateRange(selectedRange.range);
-             }
-           }}>
+           <Select onValueChange={value => {
+          const selectedRange = quickDateRanges.find(range => range.label === value);
+          if (selectedRange) {
+            setDateRange(selectedRange.range);
+          }
+        }}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Chọn khoảng thời gian" />
             </SelectTrigger>
             <SelectContent>
-              {quickDateRanges.map((range, index) => (
-                <SelectItem 
-                  key={index} 
-                  value={range.label}
-                >
+              {quickDateRanges.map((range, index) => <SelectItem key={index} value={range.label}>
                   {range.label}
-                </SelectItem>
-              ))}
+                </SelectItem>)}
             </SelectContent>
           </Select>
-          <DatePickerWithRange 
-            date={dateRange}
-            setDate={setDateRange}
-            className="w-auto"
-          />
+          <DatePickerWithRange date={dateRange} setDate={setDateRange} className="w-auto" />
           <Button variant="outline" onClick={exportReport}>
             <Download className="w-4 h-4 mr-2" />
             Export PDF
           </Button>
-          <Button>
-            <Plus className="w-4 h-4 mr-2" />
-            Tạo báo cáo
-          </Button>
+          
         </div>
       </div>
 
@@ -480,7 +488,7 @@ const ReportsPage = () => {
                       <p className="text-2xl font-bold">{totalOrders}</p>
                       <p className="text-sm text-blue-600 flex items-center mt-1">
                         <TrendingUp className="w-4 h-4 mr-1" />
-                        {totalOrders > 0 ? ((completedOrders / totalOrders) * 100).toFixed(1) : 0}% chuyển đổi
+                        {totalOrders > 0 ? (completedOrders / totalOrders * 100).toFixed(1) : 0}% chuyển đổi
                       </p>
                     </div>
                     <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -524,64 +532,60 @@ const ReportsPage = () => {
                     <div className="lg:col-span-2">
                       <div className="h-80">
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                          <LineChart data={monthlyData} margin={{
+                          top: 20,
+                          right: 30,
+                          left: 20,
+                          bottom: 5
+                        }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.2} />
-                            <XAxis 
-                              dataKey="month" 
-                              stroke="hsl(var(--foreground))" 
-                              fontSize={14}
-                              fontWeight="500"
-                              tick={{ fill: "hsl(var(--foreground))" }}
-                            />
-                            <YAxis 
-                              stroke="hsl(var(--foreground))" 
-                              fontSize={14}
-                              fontWeight="500"
-                              tick={{ fill: "hsl(var(--foreground))" }}
-                              tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`}
-                            />
-                            <Tooltip 
-                              contentStyle={{
-                                backgroundColor: "hsl(var(--background))",
-                                border: "2px solid hsl(var(--border))",
-                                borderRadius: "12px",
-                                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                                fontSize: "14px",
-                                fontWeight: "500"
-                              }}
-                              formatter={(value: number, name: string) => [
-                                formatCurrency(value), 
-                                name === "revenue" ? "Doanh thu" : name === "expenses" ? "Chi phí" : "Lợi nhuận"
-                              ]}
-                              labelStyle={{ color: "hsl(var(--foreground))", fontWeight: "600" }}
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="revenue" 
-                              stroke="hsl(var(--primary))" 
-                              strokeWidth={4}
-                              dot={{ fill: "hsl(var(--primary))", strokeWidth: 2, r: 6 }}
-                              activeDot={{ r: 8, stroke: "hsl(var(--primary))", strokeWidth: 3, fill: "white" }}
-                              name="Doanh thu"
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="expenses" 
-                              stroke="hsl(var(--destructive))" 
-                              strokeWidth={3}
-                              dot={{ fill: "hsl(var(--destructive))", strokeWidth: 2, r: 5 }}
-                              activeDot={{ r: 7, stroke: "hsl(var(--destructive))", strokeWidth: 2, fill: "white" }}
-                              name="Chi phí"
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="profit" 
-                              stroke="#10b981" 
-                              strokeWidth={3}
-                              dot={{ fill: "#10b981", strokeWidth: 2, r: 5 }}
-                              activeDot={{ r: 7, stroke: "#10b981", strokeWidth: 2, fill: "white" }}
-                              name="Lợi nhuận"
-                            />
+                            <XAxis dataKey="month" stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
+                            fill: "hsl(var(--foreground))"
+                          }} />
+                            <YAxis stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
+                            fill: "hsl(var(--foreground))"
+                          }} tickFormatter={value => `${(value / 1000000).toFixed(1)}M`} />
+                            <Tooltip contentStyle={{
+                            backgroundColor: "hsl(var(--background))",
+                            border: "2px solid hsl(var(--border))",
+                            borderRadius: "12px",
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                            fontSize: "14px",
+                            fontWeight: "500"
+                          }} formatter={(value: number, name: string) => [formatCurrency(value), name === "revenue" ? "Doanh thu" : name === "expenses" ? "Chi phí" : "Lợi nhuận"]} labelStyle={{
+                            color: "hsl(var(--foreground))",
+                            fontWeight: "600"
+                          }} />
+                            <Line type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={4} dot={{
+                            fill: "hsl(var(--primary))",
+                            strokeWidth: 2,
+                            r: 6
+                          }} activeDot={{
+                            r: 8,
+                            stroke: "hsl(var(--primary))",
+                            strokeWidth: 3,
+                            fill: "white"
+                          }} name="Doanh thu" />
+                            <Line type="monotone" dataKey="expenses" stroke="hsl(var(--destructive))" strokeWidth={3} dot={{
+                            fill: "hsl(var(--destructive))",
+                            strokeWidth: 2,
+                            r: 5
+                          }} activeDot={{
+                            r: 7,
+                            stroke: "hsl(var(--destructive))",
+                            strokeWidth: 2,
+                            fill: "white"
+                          }} name="Chi phí" />
+                            <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{
+                            fill: "#10b981",
+                            strokeWidth: 2,
+                            r: 5
+                          }} activeDot={{
+                            r: 7,
+                            stroke: "#10b981",
+                            strokeWidth: 2,
+                            fill: "white"
+                          }} name="Lợi nhuận" />
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
@@ -593,8 +597,7 @@ const ReportsPage = () => {
                         📊 Chi tiết 6 tháng gần nhất
                       </h4>
                       <div className="max-h-80 overflow-y-auto space-y-2">
-                        {monthlyData.slice(-6).map((data, index) => (
-                          <div key={index} className="bg-muted/30 rounded-lg p-3 space-y-2 border">
+                        {monthlyData.slice(-6).map((data, index) => <div key={index} className="bg-muted/30 rounded-lg p-3 space-y-2 border">
                             <div className="font-medium text-sm text-center">{data.month}</div>
                             <div className="space-y-1 text-xs">
                               <div className="flex justify-between">
@@ -614,8 +617,7 @@ const ReportsPage = () => {
                                 <span className="font-medium">{data.orders}</span>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          </div>)}
                       </div>
                     </div>
                   </div>
@@ -654,29 +656,18 @@ const ReportsPage = () => {
                       <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
                           <RechartsPieChart>
-                            <Pie
-                              data={orderStatusData}
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={80}
-                              innerRadius={40}
-                              fill="#8884d8"
-                              dataKey="value"
-                              label={({ name, percent }) => `${name}\n${(percent * 100).toFixed(1)}%`}
-                            >
-                              {orderStatusData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                              ))}
+                            <Pie data={orderStatusData} cx="50%" cy="50%" outerRadius={80} innerRadius={40} fill="#8884d8" dataKey="value" label={({
+                            name,
+                            percent
+                          }) => `${name}\n${(percent * 100).toFixed(1)}%`}>
+                              {orderStatusData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                             </Pie>
-                            <Tooltip 
-                              formatter={(value: number) => [value, "đơn hàng"]}
-                              contentStyle={{
-                                backgroundColor: "hsl(var(--background))",
-                                border: "2px solid hsl(var(--border))",
-                                borderRadius: "8px",
-                                fontSize: "14px"
-                              }}
-                            />
+                            <Tooltip formatter={(value: number) => [value, "đơn hàng"]} contentStyle={{
+                            backgroundColor: "hsl(var(--background))",
+                            border: "2px solid hsl(var(--border))",
+                            borderRadius: "8px",
+                            fontSize: "14px"
+                          }} />
                           </RechartsPieChart>
                         </ResponsiveContainer>
                       </div>
@@ -686,20 +677,20 @@ const ReportsPage = () => {
                         <h4 className="font-semibold text-sm text-muted-foreground flex items-center gap-2">
                           📋 Chi tiết số lượng
                         </h4>
-                        {orderStatusData.map((item, index) => (
-                          <div key={index} className="flex justify-between items-center p-2 bg-background rounded border">
+                        {orderStatusData.map((item, index) => <div key={index} className="flex justify-between items-center p-2 bg-background rounded border">
                             <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                              <div className="w-3 h-3 rounded-full" style={{
+                            backgroundColor: item.color
+                          }}></div>
                               <span className="text-sm font-medium">{item.name}</span>
                             </div>
                             <div className="text-right">
                               <div className="text-sm font-bold">{item.value} đơn</div>
                               <div className="text-xs text-muted-foreground">
-                                {((item.value / totalOrders) * 100).toFixed(1)}%
+                                {(item.value / totalOrders * 100).toFixed(1)}%
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          </div>)}
                         <div className="pt-2 border-t text-xs text-muted-foreground text-center">
                           Tổng: {totalOrders} đơn hàng
                         </div>
@@ -721,29 +712,18 @@ const ReportsPage = () => {
                       <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
                           <RechartsPieChart>
-                            <Pie
-                              data={paymentStatusData}
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={80}
-                              innerRadius={40}
-                              fill="#8884d8"
-                              dataKey="value"
-                              label={({ name, percent }) => `${name}\n${(percent * 100).toFixed(1)}%`}
-                            >
-                              {paymentStatusData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                              ))}
+                            <Pie data={paymentStatusData} cx="50%" cy="50%" outerRadius={80} innerRadius={40} fill="#8884d8" dataKey="value" label={({
+                            name,
+                            percent
+                          }) => `${name}\n${(percent * 100).toFixed(1)}%`}>
+                              {paymentStatusData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                             </Pie>
-                            <Tooltip 
-                              formatter={(value: number) => [value, "đơn hàng"]}
-                              contentStyle={{
-                                backgroundColor: "hsl(var(--background))",
-                                border: "2px solid hsl(var(--border))",
-                                borderRadius: "8px",
-                                fontSize: "14px"
-                              }}
-                            />
+                            <Tooltip formatter={(value: number) => [value, "đơn hàng"]} contentStyle={{
+                            backgroundColor: "hsl(var(--background))",
+                            border: "2px solid hsl(var(--border))",
+                            borderRadius: "8px",
+                            fontSize: "14px"
+                          }} />
                           </RechartsPieChart>
                         </ResponsiveContainer>
                       </div>
@@ -753,20 +733,20 @@ const ReportsPage = () => {
                         <h4 className="font-semibold text-sm text-muted-foreground flex items-center gap-2">
                           💰 Chi tiết thanh toán
                         </h4>
-                        {paymentStatusData.map((item, index) => (
-                          <div key={index} className="flex justify-between items-center p-2 bg-background rounded border">
+                        {paymentStatusData.map((item, index) => <div key={index} className="flex justify-between items-center p-2 bg-background rounded border">
                             <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                              <div className="w-3 h-3 rounded-full" style={{
+                            backgroundColor: item.color
+                          }}></div>
                               <span className="text-sm font-medium">{item.name}</span>
                             </div>
                             <div className="text-right">
                               <div className="text-sm font-bold">{item.value} đơn</div>
                               <div className="text-xs text-muted-foreground">
-                                {((item.value / totalOrders) * 100).toFixed(1)}%
+                                {(item.value / totalOrders * 100).toFixed(1)}%
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          </div>)}
                         <div className="pt-2 border-t text-xs text-muted-foreground text-center">
                           Tổng: {totalOrders} đơn hàng
                         </div>
@@ -808,7 +788,7 @@ const ReportsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {totalOrders > 0 ? ((completedOrders / totalOrders) * 100).toFixed(1) : 0}%
+                    {totalOrders > 0 ? (completedOrders / totalOrders * 100).toFixed(1) : 0}%
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Đơn hoàn thành
@@ -858,12 +838,10 @@ const ReportsPage = () => {
                 <CardContent>
                   <div className="text-2xl font-bold text-green-600">
                     {formatCurrency((() => {
-                      // Chỉ tính từ đơn hàng đã giao có doanh thu
-                      const deliveredOrders = filteredOrders.filter(order => 
-                        order.status === "delivered" && order.total_amount > 0
-                      );
-                      return deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-                    })())}
+                    // Chỉ tính từ đơn hàng đã giao có doanh thu
+                    const deliveredOrders = filteredOrders.filter(order => order.status === "delivered" && order.total_amount > 0);
+                    return deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+                  })())}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Từ {filteredOrders.filter(o => o.status === "delivered").length} đơn đã giao
@@ -880,60 +858,52 @@ const ReportsPage = () => {
                 <CardContent>
                    <div className="text-2xl font-bold text-orange-600">
                      {formatCurrency((() => {
-                       // Lấy giá vốn từ tất cả đơn hàng có dữ liệu trong kỳ báo cáo
-                       const ordersWithData = filteredOrders.filter(order => 
-                         Number(order.total_amount) > 0
-                       );
-                       
-                       console.log('Cost Price Debug:', {
-                         totalOrders: filteredOrders.length,
-                         ordersWithData: ordersWithData.length,
-                         sampleOrders: ordersWithData.slice(0, 3).map(o => ({
-                           id: o.id,
-                           order_number: o.order_number,
-                           cost_price: o.cost_price,
-                           total_amount: o.total_amount,
-                           status: o.status
-                         }))
-                       });
-                       
-                       // Tính tổng giá vốn thực tế (ưu tiên từ sản phẩm nếu order cost_price = 0)
-                       let totalCostPriceReal = 0;
-                       
-                       ordersWithData.forEach(order => {
-                         let orderCostPrice = Number(order.cost_price) || 0;
-                         
-                         // Nếu cost_price trong order bằng 0, tính từ product data
-                         if (orderCostPrice === 0 && order.items) {
-                           try {
-                             const orderItems = JSON.parse(String(order.items));
-                             
-                             // Tính cost price từ order items
-                             orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                               const quantity = item.quantity || 0;
-                               // Từ network requests, ta thấy products có cost_price
-                               // Sử dụng giá ước tính dựa trên SKU pattern
-                               let estimatedCostPrice = 0;
-                               if (item.sku === "BVDCBT-1M") {
-                                 estimatedCostPrice = 110000;
-                               } else if (item.sku === "BVDCBT-1M6") {
-                                 estimatedCostPrice = 155000;
-                               }
-                               
-                               return sum + (quantity * estimatedCostPrice);
-                             }, 0);
-                           } catch (error) {
-                             console.error('Error calculating cost price for order:', order.id, error);
-                           }
-                         }
-                         
-                         totalCostPriceReal += orderCostPrice;
-                       });
-                       
-                       console.log('Total Cost Price Real:', totalCostPriceReal);
-                       
-                       return totalCostPriceReal;
-                     })())}
+                    // Lấy giá vốn từ tất cả đơn hàng có dữ liệu trong kỳ báo cáo
+                    const ordersWithData = filteredOrders.filter(order => Number(order.total_amount) > 0);
+                    console.log('Cost Price Debug:', {
+                      totalOrders: filteredOrders.length,
+                      ordersWithData: ordersWithData.length,
+                      sampleOrders: ordersWithData.slice(0, 3).map(o => ({
+                        id: o.id,
+                        order_number: o.order_number,
+                        cost_price: o.cost_price,
+                        total_amount: o.total_amount,
+                        status: o.status
+                      }))
+                    });
+
+                    // Tính tổng giá vốn thực tế (ưu tiên từ sản phẩm nếu order cost_price = 0)
+                    let totalCostPriceReal = 0;
+                    ordersWithData.forEach(order => {
+                      let orderCostPrice = Number(order.cost_price) || 0;
+
+                      // Nếu cost_price trong order bằng 0, tính từ product data
+                      if (orderCostPrice === 0 && order.items) {
+                        try {
+                          const orderItems = JSON.parse(String(order.items));
+
+                          // Tính cost price từ order items
+                          orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+                            const quantity = item.quantity || 0;
+                            // Từ network requests, ta thấy products có cost_price
+                            // Sử dụng giá ước tính dựa trên SKU pattern
+                            let estimatedCostPrice = 0;
+                            if (item.sku === "BVDCBT-1M") {
+                              estimatedCostPrice = 110000;
+                            } else if (item.sku === "BVDCBT-1M6") {
+                              estimatedCostPrice = 155000;
+                            }
+                            return sum + quantity * estimatedCostPrice;
+                          }, 0);
+                        } catch (error) {
+                          console.error('Error calculating cost price for order:', order.id, error);
+                        }
+                      }
+                      totalCostPriceReal += orderCostPrice;
+                    });
+                    console.log('Total Cost Price Real:', totalCostPriceReal);
+                    return totalCostPriceReal;
+                  })())}
                    </div>
                   <p className="text-xs text-muted-foreground">
                     Giá vốn từ {filteredOrders.filter(o => Number(o.total_amount) > 0).length} đơn hàng
@@ -963,90 +933,76 @@ const ReportsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className={`text-2xl font-bold ${(() => {
-                    const ordersWithData = filteredOrders.filter(order => 
-                      Number(order.total_amount) > 0
-                    );
-                    
-                     const revenue = ordersWithData.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-                     
-                     // Tính tổng giá vốn thực tế (ưu tiên từ sản phẩm nếu order cost_price = 0)
-                     let totalCostPriceReal = 0;
-                     
-                     ordersWithData.forEach(order => {
-                       let orderCostPrice = Number(order.cost_price) || 0;
-                       
-                       // Nếu cost_price trong order bằng 0, tính từ product data
-                       if (orderCostPrice === 0 && order.items) {
-                         try {
-                           const orderItems = JSON.parse(String(order.items));
-                           
-                           // Tính cost price từ order items
-                           orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                             const quantity = item.quantity || 0;
-                             // Từ network requests, ta thấy products có cost_price
-                             // Sử dụng giá ước tính dựa trên SKU pattern
-                             let estimatedCostPrice = 0;
-                             if (item.sku === "BVDCBT-1M") {
-                               estimatedCostPrice = 110000;
-                             } else if (item.sku === "BVDCBT-1M6") {
-                               estimatedCostPrice = 155000;
-                             }
-                             
-                             return sum + (quantity * estimatedCostPrice);
-                           }, 0);
-                         } catch (error) {
-                           console.error('Error calculating cost price for order:', order.id, error);
-                         }
-                       }
-                       
-                       totalCostPriceReal += orderCostPrice;
-                     });
-                     
-                     const netProfitReal = revenue - totalCostPriceReal - totalExpensesAmount;
-                     return netProfitReal >= 0 ? 'text-green-600' : 'text-red-600';
-                   })()}`}>
+                  const ordersWithData = filteredOrders.filter(order => Number(order.total_amount) > 0);
+                  const revenue = ordersWithData.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+
+                  // Tính tổng giá vốn thực tế (ưu tiên từ sản phẩm nếu order cost_price = 0)
+                  let totalCostPriceReal = 0;
+                  ordersWithData.forEach(order => {
+                    let orderCostPrice = Number(order.cost_price) || 0;
+
+                    // Nếu cost_price trong order bằng 0, tính từ product data
+                    if (orderCostPrice === 0 && order.items) {
+                      try {
+                        const orderItems = JSON.parse(String(order.items));
+
+                        // Tính cost price từ order items
+                        orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+                          const quantity = item.quantity || 0;
+                          // Từ network requests, ta thấy products có cost_price
+                          // Sử dụng giá ước tính dựa trên SKU pattern
+                          let estimatedCostPrice = 0;
+                          if (item.sku === "BVDCBT-1M") {
+                            estimatedCostPrice = 110000;
+                          } else if (item.sku === "BVDCBT-1M6") {
+                            estimatedCostPrice = 155000;
+                          }
+                          return sum + quantity * estimatedCostPrice;
+                        }, 0);
+                      } catch (error) {
+                        console.error('Error calculating cost price for order:', order.id, error);
+                      }
+                    }
+                    totalCostPriceReal += orderCostPrice;
+                  });
+                  const netProfitReal = revenue - totalCostPriceReal - totalExpensesAmount;
+                  return netProfitReal >= 0 ? 'text-green-600' : 'text-red-600';
+                })()}`}>
                      {formatCurrency((() => {
-                       const ordersWithData = filteredOrders.filter(order => 
-                         Number(order.total_amount) > 0
-                       );
-                       
-                       const revenue = ordersWithData.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-                       
-                       // Tính tổng giá vốn thực tế (ưu tiên từ sản phẩm nếu order cost_price = 0)
-                       let totalCostPriceReal = 0;
-                       
-                       ordersWithData.forEach(order => {
-                         let orderCostPrice = Number(order.cost_price) || 0;
-                         
-                         // Nếu cost_price trong order bằng 0, tính từ product data
-                         if (orderCostPrice === 0 && order.items) {
-                           try {
-                             const orderItems = JSON.parse(String(order.items));
-                             
-                             // Tính cost price từ order items
-                             orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                               const quantity = item.quantity || 0;
-                               // Từ network requests, ta thấy products có cost_price
-                               // Sử dụng giá ước tính dựa trên SKU pattern
-                               let estimatedCostPrice = 0;
-                               if (item.sku === "BVDCBT-1M") {
-                                 estimatedCostPrice = 110000;
-                               } else if (item.sku === "BVDCBT-1M6") {
-                                 estimatedCostPrice = 155000;
-                               }
-                               
-                               return sum + (quantity * estimatedCostPrice);
-                             }, 0);
-                           } catch (error) {
-                             console.error('Error calculating cost price for order:', order.id, error);
-                           }
-                         }
-                         
-                         totalCostPriceReal += orderCostPrice;
-                       });
-                       
-                       return revenue - totalCostPriceReal - totalExpensesAmount;
-                    })())}
+                    const ordersWithData = filteredOrders.filter(order => Number(order.total_amount) > 0);
+                    const revenue = ordersWithData.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+
+                    // Tính tổng giá vốn thực tế (ưu tiên từ sản phẩm nếu order cost_price = 0)
+                    let totalCostPriceReal = 0;
+                    ordersWithData.forEach(order => {
+                      let orderCostPrice = Number(order.cost_price) || 0;
+
+                      // Nếu cost_price trong order bằng 0, tính từ product data
+                      if (orderCostPrice === 0 && order.items) {
+                        try {
+                          const orderItems = JSON.parse(String(order.items));
+
+                          // Tính cost price từ order items
+                          orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+                            const quantity = item.quantity || 0;
+                            // Từ network requests, ta thấy products có cost_price
+                            // Sử dụng giá ước tính dựa trên SKU pattern
+                            let estimatedCostPrice = 0;
+                            if (item.sku === "BVDCBT-1M") {
+                              estimatedCostPrice = 110000;
+                            } else if (item.sku === "BVDCBT-1M6") {
+                              estimatedCostPrice = 155000;
+                            }
+                            return sum + quantity * estimatedCostPrice;
+                          }, 0);
+                        } catch (error) {
+                          console.error('Error calculating cost price for order:', order.id, error);
+                        }
+                      }
+                      totalCostPriceReal += orderCostPrice;
+                    });
+                    return revenue - totalCostPriceReal - totalExpensesAmount;
+                  })())}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Doanh thu - Giá vốn - Chi phí
@@ -1081,17 +1037,11 @@ const ReportsPage = () => {
                 <CardContent>
                   <ResponsiveContainer width="100%" height={350}>
                     <RechartsPieChart>
-                      <Pie
-                        data={expenseCategoryData}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        {expenseCategoryData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
+                      <Pie data={expenseCategoryData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({
+                      name,
+                      percent
+                    }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                        {expenseCategoryData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                       </Pie>
                       <Tooltip formatter={(value: number) => formatCurrency(value)} />
                     </RechartsPieChart>
@@ -1118,7 +1068,7 @@ const ReportsPage = () => {
                   <div className="flex items-center mt-2">
                     <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
                     <span className="text-xs text-green-600">
-                      {totalOrderAmount > 0 ? ((actualPaidAmountTotal / totalOrderAmount) * 100).toFixed(1) : 0}% của tổng doanh thu
+                      {totalOrderAmount > 0 ? (actualPaidAmountTotal / totalOrderAmount * 100).toFixed(1) : 0}% của tổng doanh thu
                     </span>
                   </div>
                 </CardContent>
@@ -1140,7 +1090,7 @@ const ReportsPage = () => {
                   <div className="flex items-center mt-2">
                     <TrendingDown className="w-4 h-4 text-orange-600 mr-1" />
                     <span className="text-xs text-orange-600">
-                      {totalOrderAmount > 0 ? ((remainingAmount / totalOrderAmount) * 100).toFixed(1) : 0}% còn lại
+                      {totalOrderAmount > 0 ? (remainingAmount / totalOrderAmount * 100).toFixed(1) : 0}% còn lại
                     </span>
                   </div>
                 </CardContent>
@@ -1154,16 +1104,15 @@ const ReportsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-blue-600">
-                    {totalOrderAmount > 0 ? ((actualPaidAmountTotal / totalOrderAmount) * 100).toFixed(1) : 0}%
+                    {totalOrderAmount > 0 ? (actualPaidAmountTotal / totalOrderAmount * 100).toFixed(1) : 0}%
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Hiệu suất thu tiền
                   </p>
                   <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full" 
-                      style={{ width: `${totalOrderAmount > 0 ? ((actualPaidAmountTotal / totalOrderAmount) * 100) : 0}%` }}
-                    ></div>
+                    <div className="bg-blue-600 h-2 rounded-full" style={{
+                    width: `${totalOrderAmount > 0 ? actualPaidAmountTotal / totalOrderAmount * 100 : 0}%`
+                  }}></div>
                   </div>
                 </CardContent>
               </Card>
@@ -1206,7 +1155,7 @@ const ReportsPage = () => {
                   <div className="flex items-center mt-2">
                     <TrendingDown className="w-4 h-4 text-red-600 mr-1" />
                     <span className="text-xs text-red-600">
-                      {totalOrderAmount > 0 ? ((totalCostPrice / totalOrderAmount) * 100).toFixed(1) : 0}% của doanh thu
+                      {totalOrderAmount > 0 ? (totalCostPrice / totalOrderAmount * 100).toFixed(1) : 0}% của doanh thu
                     </span>
                   </div>
                 </CardContent>
@@ -1228,35 +1177,26 @@ const ReportsPage = () => {
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={(() => {
-                      return monthlyData.map(monthData => {
-                        // Calculate actual payments for this month
-                        const monthStart = new Date(monthData.month + " 01");
-                        const monthEnd = endOfMonth(monthStart);
-                        
-                        const monthPayments = orderPayments.filter(p => {
-                          const paymentDate = new Date(p.payment_date);
-                          return paymentDate >= monthStart && paymentDate <= monthEnd;
-                        });
-                        
-                        const actualReceived = monthPayments.reduce((sum, p) => sum + Number(p.payment_amount), 0);
-                        
-                        return {
-                          ...monthData,
-                          actualReceived,
-                          outstanding: monthData.revenue - actualReceived
-                        };
+                    return monthlyData.map(monthData => {
+                      // Calculate actual payments for this month
+                      const monthStart = new Date(monthData.month + " 01");
+                      const monthEnd = endOfMonth(monthStart);
+                      const monthPayments = orderPayments.filter(p => {
+                        const paymentDate = new Date(p.payment_date);
+                        return paymentDate >= monthStart && paymentDate <= monthEnd;
                       });
-                    })()}>
+                      const actualReceived = monthPayments.reduce((sum, p) => sum + Number(p.payment_amount), 0);
+                      return {
+                        ...monthData,
+                        actualReceived,
+                        outstanding: monthData.revenue - actualReceived
+                      };
+                    });
+                  })()}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" />
-                      <YAxis tickFormatter={(value) => formatCurrency(value).replace('₫', '').trim()} />
-                      <Tooltip 
-                        formatter={(value: number, name: string) => [
-                          formatCurrency(value), 
-                          name === 'revenue' ? 'Doanh thu đặt hàng' : 
-                          name === 'actualReceived' ? 'Đã thu thực tế' : 'Còn phải thu'
-                        ]}
-                      />
+                      <YAxis tickFormatter={value => formatCurrency(value).replace('₫', '').trim()} />
+                      <Tooltip formatter={(value: number, name: string) => [formatCurrency(value), name === 'revenue' ? 'Doanh thu đặt hàng' : name === 'actualReceived' ? 'Đã thu thực tế' : 'Còn phải thu']} />
                       <Bar dataKey="revenue" fill="hsl(var(--primary))" name="Doanh thu đặt hàng" />
                       <Bar dataKey="actualReceived" fill="hsl(var(--success))" name="Đã thu thực tế" />
                       <Bar dataKey="outstanding" fill="hsl(var(--warning))" name="Còn phải thu" />
@@ -1278,19 +1218,11 @@ const ReportsPage = () => {
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
                     <RechartsPieChart>
-                      <Pie
-                        data={paymentStatusData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {paymentStatusData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
+                      <Pie data={paymentStatusData} cx="50%" cy="50%" labelLine={false} label={({
+                      name,
+                      percent
+                    }) => `${name} ${(percent * 100).toFixed(0)}%`} outerRadius={100} fill="#8884d8" dataKey="value">
+                        {paymentStatusData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                       </Pie>
                       <Tooltip />
                     </RechartsPieChart>
@@ -1311,11 +1243,7 @@ const ReportsPage = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4 max-h-96 overflow-y-auto">
-                  {filteredPayments.length > 0 ? (
-                    filteredPayments
-                      .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())
-                      .map((payment, index) => (
-                        <div key={payment.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                  {filteredPayments.length > 0 ? filteredPayments.sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()).map((payment, index) => <div key={payment.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
                           <div className="flex items-center space-x-4">
                             <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
                               <span className="text-green-600 font-bold text-sm">#{index + 1}</span>
@@ -1330,7 +1258,9 @@ const ReportsPage = () => {
                                 {payment.payment_method || 'Tiền mặt'}
                               </div>
                               <div className="text-xs text-gray-400">
-                                {format(new Date(payment.payment_date), "dd/MM/yyyy HH:mm", { locale: vi })}
+                                {format(new Date(payment.payment_date), "dd/MM/yyyy HH:mm", {
+                          locale: vi
+                        })}
                               </div>
                             </div>
                           </div>
@@ -1338,19 +1268,13 @@ const ReportsPage = () => {
                             <div className="font-bold text-green-600">
                               {formatCurrency(payment.payment_amount)}
                             </div>
-                            {payment.installment_number && payment.installment_number > 1 && (
-                              <div className="text-xs text-gray-500">
+                            {payment.installment_number && payment.installment_number > 1 && <div className="text-xs text-gray-500">
                                 Kỳ {payment.installment_number}
-                              </div>
-                            )}
+                              </div>}
                           </div>
-                        </div>
-                      ))
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
+                        </div>) : <div className="text-center py-8 text-gray-500">
                       Chưa có giao dịch thanh toán nào trong kỳ này
-                    </div>
-                  )}
+                    </div>}
                 </div>
               </CardContent>
             </Card>
@@ -1368,29 +1292,17 @@ const ReportsPage = () => {
               <CardContent>
                 <div className="space-y-4 max-h-96 overflow-y-auto">
                   {(() => {
-                    const unpaidOrdersList = filteredOrders.filter(order => 
-                      order.payment_status === 'pending' || order.payment_status === 'partial'
-                    );
-                    
-                    return unpaidOrdersList.length > 0 ? (
-                      unpaidOrdersList
-                        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                        .map((order) => {
-                          // Calculate paid amount for this order
-                          const orderPaymentsForOrder = orderPayments.filter(p => p.order_id === order.id);
-                          const paidAmount = orderPaymentsForOrder.reduce((sum, p) => sum + Number(p.payment_amount), 0);
-                          const outstandingAmount = Number(order.total_amount || 0) - paidAmount;
-                          const paymentProgress = Number(order.total_amount) > 0 ? (paidAmount / Number(order.total_amount)) * 100 : 0;
-                          
-                          return (
-                            <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                  const unpaidOrdersList = filteredOrders.filter(order => order.payment_status === 'pending' || order.payment_status === 'partial');
+                  return unpaidOrdersList.length > 0 ? unpaidOrdersList.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(order => {
+                    // Calculate paid amount for this order
+                    const orderPaymentsForOrder = orderPayments.filter(p => p.order_id === order.id);
+                    const paidAmount = orderPaymentsForOrder.reduce((sum, p) => sum + Number(p.payment_amount), 0);
+                    const outstandingAmount = Number(order.total_amount || 0) - paidAmount;
+                    const paymentProgress = Number(order.total_amount) > 0 ? paidAmount / Number(order.total_amount) * 100 : 0;
+                    return <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
                               <div className="flex items-center space-x-4">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                                  order.payment_status === 'pending' ? 'bg-red-100' : 'bg-yellow-100'
-                                }`}>
-                                  <span className={`font-bold text-sm ${
-                                    order.payment_status === 'pending' ? 'text-red-600' : 'text-yellow-600'
-                                  }`}>
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${order.payment_status === 'pending' ? 'bg-red-100' : 'bg-yellow-100'}`}>
+                                  <span className={`font-bold text-sm ${order.payment_status === 'pending' ? 'text-red-600' : 'text-yellow-600'}`}>
                                     {order.payment_status === 'pending' ? '!' : '~'}
                                   </span>
                                 </div>
@@ -1403,15 +1315,14 @@ const ReportsPage = () => {
                                     Trạng thái: {order.status === 'delivered' ? 'Đã giao' : 'Đang xử lý'}
                                   </div>
                                   <div className="text-xs text-gray-400">
-                                    Ngày đặt: {format(new Date(order.created_at), "dd/MM/yyyy", { locale: vi })}
+                                    Ngày đặt: {format(new Date(order.created_at), "dd/MM/yyyy", {
+                              locale: vi
+                            })}
                                   </div>
                                   <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
-                                    <div 
-                                      className={`h-2 rounded-full ${
-                                        order.payment_status === 'pending' ? 'bg-red-500' : 'bg-yellow-500'
-                                      }`}
-                                      style={{ width: `${Math.max(paymentProgress, 5)}%` }}
-                                    ></div>
+                                    <div className={`h-2 rounded-full ${order.payment_status === 'pending' ? 'bg-red-500' : 'bg-yellow-500'}`} style={{
+                              width: `${Math.max(paymentProgress, 5)}%`
+                            }}></div>
                                   </div>
                                 </div>
                               </div>
@@ -1429,15 +1340,11 @@ const ReportsPage = () => {
                                   Đã thu: {formatCurrency(paidAmount)}
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
+                            </div>;
+                  }) : <div className="text-center py-8 text-gray-500">
                         🎉 Tất cả đơn hàng đã được thanh toán đầy đủ!
-                      </div>
-                    );
-                  })()}
+                      </div>;
+                })()}
                 </div>
               </CardContent>
             </Card>
@@ -1502,44 +1409,16 @@ const ReportsPage = () => {
                   <ResponsiveContainer width="100%" height={350}>
                     <AreaChart data={monthlyData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
-                      <XAxis 
-                        dataKey="month" 
-                        fontSize={12}
-                        stroke="hsl(var(--foreground))"
-                      />
-                      <YAxis 
-                        fontSize={12}
-                        stroke="hsl(var(--foreground))"
-                      />
-                      <Tooltip 
-                        formatter={(value: number, name: string) => [
-                          value,
-                          name === "orders" ? "📦 Đơn hàng" : "✅ Hoàn thành"
-                        ]}
-                        labelFormatter={(label) => `📅 ${label}`}
-                        contentStyle={{
-                          backgroundColor: "hsl(var(--background))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                          fontSize: "14px"
-                        }}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="orders" 
-                        stroke="hsl(var(--primary))" 
-                        fill="hsl(var(--primary))" 
-                        fillOpacity={0.2}
-                        name="orders"
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="completed" 
-                        stroke="hsl(var(--success))" 
-                        fill="hsl(var(--success))" 
-                        fillOpacity={0.3}
-                        name="completed"
-                      />
+                      <XAxis dataKey="month" fontSize={12} stroke="hsl(var(--foreground))" />
+                      <YAxis fontSize={12} stroke="hsl(var(--foreground))" />
+                      <Tooltip formatter={(value: number, name: string) => [value, name === "orders" ? "📦 Đơn hàng" : "✅ Hoàn thành"]} labelFormatter={label => `📅 ${label}`} contentStyle={{
+                      backgroundColor: "hsl(var(--background))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: "14px"
+                    }} />
+                      <Area type="monotone" dataKey="orders" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.2} name="orders" />
+                      <Area type="monotone" dataKey="completed" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.3} name="completed" />
                     </AreaChart>
                   </ResponsiveContainer>
                   
@@ -1582,9 +1461,8 @@ const ReportsPage = () => {
                     </thead>
                     <tbody>
                       {monthlyData.slice(-6).map((data, index) => {
-                        const completionRate = data.orders > 0 ? ((data.completed / data.orders) * 100).toFixed(1) : '0';
-                        return (
-                          <tr key={data.month} className="border-b border-border/50 hover:bg-muted/30">
+                      const completionRate = data.orders > 0 ? (data.completed / data.orders * 100).toFixed(1) : '0';
+                      return <tr key={data.month} className="border-b border-border/50 hover:bg-muted/30">
                             <td className="p-3 font-medium">{data.month}</td>
                             <td className="text-right p-3 font-mono">{data.orders}</td>
                             <td className="text-right p-3 font-mono text-success">{data.completed}</td>
@@ -1596,19 +1474,16 @@ const ReportsPage = () => {
                             <td className="text-right p-3 font-mono font-semibold text-primary">
                               {formatCurrency(data.revenue)}
                             </td>
-                          </tr>
-                        );
-                      })}
+                          </tr>;
+                    })}
                     </tbody>
                   </table>
                 </div>
                 
-                {monthlyData.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
+                {monthlyData.length === 0 && <div className="text-center py-8 text-muted-foreground">
                     <div className="text-4xl mb-2">👥</div>
                     <p>Không có dữ liệu khách hàng trong kỳ báo cáo này</p>
-                  </div>
-                )}
+                  </div>}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1628,44 +1503,22 @@ const ReportsPage = () => {
                 <div className="space-y-6">
                   {/* Chart */}
                   <ResponsiveContainer width="100%" height={450}>
-                    <BarChart 
-                      data={topProducts} 
-                      margin={{ top: 20, right: 30, left: 40, bottom: 80 }}
-                    >
+                    <BarChart data={topProducts} margin={{
+                    top: 20,
+                    right: 30,
+                    left: 40,
+                    bottom: 80
+                  }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
-                      <XAxis 
-                        dataKey="name" 
-                        angle={-45} 
-                        textAnchor="end" 
-                        height={120}
-                        fontSize={12}
-                        stroke="hsl(var(--foreground))"
-                        interval={0}
-                      />
-                      <YAxis 
-                        fontSize={12}
-                        stroke="hsl(var(--foreground))"
-                        tickFormatter={(value) => formatCurrency(value)}
-                      />
-                      <Tooltip 
-                        formatter={(value: number, name: string) => [
-                          name === "revenue" ? formatCurrency(value) : value,
-                          name === "revenue" ? "💰 Doanh thu" : "📦 Số lượng bán"
-                        ]}
-                        labelFormatter={(label) => `🏷️ ${label}`}
-                        contentStyle={{
-                          backgroundColor: "hsl(var(--background))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                          fontSize: "14px"
-                        }}
-                      />
-                      <Bar 
-                        dataKey="revenue" 
-                        fill="hsl(var(--primary))" 
-                        name="revenue"
-                        radius={[4, 4, 0, 0]}
-                      />
+                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={120} fontSize={12} stroke="hsl(var(--foreground))" interval={0} />
+                      <YAxis fontSize={12} stroke="hsl(var(--foreground))" tickFormatter={value => formatCurrency(value)} />
+                      <Tooltip formatter={(value: number, name: string) => [name === "revenue" ? formatCurrency(value) : value, name === "revenue" ? "💰 Doanh thu" : "📦 Số lượng bán"]} labelFormatter={label => `🏷️ ${label}`} contentStyle={{
+                      backgroundColor: "hsl(var(--background))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: "14px"
+                    }} />
+                      <Bar dataKey="revenue" fill="hsl(var(--primary))" name="revenue" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                   
@@ -1705,8 +1558,7 @@ const ReportsPage = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {topProducts.map((product: any, index) => (
-                        <tr key={product.name} className="border-b border-border/50 hover:bg-muted/30">
+                      {topProducts.map((product: any, index) => <tr key={product.name} className="border-b border-border/50 hover:bg-muted/30">
                           <td className="p-3">
                             <div className="flex items-center gap-2">
                               <span className="text-lg">{index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : "📦"}</span>
@@ -1720,25 +1572,20 @@ const ReportsPage = () => {
                           <td className="text-right p-3 font-mono">
                             {product.quantity > 0 ? formatCurrency((product.revenue || 0) / product.quantity) : "0"}
                           </td>
-                        </tr>
-                      ))}
+                        </tr>)}
                     </tbody>
                   </table>
                 </div>
                 
-                {topProducts.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
+                {topProducts.length === 0 && <div className="text-center py-8 text-muted-foreground">
                     <div className="text-4xl mb-2">📦</div>
                     <p>Không có dữ liệu sản phẩm trong kỳ báo cáo này</p>
-                  </div>
-                )}
+                  </div>}
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </div>
-    </div>
-  );
+    </div>;
 };
-
 export default ReportsPage;
