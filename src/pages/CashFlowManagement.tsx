@@ -184,7 +184,8 @@ export default function CashFlowManagement() {
 
   // Utility functions
   const getDateRange = useCallback(() => {
-    if (dateRange?.from && dateRange?.to) {
+    // Nếu filterPeriod là "custom" và có dateRange, sử dụng nó
+    if (filterPeriod === "custom" && dateRange?.from && dateRange?.to) {
       return {
         start: startOfDay(dateRange.from),
         end: endOfDay(dateRange.to)
