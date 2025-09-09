@@ -535,14 +535,23 @@ export default function CashFlowManagement() {
     }
   };
 
-  // Filter expenses based on search term
-  const filteredExpenses = expenses.filter(
-    (expense) =>
+  // Filter expenses based on search term and date range
+  const filteredExpenses = expenses.filter((expense) => {
+    // Apply search term filter
+    const matchesSearch = searchTerm.trim() === "" || (
       expense.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.person_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.expense_code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    );
+
+    // Apply date range filter
+    const { start, end } = getDateRange();
+    const expenseDate = new Date(expense.expense_date);
+    const matchesDateRange = expenseDate >= start && expenseDate <= end;
+
+    return matchesSearch && matchesDateRange;
+  });
 
   // Cash flow statistics cards - hide profit stats for accountants
   const getVisibleStatsCards = () => {
