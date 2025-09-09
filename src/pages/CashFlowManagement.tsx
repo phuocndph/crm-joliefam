@@ -214,7 +214,7 @@ export default function CashFlowManagement() {
 
   // Use React Query for expenses
   const { data: expensesData = [], isLoading: expensesLoading } = useQuery({
-    queryKey: ['expenses', selectedManagerId, selectedYear, selectedMonth, filterPeriod, dateRange],
+    queryKey: ['expenses', selectedManagerId, selectedYear, selectedMonth, filterPeriod, dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async () => {
       const dateRange = getDateRange();
       
@@ -239,7 +239,7 @@ export default function CashFlowManagement() {
 
   // Use React Query for orders  
   const { data: ordersData = [], isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
-    queryKey: ['orders', selectedManagerId, selectedYear, selectedMonth, filterPeriod, dateRange],
+    queryKey: ['orders', selectedManagerId, selectedYear, selectedMonth, filterPeriod, dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async () => {
       const dateRange = getDateRange();
       
