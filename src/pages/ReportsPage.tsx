@@ -244,36 +244,58 @@ const ReportsPage = () => {
   const averageOrderValue = totalOrders > 0 ? totalOrderRevenue / totalOrders : 0;
   const averageDailyRevenue = dateRange?.from && dateRange?.to ? totalOrderRevenue / Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1) : 0;
 
-  // Prepare comprehensive chart data
-  const monthlyData = [];
-  const currentDate = new Date();
-  for (let i = 11; i >= 0; i--) {
-    const month = subMonths(currentDate, i);
-    const monthStart = startOfMonth(month);
-    const monthEnd = endOfMonth(month);
+  // Prepare comprehensive chart data - all months with data
+  const monthlyDataMap = new Map();
+  
+  // Get all unique months from orders and expenses
+  const allDates = [
+    ...orders.map(o => new Date(o.created_at)),
+    ...expenses.map(e => new Date(e.expense_date))
+  ];
+  
+  // Find the earliest date to start from
+  const earliestDate = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => d.getTime()))) : new Date();
+  const startDate = startOfMonth(earliestDate);
+  const endDate = endOfMonth(new Date());
+  
+  // Generate data for all months from earliest to current
+  let currentMonth = startDate;
+  while (currentMonth <= endDate) {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    
     const monthOrders = orders.filter(o => {
       const oDate = new Date(o.created_at);
       return oDate >= monthStart && oDate <= monthEnd;
     });
+    
     const monthExpenses = expenses.filter(e => {
       const eDate = new Date(e.expense_date);
       return eDate >= monthStart && eDate <= monthEnd;
     });
+    
     const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
     const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
     const ordersCount = monthOrders.length;
     const completedCount = monthOrders.filter(o => o.status === "delivered").length;
-    monthlyData.push({
-      month: format(month, "MMM yyyy", {
-        locale: vi
-      }),
+    
+    const monthKey = format(currentMonth, "yyyy-MM");
+    monthlyDataMap.set(monthKey, {
+      month: format(currentMonth, "MMM yyyy", { locale: vi }),
       revenue,
       expenses: expensesAmount,
       profit: revenue - expensesAmount,
       orders: ordersCount,
-      completed: completedCount
+      completed: completedCount,
+      sortKey: monthKey
     });
+    
+    // Move to next month
+    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
   }
+  
+  // Convert to array and sort by date
+  const monthlyData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
   // Category and status breakdown
   const expenseCategories = filteredExpenses.reduce((acc, e) => {
