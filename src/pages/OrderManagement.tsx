@@ -394,7 +394,7 @@ export default function OrderManagement() {
               onManagerChange={setSelectedManagerId}
             />
           )}
-          <Button onClick={() => navigate('/quotes')} className="gap-2">
+          <Button onClick={() => navigate('/quotes?create=true')} className="gap-2">
             <Plus className="h-4 w-4" />
             Tạo báo giá
           </Button>

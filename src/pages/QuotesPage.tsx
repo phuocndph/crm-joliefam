@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +69,7 @@ const statusLabels = {
 };
 
 export default function QuotesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [user, setUser] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -88,6 +90,15 @@ export default function QuotesPage() {
       setUser(user);
     });
   }, []);
+
+  useEffect(() => {
+    // Check for create parameter and auto-open form
+    if (searchParams.get('create') === 'true') {
+      setShowCreateForm(true);
+      // Remove the parameter from URL
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     // Chỉ tải khi đã xác định được vai trò và người dùng
