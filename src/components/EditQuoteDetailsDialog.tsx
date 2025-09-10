@@ -74,6 +74,7 @@ export function EditQuoteDetailsDialog({
         .from('quotes')
         .update({
           created_at: createdDate.toISOString(),
+          quote_date: createdDate.toISOString(),
           status: status,
         })
         .eq('id', quote.id);

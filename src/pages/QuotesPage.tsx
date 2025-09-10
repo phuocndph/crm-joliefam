@@ -181,7 +181,7 @@ export default function QuotesPage() {
           customerPhone: quote.customers?.phone || extractFromNotes(/Điện thoại:\s*([^\n\r]+)/),
           customerAddress: quote.customers?.address || extractFromNotes(/Địa chỉ:\s*([^\n\r]+)/),
           customerCompany: quote.customers?.company || '',
-          quoteDate: quote.created_at,
+          quoteDate: quote.quote_date || quote.created_at,
           expiryDate: extractFromNotes(/Ngày hết hạn:\s*(.+)/) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           responsible: quote.assignees?.name || 'Chưa phân công',
           totalAmount: quote.total_amount || 0
