@@ -80,6 +80,20 @@ export function EditQuoteDetailsDialog({
 
       if (error) throw error;
 
+      // If status changed to approved, update all related orders
+      if (status === 'approved' && quote.status !== 'approved') {
+        const { error: orderError } = await supabase
+          .from("orders")
+          .update({
+            updated_at: new Date().toISOString()
+          })
+          .eq("quote_id", quote.id);
+
+        if (orderError) {
+          console.error("Error updating related orders:", orderError);
+        }
+      }
+
       // Invalidate all related query caches to ensure data consistency
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['quotes'] }),
