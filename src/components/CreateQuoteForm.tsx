@@ -558,6 +558,7 @@ export function CreateQuoteForm({
         price_list_id: data.priceList || null,
         assignee_id: data.responsible || null,
         status: initialData ? initialData.status : "draft",
+        created_at: data.quoteDate.toISOString(), // Đồng bộ ngày tạo với ngày báo giá
         // Keep original status when editing
         notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy", { locale: vi }) : ""}`,
         items: JSON.stringify(selectedProducts),
