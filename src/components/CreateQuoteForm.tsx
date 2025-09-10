@@ -283,7 +283,7 @@ export function CreateQuoteForm({
         form.reset({
           title: initialData.title || "BẢNG BÁO GIÁ",
           quoteNumber: initialData.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
-          quoteDate: new Date(), // Always use current date for quote date
+          quoteDate: initialData.quote_date ? new Date(initialData.quote_date) : new Date(),
           expiryDate: parseDate(initialData.expiryDate || initialData.notes),
           customerName: initialData.customerName || "",
           phone: initialData.customerPhone || "",
