@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw, MapPin, Navigation, Zap } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useOrders } from "@/hooks/useOrders";
 import { useUserRole } from "@/hooks/useUserRole";
 import { ManagerSelector } from "@/components/ManagerSelector";
@@ -122,7 +122,7 @@ export default function OrderManagement() {
   const [activeTab, setActiveTab] = useState("orders");
   const [bulkSyncing, setBulkSyncing] = useState(false);
   const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
-  
+  const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
   const { role: userRole } = useUserRole(user);
@@ -394,7 +394,7 @@ export default function OrderManagement() {
               onManagerChange={setSelectedManagerId}
             />
           )}
-          <Button onClick={() => setShowCreateForm(true)} className="gap-2">
+          <Button onClick={() => navigate('/quotes')} className="gap-2">
             <Plus className="h-4 w-4" />
             Tạo báo giá
           </Button>
