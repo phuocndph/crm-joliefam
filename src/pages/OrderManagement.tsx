@@ -110,7 +110,7 @@ export default function OrderManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("created_at");
+  const [sortBy, setSortBy] = useState("order_number");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
