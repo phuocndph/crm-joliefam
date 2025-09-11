@@ -583,10 +583,10 @@ const ReportsPage = () => {
                     {/* Data Table */}
                     <div className="space-y-4">
                       <h4 className="font-semibold text-sm text-muted-foreground flex items-center gap-2">
-                        📊 Chi tiết 6 tháng gần nhất
+                        📊 Chi tiết tất cả tháng/năm
                       </h4>
                       <div className="max-h-80 overflow-y-auto space-y-2">
-                        {monthlyData.slice(-6).map((data, index) => <div key={index} className="bg-muted/30 rounded-lg p-3 space-y-2 border">
+                        {monthlyData.map((data, index) => <div key={index} className="bg-muted/30 rounded-lg p-3 space-y-2 border">
                             <div className="font-medium text-sm text-center">{data.month}</div>
                             <div className="space-y-1 text-xs">
                               <div className="flex justify-between">
