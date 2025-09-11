@@ -262,40 +262,34 @@ const ReportsPage = () => {
 
   // Prepare comprehensive chart data - all months with data
   const monthlyDataMap = new Map();
-  
+
   // Get all unique months from orders and expenses
-  const allDates = [
-    ...orders.map(o => new Date(o.created_at)),
-    ...expenses.map(e => new Date(e.expense_date))
-  ];
-  
+  const allDates = [...orders.map(o => new Date(o.created_at)), ...expenses.map(e => new Date(e.expense_date))];
+
   // Find the earliest date to start from
   const earliestDate = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => d.getTime()))) : new Date();
   const startDate = startOfMonth(earliestDate);
   const endDate = endOfMonth(new Date());
-  
+
   // Generate data for all months from earliest to current
   let currentMonth = startDate;
   while (currentMonth <= endDate) {
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
-    
     const monthOrders = orders.filter(o => {
       const oDate = new Date(o.created_at);
       return oDate >= monthStart && oDate <= monthEnd;
     });
-    
     const monthExpenses = expenses.filter(e => {
       const eDate = new Date(e.expense_date);
       return eDate >= monthStart && eDate <= monthEnd;
     });
-    
     const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-    
+
     // Calculate cost of goods sold (COGS) for the month
     const costOfGoodsSold = monthOrders.reduce((sum, order) => {
       let orderCostPrice = Number(order.cost_price) || 0;
-      
+
       // If cost_price in order is 0, calculate from order items
       if (orderCostPrice === 0 && order.items) {
         const orderItems = parseOrderItems(order.items);
@@ -303,23 +297,21 @@ const ReportsPage = () => {
           const quantity = item.quantity || 0;
           const product = products.find(p => p.sku === item.sku);
           const itemCostPrice = product ? Number(product.cost_price || 0) : 0;
-          return itemSum + (quantity * itemCostPrice);
+          return itemSum + quantity * itemCostPrice;
         }, 0);
       }
-      
       return sum + orderCostPrice;
     }, 0);
-    
     const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
     const grossProfit = revenue - costOfGoodsSold;
     const netProfit = grossProfit - expensesAmount;
-    
     const ordersCount = monthOrders.length;
     const completedCount = monthOrders.filter(o => o.status === "delivered").length;
-    
     const monthKey = format(currentMonth, "yyyy-MM");
     monthlyDataMap.set(monthKey, {
-      month: format(currentMonth, "MMM yyyy", { locale: vi }),
+      month: format(currentMonth, "MMM yyyy", {
+        locale: vi
+      }),
       revenue,
       expenses: expensesAmount,
       costOfGoodsSold,
@@ -329,11 +321,11 @@ const ReportsPage = () => {
       completed: completedCount,
       sortKey: monthKey
     });
-    
+
     // Move to next month
     currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
   }
-  
+
   // Convert to array and sort by date
   const monthlyData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
@@ -586,56 +578,7 @@ const ReportsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2">
-                      <div className="h-80">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={monthlyData} margin={{
-                          top: 20,
-                          right: 30,
-                          left: 20,
-                          bottom: 5
-                        }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.2} />
-                            <XAxis dataKey="month" stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
-                            fill: "hsl(var(--foreground))"
-                          }} />
-                             <YAxis stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
-                             fill: "hsl(var(--foreground))"
-                           }} tickFormatter={value => `${(value / 1000000).toFixed(1)}M`} />
-                             <Tooltip contentStyle={{
-                             backgroundColor: "hsl(var(--background))",
-                             border: "2px solid hsl(var(--border))",
-                             borderRadius: "12px",
-                             boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                             fontSize: "14px",
-                             fontWeight: "500"
-                           }} formatter={(value: number, name: string) => {
-                             const formatValue = name === "orders" ? value.toString() : formatCurrency(value);
-                             const labelMap: {[key: string]: string} = {
-                               "revenue": "Doanh thu",
-                               "expenses": "Chi phí", 
-                               "profit": "Lợi nhuận",
-                               "orders": "Số đơn hàng"
-                             };
-                             return [formatValue, labelMap[name] || name];
-                           }} labelStyle={{
-                             color: "hsl(var(--foreground))",
-                             fontWeight: "600"
-                           }} />
-                             <Line type="monotone" dataKey="profit" stroke="hsl(var(--primary))" strokeWidth={4} dot={{
-                             fill: "hsl(var(--primary))",
-                             strokeWidth: 2,
-                             r: 6
-                           }} activeDot={{
-                             r: 8,
-                             stroke: "hsl(var(--primary))",
-                             strokeWidth: 3,
-                             fill: "white"
-                           }} name="Lợi nhuận" />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
+                    
                     
                     {/* Data Table */}
                     <div className="space-y-4">
