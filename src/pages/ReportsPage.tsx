@@ -347,14 +347,25 @@ const ReportsPage = () => {
     color: "hsl(var(--primary))"
   }].filter(item => item.value > 0);
 
+  // Helper function to safely parse order items
+  const parseOrderItems = (items: any) => {
+    if (!items) return [];
+    if (Array.isArray(items)) return items;
+    if (typeof items === 'object') return Array.isArray(items) ? items : [items];
+    if (typeof items === 'string') {
+      try {
+        const parsed = JSON.parse(items);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
   // Top products by sales
   const productSales = filteredOrders.flatMap(order => {
-    try {
-      const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
-      return JSON.parse(itemsStr);
-    } catch {
-      return [];
-    }
+    return parseOrderItems(order.items);
   }).reduce((acc: any, item: any) => {
     const key = item.name || 'Unknown';
     if (!acc[key]) {
@@ -901,25 +912,20 @@ const ReportsPage = () => {
 
                       // Nếu cost_price trong order bằng 0, tính từ product data
                       if (orderCostPrice === 0 && order.items) {
-                        try {
-                          const orderItems = JSON.parse(String(order.items));
-
-                          // Tính cost price từ order items
-                          orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                            const quantity = item.quantity || 0;
-                            // Từ network requests, ta thấy products có cost_price
-                            // Sử dụng giá ước tính dựa trên SKU pattern
-                            let estimatedCostPrice = 0;
-                            if (item.sku === "BVDCBT-1M") {
-                              estimatedCostPrice = 110000;
-                            } else if (item.sku === "BVDCBT-1M6") {
-                              estimatedCostPrice = 155000;
-                            }
-                            return sum + quantity * estimatedCostPrice;
-                          }, 0);
-                        } catch (error) {
-                          console.error('Error calculating cost price for order:', order.id, error);
-                        }
+                        const orderItems = parseOrderItems(order.items);
+                        // Tính cost price từ order items
+                        orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+                          const quantity = item.quantity || 0;
+                          // Từ network requests, ta thấy products có cost_price
+                          // Sử dụng giá ước tính dựa trên SKU pattern
+                          let estimatedCostPrice = 0;
+                          if (item.sku === "BVDCBT-1M") {
+                            estimatedCostPrice = 110000;
+                          } else if (item.sku === "BVDCBT-1M6") {
+                            estimatedCostPrice = 155000;
+                          }
+                          return sum + quantity * estimatedCostPrice;
+                        }, 0);
                       }
                       totalCostPriceReal += orderCostPrice;
                     });
@@ -965,25 +971,20 @@ const ReportsPage = () => {
 
                     // Nếu cost_price trong order bằng 0, tính từ product data
                     if (orderCostPrice === 0 && order.items) {
-                      try {
-                        const orderItems = JSON.parse(String(order.items));
-
-                        // Tính cost price từ order items
-                        orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                          const quantity = item.quantity || 0;
-                          // Từ network requests, ta thấy products có cost_price
-                          // Sử dụng giá ước tính dựa trên SKU pattern
-                          let estimatedCostPrice = 0;
-                          if (item.sku === "BVDCBT-1M") {
-                            estimatedCostPrice = 110000;
-                          } else if (item.sku === "BVDCBT-1M6") {
-                            estimatedCostPrice = 155000;
-                          }
-                          return sum + quantity * estimatedCostPrice;
-                        }, 0);
-                      } catch (error) {
-                        console.error('Error calculating cost price for order:', order.id, error);
-                      }
+                      const orderItems = parseOrderItems(order.items);
+                      // Tính cost price từ order items
+                      orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+                        const quantity = item.quantity || 0;
+                        // Từ network requests, ta thấy products có cost_price
+                        // Sử dụng giá ước tính dựa trên SKU pattern
+                        let estimatedCostPrice = 0;
+                        if (item.sku === "BVDCBT-1M") {
+                          estimatedCostPrice = 110000;
+                        } else if (item.sku === "BVDCBT-1M6") {
+                          estimatedCostPrice = 155000;
+                        }
+                        return sum + quantity * estimatedCostPrice;
+                      }, 0);
                     }
                     totalCostPriceReal += orderCostPrice;
                   });
@@ -1001,25 +1002,20 @@ const ReportsPage = () => {
 
                       // Nếu cost_price trong order bằng 0, tính từ product data
                       if (orderCostPrice === 0 && order.items) {
-                        try {
-                          const orderItems = JSON.parse(String(order.items));
-
-                          // Tính cost price từ order items
-                          orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                            const quantity = item.quantity || 0;
-                            // Từ network requests, ta thấy products có cost_price
-                            // Sử dụng giá ước tính dựa trên SKU pattern
-                            let estimatedCostPrice = 0;
-                            if (item.sku === "BVDCBT-1M") {
-                              estimatedCostPrice = 110000;
-                            } else if (item.sku === "BVDCBT-1M6") {
-                              estimatedCostPrice = 155000;
-                            }
-                            return sum + quantity * estimatedCostPrice;
-                          }, 0);
-                        } catch (error) {
-                          console.error('Error calculating cost price for order:', order.id, error);
-                        }
+                        const orderItems = parseOrderItems(order.items);
+                        // Tính cost price từ order items
+                        orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+                          const quantity = item.quantity || 0;
+                          // Từ network requests, ta thấy products có cost_price
+                          // Sử dụng giá ước tính dựa trên SKU pattern
+                          let estimatedCostPrice = 0;
+                          if (item.sku === "BVDCBT-1M") {
+                            estimatedCostPrice = 110000;
+                          } else if (item.sku === "BVDCBT-1M6") {
+                            estimatedCostPrice = 155000;
+                          }
+                          return sum + quantity * estimatedCostPrice;
+                        }, 0);
                       }
                       totalCostPriceReal += orderCostPrice;
                     });
