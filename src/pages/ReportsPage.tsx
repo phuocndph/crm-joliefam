@@ -18,6 +18,22 @@ const ReportsPage = () => {
   });
   const [activeTab, setActiveTab] = useState("overview");
 
+  // Helper function to safely parse order items
+  const parseOrderItems = (items: any) => {
+    if (!items) return [];
+    if (Array.isArray(items)) return items;
+    if (typeof items === 'object') return Array.isArray(items) ? items : [items];
+    if (typeof items === 'string') {
+      try {
+        const parsed = JSON.parse(items);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
   // Fetch all required data
   const {
     data: transactions = []
@@ -370,22 +386,6 @@ const ReportsPage = () => {
     value: partialPaidOrders,
     color: "hsl(var(--primary))"
   }].filter(item => item.value > 0);
-
-  // Helper function to safely parse order items
-  const parseOrderItems = (items: any) => {
-    if (!items) return [];
-    if (Array.isArray(items)) return items;
-    if (typeof items === 'object') return Array.isArray(items) ? items : [items];
-    if (typeof items === 'string') {
-      try {
-        const parsed = JSON.parse(items);
-        return Array.isArray(parsed) ? parsed : [parsed];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  };
 
   // Top products by sales
   const productSales = filteredOrders.flatMap(order => {
