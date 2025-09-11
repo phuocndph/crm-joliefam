@@ -275,7 +275,29 @@ const ReportsPage = () => {
     });
     
     const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    
+    // Calculate cost of goods sold (COGS) for the month
+    const costOfGoodsSold = monthOrders.reduce((sum, order) => {
+      let orderCostPrice = Number(order.cost_price) || 0;
+      
+      // If cost_price in order is 0, calculate from order items
+      if (orderCostPrice === 0 && order.items) {
+        const orderItems = parseOrderItems(order.items);
+        orderCostPrice = orderItems.reduce((itemSum: number, item: any) => {
+          const quantity = item.quantity || 0;
+          const product = products.find(p => p.sku === item.sku);
+          const itemCostPrice = product ? Number(product.cost_price || 0) : 0;
+          return itemSum + (quantity * itemCostPrice);
+        }, 0);
+      }
+      
+      return sum + orderCostPrice;
+    }, 0);
+    
     const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+    const grossProfit = revenue - costOfGoodsSold;
+    const netProfit = grossProfit - expensesAmount;
+    
     const ordersCount = monthOrders.length;
     const completedCount = monthOrders.filter(o => o.status === "delivered").length;
     
@@ -284,7 +306,9 @@ const ReportsPage = () => {
       month: format(currentMonth, "MMM yyyy", { locale: vi }),
       revenue,
       expenses: expensesAmount,
-      profit: revenue - expensesAmount,
+      costOfGoodsSold,
+      grossProfit,
+      profit: netProfit,
       orders: ordersCount,
       completed: completedCount,
       sortKey: monthKey
