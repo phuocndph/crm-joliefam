@@ -602,60 +602,36 @@ const ReportsPage = () => {
                              <YAxis stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
                              fill: "hsl(var(--foreground))"
                            }} tickFormatter={value => `${(value / 1000000).toFixed(1)}M`} />
-                             <YAxis yAxisId="right" orientation="right" stroke="#f59e0b" fontSize={12} tick={{
-                             fill: "#f59e0b"
-                           }} tickFormatter={value => value.toString()} />
-                            <Tooltip contentStyle={{
-                            backgroundColor: "hsl(var(--background))",
-                            border: "2px solid hsl(var(--border))",
-                            borderRadius: "12px",
-                            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                            fontSize: "14px",
-                            fontWeight: "500"
-                          }} formatter={(value: number, name: string) => [formatCurrency(value), name === "revenue" ? "Doanh thu" : name === "expenses" ? "Chi phí" : "Lợi nhuận"]} labelStyle={{
-                            color: "hsl(var(--foreground))",
-                            fontWeight: "600"
-                          }} />
-                            <Line type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={4} dot={{
-                            fill: "hsl(var(--primary))",
-                            strokeWidth: 2,
-                            r: 6
-                          }} activeDot={{
-                            r: 8,
-                            stroke: "hsl(var(--primary))",
-                            strokeWidth: 3,
-                            fill: "white"
-                          }} name="Doanh thu" />
-                            <Line type="monotone" dataKey="expenses" stroke="hsl(var(--destructive))" strokeWidth={3} dot={{
-                            fill: "hsl(var(--destructive))",
-                            strokeWidth: 2,
-                            r: 5
-                          }} activeDot={{
-                            r: 7,
-                            stroke: "hsl(var(--destructive))",
-                            strokeWidth: 2,
-                            fill: "white"
-                          }} name="Chi phí" />
-                             <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{
-                             fill: "#10b981",
+                             <Tooltip contentStyle={{
+                             backgroundColor: "hsl(var(--background))",
+                             border: "2px solid hsl(var(--border))",
+                             borderRadius: "12px",
+                             boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                             fontSize: "14px",
+                             fontWeight: "500"
+                           }} formatter={(value: number, name: string) => {
+                             const formatValue = name === "orders" ? value.toString() : formatCurrency(value);
+                             const labelMap: {[key: string]: string} = {
+                               "revenue": "Doanh thu",
+                               "expenses": "Chi phí", 
+                               "profit": "Lợi nhuận",
+                               "orders": "Số đơn hàng"
+                             };
+                             return [formatValue, labelMap[name] || name];
+                           }} labelStyle={{
+                             color: "hsl(var(--foreground))",
+                             fontWeight: "600"
+                           }} />
+                             <Line type="monotone" dataKey="profit" stroke="hsl(var(--primary))" strokeWidth={4} dot={{
+                             fill: "hsl(var(--primary))",
                              strokeWidth: 2,
-                             r: 5
+                             r: 6
                            }} activeDot={{
-                             r: 7,
-                             stroke: "#10b981",
-                             strokeWidth: 2,
+                             r: 8,
+                             stroke: "hsl(var(--primary))",
+                             strokeWidth: 3,
                              fill: "white"
                            }} name="Lợi nhuận" />
-                             <Line type="monotone" dataKey="orders" stroke="#f59e0b" strokeWidth={2} dot={{
-                             fill: "#f59e0b",
-                             strokeWidth: 2,
-                             r: 4
-                           }} activeDot={{
-                             r: 6,
-                             stroke: "#f59e0b",
-                             strokeWidth: 2,
-                             fill: "white"
-                           }} name="Số đơn hàng" yAxisId="right" />
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
