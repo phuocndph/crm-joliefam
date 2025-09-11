@@ -599,9 +599,12 @@ const ReportsPage = () => {
                             <XAxis dataKey="month" stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
                             fill: "hsl(var(--foreground))"
                           }} />
-                            <YAxis stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
-                            fill: "hsl(var(--foreground))"
-                          }} tickFormatter={value => `${(value / 1000000).toFixed(1)}M`} />
+                             <YAxis stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
+                             fill: "hsl(var(--foreground))"
+                           }} tickFormatter={value => `${(value / 1000000).toFixed(1)}M`} />
+                             <YAxis yAxisId="right" orientation="right" stroke="#f59e0b" fontSize={12} tick={{
+                             fill: "#f59e0b"
+                           }} tickFormatter={value => value.toString()} />
                             <Tooltip contentStyle={{
                             backgroundColor: "hsl(var(--background))",
                             border: "2px solid hsl(var(--border))",
@@ -633,16 +636,26 @@ const ReportsPage = () => {
                             strokeWidth: 2,
                             fill: "white"
                           }} name="Chi phí" />
-                            <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{
-                            fill: "#10b981",
-                            strokeWidth: 2,
-                            r: 5
-                          }} activeDot={{
-                            r: 7,
-                            stroke: "#10b981",
-                            strokeWidth: 2,
-                            fill: "white"
-                          }} name="Lợi nhuận" />
+                             <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{
+                             fill: "#10b981",
+                             strokeWidth: 2,
+                             r: 5
+                           }} activeDot={{
+                             r: 7,
+                             stroke: "#10b981",
+                             strokeWidth: 2,
+                             fill: "white"
+                           }} name="Lợi nhuận" />
+                             <Line type="monotone" dataKey="orders" stroke="#f59e0b" strokeWidth={2} dot={{
+                             fill: "#f59e0b",
+                             strokeWidth: 2,
+                             r: 4
+                           }} activeDot={{
+                             r: 6,
+                             stroke: "#f59e0b",
+                             strokeWidth: 2,
+                             fill: "white"
+                           }} name="Số đơn hàng" yAxisId="right" />
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
