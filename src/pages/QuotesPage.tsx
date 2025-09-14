@@ -145,6 +145,7 @@ export default function QuotesPage() {
             name
           )
         `)
+        .order('status', { ascending: true })
         .order('created_at', { ascending: false });
 
       if (userRole === 'manager' && user?.id) {
