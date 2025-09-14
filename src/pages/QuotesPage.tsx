@@ -145,7 +145,6 @@ export default function QuotesPage() {
             name
           )
         `)
-        .order('status', { ascending: true })
         .order('created_at', { ascending: false });
 
       if (userRole === 'manager' && user?.id) {
@@ -202,12 +201,20 @@ export default function QuotesPage() {
     }
   };
 
-  const filteredQuotes = quotes.filter(
-    (quote) =>
-      quote.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quote.quote_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quote.status.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredQuotes = quotes
+    .filter(
+      (quote) =>
+        quote.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        quote.quote_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        quote.status.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      // Draft quotes first
+      if (a.status === 'draft' && b.status !== 'draft') return -1;
+      if (b.status === 'draft' && a.status !== 'draft') return 1;
+      // Then sort by creation date (newest first)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
 
   const handleCreateQuote = async () => {
     setShowCreateForm(false);
