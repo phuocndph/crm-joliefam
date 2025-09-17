@@ -96,7 +96,7 @@ const TransactionManagement = () => {
       }
 
       const { data, error } = await ordersQuery
-        .order("created_at", { ascending: false });
+        .order("order_number", { ascending: false });
       
       if (error) throw error;
       return data || [];
