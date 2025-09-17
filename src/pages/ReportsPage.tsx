@@ -554,62 +554,78 @@ const ReportsPage = () => {
                     <div className="lg:col-span-2">
                       <div className="h-80">
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={monthlyData} margin={{
-                          top: 20,
-                          right: 30,
-                          left: 20,
-                          bottom: 5
-                        }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.2} />
-                            <XAxis dataKey="month" stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
-                            fill: "hsl(var(--foreground))"
-                          }} />
-                            <YAxis stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
-                            fill: "hsl(var(--foreground))"
-                          }} tickFormatter={value => `${(value / 1000000).toFixed(1)}M`} />
-                            <Tooltip contentStyle={{
-                            backgroundColor: "hsl(var(--background))",
-                            border: "2px solid hsl(var(--border))",
-                            borderRadius: "12px",
-                            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                            fontSize: "14px",
-                            fontWeight: "500"
-                          }} formatter={(value: number, name: string) => [formatCurrency(value), name === "revenue" ? "Doanh thu" : name === "expenses" ? "Chi phí" : "Lợi nhuận"]} labelStyle={{
-                            color: "hsl(var(--foreground))",
-                            fontWeight: "600"
-                          }} />
-                            <Line type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={4} dot={{
-                            fill: "hsl(var(--primary))",
-                            strokeWidth: 2,
-                            r: 6
-                          }} activeDot={{
-                            r: 8,
-                            stroke: "hsl(var(--primary))",
-                            strokeWidth: 3,
-                            fill: "white"
-                          }} name="Doanh thu" />
-                            <Line type="monotone" dataKey="expenses" stroke="hsl(var(--destructive))" strokeWidth={3} dot={{
-                            fill: "hsl(var(--destructive))",
-                            strokeWidth: 2,
-                            r: 5
-                          }} activeDot={{
-                            r: 7,
-                            stroke: "hsl(var(--destructive))",
-                            strokeWidth: 2,
-                            fill: "white"
-                          }} name="Chi phí" />
-                            <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{
-                            fill: "#10b981",
-                            strokeWidth: 2,
-                            r: 5
-                          }} activeDot={{
-                            r: 7,
-                            stroke: "#10b981",
-                            strokeWidth: 2,
-                            fill: "white"
-                          }} name="Lợi nhuận" />
-                          </LineChart>
-                        </ResponsiveContainer>
+                           <LineChart data={monthlyData} margin={{
+                           top: 20,
+                           right: 60,
+                           left: 20,
+                           bottom: 5
+                         }}>
+                             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.2} />
+                             <XAxis dataKey="month" stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
+                             fill: "hsl(var(--foreground))"
+                           }} />
+                             <YAxis yAxisId="currency" stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
+                             fill: "hsl(var(--foreground))"
+                           }} tickFormatter={value => `${(value / 1000000).toFixed(1)}M`} />
+                             <YAxis yAxisId="orders" orientation="right" stroke="hsl(var(--warning))" fontSize={14} fontWeight="500" tick={{
+                             fill: "hsl(var(--warning))"
+                           }} />
+                             <Tooltip contentStyle={{
+                             backgroundColor: "hsl(var(--background))",
+                             border: "2px solid hsl(var(--border))",
+                             borderRadius: "12px",
+                             boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                             fontSize: "14px",
+                             fontWeight: "500"
+                           }} formatter={(value: number, name: string) => {
+                             if (name === "orders") return [value, "Tổng đơn hàng"];
+                             return [formatCurrency(value), name === "revenue" ? "Doanh thu" : name === "expenses" ? "Chi phí" : "Lợi nhuận"];
+                           }} labelStyle={{
+                             color: "hsl(var(--foreground))",
+                             fontWeight: "600"
+                           }} />
+                             <Line yAxisId="currency" type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={4} dot={{
+                             fill: "hsl(var(--primary))",
+                             strokeWidth: 2,
+                             r: 6
+                           }} activeDot={{
+                             r: 8,
+                             stroke: "hsl(var(--primary))",
+                             strokeWidth: 3,
+                             fill: "white"
+                           }} name="Doanh thu" />
+                             <Line yAxisId="currency" type="monotone" dataKey="expenses" stroke="hsl(var(--destructive))" strokeWidth={3} dot={{
+                             fill: "hsl(var(--destructive))",
+                             strokeWidth: 2,
+                             r: 5
+                           }} activeDot={{
+                             r: 7,
+                             stroke: "hsl(var(--destructive))",
+                             strokeWidth: 2,
+                             fill: "white"
+                           }} name="Chi phí" />
+                             <Line yAxisId="currency" type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{
+                             fill: "#10b981",
+                             strokeWidth: 2,
+                             r: 5
+                           }} activeDot={{
+                             r: 7,
+                             stroke: "#10b981",
+                             strokeWidth: 2,
+                             fill: "white"
+                           }} name="Lợi nhuận" />
+                             <Line yAxisId="orders" type="monotone" dataKey="orders" stroke="hsl(var(--warning))" strokeWidth={3} dot={{
+                             fill: "hsl(var(--warning))",
+                             strokeWidth: 2,
+                             r: 5
+                           }} activeDot={{
+                             r: 7,
+                             stroke: "hsl(var(--warning))",
+                             strokeWidth: 2,
+                             fill: "white"
+                           }} name="orders" />
+                           </LineChart>
+                         </ResponsiveContainer>
                       </div>
                     </div>
                     
@@ -644,22 +660,26 @@ const ReportsPage = () => {
                     </div>
                   </div>
                   
-                  {/* Legend */}
-                  <div className="flex flex-wrap gap-6 mt-4 pt-4 border-t bg-muted/20 rounded-lg p-3">
-                    <div className="text-sm font-medium text-muted-foreground mb-2 w-full">Chú thích biểu đồ:</div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-primary"></div>
-                      <span className="text-sm font-medium">Doanh thu (VND)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-destructive"></div>
-                      <span className="text-sm font-medium">Chi phí (VND)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-green-500"></div>
-                      <span className="text-sm font-medium">Lợi nhuận (VND)</span>
-                    </div>
-                  </div>
+                   {/* Legend */}
+                   <div className="flex flex-wrap gap-6 mt-4 pt-4 border-t bg-muted/20 rounded-lg p-3">
+                     <div className="text-sm font-medium text-muted-foreground mb-2 w-full">Chú thích biểu đồ:</div>
+                     <div className="flex items-center gap-2">
+                       <div className="w-4 h-4 rounded-full bg-primary"></div>
+                       <span className="text-sm font-medium">Doanh thu (VND)</span>
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <div className="w-4 h-4 rounded-full bg-destructive"></div>
+                       <span className="text-sm font-medium">Chi phí (VND)</span>
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <div className="w-4 h-4 rounded-full bg-green-500"></div>
+                       <span className="text-sm font-medium">Lợi nhuận (VND)</span>
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <div className="w-4 h-4 rounded-full bg-warning"></div>
+                       <span className="text-sm font-medium">Tổng đơn hàng (số lượng)</span>
+                     </div>
+                   </div>
                 </CardContent>
               </Card>
 
