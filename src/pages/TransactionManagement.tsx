@@ -95,8 +95,7 @@ const TransactionManagement = () => {
         ordersQuery = ordersQuery.eq('manager_id', selectedManagerId);
       }
 
-      const { data, error } = await ordersQuery
-        .order("order_number::int", { ascending: false });
+      const { data, error } = await ordersQuery;
       
       if (error) throw error;
       return data || [];
@@ -120,7 +119,14 @@ const TransactionManagement = () => {
   });
 
   useEffect(() => {
-    setOrders(ordersData);
+    // Sort orders by display order number (largest to smallest)
+    const sortedOrders = [...ordersData].sort((a, b) => {
+      const aOrderNum = parseInt(getOrderDisplayNumber(a)) || 0;
+      const bOrderNum = parseInt(getOrderDisplayNumber(b)) || 0;
+      return bOrderNum - aOrderNum; // Descending order (largest first)
+    });
+    
+    setOrders(sortedOrders);
     setOrderPayments(orderPaymentsData);
     setLoading(ordersLoading || paymentsLoading);
   }, [ordersData, orderPaymentsData, ordersLoading, paymentsLoading]);
