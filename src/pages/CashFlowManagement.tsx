@@ -267,8 +267,7 @@ export default function CashFlowManagement() {
 
       const { data, error } = await ordersQuery
         .gte('created_at', dateRange.start.toISOString())
-        .lte('created_at', dateRange.end.toISOString())
-        .order('created_at', { ascending: false });
+        .lte('created_at', dateRange.end.toISOString());
 
       if (error) throw error;
       return data || [];
@@ -475,7 +474,15 @@ export default function CashFlowManagement() {
   // Update local state when data changes
   useEffect(() => {
     setExpenses(expensesData);
-    setOrders(ordersData);
+    
+    // Sort orders by display order number (largest to smallest)
+    const sortedOrders = [...ordersData].sort((a, b) => {
+      const aOrderNum = parseInt(getOrderDisplayNumber(a)) || 0;
+      const bOrderNum = parseInt(getOrderDisplayNumber(b)) || 0;
+      return bOrderNum - aOrderNum; // Descending order (largest first)
+    });
+    
+    setOrders(sortedOrders);
     setLoading(expensesLoading || ordersLoading);
   }, [expensesData, ordersData, expensesLoading, ordersLoading]);
 
