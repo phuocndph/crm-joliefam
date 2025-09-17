@@ -577,10 +577,13 @@ const ReportsPage = () => {
                              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                              fontSize: "14px",
                              fontWeight: "500"
-                           }} formatter={(value: number, name: string) => {
-                             if (name === "orders") return [value, "Tổng đơn hàng"];
-                             return [formatCurrency(value), name === "revenue" ? "Doanh thu" : name === "expenses" ? "Chi phí" : "Lợi nhuận"];
-                           }} labelStyle={{
+                            }} formatter={(value: number, name: string) => {
+                              if (name === "orders") return [value, "Tổng đơn hàng"];
+                              if (name === "revenue") return [formatCurrency(value), "Doanh thu"];
+                              if (name === "expenses") return [formatCurrency(value), "Chi phí"];
+                              if (name === "profit") return [formatCurrency(value), "Lợi nhuận"];
+                              return [formatCurrency(value), name];
+                            }} labelStyle={{
                              color: "hsl(var(--foreground))",
                              fontWeight: "600"
                            }} />
