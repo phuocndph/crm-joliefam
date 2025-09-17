@@ -923,9 +923,9 @@ const ReportsPage = () => {
                       let orderCostPrice = Number(order.cost_price) || 0;
 
                       // Nếu cost_price trong order bằng 0, tính từ product data
-                      if (orderCostPrice === 0 && order.items) {
-                        try {
-                          const orderItems = JSON.parse(String(order.items));
+                       if (orderCostPrice === 0 && order.items) {
+                         try {
+                           const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
 
                           // Tính cost price từ order items
                           orderCostPrice = orderItems.reduce((sum: number, item: any) => {
@@ -987,9 +987,9 @@ const ReportsPage = () => {
                     let orderCostPrice = Number(order.cost_price) || 0;
 
                     // Nếu cost_price trong order bằng 0, tính từ product data
-                    if (orderCostPrice === 0 && order.items) {
-                      try {
-                        const orderItems = JSON.parse(String(order.items));
+                     if (orderCostPrice === 0 && order.items) {
+                       try {
+                         const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
 
                         // Tính cost price từ order items
                         orderCostPrice = orderItems.reduce((sum: number, item: any) => {
@@ -1025,7 +1025,7 @@ const ReportsPage = () => {
                       // Nếu cost_price trong order bằng 0, tính từ product data
                       if (orderCostPrice === 0 && order.items) {
                         try {
-                          const orderItems = JSON.parse(String(order.items));
+                          const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
 
                           // Tính cost price từ order items
                           orderCostPrice = orderItems.reduce((sum: number, item: any) => {
