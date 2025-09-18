@@ -392,11 +392,25 @@ export default function CashFlowManagement() {
     const orderCount = deliveredOrders.length || 1;
     const allocatedExpensePerOrder = totalExpenses / orderCount;
 
-    console.log('Debug chi phí:', {
-      totalExpenses,
-      orderCount,
-      allocatedExpensePerOrder
+    console.log('=== DEBUG CHI PHÍ CHI TIẾT ===');
+    console.log('Raw expenses:', expenses.slice(0, 3));
+    expenses.forEach((exp, index) => {
+      console.log(`Expense ${index}:`, {
+        amount: exp.amount,
+        type: typeof exp.amount,
+        number: Number(exp.amount),
+        description: exp.description
+      });
     });
+    console.log('totalExpenses calculation:', expenses.reduce((sum, exp) => {
+      const val = Number(exp.amount) || 0;
+      console.log(`  Adding: ${exp.amount} (${typeof exp.amount}) -> ${val}`);
+      return sum + val;
+    }, 0));
+    console.log('totalExpenses final:', totalExpenses);
+    console.log('orderCount:', orderCount);
+    console.log('allocatedExpensePerOrder:', allocatedExpensePerOrder);
+    console.log('===========================');
 
     // Tạo một promise array để lấy cost price cho từng đơn hàng
     const orderProfitPromises = deliveredOrders.map(async order => {
@@ -452,9 +466,10 @@ export default function CashFlowManagement() {
           console.error('Error calculating cost price for order:', order.id, error);
         }
       }
-      // Tính phân bổ chi phí theo tỷ lệ doanh thu
       // Tính chi phí phân bổ đều cho mỗi đơn hàng
       const allocatedExpenseForOrder = allocatedExpensePerOrder;
+      
+      console.log(`Order ${order.order_number}: allocatedExpenseForOrder =`, allocatedExpenseForOrder);
       
       // Lợi nhuận trước = Doanh thu - Chi phí giá gốc
       const profitBefore = revenue - totalCostPrice;
