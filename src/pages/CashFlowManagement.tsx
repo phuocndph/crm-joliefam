@@ -389,7 +389,14 @@ export default function CashFlowManagement() {
     const deliveredOrders = orders.filter(order => order.total_amount > 0);
 
     const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
-    const totalRevenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+    const orderCount = deliveredOrders.length || 1;
+    const allocatedExpensePerOrder = totalExpenses / orderCount;
+
+    console.log('Debug chi phí:', {
+      totalExpenses,
+      orderCount,
+      allocatedExpensePerOrder
+    });
 
     // Tạo một promise array để lấy cost price cho từng đơn hàng
     const orderProfitPromises = deliveredOrders.map(async order => {
@@ -446,7 +453,8 @@ export default function CashFlowManagement() {
         }
       }
       // Tính phân bổ chi phí theo tỷ lệ doanh thu
-      const allocatedExpenseForOrder = totalRevenue > 0 ? (revenue / totalRevenue) * totalExpenses : 0;
+      // Tính chi phí phân bổ đều cho mỗi đơn hàng
+      const allocatedExpenseForOrder = allocatedExpensePerOrder;
       
       // Lợi nhuận trước = Doanh thu - Chi phí giá gốc
       const profitBefore = revenue - totalCostPrice;
