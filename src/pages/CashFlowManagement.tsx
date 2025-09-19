@@ -394,6 +394,11 @@ export default function CashFlowManagement() {
 
     // Debug để kiểm tra các giá trị
     console.log('EXPENSE CALCULATION DEBUG:');
+    console.log('selectedYear:', selectedYear);
+    console.log('filterPeriod:', filterPeriod);
+    console.log('getDateRange():', getDateRange());
+    console.log('Expenses count:', expenses.length);
+    console.log('Expenses sample:', expenses.slice(0, 2));
     console.log('Total expenses:', totalExpenses);
     console.log('Order count:', orderCount);
     console.log('Allocated expense per order:', allocatedExpensePerOrder);
