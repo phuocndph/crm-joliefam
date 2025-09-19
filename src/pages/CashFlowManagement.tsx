@@ -392,25 +392,17 @@ export default function CashFlowManagement() {
     const orderCount = deliveredOrders.length || 1;
     const allocatedExpensePerOrder = totalExpenses / orderCount;
 
-    console.log('=== DEBUG CHI PHÍ CHI TIẾT ===');
-    console.log('Raw expenses:', expenses.slice(0, 3));
-    expenses.forEach((exp, index) => {
-      console.log(`Expense ${index}:`, {
-        amount: exp.amount,
-        type: typeof exp.amount,
-        number: Number(exp.amount),
-        description: exp.description
-      });
-    });
-    console.log('totalExpenses calculation:', expenses.reduce((sum, exp) => {
-      const val = Number(exp.amount) || 0;
-      console.log(`  Adding: ${exp.amount} (${typeof exp.amount}) -> ${val}`);
-      return sum + val;
-    }, 0));
-    console.log('totalExpenses final:', totalExpenses);
-    console.log('orderCount:', orderCount);
-    console.log('allocatedExpensePerOrder:', allocatedExpensePerOrder);
-    console.log('===========================');
+    // Debug để kiểm tra các giá trị
+    console.log('EXPENSE CALCULATION DEBUG:');
+    console.log('Total expenses:', totalExpenses);
+    console.log('Order count:', orderCount);
+    console.log('Allocated expense per order:', allocatedExpensePerOrder);
+    
+    // Kiểm tra nếu allocatedExpensePerOrder > totalExpenses (không hợp lý)
+    if (allocatedExpensePerOrder > totalExpenses) {
+      console.error('ERROR: Allocated expense per order is greater than total expenses!');
+      console.error('This indicates a calculation error or data problem');
+    }
 
     // Tạo một promise array để lấy cost price cho từng đơn hàng
     const orderProfitPromises = deliveredOrders.map(async order => {
