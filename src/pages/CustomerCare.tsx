@@ -422,9 +422,16 @@ const CustomerCare = () => {
                              (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
                              (customer.phone && customer.phone.includes(searchTerm));
                            
-                            // Filter by status - check both customer status and latest order status
-                            const effectiveStatus = customer.latest_order_status || customer.current_status || 'waiting-payment';
-                            const matchesStatus = selectedStatus === "all" || effectiveStatus === selectedStatus;
+                            // Filter by status - check purchase count status
+                            const purchaseCount = customer.purchase_count || 0;
+                            let purchaseStatus = '';
+                            if (purchaseCount === 0) purchaseStatus = 'chưa-mua';
+                            else if (purchaseCount === 1) purchaseStatus = 'lần-1';
+                            else if (purchaseCount === 2) purchaseStatus = 'lần-2';
+                            else if (purchaseCount === 3) purchaseStatus = 'lần-3';
+                            else purchaseStatus = 'khtt';
+                            
+                            const matchesStatus = selectedStatus === "all" || purchaseStatus === selectedStatus;
                            
                            // Filter by source
                            const matchesSource = selectedSource === "all" ||
@@ -483,43 +490,21 @@ const CustomerCare = () => {
                           </TableCell>
                            <TableCell>
                              {(() => {
-                               // Use latest order status if available, otherwise fall back to customer status
-                               const status = customer.latest_order_status || customer.current_status || 'waiting-payment';
-                               const getStatusConfig = (status: string) => {
-                                 switch (status) {
-                                   case 'pending':
-                                     return { text: 'Chờ xử lý', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
-                                   case 'processing':
-                                     return { text: 'Đang xử lý', className: 'bg-blue-50 text-blue-700 border-blue-200' };
-                                   case 'shipped':
-                                     return { text: 'Đã gửi hàng', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
-                                   case 'delivered':
-                                     return { text: 'Hoàn thành', className: 'bg-green-50 text-green-700 border-green-200' };
-                                   case 'cancelled':
-                                     return { text: 'Đã hủy', className: 'bg-red-50 text-red-700 border-red-200' };
-                                   case 'waiting-payment':
-                                     return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
-                                   case 'waiting-deposit':
-                                     return { text: 'Chờ thanh toán cọc', className: 'bg-orange-50 text-orange-700 border-orange-200' };
-                                   case 'sent-sample':
-                                     return { text: 'Đã gửi mẫu', className: 'bg-blue-50 text-blue-700 border-blue-200' };
-                                   case 'sent-quote':
-                                     return { text: 'Đã gửi báo giá', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
-                                   case 'waiting-response':
-                                     return { text: 'Chờ phản hồi khách hàng', className: 'bg-purple-50 text-purple-700 border-purple-200' };
-                                   case 'ordered':
-                                     return { text: 'Đã đặt hàng', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-                                   case 'paid':
-                                     return { text: 'Đã thanh toán xong', className: 'bg-green-50 text-green-700 border-green-200' };
-                                   case 'see-notes':
-                                     return { text: 'Xem ở ghi chú', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
-                                   case 'no-response':
-                                     return { text: 'Khách không phản hồi', className: 'bg-red-50 text-red-700 border-red-200' };
-                                   default:
-                                     return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                               const purchaseCount = customer.purchase_count || 0;
+                               const getStatusConfig = (count: number) => {
+                                 if (count === 0) {
+                                   return { text: 'Chưa mua', className: 'bg-gray-50 text-gray-700 border-gray-200' };
+                                 } else if (count === 1) {
+                                   return { text: 'Đã mua lần 1', className: 'bg-blue-50 text-blue-700 border-blue-200' };
+                                 } else if (count === 2) {
+                                   return { text: 'Đã mua lần 2', className: 'bg-green-50 text-green-700 border-green-200' };
+                                 } else if (count === 3) {
+                                   return { text: 'Đã mua lần 3', className: 'bg-purple-50 text-purple-700 border-purple-200' };
+                                 } else {
+                                   return { text: 'KHTT', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
                                  }
                                };
-                               const config = getStatusConfig(status);
+                               const config = getStatusConfig(purchaseCount);
                                return (
                                  <Badge variant="outline" className={config.className}>
                                    {config.text}
