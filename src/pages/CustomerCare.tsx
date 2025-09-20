@@ -422,9 +422,9 @@ const CustomerCare = () => {
                              (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
                              (customer.phone && customer.phone.includes(searchTerm));
                            
-                           // Filter by status
-                           const matchesStatus = selectedStatus === "all" || 
-                             (customer.current_status || 'waiting-payment') === selectedStatus;
+                            // Filter by status - check both customer status and latest order status
+                            const effectiveStatus = customer.latest_order_status || customer.current_status || 'waiting-payment';
+                            const matchesStatus = selectedStatus === "all" || effectiveStatus === selectedStatus;
                            
                            // Filter by source
                            const matchesSource = selectedSource === "all" ||
@@ -452,20 +452,22 @@ const CustomerCare = () => {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            {(() => {
-                              const assignee = assignees.find(a => a.id === customer.manager_id);
-                              return assignee ? (
-                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                  {assignee.name}
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                                  Chưa phân công
-                                </Badge>
-                              );
-                            })()}
-                          </TableCell>
+                           <TableCell>
+                             {(() => {
+                               // Use latest assignee from orders if available, otherwise fall back to customer manager
+                               const latestAssignee = customer.latest_assignee;
+                               const assignee = latestAssignee || assignees.find(a => a.id === customer.manager_id);
+                               return assignee ? (
+                                 <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                   {latestAssignee ? latestAssignee.name : assignee.name}
+                                 </Badge>
+                               ) : (
+                                 <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                   Chưa phân công
+                                 </Badge>
+                               );
+                             })()}
+                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary">
                               {customer.tags && customer.tags.length > 0 ? (
@@ -479,41 +481,52 @@ const CustomerCare = () => {
                               ) : "Chưa xác định"}
                             </Badge>
                           </TableCell>
-                          <TableCell>
-                            {(() => {
-                              const status = customer.current_status || 'waiting-payment';
-                              const getStatusConfig = (status: string) => {
-                                switch (status) {
-                                  case 'waiting-payment':
-                                    return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
-                                  case 'waiting-deposit':
-                                    return { text: 'Chờ thanh toán cọc', className: 'bg-orange-50 text-orange-700 border-orange-200' };
-                                  case 'sent-sample':
-                                    return { text: 'Đã gửi mẫu', className: 'bg-blue-50 text-blue-700 border-blue-200' };
-                                  case 'sent-quote':
-                                    return { text: 'Đã gửi báo giá', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
-                                  case 'waiting-response':
-                                    return { text: 'Chờ phản hồi khách hàng', className: 'bg-purple-50 text-purple-700 border-purple-200' };
-                                  case 'ordered':
-                                    return { text: 'Đã đặt hàng', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-                                  case 'paid':
-                                    return { text: 'Đã thanh toán xong', className: 'bg-green-50 text-green-700 border-green-200' };
-                                  case 'see-notes':
-                                    return { text: 'Xem ở ghi chú', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
-                                  case 'no-response':
-                                    return { text: 'Khách không phản hồi', className: 'bg-red-50 text-red-700 border-red-200' };
-                                  default:
-                                    return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
-                                }
-                              };
-                              const config = getStatusConfig(status);
-                              return (
-                                <Badge variant="outline" className={config.className}>
-                                  {config.text}
-                                </Badge>
-                              );
-                            })()}
-                          </TableCell>
+                           <TableCell>
+                             {(() => {
+                               // Use latest order status if available, otherwise fall back to customer status
+                               const status = customer.latest_order_status || customer.current_status || 'waiting-payment';
+                               const getStatusConfig = (status: string) => {
+                                 switch (status) {
+                                   case 'pending':
+                                     return { text: 'Chờ xử lý', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                                   case 'processing':
+                                     return { text: 'Đang xử lý', className: 'bg-blue-50 text-blue-700 border-blue-200' };
+                                   case 'shipped':
+                                     return { text: 'Đã gửi hàng', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+                                   case 'delivered':
+                                     return { text: 'Hoàn thành', className: 'bg-green-50 text-green-700 border-green-200' };
+                                   case 'cancelled':
+                                     return { text: 'Đã hủy', className: 'bg-red-50 text-red-700 border-red-200' };
+                                   case 'waiting-payment':
+                                     return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                                   case 'waiting-deposit':
+                                     return { text: 'Chờ thanh toán cọc', className: 'bg-orange-50 text-orange-700 border-orange-200' };
+                                   case 'sent-sample':
+                                     return { text: 'Đã gửi mẫu', className: 'bg-blue-50 text-blue-700 border-blue-200' };
+                                   case 'sent-quote':
+                                     return { text: 'Đã gửi báo giá', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+                                   case 'waiting-response':
+                                     return { text: 'Chờ phản hồi khách hàng', className: 'bg-purple-50 text-purple-700 border-purple-200' };
+                                   case 'ordered':
+                                     return { text: 'Đã đặt hàng', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+                                   case 'paid':
+                                     return { text: 'Đã thanh toán xong', className: 'bg-green-50 text-green-700 border-green-200' };
+                                   case 'see-notes':
+                                     return { text: 'Xem ở ghi chú', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
+                                   case 'no-response':
+                                     return { text: 'Khách không phản hồi', className: 'bg-red-50 text-red-700 border-red-200' };
+                                   default:
+                                     return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                                 }
+                               };
+                               const config = getStatusConfig(status);
+                               return (
+                                 <Badge variant="outline" className={config.className}>
+                                   {config.text}
+                                 </Badge>
+                               );
+                             })()}
+                           </TableCell>
                            <TableCell>
                              {customer.purchase_count && customer.purchase_count > 0 ? (
                                <div className="text-sm space-y-0.5">
