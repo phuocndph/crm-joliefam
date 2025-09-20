@@ -56,17 +56,10 @@ const CustomerCare = () => {
     if (!customersData) return;
     
     try {
-      // Fetch orders to get real purchase data including assignee info
+      // Fetch orders to get real purchase data
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select(`
-          customer_id, 
-          total_amount, 
-          status, 
-          created_at, 
-          payment_date,
-          assignees:assignee_id (id, name)
-        `)
+        .select('customer_id, total_amount, status, created_at, payment_date')
         .neq('status', 'cancelled')
         .not('total_amount', 'is', null);
 
@@ -83,59 +76,44 @@ const CustomerCare = () => {
         setAssignees(assigneesData);
       }
 
-        // Calculate real purchase statistics and latest assignee for each customer
-        if (customersData && ordersData) {
-          const ordersByCustomer = ordersData.reduce((acc: any, order: any) => {
-            if (!acc[order.customer_id]) {
-              acc[order.customer_id] = {
-                count: 0,
-                totalSpent: 0,
-                lastPurchase: null,
-                latestAssignee: null,
-                latestStatus: null,
-                latestOrderDate: null
-              };
-            }
-            
-            acc[order.customer_id].count += 1;
-            acc[order.customer_id].totalSpent += Number(order.total_amount) || 0;
-            
-            // Find the latest purchase date
-            const purchaseDate = order.payment_date || order.created_at;
-            if (!acc[order.customer_id].lastPurchase || new Date(purchaseDate) > new Date(acc[order.customer_id].lastPurchase)) {
-              acc[order.customer_id].lastPurchase = purchaseDate;
-            }
-
-            // Track latest order info for assignee and status
-            const orderDate = new Date(order.created_at);
-            if (!acc[order.customer_id].latestOrderDate || orderDate > new Date(acc[order.customer_id].latestOrderDate)) {
-              acc[order.customer_id].latestOrderDate = order.created_at;
-              acc[order.customer_id].latestAssignee = order.assignees;
-              acc[order.customer_id].latestStatus = order.status;
-            }
-            
-            return acc;
-          }, {});
-
-          // Update customers with real purchase data and latest order info
-          const updatedCustomers = customersData.map(customer => {
-            const orderStats = ordersByCustomer[customer.id] || {
+      // Calculate real purchase statistics for each customer
+      if (customersData && ordersData) {
+        const ordersByCustomer = ordersData.reduce((acc: any, order: any) => {
+          if (!acc[order.customer_id]) {
+            acc[order.customer_id] = {
               count: 0,
               totalSpent: 0,
-              lastPurchase: null,
-              latestAssignee: null,
-              latestStatus: null
+              lastPurchase: null
             };
+          }
+          
+          acc[order.customer_id].count += 1;
+          acc[order.customer_id].totalSpent += Number(order.total_amount) || 0;
+          
+          // Find the latest purchase date
+          const purchaseDate = order.payment_date || order.created_at;
+          if (!acc[order.customer_id].lastPurchase || new Date(purchaseDate) > new Date(acc[order.customer_id].lastPurchase)) {
+            acc[order.customer_id].lastPurchase = purchaseDate;
+          }
+          
+          return acc;
+        }, {});
 
-            return {
-              ...customer,
-              purchase_count: orderStats.count,
-              total_spent: orderStats.totalSpent,
-              last_purchase_date: orderStats.lastPurchase,
-              latest_assignee: orderStats.latestAssignee,
-              latest_order_status: orderStats.latestStatus
-            };
-          });
+        // Update customers with real purchase data
+        const updatedCustomers = customersData.map(customer => {
+          const orderStats = ordersByCustomer[customer.id] || {
+            count: 0,
+            totalSpent: 0,
+            lastPurchase: null
+          };
+
+          return {
+            ...customer,
+            purchase_count: orderStats.count,
+            total_spent: orderStats.totalSpent,
+            last_purchase_date: orderStats.lastPurchase
+          };
+        });
 
         setEnhancedCustomers(updatedCustomers);
       } else {
@@ -151,34 +129,8 @@ const CustomerCare = () => {
     fetchEnhancedCustomerData();
   }, [customersData]);
 
-  // Set up real-time subscription for orders to update customer data
-  useEffect(() => {
-    const channel = supabase
-      .channel('customer-care-orders-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
-        console.log('📦 Customer Care: Orders real-time update received:', payload.eventType);
-        // Refresh enhanced customer data when orders change
-        setTimeout(() => fetchEnhancedCustomerData(), 500);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignees' }, (payload) => {
-        console.log('👥 Customer Care: Assignees real-time update received:', payload.eventType);
-        // Refresh enhanced customer data when assignees change
-        setTimeout(() => fetchEnhancedCustomerData(), 500);
-      })
-      .subscribe((status) => {
-        console.log('📦 Customer Care real-time subscription status:', status);
-      });
-
-    return () => {
-      console.log('📦 Cleaning up Customer Care real-time subscription');
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
   const handleCustomerAdded = () => {
     refetchCustomers(); // Refresh the list when a new customer is added
-    // Also refresh enhanced data to update purchase statistics
-    setTimeout(() => fetchEnhancedCustomerData(), 500);
   };
 
   const handleEditCustomer = (customer: any) => {
@@ -195,8 +147,6 @@ const CustomerCare = () => {
     setEditDialogOpen(false);
     setSelectedCustomer(null);
     refetchCustomers(); // Refresh the list
-    // Also refresh enhanced data to update purchase statistics
-    setTimeout(() => fetchEnhancedCustomerData(), 500);
     toast({
       title: "Thành công",
       description: "Đã cập nhật thông tin khách hàng",
@@ -207,8 +157,6 @@ const CustomerCare = () => {
     setDeleteDialogOpen(false);
     setSelectedCustomer(null);
     refetchCustomers(); // Refresh the list
-    // Also refresh enhanced data to update purchase statistics
-    setTimeout(() => fetchEnhancedCustomerData(), 500);
     toast({
       title: "Thành công",
       description: "Đã xóa khách hàng",
@@ -339,22 +287,6 @@ const CustomerCare = () => {
                   </SelectContent>
                 </Select>
 
-                <Button
-                  onClick={() => {
-                    refetchCustomers();
-                    setTimeout(() => fetchEnhancedCustomerData(), 500);
-                    toast({
-                      title: "Đã làm mới",
-                      description: "Dữ liệu khách hàng đã được cập nhật",
-                    });
-                  }}
-                  variant="outline"
-                  className="gap-2"
-                >
-                  <TrendingUp className="h-4 w-4" />
-                  Làm mới
-                </Button>
-
                 <Select>
                   <SelectTrigger className="w-32">
                     <SelectValue placeholder="Tất cả" />
@@ -422,16 +354,9 @@ const CustomerCare = () => {
                              (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
                              (customer.phone && customer.phone.includes(searchTerm));
                            
-                            // Filter by status - check purchase count status
-                            const purchaseCount = customer.purchase_count || 0;
-                            let purchaseStatus = '';
-                            if (purchaseCount === 0) purchaseStatus = 'chưa-mua';
-                            else if (purchaseCount === 1) purchaseStatus = 'lần-1';
-                            else if (purchaseCount === 2) purchaseStatus = 'lần-2';
-                            else if (purchaseCount === 3) purchaseStatus = 'lần-3';
-                            else purchaseStatus = 'khtt';
-                            
-                            const matchesStatus = selectedStatus === "all" || purchaseStatus === selectedStatus;
+                           // Filter by status
+                           const matchesStatus = selectedStatus === "all" || 
+                             (customer.current_status || 'waiting-payment') === selectedStatus;
                            
                            // Filter by source
                            const matchesSource = selectedSource === "all" ||
@@ -459,22 +384,20 @@ const CustomerCare = () => {
                               )}
                             </div>
                           </TableCell>
-                           <TableCell>
-                             {(() => {
-                               // Use latest assignee from orders if available, otherwise fall back to customer manager
-                               const latestAssignee = customer.latest_assignee;
-                               const assignee = latestAssignee || assignees.find(a => a.id === customer.manager_id);
-                               return assignee ? (
-                                 <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                   {latestAssignee ? latestAssignee.name : assignee.name}
-                                 </Badge>
-                               ) : (
-                                 <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                                   Chưa phân công
-                                 </Badge>
-                               );
-                             })()}
-                           </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const assignee = assignees.find(a => a.id === customer.manager_id);
+                              return assignee ? (
+                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                  {assignee.name}
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                  Chưa phân công
+                                </Badge>
+                              );
+                            })()}
+                          </TableCell>
                           <TableCell>
                             <Badge variant="secondary">
                               {customer.tags && customer.tags.length > 0 ? (
@@ -488,30 +411,41 @@ const CustomerCare = () => {
                               ) : "Chưa xác định"}
                             </Badge>
                           </TableCell>
-                           <TableCell>
-                             {(() => {
-                               const purchaseCount = customer.purchase_count || 0;
-                               const getStatusConfig = (count: number) => {
-                                 if (count === 0) {
-                                   return { text: 'Chưa mua', className: 'bg-gray-50 text-gray-700 border-gray-200' };
-                                 } else if (count === 1) {
-                                   return { text: 'Đã mua lần 1', className: 'bg-blue-50 text-blue-700 border-blue-200' };
-                                 } else if (count === 2) {
-                                   return { text: 'Đã mua lần 2', className: 'bg-green-50 text-green-700 border-green-200' };
-                                 } else if (count === 3) {
-                                   return { text: 'Đã mua lần 3', className: 'bg-purple-50 text-purple-700 border-purple-200' };
-                                 } else {
-                                   return { text: 'KHTT', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
-                                 }
-                               };
-                               const config = getStatusConfig(purchaseCount);
-                               return (
-                                 <Badge variant="outline" className={config.className}>
-                                   {config.text}
-                                 </Badge>
-                               );
-                             })()}
-                           </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const status = customer.current_status || 'waiting-payment';
+                              const getStatusConfig = (status: string) => {
+                                switch (status) {
+                                  case 'waiting-payment':
+                                    return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                                  case 'waiting-deposit':
+                                    return { text: 'Chờ thanh toán cọc', className: 'bg-orange-50 text-orange-700 border-orange-200' };
+                                  case 'sent-sample':
+                                    return { text: 'Đã gửi mẫu', className: 'bg-blue-50 text-blue-700 border-blue-200' };
+                                  case 'sent-quote':
+                                    return { text: 'Đã gửi báo giá', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+                                  case 'waiting-response':
+                                    return { text: 'Chờ phản hồi khách hàng', className: 'bg-purple-50 text-purple-700 border-purple-200' };
+                                  case 'ordered':
+                                    return { text: 'Đã đặt hàng', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+                                  case 'paid':
+                                    return { text: 'Đã thanh toán xong', className: 'bg-green-50 text-green-700 border-green-200' };
+                                  case 'see-notes':
+                                    return { text: 'Xem ở ghi chú', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
+                                  case 'no-response':
+                                    return { text: 'Khách không phản hồi', className: 'bg-red-50 text-red-700 border-red-200' };
+                                  default:
+                                    return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                                }
+                              };
+                              const config = getStatusConfig(status);
+                              return (
+                                <Badge variant="outline" className={config.className}>
+                                  {config.text}
+                                </Badge>
+                              );
+                            })()}
+                          </TableCell>
                            <TableCell>
                              {customer.purchase_count && customer.purchase_count > 0 ? (
                                <div className="text-sm space-y-0.5">
