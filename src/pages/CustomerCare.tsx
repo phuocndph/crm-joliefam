@@ -56,10 +56,17 @@ const CustomerCare = () => {
     if (!customersData) return;
     
     try {
-      // Fetch orders to get real purchase data
+      // Fetch orders to get real purchase data including assignee info
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select('customer_id, total_amount, status, created_at, payment_date')
+        .select(`
+          customer_id, 
+          total_amount, 
+          status, 
+          created_at, 
+          payment_date,
+          assignees:assignee_id (id, name)
+        `)
         .neq('status', 'cancelled')
         .not('total_amount', 'is', null);
 
@@ -76,44 +83,59 @@ const CustomerCare = () => {
         setAssignees(assigneesData);
       }
 
-      // Calculate real purchase statistics for each customer
-      if (customersData && ordersData) {
-        const ordersByCustomer = ordersData.reduce((acc: any, order: any) => {
-          if (!acc[order.customer_id]) {
-            acc[order.customer_id] = {
+        // Calculate real purchase statistics and latest assignee for each customer
+        if (customersData && ordersData) {
+          const ordersByCustomer = ordersData.reduce((acc: any, order: any) => {
+            if (!acc[order.customer_id]) {
+              acc[order.customer_id] = {
+                count: 0,
+                totalSpent: 0,
+                lastPurchase: null,
+                latestAssignee: null,
+                latestStatus: null,
+                latestOrderDate: null
+              };
+            }
+            
+            acc[order.customer_id].count += 1;
+            acc[order.customer_id].totalSpent += Number(order.total_amount) || 0;
+            
+            // Find the latest purchase date
+            const purchaseDate = order.payment_date || order.created_at;
+            if (!acc[order.customer_id].lastPurchase || new Date(purchaseDate) > new Date(acc[order.customer_id].lastPurchase)) {
+              acc[order.customer_id].lastPurchase = purchaseDate;
+            }
+
+            // Track latest order info for assignee and status
+            const orderDate = new Date(order.created_at);
+            if (!acc[order.customer_id].latestOrderDate || orderDate > new Date(acc[order.customer_id].latestOrderDate)) {
+              acc[order.customer_id].latestOrderDate = order.created_at;
+              acc[order.customer_id].latestAssignee = order.assignees;
+              acc[order.customer_id].latestStatus = order.status;
+            }
+            
+            return acc;
+          }, {});
+
+          // Update customers with real purchase data and latest order info
+          const updatedCustomers = customersData.map(customer => {
+            const orderStats = ordersByCustomer[customer.id] || {
               count: 0,
               totalSpent: 0,
-              lastPurchase: null
+              lastPurchase: null,
+              latestAssignee: null,
+              latestStatus: null
             };
-          }
-          
-          acc[order.customer_id].count += 1;
-          acc[order.customer_id].totalSpent += Number(order.total_amount) || 0;
-          
-          // Find the latest purchase date
-          const purchaseDate = order.payment_date || order.created_at;
-          if (!acc[order.customer_id].lastPurchase || new Date(purchaseDate) > new Date(acc[order.customer_id].lastPurchase)) {
-            acc[order.customer_id].lastPurchase = purchaseDate;
-          }
-          
-          return acc;
-        }, {});
 
-        // Update customers with real purchase data
-        const updatedCustomers = customersData.map(customer => {
-          const orderStats = ordersByCustomer[customer.id] || {
-            count: 0,
-            totalSpent: 0,
-            lastPurchase: null
-          };
-
-          return {
-            ...customer,
-            purchase_count: orderStats.count,
-            total_spent: orderStats.totalSpent,
-            last_purchase_date: orderStats.lastPurchase
-          };
-        });
+            return {
+              ...customer,
+              purchase_count: orderStats.count,
+              total_spent: orderStats.totalSpent,
+              last_purchase_date: orderStats.lastPurchase,
+              latest_assignee: orderStats.latestAssignee,
+              latest_order_status: orderStats.latestStatus
+            };
+          });
 
         setEnhancedCustomers(updatedCustomers);
       } else {
@@ -128,6 +150,30 @@ const CustomerCare = () => {
   useEffect(() => {
     fetchEnhancedCustomerData();
   }, [customersData]);
+
+  // Set up real-time subscription for orders to update customer data
+  useEffect(() => {
+    const channel = supabase
+      .channel('customer-care-orders-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+        console.log('📦 Customer Care: Orders real-time update received:', payload.eventType);
+        // Refresh enhanced customer data when orders change
+        setTimeout(() => fetchEnhancedCustomerData(), 500);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignees' }, (payload) => {
+        console.log('👥 Customer Care: Assignees real-time update received:', payload.eventType);
+        // Refresh enhanced customer data when assignees change
+        setTimeout(() => fetchEnhancedCustomerData(), 500);
+      })
+      .subscribe((status) => {
+        console.log('📦 Customer Care real-time subscription status:', status);
+      });
+
+    return () => {
+      console.log('📦 Cleaning up Customer Care real-time subscription');
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const handleCustomerAdded = () => {
     refetchCustomers(); // Refresh the list when a new customer is added
