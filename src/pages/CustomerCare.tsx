@@ -131,6 +131,8 @@ const CustomerCare = () => {
 
   const handleCustomerAdded = () => {
     refetchCustomers(); // Refresh the list when a new customer is added
+    // Also refresh enhanced data to update purchase statistics
+    setTimeout(() => fetchEnhancedCustomerData(), 500);
   };
 
   const handleEditCustomer = (customer: any) => {
@@ -147,6 +149,8 @@ const CustomerCare = () => {
     setEditDialogOpen(false);
     setSelectedCustomer(null);
     refetchCustomers(); // Refresh the list
+    // Also refresh enhanced data to update purchase statistics
+    setTimeout(() => fetchEnhancedCustomerData(), 500);
     toast({
       title: "Thành công",
       description: "Đã cập nhật thông tin khách hàng",
@@ -157,6 +161,8 @@ const CustomerCare = () => {
     setDeleteDialogOpen(false);
     setSelectedCustomer(null);
     refetchCustomers(); // Refresh the list
+    // Also refresh enhanced data to update purchase statistics
+    setTimeout(() => fetchEnhancedCustomerData(), 500);
     toast({
       title: "Thành công",
       description: "Đã xóa khách hàng",
@@ -286,6 +292,22 @@ const CustomerCare = () => {
                     <SelectItem value="direct">Trực tiếp</SelectItem>
                   </SelectContent>
                 </Select>
+
+                <Button
+                  onClick={() => {
+                    refetchCustomers();
+                    setTimeout(() => fetchEnhancedCustomerData(), 500);
+                    toast({
+                      title: "Đã làm mới",
+                      description: "Dữ liệu khách hàng đã được cập nhật",
+                    });
+                  }}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  Làm mới
+                </Button>
 
                 <Select>
                   <SelectTrigger className="w-32">
