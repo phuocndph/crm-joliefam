@@ -244,6 +244,10 @@ const ReportsPage = () => {
   const averageOrderValue = totalOrders > 0 ? totalOrderRevenue / totalOrders : 0;
   const averageDailyRevenue = dateRange?.from && dateRange?.to ? totalOrderRevenue / Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1) : 0;
 
+  // Check for zero cost_price data
+  const ordersWithoutCostPrice = filteredOrders.filter(o => !o.cost_price || o.cost_price === 0).length;
+  const hasCostPriceIssue = ordersWithoutCostPrice > 0;
+
   // Prepare comprehensive chart data - all months with data
   const monthlyDataMap = new Map();
   
@@ -275,6 +279,7 @@ const ReportsPage = () => {
     });
     
     const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    const costPrice = monthOrders.reduce((sum, o) => sum + Number(o.cost_price || 0), 0);
     const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
     const ordersCount = monthOrders.length;
     const completedCount = monthOrders.filter(o => o.status === "delivered").length;
@@ -283,8 +288,10 @@ const ReportsPage = () => {
     monthlyDataMap.set(monthKey, {
       month: format(currentMonth, "MMM yyyy", { locale: vi }),
       revenue,
+      costPrice,
       expenses: expensesAmount,
-      profit: revenue - expensesAmount,
+      grossProfit: revenue - costPrice,
+      profit: revenue - costPrice - expensesAmount,
       orders: ordersCount,
       completed: completedCount,
       sortKey: monthKey
@@ -537,7 +544,27 @@ const ReportsPage = () => {
                   </div>
                 </CardContent>
               </Card>
-            </div>
+             </div>
+
+            {/* Cost Price Warning */}
+            {hasCostPriceIssue && (
+              <Card className="border-orange-200 bg-orange-50">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                      <span className="text-orange-600 font-bold">!</span>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-orange-800">Cảnh báo: Thiếu giá vốn</p>
+                      <p className="text-sm text-orange-700">
+                        Có {ordersWithoutCostPrice} đơn hàng chưa nhập giá vốn. Điều này ảnh hưởng đến độ chính xác của báo cáo lợi nhuận.
+                        Vui lòng cập nhật giá vốn trong phần quản lý đơn hàng.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Enhanced Charts with better visibility and data tables */}
             <div className="space-y-6">
@@ -577,46 +604,68 @@ const ReportsPage = () => {
                              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                              fontSize: "14px",
                              fontWeight: "500"
-                            }} formatter={(value: number, name: string) => {
-                              if (name === "orders") return [value, "Tổng đơn hàng"];
-                              if (name === "revenue") return [formatCurrency(value), "Doanh thu"];
-                              if (name === "expenses") return [formatCurrency(value), "Chi phí"];
-                              if (name === "profit") return [formatCurrency(value), "Lợi nhuận"];
-                              return [formatCurrency(value), name];
-                            }} labelStyle={{
+                             }} formatter={(value: number, name: string) => {
+                               if (name === "orders") return [value, "Tổng đơn hàng"];
+                               if (name === "revenue") return [formatCurrency(value), "Doanh thu"];
+                               if (name === "costPrice") return [formatCurrency(value), "Giá vốn"];
+                               if (name === "expenses") return [formatCurrency(value), "Chi phí"];
+                               if (name === "grossProfit") return [formatCurrency(value), "Lợi nhuận gộp"];
+                               if (name === "profit") return [formatCurrency(value), "Lợi nhuận ròng"];
+                               return [formatCurrency(value), name];
+                             }} labelStyle={{
                              color: "hsl(var(--foreground))",
                              fontWeight: "600"
                            }} />
-                             <Line yAxisId="currency" type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={4} dot={{
-                             fill: "hsl(var(--primary))",
-                             strokeWidth: 2,
-                             r: 6
-                           }} activeDot={{
-                             r: 8,
-                             stroke: "hsl(var(--primary))",
-                             strokeWidth: 3,
-                             fill: "white"
-                           }} name="Doanh thu" />
-                             <Line yAxisId="currency" type="monotone" dataKey="expenses" stroke="hsl(var(--destructive))" strokeWidth={3} dot={{
-                             fill: "hsl(var(--destructive))",
-                             strokeWidth: 2,
-                             r: 5
-                           }} activeDot={{
-                             r: 7,
-                             stroke: "hsl(var(--destructive))",
-                             strokeWidth: 2,
-                             fill: "white"
-                           }} name="Chi phí" />
-                             <Line yAxisId="currency" type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{
-                             fill: "#10b981",
-                             strokeWidth: 2,
-                             r: 5
-                           }} activeDot={{
-                             r: 7,
-                             stroke: "#10b981",
-                             strokeWidth: 2,
-                             fill: "white"
-                           }} name="Lợi nhuận" />
+                              <Line yAxisId="currency" type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={4} dot={{
+                              fill: "hsl(var(--primary))",
+                              strokeWidth: 2,
+                              r: 6
+                            }} activeDot={{
+                              r: 8,
+                              stroke: "hsl(var(--primary))",
+                              strokeWidth: 3,
+                              fill: "white"
+                            }} name="Doanh thu" />
+                              <Line yAxisId="currency" type="monotone" dataKey="costPrice" stroke="#f59e0b" strokeWidth={3} dot={{
+                              fill: "#f59e0b",
+                              strokeWidth: 2,
+                              r: 5
+                            }} activeDot={{
+                              r: 7,
+                              stroke: "#f59e0b",
+                              strokeWidth: 2,
+                              fill: "white"
+                            }} name="costPrice" />
+                              <Line yAxisId="currency" type="monotone" dataKey="expenses" stroke="hsl(var(--destructive))" strokeWidth={3} dot={{
+                              fill: "hsl(var(--destructive))",
+                              strokeWidth: 2,
+                              r: 5
+                            }} activeDot={{
+                              r: 7,
+                              stroke: "hsl(var(--destructive))",
+                              strokeWidth: 2,
+                              fill: "white"
+                            }} name="Chi phí" />
+                              <Line yAxisId="currency" type="monotone" dataKey="grossProfit" stroke="#059669" strokeWidth={3} dot={{
+                              fill: "#059669",
+                              strokeWidth: 2,
+                              r: 5
+                            }} activeDot={{
+                              r: 7,
+                              stroke: "#059669",
+                              strokeWidth: 2,
+                              fill: "white"
+                            }} name="grossProfit" />
+                              <Line yAxisId="currency" type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{
+                              fill: "#10b981",
+                              strokeWidth: 2,
+                              r: 5
+                            }} activeDot={{
+                              r: 7,
+                              stroke: "#10b981",
+                              strokeWidth: 2,
+                              fill: "white"
+                            }} name="Lợi nhuận ròng" />
                              <Line yAxisId="orders" type="monotone" dataKey="orders" stroke="hsl(var(--warning))" strokeWidth={3} dot={{
                              fill: "hsl(var(--warning))",
                              strokeWidth: 2,
@@ -640,49 +689,65 @@ const ReportsPage = () => {
                       <div className="max-h-80 overflow-y-auto space-y-2">
                         {monthlyData.slice(-6).map((data, index) => <div key={index} className="bg-muted/30 rounded-lg p-3 space-y-2 border">
                             <div className="font-medium text-sm text-center">{data.month}</div>
-                            <div className="space-y-1 text-xs">
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">💰 Doanh thu:</span>
-                                <span className="font-medium text-primary">{formatCurrency(data.revenue)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">💸 Chi phí:</span>
-                                <span className="font-medium text-destructive">{formatCurrency(data.expenses)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">📈 Lợi nhuận:</span>
-                                <span className="font-medium text-green-600">{formatCurrency(data.profit)}</span>
-                              </div>
-                              <div className="flex justify-between border-t pt-1">
-                                <span className="text-muted-foreground">🛒 Đơn hàng:</span>
-                                <span className="font-medium">{data.orders}</span>
-                              </div>
-                            </div>
+                             <div className="space-y-1 text-xs">
+                               <div className="flex justify-between">
+                                 <span className="text-muted-foreground">💰 Doanh thu:</span>
+                                 <span className="font-medium text-primary">{formatCurrency(data.revenue)}</span>
+                               </div>
+                               <div className="flex justify-between">
+                                 <span className="text-muted-foreground">🏷️ Giá vốn:</span>
+                                 <span className="font-medium text-orange-600">{formatCurrency(data.costPrice)}</span>
+                               </div>
+                               <div className="flex justify-between">
+                                 <span className="text-muted-foreground">💸 Chi phí:</span>
+                                 <span className="font-medium text-destructive">{formatCurrency(data.expenses)}</span>
+                               </div>
+                               <div className="flex justify-between">
+                                 <span className="text-muted-foreground">📊 Lợi nhuận gộp:</span>
+                                 <span className="font-medium text-emerald-600">{formatCurrency(data.grossProfit)}</span>
+                               </div>
+                               <div className="flex justify-between">
+                                 <span className="text-muted-foreground">📈 Lợi nhuận ròng:</span>
+                                 <span className="font-medium text-green-600">{formatCurrency(data.profit)}</span>
+                               </div>
+                               <div className="flex justify-between border-t pt-1">
+                                 <span className="text-muted-foreground">🛒 Đơn hàng:</span>
+                                 <span className="font-medium">{data.orders}</span>
+                               </div>
+                             </div>
                           </div>)}
                       </div>
                     </div>
                   </div>
                   
-                   {/* Legend */}
-                   <div className="flex flex-wrap gap-6 mt-4 pt-4 border-t bg-muted/20 rounded-lg p-3">
-                     <div className="text-sm font-medium text-muted-foreground mb-2 w-full">Chú thích biểu đồ:</div>
-                     <div className="flex items-center gap-2">
-                       <div className="w-4 h-4 rounded-full bg-primary"></div>
-                       <span className="text-sm font-medium">Doanh thu (VND)</span>
-                     </div>
-                     <div className="flex items-center gap-2">
-                       <div className="w-4 h-4 rounded-full bg-destructive"></div>
-                       <span className="text-sm font-medium">Chi phí (VND)</span>
-                     </div>
-                     <div className="flex items-center gap-2">
-                       <div className="w-4 h-4 rounded-full bg-green-500"></div>
-                       <span className="text-sm font-medium">Lợi nhuận (VND)</span>
-                     </div>
-                     <div className="flex items-center gap-2">
-                       <div className="w-4 h-4 rounded-full bg-warning"></div>
-                       <span className="text-sm font-medium">Tổng đơn hàng (số lượng)</span>
-                     </div>
-                   </div>
+                    {/* Legend */}
+                    <div className="flex flex-wrap gap-6 mt-4 pt-4 border-t bg-muted/20 rounded-lg p-3">
+                      <div className="text-sm font-medium text-muted-foreground mb-2 w-full">Chú thích biểu đồ:</div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-full bg-primary"></div>
+                        <span className="text-sm font-medium">Doanh thu (VND)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-full" style={{backgroundColor: '#f59e0b'}}></div>
+                        <span className="text-sm font-medium">Giá vốn (VND)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-full bg-destructive"></div>
+                        <span className="text-sm font-medium">Chi phí (VND)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-full" style={{backgroundColor: '#059669'}}></div>
+                        <span className="text-sm font-medium">Lợi nhuận gộp (VND)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-full bg-green-500"></div>
+                        <span className="text-sm font-medium">Lợi nhuận ròng (VND)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-full bg-warning"></div>
+                        <span className="text-sm font-medium">Tổng đơn hàng (số lượng)</span>
+                      </div>
+                    </div>
                 </CardContent>
               </Card>
 
@@ -872,24 +937,18 @@ const ReportsPage = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="financial" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+           <TabsContent value="financial" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    💰 Doanh thu thực tế
+                    💰 Tổng doanh thu
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency((() => {
-                    // Chỉ tính từ đơn hàng đã giao có doanh thu
-                    const deliveredOrders = filteredOrders.filter(order => order.status === "delivered" && order.total_amount > 0);
-                    return deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-                  })())}
-                  </div>
+                  <div className="text-2xl font-bold text-blue-600">{formatCurrency(totalOrderRevenue)}</div>
                   <p className="text-xs text-muted-foreground">
-                    Từ {filteredOrders.filter(o => o.status === "delivered").length} đơn đã giao
+                    Từ {filteredOrders.length} đơn hàng
                   </p>
                 </CardContent>
               </Card>
@@ -897,61 +956,13 @@ const ReportsPage = () => {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    🏭 Giá vốn thực tế
+                    🏭 Tổng giá vốn
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                   <div className="text-2xl font-bold text-orange-600">
-                     {formatCurrency((() => {
-                    // Lấy giá vốn từ tất cả đơn hàng có dữ liệu trong kỳ báo cáo
-                    const ordersWithData = filteredOrders.filter(order => Number(order.total_amount) > 0);
-                    console.log('Cost Price Debug:', {
-                      totalOrders: filteredOrders.length,
-                      ordersWithData: ordersWithData.length,
-                      sampleOrders: ordersWithData.slice(0, 3).map(o => ({
-                        id: o.id,
-                        order_number: o.order_number,
-                        cost_price: o.cost_price,
-                        total_amount: o.total_amount,
-                        status: o.status
-                      }))
-                    });
-
-                    // Tính tổng giá vốn thực tế (ưu tiên từ sản phẩm nếu order cost_price = 0)
-                    let totalCostPriceReal = 0;
-                    ordersWithData.forEach(order => {
-                      let orderCostPrice = Number(order.cost_price) || 0;
-
-                      // Nếu cost_price trong order bằng 0, tính từ product data
-                       if (orderCostPrice === 0 && order.items) {
-                         try {
-                           const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-
-                          // Tính cost price từ order items
-                          orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                            const quantity = item.quantity || 0;
-                            // Từ network requests, ta thấy products có cost_price
-                            // Sử dụng giá ước tính dựa trên SKU pattern
-                            let estimatedCostPrice = 0;
-                            if (item.sku === "BVDCBT-1M") {
-                              estimatedCostPrice = 110000;
-                            } else if (item.sku === "BVDCBT-1M6") {
-                              estimatedCostPrice = 155000;
-                            }
-                            return sum + quantity * estimatedCostPrice;
-                          }, 0);
-                        } catch (error) {
-                          console.error('Error calculating cost price for order:', order.id, error);
-                        }
-                      }
-                      totalCostPriceReal += orderCostPrice;
-                    });
-                    console.log('Total Cost Price Real:', totalCostPriceReal);
-                    return totalCostPriceReal;
-                  })())}
-                   </div>
+                  <div className="text-2xl font-bold text-orange-600">{formatCurrency(totalCostPrice)}</div>
                   <p className="text-xs text-muted-foreground">
-                    Giá vốn từ {filteredOrders.filter(o => Number(o.total_amount) > 0).length} đơn hàng
+                    Giá vốn các đơn hàng
                   </p>
                 </CardContent>
               </Card>
@@ -959,13 +970,13 @@ const ReportsPage = () => {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    💵 Chi phí vận hành
+                    💵 Tổng chi phí
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-red-600">{formatCurrency(totalExpensesAmount)}</div>
                   <p className="text-xs text-muted-foreground">
-                    Tổng chi phí trong kỳ
+                    Chi phí vận hành
                   </p>
                 </CardContent>
               </Card>
@@ -973,84 +984,31 @@ const ReportsPage = () => {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    📊 Lợi nhuận ròng
+                    📊 Lợi nhuận gộp
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className={`text-2xl font-bold ${(() => {
-                  const ordersWithData = filteredOrders.filter(order => Number(order.total_amount) > 0);
-                  const revenue = ordersWithData.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-
-                  // Tính tổng giá vốn thực tế (ưu tiên từ sản phẩm nếu order cost_price = 0)
-                  let totalCostPriceReal = 0;
-                  ordersWithData.forEach(order => {
-                    let orderCostPrice = Number(order.cost_price) || 0;
-
-                    // Nếu cost_price trong order bằng 0, tính từ product data
-                     if (orderCostPrice === 0 && order.items) {
-                       try {
-                         const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-
-                        // Tính cost price từ order items
-                        orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                          const quantity = item.quantity || 0;
-                          // Từ network requests, ta thấy products có cost_price
-                          // Sử dụng giá ước tính dựa trên SKU pattern
-                          let estimatedCostPrice = 0;
-                          if (item.sku === "BVDCBT-1M") {
-                            estimatedCostPrice = 110000;
-                          } else if (item.sku === "BVDCBT-1M6") {
-                            estimatedCostPrice = 155000;
-                          }
-                          return sum + quantity * estimatedCostPrice;
-                        }, 0);
-                      } catch (error) {
-                        console.error('Error calculating cost price for order:', order.id, error);
-                      }
-                    }
-                    totalCostPriceReal += orderCostPrice;
-                  });
-                  const netProfitReal = revenue - totalCostPriceReal - totalExpensesAmount;
-                  return netProfitReal >= 0 ? 'text-green-600' : 'text-red-600';
-                })()}`}>
-                     {formatCurrency((() => {
-                    const ordersWithData = filteredOrders.filter(order => Number(order.total_amount) > 0);
-                    const revenue = ordersWithData.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
-
-                    // Tính tổng giá vốn thực tế (ưu tiên từ sản phẩm nếu order cost_price = 0)
-                    let totalCostPriceReal = 0;
-                    ordersWithData.forEach(order => {
-                      let orderCostPrice = Number(order.cost_price) || 0;
-
-                      // Nếu cost_price trong order bằng 0, tính từ product data
-                      if (orderCostPrice === 0 && order.items) {
-                        try {
-                          const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-
-                          // Tính cost price từ order items
-                          orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-                            const quantity = item.quantity || 0;
-                            // Từ network requests, ta thấy products có cost_price
-                            // Sử dụng giá ước tính dựa trên SKU pattern
-                            let estimatedCostPrice = 0;
-                            if (item.sku === "BVDCBT-1M") {
-                              estimatedCostPrice = 110000;
-                            } else if (item.sku === "BVDCBT-1M6") {
-                              estimatedCostPrice = 155000;
-                            }
-                            return sum + quantity * estimatedCostPrice;
-                          }, 0);
-                        } catch (error) {
-                          console.error('Error calculating cost price for order:', order.id, error);
-                        }
-                      }
-                      totalCostPriceReal += orderCostPrice;
-                    });
-                    return revenue - totalCostPriceReal - totalExpensesAmount;
-                  })())}
+                  <div className={`text-2xl font-bold ${grossProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                    {formatCurrency(grossProfit)}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Doanh thu - Giá vốn - Chi phí
+                    Doanh thu - Giá vốn
+                  </p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    🎯 Lợi nhuận ròng
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-2xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatCurrency(netProfit)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Lợi nhuận gộp - Chi phí
                   </p>
                 </CardContent>
               </Card>
