@@ -347,7 +347,7 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ manager_id: assigneeId })
+        .update({ assignee_id: assigneeId || null })
         .eq('id', customerId);
 
       if (error) throw error;
@@ -509,7 +509,7 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ manager_id: assigneeId })
+        .update({ assignee_id: assigneeId || null })
         .in('id', Array.from(selectedCustomerIds));
 
       if (error) throw error;
@@ -1355,7 +1355,7 @@ const CustomerCare = () => {
             {assignees.map((assignee) => (
               <Button
                 key={assignee.id}
-                variant={selectedCustomerForAssignee?.manager_id === assignee.id ? "default" : "outline"}
+                variant={selectedCustomerForAssignee?.assignee_id === assignee.id ? "default" : "outline"}
                 className="justify-start"
                 onClick={() => handleAssigneeUpdate(selectedCustomerForAssignee?.id, assignee.id)}
               >
