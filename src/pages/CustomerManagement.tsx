@@ -281,9 +281,10 @@ export default function CustomerManagement() {
         acc[order.customer_id].count += 1;
         acc[order.customer_id].totalSpent += order.total_amount || 0;
         
-        const orderDate = new Date(order.payment_date || order.created_at);
+        // Use order creation date as the actual purchase time
+        const orderDate = new Date(order.created_at);
         if (!acc[order.customer_id].lastPurchase || orderDate > new Date(acc[order.customer_id].lastPurchase)) {
-          acc[order.customer_id].lastPurchase = order.payment_date || order.created_at;
+          acc[order.customer_id].lastPurchase = order.created_at;
         }
         
         return acc;
