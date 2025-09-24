@@ -59,7 +59,7 @@ const CustomerCare = () => {
       // Fetch orders to get real purchase data
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select('customer_id, total_amount, status, created_at, payment_date')
+        .select('id, customer_id, total_amount, status, created_at, payment_date')
         .neq('status', 'cancelled')
         .not('total_amount', 'is', null);
 
@@ -139,22 +139,24 @@ const CustomerCare = () => {
           let totalCount = 0;
           let totalSpent = 0;
           let latestPurchase = null;
+          let processedOrderIds = new Set(); // Track processed orders to avoid double counting
           
           duplicates.forEach((customer: any) => {
-            const orderStats = ordersByCustomer[customer.id] || {
-              count: 0,
-              totalSpent: 0,
-              lastPurchase: null
-            };
+            // Get orders for this specific customer ID to avoid double counting
+            const customerOrders = ordersData?.filter(order => order.customer_id === customer.id) || [];
             
-            totalCount += orderStats.count;
-            totalSpent += orderStats.totalSpent;
-            
-            if (orderStats.lastPurchase) {
-              if (!latestPurchase || new Date(orderStats.lastPurchase) > new Date(latestPurchase)) {
-                latestPurchase = orderStats.lastPurchase;
+            customerOrders.forEach((order: any) => {
+              if (!processedOrderIds.has(order.id)) {
+                processedOrderIds.add(order.id);
+                totalCount += 1;
+                totalSpent += Number(order.total_amount) || 0;
+                
+                const orderDate = order.created_at;
+                if (!latestPurchase || new Date(orderDate) > new Date(latestPurchase)) {
+                  latestPurchase = orderDate;
+                }
               }
-            }
+            });
           });
 
           // Merge contact information from all duplicates
