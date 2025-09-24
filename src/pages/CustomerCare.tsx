@@ -258,10 +258,7 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ 
-          current_status: status,
-          last_care_date: new Date().toISOString()
-        })
+        .update({ current_status: status })
         .eq('id', customerId);
 
       if (error) throw error;
@@ -288,10 +285,7 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ 
-          tags: [source],
-          last_care_date: new Date().toISOString()
-        })
+        .update({ tags: [source] })
         .eq('id', customerId);
 
       if (error) throw error;
@@ -318,10 +312,7 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ 
-          notes: notes,
-          last_care_date: new Date().toISOString()
-        })
+        .update({ notes: notes })
         .eq('id', customerId);
 
       if (error) throw error;
@@ -349,10 +340,7 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ 
-          manager_id: assigneeId,
-          last_care_date: new Date().toISOString()
-        })
+        .update({ manager_id: assigneeId })
         .eq('id', customerId);
 
       if (error) throw error;
@@ -453,10 +441,7 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ 
-          current_status: status,
-          last_care_date: new Date().toISOString()
-        })
+        .update({ current_status: status })
         .in('id', Array.from(selectedCustomerIds));
 
       if (error) throw error;
@@ -485,10 +470,7 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ 
-          tags: [source],
-          last_care_date: new Date().toISOString()
-        })
+        .update({ tags: [source] })
         .in('id', Array.from(selectedCustomerIds));
 
       if (error) throw error;
@@ -517,10 +499,7 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ 
-          manager_id: assigneeId,
-          last_care_date: new Date().toISOString()
-        })
+        .update({ manager_id: assigneeId })
         .in('id', Array.from(selectedCustomerIds));
 
       if (error) throw error;
