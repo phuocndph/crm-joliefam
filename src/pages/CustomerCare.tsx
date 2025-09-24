@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -256,9 +256,10 @@ const CustomerCare = () => {
     refetchCustomers(); // Refresh the list when a new customer is added
   };
 
-  const handleManagerChange = (managerId: string | null) => {
+  const handleManagerChange = useCallback((managerId: string | null) => {
+    console.log('handleManagerChange called with:', managerId);
     setSelectedManagerId(managerId);
-  };
+  }, []);
 
   const handleStatusUpdate = async (customerId: string, status: string) => {
     try {
@@ -619,7 +620,10 @@ const CustomerCare = () => {
                   <CreateAssigneeForm onSuccess={handleCustomerAdded} />
                   <ManagerSelector
                     selectedManagerId={selectedManagerId}
-                    onManagerChange={handleManagerChange}
+                    onManagerChange={(managerId) => {
+                      console.log('ManagerSelector onManagerChange called with:', managerId);
+                      handleManagerChange(managerId);
+                    }}
                     showAllOption={true}
                   />
                 </div>
