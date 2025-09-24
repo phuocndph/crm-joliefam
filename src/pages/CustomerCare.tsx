@@ -60,7 +60,7 @@ const CustomerCare = () => {
   const { role: userRole } = useUserRole(user);
   const { hasPermission } = useEmployeePermissions(user, userRole);
   
-  // Use customers hook for data fetching
+  // Use customers hook for data fetching with fresh data
   const { data: customersData = [], isLoading: loading, refetch: refetchCustomers } = useCustomers();
 
   // Get current user
@@ -596,6 +596,16 @@ const CustomerCare = () => {
                   Danh Sách Khách Hàng
                 </CardTitle>
                 <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => {
+                      refetchCustomers();
+                      toast({ title: "Đã làm mới dữ liệu" });
+                    }}
+                  >
+                    Làm mới
+                  </Button>
                   <CreateCustomerCareForm onSuccess={handleCustomerAdded} />
                   <CreateAssigneeForm onSuccess={handleCustomerAdded} />
                   <Select defaultValue="all">

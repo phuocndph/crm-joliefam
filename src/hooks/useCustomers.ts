@@ -13,8 +13,8 @@ export const useCustomers = () => {
       if (error) throw error;
       return data;
     },
-    staleTime: 5 * 60 * 1000, // 5 phút
-    gcTime: 10 * 60 * 1000, // 10 phút
+    staleTime: 0, // Always fetch fresh data
+    gcTime: 0, // Don't cache
   });
 };
 
