@@ -99,23 +99,106 @@ const CustomerCare = () => {
           return acc;
         }, {});
 
-        // Update customers with real purchase data
-        const updatedCustomers = customersData.map(customer => {
-          const orderStats = ordersByCustomer[customer.id] || {
-            count: 0,
-            totalSpent: 0,
-            lastPurchase: null
-          };
+        // Deduplicate customers by name and consolidate data
+        const customersByName = customersData.reduce((acc: any, customer: any) => {
+          const customerName = customer.name.toLowerCase().trim();
+          
+          if (!acc[customerName]) {
+            acc[customerName] = [];
+          }
+          acc[customerName].push(customer);
+          return acc;
+        }, {});
+
+        // For each group of customers with the same name, merge into the most recent one
+        const deduplicatedCustomers = Object.values(customersByName).map((duplicates: any) => {
+          if (duplicates.length === 1) {
+            const customer = duplicates[0];
+            const orderStats = ordersByCustomer[customer.id] || {
+              count: 0,
+              totalSpent: 0,
+              lastPurchase: null
+            };
+
+            return {
+              ...customer,
+              purchase_count: orderStats.count,
+              total_spent: orderStats.totalSpent,
+              last_purchase_date: orderStats.lastPurchase
+            };
+          }
+
+          // Sort by created_at to get the most recent customer record
+          const sortedDuplicates = duplicates.sort((a: any, b: any) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          
+          const mostRecentCustomer = sortedDuplicates[0];
+          
+          // Aggregate order statistics from all duplicate customer IDs
+          let totalCount = 0;
+          let totalSpent = 0;
+          let latestPurchase = null;
+          
+          duplicates.forEach((customer: any) => {
+            const orderStats = ordersByCustomer[customer.id] || {
+              count: 0,
+              totalSpent: 0,
+              lastPurchase: null
+            };
+            
+            totalCount += orderStats.count;
+            totalSpent += orderStats.totalSpent;
+            
+            if (orderStats.lastPurchase) {
+              if (!latestPurchase || new Date(orderStats.lastPurchase) > new Date(latestPurchase)) {
+                latestPurchase = orderStats.lastPurchase;
+              }
+            }
+          });
+
+          // Merge contact information from all duplicates
+          const allPhones = duplicates.flatMap((c: any) => {
+            if (Array.isArray(c.phones)) return c.phones;
+            if (c.phone) return [{ number: c.phone, type: 'primary' }];
+            return [];
+          }).filter((phone: any, index: number, arr: any[]) => 
+            arr.findIndex(p => p.number === phone.number) === index
+          );
+
+          const allAddresses = duplicates.flatMap((c: any) => {
+            if (Array.isArray(c.addresses)) return c.addresses;
+            if (c.address) return [{ address: c.address, type: 'primary' }];
+            return [];
+          }).filter((addr: any, index: number, arr: any[]) => 
+            arr.findIndex(a => a.address === addr.address) === index
+          );
+
+          const allTags = duplicates.flatMap((c: any) => c.tags || [])
+            .filter((tag: string, index: number, arr: string[]) => arr.indexOf(tag) === index);
+
+          const allAutoTags = duplicates.flatMap((c: any) => c.auto_tags || [])
+            .filter((tag: string, index: number, arr: string[]) => arr.indexOf(tag) === index);
 
           return {
-            ...customer,
-            purchase_count: orderStats.count,
-            total_spent: orderStats.totalSpent,
-            last_purchase_date: orderStats.lastPurchase
+            ...mostRecentCustomer,
+            phones: allPhones,
+            addresses: allAddresses,
+            tags: allTags,
+            auto_tags: allAutoTags,
+            email: mostRecentCustomer.email || duplicates.find((c: any) => c.email)?.email || null,
+            phone: mostRecentCustomer.phone || duplicates.find((c: any) => c.phone)?.phone || null,
+            address: mostRecentCustomer.address || duplicates.find((c: any) => c.address)?.address || null,
+            company: mostRecentCustomer.company || duplicates.find((c: any) => c.company)?.company || null,
+            notes: [mostRecentCustomer.notes, ...duplicates.slice(1).map((c: any) => c.notes)]
+              .filter(Boolean).join('; '),
+            purchase_count: totalCount,
+            total_spent: totalSpent,
+            last_purchase_date: latestPurchase
           };
         });
 
-        setEnhancedCustomers(updatedCustomers);
+        setEnhancedCustomers(deduplicatedCustomers);
       } else {
         setEnhancedCustomers(customersData || []);
       }
