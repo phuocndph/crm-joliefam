@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus, Edit, Trash2, TrendingUp } from "lucide-react";
 import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
 import CreateAssigneeForm from "@/components/CreateAssigneeForm";
+import { ManagerSelector } from "@/components/ManagerSelector";
 import EditCustomerCareDialog from "@/components/EditCustomerCareDialog";
 import { DeleteCustomerDialog } from "@/components/DeleteCustomerDialog";
 import AISettingsForm from "@/components/AISettingsForm";
@@ -31,6 +32,7 @@ const CustomerCare = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedSource, setSelectedSource] = useState("all");
+  const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
   const [assignees, setAssignees] = useState<any[]>([]);
   const [assigneeDialogOpen, setAssigneeDialogOpen] = useState(false);
   const [selectedCustomerForAssignee, setSelectedCustomerForAssignee] = useState<any>(null);
@@ -254,6 +256,10 @@ const CustomerCare = () => {
     refetchCustomers(); // Refresh the list when a new customer is added
   };
 
+  const handleManagerChange = (managerId: string | null) => {
+    setSelectedManagerId(managerId);
+  };
+
   const handleStatusUpdate = async (customerId: string, status: string) => {
     try {
       const { error } = await supabase
@@ -414,7 +420,10 @@ const CustomerCare = () => {
           const matchesSource = selectedSource === "all" ||
             (customer.tags && customer.tags.includes(selectedSource));
           
-          return matchesSearch && matchesStatus && matchesSource;
+          const matchesManager = selectedManagerId === null || 
+            customer.assignedManager === selectedManagerId;
+          
+          return matchesSearch && matchesStatus && matchesSource && matchesManager;
         })
         .map(customer => customer.id);
       setSelectedCustomerIds(new Set(allCustomerIds));
@@ -608,15 +617,11 @@ const CustomerCare = () => {
                   </Button>
                   <CreateCustomerCareForm onSuccess={handleCustomerAdded} />
                   <CreateAssigneeForm onSuccess={handleCustomerAdded} />
-                  <Select defaultValue="all">
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="Chọn người phụ trách" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tất cả</SelectItem>
-                      <SelectItem value="me">Được phân cho tôi</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <ManagerSelector
+                    selectedManagerId={selectedManagerId}
+                    onManagerChange={handleManagerChange}
+                    showAllOption={true}
+                  />
                 </div>
               </div>
 
@@ -751,7 +756,10 @@ const CustomerCare = () => {
                               const matchesSource = selectedSource === "all" ||
                                 (customer.tags && customer.tags.includes(selectedSource));
                               
-                              return matchesSearch && matchesStatus && matchesSource;
+                              const matchesManager = selectedManagerId === null || 
+                                customer.assignedManager === selectedManagerId;
+                              
+                              return matchesSearch && matchesStatus && matchesSource && matchesManager;
                             }).length}
                             onChange={(e) => handleSelectAll(e.target.checked)}
                           />
@@ -795,21 +803,25 @@ const CustomerCare = () => {
                       ) : (
                         enhancedCustomers
                          .filter(customer => {
-                           // Filter by search term
-                           const matchesSearch = searchTerm === "" || 
-                             customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                             (customer.phone && customer.phone.includes(searchTerm));
-                           
-                           // Filter by status
-                           const matchesStatus = selectedStatus === "all" || 
-                             (customer.current_status || 'waiting-payment') === selectedStatus;
-                           
-                           // Filter by source
-                           const matchesSource = selectedSource === "all" ||
-                             (customer.tags && customer.tags.includes(selectedSource));
-                           
-                           return matchesSearch && matchesStatus && matchesSource;
+                            // Filter by search term
+                            const matchesSearch = searchTerm === "" || 
+                              customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                              (customer.phone && customer.phone.includes(searchTerm));
+                            
+                            // Filter by status
+                            const matchesStatus = selectedStatus === "all" || 
+                              (customer.current_status || 'waiting-payment') === selectedStatus;
+                            
+                            // Filter by source
+                            const matchesSource = selectedSource === "all" ||
+                              (customer.tags && customer.tags.includes(selectedSource));
+                            
+                            // Filter by manager
+                            const matchesManager = selectedManagerId === null || 
+                              customer.assignedManager === selectedManagerId;
+                            
+                            return matchesSearch && matchesStatus && matchesSource && matchesManager;
                          })
                          .map((customer, index) => (
                          <TableRow key={customer.id}>
