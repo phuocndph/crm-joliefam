@@ -9,17 +9,17 @@ export const useCustomers = () => {
   const query = useQuery({
     queryKey: ['customers'],
     queryFn: async () => {
-      console.log('Fetching customers...');
+      console.log('🔍 Fetching customers...');
       const { data, error } = await supabase
         .from('customers')
         .select('*')
         .order('created_at', { ascending: false });
       
       if (error) {
-        console.error('Error fetching customers:', error);
+        console.error('❌ Error fetching customers:', error);
         throw error;
       }
-      console.log(`Customers fetched: ${data?.length || 0}`);
+      console.log(`✅ Customers fetched: ${data?.length || 0}`);
       return data;
     },
     staleTime: 0, // Always fetch fresh data
@@ -30,10 +30,10 @@ export const useCustomers = () => {
 
   // Set up real-time synchronization
   useEffect(() => {
-    console.log('Setting up real-time customer synchronization...');
+    console.log('🔧 Setting up real-time customer synchronization...');
     
     const channel = supabase
-      .channel('customers-realtime-sync')
+      .channel('customers-sync-' + Date.now()) // Unique channel name
       .on(
         'postgres_changes',
         {
@@ -42,9 +42,15 @@ export const useCustomers = () => {
           table: 'customers'
         },
         (payload) => {
-          console.log('Real-time customer change detected:', payload.eventType, payload);
+          console.log('🔄 Real-time customer change detected:', payload.eventType, payload);
           
-          // Invalidate and refetch customers data immediately
+          // Force refetch immediately with background refetch
+          queryClient.refetchQueries({ 
+            queryKey: ['customers'],
+            type: 'active'
+          });
+          
+          // Also invalidate to ensure fresh data
           queryClient.invalidateQueries({ queryKey: ['customers'] });
           
           // Show synchronization notifications
@@ -58,14 +64,21 @@ export const useCustomers = () => {
         }
       )
       .subscribe((status) => {
+        console.log('📡 Real-time subscription status:', status);
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Real-time customer synchronization active');
+          console.log('✅ Real-time customer synchronization ACTIVE');
           toast.success('✅ Đồng bộ thời gian thực đã được kích hoạt');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Real-time subscription error');
+          toast.error('❌ Lỗi kết nối đồng bộ thời gian thực');
+        } else if (status === 'TIMED_OUT') {
+          console.error('⏰ Real-time subscription timed out');
+          toast.error('⏰ Kết nối đồng bộ bị timeout');
         }
       });
 
     return () => {
-      console.log('Cleaning up real-time customer subscription...');
+      console.log('🧹 Cleaning up real-time customer subscription...');
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
