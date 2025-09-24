@@ -247,7 +247,10 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ current_status: status })
+        .update({ 
+          current_status: status,
+          last_care_date: new Date().toISOString()
+        })
         .eq('id', customerId);
 
       if (error) throw error;
@@ -274,7 +277,10 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ tags: [source] })
+        .update({ 
+          tags: [source],
+          last_care_date: new Date().toISOString()
+        })
         .eq('id', customerId);
 
       if (error) throw error;
@@ -301,7 +307,10 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ notes: notes })
+        .update({ 
+          notes: notes,
+          last_care_date: new Date().toISOString()
+        })
         .eq('id', customerId);
 
       if (error) throw error;
@@ -329,7 +338,10 @@ const CustomerCare = () => {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ manager_id: assigneeId })
+        .update({ 
+          manager_id: assigneeId,
+          last_care_date: new Date().toISOString()
+        })
         .eq('id', customerId);
 
       if (error) throw error;
@@ -532,9 +544,10 @@ const CustomerCare = () => {
                        </TableHead>
                        <TableHead>Khách Hàng</TableHead>
                        <TableHead>Phụ Trách</TableHead>
-                       <TableHead>Nguồn</TableHead>
-                       <TableHead>Trạng Thái</TableHead>
-                       <TableHead>Lịch Sử Mua</TableHead>
+                        <TableHead>Nguồn</TableHead>
+                        <TableHead>Trạng Thái</TableHead>
+                        <TableHead>Ngày Chăm Sóc Gần Nhất</TableHead>
+                        <TableHead>Số Ngày Chưa Liên Hệ</TableHead>
                        <TableHead>Ghi Chú</TableHead>
                        <TableHead>Hành Động Tiếp Theo</TableHead>
                        <TableHead>Trạng Thái Mua Hàng</TableHead>
@@ -543,8 +556,8 @@ const CustomerCare = () => {
                   </TableHeader>
                   <TableBody>
                      {loading ? (
-                        <TableRow>
-                          <TableCell colSpan={10} className="text-center py-12">
+                         <TableRow>
+                           <TableCell colSpan={10} className="text-center py-12">
                            <div className="flex items-center justify-center">
                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                              <span className="ml-2">Đang tải...</span>
@@ -552,8 +565,8 @@ const CustomerCare = () => {
                          </TableCell>
                        </TableRow>
                      ) : enhancedCustomers.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={10} className="text-center py-12">
+                         <TableRow>
+                           <TableCell colSpan={10} className="text-center py-12">
                            <div className="flex flex-col items-center gap-2">
                              <Users className="h-12 w-12 text-muted-foreground" />
                              <p className="text-muted-foreground font-medium">
@@ -689,19 +702,28 @@ const CustomerCare = () => {
                                 );
                               })()}
                             </div>
-                          </TableCell>
+                           </TableCell>
                            <TableCell>
-                             {customer.purchase_count && customer.purchase_count > 0 ? (
-                               <div className="text-sm space-y-0.5">
-                                 <div className="font-medium">{customer.purchase_count} đơn hàng</div>
-                                 <div className="text-muted-foreground">Tổng chi: {Number(customer.total_spent || 0).toLocaleString("vi-VN")} VNĐ</div>
-                                 {customer.last_purchase_date && (
-                                   <div className="text-muted-foreground">Lần cuối: {format(new Date(customer.last_purchase_date), 'dd/MM/yyyy')}</div>
-                                 )}
+                             <div className="text-sm space-y-0.5">
+                               <div className="font-medium">
+                                 {customer.last_care_date ? format(new Date(customer.last_care_date), 'dd/MM/yyyy') : 'Chưa có'}
                                </div>
-                             ) : (
-                               <div className="text-sm text-muted-foreground">Chưa có đơn hàng</div>
-                             )}
+                               <div className="text-muted-foreground text-xs">
+                                 {customer.last_care_date ? format(new Date(customer.last_care_date), 'HH:mm') : ''}
+                               </div>
+                             </div>
+                           </TableCell>
+                           <TableCell>
+                             <div className="text-sm">
+                               {(() => {
+                                 if (!customer.last_care_date) {
+                                   return <span className="text-muted-foreground">Chưa có dữ liệu</span>;
+                                 }
+                                 const daysSince = Math.floor((new Date().getTime() - new Date(customer.last_care_date).getTime()) / (1000 * 60 * 60 * 24));
+                                 const color = daysSince > 7 ? 'text-red-600 font-medium' : daysSince > 3 ? 'text-yellow-600 font-medium' : 'text-green-600 font-medium';
+                                 return <span className={color}>{daysSince} ngày</span>;
+                               })()}
+                             </div>
                            </TableCell>
                               <TableCell className="max-w-xs">
                                 <div 

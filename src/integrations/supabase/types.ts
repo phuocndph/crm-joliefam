@@ -127,6 +127,7 @@ export type Database = {
           customer_code: string | null
           email: string | null
           id: string
+          last_care_date: string | null
           last_purchase_date: string | null
           manager_id: string | null
           name: string
@@ -149,6 +150,7 @@ export type Database = {
           customer_code?: string | null
           email?: string | null
           id?: string
+          last_care_date?: string | null
           last_purchase_date?: string | null
           manager_id?: string | null
           name: string
@@ -171,6 +173,7 @@ export type Database = {
           customer_code?: string | null
           email?: string | null
           id?: string
+          last_care_date?: string | null
           last_purchase_date?: string | null
           manager_id?: string | null
           name?: string
