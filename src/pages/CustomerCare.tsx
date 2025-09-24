@@ -39,6 +39,11 @@ const CustomerCare = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("customers");
   
+  // Bulk selection state
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<Set<string>>(new Set());
+  const [bulkActionDialogOpen, setBulkActionDialogOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'status' | 'source' | 'assignee' | null>(null);
+  
   // New state for inline editing
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
@@ -404,6 +409,142 @@ const CustomerCare = () => {
     setEditDialogOpen(true);
   };
 
+  // Bulk selection handlers
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allCustomerIds = enhancedCustomers
+        .filter(customer => {
+          // Apply same filters as displayed customers
+          const matchesSearch = searchTerm === "" || 
+            customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (customer.phone && customer.phone.includes(searchTerm));
+          
+          const matchesStatus = selectedStatus === "all" || 
+            (customer.current_status || 'waiting-payment') === selectedStatus;
+          
+          const matchesSource = selectedSource === "all" ||
+            (customer.tags && customer.tags.includes(selectedSource));
+          
+          return matchesSearch && matchesStatus && matchesSource;
+        })
+        .map(customer => customer.id);
+      setSelectedCustomerIds(new Set(allCustomerIds));
+    } else {
+      setSelectedCustomerIds(new Set());
+    }
+  };
+
+  const handleSelectCustomer = (customerId: string, checked: boolean) => {
+    const newSelected = new Set(selectedCustomerIds);
+    if (checked) {
+      newSelected.add(customerId);
+    } else {
+      newSelected.delete(customerId);
+    }
+    setSelectedCustomerIds(newSelected);
+  };
+
+  // Bulk update handlers
+  const handleBulkStatusUpdate = async (status: string) => {
+    try {
+      const updates = Array.from(selectedCustomerIds).map(customerId => 
+        supabase
+          .from('customers')
+          .update({ 
+            current_status: status,
+            last_care_date: new Date().toISOString()
+          })
+          .eq('id', customerId)
+      );
+
+      await Promise.all(updates);
+      
+      refetchCustomers();
+      setSelectedCustomerIds(new Set());
+      setBulkActionDialogOpen(false);
+      setBulkActionType(null);
+      
+      toast({
+        title: "Thành công",
+        description: `Đã cập nhật trạng thái cho ${selectedCustomerIds.size} khách hàng`,
+      });
+    } catch (error) {
+      console.error('Error bulk updating status:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật trạng thái hàng loạt",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleBulkSourceUpdate = async (source: string) => {
+    try {
+      const updates = Array.from(selectedCustomerIds).map(customerId => 
+        supabase
+          .from('customers')
+          .update({ 
+            tags: [source],
+            last_care_date: new Date().toISOString()
+          })
+          .eq('id', customerId)
+      );
+
+      await Promise.all(updates);
+      
+      refetchCustomers();
+      setSelectedCustomerIds(new Set());
+      setBulkActionDialogOpen(false);
+      setBulkActionType(null);
+      
+      toast({
+        title: "Thành công",
+        description: `Đã cập nhật nguồn cho ${selectedCustomerIds.size} khách hàng`,
+      });
+    } catch (error) {
+      console.error('Error bulk updating source:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật nguồn hàng loạt",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleBulkAssigneeUpdate = async (assigneeId: string) => {
+    try {
+      const updates = Array.from(selectedCustomerIds).map(customerId => 
+        supabase
+          .from('customers')
+          .update({ 
+            manager_id: assigneeId,
+            last_care_date: new Date().toISOString()
+          })
+          .eq('id', customerId)
+      );
+
+      await Promise.all(updates);
+      
+      refetchCustomers();
+      setSelectedCustomerIds(new Set());
+      setBulkActionDialogOpen(false);
+      setBulkActionType(null);
+      
+      toast({
+        title: "Thành công",
+        description: `Đã cập nhật người phụ trách cho ${selectedCustomerIds.size} khách hàng`,
+      });
+    } catch (error) {
+      console.error('Error bulk updating assignee:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật người phụ trách hàng loạt",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleDeleteCustomer = (customer: any) => {
     setSelectedCustomer(customer);
     setDeleteDialogOpen(true);
@@ -491,10 +632,42 @@ const CustomerCare = () => {
                 </div>
               </div>
 
-              {/* Total customers */}
-              <p className="text-sm text-muted-foreground">
-                Tổng: <span className="font-medium">{enhancedCustomers.length} khách hàng</span>
-              </p>
+              {/* Total customers and bulk actions */}
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Tổng: <span className="font-medium">{enhancedCustomers.length} khách hàng</span>
+                  {selectedCustomerIds.size > 0 && (
+                    <span className="ml-2 text-primary font-medium">
+                      ({selectedCustomerIds.size} đã chọn)
+                    </span>
+                  )}
+                </p>
+                
+                {selectedCustomerIds.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Select onValueChange={(value) => {
+                      setBulkActionType(value as 'status' | 'source' | 'assignee');
+                      setBulkActionDialogOpen(true);
+                    }}>
+                      <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Thao tác hàng loạt" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="status">Cập nhật trạng thái</SelectItem>
+                        <SelectItem value="source">Cập nhật nguồn</SelectItem>
+                        <SelectItem value="assignee">Cập nhật người phụ trách</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setSelectedCustomerIds(new Set())}
+                    >
+                      Bỏ chọn tất cả
+                    </Button>
+                  </div>
+                )}
+              </div>
 
               {/* Filters */}
               <div className="flex items-center gap-4">
@@ -573,9 +746,27 @@ const CustomerCare = () => {
                 <Table>
                   <TableHeader>
                      <TableRow>
-                       <TableHead className="w-12">
-                         <input type="checkbox" className="rounded" />
-                       </TableHead>
+                        <TableHead className="w-12">
+                          <input 
+                            type="checkbox" 
+                            className="rounded"
+                            checked={selectedCustomerIds.size > 0 && selectedCustomerIds.size === enhancedCustomers.filter(customer => {
+                              const matchesSearch = searchTerm === "" || 
+                                customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                                (customer.phone && customer.phone.includes(searchTerm));
+                              
+                              const matchesStatus = selectedStatus === "all" || 
+                                (customer.current_status || 'waiting-payment') === selectedStatus;
+                              
+                              const matchesSource = selectedSource === "all" ||
+                                (customer.tags && customer.tags.includes(selectedSource));
+                              
+                              return matchesSearch && matchesStatus && matchesSource;
+                            }).length}
+                            onChange={(e) => handleSelectAll(e.target.checked)}
+                          />
+                        </TableHead>
                        <TableHead>Khách Hàng</TableHead>
                        <TableHead>Phụ Trách</TableHead>
                         <TableHead>Nguồn</TableHead>
@@ -632,10 +823,15 @@ const CustomerCare = () => {
                            return matchesSearch && matchesStatus && matchesSource;
                          })
                          .map((customer, index) => (
-                        <TableRow key={customer.id}>
-                          <TableCell>
-                            <input type="checkbox" className="rounded" />
-                          </TableCell>
+                         <TableRow key={customer.id}>
+                           <TableCell>
+                             <input 
+                               type="checkbox" 
+                               className="rounded"
+                               checked={selectedCustomerIds.has(customer.id)}
+                               onChange={(e) => handleSelectCustomer(customer.id, e.target.checked)}
+                             />
+                           </TableCell>
                           <TableCell>
                             <div className="space-y-1">
                               <div className="font-medium">{customer.name}</div>
@@ -1311,6 +1507,84 @@ const CustomerCare = () => {
             >
               Lưu
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Action Dialog */}
+      <Dialog open={bulkActionDialogOpen} onOpenChange={setBulkActionDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {bulkActionType === 'status' && 'Cập nhật trạng thái hàng loạt'}
+              {bulkActionType === 'source' && 'Cập nhật nguồn hàng loạt'}
+              {bulkActionType === 'assignee' && 'Cập nhật người phụ trách hàng loạt'}
+            </DialogTitle>
+            <DialogDescription>
+              Thực hiện thao tác cho {selectedCustomerIds.size} khách hàng đã chọn
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-4">
+            {bulkActionType === 'status' && [
+              { key: 'waiting-payment', label: 'Chờ thanh toán tiền' },
+              { key: 'waiting-deposit', label: 'Chờ thanh toán cọc' },
+              { key: 'sent-sample', label: 'Đã gửi mẫu' },
+              { key: 'sent-quote', label: 'Đã gửi báo giá' },
+              { key: 'waiting-response', label: 'Chờ phản hồi khách hàng' },
+              { key: 'ordered', label: 'Đã đặt hàng' },
+              { key: 'paid', label: 'Đã thanh toán xong' },
+              { key: 'see-notes', label: 'Xem ở ghi chú' },
+              { key: 'no-response', label: 'Khách không phản hồi' }
+            ].map((status) => (
+              <Button
+                key={status.key}
+                variant="outline"
+                className="justify-start"
+                onClick={() => handleBulkStatusUpdate(status.key)}
+              >
+                {status.label}
+              </Button>
+            ))}
+
+            {bulkActionType === 'source' && [
+              { key: 'zalo', label: 'Zalo' },
+              { key: 'facebook', label: 'Facebook' },
+              { key: 'website', label: 'Website' },
+              { key: 'phone', label: 'Điện thoại' },
+              { key: 'referral', label: 'Giới thiệu' },
+              { key: 'walk-in', label: 'Ghé thăm trực tiếp' }
+            ].map((source) => (
+              <Button
+                key={source.key}
+                variant="outline"
+                className="justify-start"
+                onClick={() => handleBulkSourceUpdate(source.key)}
+              >
+                {source.label}
+              </Button>
+            ))}
+
+            {bulkActionType === 'assignee' && (
+              <>
+                {assignees.map((assignee) => (
+                  <Button
+                    key={assignee.id}
+                    variant="outline"
+                    className="justify-start"
+                    onClick={() => handleBulkAssigneeUpdate(assignee.id)}
+                  >
+                    {assignee.name}
+                  </Button>
+                ))}
+                <Button
+                  variant="outline"
+                  className="justify-start text-muted-foreground"
+                  onClick={() => handleBulkAssigneeUpdate('')}
+                >
+                  Bỏ phân công
+                </Button>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
