@@ -92,15 +92,23 @@ const { toast } = useToast();
         return;
       }
 
-      // Create customer record
+      // Create customer record with structured notes
+      const structuredNotes = [
+        formData.notes,
+        formData.nextAction ? `Hành động tiếp theo: ${formData.nextAction}` : '',
+        formData.closingScore ? `Điểm đánh giá: ${formData.closingScore}` : '',
+        lastUpdateDate ? `Ngày cập nhật: ${format(lastUpdateDate, 'dd/MM/yyyy')}` : ''
+      ].filter(Boolean).join('\n');
+
       const { data, error } = await supabase
         .from('customers')
         .insert({
           name: formData.customerName,
-          notes: formData.notes,
+          notes: structuredNotes,
           manager_id: formData.assignedTo,
-          // Store customer care specific data in notes for now
-          // In a real implementation, you might want to create a separate customer_care table
+          current_status: formData.currentStatus,
+          tags: [formData.source], // Store source as tags
+          auto_tags: [formData.followUpType], // Store follow-up type as auto_tags
         });
 
       if (error) {
@@ -246,15 +254,15 @@ const { toast } = useToast();
                   <SelectValue placeholder="Chọn tình trạng" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="quote-sent">Đã gửi báo giá</SelectItem>
-                  <SelectItem value="sample-sent">Đã gửi mẫu</SelectItem>
-                  <SelectItem value="waiting-customer-response">Chờ phản hồi khách</SelectItem>
-                  <SelectItem value="order-placed">Đã đặt hàng</SelectItem>
-                  <SelectItem value="customer-no-response">Khách không phản hồi</SelectItem>
+                  <SelectItem value="sent-quote">Đã gửi báo giá</SelectItem>
+                  <SelectItem value="sent-sample">Đã gửi mẫu</SelectItem>
+                  <SelectItem value="waiting-response">Chờ phản hồi khách</SelectItem>
+                  <SelectItem value="ordered">Đã đặt hàng</SelectItem>
+                  <SelectItem value="no-response">Khách không phản hồi</SelectItem>
                   <SelectItem value="waiting-deposit">Chờ thanh toán cọc</SelectItem>
                   <SelectItem value="see-notes">Xem ở ghi chú</SelectItem>
                   <SelectItem value="waiting-payment">Chờ thanh toán tiền</SelectItem>
-                  <SelectItem value="payment-completed">Đã thanh toán xong</SelectItem>
+                  <SelectItem value="paid">Đã thanh toán xong</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -273,15 +281,15 @@ const { toast } = useToast();
                   <SelectValue placeholder="Chọn loại theo dõi" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="sample-order">Đặt mẫu</SelectItem>
-                  <SelectItem value="agent">Đại lý</SelectItem>
-                  <SelectItem value="not-converted">Chưa chuyển đổi</SelectItem>
-                  <SelectItem value="vip-customer">KHTT</SelectItem>
-                  <SelectItem value="third-purchase">Mua lần 3</SelectItem>
-                  <SelectItem value="second-purchase">Mua lần 2</SelectItem>
-                  <SelectItem value="distributor">NPP</SelectItem>
-                  <SelectItem value="purchased">Đã mua</SelectItem>
-                  <SelectItem value="potential">Tiềm năng</SelectItem>
+                  <SelectItem value="Đặt Mẫu">Đặt mẫu</SelectItem>
+                  <SelectItem value="Đại lý">Đại lý</SelectItem>
+                  <SelectItem value="Chưa chuyển đổi">Chưa chuyển đổi</SelectItem>
+                  <SelectItem value="KHTT">KHTT</SelectItem>
+                  <SelectItem value="Đã Mua lần 3">Mua lần 3</SelectItem>
+                  <SelectItem value="Đã Mua lần 2">Mua lần 2</SelectItem>
+                  <SelectItem value="NPP">NPP</SelectItem>
+                  <SelectItem value="Đã Mua">Đã mua</SelectItem>
+                  <SelectItem value="Tiềm năng">Tiềm năng</SelectItem>
                 </SelectContent>
               </Select>
             </div>
