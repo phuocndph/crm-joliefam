@@ -252,7 +252,7 @@ const CustomerCare = () => {
 
       if (error) throw error;
 
-      fetchEnhancedCustomerData();
+      refetchCustomers();
       setStatusDialogOpen(false);
       setSelectedCustomerForEdit(null);
       
@@ -279,7 +279,7 @@ const CustomerCare = () => {
 
       if (error) throw error;
 
-      fetchEnhancedCustomerData();
+      refetchCustomers();
       setSourceDialogOpen(false);
       setSelectedCustomerForEdit(null);
       
@@ -306,7 +306,7 @@ const CustomerCare = () => {
 
       if (error) throw error;
 
-      fetchEnhancedCustomerData();
+      refetchCustomers();
       setNotesDialogOpen(false);
       setSelectedCustomerForEdit(null);
       setNotesText("");
@@ -335,7 +335,7 @@ const CustomerCare = () => {
       if (error) throw error;
 
       // Refetch data to update the display
-      fetchEnhancedCustomerData();
+      refetchCustomers();
       setAssigneeDialogOpen(false);
       setSelectedCustomerForAssignee(null);
       
