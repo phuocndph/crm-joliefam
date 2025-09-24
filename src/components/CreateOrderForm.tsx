@@ -23,6 +23,7 @@ interface Product {
   id: string;
   name: string;
   price: number;
+  cost_price: number;
   category: string | null;
   specifications: string | null;
 }
@@ -31,7 +32,9 @@ interface OrderItem {
   product: Product;
   quantity: number;
   price: number;
+  cost_price: number;
   total: number;
+  total_cost: number;
 }
 
 interface CreateOrderFormProps {
@@ -71,7 +74,7 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
       // Load products
       const { data: productsData, error: productsError } = await supabase
         .from('products')
-        .select('id, name, price, category, specifications')
+        .select('id, name, price, cost_price, category, specifications')
         .order('name');
       
       if (productsError) throw productsError;
@@ -100,7 +103,9 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
         product,
         quantity: 1,
         price: product.price || 0,
+        cost_price: product.cost_price || 0,
         total: product.price || 0,
+        total_cost: product.cost_price || 0,
       };
       setOrderItems([...orderItems, newItem]);
     }
@@ -115,7 +120,12 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
     setOrderItems(items =>
       items.map(item =>
         item.product.id === productId
-          ? { ...item, quantity: newQuantity, total: item.price * newQuantity }
+          ? { 
+              ...item, 
+              quantity: newQuantity, 
+              total: item.price * newQuantity,
+              total_cost: item.cost_price * newQuantity
+            }
           : item
       )
     );
@@ -125,10 +135,19 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
     setOrderItems(items =>
       items.map(item =>
         item.product.id === productId
-          ? { ...item, price: newPrice, total: newPrice * item.quantity }
+          ? { 
+              ...item, 
+              price: newPrice, 
+              total: newPrice * item.quantity,
+              total_cost: item.cost_price * item.quantity
+            }
           : item
       )
     );
+  };
+
+  const calculateCostPrice = () => {
+    return orderItems.reduce((sum, item) => sum + item.total_cost, 0);
   };
 
   const removeProduct = (productId: string) => {
@@ -172,6 +191,7 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
         order_number: generateOrderNumber(),
         customer_id: selectedCustomer || null,
         total_amount: calculateTotal(),
+        cost_price: calculateCostPrice(),
         status: 'pending',
         notes: notes.trim() || null,
         items: JSON.stringify(orderItems),
