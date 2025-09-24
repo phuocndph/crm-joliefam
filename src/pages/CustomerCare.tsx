@@ -636,14 +636,22 @@ const CustomerCare = () => {
               {/* Total customers and bulk actions */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <div className="flex flex-col gap-1">
-                  <p className="text-sm text-muted-foreground">
-                    Tổng: <span className="font-medium">{enhancedCustomers.length} khách hàng</span>
-                    {selectedCustomerIds.size > 0 && (
-                      <span className="ml-2 text-primary font-medium">
-                        ({selectedCustomerIds.size} đã chọn)
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm text-muted-foreground">
+                      Tổng: <span className="font-medium">{enhancedCustomers.length} khách hàng</span>
+                      <span className="text-xs text-blue-600 ml-2">
+                        (Có quyền truy cập: {customersData?.length || 0})
                       </span>
-                    )}
-                  </p>
+                      {selectedCustomerIds.size > 0 && (
+                        <span className="ml-2 text-primary font-medium">
+                          ({selectedCustomerIds.size} đã chọn)
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-amber-600">
+                      💡 Bạn chỉ thấy khách hàng được phân quyền dựa trên vai trò {userRole === 'admin' ? 'Admin' : userRole === 'manager' ? 'Quản lý' : 'Nhân viên'}
+                    </p>
+                  </div>
                   
                   {/* Real-time sync status indicator */}
                   <div className="flex items-center gap-2 text-xs">
