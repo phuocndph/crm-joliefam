@@ -486,6 +486,14 @@ export default function CustomerManagement() {
     return diffInMonths;
   };
 
+  const getLastPurchaseMonthYear = (lastPurchaseDate: string | null) => {
+    if (!lastPurchaseDate) return null;
+    const lastPurchase = new Date(lastPurchaseDate);
+    const month = lastPurchase.getMonth() + 1; // getMonth() returns 0-11
+    const year = lastPurchase.getFullYear();
+    return `Tháng ${month}/${year}`;
+  };
+
   // Calculate stats với grouped customers
   const stats = [
     {
@@ -678,11 +686,11 @@ export default function CustomerManagement() {
                               <div className="text-sm font-medium text-green-600">
                                 Đã mua {customer.purchase_count || 0} lần
                               </div>
-                              {customer.last_purchase_date && (
-                                <div className="text-xs text-muted-foreground">
-                                  {getMonthsSinceLastPurchase(customer.last_purchase_date) || 0} tháng trước
-                                </div>
-                              )}
+                               {customer.last_purchase_date && (
+                                 <div className="text-xs text-muted-foreground">
+                                   {getLastPurchaseMonthYear(customer.last_purchase_date)}
+                                 </div>
+                               )}
                             </>
                           ) : (
                             <div className="text-sm text-muted-foreground">Chưa mua</div>
@@ -856,9 +864,9 @@ export default function CustomerManagement() {
                         <label className="text-sm font-medium">Mua lần cuối:</label>
                         <p className="text-sm text-muted-foreground">
                           {format(new Date(selectedCustomer.last_purchase_date), "dd/MM/yyyy HH:mm", { locale: vi })}
-                          <span className="ml-2 text-xs">
-                            ({getMonthsSinceLastPurchase(selectedCustomer.last_purchase_date)} tháng trước)
-                          </span>
+                           <span className="ml-2 text-xs">
+                             ({getLastPurchaseMonthYear(selectedCustomer.last_purchase_date)})
+                           </span>
                         </p>
                       </div>
                     )}
