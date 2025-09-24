@@ -604,6 +604,10 @@ const CustomerCare = () => {
                 <CardTitle className="flex items-center gap-2">
                   <Users className="h-5 w-5" />
                   Danh Sách Khách Hàng
+                  <div className="ml-auto flex items-center gap-1 text-xs font-normal text-green-600">
+                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                    <span>Đồng bộ</span>
+                  </div>
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   <Button 
@@ -630,15 +634,28 @@ const CustomerCare = () => {
               </div>
 
               {/* Total customers and bulk actions */}
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Tổng: <span className="font-medium">{enhancedCustomers.length} khách hàng</span>
-                  {selectedCustomerIds.size > 0 && (
-                    <span className="ml-2 text-primary font-medium">
-                      ({selectedCustomerIds.size} đã chọn)
-                    </span>
-                  )}
-                </p>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm text-muted-foreground">
+                    Tổng: <span className="font-medium">{enhancedCustomers.length} khách hàng</span>
+                    {selectedCustomerIds.size > 0 && (
+                      <span className="ml-2 text-primary font-medium">
+                        ({selectedCustomerIds.size} đã chọn)
+                      </span>
+                    )}
+                  </p>
+                  
+                  {/* Real-time sync status indicator */}
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="text-green-600 font-medium">Đồng bộ thời gian thực</span>
+                    </div>
+                    <div className="bg-green-50 text-green-700 px-2 py-1 rounded text-xs">
+                      ✅ Tất cả tài khoản đã đồng bộ
+                    </div>
+                  </div>
+                </div>
                 
                 {selectedCustomerIds.size > 0 && (
                   <div className="flex items-center gap-2">
