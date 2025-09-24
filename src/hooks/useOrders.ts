@@ -39,9 +39,9 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
         .from('orders')
         .select(`
           *,
-          customers:customer_id (name, email, phone, company, customer_code),
-          assignees:assignee_id (name),
-          quotes:quote_id (quote_data)
+          customers!left(name, email, phone, company, customer_code),
+          assignees(name),
+          quotes(quote_data)
         `)
         .order('created_at', { ascending: false });
       
