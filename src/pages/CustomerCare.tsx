@@ -62,9 +62,10 @@ const CustomerCare = () => {
       // Fetch orders to get real purchase data
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select('id, customer_id, total_amount, status, created_at, payment_date')
+        .select('id, customer_id, total_amount, status, created_at, payment_date, manager_id')
         .neq('status', 'cancelled')
-        .not('total_amount', 'is', null);
+        .not('total_amount', 'is', null)
+        .not('manager_id', 'is', null); // Only get orders with assigned managers
 
       if (ordersError) {
         console.error('Error fetching orders:', ordersError);
@@ -100,9 +101,13 @@ const CustomerCare = () => {
             acc[order.customer_id].lastPurchase = purchaseDate;
           }
           
-          // Track manager from most recent order
-          if (order.manager_id && (!acc[order.customer_id].assignedManager || new Date(purchaseDate) > new Date(acc[order.customer_id].lastPurchase))) {
-            acc[order.customer_id].assignedManager = order.manager_id;
+          // Track manager from most recent order with manager_id
+          if (order.manager_id) {
+            if (!acc[order.customer_id].assignedManager || 
+                new Date(purchaseDate) > new Date(acc[order.customer_id].lastManagerAssignment || '1970-01-01')) {
+              acc[order.customer_id].assignedManager = order.manager_id;
+              acc[order.customer_id].lastManagerAssignment = purchaseDate;
+            }
           }
           
           return acc;
