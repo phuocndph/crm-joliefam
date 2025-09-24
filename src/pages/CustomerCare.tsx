@@ -7,6 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus, Edit, Trash2, TrendingUp } from "lucide-react";
 import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
@@ -40,8 +44,10 @@ const CustomerCare = () => {
   const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
   const [purchaseStatusDialogOpen, setPurchaseStatusDialogOpen] = useState(false);
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+  const [careDateDialogOpen, setCareDateDialogOpen] = useState(false);
   const [selectedCustomerForEdit, setSelectedCustomerForEdit] = useState<any>(null);
   const [notesText, setNotesText] = useState("");
+  const [selectedCareDate, setSelectedCareDate] = useState<Date | undefined>(undefined);
   const { toast } = useToast();
   
   // Get current user and check permissions
@@ -360,6 +366,34 @@ const CustomerCare = () => {
       toast({
         title: "Lỗi",
         description: "Không thể cập nhật người phụ trách",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCareDateUpdate = async (customerId: string, careDate: Date) => {
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({ last_care_date: careDate.toISOString() })
+        .eq('id', customerId);
+
+      if (error) throw error;
+
+      refetchCustomers();
+      setCareDateDialogOpen(false);
+      setSelectedCustomerForEdit(null);
+      setSelectedCareDate(undefined);
+      
+      toast({
+        title: "Thành công",
+        description: "Đã cập nhật ngày chăm sóc",
+      });
+    } catch (error) {
+      console.error('Error updating care date:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật ngày chăm sóc",
         variant: "destructive",
       });
     }
@@ -704,7 +738,14 @@ const CustomerCare = () => {
                             </div>
                            </TableCell>
                            <TableCell>
-                             <div className="text-sm space-y-0.5">
+                             <div 
+                               className="text-sm space-y-0.5 cursor-pointer hover:bg-muted/50 p-2 rounded transition-colors"
+                               onClick={() => {
+                                 setSelectedCustomerForEdit(customer);
+                                 setSelectedCareDate(customer.last_care_date ? new Date(customer.last_care_date) : new Date());
+                                 setCareDateDialogOpen(true);
+                               }}
+                             >
                                <div className="font-medium">
                                  {customer.last_care_date ? format(new Date(customer.last_care_date), 'dd/MM/yyyy') : 'Chưa có'}
                                </div>
@@ -1220,6 +1261,54 @@ const CustomerCare = () => {
               Hủy
             </Button>
             <Button onClick={() => handleNotesUpdate(selectedCustomerForEdit?.id, notesText)}>
+              Lưu
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Care Date Edit Dialog */}
+      <Dialog open={careDateDialogOpen} onOpenChange={setCareDateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa ngày chăm sóc</DialogTitle>
+            <DialogDescription>
+              Cập nhật ngày chăm sóc gần nhất cho khách hàng: {selectedCustomerForEdit?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={"outline"}
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !selectedCareDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {selectedCareDate ? format(selectedCareDate, "dd/MM/yyyy") : <span>Chọn ngày</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={selectedCareDate}
+                  onSelect={setSelectedCareDate}
+                  initialFocus
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setCareDateDialogOpen(false)}>
+              Hủy
+            </Button>
+            <Button 
+              onClick={() => selectedCareDate && handleCareDateUpdate(selectedCustomerForEdit?.id, selectedCareDate)}
+              disabled={!selectedCareDate}
+            >
               Lưu
             </Button>
           </div>
