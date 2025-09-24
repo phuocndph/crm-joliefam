@@ -90,8 +90,8 @@ const CustomerCare = () => {
           acc[order.customer_id].count += 1;
           acc[order.customer_id].totalSpent += Number(order.total_amount) || 0;
           
-          // Find the latest purchase date
-          const purchaseDate = order.payment_date || order.created_at;
+          // Use order creation date as the actual purchase time
+          const purchaseDate = order.created_at;
           if (!acc[order.customer_id].lastPurchase || new Date(purchaseDate) > new Date(acc[order.customer_id].lastPurchase)) {
             acc[order.customer_id].lastPurchase = purchaseDate;
           }
