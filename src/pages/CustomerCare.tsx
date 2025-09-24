@@ -886,7 +886,7 @@ const CustomerCare = () => {
                               }}
                             >
                               {(() => {
-                                const assignee = assignees.find(a => a.id === customer.manager_id);
+                                const assignee = assignees.find(a => a.id === customer.assignee_id);
                                 return assignee ? (
                                   <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100 transition-colors">
                                     {assignee.name}

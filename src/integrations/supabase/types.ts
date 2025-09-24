@@ -120,6 +120,7 @@ export type Database = {
         Row: {
           address: string | null
           addresses: Json | null
+          assignee_id: string | null
           auto_tags: string[] | null
           company: string | null
           created_at: string
@@ -143,6 +144,7 @@ export type Database = {
         Insert: {
           address?: string | null
           addresses?: Json | null
+          assignee_id?: string | null
           auto_tags?: string[] | null
           company?: string | null
           created_at?: string
@@ -166,6 +168,7 @@ export type Database = {
         Update: {
           address?: string | null
           addresses?: Json | null
+          assignee_id?: string | null
           auto_tags?: string[] | null
           company?: string | null
           created_at?: string
@@ -186,7 +189,15 @@ export type Database = {
           total_spent?: number | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customers_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "assignees"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       employee_permissions: {
         Row: {
