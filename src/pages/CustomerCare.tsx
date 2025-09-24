@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus, Edit, Trash2, TrendingUp } from "lucide-react";
 import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
@@ -26,6 +27,8 @@ const CustomerCare = () => {
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedSource, setSelectedSource] = useState("all");
   const [assignees, setAssignees] = useState<any[]>([]);
+  const [assigneeDialogOpen, setAssigneeDialogOpen] = useState(false);
+  const [selectedCustomerForAssignee, setSelectedCustomerForAssignee] = useState<any>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
@@ -76,14 +79,15 @@ const CustomerCare = () => {
         setAssignees(assigneesData);
       }
 
-      // Calculate real purchase statistics for each customer
+      // Calculate real purchase statistics for each customer and auto-assign based on orders
       if (customersData && ordersData) {
         const ordersByCustomer = ordersData.reduce((acc: any, order: any) => {
           if (!acc[order.customer_id]) {
             acc[order.customer_id] = {
               count: 0,
               totalSpent: 0,
-              lastPurchase: null
+              lastPurchase: null,
+              assignedManager: null // Track manager from orders
             };
           }
           
@@ -94,6 +98,11 @@ const CustomerCare = () => {
           const purchaseDate = order.created_at;
           if (!acc[order.customer_id].lastPurchase || new Date(purchaseDate) > new Date(acc[order.customer_id].lastPurchase)) {
             acc[order.customer_id].lastPurchase = purchaseDate;
+          }
+          
+          // Track manager from most recent order
+          if (order.manager_id && (!acc[order.customer_id].assignedManager || new Date(purchaseDate) > new Date(acc[order.customer_id].lastPurchase))) {
+            acc[order.customer_id].assignedManager = order.manager_id;
           }
           
           return acc;
@@ -124,7 +133,9 @@ const CustomerCare = () => {
               ...customer,
               purchase_count: orderStats.count,
               total_spent: orderStats.totalSpent,
-              last_purchase_date: orderStats.lastPurchase
+              last_purchase_date: orderStats.lastPurchase,
+              // Auto-assign manager from orders if customer doesn't have one
+              manager_id: customer.manager_id || orderStats.assignedManager
             };
           }
 
@@ -216,6 +227,34 @@ const CustomerCare = () => {
 
   const handleCustomerAdded = () => {
     refetchCustomers(); // Refresh the list when a new customer is added
+  };
+
+  const handleAssigneeUpdate = async (customerId: string, assigneeId: string) => {
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({ manager_id: assigneeId })
+        .eq('id', customerId);
+
+      if (error) throw error;
+
+      // Refetch data to update the display
+      fetchEnhancedCustomerData();
+      setAssigneeDialogOpen(false);
+      setSelectedCustomerForAssignee(null);
+      
+      toast({
+        title: "Thành công",
+        description: "Đã cập nhật người phụ trách",
+      });
+    } catch (error) {
+      console.error('Error updating assignee:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật người phụ trách",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleEditCustomer = (customer: any) => {
@@ -470,18 +509,26 @@ const CustomerCare = () => {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {(() => {
-                              const assignee = assignees.find(a => a.id === customer.manager_id);
-                              return assignee ? (
-                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                  {assignee.name}
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                                  Chưa phân công
-                                </Badge>
-                              );
-                            })()}
+                            <div 
+                              className="cursor-pointer"
+                              onClick={() => {
+                                setSelectedCustomerForAssignee(customer);
+                                setAssigneeDialogOpen(true);
+                              }}
+                            >
+                              {(() => {
+                                const assignee = assignees.find(a => a.id === customer.manager_id);
+                                return assignee ? (
+                                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100 transition-colors">
+                                    {assignee.name}
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100 transition-colors">
+                                    Chưa phân công
+                                  </Badge>
+                                );
+                              })()}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary">
@@ -878,6 +925,37 @@ const CustomerCare = () => {
           onConfirm={handleDeleteConfirm}
         />
       )}
+
+      {/* Assignee Selection Dialog */}
+      <Dialog open={assigneeDialogOpen} onOpenChange={setAssigneeDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chọn người phụ trách</DialogTitle>
+            <DialogDescription>
+              Chọn người phụ trách cho khách hàng: {selectedCustomerForAssignee?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-4">
+            {assignees.map((assignee) => (
+              <Button
+                key={assignee.id}
+                variant={selectedCustomerForAssignee?.manager_id === assignee.id ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => handleAssigneeUpdate(selectedCustomerForAssignee?.id, assignee.id)}
+              >
+                {assignee.name}
+              </Button>
+            ))}
+            <Button
+              variant="outline"
+              className="justify-start text-muted-foreground"
+              onClick={() => handleAssigneeUpdate(selectedCustomerForAssignee?.id, '')}
+            >
+              Bỏ phân công
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
