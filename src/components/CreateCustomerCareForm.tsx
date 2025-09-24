@@ -105,7 +105,7 @@ const { toast } = useToast();
         .insert({
           name: formData.customerName,
           notes: structuredNotes,
-          manager_id: formData.assignedTo,
+          assignee_id: formData.assignedTo,
           current_status: formData.currentStatus,
           tags: [formData.source], // Store source as tags
           auto_tags: [formData.followUpType], // Store follow-up type as auto_tags
