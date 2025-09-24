@@ -436,29 +436,30 @@ const CustomerCare = () => {
   };
 
   const handleSelectCustomer = (customerId: string, checked: boolean) => {
+    console.log('Select customer:', customerId, checked);
     const newSelected = new Set(selectedCustomerIds);
     if (checked) {
       newSelected.add(customerId);
     } else {
       newSelected.delete(customerId);
     }
+    console.log('New selected customers:', Array.from(newSelected));
     setSelectedCustomerIds(newSelected);
   };
 
   // Bulk update handlers
   const handleBulkStatusUpdate = async (status: string) => {
+    console.log('Bulk status update:', status, 'for customers:', Array.from(selectedCustomerIds));
     try {
-      const updates = Array.from(selectedCustomerIds).map(customerId => 
-        supabase
-          .from('customers')
-          .update({ 
-            current_status: status,
-            last_care_date: new Date().toISOString()
-          })
-          .eq('id', customerId)
-      );
+      const { error } = await supabase
+        .from('customers')
+        .update({ 
+          current_status: status,
+          last_care_date: new Date().toISOString()
+        })
+        .in('id', Array.from(selectedCustomerIds));
 
-      await Promise.all(updates);
+      if (error) throw error;
       
       refetchCustomers();
       setSelectedCustomerIds(new Set());
@@ -480,18 +481,17 @@ const CustomerCare = () => {
   };
 
   const handleBulkSourceUpdate = async (source: string) => {
+    console.log('Bulk source update:', source, 'for customers:', Array.from(selectedCustomerIds));
     try {
-      const updates = Array.from(selectedCustomerIds).map(customerId => 
-        supabase
-          .from('customers')
-          .update({ 
-            tags: [source],
-            last_care_date: new Date().toISOString()
-          })
-          .eq('id', customerId)
-      );
+      const { error } = await supabase
+        .from('customers')
+        .update({ 
+          tags: [source],
+          last_care_date: new Date().toISOString()
+        })
+        .in('id', Array.from(selectedCustomerIds));
 
-      await Promise.all(updates);
+      if (error) throw error;
       
       refetchCustomers();
       setSelectedCustomerIds(new Set());
@@ -513,18 +513,17 @@ const CustomerCare = () => {
   };
 
   const handleBulkAssigneeUpdate = async (assigneeId: string) => {
+    console.log('Bulk assignee update:', assigneeId, 'for customers:', Array.from(selectedCustomerIds));
     try {
-      const updates = Array.from(selectedCustomerIds).map(customerId => 
-        supabase
-          .from('customers')
-          .update({ 
-            manager_id: assigneeId,
-            last_care_date: new Date().toISOString()
-          })
-          .eq('id', customerId)
-      );
+      const { error } = await supabase
+        .from('customers')
+        .update({ 
+          manager_id: assigneeId,
+          last_care_date: new Date().toISOString()
+        })
+        .in('id', Array.from(selectedCustomerIds));
 
-      await Promise.all(updates);
+      if (error) throw error;
       
       refetchCustomers();
       setSelectedCustomerIds(new Set());
@@ -646,6 +645,7 @@ const CustomerCare = () => {
                 {selectedCustomerIds.size > 0 && (
                   <div className="flex items-center gap-2">
                     <Select onValueChange={(value) => {
+                      console.log('Bulk action selected:', value, 'for customers:', Array.from(selectedCustomerIds));
                       setBulkActionType(value as 'status' | 'source' | 'assignee');
                       setBulkActionDialogOpen(true);
                     }}>
