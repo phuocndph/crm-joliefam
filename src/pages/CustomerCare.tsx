@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Users, Search, Filter, Download, Settings, BarChart3, UserPlus, Edit, Trash2, TrendingUp } from "lucide-react";
 import CreateCustomerCareForm from "@/components/CreateCustomerCareForm";
@@ -33,6 +34,14 @@ const CustomerCare = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("customers");
+  
+  // New state for inline editing
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
+  const [purchaseStatusDialogOpen, setPurchaseStatusDialogOpen] = useState(false);
+  const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+  const [selectedCustomerForEdit, setSelectedCustomerForEdit] = useState<any>(null);
+  const [notesText, setNotesText] = useState("");
   const { toast } = useToast();
   
   // Get current user and check permissions
@@ -232,6 +241,88 @@ const CustomerCare = () => {
 
   const handleCustomerAdded = () => {
     refetchCustomers(); // Refresh the list when a new customer is added
+  };
+
+  const handleStatusUpdate = async (customerId: string, status: string) => {
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({ current_status: status })
+        .eq('id', customerId);
+
+      if (error) throw error;
+
+      fetchEnhancedCustomerData();
+      setStatusDialogOpen(false);
+      setSelectedCustomerForEdit(null);
+      
+      toast({
+        title: "Thành công",
+        description: "Đã cập nhật trạng thái",
+      });
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật trạng thái",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSourceUpdate = async (customerId: string, source: string) => {
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({ tags: [source] })
+        .eq('id', customerId);
+
+      if (error) throw error;
+
+      fetchEnhancedCustomerData();
+      setSourceDialogOpen(false);
+      setSelectedCustomerForEdit(null);
+      
+      toast({
+        title: "Thành công",
+        description: "Đã cập nhật nguồn",
+      });
+    } catch (error) {
+      console.error('Error updating source:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật nguồn",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleNotesUpdate = async (customerId: string, notes: string) => {
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({ notes: notes })
+        .eq('id', customerId);
+
+      if (error) throw error;
+
+      fetchEnhancedCustomerData();
+      setNotesDialogOpen(false);
+      setSelectedCustomerForEdit(null);
+      setNotesText("");
+      
+      toast({
+        title: "Thành công",
+        description: "Đã cập nhật ghi chú",
+      });
+    } catch (error) {
+      console.error('Error updating notes:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật ghi chú",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleAssigneeUpdate = async (customerId: string, assigneeId: string) => {
@@ -536,52 +627,68 @@ const CustomerCare = () => {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="secondary">
-                              {customer.tags && customer.tags.length > 0 ? (
-                                customer.tags[0] === 'zalo' ? 'Zalo' :
-                                customer.tags[0] === 'facebook' ? 'Facebook' :
-                                customer.tags[0] === 'website' ? 'Website' :
-                                customer.tags[0] === 'phone' ? 'Điện thoại' :
-                                customer.tags[0] === 'referral' ? 'Giới thiệu' :
-                                customer.tags[0] === 'walk-in' ? 'Ghé thăm trực tiếp' :
-                                customer.tags[0]
-                              ) : "Chưa xác định"}
-                            </Badge>
+                            <div 
+                              className="cursor-pointer"
+                              onClick={() => {
+                                setSelectedCustomerForEdit(customer);
+                                setSourceDialogOpen(true);
+                              }}
+                            >
+                              <Badge variant="secondary" className="hover:bg-secondary/80 transition-colors">
+                                {customer.tags && customer.tags.length > 0 ? (
+                                  customer.tags[0] === 'zalo' ? 'Zalo' :
+                                  customer.tags[0] === 'facebook' ? 'Facebook' :
+                                  customer.tags[0] === 'website' ? 'Website' :
+                                  customer.tags[0] === 'phone' ? 'Điện thoại' :
+                                  customer.tags[0] === 'referral' ? 'Giới thiệu' :
+                                  customer.tags[0] === 'walk-in' ? 'Ghé thăm trực tiếp' :
+                                  customer.tags[0]
+                                ) : "Chưa xác định"}
+                              </Badge>
+                            </div>
                           </TableCell>
                           <TableCell>
-                            {(() => {
-                              const status = customer.current_status || 'waiting-payment';
-                              const getStatusConfig = (status: string) => {
-                                switch (status) {
-                                  case 'waiting-payment':
-                                    return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
-                                  case 'waiting-deposit':
-                                    return { text: 'Chờ thanh toán cọc', className: 'bg-orange-50 text-orange-700 border-orange-200' };
-                                  case 'sent-sample':
-                                    return { text: 'Đã gửi mẫu', className: 'bg-blue-50 text-blue-700 border-blue-200' };
-                                  case 'sent-quote':
-                                    return { text: 'Đã gửi báo giá', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
-                                  case 'waiting-response':
-                                    return { text: 'Chờ phản hồi khách hàng', className: 'bg-purple-50 text-purple-700 border-purple-200' };
-                                  case 'ordered':
-                                    return { text: 'Đã đặt hàng', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-                                  case 'paid':
-                                    return { text: 'Đã thanh toán xong', className: 'bg-green-50 text-green-700 border-green-200' };
-                                  case 'see-notes':
-                                    return { text: 'Xem ở ghi chú', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
-                                  case 'no-response':
-                                    return { text: 'Khách không phản hồi', className: 'bg-red-50 text-red-700 border-red-200' };
-                                  default:
-                                    return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
-                                }
-                              };
-                              const config = getStatusConfig(status);
-                              return (
-                                <Badge variant="outline" className={config.className}>
-                                  {config.text}
-                                </Badge>
-                              );
-                            })()}
+                            <div 
+                              className="cursor-pointer"
+                              onClick={() => {
+                                setSelectedCustomerForEdit(customer);
+                                setStatusDialogOpen(true);
+                              }}
+                            >
+                              {(() => {
+                                const status = customer.current_status || 'waiting-payment';
+                                const getStatusConfig = (status: string) => {
+                                  switch (status) {
+                                    case 'waiting-payment':
+                                      return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                                    case 'waiting-deposit':
+                                      return { text: 'Chờ thanh toán cọc', className: 'bg-orange-50 text-orange-700 border-orange-200' };
+                                    case 'sent-sample':
+                                      return { text: 'Đã gửi mẫu', className: 'bg-blue-50 text-blue-700 border-blue-200' };
+                                    case 'sent-quote':
+                                      return { text: 'Đã gửi báo giá', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+                                    case 'waiting-response':
+                                      return { text: 'Chờ phản hồi khách hàng', className: 'bg-purple-50 text-purple-700 border-purple-200' };
+                                    case 'ordered':
+                                      return { text: 'Đã đặt hàng', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+                                    case 'paid':
+                                      return { text: 'Đã thanh toán xong', className: 'bg-green-50 text-green-700 border-green-200' };
+                                    case 'see-notes':
+                                      return { text: 'Xem ở ghi chú', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
+                                    case 'no-response':
+                                      return { text: 'Khách không phản hồi', className: 'bg-red-50 text-red-700 border-red-200' };
+                                    default:
+                                      return { text: 'Chờ thanh toán tiền', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                                  }
+                                };
+                                const config = getStatusConfig(status);
+                                return (
+                                  <Badge variant="outline" className={`${config.className} hover:opacity-80 transition-opacity`}>
+                                    {config.text}
+                                  </Badge>
+                                );
+                              })()}
+                            </div>
                           </TableCell>
                            <TableCell>
                              {customer.purchase_count && customer.purchase_count > 0 ? (
@@ -596,27 +703,42 @@ const CustomerCare = () => {
                                <div className="text-sm text-muted-foreground">Chưa có đơn hàng</div>
                              )}
                            </TableCell>
-                             <TableCell className="max-w-xs">
-                               <div className="whitespace-pre-wrap text-sm break-words">
-                                 {customer.notes || "Không có ghi chú"}
-                               </div>
-                             </TableCell>
+                              <TableCell className="max-w-xs">
+                                <div 
+                                  className="whitespace-pre-wrap text-sm break-words cursor-pointer hover:bg-muted/50 p-2 rounded transition-colors"
+                                  onClick={() => {
+                                    setSelectedCustomerForEdit(customer);
+                                    setNotesText(customer.notes || "");
+                                    setNotesDialogOpen(true);
+                                  }}
+                                >
+                                  {customer.notes || "Không có ghi chú"}
+                                </div>
+                              </TableCell>
                             <TableCell>
                               <AINextActionCell customer={customer} />
                             </TableCell>
                            <TableCell>
-                            {customer.last_purchase_date ? (
-                              <div className="text-sm">
-                                <div className="text-green-600 font-medium">Đã mua hàng</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {format(new Date(customer.last_purchase_date), 'dd/MM/yyyy')}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="text-sm text-muted-foreground">
-                                Chưa có đơn hàng
-                              </div>
-                            )}
+                             <div 
+                               className="cursor-pointer hover:bg-muted/50 p-2 rounded transition-colors"
+                               onClick={() => {
+                                 setSelectedCustomerForEdit(customer);
+                                 setPurchaseStatusDialogOpen(true);
+                               }}
+                             >
+                               {customer.last_purchase_date ? (
+                                 <div className="text-sm">
+                                   <div className="text-green-600 font-medium">Đã mua hàng</div>
+                                   <div className="text-xs text-muted-foreground">
+                                     {format(new Date(customer.last_purchase_date), 'dd/MM/yyyy')}
+                                   </div>
+                                 </div>
+                               ) : (
+                                 <div className="text-sm text-muted-foreground">
+                                   Chưa có đơn hàng
+                                 </div>
+                               )}
+                             </div>
                            </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -957,6 +1079,126 @@ const CustomerCare = () => {
               onClick={() => handleAssigneeUpdate(selectedCustomerForAssignee?.id, '')}
             >
               Bỏ phân công
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Status Selection Dialog */}
+      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chọn trạng thái</DialogTitle>
+            <DialogDescription>
+              Chọn trạng thái cho khách hàng: {selectedCustomerForEdit?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-4">
+            {[
+              { key: 'waiting-payment', label: 'Chờ thanh toán tiền' },
+              { key: 'waiting-deposit', label: 'Chờ thanh toán cọc' },
+              { key: 'sent-sample', label: 'Đã gửi mẫu' },
+              { key: 'sent-quote', label: 'Đã gửi báo giá' },
+              { key: 'waiting-response', label: 'Chờ phản hồi khách hàng' },
+              { key: 'ordered', label: 'Đã đặt hàng' },
+              { key: 'paid', label: 'Đã thanh toán xong' },
+              { key: 'see-notes', label: 'Xem ở ghi chú' },
+              { key: 'no-response', label: 'Khách không phản hồi' }
+            ].map((status) => (
+              <Button
+                key={status.key}
+                variant={selectedCustomerForEdit?.current_status === status.key ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => handleStatusUpdate(selectedCustomerForEdit?.id, status.key)}
+              >
+                {status.label}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Source Selection Dialog */}
+      <Dialog open={sourceDialogOpen} onOpenChange={setSourceDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chọn nguồn</DialogTitle>
+            <DialogDescription>
+              Chọn nguồn cho khách hàng: {selectedCustomerForEdit?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-4">
+            {[
+              { key: 'zalo', label: 'Zalo' },
+              { key: 'facebook', label: 'Facebook' },
+              { key: 'website', label: 'Website' },
+              { key: 'phone', label: 'Điện thoại' },
+              { key: 'referral', label: 'Giới thiệu' },
+              { key: 'walk-in', label: 'Ghé thăm trực tiếp' }
+            ].map((source) => (
+              <Button
+                key={source.key}
+                variant={selectedCustomerForEdit?.tags?.[0] === source.key ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => handleSourceUpdate(selectedCustomerForEdit?.id, source.key)}
+              >
+                {source.label}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Purchase Status Dialog */}
+      <Dialog open={purchaseStatusDialogOpen} onOpenChange={setPurchaseStatusDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Trạng thái mua hàng</DialogTitle>
+            <DialogDescription>
+              Thông tin mua hàng của khách hàng: {selectedCustomerForEdit?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="text-sm space-y-2">
+              <div>
+                <span className="font-medium">Số đơn hàng:</span> {selectedCustomerForEdit?.purchase_count || 0}
+              </div>
+              <div>
+                <span className="font-medium">Tổng chi tiêu:</span> {Number(selectedCustomerForEdit?.total_spent || 0).toLocaleString("vi-VN")} VNĐ
+              </div>
+              {selectedCustomerForEdit?.last_purchase_date && (
+                <div>
+                  <span className="font-medium">Mua lần cuối:</span> {format(new Date(selectedCustomerForEdit.last_purchase_date), 'dd/MM/yyyy')}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Notes Edit Dialog */}
+      <Dialog open={notesDialogOpen} onOpenChange={setNotesDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa ghi chú</DialogTitle>
+            <DialogDescription>
+              Ghi chú cho khách hàng: {selectedCustomerForEdit?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              value={notesText}
+              onChange={(e) => setNotesText(e.target.value)}
+              placeholder="Nhập ghi chú..."
+              className="min-h-[120px]"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setNotesDialogOpen(false)}>
+              Hủy
+            </Button>
+            <Button onClick={() => handleNotesUpdate(selectedCustomerForEdit?.id, notesText)}>
+              Lưu
             </Button>
           </div>
         </DialogContent>
