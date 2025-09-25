@@ -183,8 +183,8 @@ const ReportsPage = () => {
     sortKey: string;
   }>>([]);
 
-  // Simple monthly data calculation - no async queries needed
-  const calculateSimpleMonthlyData = useCallback(() => {
+  // Simple monthly data calculation with proper cost price lookup
+  const calculateSimpleMonthlyData = useCallback(async () => {
     if (!filteredOrders.length && !filteredExpenses.length) {
       setMonthlyData([]);
       return;
@@ -221,8 +221,42 @@ const ReportsPage = () => {
       
       const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
       
-      // Use existing cost_price data directly - no async queries
-      const totalCostPrice = monthOrders.reduce((sum, o) => sum + Number(o.cost_price || 0), 0);
+      // Calculate cost price - check order cost_price first, then calculate from items
+      let totalCostPrice = 0;
+      
+      for (const order of monthOrders) {
+        let orderCostPrice = Number(order.cost_price) || 0;
+        
+        // If order cost_price is 0, try to calculate from items and products
+        if (orderCostPrice === 0 && order.items && products.length > 0) {
+          try {
+            const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+            
+            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+              const quantity = item.quantity || 0;
+              let costPrice = 0;
+              
+              // Try to find product by original ID first
+              let product = products.find(p => p.id === (item.originalProductId || item.id));
+              
+              // Fallback to SKU if no product found by ID
+              if (!product && item.sku) {
+                product = products.find(p => p.sku === item.sku);
+              }
+              
+              if (product) {
+                costPrice = Number(product.cost_price) || 0;
+              }
+              
+              return sum + (quantity * costPrice);
+            }, 0);
+          } catch (error) {
+            console.error('Error calculating cost price for order:', order.id, error);
+          }
+        }
+        
+        totalCostPrice += orderCostPrice;
+      }
       
       const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
       const ordersCount = monthOrders.length;
@@ -248,7 +282,7 @@ const ReportsPage = () => {
     // Convert to array and sort by date
     const sortedData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
     setMonthlyData(sortedData);
-  }, [filteredOrders, filteredExpenses]);
+  }, [filteredOrders, filteredExpenses, products]);
 
   // Recalculate when filtered data changes
   useEffect(() => {
@@ -260,7 +294,7 @@ const ReportsPage = () => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <h1 className="text-3xl font-bold">Báo cáo & Thống kê</h1>
         <div className="flex flex-col md:flex-row gap-3">
-          <DatePickerWithRange date={dateRange} onDateChange={setDateRange} />
+          <DatePickerWithRange date={dateRange} setDate={setDateRange} />
           <Button variant="outline" className="gap-2">
             <Download className="h-4 w-4" />
             Xuất báo cáo
