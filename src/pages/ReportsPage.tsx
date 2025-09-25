@@ -168,7 +168,39 @@ const ReportsPage = () => {
 
   // Calculate comprehensive metrics
   const totalOrderRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-  const totalCostPrice = filteredOrders.reduce((sum, o) => sum + Number(o.cost_price || 0), 0);
+  
+  // Calculate actual cost price from order items
+  const totalCostPrice = filteredOrders.reduce((sum, order) => {
+    let orderCostPrice = 0;
+    
+    if (order.items) {
+      try {
+        const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
+        const items = JSON.parse(itemsStr);
+        
+        orderCostPrice = items.reduce((itemSum: number, item: any) => {
+          const quantity = Number(item.quantity) || 0;
+          let costPrice = 0;
+          
+          // Find product by SKU or originalProductId
+          const product = products.find(p => 
+            p.sku === item.sku || p.id === item.originalProductId
+          );
+          
+          if (product) {
+            costPrice = Number(product.cost_price) || 0;
+          }
+          
+          return itemSum + (quantity * costPrice);
+        }, 0);
+      } catch (error) {
+        console.error('Error calculating cost price for order:', order.id, error);
+      }
+    }
+    
+    return sum + orderCostPrice;
+  }, 0);
+  
   const totalExpensesAmount = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
   // Calculate actual paid amount - only from payments related to filtered orders
@@ -279,7 +311,39 @@ const ReportsPage = () => {
     });
     
     const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-    const costPrice = monthOrders.reduce((sum, o) => sum + Number(o.cost_price || 0), 0);
+    
+    // Calculate actual cost price from order items for monthly data
+    const costPrice = monthOrders.reduce((sum, order) => {
+      let orderCostPrice = 0;
+      
+      if (order.items) {
+        try {
+          const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
+          const items = JSON.parse(itemsStr);
+          
+          orderCostPrice = items.reduce((itemSum: number, item: any) => {
+            const quantity = Number(item.quantity) || 0;
+            let costPrice = 0;
+            
+            // Find product by SKU or originalProductId
+            const product = products.find(p => 
+              p.sku === item.sku || p.id === item.originalProductId
+            );
+            
+            if (product) {
+              costPrice = Number(product.cost_price) || 0;
+            }
+            
+            return itemSum + (quantity * costPrice);
+          }, 0);
+        } catch (error) {
+          console.error('Error calculating cost price for monthly order:', order.id, error);
+        }
+      }
+      
+      return sum + orderCostPrice;
+    }, 0);
+    
     const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
     const ordersCount = monthOrders.length;
     const completedCount = monthOrders.filter(o => o.status === "delivered").length;
