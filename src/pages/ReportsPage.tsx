@@ -799,7 +799,7 @@ const ReportsPage = () => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis />
-                      <Tooltip formatter={(value) => formatCurrency(value)} />
+                       <Tooltip formatter={(value) => formatCurrency(Number(value))} />
                       <Bar dataKey="value" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -835,7 +835,7 @@ const ReportsPage = () => {
                           <Cell key={`cell-${index}`} fill={entry.fill} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => formatCurrency(value)} />
+                      <Tooltip formatter={(value) => formatCurrency(Number(value))} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
