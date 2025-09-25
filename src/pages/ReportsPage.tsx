@@ -342,127 +342,162 @@ const ReportsPage = () => {
   const ordersWithoutCostPrice = dateFilteredOrders.filter(o => !o.cost_price || o.cost_price === 0).length;
   const hasCostPriceIssue = ordersWithoutCostPrice > 0;
 
-  // Prepare comprehensive chart data - all months with data
-  const monthlyDataMap = new Map();
+  // Prepare comprehensive chart data - all months with data (using async calculation)
+  const [monthlyData, setMonthlyData] = useState<any[]>([]);
+  const [isCalculatingMonthly, setIsCalculatingMonthly] = useState(false);
   
-  // Get all unique months from dateFiltered data (consistent with main metrics)
-  const allDates = [
-    ...dateFilteredOrders.map(o => new Date(o.created_at)),
-    ...dateFilteredExpenses.map(e => new Date(e.expense_date))
-  ];
-  
-  // Find the earliest date to start from
-  const earliestDate = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => d.getTime()))) : new Date();
-  const startDate = startOfMonth(earliestDate);
-  const endDate = endOfMonth(new Date());
-  
-  // Generate data for all months from earliest to current
-  let currentMonth = startDate;
-  while (currentMonth <= endDate) {
-    const monthStart = startOfMonth(currentMonth);
-    const monthEnd = endOfMonth(currentMonth);
-    
-    const monthOrders = dateFilteredOrders.filter(o => {
-      const oDate = new Date(o.created_at);
-      return oDate >= monthStart && oDate <= monthEnd && Number(o.total_amount || 0) > 0; // Only orders with revenue
-    });
-    
-    const monthExpenses = dateFilteredExpenses.filter(e => {
-      const eDate = new Date(e.expense_date);
-      return eDate >= monthStart && eDate <= monthEnd;
-    });
-    
-    const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-    
-    // Calculate actual cost price from order items for monthly data
-    const costPrice = monthOrders.reduce((sum, order) => {
-      let orderCostPrice = Number(order.cost_price) || 0;
+  useEffect(() => {
+    const calculateMonthlyData = async () => {
+      setIsCalculatingMonthly(true);
+      const monthlyDataMap = new Map();
       
-      // If cost_price in order is 0, calculate from product data (using cached products array)
-      if (orderCostPrice === 0 && order.items) {
-        try {
-          const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
-          const items = JSON.parse(itemsStr);
+      // Get all unique months from dateFiltered data (consistent with main metrics)
+      const allDates = [
+        ...dateFilteredOrders.map(o => new Date(o.created_at)),
+        ...dateFilteredExpenses.map(e => new Date(e.expense_date))
+      ];
+      
+      // Find the earliest date to start from
+      const earliestDate = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => d.getTime()))) : new Date();
+      const startDate = startOfMonth(earliestDate);
+      const endDate = endOfMonth(new Date());
+      
+      // Generate data for all months from earliest to current
+      let currentMonth = startDate;
+      while (currentMonth <= endDate) {
+        const monthStart = startOfMonth(currentMonth);
+        const monthEnd = endOfMonth(currentMonth);
+        
+        const monthOrders = dateFilteredOrders.filter(o => {
+          const oDate = new Date(o.created_at);
+          return oDate >= monthStart && oDate <= monthEnd && Number(o.total_amount || 0) > 0; // Only orders with revenue
+        });
+        
+        const monthExpenses = dateFilteredExpenses.filter(e => {
+          const eDate = new Date(e.expense_date);
+          return eDate >= monthStart && eDate <= monthEnd;
+        });
+        
+        const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+        
+        // Calculate cost price using same async method as main metrics
+        let costPrice = 0;
+        for (const order of monthOrders) {
+          let orderCostPrice = Number(order.cost_price) || 0;
           
-          orderCostPrice = items.reduce((itemSum: number, item: any) => {
-            const quantity = Number(item.quantity) || 0;
-            let costPrice = 0;
-            
-            // Find product by SKU or originalProductId
-            const product = products.find(p => 
-              p.sku === item.sku || p.id === item.originalProductId
-            );
-            
-            if (product) {
-              costPrice = Number(product.cost_price) || 0;
+          // If cost_price in order is 0, calculate using database query (same as main metrics)
+          if (orderCostPrice === 0 && order.items) {
+            try {
+              const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+              
+              // Get all product IDs and SKUs from order items
+              const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
+              const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
+
+              let productsData: any[] = [];
+
+              // Get product data from database (same logic as main calculation)
+              if (productIds.length > 0) {
+                const { data: idData } = await supabase
+                  .from('products')
+                  .select('id, sku, cost_price')
+                  .in('id', productIds);
+                if (idData) productsData = idData;
+              }
+
+              if (productsData.length === 0 && productSkus.length > 0) {
+                const { data: skuData } = await supabase
+                  .from('products')
+                  .select('id, sku, cost_price')
+                  .in('sku', productSkus);
+                if (skuData) productsData = skuData;
+              }
+              
+              // Calculate cost price from items
+              orderCostPrice = orderItems.reduce((itemSum: number, item: any) => {
+                const quantity = Number(item.quantity) || 0;
+                let itemCostPrice = 0;
+                
+                // Find product by SKU or originalProductId (same as main calculation)
+                const product = productsData.find(p => 
+                  p.sku === item.sku || p.id === item.originalProductId
+                );
+                
+                if (product) {
+                  itemCostPrice = Number(product.cost_price) || 0;
+                }
+                
+                return itemSum + (quantity * itemCostPrice);
+              }, 0);
+            } catch (error) {
+              console.error('Error calculating cost price for monthly order:', order.id, error);
             }
-            
-            return itemSum + (quantity * costPrice);
-          }, 0);
-        } catch (error) {
-          console.error('Error calculating cost price for monthly order:', order.id, error);
+          }
+          
+          costPrice += orderCostPrice;
         }
+        
+        const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+        const ordersCount = monthOrders.length;
+        const completedCount = monthOrders.filter(o => o.status === "delivered").length;
+        
+        const monthKey = format(currentMonth, "yyyy-MM");
+        const isJune2023 = monthKey === "2023-06";
+        
+        if (isJune2023) {
+          console.log('June 2023 Debug (ASYNC):', {
+            monthOrders: monthOrders.length,
+            revenue,
+            costPrice,
+            expenses: expensesAmount,
+            profit: revenue - costPrice - expensesAmount,
+            orderSample: monthOrders.slice(0, 3).map(o => ({
+              id: o.id,
+              order_number: o.order_number,
+              total_amount: o.total_amount,
+              cost_price: o.cost_price,
+              items: o.items
+            }))
+          });
+        }
+        
+        monthlyDataMap.set(monthKey, {
+          month: format(currentMonth, "MMM yyyy", { locale: vi }),
+          revenue,
+          costPrice,
+          expenses: expensesAmount,
+          grossProfit: revenue - costPrice,
+          profit: revenue - costPrice - expensesAmount,
+          orders: ordersCount,
+          completed: completedCount,
+          sortKey: monthKey
+        });
+        
+        // Move to next month
+        currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
       }
       
-      return sum + orderCostPrice;
-    }, 0);
-    
-    const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
-    const ordersCount = monthOrders.length;
-    const completedCount = monthOrders.filter(o => o.status === "delivered").length;
-    
-    const monthKey = format(currentMonth, "yyyy-MM");
-    const isJune2023 = monthKey === "2023-06";
-    
-    if (isJune2023) {
-      console.log('June 2023 Debug:', {
-        monthOrders: monthOrders.length,
-        revenue,
-        costPrice,
-        expenses: expensesAmount,
-        profit: revenue - costPrice - expensesAmount,
-        orderSample: monthOrders.slice(0, 3).map(o => ({
-          id: o.id,
-          order_number: o.order_number,
-          total_amount: o.total_amount,
-          cost_price: o.cost_price,
-          items: o.items
-        }))
-      });
+      // Convert to array and sort by date
+      const sortedData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+      setMonthlyData(sortedData);
+      setIsCalculatingMonthly(false);
+      
+      // Debug: Calculate total from all months to compare with CashFlowManagement
+      const totalFromAllMonths = {
+        revenue: sortedData.reduce((sum, m) => sum + m.revenue, 0),
+        costPrice: sortedData.reduce((sum, m) => sum + m.costPrice, 0),
+        expenses: sortedData.reduce((sum, m) => sum + m.expenses, 0),
+        profit: sortedData.reduce((sum, m) => sum + m.profit, 0)
+      };
+      
+      console.log('Monthly Data Debug - June 2023:', sortedData.find(m => m.month.includes('2023') && m.month.includes('thg 6')));
+      console.log('Total from all months (should match main metrics):', totalFromAllMonths);
+    };
+
+    if (dateFilteredOrders.length > 0 || dateFilteredExpenses.length > 0) {
+      calculateMonthlyData();
     }
-    
-    monthlyDataMap.set(monthKey, {
-      month: format(currentMonth, "MMM yyyy", { locale: vi }),
-      revenue,
-      costPrice,
-      expenses: expensesAmount,
-      grossProfit: revenue - costPrice,
-      profit: revenue - costPrice - expensesAmount,
-      orders: ordersCount,
-      completed: completedCount,
-      sortKey: monthKey
-    });
-    
-    // Move to next month
-    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
-  }
-  
-  // Convert to array and sort by date
-  const monthlyData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-  
-  // Debug: Calculate total from all months to compare with CashFlowManagement
-  const totalFromAllMonths = {
-    revenue: monthlyData.reduce((sum, m) => sum + m.revenue, 0),
-    costPrice: monthlyData.reduce((sum, m) => sum + m.costPrice, 0),
-    expenses: monthlyData.reduce((sum, m) => sum + m.expenses, 0),
-    profit: monthlyData.reduce((sum, m) => sum + m.profit, 0)
-  };
-  
-  console.log('Monthly Data Debug - June 2023:', monthlyData.find(m => m.month.includes('2023') && m.month.includes('thg 6')));
-  console.log('Total from all months (should match CashFlowManagement):', totalFromAllMonths);
-  console.log('Individual monthly profits:', monthlyData.map(m => ({ month: m.month, profit: m.profit })));
-  
-  // Category and status breakdown
+  }, [dateFilteredOrders, dateFilteredExpenses]);
   const expenseCategories = dateFilteredExpenses.reduce((acc, e) => {
     const category = e.category || "Khác";
     if (!acc[category]) {
