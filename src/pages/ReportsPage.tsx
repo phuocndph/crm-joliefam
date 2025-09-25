@@ -382,7 +382,7 @@ const ReportsPage = () => {
   console.log('Total from all months (should match CashFlowManagement):', totalFromAllMonths);
   console.log('Individual monthly profits:', monthlyData.map(m => ({ month: m.month, profit: m.profit })));
   
-  return monthlyData;
+  // Category and status breakdown
   const expenseCategories = filteredExpenses.reduce((acc, e) => {
     const category = e.category || "Khác";
     if (!acc[category]) {
