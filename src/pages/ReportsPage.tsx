@@ -143,13 +143,82 @@ const ReportsPage = () => {
     }).format(amount);
   };
 
-  // Calculate metrics
+  // Calculate metrics with proper cost price calculation
   const totalOrderRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   
-  const totalCostPrice = filteredOrders.reduce((sum, order) => {
-    const orderCostPrice = Number(order.cost_price) || 0;
-    return sum + orderCostPrice;
-  }, 0);
+  // Calculate cost price using same logic as monthly data
+  const [totalCostPrice, setTotalCostPrice] = useState(0);
+  
+  // Calculate cost price effect
+  useEffect(() => {
+    const calculateTotalCostPrice = async () => {
+      let total = 0;
+      
+      for (const order of filteredOrders) {
+        let orderCostPrice = Number(order.cost_price) || 0;
+        
+        // If order cost_price is 0, calculate from items
+        if (orderCostPrice === 0 && order.items) {
+          try {
+            const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+            
+            // Get product IDs and SKUs from order items
+            const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
+            const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
+
+            let productsData: any[] = [];
+
+            // Fetch product data from database
+            if (productIds.length > 0) {
+              const { data: idData } = await supabase
+                .from('products')
+                .select('id, sku, cost_price')
+                .in('id', productIds);
+              if (idData) productsData = idData;
+            }
+
+            if (productsData.length === 0 && productSkus.length > 0) {
+              const { data: skuData } = await supabase
+                .from('products')
+                .select('id, sku, cost_price')
+                .in('sku', productSkus);
+              if (skuData) productsData = skuData;
+            }
+
+            // Calculate cost price from order items
+            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+              const quantity = item.quantity || 0;
+              let costPrice = 0;
+
+              // Find cost price from products data
+              let product = productsData.find(p => p.id === (item.originalProductId || item.id));
+              if (!product && item.sku) {
+                product = productsData.find(p => p.sku === item.sku);
+              }
+              
+              if (product) {
+                costPrice = Number(product.cost_price) || 0;
+              }
+
+              return sum + (quantity * costPrice);
+            }, 0);
+          } catch (error) {
+            console.error('Error calculating cost price for order:', order.id, error);
+          }
+        }
+        
+        total += orderCostPrice;
+      }
+      
+      setTotalCostPrice(total);
+    };
+    
+    if (filteredOrders.length > 0) {
+      calculateTotalCostPrice();
+    } else {
+      setTotalCostPrice(0);
+    }
+  }, [filteredOrders]);
   
   const totalExpensesAmount = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
