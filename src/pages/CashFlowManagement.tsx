@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { TrendingUp, TrendingDown, DollarSign, Plus, Filter, Search, Eye, Edit, Trash2, MoreHorizontal } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -120,16 +120,6 @@ export default function CashFlowManagement() {
   // Data states
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [orders, setOrders] = useState<OrderDetail[]>([]);
-  const [orderProfits, setOrderProfits] = useState<OrderProfitDetail[]>([]);
-  const [cashFlowStats, setCashFlowStats] = useState<CashFlowStats>({
-    totalRevenue: 0,
-    totalCostPrice: 0,
-    totalExpenses: 0,
-    profitBefore: 0,
-    profitAfter: 0,
-    otherIncome: 0,
-    netCashFlow: 0
-  });
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const { toast } = useToast();
@@ -298,82 +288,138 @@ export default function CashFlowManagement() {
     };
   }, [refetchOrders]);
 
-  const calculateCashFlowStats = useCallback(async () => {
-    // Tính từ đơn hàng đã giao (delivered orders) - tính giá gốc thực tế
+  // Get all unique product IDs and SKUs from all orders
+  const getAllProductIdentifiers = useCallback(() => {
+    const productIds = new Set<string>();
+    const productSkus = new Set<string>();
+    
+    orders.forEach(order => {
+      if (order.items) {
+        try {
+          const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+          orderItems.forEach((item: any) => {
+            if (item.originalProductId || item.id) {
+              productIds.add(item.originalProductId || item.id);
+            }
+            if (item.sku) {
+              productSkus.add(item.sku);
+            }
+          });
+        } catch (error) {
+          console.error('Error parsing order items:', error);
+        }
+      }
+    });
+    
+    return { productIds: Array.from(productIds), productSkus: Array.from(productSkus) };
+  }, [orders]);
+
+  // Batch fetch all products data
+  const { data: productsData = [], isLoading: productsLoading } = useQuery({
+    queryKey: ['products-batch', getAllProductIdentifiers()],
+    queryFn: async () => {
+      const { productIds, productSkus } = getAllProductIdentifiers();
+      
+      if (productIds.length === 0 && productSkus.length === 0) {
+        return [];
+      }
+
+      let allProducts: any[] = [];
+
+      // Fetch by IDs
+      if (productIds.length > 0) {
+        const { data: idData } = await supabase
+          .from('products')
+          .select('id, sku, cost_price')
+          .in('id', productIds);
+        if (idData) allProducts = [...allProducts, ...idData];
+      }
+
+      // Fetch by SKUs for any missing products
+      if (productSkus.length > 0) {
+        const foundIds = new Set(allProducts.map(p => p.id));
+        const remainingSkus = productSkus.filter(sku => {
+          return !allProducts.some(p => p.sku === sku);
+        });
+        
+        if (remainingSkus.length > 0) {
+          const { data: skuData } = await supabase
+            .from('products')
+            .select('id, sku, cost_price')
+            .in('sku', remainingSkus);
+          if (skuData) allProducts = [...allProducts, ...skuData];
+        }
+      }
+
+      return allProducts;
+    },
+    enabled: orders.length > 0,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+  // Create products lookup map
+  const productsMap = useMemo(() => {
+    const map = new Map<string, any>();
+    productsData.forEach(product => {
+      map.set(product.id, product);
+      if (product.sku) {
+        map.set(product.sku, product);
+      }
+    });
+    return map;
+  }, [productsData]);
+
+  // Calculate cost price for an order
+  const calculateOrderCostPrice = useCallback((order: OrderDetail) => {
+    let orderCostPrice = Number(order.cost_price) || 0;
+    
+    // If cost_price in order is 0, calculate from product data
+    if (orderCostPrice === 0 && order.items) {
+      try {
+        const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        
+        orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+          const quantity = item.quantity || 0;
+          let costPrice = 0;
+
+          // Find cost price from products map
+          let product = productsMap.get(item.originalProductId || item.id);
+          if (!product && item.sku) {
+            product = productsMap.get(item.sku);
+          }
+          
+          if (product) {
+            costPrice = Number(product.cost_price) || 0;
+          }
+
+          return sum + (quantity * costPrice);
+        }, 0);
+      } catch (error) {
+        console.error('Error calculating cost price for order:', order.id, error);
+      }
+    }
+    
+    return orderCostPrice;
+  }, [productsMap]);
+
+  // Optimized cash flow stats calculation
+  const cashFlowStats = useMemo(() => {
     const deliveredOrders = orders.filter(order => order.total_amount > 0);
     
     const totalRevenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
     const totalExpenses = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
     
-    // Tính tổng giá gốc thực tế từ từng đơn hàng
-    let totalCostPrice = 0;
+    // Calculate total cost price from all orders
+    const totalCostPrice = deliveredOrders.reduce((sum, order) => {
+      return sum + calculateOrderCostPrice(order);
+    }, 0);
     
-    for (const order of deliveredOrders) {
-      let orderCostPrice = Number(order.cost_price) || 0;
-      
-      // Nếu cost_price trong order bằng 0, tính từ product data
-      if (orderCostPrice === 0 && order.items) {
-        try {
-          const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-          
-          // Lấy tất cả product IDs và SKUs từ order items
-          const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
-          const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
-
-          let productsData: any[] = [];
-
-          // Lấy dữ liệu sản phẩm từ database
-          if (productIds.length > 0) {
-            const { data: idData } = await supabase
-              .from('products')
-              .select('id, sku, cost_price')
-              .in('id', productIds);
-            if (idData) productsData = idData;
-          }
-
-          if (productsData.length === 0 && productSkus.length > 0) {
-            const { data: skuData } = await supabase
-              .from('products')
-              .select('id, sku, cost_price')
-              .in('sku', productSkus);
-            if (skuData) productsData = skuData;
-          }
-
-          // Tính cost price từ order items
-          orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-            const quantity = item.quantity || 0;
-            let costPrice = 0;
-
-            // Tìm cost price từ products data
-            let product = productsData.find(p => p.id === (item.originalProductId || item.id));
-            if (!product && item.sku) {
-              product = productsData.find(p => p.sku === item.sku);
-            }
-            
-            if (product) {
-              costPrice = Number(product.cost_price) || 0;
-            }
-
-            return sum + (quantity * costPrice);
-          }, 0);
-        } catch (error) {
-          console.error('Error calculating cost price for order:', order.id, error);
-        }
-      }
-      
-      totalCostPrice += orderCostPrice;
-    }
-    
-    // Lợi nhuận trước = Doanh thu - Chi phí giá gốc
     const profitBefore = totalRevenue - totalCostPrice;
-    
-    // Lợi nhuận sau = Doanh thu - Chi phí giá gốc - Chi phí
     const profitAfter = totalRevenue - totalCostPrice - totalExpenses;
-    
-    const otherIncome = 0; // Thu nhập khác
+    const otherIncome = 0;
     const netCashFlow = profitAfter + otherIncome;
 
-    setCashFlowStats({
+    return {
       totalRevenue,
       totalCostPrice,
       totalExpenses,
@@ -381,98 +427,21 @@ export default function CashFlowManagement() {
       profitAfter,
       otherIncome,
       netCashFlow
-    });
-  }, [orders, expenses]);
+    };
+  }, [orders, expenses, calculateOrderCostPrice]);
 
-  const calculateOrderProfits = useCallback(async () => {
-    // Hiển thị đơn hàng đã giao có doanh thu
+  // Optimized order profits calculation
+  const orderProfits = useMemo(() => {
     const deliveredOrders = orders.filter(order => order.total_amount > 0);
-
     const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
     const orderCount = deliveredOrders.length || 1;
     const allocatedExpensePerOrder = totalExpenses / orderCount;
 
-    // Debug để kiểm tra các giá trị
-    console.log('EXPENSE CALCULATION DEBUG:');
-    console.log('selectedYear:', selectedYear);
-    console.log('filterPeriod:', filterPeriod);
-    console.log('getDateRange():', getDateRange());
-    console.log('Expenses count:', expenses.length);
-    console.log('Expenses sample:', expenses.slice(0, 2));
-    console.log('Total expenses:', totalExpenses);
-    console.log('Order count:', orderCount);
-    console.log('Allocated expense per order:', allocatedExpensePerOrder);
-    
-    // Kiểm tra nếu allocatedExpensePerOrder > totalExpenses (không hợp lý)
-    if (allocatedExpensePerOrder > totalExpenses) {
-      console.error('ERROR: Allocated expense per order is greater than total expenses!');
-      console.error('This indicates a calculation error or data problem');
-    }
-
-    // Tạo một promise array để lấy cost price cho từng đơn hàng
-    const orderProfitPromises = deliveredOrders.map(async order => {
+    return deliveredOrders.map(order => {
       const revenue = Number(order.total_amount) || 0;
-      let totalCostPrice = Number(order.cost_price) || 0;
-
-      // Nếu cost_price trong order bằng 0, tính từ product data
-      if (totalCostPrice === 0 && order.items) {
-        try {
-          const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-          
-          // Lấy tất cả product IDs và SKUs từ order items
-          const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
-          const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
-
-          let productsData: any[] = [];
-
-          // Lấy dữ liệu sản phẩm từ database
-          if (productIds.length > 0) {
-            const { data: idData } = await supabase
-              .from('products')
-              .select('id, sku, cost_price')
-              .in('id', productIds);
-            if (idData) productsData = idData;
-          }
-
-          if (productsData.length === 0 && productSkus.length > 0) {
-            const { data: skuData } = await supabase
-              .from('products')
-              .select('id, sku, cost_price')
-              .in('sku', productSkus);
-            if (skuData) productsData = skuData;
-          }
-
-          // Tính tổng cost price từ order items
-          totalCostPrice = orderItems.reduce((sum: number, item: any) => {
-            const quantity = item.quantity || 0;
-            let costPrice = 0;
-
-            // Tìm cost price từ products data
-            let product = productsData.find(p => p.id === (item.originalProductId || item.id));
-            if (!product && item.sku) {
-              product = productsData.find(p => p.sku === item.sku);
-            }
-            
-            if (product) {
-              costPrice = Number(product.cost_price) || 0;
-            }
-
-            return sum + (quantity * costPrice);
-          }, 0);
-        } catch (error) {
-          console.error('Error calculating cost price for order:', order.id, error);
-        }
-      }
-      // Tính chi phí phân bổ đều cho mỗi đơn hàng
-      const allocatedExpenseForOrder = allocatedExpensePerOrder;
-      
-      console.log(`Order ${order.order_number}: allocatedExpenseForOrder =`, allocatedExpenseForOrder);
-      
-      // Lợi nhuận trước = Doanh thu - Chi phí giá gốc
+      const totalCostPrice = calculateOrderCostPrice(order);
       const profitBefore = revenue - totalCostPrice;
-      
-      // Lợi nhuận sau = Doanh thu - Chi phí giá gốc - Chi phí phân bổ
-      const profitAfter = revenue - totalCostPrice - allocatedExpenseForOrder;
+      const profitAfter = revenue - totalCostPrice - allocatedExpensePerOrder;
 
       return {
         id: order.id,
@@ -482,15 +451,11 @@ export default function CashFlowManagement() {
         total_amount: revenue,
         cost_price: totalCostPrice,
         profit_before: profitBefore,
-        allocated_expenses: allocatedExpenseForOrder,
+        allocated_expenses: allocatedExpensePerOrder,
         profit_after: profitAfter
       };
     });
-
-    // Đợi tất cả promises hoàn thành
-    const orderProfitResults = await Promise.all(orderProfitPromises);
-    setOrderProfits(orderProfitResults);
-  }, [orders, expenses]);
+  }, [orders, expenses, calculateOrderCostPrice]);
 
   // Update local state when data changes
   useEffect(() => {
@@ -504,19 +469,8 @@ export default function CashFlowManagement() {
     });
     
     setOrders(sortedOrders);
-    setLoading(expensesLoading || ordersLoading);
-  }, [expensesData, ordersData, expensesLoading, ordersLoading]);
-
-  // Optimize calculations with useMemo
-  useEffect(() => {
-    if (orders.length > 0 || expenses.length > 0) {
-      // Use requestAnimationFrame to prevent blocking UI
-      requestAnimationFrame(() => {
-        calculateCashFlowStats();
-        calculateOrderProfits();
-      });
-    }
-  }, [orders, expenses]);
+    setLoading(expensesLoading || ordersLoading || productsLoading);
+  }, [expensesData, ordersData, expensesLoading, ordersLoading, productsLoading]);
 
   // Event handlers
   const handleCreateExpense = async () => {
@@ -757,19 +711,36 @@ export default function CashFlowManagement() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {statsCards.map((stat, index) => (
-            <Card key={index}>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <stat.icon className={`h-4 w-4 ${stat.color}`} />
-                  <div>
-                    <p className="text-sm text-gray-600">{stat.title}</p>
-                    <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
+          {loading || productsLoading ? (
+            // Skeleton loading for stats cards
+            Array.from({ length: 6 }).map((_, index) => (
+              <Card key={index}>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <div className="h-4 w-4 bg-gray-200 rounded animate-pulse" />
+                    <div>
+                      <div className="h-4 w-16 bg-gray-200 rounded animate-pulse mb-1" />
+                      <div className="h-6 w-20 bg-gray-200 rounded animate-pulse" />
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            statsCards.map((stat, index) => (
+              <Card key={index}>
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-2">
+                    <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                    <div>
+                      <p className="text-sm text-gray-600">{stat.title}</p>
+                      <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
 
         {/* Tabs for Expense and Profit Management */}
@@ -890,9 +861,54 @@ export default function CashFlowManagement() {
                 <CardTitle>Chi tiết lợi nhuận theo đơn hàng</CardTitle>
               </CardHeader>
               <CardContent>
-                {loading ? (
-                  <div className="text-center py-8">
-                    <div className="text-muted-foreground">Đang tải dữ liệu...</div>
+                {loading || productsLoading ? (
+                  <div className="space-y-4">
+                    {/* Skeleton for summary card */}
+                    {role !== 'accountant' && (
+                      <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                        <div className="h-4 w-32 bg-gray-200 rounded animate-pulse mb-3" />
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {Array.from({ length: 4 }).map((_, i) => (
+                            <div key={i}>
+                              <div className="h-3 w-20 bg-gray-200 rounded animate-pulse mb-1" />
+                              <div className="h-5 w-24 bg-gray-200 rounded animate-pulse" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Skeleton for table */}
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Đơn hàng</TableHead>
+                            <TableHead>Khách hàng</TableHead>
+                            <TableHead>Ngày</TableHead>
+                            <TableHead>Doanh thu</TableHead>
+                            {role !== 'accountant' && <TableHead>Giá sản xuất</TableHead>}
+                            {role !== 'accountant' && <TableHead>Lợi nhuận trước</TableHead>}
+                            {role !== 'accountant' && <TableHead>Chi phí phân bổ</TableHead>}
+                            {role !== 'accountant' && <TableHead>Lợi nhuận sau</TableHead>}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {Array.from({ length: 5 }).map((_, index) => (
+                            <TableRow key={index}>
+                              <TableCell><div className="h-4 w-16 bg-gray-200 rounded animate-pulse" /></TableCell>
+                              <TableCell><div className="h-4 w-20 bg-gray-200 rounded animate-pulse" /></TableCell>
+                              <TableCell><div className="h-4 w-20 bg-gray-200 rounded animate-pulse" /></TableCell>
+                              <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>
+                              {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
+                              {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
+                              {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
+                              {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
                 ) : orderProfits.length === 0 ? (
                   <div className="text-center py-8">
