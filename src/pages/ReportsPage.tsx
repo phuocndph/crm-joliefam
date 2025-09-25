@@ -166,11 +166,12 @@ const ReportsPage = () => {
     return true;
   });
 
-  // Calculate comprehensive metrics
-  const totalOrderRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+  // Calculate comprehensive metrics - only from orders with actual revenue
+  const ordersWithRevenue = filteredOrders.filter(order => Number(order.total_amount || 0) > 0);
+  const totalOrderRevenue = ordersWithRevenue.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   
   // Calculate actual cost price from order items
-  const totalCostPrice = filteredOrders.reduce((sum, order) => {
+  const totalCostPrice = ordersWithRevenue.reduce((sum, order) => {
     let orderCostPrice = 0;
     
     if (order.items) {
@@ -203,8 +204,8 @@ const ReportsPage = () => {
   
   const totalExpensesAmount = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
-  // Calculate actual paid amount - only from payments related to filtered orders
-  const filteredOrderIds = new Set(filteredOrders.map(o => o.id));
+  // Calculate actual paid amount - only from payments related to orders with revenue
+  const filteredOrderIds = new Set(ordersWithRevenue.map(o => o.id));
 
   // Calculate payments for filtered orders (not necessarily in the same time period)
   const paymentsForFilteredOrders = orderPayments.filter(p => p.order_id && filteredOrderIds.has(p.order_id));
@@ -213,11 +214,12 @@ const ReportsPage = () => {
   // Calculate payments that happened in the filtered time period
   const actualPaidAmountInPeriod = filteredPayments.filter(p => !p.order_id || filteredOrderIds.has(p.order_id)).reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
 
-  // Calculate remaining amount to collect for filtered orders
-  const totalOrderAmount = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+  // Calculate remaining amount to collect for orders with revenue
+  const totalOrderAmount = ordersWithRevenue.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   const remainingAmount = Math.max(0, totalOrderAmount - actualPaidAmountTotal);
   console.log('Revenue Calculation Debug:', {
     filteredOrders: filteredOrders.length,
+    ordersWithRevenue: ordersWithRevenue.length,
     filteredPayments: filteredPayments.length,
     totalOrderAmount,
     actualPaidAmountTotal,
@@ -302,7 +304,7 @@ const ReportsPage = () => {
     
     const monthOrders = orders.filter(o => {
       const oDate = new Date(o.created_at);
-      return oDate >= monthStart && oDate <= monthEnd;
+      return oDate >= monthStart && oDate <= monthEnd && Number(o.total_amount || 0) > 0; // Only orders with revenue
     });
     
     const monthExpenses = expenses.filter(e => {
