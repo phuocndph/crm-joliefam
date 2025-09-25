@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Download, TrendingUp, TrendingDown, BarChart3, PieChart, Users, ShoppingCart, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -280,139 +280,96 @@ const ReportsPage = () => {
   const ordersWithoutCostPrice = filteredOrders.filter(o => !o.cost_price || o.cost_price === 0).length;
   const hasCostPriceIssue = ordersWithoutCostPrice > 0;
 
-  // Monthly chart data with accurate cost price calculation
-  const [monthlyData, setMonthlyData] = useState<any[]>([]);
-  const [chartDataLoading, setChartDataLoading] = useState(true);
-
-  // Function to calculate accurate cost price like in CashFlowManagement
-  const calculateAccurateCostPrice = useCallback(async (order: any) => {
-    let orderCostPrice = Number(order.cost_price) || 0;
+  // Calculate monthly chart data instantly using existing product data
+  const monthlyData = useMemo(() => {
+    const monthlyDataMap = new Map();
     
-    // If cost_price in order is 0, calculate from product data
-    if (orderCostPrice === 0 && order.items) {
-      try {
-        const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+    // Get all unique months from filtered orders and expenses
+    const allDates = [
+      ...filteredOrders.map(o => new Date(o.created_at)),
+      ...filteredExpenses.map(e => new Date(e.expense_date))
+    ];
+    
+    // Find the earliest date to start from
+    const earliestDate = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => d.getTime()))) : new Date();
+    const startDate = startOfMonth(earliestDate);
+    const endDate = endOfMonth(new Date());
+    
+    // Generate data for all months from earliest to current
+    let currentMonth = startDate;
+    while (currentMonth <= endDate) {
+      const monthStart = startOfMonth(currentMonth);
+      const monthEnd = endOfMonth(currentMonth);
+      
+      const monthOrders = filteredOrders.filter(o => {
+        const oDate = new Date(o.created_at);
+        return oDate >= monthStart && oDate <= monthEnd;
+      });
+      
+      const monthExpenses = filteredExpenses.filter(e => {
+        const eDate = new Date(e.expense_date);
+        return eDate >= monthStart && eDate <= monthEnd;
+      });
+      
+      const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+      
+      // Calculate cost price instantly using existing product data and order cost_price
+      const totalCostPrice = monthOrders.reduce((sum, order) => {
+        let orderCostPrice = Number(order.cost_price) || 0;
         
-        // Get all product IDs and SKUs from order items
-        const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
-        const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
-
-        let productsData: any[] = [];
-
-        // Get product data from database
-        if (productIds.length > 0) {
-          const { data: idData } = await supabase
-            .from('products')
-            .select('id, sku, cost_price')
-            .in('id', productIds);
-          if (idData) productsData = idData;
-        }
-
-        if (productsData.length === 0 && productSkus.length > 0) {
-          const { data: skuData } = await supabase
-            .from('products')
-            .select('id, sku, cost_price')
-            .in('sku', productSkus);
-          if (skuData) productsData = skuData;
-        }
-
-        // Calculate total cost price from order items
-        orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-          const quantity = item.quantity || 0;
-          let costPrice = 0;
-
-          // Find cost price from products data
-          let product = productsData.find(p => p.id === (item.originalProductId || item.id));
-          if (!product && item.sku) {
-            product = productsData.find(p => p.sku === item.sku);
+        // If no cost_price in order, calculate from items using loaded product data
+        if (orderCostPrice === 0 && order.items) {
+          try {
+            const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
+            const items = JSON.parse(itemsStr);
+            
+            orderCostPrice = items.reduce((itemSum: number, item: any) => {
+              const quantity = Number(item.quantity) || 0;
+              let costPrice = 0;
+              
+              // Find product by SKU or originalProductId from existing products data
+              const product = products.find(p => 
+                p.sku === item.sku || p.id === item.originalProductId
+              );
+              
+              if (product) {
+                costPrice = Number(product.cost_price) || 0;
+              }
+              
+              return itemSum + (quantity * costPrice);
+            }, 0);
+          } catch (error) {
+            console.error('Error calculating cost price for monthly order:', order.id, error);
           }
-          
-          if (product) {
-            costPrice = Number(product.cost_price) || 0;
-          }
-
-          return sum + (quantity * costPrice);
-        }, 0);
-      } catch (error) {
-        console.error('Error calculating cost price for order:', order.id, error);
-      }
+        }
+        
+        return sum + orderCostPrice;
+      }, 0);
+      
+      const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+      const ordersCount = monthOrders.length;
+      const completedCount = monthOrders.filter(o => o.status === "delivered").length;
+      
+      const monthKey = format(currentMonth, "yyyy-MM");
+      monthlyDataMap.set(monthKey, {
+        month: format(currentMonth, "MMM yyyy", { locale: vi }),
+        revenue,
+        costPrice: totalCostPrice,
+        expenses: expensesAmount,
+        grossProfit: revenue - totalCostPrice,
+        profit: revenue - totalCostPrice - expensesAmount,
+        orders: ordersCount,
+        completed: completedCount,
+        sortKey: monthKey
+      });
+      
+      // Move to next month
+      currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
     }
     
-    return orderCostPrice;
-  }, []);
-
-  // Calculate monthly data with accurate cost prices
-  useEffect(() => {
-    const calculateMonthlyData = async () => {
-      setChartDataLoading(true);
-      
-      const monthlyDataMap = new Map();
-      
-      // Get all unique months from filtered orders and expenses
-      const allDates = [
-        ...filteredOrders.map(o => new Date(o.created_at)),
-        ...filteredExpenses.map(e => new Date(e.expense_date))
-      ];
-      
-      // Find the earliest date to start from
-      const earliestDate = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => d.getTime()))) : new Date();
-      const startDate = startOfMonth(earliestDate);
-      const endDate = endOfMonth(new Date());
-      
-      // Generate data for all months from earliest to current
-      let currentMonth = startDate;
-      while (currentMonth <= endDate) {
-        const monthStart = startOfMonth(currentMonth);
-        const monthEnd = endOfMonth(currentMonth);
-        
-        const monthOrders = filteredOrders.filter(o => {
-          const oDate = new Date(o.created_at);
-          return oDate >= monthStart && oDate <= monthEnd;
-        });
-        
-        const monthExpenses = filteredExpenses.filter(e => {
-          const eDate = new Date(e.expense_date);
-          return eDate >= monthStart && eDate <= monthEnd;
-        });
-        
-        const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-        
-        // Calculate accurate cost price using the same logic as CashFlowManagement
-        let totalCostPrice = 0;
-        for (const order of monthOrders) {
-          const orderCostPrice = await calculateAccurateCostPrice(order);
-          totalCostPrice += orderCostPrice;
-        }
-        
-        const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
-        const ordersCount = monthOrders.length;
-        const completedCount = monthOrders.filter(o => o.status === "delivered").length;
-        
-        const monthKey = format(currentMonth, "yyyy-MM");
-        monthlyDataMap.set(monthKey, {
-          month: format(currentMonth, "MMM yyyy", { locale: vi }),
-          revenue,
-          costPrice: totalCostPrice,
-          expenses: expensesAmount,
-          grossProfit: revenue - totalCostPrice,
-          profit: revenue - totalCostPrice - expensesAmount,
-          orders: ordersCount,
-          completed: completedCount,
-          sortKey: monthKey
-        });
-        
-        // Move to next month
-        currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
-      }
-      
-      // Convert to array and sort by date
-      const monthlyDataArray = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-      setMonthlyData(monthlyDataArray);
-      setChartDataLoading(false);
-    };
-
-    calculateMonthlyData();
-  }, [filteredOrders, filteredExpenses, calculateAccurateCostPrice]);
+    // Convert to array and sort by date
+    return Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  }, [filteredOrders, filteredExpenses, products]);
 
   // Category and status breakdown
   const expenseCategories = filteredExpenses.reduce((acc, e) => {
@@ -690,110 +647,104 @@ const ReportsPage = () => {
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2">
                       <div className="h-80">
-                        {chartDataLoading ? (
-                          <div className="flex items-center justify-center h-full">
-                            <div className="text-muted-foreground text-lg">Đang tính toán dữ liệu chính xác...</div>
-                          </div>
-                        ) : (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={monthlyData} margin={{
-                            top: 20,
-                            right: 60,
-                            left: 20,
-                            bottom: 5
-                          }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.2} />
-                              <XAxis dataKey="month" stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
-                              fill: "hsl(var(--foreground))"
-                            }} />
-                              <YAxis yAxisId="currency" stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
-                              fill: "hsl(var(--foreground))"
-                            }} tickFormatter={value => `${(value / 1000000).toFixed(1)}M`} />
-                              <YAxis yAxisId="orders" orientation="right" stroke="hsl(var(--warning))" fontSize={14} fontWeight="500" tick={{
-                              fill: "hsl(var(--warning))"
-                            }} />
-                              <Tooltip contentStyle={{
-                              backgroundColor: "hsl(var(--background))",
-                              border: "2px solid hsl(var(--border))",
-                              borderRadius: "12px",
-                              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                              fontSize: "14px",
-                              fontWeight: "500"
-                              }} formatter={(value: number, name: string) => {
-                                if (name === "orders") return [value, "Tổng đơn hàng"];
-                                if (name === "revenue") return [formatCurrency(value), "Doanh thu"];
-                                if (name === "costPrice") return [formatCurrency(value), "Giá vốn"];
-                                if (name === "expenses") return [formatCurrency(value), "Chi phí"];
-                                if (name === "grossProfit") return [formatCurrency(value), "Lợi nhuận gộp"];
-                                if (name === "profit") return [formatCurrency(value), "Lợi nhuận ròng"];
-                                return [formatCurrency(value), name];
-                              }} labelStyle={{
-                              color: "hsl(var(--foreground))",
-                              fontWeight: "600"
-                            }} />
-                               <Line yAxisId="currency" type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={4} dot={{
-                               fill: "hsl(var(--primary))",
-                               strokeWidth: 2,
-                               r: 6
-                             }} activeDot={{
-                               r: 8,
-                               stroke: "hsl(var(--primary))",
-                               strokeWidth: 3,
-                               fill: "white"
-                             }} name="Doanh thu" />
-                               <Line yAxisId="currency" type="monotone" dataKey="costPrice" stroke="#f59e0b" strokeWidth={3} dot={{
-                               fill: "#f59e0b",
-                               strokeWidth: 2,
-                               r: 5
-                             }} activeDot={{
-                               r: 7,
-                               stroke: "#f59e0b",
-                               strokeWidth: 2,
-                               fill: "white"
-                             }} name="costPrice" />
-                               <Line yAxisId="currency" type="monotone" dataKey="expenses" stroke="hsl(var(--destructive))" strokeWidth={3} dot={{
-                               fill: "hsl(var(--destructive))",
-                               strokeWidth: 2,
-                               r: 5
-                             }} activeDot={{
-                               r: 7,
-                               stroke: "hsl(var(--destructive))",
-                               strokeWidth: 2,
-                               fill: "white"
-                             }} name="Chi phí" />
-                               <Line yAxisId="currency" type="monotone" dataKey="grossProfit" stroke="#059669" strokeWidth={3} dot={{
-                               fill: "#059669",
-                               strokeWidth: 2,
-                               r: 5
-                             }} activeDot={{
-                               r: 7,
-                               stroke: "#059669",
-                               strokeWidth: 2,
-                               fill: "white"
-                             }} name="grossProfit" />
-                               <Line yAxisId="currency" type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{
-                               fill: "#10b981",
-                               strokeWidth: 2,
-                               r: 5
-                             }} activeDot={{
-                               r: 7,
-                               stroke: "#10b981",
-                               strokeWidth: 2,
-                               fill: "white"
-                             }} name="Lợi nhuận ròng" />
-                              <Line yAxisId="orders" type="monotone" dataKey="orders" stroke="hsl(var(--warning))" strokeWidth={3} dot={{
-                              fill: "hsl(var(--warning))",
-                              strokeWidth: 2,
-                              r: 5
-                            }} activeDot={{
-                              r: 7,
-                              stroke: "hsl(var(--warning))",
-                              strokeWidth: 2,
-                              fill: "white"
-                            }} name="orders" />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        )}
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={monthlyData} margin={{
+                          top: 20,
+                          right: 60,
+                          left: 20,
+                          bottom: 5
+                        }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.2} />
+                            <XAxis dataKey="month" stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
+                            fill: "hsl(var(--foreground))"
+                          }} />
+                            <YAxis yAxisId="currency" stroke="hsl(var(--foreground))" fontSize={14} fontWeight="500" tick={{
+                            fill: "hsl(var(--foreground))"
+                          }} tickFormatter={value => `${(value / 1000000).toFixed(1)}M`} />
+                            <YAxis yAxisId="orders" orientation="right" stroke="hsl(var(--warning))" fontSize={14} fontWeight="500" tick={{
+                            fill: "hsl(var(--warning))"
+                          }} />
+                            <Tooltip contentStyle={{
+                            backgroundColor: "hsl(var(--background))",
+                            border: "2px solid hsl(var(--border))",
+                            borderRadius: "12px",
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                            fontSize: "14px",
+                            fontWeight: "500"
+                            }} formatter={(value: number, name: string) => {
+                              if (name === "orders") return [value, "Tổng đơn hàng"];
+                              if (name === "revenue") return [formatCurrency(value), "Doanh thu"];
+                              if (name === "costPrice") return [formatCurrency(value), "Giá vốn"];
+                              if (name === "expenses") return [formatCurrency(value), "Chi phí"];
+                              if (name === "grossProfit") return [formatCurrency(value), "Lợi nhuận gộp"];
+                              if (name === "profit") return [formatCurrency(value), "Lợi nhuận ròng"];
+                              return [formatCurrency(value), name];
+                            }} labelStyle={{
+                            color: "hsl(var(--foreground))",
+                            fontWeight: "600"
+                          }} />
+                             <Line yAxisId="currency" type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={4} dot={{
+                             fill: "hsl(var(--primary))",
+                             strokeWidth: 2,
+                             r: 6
+                           }} activeDot={{
+                             r: 8,
+                             stroke: "hsl(var(--primary))",
+                             strokeWidth: 3,
+                             fill: "white"
+                           }} name="Doanh thu" />
+                             <Line yAxisId="currency" type="monotone" dataKey="costPrice" stroke="#f59e0b" strokeWidth={3} dot={{
+                             fill: "#f59e0b",
+                             strokeWidth: 2,
+                             r: 5
+                           }} activeDot={{
+                             r: 7,
+                             stroke: "#f59e0b",
+                             strokeWidth: 2,
+                             fill: "white"
+                           }} name="costPrice" />
+                             <Line yAxisId="currency" type="monotone" dataKey="expenses" stroke="hsl(var(--destructive))" strokeWidth={3} dot={{
+                             fill: "hsl(var(--destructive))",
+                             strokeWidth: 2,
+                             r: 5
+                           }} activeDot={{
+                             r: 7,
+                             stroke: "hsl(var(--destructive))",
+                             strokeWidth: 2,
+                             fill: "white"
+                           }} name="Chi phí" />
+                             <Line yAxisId="currency" type="monotone" dataKey="grossProfit" stroke="#059669" strokeWidth={3} dot={{
+                             fill: "#059669",
+                             strokeWidth: 2,
+                             r: 5
+                           }} activeDot={{
+                             r: 7,
+                             stroke: "#059669",
+                             strokeWidth: 2,
+                             fill: "white"
+                           }} name="grossProfit" />
+                             <Line yAxisId="currency" type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{
+                             fill: "#10b981",
+                             strokeWidth: 2,
+                             r: 5
+                           }} activeDot={{
+                             r: 7,
+                             stroke: "#10b981",
+                             strokeWidth: 2,
+                             fill: "white"
+                           }} name="Lợi nhuận ròng" />
+                            <Line yAxisId="orders" type="monotone" dataKey="orders" stroke="hsl(var(--warning))" strokeWidth={3} dot={{
+                            fill: "hsl(var(--warning))",
+                            strokeWidth: 2,
+                            r: 5
+                          }} activeDot={{
+                            r: 7,
+                            stroke: "hsl(var(--warning))",
+                            strokeWidth: 2,
+                            fill: "white"
+                          }} name="orders" />
+                          </LineChart>
+                        </ResponsiveContainer>
                        </div>
                     </div>
                     
@@ -1136,23 +1087,17 @@ const ReportsPage = () => {
                   <CardTitle>Doanh thu vs Chi phí</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {chartDataLoading ? (
-                    <div className="flex items-center justify-center h-[350px]">
-                      <div className="text-muted-foreground text-lg">Đang tính toán dữ liệu chính xác...</div>
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height={350}>
-                      <BarChart data={monthlyData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                        <Bar dataKey="revenue" fill="#10b981" name="Doanh thu" />
-                        <Bar dataKey="costPrice" fill="#f59e0b" name="Giá vốn" />
-                        <Bar dataKey="expenses" fill="#ef4444" name="Chi phí" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
+                  <ResponsiveContainer width="100%" height={350}>
+                    <BarChart data={monthlyData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                      <Bar dataKey="revenue" fill="#10b981" name="Doanh thu" />
+                      <Bar dataKey="costPrice" fill="#f59e0b" name="Giá vốn" />
+                      <Bar dataKey="expenses" fill="#ef4444" name="Chi phí" />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </CardContent>
               </Card>
 
