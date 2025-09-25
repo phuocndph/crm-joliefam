@@ -345,10 +345,10 @@ const ReportsPage = () => {
   // Prepare comprehensive chart data - all months with data
   const monthlyDataMap = new Map();
   
-  // Get all unique months from orders and expenses
+  // Get all unique months from dateFiltered data (consistent with main metrics)
   const allDates = [
-    ...orders.map(o => new Date(o.created_at)),
-    ...expenses.map(e => new Date(e.expense_date))
+    ...dateFilteredOrders.map(o => new Date(o.created_at)),
+    ...dateFilteredExpenses.map(e => new Date(e.expense_date))
   ];
   
   // Find the earliest date to start from
@@ -362,12 +362,12 @@ const ReportsPage = () => {
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
     
-    const monthOrders = orders.filter(o => {
+    const monthOrders = dateFilteredOrders.filter(o => {
       const oDate = new Date(o.created_at);
       return oDate >= monthStart && oDate <= monthEnd && Number(o.total_amount || 0) > 0; // Only orders with revenue
     });
     
-    const monthExpenses = expenses.filter(e => {
+    const monthExpenses = dateFilteredExpenses.filter(e => {
       const eDate = new Date(e.expense_date);
       return eDate >= monthStart && eDate <= monthEnd;
     });
