@@ -369,8 +369,20 @@ const ReportsPage = () => {
   
   // Convert to array and sort by date
   const monthlyData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-
-  // Category and status breakdown
+  
+  // Debug: Calculate total from all months to compare with CashFlowManagement
+  const totalFromAllMonths = {
+    revenue: monthlyData.reduce((sum, m) => sum + m.revenue, 0),
+    costPrice: monthlyData.reduce((sum, m) => sum + m.costPrice, 0),
+    expenses: monthlyData.reduce((sum, m) => sum + m.expenses, 0),
+    profit: monthlyData.reduce((sum, m) => sum + m.profit, 0)
+  };
+  
+  console.log('Monthly Data Debug - June 2023:', monthlyData.find(m => m.month.includes('2023') && m.month.includes('thg 6')));
+  console.log('Total from all months (should match CashFlowManagement):', totalFromAllMonths);
+  console.log('Individual monthly profits:', monthlyData.map(m => ({ month: m.month, profit: m.profit })));
+  
+  return monthlyData;
   const expenseCategories = filteredExpenses.reduce((acc, e) => {
     const category = e.category || "Khác";
     if (!acc[category]) {
