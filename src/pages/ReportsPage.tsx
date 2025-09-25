@@ -708,8 +708,7 @@ const ReportsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 space-y-6">
-                      {/* Line Chart */}
+                    <div className="lg:col-span-2">
                       <div className="h-80">
                         {isCalculatingChartData ? (
                           <div className="flex items-center justify-center h-full">
@@ -817,59 +816,6 @@ const ReportsPage = () => {
                           }} name="orders" />
                           </LineChart>
                         </ResponsiveContainer>
-                        )}
-                      </div>
-                      
-                      {/* Bar Chart based on Monthly Details */}
-                      <div className="h-80">
-                        <h5 className="font-medium text-sm mb-4 text-muted-foreground">📊 Biểu đồ cột theo chi tiết tháng</h5>
-                        {isCalculatingChartData ? (
-                          <div className="flex items-center justify-center h-full">
-                            <div className="text-center space-y-2">
-                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                              <p className="text-sm text-muted-foreground">Đang tính toán dữ liệu chính xác...</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={monthlyData} margin={{
-                            top: 20,
-                            right: 30,
-                            left: 20,
-                            bottom: 5
-                          }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.2} />
-                              <XAxis dataKey="month" stroke="hsl(var(--foreground))" fontSize={12} fontWeight="500" tick={{
-                                fill: "hsl(var(--foreground))"
-                              }} />
-                              <YAxis stroke="hsl(var(--foreground))" fontSize={12} fontWeight="500" tick={{
-                                fill: "hsl(var(--foreground))"
-                              }} tickFormatter={value => `${(value / 1000000).toFixed(1)}M`} />
-                              <Tooltip contentStyle={{
-                                backgroundColor: "hsl(var(--background))",
-                                border: "2px solid hsl(var(--border))",
-                                borderRadius: "12px",
-                                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                                fontSize: "14px",
-                                fontWeight: "500"
-                              }} formatter={(value: number, name: string) => {
-                                if (name === "revenue") return [formatCurrency(value), "Doanh thu"];
-                                if (name === "costPrice") return [formatCurrency(value), "Giá vốn"];
-                                if (name === "expenses") return [formatCurrency(value), "Chi phí"];
-                                if (name === "grossProfit") return [formatCurrency(value), "Lợi nhuận gộp"];
-                                if (name === "profit") return [formatCurrency(value), "Lợi nhuận ròng"];
-                                return [formatCurrency(value), name];
-                              }} labelStyle={{
-                                color: "hsl(var(--foreground))",
-                                fontWeight: "600"
-                              }} />
-                              <Bar dataKey="revenue" fill="hsl(var(--primary))" name="revenue" radius={[2, 2, 0, 0]} />
-                              <Bar dataKey="costPrice" fill="#f59e0b" name="costPrice" radius={[2, 2, 0, 0]} />
-                              <Bar dataKey="expenses" fill="hsl(var(--destructive))" name="expenses" radius={[2, 2, 0, 0]} />
-                              <Bar dataKey="grossProfit" fill="#059669" name="grossProfit" radius={[2, 2, 0, 0]} />
-                              <Bar dataKey="profit" fill="#10b981" name="profit" radius={[2, 2, 0, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
                         )}
                       </div>
                     </div>
