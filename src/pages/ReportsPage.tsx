@@ -365,6 +365,35 @@ const ReportsPage = () => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatCurrency(totalOrderRevenue)}</div>
+                <p className="text-xs text-muted-foreground">
+                  {formatCurrency(averageDailyRevenue)}/ngày
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Giá vốn</CardTitle>
+                <TrendingDown className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-orange-600">{formatCurrency(totalCostPrice)}</div>
+                <p className="text-xs text-muted-foreground">
+                  {totalOrderRevenue > 0 ? Math.round((totalCostPrice / totalOrderRevenue) * 100) : 0}% của doanh thu
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Lợi nhuận gộp</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{formatCurrency(grossProfit)}</div>
+                <p className="text-xs text-muted-foreground">
+                  {totalOrderRevenue > 0 ? Math.round((grossProfit / totalOrderRevenue) * 100) : 0}% tỷ suất
+                </p>
               </CardContent>
             </Card>
             
@@ -374,27 +403,12 @@ const ReportsPage = () => {
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(netProfit)}</div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Tổng đơn hàng</CardTitle>
-                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalOrders}</div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Khách hàng mới</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{newCustomers}</div>
+                <div className={`text-2xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(netProfit)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {totalOrderRevenue > 0 ? Math.round((netProfit / totalOrderRevenue) * 100) : 0}% tỷ suất
+                </p>
               </CardContent>
             </Card>
           </div>
