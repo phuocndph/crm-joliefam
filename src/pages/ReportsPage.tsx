@@ -133,23 +133,11 @@ const ReportsPage = () => {
     }
   });
 
-  // Filter data by date range
+  // Filter data by date range for transactions only (orders and expenses handled separately)
   const filteredTransactions = transactions.filter(t => {
     const transactionDate = new Date(t.date);
     if (dateRange?.from && transactionDate < dateRange.from) return false;
     if (dateRange?.to && transactionDate > dateRange.to) return false;
-    return true;
-  });
-  const filteredOrders = orders.filter(o => {
-    const orderDate = new Date(o.created_at);
-    if (dateRange?.from && orderDate < dateRange.from) return false;
-    if (dateRange?.to && orderDate > dateRange.to) return false;
-    return true;
-  });
-  const filteredExpenses = expenses.filter(e => {
-    const expenseDate = new Date(e.expense_date);
-    if (dateRange?.from && expenseDate < dateRange.from) return false;
-    if (dateRange?.to && expenseDate > dateRange.to) return false;
     return true;
   });
 
@@ -175,8 +163,21 @@ const ReportsPage = () => {
     return true;
   });
 
-  // Calculate comprehensive metrics - only from orders with actual revenue
-  const ordersWithRevenue = filteredOrders.filter(order => Number(order.total_amount || 0) > 0);
+  // Calculate comprehensive metrics - using ALL orders and expenses like CashFlowManagement
+  // Filter by date range at calculation level to match CashFlowManagement logic
+  const dateFilteredOrders = orders.filter(order => {
+    if (!dateRange?.from || !dateRange?.to) return true;
+    const orderDate = new Date(order.created_at);
+    return orderDate >= dateRange.from && orderDate <= dateRange.to;
+  });
+  
+  const dateFilteredExpenses = expenses.filter(expense => {
+    if (!dateRange?.from || !dateRange?.to) return true;
+    const expenseDate = new Date(expense.expense_date);
+    return expenseDate >= dateRange.from && expenseDate <= dateRange.to;
+  });
+  
+  const ordersWithRevenue = dateFilteredOrders.filter(order => Number(order.total_amount || 0) > 0);
   const totalOrderRevenue = ordersWithRevenue.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   
   // useEffect to calculate cost price asynchronously
@@ -256,7 +257,7 @@ const ReportsPage = () => {
   // Use the calculated cost price from state
   const totalCostPrice = calculatedMetrics.totalCostPrice;
   
-  const totalExpensesAmount = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const totalExpensesAmount = dateFilteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
   // Calculate actual paid amount - only from payments related to orders with revenue
   const filteredOrderIds = new Set(ordersWithRevenue.map(o => o.id));
@@ -265,16 +266,21 @@ const ReportsPage = () => {
   const paymentsForFilteredOrders = orderPayments.filter(p => p.order_id && filteredOrderIds.has(p.order_id));
   const actualPaidAmountTotal = paymentsForFilteredOrders.reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
 
-  // Calculate payments that happened in the filtered time period
-  const actualPaidAmountInPeriod = filteredPayments.filter(p => !p.order_id || filteredOrderIds.has(p.order_id)).reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
+  // Calculate payments that happened in the filtered time period  
+  const dateFilteredPayments = orderPayments.filter(p => {
+    if (!dateRange?.from || !dateRange?.to) return true;
+    const paymentDate = new Date(p.payment_date);
+    return paymentDate >= dateRange.from && paymentDate <= dateRange.to;
+  });
+  const actualPaidAmountInPeriod = dateFilteredPayments.filter(p => !p.order_id || filteredOrderIds.has(p.order_id)).reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
 
   // Calculate remaining amount to collect for orders with revenue
   const totalOrderAmount = ordersWithRevenue.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   const remainingAmount = Math.max(0, totalOrderAmount - actualPaidAmountTotal);
   console.log('Revenue Calculation Debug:', {
-    filteredOrders: filteredOrders.length,
+    dateFilteredOrders: dateFilteredOrders.length,
     ordersWithRevenue: ordersWithRevenue.length,
-    filteredPayments: filteredPayments.length,
+    dateFilteredPayments: dateFilteredPayments.length,
     totalOrderAmount,
     actualPaidAmountTotal,
     actualPaidAmountInPeriod,
@@ -283,7 +289,7 @@ const ReportsPage = () => {
       from: dateRange?.from?.toISOString(),
       to: dateRange?.to?.toISOString()
     },
-    sampleOrders: filteredOrders.slice(0, 3).map(o => ({
+    sampleOrders: dateFilteredOrders.slice(0, 3).map(o => ({
       id: o.id,
       order_number: o.order_number,
       total_amount: o.total_amount,
@@ -306,14 +312,14 @@ const ReportsPage = () => {
   });
   const grossProfit = totalOrderRevenue - totalCostPrice;
   const netProfit = grossProfit - totalExpensesAmount;
-  const completedOrders = filteredOrders.filter(o => o.status === "delivered").length;
-  const pendingOrders = filteredOrders.filter(o => o.status === "pending").length;
-  const totalOrders = filteredOrders.length;
+  const completedOrders = dateFilteredOrders.filter(o => o.status === "delivered").length;
+  const pendingOrders = dateFilteredOrders.filter(o => o.status === "pending").length;
+  const totalOrders = dateFilteredOrders.length;
 
   // Payment status calculations
-  const paidOrders = filteredOrders.filter(o => o.payment_status === "paid").length;
-  const partialPaidOrders = filteredOrders.filter(o => o.payment_status === "partial").length;
-  const unpaidOrders = filteredOrders.filter(o => o.payment_status === "pending").length;
+  const paidOrders = dateFilteredOrders.filter(o => o.payment_status === "paid").length;
+  const partialPaidOrders = dateFilteredOrders.filter(o => o.payment_status === "partial").length;
+  const unpaidOrders = dateFilteredOrders.filter(o => o.payment_status === "pending").length;
 
   // Customer metrics
   const newCustomers = filteredCustomers.length;
@@ -333,7 +339,7 @@ const ReportsPage = () => {
   const averageDailyRevenue = dateRange?.from && dateRange?.to ? totalOrderRevenue / Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1) : 0;
 
   // Check for zero cost_price data
-  const ordersWithoutCostPrice = filteredOrders.filter(o => !o.cost_price || o.cost_price === 0).length;
+  const ordersWithoutCostPrice = dateFilteredOrders.filter(o => !o.cost_price || o.cost_price === 0).length;
   const hasCostPriceIssue = ordersWithoutCostPrice > 0;
 
   // Prepare comprehensive chart data - all months with data
@@ -457,7 +463,7 @@ const ReportsPage = () => {
   console.log('Individual monthly profits:', monthlyData.map(m => ({ month: m.month, profit: m.profit })));
   
   // Category and status breakdown
-  const expenseCategories = filteredExpenses.reduce((acc, e) => {
+  const expenseCategories = dateFilteredExpenses.reduce((acc, e) => {
     const category = e.category || "Khác";
     if (!acc[category]) {
       acc[category] = {
@@ -507,7 +513,7 @@ const ReportsPage = () => {
   }].filter(item => item.value > 0);
 
   // Top products by sales
-  const productSales = filteredOrders.flatMap(order => {
+  const productSales = dateFilteredOrders.flatMap(order => {
     try {
       const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
       return JSON.parse(itemsStr);
@@ -1099,9 +1105,9 @@ const ReportsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-blue-600">{formatCurrency(totalOrderRevenue)}</div>
-                  <p className="text-xs text-muted-foreground">
-                    Từ {filteredOrders.length} đơn hàng
-                  </p>
+                   <p className="text-xs text-muted-foreground">
+                     Từ {dateFilteredOrders.length} đơn hàng
+                   </p>
                 </CardContent>
               </Card>
               
@@ -1447,7 +1453,7 @@ const ReportsPage = () => {
               <CardContent>
                 <div className="space-y-4 max-h-96 overflow-y-auto">
                   {(() => {
-                  const unpaidOrdersList = filteredOrders.filter(order => order.payment_status === 'pending' || order.payment_status === 'partial');
+                  const unpaidOrdersList = dateFilteredOrders.filter(order => order.payment_status === 'pending' || order.payment_status === 'partial');
                   return unpaidOrdersList.length > 0 ? unpaidOrdersList.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(order => {
                     // Calculate paid amount for this order
                     const orderPaymentsForOrder = orderPayments.filter(p => p.order_id === order.id);
