@@ -192,15 +192,12 @@ const ReportsPage = () => {
     sortKey: string;
   }>>([]);
 
-  // Monthly data calculation using EXACT same logic as CashFlowManagement
+  // Monthly data calculation - clean version without debug logs
   const calculateSimpleMonthlyData = useCallback(async () => {
     if (!filteredOrders.length && !filteredExpenses.length) {
       setMonthlyData([]);
       return;
     }
-
-    console.log('=== DEBUG: Starting monthly data calculation (CashFlow logic) ===');
-    console.log('Filtered orders:', filteredOrders.length);
 
     const monthlyDataMap = new Map();
     
@@ -233,30 +230,24 @@ const ReportsPage = () => {
       
       const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
       
-      // Calculate cost price using EXACT CashFlowManagement logic
+      // Calculate cost price - prioritize order.cost_price, fallback to item calculation
       let totalCostPrice = 0;
-      const monthKey = format(currentMonth, "MMM yyyy", { locale: vi });
-      
-      console.log(`\n=== DEBUG: Processing ${monthKey} ===`);
-      console.log('Month orders:', monthOrders.length);
       
       for (const order of monthOrders) {
         let orderCostPrice = Number(order.cost_price) || 0;
         
-        console.log(`Order ${order.order_number}: stored cost_price = ${orderCostPrice}`);
-        
-        // Nếu cost_price trong order bằng 0, tính từ product data (same as CashFlow)
+        // If order cost_price is 0, calculate from items
         if (orderCostPrice === 0 && order.items) {
           try {
             const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
             
-            // Lấy tất cả product IDs và SKUs từ order items
+            // Get product IDs and SKUs from order items
             const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
             const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
 
             let productsData: any[] = [];
 
-            // Lấy dữ liệu sản phẩm từ database
+            // Fetch product data from database
             if (productIds.length > 0) {
               const { data: idData } = await supabase
                 .from('products')
@@ -273,12 +264,12 @@ const ReportsPage = () => {
               if (skuData) productsData = skuData;
             }
 
-            // Tính cost price từ order items
+            // Calculate cost price from order items
             orderCostPrice = orderItems.reduce((sum: number, item: any) => {
               const quantity = item.quantity || 0;
               let costPrice = 0;
 
-              // Tìm cost price từ products data
+              // Find cost price from products data
               let product = productsData.find(p => p.id === (item.originalProductId || item.id));
               if (!product && item.sku) {
                 product = productsData.find(p => p.sku === item.sku);
@@ -288,11 +279,8 @@ const ReportsPage = () => {
                 costPrice = Number(product.cost_price) || 0;
               }
 
-              console.log(`Item ${item.sku || item.id}: qty=${quantity}, unit_cost=${costPrice}, total=${quantity * costPrice}`);
               return sum + (quantity * costPrice);
             }, 0);
-            
-            console.log(`Calculated cost_price for order ${order.order_number}: ${orderCostPrice}`);
           } catch (error) {
             console.error('Error calculating cost price for order:', order.id, error);
           }
@@ -301,12 +289,11 @@ const ReportsPage = () => {
         totalCostPrice += orderCostPrice;
       }
       
-      console.log(`Total cost price for ${monthKey}: ${totalCostPrice}`);
-      
       const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
       const ordersCount = monthOrders.length;
       const completedCount = monthOrders.filter(o => o.status === "delivered").length;
       
+      const monthKey = format(currentMonth, "MMM yyyy", { locale: vi });
       const monthKeySort = format(currentMonth, "yyyy-MM");
       monthlyDataMap.set(monthKeySort, {
         month: monthKey,
@@ -326,7 +313,6 @@ const ReportsPage = () => {
     
     // Convert to array and sort by date
     const sortedData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-    console.log('=== DEBUG: Final monthly data ===', sortedData);
     setMonthlyData(sortedData);
   }, [filteredOrders, filteredExpenses]);
 
