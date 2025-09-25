@@ -7,6 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Cell, LineChart, Line, Pie, AreaChart, Area } from "recharts";
 import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear, differenceInDays, startOfDay, endOfDay } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -547,6 +556,383 @@ const ReportsPage = () => {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="sales" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Đơn hàng mới</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{totalOrders}</div>
+                <p className="text-xs text-muted-foreground">
+                  +{Math.round((totalOrders / Math.max(1, totalOrders)) * 100)}% từ trước
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Đơn hàng hoàn thành</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{completedOrders}</div>
+                <p className="text-xs text-muted-foreground">
+                  {totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0}% tỷ lệ hoàn thành
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Đơn hàng chờ xử lý</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-orange-600">{pendingOrders}</div>
+                <p className="text-xs text-muted-foreground">
+                  {totalOrders > 0 ? Math.round((pendingOrders / totalOrders) * 100) : 0}% đang chờ
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Giá trị đơn hàng TB</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(averageOrderValue)}</div>
+                <p className="text-xs text-muted-foreground">
+                  Trung bình mỗi đơn hàng
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Xu hướng bán hàng theo tháng</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={monthlyData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="orders" fill="#3b82f6" name="Số đơn hàng" />
+                      <Bar dataKey="completed" fill="#10b981" name="Đã hoàn thành" />
+                    </BarChart>
+                  </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Trạng thái đơn hàng</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={400}>
+                  <RechartsPieChart>
+                    <Pie
+                      data={[
+                        { name: "Hoàn thành", value: completedOrders, fill: "#10b981" },
+                        { name: "Chờ xử lý", value: pendingOrders, fill: "#f59e0b" },
+                        { name: "Khác", value: Math.max(0, totalOrders - completedOrders - pendingOrders), fill: "#6b7280" }
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {[
+                        { name: "Hoàn thành", value: completedOrders, fill: "#10b981" },
+                        { name: "Chờ xử lý", value: pendingOrders, fill: "#f59e0b" },
+                        { name: "Khác", value: Math.max(0, totalOrders - completedOrders - pendingOrders), fill: "#6b7280" }
+                      ].map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="financial" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Tổng doanh thu</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{formatCurrency(totalOrderRevenue)}</div>
+                <p className="text-xs text-muted-foreground">
+                  {formatCurrency(averageDailyRevenue)}/ngày
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Tổng chi phí</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-600">{formatCurrency(totalExpensesAmount)}</div>
+                <p className="text-xs text-muted-foreground">
+                  Các khoản chi phí
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Lợi nhuận gộp</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-600">{formatCurrency(grossProfit)}</div>
+                <p className="text-xs text-muted-foreground">
+                  {totalOrderRevenue > 0 ? Math.round((grossProfit / totalOrderRevenue) * 100) : 0}% tỷ suất
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Lợi nhuận ròng</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className={`text-2xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(netProfit)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {totalOrderRevenue > 0 ? Math.round((netProfit / totalOrderRevenue) * 100) : 0}% tỷ suất
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Doanh thu vs Chi phí</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart data={monthlyData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Bar dataKey="revenue" fill="#10b981" name="Doanh thu" />
+                    <Bar dataKey="costPrice" fill="#f59e0b" name="Giá vốn" />
+                    <Bar dataKey="expenses" fill="#ef4444" name="Chi phí" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Cơ cấu tài chính</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={350}>
+                  <RechartsPieChart>
+                    <Pie
+                      data={[
+                        { name: "Doanh thu", value: totalOrderRevenue, fill: "#10b981" },
+                        { name: "Giá vốn", value: totalCostPrice, fill: "#f59e0b" },
+                        { name: "Chi phí", value: totalExpensesAmount, fill: "#ef4444" }
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(1)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {[
+                        { name: "Doanh thu", value: totalOrderRevenue, fill: "#10b981" },
+                        { name: "Giá vốn", value: totalCostPrice, fill: "#f59e0b" },
+                        { name: "Chi phí", value: totalExpensesAmount, fill: "#ef4444" }
+                      ].map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Chi tiết thanh toán</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">{paidOrders}</div>
+                  <p className="text-sm text-muted-foreground">Đơn đã thanh toán</p>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">{partialPaidOrders}</div>
+                  <p className="text-sm text-muted-foreground">Đơn thanh toán 1 phần</p>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-red-600">{unpaidOrders}</div>
+                  <p className="text-sm text-muted-foreground">Đơn chưa thanh toán</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="customers" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Tổng khách hàng</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{totalCustomers}</div>
+                <p className="text-xs text-muted-foreground">
+                  Tất cả khách hàng
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Khách hàng mới</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{newCustomers}</div>
+                <p className="text-xs text-muted-foreground">
+                  Trong kỳ báo cáo
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Chi tiêu TB/khách</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {formatCurrency(totalCustomers > 0 ? totalOrderRevenue / totalCustomers : 0)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Giá trị trung bình
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Tỷ lệ giữ chân</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-600">
+                  {totalCustomers > 0 ? Math.round(((totalCustomers - newCustomers) / totalCustomers) * 100) : 0}%
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Khách hàng quay lại
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                📈 Tăng trưởng khách hàng
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Biểu đồ thể hiện xu hướng tăng trưởng số lượng khách hàng theo thời gian
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <ResponsiveContainer width="100%" height={350}>
+                  <AreaChart data={monthlyData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
+                    <XAxis dataKey="month" fontSize={12} stroke="hsl(var(--foreground))" />
+                    <YAxis fontSize={12} stroke="hsl(var(--foreground))" />
+                    <Tooltip formatter={(value: number, name: string) => [value, name === "orders" ? "📦 Đơn hàng" : "✅ Hoàn thành"]} labelFormatter={label => `📅 ${label}`} contentStyle={{
+                      backgroundColor: "hsl(var(--background))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: "14px"
+                    }} />
+                    <Area type="monotone" dataKey="orders" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} name="orders" />
+                    <Area type="monotone" dataKey="completed" stackId="2" stroke="#10b981" fill="#10b981" fillOpacity={0.8} name="completed" />
+                  </AreaChart>
+                </ResponsiveContainer>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                  <div>
+                    <h4 className="font-medium mb-2">📊 Thống kê đơn hàng gần đây</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Tổng đơn hàng:</span>
+                        <span className="font-medium">{totalOrders}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Đã hoàn thành:</span>
+                        <span className="font-medium text-green-600">{completedOrders}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Tỷ lệ hoàn thành:</span>
+                        <span className="font-medium">{totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <Table className="text-sm">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Tháng</TableHead>
+                        <TableHead className="text-xs text-right">Đơn hàng</TableHead>
+                        <TableHead className="text-xs text-right">Hoàn thành</TableHead>
+                        <TableHead className="text-xs text-right">Tỷ lệ</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {monthlyData.slice(-6).map((data, index) => {
+                      const completionRate = data.orders > 0 ? (data.completed / data.orders * 100).toFixed(1) : '0';
+                      return <TableRow key={data.month} className="border-b border-border/50 hover:bg-muted/30">
+                        <TableCell className="font-medium text-xs py-2">{data.month}</TableCell>
+                        <TableCell className="text-right text-xs py-2">{data.orders}</TableCell>
+                        <TableCell className="text-right text-xs py-2 text-green-600">{data.completed}</TableCell>
+                        <TableCell className="text-right text-xs py-2">
+                          <Badge variant={Number(completionRate) >= 80 ? "default" : Number(completionRate) >= 60 ? "secondary" : "destructive"} className="text-xs px-1 py-0">
+                            {completionRate}%
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                
+                {monthlyData.length === 0 && <div className="text-center py-8 text-muted-foreground">
+                    <div className="text-4xl mb-2">👥</div>
+                    <p>Không có dữ liệu khách hàng trong kỳ báo cáo này</p>
+                  </div>
+                }
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
