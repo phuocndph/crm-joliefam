@@ -183,16 +183,15 @@ const ReportsPage = () => {
     sortKey: string;
   }>>([]);
 
-  // Simple monthly data calculation with proper cost price lookup and debugging
+  // Monthly data calculation using EXACT same logic as CashFlowManagement
   const calculateSimpleMonthlyData = useCallback(async () => {
     if (!filteredOrders.length && !filteredExpenses.length) {
       setMonthlyData([]);
       return;
     }
 
-    console.log('=== DEBUG: Starting monthly data calculation ===');
+    console.log('=== DEBUG: Starting monthly data calculation (CashFlow logic) ===');
     console.log('Filtered orders:', filteredOrders.length);
-    console.log('Products available:', products.length);
 
     const monthlyDataMap = new Map();
     
@@ -225,7 +224,7 @@ const ReportsPage = () => {
       
       const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
       
-      // Calculate cost price correctly
+      // Calculate cost price using EXACT CashFlowManagement logic
       let totalCostPrice = 0;
       const monthKey = format(currentMonth, "MMM yyyy", { locale: vi });
       
@@ -237,45 +236,60 @@ const ReportsPage = () => {
         
         console.log(`Order ${order.order_number}: stored cost_price = ${orderCostPrice}`);
         
-        // If order cost_price exists and > 0, use it directly
-        if (orderCostPrice > 0) {
-          totalCostPrice += orderCostPrice;
-          console.log(`Using stored cost_price: ${orderCostPrice}`);
-        } 
-        // Only calculate from items if cost_price is 0 or null
-        else if (order.items && products.length > 0) {
+        // Nếu cost_price trong order bằng 0, tính từ product data (same as CashFlow)
+        if (orderCostPrice === 0 && order.items) {
           try {
             const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
             
-            let calculatedCostPrice = 0;
-            for (const item of orderItems) {
-              const quantity = Number(item.quantity) || 0;
-              let itemCostPrice = 0;
-              
-              // Try to find product by original ID first
-              let product = products.find(p => p.id === (item.originalProductId || item.id));
-              
-              // Fallback to SKU if no product found by ID
+            // Lấy tất cả product IDs và SKUs từ order items
+            const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
+            const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
+
+            let productsData: any[] = [];
+
+            // Lấy dữ liệu sản phẩm từ database
+            if (productIds.length > 0) {
+              const { data: idData } = await supabase
+                .from('products')
+                .select('id, sku, cost_price')
+                .in('id', productIds);
+              if (idData) productsData = idData;
+            }
+
+            if (productsData.length === 0 && productSkus.length > 0) {
+              const { data: skuData } = await supabase
+                .from('products')
+                .select('id, sku, cost_price')
+                .in('sku', productSkus);
+              if (skuData) productsData = skuData;
+            }
+
+            // Tính cost price từ order items
+            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+              const quantity = item.quantity || 0;
+              let costPrice = 0;
+
+              // Tìm cost price từ products data
+              let product = productsData.find(p => p.id === (item.originalProductId || item.id));
               if (!product && item.sku) {
-                product = products.find(p => p.sku === item.sku);
+                product = productsData.find(p => p.sku === item.sku);
               }
               
               if (product) {
-                itemCostPrice = Number(product.cost_price) || 0;
-                console.log(`Item ${item.sku || item.id}: qty=${quantity}, unit_cost=${itemCostPrice}, total=${quantity * itemCostPrice}`);
-              } else {
-                console.log(`Product not found for item:`, item);
+                costPrice = Number(product.cost_price) || 0;
               }
-              
-              calculatedCostPrice += quantity * itemCostPrice;
-            }
+
+              console.log(`Item ${item.sku || item.id}: qty=${quantity}, unit_cost=${costPrice}, total=${quantity * costPrice}`);
+              return sum + (quantity * costPrice);
+            }, 0);
             
-            totalCostPrice += calculatedCostPrice;
-            console.log(`Calculated cost_price for order ${order.order_number}: ${calculatedCostPrice}`);
+            console.log(`Calculated cost_price for order ${order.order_number}: ${orderCostPrice}`);
           } catch (error) {
             console.error('Error calculating cost price for order:', order.id, error);
           }
         }
+        
+        totalCostPrice += orderCostPrice;
       }
       
       console.log(`Total cost price for ${monthKey}: ${totalCostPrice}`);
@@ -305,7 +319,7 @@ const ReportsPage = () => {
     const sortedData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
     console.log('=== DEBUG: Final monthly data ===', sortedData);
     setMonthlyData(sortedData);
-  }, [filteredOrders, filteredExpenses, products]);
+  }, [filteredOrders, filteredExpenses]);
 
   // Recalculate when filtered data changes
   useEffect(() => {
