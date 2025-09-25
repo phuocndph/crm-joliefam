@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Download, TrendingUp, TrendingDown, BarChart3, PieChart, Users, ShoppingCart, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,15 +17,6 @@ const ReportsPage = () => {
     to: endOfDay(new Date())
   });
   const [activeTab, setActiveTab] = useState("overview");
-  
-  // State for async calculations
-  const [calculatedMetrics, setCalculatedMetrics] = useState<{
-    totalCostPrice: number;
-    isCalculating: boolean;
-  }>({
-    totalCostPrice: 0,
-    isCalculating: false
-  });
 
   // Fetch all required data
   const {
@@ -133,11 +124,23 @@ const ReportsPage = () => {
     }
   });
 
-  // Filter data by date range for transactions only (orders and expenses handled separately)
+  // Filter data by date range
   const filteredTransactions = transactions.filter(t => {
     const transactionDate = new Date(t.date);
     if (dateRange?.from && transactionDate < dateRange.from) return false;
     if (dateRange?.to && transactionDate > dateRange.to) return false;
+    return true;
+  });
+  const filteredOrders = orders.filter(o => {
+    const orderDate = new Date(o.created_at);
+    if (dateRange?.from && orderDate < dateRange.from) return false;
+    if (dateRange?.to && orderDate > dateRange.to) return false;
+    return true;
+  });
+  const filteredExpenses = expenses.filter(e => {
+    const expenseDate = new Date(e.expense_date);
+    if (dateRange?.from && expenseDate < dateRange.from) return false;
+    if (dateRange?.to && expenseDate > dateRange.to) return false;
     return true;
   });
 
@@ -163,124 +166,59 @@ const ReportsPage = () => {
     return true;
   });
 
-  // Calculate comprehensive metrics - using ALL orders and expenses like CashFlowManagement
-  // Filter by date range at calculation level to match CashFlowManagement logic
-  const dateFilteredOrders = orders.filter(order => {
-    if (!dateRange?.from || !dateRange?.to) return true;
-    const orderDate = new Date(order.created_at);
-    return orderDate >= dateRange.from && orderDate <= dateRange.to;
-  });
+  // Calculate comprehensive metrics
+  const totalOrderRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   
-  const dateFilteredExpenses = expenses.filter(expense => {
-    if (!dateRange?.from || !dateRange?.to) return true;
-    const expenseDate = new Date(expense.expense_date);
-    return expenseDate >= dateRange.from && expenseDate <= dateRange.to;
-  });
-  
-  const ordersWithRevenue = dateFilteredOrders.filter(order => Number(order.total_amount || 0) > 0);
-  const totalOrderRevenue = ordersWithRevenue.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-  
-  // useEffect to calculate cost price asynchronously
-  useEffect(() => {
-    const calculateCostPrice = async () => {
-      if (!ordersWithRevenue.length) {
-        setCalculatedMetrics(prev => ({ ...prev, totalCostPrice: 0, isCalculating: false }));
-        return;
-      }
-
-      setCalculatedMetrics(prev => ({ ...prev, isCalculating: true }));
-      
-      let totalCost = 0;
-      
-      for (const order of ordersWithRevenue) {
-        let orderCostPrice = Number(order.cost_price) || 0;
+  // Calculate actual cost price from order items
+  const totalCostPrice = filteredOrders.reduce((sum, order) => {
+    let orderCostPrice = 0;
+    
+    if (order.items) {
+      try {
+        const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
+        const items = JSON.parse(itemsStr);
         
-        // If cost_price in order is 0, calculate from product data like CashFlowManagement
-        if (orderCostPrice === 0 && order.items) {
-          try {
-            const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-            
-            // Get all product IDs and SKUs from order items
-            const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
-            const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
-
-            let productsData: any[] = [];
-
-            // Get product data from database
-            if (productIds.length > 0) {
-              const { data: idData } = await supabase
-                .from('products')
-                .select('id, sku, cost_price')
-                .in('id', productIds);
-              if (idData) productsData = idData;
-            }
-
-            if (productsData.length === 0 && productSkus.length > 0) {
-              const { data: skuData } = await supabase
-                .from('products')
-                .select('id, sku, cost_price')
-                .in('sku', productSkus);
-              if (skuData) productsData = skuData;
-            }
-
-            // Calculate cost price from order items
-            orderCostPrice = orderItems.reduce((itemSum: number, item: any) => {
-              const quantity = item.quantity || 0;
-              let costPrice = 0;
-
-              // Find cost price from products data
-              let product = productsData.find(p => p.id === (item.originalProductId || item.id));
-              if (!product && item.sku) {
-                product = productsData.find(p => p.sku === item.sku);
-              }
-              
-              if (product) {
-                costPrice = Number(product.cost_price) || 0;
-              }
-
-              return itemSum + (quantity * costPrice);
-            }, 0);
-          } catch (error) {
-            console.error('Error calculating cost price for order:', order.id, error);
+        orderCostPrice = items.reduce((itemSum: number, item: any) => {
+          const quantity = Number(item.quantity) || 0;
+          let costPrice = 0;
+          
+          // Find product by SKU or originalProductId
+          const product = products.find(p => 
+            p.sku === item.sku || p.id === item.originalProductId
+          );
+          
+          if (product) {
+            costPrice = Number(product.cost_price) || 0;
           }
-        }
-        
-        totalCost += orderCostPrice;
+          
+          return itemSum + (quantity * costPrice);
+        }, 0);
+      } catch (error) {
+        console.error('Error calculating cost price for order:', order.id, error);
       }
-      
-      setCalculatedMetrics({ totalCostPrice: totalCost, isCalculating: false });
-    };
-
-    calculateCostPrice();
-  }, [ordersWithRevenue]);
+    }
+    
+    return sum + orderCostPrice;
+  }, 0);
   
-  // Use the calculated cost price from state
-  const totalCostPrice = calculatedMetrics.totalCostPrice;
-  
-  const totalExpensesAmount = dateFilteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const totalExpensesAmount = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
-  // Calculate actual paid amount - only from payments related to orders with revenue
-  const filteredOrderIds = new Set(ordersWithRevenue.map(o => o.id));
+  // Calculate actual paid amount - only from payments related to filtered orders
+  const filteredOrderIds = new Set(filteredOrders.map(o => o.id));
 
   // Calculate payments for filtered orders (not necessarily in the same time period)
   const paymentsForFilteredOrders = orderPayments.filter(p => p.order_id && filteredOrderIds.has(p.order_id));
   const actualPaidAmountTotal = paymentsForFilteredOrders.reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
 
-  // Calculate payments that happened in the filtered time period  
-  const dateFilteredPayments = orderPayments.filter(p => {
-    if (!dateRange?.from || !dateRange?.to) return true;
-    const paymentDate = new Date(p.payment_date);
-    return paymentDate >= dateRange.from && paymentDate <= dateRange.to;
-  });
-  const actualPaidAmountInPeriod = dateFilteredPayments.filter(p => !p.order_id || filteredOrderIds.has(p.order_id)).reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
+  // Calculate payments that happened in the filtered time period
+  const actualPaidAmountInPeriod = filteredPayments.filter(p => !p.order_id || filteredOrderIds.has(p.order_id)).reduce((sum, p) => sum + Number(p.payment_amount || 0), 0);
 
-  // Calculate remaining amount to collect for orders with revenue
-  const totalOrderAmount = ordersWithRevenue.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+  // Calculate remaining amount to collect for filtered orders
+  const totalOrderAmount = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   const remainingAmount = Math.max(0, totalOrderAmount - actualPaidAmountTotal);
   console.log('Revenue Calculation Debug:', {
-    dateFilteredOrders: dateFilteredOrders.length,
-    ordersWithRevenue: ordersWithRevenue.length,
-    dateFilteredPayments: dateFilteredPayments.length,
+    filteredOrders: filteredOrders.length,
+    filteredPayments: filteredPayments.length,
     totalOrderAmount,
     actualPaidAmountTotal,
     actualPaidAmountInPeriod,
@@ -289,7 +227,7 @@ const ReportsPage = () => {
       from: dateRange?.from?.toISOString(),
       to: dateRange?.to?.toISOString()
     },
-    sampleOrders: dateFilteredOrders.slice(0, 3).map(o => ({
+    sampleOrders: filteredOrders.slice(0, 3).map(o => ({
       id: o.id,
       order_number: o.order_number,
       total_amount: o.total_amount,
@@ -312,14 +250,14 @@ const ReportsPage = () => {
   });
   const grossProfit = totalOrderRevenue - totalCostPrice;
   const netProfit = grossProfit - totalExpensesAmount;
-  const completedOrders = dateFilteredOrders.filter(o => o.status === "delivered").length;
-  const pendingOrders = dateFilteredOrders.filter(o => o.status === "pending").length;
-  const totalOrders = dateFilteredOrders.length;
+  const completedOrders = filteredOrders.filter(o => o.status === "delivered").length;
+  const pendingOrders = filteredOrders.filter(o => o.status === "pending").length;
+  const totalOrders = filteredOrders.length;
 
   // Payment status calculations
-  const paidOrders = dateFilteredOrders.filter(o => o.payment_status === "paid").length;
-  const partialPaidOrders = dateFilteredOrders.filter(o => o.payment_status === "partial").length;
-  const unpaidOrders = dateFilteredOrders.filter(o => o.payment_status === "pending").length;
+  const paidOrders = filteredOrders.filter(o => o.payment_status === "paid").length;
+  const partialPaidOrders = filteredOrders.filter(o => o.payment_status === "partial").length;
+  const unpaidOrders = filteredOrders.filter(o => o.payment_status === "pending").length;
 
   // Customer metrics
   const newCustomers = filteredCustomers.length;
@@ -339,166 +277,99 @@ const ReportsPage = () => {
   const averageDailyRevenue = dateRange?.from && dateRange?.to ? totalOrderRevenue / Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1) : 0;
 
   // Check for zero cost_price data
-  const ordersWithoutCostPrice = dateFilteredOrders.filter(o => !o.cost_price || o.cost_price === 0).length;
+  const ordersWithoutCostPrice = filteredOrders.filter(o => !o.cost_price || o.cost_price === 0).length;
   const hasCostPriceIssue = ordersWithoutCostPrice > 0;
 
-  // Prepare comprehensive chart data - all months with data (using async calculation)
-  const [monthlyData, setMonthlyData] = useState<any[]>([]);
-  const [isCalculatingMonthly, setIsCalculatingMonthly] = useState(false);
+  // Prepare comprehensive chart data - all months with data
+  const monthlyDataMap = new Map();
   
-  useEffect(() => {
-    const calculateMonthlyData = async () => {
-      setIsCalculatingMonthly(true);
-      const monthlyDataMap = new Map();
+  // Get all unique months from orders and expenses
+  const allDates = [
+    ...orders.map(o => new Date(o.created_at)),
+    ...expenses.map(e => new Date(e.expense_date))
+  ];
+  
+  // Find the earliest date to start from
+  const earliestDate = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => d.getTime()))) : new Date();
+  const startDate = startOfMonth(earliestDate);
+  const endDate = endOfMonth(new Date());
+  
+  // Generate data for all months from earliest to current
+  let currentMonth = startDate;
+  while (currentMonth <= endDate) {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    
+    const monthOrders = orders.filter(o => {
+      const oDate = new Date(o.created_at);
+      return oDate >= monthStart && oDate <= monthEnd;
+    });
+    
+    const monthExpenses = expenses.filter(e => {
+      const eDate = new Date(e.expense_date);
+      return eDate >= monthStart && eDate <= monthEnd;
+    });
+    
+    const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    
+    // Calculate actual cost price from order items for monthly data
+    const costPrice = monthOrders.reduce((sum, order) => {
+      let orderCostPrice = 0;
       
-      // Get all unique months from dateFiltered data (consistent with main metrics)
-      const allDates = [
-        ...dateFilteredOrders.map(o => new Date(o.created_at)),
-        ...dateFilteredExpenses.map(e => new Date(e.expense_date))
-      ];
-      
-      // Find the earliest date to start from
-      const earliestDate = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => d.getTime()))) : new Date();
-      const startDate = startOfMonth(earliestDate);
-      const endDate = endOfMonth(new Date());
-      
-      // Generate data for all months from earliest to current
-      let currentMonth = startDate;
-      while (currentMonth <= endDate) {
-        const monthStart = startOfMonth(currentMonth);
-        const monthEnd = endOfMonth(currentMonth);
-        
-        const monthOrders = dateFilteredOrders.filter(o => {
-          const oDate = new Date(o.created_at);
-          return oDate >= monthStart && oDate <= monthEnd && Number(o.total_amount || 0) > 0; // Only orders with revenue
-        });
-        
-        const monthExpenses = dateFilteredExpenses.filter(e => {
-          const eDate = new Date(e.expense_date);
-          return eDate >= monthStart && eDate <= monthEnd;
-        });
-        
-        const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-        
-        // Calculate cost price using same async method as main metrics
-        let costPrice = 0;
-        for (const order of monthOrders) {
-          let orderCostPrice = Number(order.cost_price) || 0;
+      if (order.items) {
+        try {
+          const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
+          const items = JSON.parse(itemsStr);
           
-          // If cost_price in order is 0, calculate using database query (same as main metrics)
-          if (orderCostPrice === 0 && order.items) {
-            try {
-              const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-              
-              // Get all product IDs and SKUs from order items
-              const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
-              const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
-
-              let productsData: any[] = [];
-
-              // Get product data from database (same logic as main calculation)
-              if (productIds.length > 0) {
-                const { data: idData } = await supabase
-                  .from('products')
-                  .select('id, sku, cost_price')
-                  .in('id', productIds);
-                if (idData) productsData = idData;
-              }
-
-              if (productsData.length === 0 && productSkus.length > 0) {
-                const { data: skuData } = await supabase
-                  .from('products')
-                  .select('id, sku, cost_price')
-                  .in('sku', productSkus);
-                if (skuData) productsData = skuData;
-              }
-              
-              // Calculate cost price from items
-              orderCostPrice = orderItems.reduce((itemSum: number, item: any) => {
-                const quantity = Number(item.quantity) || 0;
-                let itemCostPrice = 0;
-                
-                // Find product by SKU or originalProductId (same as main calculation)
-                const product = productsData.find(p => 
-                  p.sku === item.sku || p.id === item.originalProductId
-                );
-                
-                if (product) {
-                  itemCostPrice = Number(product.cost_price) || 0;
-                }
-                
-                return itemSum + (quantity * itemCostPrice);
-              }, 0);
-            } catch (error) {
-              console.error('Error calculating cost price for monthly order:', order.id, error);
+          orderCostPrice = items.reduce((itemSum: number, item: any) => {
+            const quantity = Number(item.quantity) || 0;
+            let costPrice = 0;
+            
+            // Find product by SKU or originalProductId
+            const product = products.find(p => 
+              p.sku === item.sku || p.id === item.originalProductId
+            );
+            
+            if (product) {
+              costPrice = Number(product.cost_price) || 0;
             }
-          }
-          
-          costPrice += orderCostPrice;
+            
+            return itemSum + (quantity * costPrice);
+          }, 0);
+        } catch (error) {
+          console.error('Error calculating cost price for monthly order:', order.id, error);
         }
-        
-        const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
-        const ordersCount = monthOrders.length;
-        const completedCount = monthOrders.filter(o => o.status === "delivered").length;
-        
-        const monthKey = format(currentMonth, "yyyy-MM");
-        const isJune2023 = monthKey === "2023-06";
-        
-        if (isJune2023) {
-          console.log('June 2023 Debug (ASYNC):', {
-            monthOrders: monthOrders.length,
-            revenue,
-            costPrice,
-            expenses: expensesAmount,
-            profit: revenue - costPrice - expensesAmount,
-            orderSample: monthOrders.slice(0, 3).map(o => ({
-              id: o.id,
-              order_number: o.order_number,
-              total_amount: o.total_amount,
-              cost_price: o.cost_price,
-              items: o.items
-            }))
-          });
-        }
-        
-        monthlyDataMap.set(monthKey, {
-          month: format(currentMonth, "MMM yyyy", { locale: vi }),
-          revenue,
-          costPrice,
-          expenses: expensesAmount,
-          grossProfit: revenue - costPrice,
-          profit: revenue - costPrice - expensesAmount,
-          orders: ordersCount,
-          completed: completedCount,
-          sortKey: monthKey
-        });
-        
-        // Move to next month
-        currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
       }
       
-      // Convert to array and sort by date
-      const sortedData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-      setMonthlyData(sortedData);
-      setIsCalculatingMonthly(false);
-      
-      // Debug: Calculate total from all months to compare with CashFlowManagement
-      const totalFromAllMonths = {
-        revenue: sortedData.reduce((sum, m) => sum + m.revenue, 0),
-        costPrice: sortedData.reduce((sum, m) => sum + m.costPrice, 0),
-        expenses: sortedData.reduce((sum, m) => sum + m.expenses, 0),
-        profit: sortedData.reduce((sum, m) => sum + m.profit, 0)
-      };
-      
-      console.log('Monthly Data Debug - June 2023:', sortedData.find(m => m.month.includes('2023') && m.month.includes('thg 6')));
-      console.log('Total from all months (should match main metrics):', totalFromAllMonths);
-    };
+      return sum + orderCostPrice;
+    }, 0);
+    
+    const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+    const ordersCount = monthOrders.length;
+    const completedCount = monthOrders.filter(o => o.status === "delivered").length;
+    
+    const monthKey = format(currentMonth, "yyyy-MM");
+    monthlyDataMap.set(monthKey, {
+      month: format(currentMonth, "MMM yyyy", { locale: vi }),
+      revenue,
+      costPrice,
+      expenses: expensesAmount,
+      grossProfit: revenue - costPrice,
+      profit: revenue - costPrice - expensesAmount,
+      orders: ordersCount,
+      completed: completedCount,
+      sortKey: monthKey
+    });
+    
+    // Move to next month
+    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+  }
+  
+  // Convert to array and sort by date
+  const monthlyData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
-    if (dateFilteredOrders.length > 0 || dateFilteredExpenses.length > 0) {
-      calculateMonthlyData();
-    }
-  }, [dateFilteredOrders, dateFilteredExpenses]);
-  const expenseCategories = dateFilteredExpenses.reduce((acc, e) => {
+  // Category and status breakdown
+  const expenseCategories = filteredExpenses.reduce((acc, e) => {
     const category = e.category || "Khác";
     if (!acc[category]) {
       acc[category] = {
@@ -548,7 +419,7 @@ const ReportsPage = () => {
   }].filter(item => item.value > 0);
 
   // Top products by sales
-  const productSales = dateFilteredOrders.flatMap(order => {
+  const productSales = filteredOrders.flatMap(order => {
     try {
       const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
       return JSON.parse(itemsStr);
@@ -1140,9 +1011,9 @@ const ReportsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-blue-600">{formatCurrency(totalOrderRevenue)}</div>
-                   <p className="text-xs text-muted-foreground">
-                     Từ {dateFilteredOrders.length} đơn hàng
-                   </p>
+                  <p className="text-xs text-muted-foreground">
+                    Từ {filteredOrders.length} đơn hàng
+                  </p>
                 </CardContent>
               </Card>
               
@@ -1488,7 +1359,7 @@ const ReportsPage = () => {
               <CardContent>
                 <div className="space-y-4 max-h-96 overflow-y-auto">
                   {(() => {
-                  const unpaidOrdersList = dateFilteredOrders.filter(order => order.payment_status === 'pending' || order.payment_status === 'partial');
+                  const unpaidOrdersList = filteredOrders.filter(order => order.payment_status === 'pending' || order.payment_status === 'partial');
                   return unpaidOrdersList.length > 0 ? unpaidOrdersList.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(order => {
                     // Calculate paid amount for this order
                     const orderPaymentsForOrder = orderPayments.filter(p => p.order_id === order.id);
