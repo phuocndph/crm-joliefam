@@ -28,8 +28,8 @@ const ReportsPage = () => {
   });
   const [activeTab, setActiveTab] = useState("overview");
 
-  // Fetch all required data with optimized queries
-  const { data: transactions = [], isLoading: transactionsLoading } = useQuery({
+  // Fetch all required data
+  const { data: transactions = [] } = useQuery({
     queryKey: ["transactions-reports"],
     queryFn: async () => {
       const { data, error } = await supabase.from("transactions").select("*").order("date", {
@@ -37,11 +37,10 @@ const ReportsPage = () => {
       });
       if (error) throw error;
       return data;
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    }
   });
   
-  const { data: orders = [], isLoading: ordersLoading } = useQuery({
+  const { data: orders = [] } = useQuery({
     queryKey: ["orders-reports"],
     queryFn: async () => {
       const { data, error } = await supabase.from("orders").select(`
@@ -54,52 +53,44 @@ const ReportsPage = () => {
         `).order("created_at", { ascending: true });
       if (error) throw error;
       return data;
-    },
-    staleTime: 5 * 60 * 1000,
+    }
   });
   
-  const { data: customers = [], isLoading: customersLoading } = useQuery({
+  const { data: customers = [] } = useQuery({
     queryKey: ["customers-reports"],
     queryFn: async () => {
       const { data, error } = await supabase.from("customers").select("*").order("created_at", { ascending: true });
       if (error) throw error;
       return data;
-    },
-    staleTime: 5 * 60 * 1000,
+    }
   });
   
-  // Fetch products data once and cache it
-  const { data: products = [], isLoading: productsLoading } = useQuery({
+  const { data: products = [] } = useQuery({
     queryKey: ["products-reports"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("products").select("id, sku, cost_price");
+      const { data, error } = await supabase.from("products").select("*");
       if (error) throw error;
       return data;
-    },
-    staleTime: 10 * 60 * 1000, // 10 minutes - products change less frequently
+    }
   });
   
-  const { data: expenses = [], isLoading: expensesLoading } = useQuery({
+  const { data: expenses = [] } = useQuery({
     queryKey: ["expenses-reports"],
     queryFn: async () => {
       const { data, error } = await supabase.from("expenses").select("*").order("expense_date", { ascending: true });
       if (error) throw error;
       return data;
-    },
-    staleTime: 5 * 60 * 1000,
+    }
   });
 
-  const { data: orderPayments = [], isLoading: paymentsLoading } = useQuery({
+  const { data: orderPayments = [] } = useQuery({
     queryKey: ["order-payments-reports"],
     queryFn: async () => {
       const { data, error } = await supabase.from("order_payments").select("*").order("payment_date", { ascending: true });
       if (error) throw error;
       return data;
-    },
-    staleTime: 5 * 60 * 1000,
+    }
   });
-
-  const isLoading = transactionsLoading || ordersLoading || customersLoading || productsLoading || expensesLoading || paymentsLoading;
 
   // Filter data based on date range
   const filteredOrders = useMemo(() => {
@@ -152,127 +143,84 @@ const ReportsPage = () => {
     }).format(amount);
   };
 
-  // Create products lookup map for fast access
-  const productsMap = useMemo(() => {
-    const map = new Map();
-    products.forEach(product => {
-      map.set(product.id, product);
-      if (product.sku) {
-        map.set(product.sku, product);
-      }
-    });
-    return map;
-  }, [products]);
-
-  // Fast cost price calculation function using cached products
-  const calculateOrderCostPrice = useCallback(async (order: any) => {
-    let orderCostPrice = Number(order.cost_price) || 0;
-    
-    // If order cost_price is 0, calculate from items using exact CashFlow logic
-    if (orderCostPrice === 0 && order.items) {
-      try {
-        const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-        
-        // Get product IDs and SKUs from order items (exact same logic as CashFlow)
-        const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
-        const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
-
-        let productsData: any[] = [];
-
-        // Try to get from cached products first
-        if (productIds.length > 0) {
-          productsData = products.filter(p => productIds.includes(p.id));
-        }
-
-        // If not found in cache, or we need SKU lookup, fallback to database
-        if (productsData.length === 0 || productSkus.length > 0) {
-          if (productIds.length > 0) {
-            const { data: idData } = await supabase
-              .from('products')
-              .select('id, sku, cost_price')
-              .in('id', productIds);
-            if (idData) productsData = idData;
-          }
-
-          if (productsData.length === 0 && productSkus.length > 0) {
-            const { data: skuData } = await supabase
-              .from('products')
-              .select('id, sku, cost_price')
-              .in('sku', productSkus);
-            if (skuData) productsData = skuData;
-          }
-        }
-
-        // Calculate cost price from order items (exact same logic as CashFlow)
-        orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-          const quantity = item.quantity || 0;
-          let costPrice = 0;
-
-          // Find cost price from products data (exact same logic as CashFlow)
-          let product = productsData.find(p => p.id === (item.originalProductId || item.id));
-          if (!product && item.sku) {
-            product = productsData.find(p => p.sku === item.sku);
-          }
-          
-          if (product) {
-            costPrice = Number(product.cost_price) || 0;
-          }
-
-          return sum + (quantity * costPrice);
-        }, 0);
-      } catch (error) {
-        console.error('Error calculating cost price for order:', order.id, error);
-      }
-    }
-    
-    return orderCostPrice;
-  }, [products]);
-
-  // Calculate metrics with optimized cost price calculation
-  const totalOrderRevenue = useMemo(() => 
-    filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0), 
-    [filteredOrders]
-  );
+  // Calculate metrics with proper cost price calculation
+  const totalOrderRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   
-  // Calculate total cost price with caching
-  const totalCostPrice = useMemo(() => {
-    let total = 0;
-    const processOrders = async () => {
-      for (const order of filteredOrders) {
-        const cost = await calculateOrderCostPrice(order);
-        total += cost;
-      }
-      return total;
-    };
-    
-    // Use a separate effect to handle async calculation
-    return 0; // Will be updated by useEffect
-  }, [filteredOrders, calculateOrderCostPrice]);
-
-  // Async calculation for total cost price
-  const [calculatedTotalCostPrice, setCalculatedTotalCostPrice] = useState(0);
+  // Calculate cost price using same logic as monthly data
+  const [totalCostPrice, setTotalCostPrice] = useState(0);
   
+  // Calculate cost price effect
   useEffect(() => {
-    const calculateTotal = async () => {
+    const calculateTotalCostPrice = async () => {
       let total = 0;
+      
       for (const order of filteredOrders) {
-        const cost = await calculateOrderCostPrice(order);
-        total += cost;
+        let orderCostPrice = Number(order.cost_price) || 0;
+        
+        // If order cost_price is 0, calculate from items
+        if (orderCostPrice === 0 && order.items) {
+          try {
+            const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+            
+            // Get product IDs and SKUs from order items
+            const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
+            const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
+
+            let productsData: any[] = [];
+
+            // Fetch product data from database
+            if (productIds.length > 0) {
+              const { data: idData } = await supabase
+                .from('products')
+                .select('id, sku, cost_price')
+                .in('id', productIds);
+              if (idData) productsData = idData;
+            }
+
+            if (productsData.length === 0 && productSkus.length > 0) {
+              const { data: skuData } = await supabase
+                .from('products')
+                .select('id, sku, cost_price')
+                .in('sku', productSkus);
+              if (skuData) productsData = skuData;
+            }
+
+            // Calculate cost price from order items
+            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+              const quantity = item.quantity || 0;
+              let costPrice = 0;
+
+              // Find cost price from products data
+              let product = productsData.find(p => p.id === (item.originalProductId || item.id));
+              if (!product && item.sku) {
+                product = productsData.find(p => p.sku === item.sku);
+              }
+              
+              if (product) {
+                costPrice = Number(product.cost_price) || 0;
+              }
+
+              return sum + (quantity * costPrice);
+            }, 0);
+          } catch (error) {
+            console.error('Error calculating cost price for order:', order.id, error);
+          }
+        }
+        
+        total += orderCostPrice;
       }
-      setCalculatedTotalCostPrice(total);
+      
+      setTotalCostPrice(total);
     };
     
     if (filteredOrders.length > 0) {
-      calculateTotal();
+      calculateTotalCostPrice();
     } else {
-      setCalculatedTotalCostPrice(0);
+      setTotalCostPrice(0);
     }
-  }, [filteredOrders, calculateOrderCostPrice]);
+  }, [filteredOrders]);
   
-  const totalExpensesAmount = useMemo(() => 
-    filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0),
-    [filteredExpenses]
-  );
+  const totalExpensesAmount = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
   // Calculate actual paid amount - only from payments related to filtered orders
   const filteredOrderIds = new Set(filteredOrders.map(o => o.id));
@@ -282,8 +230,7 @@ const ReportsPage = () => {
   const totalOrderAmount = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   const remainingAmount = Math.max(0, totalOrderAmount - actualPaidAmountTotal);
 
-  // Calculate actual metrics
-  const grossProfit = totalOrderRevenue - calculatedTotalCostPrice;
+  const grossProfit = totalOrderRevenue - totalCostPrice;
   const netProfit = grossProfit - totalExpensesAmount;
   const completedOrders = filteredOrders.filter(o => o.status === "delivered").length;
   const pendingOrders = filteredOrders.filter(o => o.status === "pending").length;
@@ -301,10 +248,24 @@ const ReportsPage = () => {
   const averageOrderValue = totalOrders > 0 ? totalOrderRevenue / totalOrders : 0;
   const averageDailyRevenue = dateRange?.from && dateRange?.to ? totalOrderRevenue / Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1) : 0;
 
-  // Optimized monthly data calculation using exact CashFlow logic
-  const monthlyData = useMemo(() => {
+  // Monthly data calculation - simplified
+  const [monthlyData, setMonthlyData] = useState<Array<{
+    month: string;
+    revenue: number;
+    costPrice: number;
+    expenses: number;
+    grossProfit: number;
+    profit: number;
+    orders: number;
+    completed: number;
+    sortKey: string;
+  }>>([]);
+
+  // Monthly data calculation - clean version without debug logs
+  const calculateSimpleMonthlyData = useCallback(async () => {
     if (!filteredOrders.length && !filteredExpenses.length) {
-      return [];
+      setMonthlyData([]);
+      return;
     }
 
     const monthlyDataMap = new Map();
@@ -338,24 +299,49 @@ const ReportsPage = () => {
       
       const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
       
-      // Calculate cost price using same logic as overview but sync
+      // Calculate cost price - prioritize order.cost_price, fallback to item calculation
       let totalCostPrice = 0;
-      monthOrders.forEach(order => {
+      
+      for (const order of monthOrders) {
         let orderCostPrice = Number(order.cost_price) || 0;
         
-        // Use cached products for faster calculation
-        if (orderCostPrice === 0 && order.items && productsMap.size > 0) {
+        // If order cost_price is 0, calculate from items
+        if (orderCostPrice === 0 && order.items) {
           try {
             const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
             
+            // Get product IDs and SKUs from order items
+            const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
+            const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
+
+            let productsData: any[] = [];
+
+            // Fetch product data from database
+            if (productIds.length > 0) {
+              const { data: idData } = await supabase
+                .from('products')
+                .select('id, sku, cost_price')
+                .in('id', productIds);
+              if (idData) productsData = idData;
+            }
+
+            if (productsData.length === 0 && productSkus.length > 0) {
+              const { data: skuData } = await supabase
+                .from('products')
+                .select('id, sku, cost_price')
+                .in('sku', productSkus);
+              if (skuData) productsData = skuData;
+            }
+
+            // Calculate cost price from order items
             orderCostPrice = orderItems.reduce((sum: number, item: any) => {
               const quantity = item.quantity || 0;
               let costPrice = 0;
 
-              // Find cost price from cached products map
-              let product = productsMap.get(item.originalProductId || item.id);
+              // Find cost price from products data
+              let product = productsData.find(p => p.id === (item.originalProductId || item.id));
               if (!product && item.sku) {
-                product = productsMap.get(item.sku);
+                product = productsData.find(p => p.sku === item.sku);
               }
               
               if (product) {
@@ -365,12 +351,12 @@ const ReportsPage = () => {
               return sum + (quantity * costPrice);
             }, 0);
           } catch (error) {
-            console.error('Error calculating cost for month data:', order.id, error);
+            console.error('Error calculating cost price for order:', order.id, error);
           }
         }
         
         totalCostPrice += orderCostPrice;
-      });
+      }
       
       const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
       const ordersCount = monthOrders.length;
@@ -395,8 +381,14 @@ const ReportsPage = () => {
     }
     
     // Convert to array and sort by date
-    return Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-  }, [filteredOrders, filteredExpenses, productsMap]);
+    const sortedData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    setMonthlyData(sortedData);
+  }, [filteredOrders, filteredExpenses]);
+
+  // Recalculate when filtered data changes
+  useEffect(() => {
+    calculateSimpleMonthlyData();
+  }, [calculateSimpleMonthlyData]);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -440,9 +432,9 @@ const ReportsPage = () => {
                 <TrendingDown className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-orange-600">{formatCurrency(calculatedTotalCostPrice)}</div>
+                <div className="text-2xl font-bold text-orange-600">{formatCurrency(totalCostPrice)}</div>
                 <p className="text-xs text-muted-foreground">
-                  {totalOrderRevenue > 0 ? Math.round((calculatedTotalCostPrice / totalOrderRevenue) * 100) : 0}% của doanh thu
+                  {totalOrderRevenue > 0 ? Math.round((totalCostPrice / totalOrderRevenue) * 100) : 0}% của doanh thu
                 </p>
               </CardContent>
             </Card>
