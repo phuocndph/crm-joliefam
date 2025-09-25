@@ -183,12 +183,16 @@ const ReportsPage = () => {
     sortKey: string;
   }>>([]);
 
-  // Simple monthly data calculation with proper cost price lookup
+  // Simple monthly data calculation with proper cost price lookup and debugging
   const calculateSimpleMonthlyData = useCallback(async () => {
     if (!filteredOrders.length && !filteredExpenses.length) {
       setMonthlyData([]);
       return;
     }
+
+    console.log('=== DEBUG: Starting monthly data calculation ===');
+    console.log('Filtered orders:', filteredOrders.length);
+    console.log('Products available:', products.length);
 
     const monthlyDataMap = new Map();
     
@@ -221,20 +225,32 @@ const ReportsPage = () => {
       
       const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
       
-      // Calculate cost price - check order cost_price first, then calculate from items
+      // Calculate cost price correctly
       let totalCostPrice = 0;
+      const monthKey = format(currentMonth, "MMM yyyy", { locale: vi });
+      
+      console.log(`\n=== DEBUG: Processing ${monthKey} ===`);
+      console.log('Month orders:', monthOrders.length);
       
       for (const order of monthOrders) {
         let orderCostPrice = Number(order.cost_price) || 0;
         
-        // If order cost_price is 0, try to calculate from items and products
-        if (orderCostPrice === 0 && order.items && products.length > 0) {
+        console.log(`Order ${order.order_number}: stored cost_price = ${orderCostPrice}`);
+        
+        // If order cost_price exists and > 0, use it directly
+        if (orderCostPrice > 0) {
+          totalCostPrice += orderCostPrice;
+          console.log(`Using stored cost_price: ${orderCostPrice}`);
+        } 
+        // Only calculate from items if cost_price is 0 or null
+        else if (order.items && products.length > 0) {
           try {
             const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
             
-            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-              const quantity = item.quantity || 0;
-              let costPrice = 0;
+            let calculatedCostPrice = 0;
+            for (const item of orderItems) {
+              const quantity = Number(item.quantity) || 0;
+              let itemCostPrice = 0;
               
               // Try to find product by original ID first
               let product = products.find(p => p.id === (item.originalProductId || item.id));
@@ -245,26 +261,32 @@ const ReportsPage = () => {
               }
               
               if (product) {
-                costPrice = Number(product.cost_price) || 0;
+                itemCostPrice = Number(product.cost_price) || 0;
+                console.log(`Item ${item.sku || item.id}: qty=${quantity}, unit_cost=${itemCostPrice}, total=${quantity * itemCostPrice}`);
+              } else {
+                console.log(`Product not found for item:`, item);
               }
               
-              return sum + (quantity * costPrice);
-            }, 0);
+              calculatedCostPrice += quantity * itemCostPrice;
+            }
+            
+            totalCostPrice += calculatedCostPrice;
+            console.log(`Calculated cost_price for order ${order.order_number}: ${calculatedCostPrice}`);
           } catch (error) {
             console.error('Error calculating cost price for order:', order.id, error);
           }
         }
-        
-        totalCostPrice += orderCostPrice;
       }
+      
+      console.log(`Total cost price for ${monthKey}: ${totalCostPrice}`);
       
       const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
       const ordersCount = monthOrders.length;
       const completedCount = monthOrders.filter(o => o.status === "delivered").length;
       
-      const monthKey = format(currentMonth, "yyyy-MM");
-      monthlyDataMap.set(monthKey, {
-        month: format(currentMonth, "MMM yyyy", { locale: vi }),
+      const monthKeySort = format(currentMonth, "yyyy-MM");
+      monthlyDataMap.set(monthKeySort, {
+        month: monthKey,
         revenue,
         costPrice: totalCostPrice,
         expenses: expensesAmount,
@@ -272,7 +294,7 @@ const ReportsPage = () => {
         profit: revenue - totalCostPrice - expensesAmount,
         orders: ordersCount,
         completed: completedCount,
-        sortKey: monthKey
+        sortKey: monthKeySort
       });
       
       // Move to next month
@@ -281,6 +303,7 @@ const ReportsPage = () => {
     
     // Convert to array and sort by date
     const sortedData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    console.log('=== DEBUG: Final monthly data ===', sortedData);
     setMonthlyData(sortedData);
   }, [filteredOrders, filteredExpenses, products]);
 
