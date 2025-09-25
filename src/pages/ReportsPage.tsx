@@ -28,8 +28,8 @@ const ReportsPage = () => {
   });
   const [activeTab, setActiveTab] = useState("overview");
 
-  // Fetch all required data
-  const { data: transactions = [] } = useQuery({
+  // Fetch all required data with optimized queries
+  const { data: transactions = [], isLoading: transactionsLoading } = useQuery({
     queryKey: ["transactions-reports"],
     queryFn: async () => {
       const { data, error } = await supabase.from("transactions").select("*").order("date", {
@@ -37,10 +37,11 @@ const ReportsPage = () => {
       });
       if (error) throw error;
       return data;
-    }
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
   
-  const { data: orders = [] } = useQuery({
+  const { data: orders = [], isLoading: ordersLoading } = useQuery({
     queryKey: ["orders-reports"],
     queryFn: async () => {
       const { data, error } = await supabase.from("orders").select(`
@@ -53,44 +54,52 @@ const ReportsPage = () => {
         `).order("created_at", { ascending: true });
       if (error) throw error;
       return data;
-    }
+    },
+    staleTime: 5 * 60 * 1000,
   });
   
-  const { data: customers = [] } = useQuery({
+  const { data: customers = [], isLoading: customersLoading } = useQuery({
     queryKey: ["customers-reports"],
     queryFn: async () => {
       const { data, error } = await supabase.from("customers").select("*").order("created_at", { ascending: true });
       if (error) throw error;
       return data;
-    }
+    },
+    staleTime: 5 * 60 * 1000,
   });
   
-  const { data: products = [] } = useQuery({
+  // Fetch products data once and cache it
+  const { data: products = [], isLoading: productsLoading } = useQuery({
     queryKey: ["products-reports"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("products").select("*");
+      const { data, error } = await supabase.from("products").select("id, sku, cost_price");
       if (error) throw error;
       return data;
-    }
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes - products change less frequently
   });
   
-  const { data: expenses = [] } = useQuery({
+  const { data: expenses = [], isLoading: expensesLoading } = useQuery({
     queryKey: ["expenses-reports"],
     queryFn: async () => {
       const { data, error } = await supabase.from("expenses").select("*").order("expense_date", { ascending: true });
       if (error) throw error;
       return data;
-    }
+    },
+    staleTime: 5 * 60 * 1000,
   });
 
-  const { data: orderPayments = [] } = useQuery({
+  const { data: orderPayments = [], isLoading: paymentsLoading } = useQuery({
     queryKey: ["order-payments-reports"],
     queryFn: async () => {
       const { data, error } = await supabase.from("order_payments").select("*").order("payment_date", { ascending: true });
       if (error) throw error;
       return data;
-    }
+    },
+    staleTime: 5 * 60 * 1000,
   });
+
+  const isLoading = transactionsLoading || ordersLoading || customersLoading || productsLoading || expensesLoading || paymentsLoading;
 
   // Filter data based on date range
   const filteredOrders = useMemo(() => {
@@ -143,84 +152,66 @@ const ReportsPage = () => {
     }).format(amount);
   };
 
-  // Calculate metrics with proper cost price calculation
-  const totalOrderRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-  
-  // Calculate cost price using same logic as monthly data
-  const [totalCostPrice, setTotalCostPrice] = useState(0);
-  
-  // Calculate cost price effect
-  useEffect(() => {
-    const calculateTotalCostPrice = async () => {
-      let total = 0;
-      
-      for (const order of filteredOrders) {
-        let orderCostPrice = Number(order.cost_price) || 0;
-        
-        // If order cost_price is 0, calculate from items
-        if (orderCostPrice === 0 && order.items) {
-          try {
-            const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-            
-            // Get product IDs and SKUs from order items
-            const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
-            const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
-
-            let productsData: any[] = [];
-
-            // Fetch product data from database
-            if (productIds.length > 0) {
-              const { data: idData } = await supabase
-                .from('products')
-                .select('id, sku, cost_price')
-                .in('id', productIds);
-              if (idData) productsData = idData;
-            }
-
-            if (productsData.length === 0 && productSkus.length > 0) {
-              const { data: skuData } = await supabase
-                .from('products')
-                .select('id, sku, cost_price')
-                .in('sku', productSkus);
-              if (skuData) productsData = skuData;
-            }
-
-            // Calculate cost price from order items
-            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-              const quantity = item.quantity || 0;
-              let costPrice = 0;
-
-              // Find cost price from products data
-              let product = productsData.find(p => p.id === (item.originalProductId || item.id));
-              if (!product && item.sku) {
-                product = productsData.find(p => p.sku === item.sku);
-              }
-              
-              if (product) {
-                costPrice = Number(product.cost_price) || 0;
-              }
-
-              return sum + (quantity * costPrice);
-            }, 0);
-          } catch (error) {
-            console.error('Error calculating cost price for order:', order.id, error);
-          }
-        }
-        
-        total += orderCostPrice;
+  // Create products lookup map for fast access
+  const productsMap = useMemo(() => {
+    const map = new Map();
+    products.forEach(product => {
+      map.set(product.id, product);
+      if (product.sku) {
+        map.set(product.sku, product);
       }
-      
-      setTotalCostPrice(total);
-    };
+    });
+    return map;
+  }, [products]);
+
+  // Fast cost price calculation function
+  const calculateOrderCostPrice = useCallback((order: any) => {
+    let orderCostPrice = Number(order.cost_price) || 0;
     
-    if (filteredOrders.length > 0) {
-      calculateTotalCostPrice();
-    } else {
-      setTotalCostPrice(0);
+    // If order cost_price is 0, calculate from items using cached products
+    if (orderCostPrice === 0 && order.items && productsMap.size > 0) {
+      try {
+        const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        
+        orderCostPrice = orderItems.reduce((sum: number, item: any) => {
+          const quantity = item.quantity || 0;
+          let costPrice = 0;
+
+          // Find cost price from cached products map
+          let product = productsMap.get(item.originalProductId || item.id);
+          if (!product && item.sku) {
+            product = productsMap.get(item.sku);
+          }
+          
+          if (product) {
+            costPrice = Number(product.cost_price) || 0;
+          }
+
+          return sum + (quantity * costPrice);
+        }, 0);
+      } catch (error) {
+        console.error('Error calculating cost price for order:', order.id, error);
+      }
     }
-  }, [filteredOrders]);
+    
+    return orderCostPrice;
+  }, [productsMap]);
+
+  // Calculate metrics with optimized cost price calculation
+  const totalOrderRevenue = useMemo(() => 
+    filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0), 
+    [filteredOrders]
+  );
   
-  const totalExpensesAmount = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const totalCostPrice = useMemo(() => 
+    filteredOrders.reduce((sum, order) => sum + calculateOrderCostPrice(order), 0),
+    [filteredOrders, calculateOrderCostPrice]
+  );
+  
+  const totalExpensesAmount = useMemo(() => 
+    filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0),
+    [filteredExpenses]
+  );
 
   // Calculate actual paid amount - only from payments related to filtered orders
   const filteredOrderIds = new Set(filteredOrders.map(o => o.id));
@@ -248,24 +239,10 @@ const ReportsPage = () => {
   const averageOrderValue = totalOrders > 0 ? totalOrderRevenue / totalOrders : 0;
   const averageDailyRevenue = dateRange?.from && dateRange?.to ? totalOrderRevenue / Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1) : 0;
 
-  // Monthly data calculation - simplified
-  const [monthlyData, setMonthlyData] = useState<Array<{
-    month: string;
-    revenue: number;
-    costPrice: number;
-    expenses: number;
-    grossProfit: number;
-    profit: number;
-    orders: number;
-    completed: number;
-    sortKey: string;
-  }>>([]);
-
-  // Monthly data calculation - clean version without debug logs
-  const calculateSimpleMonthlyData = useCallback(async () => {
-    if (!filteredOrders.length && !filteredExpenses.length) {
-      setMonthlyData([]);
-      return;
+  // Optimized monthly data calculation using cached products
+  const monthlyData = useMemo(() => {
+    if (!filteredOrders.length && !filteredExpenses.length || productsMap.size === 0) {
+      return [];
     }
 
     const monthlyDataMap = new Map();
@@ -299,64 +276,10 @@ const ReportsPage = () => {
       
       const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
       
-      // Calculate cost price - prioritize order.cost_price, fallback to item calculation
-      let totalCostPrice = 0;
-      
-      for (const order of monthOrders) {
-        let orderCostPrice = Number(order.cost_price) || 0;
-        
-        // If order cost_price is 0, calculate from items
-        if (orderCostPrice === 0 && order.items) {
-          try {
-            const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-            
-            // Get product IDs and SKUs from order items
-            const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
-            const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
-
-            let productsData: any[] = [];
-
-            // Fetch product data from database
-            if (productIds.length > 0) {
-              const { data: idData } = await supabase
-                .from('products')
-                .select('id, sku, cost_price')
-                .in('id', productIds);
-              if (idData) productsData = idData;
-            }
-
-            if (productsData.length === 0 && productSkus.length > 0) {
-              const { data: skuData } = await supabase
-                .from('products')
-                .select('id, sku, cost_price')
-                .in('sku', productSkus);
-              if (skuData) productsData = skuData;
-            }
-
-            // Calculate cost price from order items
-            orderCostPrice = orderItems.reduce((sum: number, item: any) => {
-              const quantity = item.quantity || 0;
-              let costPrice = 0;
-
-              // Find cost price from products data
-              let product = productsData.find(p => p.id === (item.originalProductId || item.id));
-              if (!product && item.sku) {
-                product = productsData.find(p => p.sku === item.sku);
-              }
-              
-              if (product) {
-                costPrice = Number(product.cost_price) || 0;
-              }
-
-              return sum + (quantity * costPrice);
-            }, 0);
-          } catch (error) {
-            console.error('Error calculating cost price for order:', order.id, error);
-          }
-        }
-        
-        totalCostPrice += orderCostPrice;
-      }
+      // Calculate cost price using cached products map
+      const totalCostPrice = monthOrders.reduce((sum, order) => 
+        sum + calculateOrderCostPrice(order), 0
+      );
       
       const expensesAmount = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
       const ordersCount = monthOrders.length;
@@ -381,14 +304,8 @@ const ReportsPage = () => {
     }
     
     // Convert to array and sort by date
-    const sortedData = Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-    setMonthlyData(sortedData);
-  }, [filteredOrders, filteredExpenses]);
-
-  // Recalculate when filtered data changes
-  useEffect(() => {
-    calculateSimpleMonthlyData();
-  }, [calculateSimpleMonthlyData]);
+    return Array.from(monthlyDataMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  }, [filteredOrders, filteredExpenses, calculateOrderCostPrice]);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
