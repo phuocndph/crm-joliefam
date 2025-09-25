@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Download, TrendingUp, TrendingDown, BarChart3, PieChart, Users, ShoppingCart, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,6 +17,15 @@ const ReportsPage = () => {
     to: endOfDay(new Date())
   });
   const [activeTab, setActiveTab] = useState("overview");
+  
+  // State for async calculations
+  const [calculatedMetrics, setCalculatedMetrics] = useState<{
+    totalCostPrice: number;
+    isCalculating: boolean;
+  }>({
+    totalCostPrice: 0,
+    isCalculating: false
+  });
 
   // Fetch all required data
   const {
@@ -170,37 +179,82 @@ const ReportsPage = () => {
   const ordersWithRevenue = filteredOrders.filter(order => Number(order.total_amount || 0) > 0);
   const totalOrderRevenue = ordersWithRevenue.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
   
-  // Calculate actual cost price from order items
-  const totalCostPrice = ordersWithRevenue.reduce((sum, order) => {
-    let orderCostPrice = 0;
-    
-    if (order.items) {
-      try {
-        const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
-        const items = JSON.parse(itemsStr);
-        
-        orderCostPrice = items.reduce((itemSum: number, item: any) => {
-          const quantity = Number(item.quantity) || 0;
-          let costPrice = 0;
-          
-          // Find product by SKU or originalProductId
-          const product = products.find(p => 
-            p.sku === item.sku || p.id === item.originalProductId
-          );
-          
-          if (product) {
-            costPrice = Number(product.cost_price) || 0;
-          }
-          
-          return itemSum + (quantity * costPrice);
-        }, 0);
-      } catch (error) {
-        console.error('Error calculating cost price for order:', order.id, error);
+  // useEffect to calculate cost price asynchronously
+  useEffect(() => {
+    const calculateCostPrice = async () => {
+      if (!ordersWithRevenue.length) {
+        setCalculatedMetrics(prev => ({ ...prev, totalCostPrice: 0, isCalculating: false }));
+        return;
       }
-    }
-    
-    return sum + orderCostPrice;
-  }, 0);
+
+      setCalculatedMetrics(prev => ({ ...prev, isCalculating: true }));
+      
+      let totalCost = 0;
+      
+      for (const order of ordersWithRevenue) {
+        let orderCostPrice = Number(order.cost_price) || 0;
+        
+        // If cost_price in order is 0, calculate from product data like CashFlowManagement
+        if (orderCostPrice === 0 && order.items) {
+          try {
+            const orderItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+            
+            // Get all product IDs and SKUs from order items
+            const productIds = orderItems.map((item: any) => item.originalProductId || item.id).filter((id: any) => id);
+            const productSkus = orderItems.map((item: any) => item.sku).filter((sku: any) => sku);
+
+            let productsData: any[] = [];
+
+            // Get product data from database
+            if (productIds.length > 0) {
+              const { data: idData } = await supabase
+                .from('products')
+                .select('id, sku, cost_price')
+                .in('id', productIds);
+              if (idData) productsData = idData;
+            }
+
+            if (productsData.length === 0 && productSkus.length > 0) {
+              const { data: skuData } = await supabase
+                .from('products')
+                .select('id, sku, cost_price')
+                .in('sku', productSkus);
+              if (skuData) productsData = skuData;
+            }
+
+            // Calculate cost price from order items
+            orderCostPrice = orderItems.reduce((itemSum: number, item: any) => {
+              const quantity = item.quantity || 0;
+              let costPrice = 0;
+
+              // Find cost price from products data
+              let product = productsData.find(p => p.id === (item.originalProductId || item.id));
+              if (!product && item.sku) {
+                product = productsData.find(p => p.sku === item.sku);
+              }
+              
+              if (product) {
+                costPrice = Number(product.cost_price) || 0;
+              }
+
+              return itemSum + (quantity * costPrice);
+            }, 0);
+          } catch (error) {
+            console.error('Error calculating cost price for order:', order.id, error);
+          }
+        }
+        
+        totalCost += orderCostPrice;
+      }
+      
+      setCalculatedMetrics({ totalCostPrice: totalCost, isCalculating: false });
+    };
+
+    calculateCostPrice();
+  }, [ordersWithRevenue]);
+  
+  // Use the calculated cost price from state
+  const totalCostPrice = calculatedMetrics.totalCostPrice;
   
   const totalExpensesAmount = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
@@ -316,9 +370,10 @@ const ReportsPage = () => {
     
     // Calculate actual cost price from order items for monthly data
     const costPrice = monthOrders.reduce((sum, order) => {
-      let orderCostPrice = 0;
+      let orderCostPrice = Number(order.cost_price) || 0;
       
-      if (order.items) {
+      // If cost_price in order is 0, calculate from product data (using cached products array)
+      if (orderCostPrice === 0 && order.items) {
         try {
           const itemsStr = typeof order.items === 'string' ? order.items : JSON.stringify(order.items || []);
           const items = JSON.parse(itemsStr);
@@ -351,6 +406,25 @@ const ReportsPage = () => {
     const completedCount = monthOrders.filter(o => o.status === "delivered").length;
     
     const monthKey = format(currentMonth, "yyyy-MM");
+    const isJune2023 = monthKey === "2023-06";
+    
+    if (isJune2023) {
+      console.log('June 2023 Debug:', {
+        monthOrders: monthOrders.length,
+        revenue,
+        costPrice,
+        expenses: expensesAmount,
+        profit: revenue - costPrice - expensesAmount,
+        orderSample: monthOrders.slice(0, 3).map(o => ({
+          id: o.id,
+          order_number: o.order_number,
+          total_amount: o.total_amount,
+          cost_price: o.cost_price,
+          items: o.items
+        }))
+      });
+    }
+    
     monthlyDataMap.set(monthKey, {
       month: format(currentMonth, "MMM yyyy", { locale: vi }),
       revenue,
