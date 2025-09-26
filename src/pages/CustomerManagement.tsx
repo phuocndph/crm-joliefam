@@ -769,111 +769,104 @@ export default function CustomerManagement() {
           
           {selectedCustomer && (
             <div className="space-y-6">
-              {/* Customer Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Thông tin cá nhân</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium">Mã khách hàng:</label>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedCustomer.customer_code || `KH-${selectedCustomer.id.slice(0, 8)}`}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Số điện thoại:</label>
-                      <div className="space-y-1">
+              {/* Customer Info Table */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/30 px-4 py-3 border-b">
+                  <h3 className="font-medium">Thông tin khách hàng</h3>
+                </div>
+                <table className="w-full">
+                  <tbody className="divide-y divide-border">
+                    <tr>
+                      <td className="px-4 py-3 font-medium w-1/4">Mã khách hàng</td>
+                      <td className="px-4 py-3">{selectedCustomer.customer_code || `KH-${selectedCustomer.id.slice(0, 8)}`}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Tên khách hàng</td>
+                      <td className="px-4 py-3">{selectedCustomer.name}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Số điện thoại</td>
+                      <td className="px-4 py-3">
                         {selectedCustomer.phones?.length > 0 ? (
-                          selectedCustomer.phones.map((phone, index) => (
-                            <div key={index} className="text-sm text-muted-foreground flex items-center gap-2">
-                              <Phone className="h-3 w-3" />
-                              {phone.number} 
-                              <Badge variant="outline" className="text-xs">
-                                {phone.label} {phone.isPrimary && "(Chính)"}
-                              </Badge>
-                            </div>
-                          ))
-                        ) : selectedCustomer.phone ? (
-                          <p className="text-sm text-muted-foreground">{selectedCustomer.phone}</p>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">Chưa có</p>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Địa chỉ:</label>
-                      <div className="space-y-1">
-                        {selectedCustomer.addresses?.length > 0 ? (
-                          selectedCustomer.addresses.map((addr, index) => (
-                            <div key={index} className="text-sm text-muted-foreground">
-                              <div className="flex items-start gap-2">
-                                <MapPin className="h-3 w-3 mt-1" />
-                                <div>
-                                  <div>{addr.address}</div>
-                                  <Badge variant="outline" className="text-xs mt-1">
-                                    {addr.label} {addr.isPrimary && "(Chính)"}
-                                  </Badge>
-                                </div>
+                          <div className="space-y-1">
+                            {selectedCustomer.phones.map((phone, index) => (
+                              <div key={index} className="flex items-center gap-2">
+                                {phone.number}
+                                <Badge variant="outline" className="text-xs">
+                                  {phone.label} {phone.isPrimary && "(Chính)"}
+                                </Badge>
                               </div>
-                            </div>
-                          ))
-                        ) : selectedCustomer.address ? (
-                          <p className="text-sm text-muted-foreground">{selectedCustomer.address}</p>
+                            ))}
+                          </div>
+                        ) : selectedCustomer.phone ? (
+                          selectedCustomer.phone
                         ) : (
-                          <p className="text-sm text-muted-foreground">Chưa có</p>
+                          "Chưa có"
                         )}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Email:</label>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedCustomer.email || "Chưa có"}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Công ty:</label>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedCustomer.company || "Chưa có"}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Địa chỉ</td>
+                      <td className="px-4 py-3">
+                        {selectedCustomer.addresses?.length > 0 ? (
+                          <div className="space-y-1">
+                            {selectedCustomer.addresses.map((addr, index) => (
+                              <div key={index}>
+                                <div>{addr.address}</div>
+                                <Badge variant="outline" className="text-xs">
+                                  {addr.label} {addr.isPrimary && "(Chính)"}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        ) : selectedCustomer.address ? (
+                          selectedCustomer.address
+                        ) : (
+                          "Chưa có"
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Email</td>
+                      <td className="px-4 py-3">{selectedCustomer.email || "Chưa có"}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Công ty</td>
+                      <td className="px-4 py-3">{selectedCustomer.company || "Chưa có"}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Thống kê mua hàng</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="text-center p-4 bg-blue-50 rounded-lg">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {selectedCustomer.purchase_count}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Tổng đơn hàng</div>
-                      </div>
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
-                        <div className="text-2xl font-bold text-green-600">
-                          {selectedCustomer.total_spent.toLocaleString("vi-VN")}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Tổng tiền (VNĐ)</div>
-                      </div>
-                    </div>
+              {/* Purchase Statistics Table */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/30 px-4 py-3 border-b">
+                  <h3 className="font-medium">Thống kê mua hàng</h3>
+                </div>
+                <table className="w-full">
+                  <tbody className="divide-y divide-border">
+                    <tr>
+                      <td className="px-4 py-3 font-medium w-1/4">Tổng đơn hàng</td>
+                      <td className="px-4 py-3 font-semibold text-blue-600">{selectedCustomer.purchase_count}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Tổng tiền (VNĐ)</td>
+                      <td className="px-4 py-3 font-semibold text-green-600">{selectedCustomer.total_spent.toLocaleString("vi-VN")}</td>
+                    </tr>
                     {selectedCustomer.last_purchase_date && (
-                      <div>
-                        <label className="text-sm font-medium">Mua lần cuối:</label>
-                        <p className="text-sm text-muted-foreground">
+                      <tr>
+                        <td className="px-4 py-3 font-medium">Mua lần cuối</td>
+                        <td className="px-4 py-3">
                           {format(new Date(selectedCustomer.last_purchase_date), "dd/MM/yyyy HH:mm", { locale: vi })}
-                           <span className="ml-2 text-xs">
-                             ({getLastPurchaseMonthYear(selectedCustomer.last_purchase_date)})
-                           </span>
-                        </p>
-                      </div>
+                          <span className="ml-2 text-sm text-muted-foreground">
+                            ({getLastPurchaseMonthYear(selectedCustomer.last_purchase_date)})
+                          </span>
+                        </td>
+                      </tr>
                     )}
-                    <div>
-                      <label className="text-sm font-medium">Phân loại khách hàng:</label>
-                      <div className="flex flex-wrap gap-1 mt-1">
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Phân loại khách hàng</td>
+                      <td className="px-4 py-3">
                         {(() => {
                           const count = selectedCustomer.purchase_count || 0;
                           let tag = "Chưa có đơn";
@@ -887,143 +880,136 @@ export default function CustomerManagement() {
                             </Badge>
                           );
                         })()}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
-              {/* Orders List */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <ShoppingCart className="h-5 w-5" />
+              {/* Orders List Table */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/30 px-4 py-3 border-b">
+                  <h3 className="font-medium flex items-center gap-2">
+                    <ShoppingCart className="h-4 w-4" />
                     Lịch sử đơn hàng ({customerOrders.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {ordersLoading ? (
-                    <div className="text-center py-8">Đang tải đơn hàng...</div>
-                  ) : customerOrders.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      Khách hàng chưa có đơn hàng nào
-                    </div>
-                  ) : (
-                     <div className="space-y-4">
-                       {customerOrders.map((order) => (
-                         <div key={order.id} className="border rounded-lg p-4">
-                           <div className="flex justify-between items-start">
-                             <div className="space-y-2 flex-1">
-                               <div className="font-medium">
-                                 Đơn hàng #{getOrderDisplayNumber(order)}
-                               </div>
-                               <div className="text-sm text-muted-foreground">
-                                 Ngày tạo: {format(new Date(order.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
-                               </div>
-                               {order.delivery_date && (
-                                 <div className="text-sm text-muted-foreground">
-                                   Ngày giao: {format(new Date(order.delivery_date), "dd/MM/yyyy", { locale: vi })}
-                                 </div>
-                               )}
-                               <div className="flex gap-2">
-                                 <Badge variant={order.status === 'delivered' ? 'default' : 'secondary'}>
-                                   {order.status === 'pending' ? 'Chờ xử lý' :
-                                    order.status === 'processing' ? 'Đang xử lý' :
-                                    order.status === 'shipped' ? 'Đã giao' :
-                                    order.status === 'delivered' ? 'Hoàn thành' :
-                                    order.status === 'cancelled' ? 'Đã hủy' : order.status}
-                                 </Badge>
-                                 <Badge variant={order.payment_status === 'paid' ? 'default' : 'secondary'}>
-                                   {order.payment_status === 'pending' ? 'Chưa thanh toán' :
-                                    order.payment_status === 'paid' ? 'Đã thanh toán' :
-                                    order.payment_status === 'partial' ? 'Thanh toán 1 phần' : order.payment_status}
-                                 </Badge>
-                               </div>
-                             </div>
-                             <div className="text-right space-y-2">
-                               <div className="text-lg font-bold">
-                                 {order.total_amount.toLocaleString("vi-VN")} VNĐ
-                               </div>
-                               {order.payment_date && (
-                                 <div className="text-sm text-muted-foreground">
-                                   TT: {format(new Date(order.payment_date), "dd/MM/yyyy", { locale: vi })}
-                                 </div>
-                               )}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={async () => {
-                                    // Load order details
-                                    const { data, error } = await supabase
-                                      .from('orders')
-                                      .select('*')
-                                      .eq('id', order.id)
-                                      .single();
-                                    
-                                    if (!error && data) {
-                                      setSelectedOrderDetail(data);
-                                    }
-                                  }}
-                                  className="gap-2"
-                                >
-                                  <Eye className="h-3 w-3" />
-                                  Xem chi tiết
-                                </Button>
-                             </div>
-                           </div>
-                         </div>
-                       ))}
-                     </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Quotes List */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Lịch sử báo giá ({customerQuotes.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {ordersLoading ? (
-                    <div className="text-center py-8">Đang tải báo giá...</div>
-                  ) : customerQuotes.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      Khách hàng chưa có báo giá nào
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {customerQuotes.map((quote) => (
-                        <div key={quote.id} className="border rounded-lg p-4">
-                          <div className="flex justify-between items-start">
-                            <div className="space-y-2">
-                              <div className="font-medium">
-                                Báo giá #{quote.quote_number}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                Ngày tạo: {format(new Date(quote.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
-                              </div>
-                              <Badge variant={quote.status === 'approved' ? 'default' : 'secondary'}>
-                                {quote.status === 'draft' ? 'Nháp' :
-                                 quote.status === 'sent' ? 'Đã gửi' :
-                                 quote.status === 'approved' ? 'Đã duyệt' :
-                                 quote.status === 'rejected' ? 'Từ chối' : quote.status}
-                              </Badge>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-lg font-bold">
-                                {(quote.total_amount || 0).toLocaleString("vi-VN")} VNĐ
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                  </h3>
+                </div>
+                {ordersLoading ? (
+                  <div className="text-center py-8">Đang tải đơn hàng...</div>
+                ) : customerOrders.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Khách hàng chưa có đơn hàng nào
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead className="bg-muted/20 border-b">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-medium">Mã đơn hàng</th>
+                        <th className="px-4 py-3 text-left font-medium">Ngày tạo</th>
+                        <th className="px-4 py-3 text-left font-medium">Trạng thái</th>
+                        <th className="px-4 py-3 text-left font-medium">Thanh toán</th>
+                        <th className="px-4 py-3 text-right font-medium">Tổng tiền</th>
+                        <th className="px-4 py-3 text-center font-medium">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {customerOrders.map((order) => (
+                        <tr key={order.id}>
+                          <td className="px-4 py-3 font-medium">#{getOrderDisplayNumber(order)}</td>
+                          <td className="px-4 py-3">{format(new Date(order.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={order.status === 'delivered' ? 'default' : 'secondary'}>
+                              {order.status === 'pending' ? 'Chờ xử lý' :
+                               order.status === 'processing' ? 'Đang xử lý' :
+                               order.status === 'shipped' ? 'Đã giao' :
+                               order.status === 'delivered' ? 'Hoàn thành' :
+                               order.status === 'cancelled' ? 'Đã hủy' : order.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant={order.payment_status === 'paid' ? 'default' : 'secondary'}>
+                              {order.payment_status === 'pending' ? 'Chưa thanh toán' :
+                               order.payment_status === 'paid' ? 'Đã thanh toán' :
+                               order.payment_status === 'partial' ? 'Thanh toán 1 phần' : order.payment_status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold">
+                            {order.total_amount.toLocaleString("vi-VN")} VNĐ
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={async () => {
+                                const { data, error } = await supabase
+                                  .from('orders')
+                                  .select('*')
+                                  .eq('id', order.id)
+                                  .single();
+                                
+                                if (!error && data) {
+                                  setSelectedOrderDetail(data);
+                                }
+                              }}
+                              className="gap-2"
+                            >
+                              <Eye className="h-3 w-3" />
+                              Xem chi tiết
+                            </Button>
+                          </td>
+                        </tr>
                       ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Quotes List Table */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/30 px-4 py-3 border-b">
+                  <h3 className="font-medium flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Lịch sử báo giá ({customerQuotes.length})
+                  </h3>
+                </div>
+                {ordersLoading ? (
+                  <div className="text-center py-8">Đang tải báo giá...</div>
+                ) : customerQuotes.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Khách hàng chưa có báo giá nào
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead className="bg-muted/20 border-b">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-medium">Mã báo giá</th>
+                        <th className="px-4 py-3 text-left font-medium">Ngày tạo</th>
+                        <th className="px-4 py-3 text-left font-medium">Trạng thái</th>
+                        <th className="px-4 py-3 text-right font-medium">Tổng tiền</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {customerQuotes.map((quote) => (
+                        <tr key={quote.id}>
+                          <td className="px-4 py-3 font-medium">#{quote.quote_number}</td>
+                          <td className="px-4 py-3">{format(new Date(quote.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={quote.status === 'approved' ? 'default' : 'secondary'}>
+                              {quote.status === 'draft' ? 'Nháp' :
+                               quote.status === 'sent' ? 'Đã gửi' :
+                               quote.status === 'approved' ? 'Đã duyệt' :
+                               quote.status === 'rejected' ? 'Từ chối' : quote.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold">
+                            {(quote.total_amount || 0).toLocaleString("vi-VN")} VNĐ
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>
