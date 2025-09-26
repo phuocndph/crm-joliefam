@@ -1193,11 +1193,11 @@ const CustomerCare = () => {
               <CardContent>
                 <div className="space-y-4">
                   {(() => {
-                    const assigneeCounts = enhancedCustomers.reduce((acc, customer) => {
-                      const assigneeId = customer.manager_id;
-                      if (assigneeId) {
-                        const assignee = assignees.find(a => a.id === assigneeId);
-                        const assigneeName = assignee?.name || 'Không xác định';
+                     const assigneeCounts = enhancedCustomers.reduce((acc, customer) => {
+                       const assigneeId = customer.assignee_id;
+                       if (assigneeId) {
+                         const assignee = assignees.find(a => a.id === assigneeId);
+                         const assigneeName = assignee?.name || 'Không xác định';
                         acc[assigneeName] = (acc[assigneeName] || 0) + 1;
                       } else {
                         acc['Chưa phân công'] = (acc['Chưa phân công'] || 0) + 1;
