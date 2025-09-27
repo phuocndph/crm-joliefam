@@ -819,8 +819,6 @@ export default function CustomerManagement() {
                               </div>
                             ))}
                           </div>
-                        ) : selectedCustomer.address ? (
-                          selectedCustomer.address
                         ) : (
                           "Chưa có"
                         )}
