@@ -1056,261 +1056,239 @@ export default function CustomerManagement() {
           </DialogHeader>
           
           {selectedOrderDetail && (
-            <div className="space-y-6">
-              {/* Order Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Thông tin đơn hàng</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium">Mã đơn hàng:</label>
-                      <p className="text-sm text-muted-foreground">{getOrderDisplayNumber(selectedOrderDetail)}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Trạng thái:</label>
-                      <Badge className="ml-2">
-                        {(() => {
-                          const s = selectedOrderDetail.status;
-                          const map: Record<string, string> = {
-                            pending: 'Chờ xử lý',
-                            processing: 'Đang xử lý',
-                            shipped: 'Đã giao',
-                            delivered: 'Hoàn thành',
-                            cancelled: 'Đã hủy',
-                          };
-                          return map[s] ?? 'Không xác định';
-                        })()}
-                      </Badge>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Thanh toán:</label>
-                      <Badge className="ml-2">
-                        {(() => {
-                          const ps = selectedOrderDetail.payment_status;
-                          const map: Record<string, string> = {
-                            pending: 'Chưa thanh toán',
-                            paid: 'Đã thanh toán',
-                            partial: 'Thanh toán một phần',
-                          };
-                          return map[ps] ?? 'Không xác định';
-                        })()}
-                      </Badge>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Ngày tạo:</label>
-                      <p className="text-sm text-muted-foreground">
+            <div className="space-y-4">
+              {/* Order Info Table */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/30 px-4 py-3 border-b">
+                  <h3 className="font-medium">Thông tin đơn hàng</h3>
+                </div>
+                <table className="w-full">
+                  <tbody className="divide-y divide-border">
+                    <tr>
+                      <td className="px-4 py-3 font-medium w-1/4">Mã đơn hàng</td>
+                      <td className="px-4 py-3">{getOrderDisplayNumber(selectedOrderDetail)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Trạng thái</td>
+                      <td className="px-4 py-3">
+                        <Badge>
+                          {(() => {
+                            const s = selectedOrderDetail.status;
+                            const map: Record<string, string> = {
+                              pending: 'Chờ xử lý',
+                              processing: 'Đang xử lý',
+                              shipped: 'Đã giao',
+                              delivered: 'Hoàn thành',
+                              cancelled: 'Đã hủy',
+                            };
+                            return map[s] ?? 'Không xác định';
+                          })()}
+                        </Badge>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Thanh toán</td>
+                      <td className="px-4 py-3">
+                        <Badge>
+                          {(() => {
+                            const ps = selectedOrderDetail.payment_status;
+                            const map: Record<string, string> = {
+                              pending: 'Chưa thanh toán',
+                              paid: 'Đã thanh toán',
+                              partial: 'Thanh toán một phần',
+                            };
+                            return map[ps] ?? 'Không xác định';
+                          })()}
+                        </Badge>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Ngày tạo</td>
+                      <td className="px-4 py-3">
                         {format(new Date(selectedOrderDetail.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
               {/* Products Table */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Sản phẩm</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="border rounded-lg overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">STT</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Tên sản phẩm</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">SKU</th>
-                          <th className="px-4 py-3 text-center text-sm font-medium text-gray-900">Số lượng</th>
-                          <th className="px-4 py-3 text-right text-sm font-medium text-gray-900">Đơn giá</th>
-                          <th className="px-4 py-3 text-right text-sm font-medium text-gray-900">Thành tiền</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {(() => {
-                          let itemsToDisplay = selectedOrderDetail.items;
-                          
-                          if (typeof selectedOrderDetail.items === 'string') {
-                            try {
-                              itemsToDisplay = JSON.parse(selectedOrderDetail.items);
-                            } catch (error) {
-                              return (
-                                <tr>
-                                  <td colSpan={6} className="px-4 py-8 text-center text-red-500">
-                                    Lỗi định dạng dữ liệu sản phẩm
-                                  </td>
-                                </tr>
-                              );
-                            }
-                          }
-                          
-                          if (Array.isArray(itemsToDisplay) && itemsToDisplay.length > 0) {
-                            return itemsToDisplay.map((item: any, index: number) => (
-                              <tr key={index} className="border-b last:border-b-0">
-                                <td className="px-4 py-3 text-center">{index + 1}</td>
-                                <td className="px-4 py-3 font-medium">{item.name || `Sản phẩm ${index + 1}`}</td>
-                                <td className="px-4 py-3 text-sm text-muted-foreground">{item.sku || '-'}</td>
-                                <td className="px-4 py-3 text-center">{item.quantity || 1}</td>
-                                <td className="px-4 py-3 text-right">{(item.price || 0).toLocaleString("vi-VN")} VNĐ</td>
-                                <td className="px-4 py-3 text-right font-medium">
-                                  {((item.quantity || 1) * (item.price || 0)).toLocaleString("vi-VN")} VNĐ
-                                </td>
-                              </tr>
-                            ));
-                          }
-                          
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/30 px-4 py-3 border-b">
+                  <h3 className="font-medium">Danh sách sản phẩm</h3>
+                </div>
+                <table className="w-full">
+                  <thead className="bg-muted/20 border-b">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium">STT</th>
+                      <th className="px-4 py-3 text-left font-medium">Tên sản phẩm</th>
+                      <th className="px-4 py-3 text-left font-medium">SKU</th>
+                      <th className="px-4 py-3 text-center font-medium">Số lượng</th>
+                      <th className="px-4 py-3 text-right font-medium">Đơn giá</th>
+                      <th className="px-4 py-3 text-right font-medium">Thành tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {(() => {
+                      let itemsToDisplay = selectedOrderDetail.items;
+                      
+                      if (typeof selectedOrderDetail.items === 'string') {
+                        try {
+                          itemsToDisplay = JSON.parse(selectedOrderDetail.items);
+                        } catch (error) {
                           return (
                             <tr>
-                              <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                                Không có thông tin sản phẩm
+                              <td colSpan={6} className="px-4 py-8 text-center text-red-500">
+                                Lỗi định dạng dữ liệu sản phẩm
                               </td>
                             </tr>
                           );
-                        })()}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Financial Summary */}
-              <Card>
-                <CardContent className="p-6">
-                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-medium text-center">Tổng kết tài chính</h4>
-                      <Button 
-                        onClick={() => setOrderToPayment(selectedOrderDetail)}
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                      >
-                        <CreditCard className="h-4 w-4" />
-                        Thêm thanh toán
-                      </Button>
-                    </div>
-                    <div className="space-y-2">
-                      {(() => {
-                        const total = selectedOrderDetail.total_amount || 0;
-                        // Try to derive subtotal from items if available
-                        let itemsData: any[] = [];
-                        try {
-                          if (selectedOrderDetail.items) {
-                            itemsData = typeof selectedOrderDetail.items === 'string'
-                              ? JSON.parse(selectedOrderDetail.items)
-                              : selectedOrderDetail.items;
-                          }
-                        } catch (e) {
-                          itemsData = [];
                         }
-                        const subtotalFromItems = Array.isArray(itemsData)
-                          ? itemsData.reduce((sum, item) => {
-                              const itemTotal = typeof item === 'object'
-                                ? (item.total ?? ((item.price || 0) * (item.quantity || 0)))
-                                : 0;
-                              return sum + (Number.isFinite(itemTotal) ? itemTotal : 0);
-                            }, 0)
-                          : 0;
-                        const subtotal = subtotalFromItems > 0 ? subtotalFromItems : total;
-                        const vatAmountRaw = total > subtotal ? total - subtotal : 0;
-                        const includeVAT = vatAmountRaw > 0.5; // avoid tiny rounding differences
-                        const vatAmount = includeVAT ? vatAmountRaw : 0;
-                        const vatRate = includeVAT && subtotal > 0 ? Math.round((vatAmount / subtotal) * 100) : null;
-                        return (
-                          <>
-                            <div className="flex justify-between items-center py-2 border-b border-red-200">
-                              <span className="font-medium">TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
-                              <span className="font-bold text-lg">
-                                {Math.round(subtotal).toLocaleString("vi-VN")} VNĐ
-                              </span>
-                            </div>
-                            {includeVAT && (
-                              <>
-                                <div className="flex justify-between items-center py-2 border-b border-red-200">
-                                  <span className="font-medium">GTGT{vatRate !== null ? ` (${vatRate}%)` : ''}:</span>
-                                  <span className="font-bold text-lg">
-                                    {Math.round(vatAmount).toLocaleString("vi-VN")} VNĐ
-                                  </span>
-                                </div>
-                                <div className="flex justify-between items-center py-2 border-b border-red-200">
-                                  <span className="font-medium">TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
-                                  <span className="font-bold text-lg text-red-600">
-                                    {Math.round(total).toLocaleString("vi-VN")} VNĐ
-                                  </span>
-                                </div>
-                              </>
-                            )}
-                          </>
-                        );
-                      })()}
+                      }
+                      
+                      if (Array.isArray(itemsToDisplay) && itemsToDisplay.length > 0) {
+                        return itemsToDisplay.map((item: any, index: number) => (
+                          <tr key={index}>
+                            <td className="px-4 py-3 text-center">{index + 1}</td>
+                            <td className="px-4 py-3 font-medium">{item.name || `Sản phẩm ${index + 1}`}</td>
+                            <td className="px-4 py-3">{item.sku || '-'}</td>
+                            <td className="px-4 py-3 text-center">{item.quantity || 1}</td>
+                            <td className="px-4 py-3 text-right">{(item.price || 0).toLocaleString("vi-VN")} VNĐ</td>
+                            <td className="px-4 py-3 text-right font-medium">
+                              {((item.quantity || 1) * (item.price || 0)).toLocaleString("vi-VN")} VNĐ
+                            </td>
+                          </tr>
+                        ));
+                      }
+                      
+                      return (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                            Không có thông tin sản phẩm
+                          </td>
+                        </tr>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </div>
 
-                      {/* Payment Status Information */}
-                      <div className="pt-2 border-t border-red-300">
-                        <div className="flex justify-between items-center py-2">
-                          <span className="font-medium">Trạng thái thanh toán:</span>
-                          <span className={`font-bold px-2 py-1 rounded text-sm ${
-                            selectedOrderDetail.payment_status === 'paid' 
-                              ? 'bg-green-100 text-green-800' 
-                              : selectedOrderDetail.payment_status === 'partial'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {selectedOrderDetail.payment_status === 'paid' 
-                              ? 'Đã thanh toán' 
-                              : selectedOrderDetail.payment_status === 'partial'
-                              ? 'Thanh toán một phần'
-                              : 'Chưa thanh toán'
-                            }
-                          </span>
-                        </div>
-                        
-                        {/* Calculate total paid and remaining */}
-                        {(() => {
-                          const orderPayments = payments.filter(p => p.order_id === selectedOrderDetail.id);
-                          const totalPaid = orderPayments.reduce((sum, payment) => sum + payment.payment_amount, 0);
-                          const remaining = (selectedOrderDetail.total_amount || 0) - totalPaid;
-                          
-                          return (
+              {/* Financial Summary Table */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/30 px-4 py-3 border-b flex justify-between items-center">
+                  <h3 className="font-medium">Tổng kết tài chính</h3>
+                  <Button 
+                    onClick={() => setOrderToPayment(selectedOrderDetail)}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    Thêm thanh toán
+                  </Button>
+                </div>
+                <table className="w-full">
+                  <tbody className="divide-y divide-border">
+                    {(() => {
+                      const total = selectedOrderDetail.total_amount || 0;
+                      let itemsData: any[] = [];
+                      try {
+                        if (selectedOrderDetail.items) {
+                          itemsData = typeof selectedOrderDetail.items === 'string'
+                            ? JSON.parse(selectedOrderDetail.items)
+                            : selectedOrderDetail.items;
+                        }
+                      } catch (e) {
+                        itemsData = [];
+                      }
+                      const subtotalFromItems = Array.isArray(itemsData)
+                        ? itemsData.reduce((sum, item) => {
+                            const itemTotal = typeof item === 'object'
+                              ? (item.total ?? ((item.price || 0) * (item.quantity || 0)))
+                              : 0;
+                            return sum + (Number.isFinite(itemTotal) ? itemTotal : 0);
+                          }, 0)
+                        : 0;
+                      const subtotal = subtotalFromItems > 0 ? subtotalFromItems : total;
+                      const vatAmountRaw = total > subtotal ? total - subtotal : 0;
+                      const includeVAT = vatAmountRaw > 0.5;
+                      const vatAmount = includeVAT ? vatAmountRaw : 0;
+                      const vatRate = includeVAT && subtotal > 0 ? Math.round((vatAmount / subtotal) * 100) : null;
+                      
+                      const orderPayments = payments.filter(p => p.order_id === selectedOrderDetail.id);
+                      const totalPaid = orderPayments.reduce((sum, payment) => sum + payment.payment_amount, 0);
+                      const remaining = total - totalPaid;
+
+                      return (
+                        <>
+                          <tr>
+                            <td className="px-4 py-3 font-medium w-1/2">Tổng giá trị chưa bao gồm GTGT</td>
+                            <td className="px-4 py-3 text-right font-semibold">
+                              {Math.round(subtotal).toLocaleString("vi-VN")} VNĐ
+                            </td>
+                          </tr>
+                          {includeVAT && (
                             <>
-                              <div className="flex justify-between items-center py-2">
-                                <span className="font-medium">Số tiền đã thanh toán:</span>
-                                <span className="font-bold text-green-600">
-                                  {totalPaid.toLocaleString("vi-VN")} VNĐ
-                                </span>
-                              </div>
-                              <div className="flex justify-between items-center py-2">
-                                <span className="font-medium">Số tiền còn lại:</span>
-                                <span className={`font-bold ${remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                  {remaining.toLocaleString("vi-VN")} VNĐ
-                                </span>
-                              </div>
-                              
-                              {/* Payment History */}
-                              {orderPayments.length > 0 && (
-                                <div className="pt-2 border-t border-red-300">
-                                  <h5 className="font-medium mb-2">Lịch sử thanh toán:</h5>
-                                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                                    {orderPayments.map((payment, index) => (
-                                      <div key={payment.id} className="flex justify-between items-center text-sm bg-white/50 p-2 rounded">
-                                        <span>
-                                          Lần {index + 1}: {new Date(payment.payment_date).toLocaleDateString('vi-VN')}
-                                        </span>
-                                        <span className="font-medium">
-                                          {payment.payment_amount.toLocaleString("vi-VN")} VNĐ
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
+                              <tr>
+                                <td className="px-4 py-3 font-medium">GTGT{vatRate !== null ? ` (${vatRate}%)` : ''}</td>
+                                <td className="px-4 py-3 text-right font-semibold">
+                                  {Math.round(vatAmount).toLocaleString("vi-VN")} VNĐ
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="px-4 py-3 font-medium">Tổng tiền đã bao gồm GTGT</td>
+                                <td className="px-4 py-3 text-right font-semibold text-red-600">
+                                  {Math.round(total).toLocaleString("vi-VN")} VNĐ
+                                </td>
+                              </tr>
                             </>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                          )}
+                          <tr>
+                            <td className="px-4 py-3 font-medium">Trạng thái thanh toán</td>
+                            <td className="px-4 py-3 text-right">
+                              <Badge variant={selectedOrderDetail.payment_status === 'paid' ? 'default' : 'secondary'}>
+                                {selectedOrderDetail.payment_status === 'paid' 
+                                  ? 'Đã thanh toán' 
+                                  : selectedOrderDetail.payment_status === 'partial'
+                                  ? 'Thanh toán một phần'
+                                  : 'Chưa thanh toán'
+                                }
+                              </Badge>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-3 font-medium">Số tiền đã thanh toán</td>
+                            <td className="px-4 py-3 text-right font-semibold text-green-600">
+                              {totalPaid.toLocaleString("vi-VN")} VNĐ
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-3 font-medium">Số tiền còn lại</td>
+                            <td className={`px-4 py-3 text-right font-semibold ${remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                              {remaining.toLocaleString("vi-VN")} VNĐ
+                            </td>
+                          </tr>
+                          {orderPayments.length > 0 && (
+                            <tr>
+                              <td className="px-4 py-3 font-medium">Lịch sử thanh toán</td>
+                              <td className="px-4 py-3">
+                                <div className="space-y-1 max-h-32 overflow-y-auto">
+                                  {orderPayments.map((payment, index) => (
+                                    <div key={payment.id} className="flex justify-between items-center text-sm p-2 bg-muted/20 rounded">
+                                      <span>Lần {index + 1}: {new Date(payment.payment_date).toLocaleDateString('vi-VN')}</span>
+                                      <span className="font-medium">{payment.payment_amount.toLocaleString("vi-VN")} VNĐ</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </DialogContent>
