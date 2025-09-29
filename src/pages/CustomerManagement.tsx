@@ -806,28 +806,50 @@ export default function CustomerManagement() {
                       </td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-3 font-medium">Địa chỉ</td>
-                      <td className="px-4 py-3">
-                        {selectedCustomer.addresses?.length > 0 ? (
-                          <div className="space-y-1">
-                            {selectedCustomer.addresses.map((addr, index) => (
-                              <div key={index}>
-                                <div>{addr.address}</div>
-                                <Badge variant="outline" className="text-xs">
-                                  {addr.label} {addr.isPrimary && "(Chính)"}
-                                </Badge>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          "Chưa có"
-                        )}
-                      </td>
+                       <td className="px-4 py-3 font-medium">Địa chỉ</td>
+                       <td className="px-4 py-3">
+                         {(() => {
+                           // Kiểm tra nếu có addresses array
+                           if (selectedCustomer.addresses?.length > 0) {
+                             return (
+                               <div className="space-y-1">
+                                 {selectedCustomer.addresses.map((addr, index) => (
+                                   <div key={index}>
+                                     <div>{addr.address}</div>
+                                     <Badge variant="outline" className="text-xs">
+                                       {addr.label} {addr.isPrimary && "(Chính)"}
+                                     </Badge>
+                                   </div>
+                                 ))}
+                               </div>
+                             );
+                           }
+                           // Nếu không có addresses array, kiểm tra email có chứa địa chỉ không
+                           const email = selectedCustomer.email;
+                           if (email && email.includes("Địa chỉ:")) {
+                             return email.replace("Địa chỉ:", "").trim();
+                           }
+                           // Kiểm tra field address
+                           if (selectedCustomer.address) {
+                             return selectedCustomer.address;
+                           }
+                           return "Chưa có";
+                         })()}
+                       </td>
                     </tr>
-                    <tr>
-                      <td className="px-4 py-3 font-medium">Email</td>
-                      <td className="px-4 py-3">{selectedCustomer.email || "Chưa có"}</td>
-                    </tr>
+                     <tr>
+                       <td className="px-4 py-3 font-medium">Email</td>
+                       <td className="px-4 py-3">
+                         {(() => {
+                           // Kiểm tra nếu email chứa "Địa chỉ:" thì không hiển thị
+                           const email = selectedCustomer.email;
+                           if (email && email.includes("Địa chỉ:")) {
+                             return "Chưa có";
+                           }
+                           return email || "Chưa có";
+                         })()}
+                       </td>
+                     </tr>
                     <tr>
                       <td className="px-4 py-3 font-medium">Công ty</td>
                       <td className="px-4 py-3">{selectedCustomer.company || "Chưa có"}</td>
