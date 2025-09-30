@@ -515,8 +515,15 @@ export default function OrderManagement() {
               ) : (
                 <InlineOrderEditTable
                   orders={sortedOrders}
-                  onOrderUpdate={async (order) => {
+                  onOrderUpdate={async (orderId, updates) => {
                     try {
+                      const { error } = await supabase
+                        .from('orders')
+                        .update(updates)
+                        .eq('id', orderId);
+                      
+                      if (error) throw error;
+                      
                       await loadOrders();
                       toast({
                         title: "Thành công",
