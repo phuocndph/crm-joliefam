@@ -517,12 +517,24 @@ export default function OrderManagement() {
                   orders={sortedOrders}
                   onOrderUpdate={async (orderId, updates) => {
                     try {
+                      // Update order
                       const { error } = await supabase
                         .from('orders')
                         .update(updates)
                         .eq('id', orderId);
                       
                       if (error) throw error;
+                      
+                      // Sync assignee_id to customer if it was updated
+                      if ('assignee_id' in updates) {
+                        const order = sortedOrders.find(o => o.id === orderId);
+                        if (order?.customer_id) {
+                          await supabase
+                            .from('customers')
+                            .update({ assignee_id: updates.assignee_id })
+                            .eq('id', order.customer_id);
+                        }
+                      }
                       
                       await loadOrders();
                       toast({
