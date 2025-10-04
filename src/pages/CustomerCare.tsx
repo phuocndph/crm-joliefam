@@ -168,13 +168,25 @@ const CustomerCare = () => {
 
             // Sync assignee_id from orders to customer if needed
             const shouldUpdateAssignee = !customer.assignee_id && orderStats.assignedAssignee;
-            if (shouldUpdateAssignee) {
+            
+            // Sync source (tags) from orders if customer has no source but has orders
+            const shouldUpdateSource = (!customer.tags || customer.tags.length === 0) && orderStats.count > 0;
+            
+            if (shouldUpdateAssignee || shouldUpdateSource) {
+              const updates: any = {};
+              if (shouldUpdateAssignee) {
+                updates.assignee_id = orderStats.assignedAssignee;
+              }
+              if (shouldUpdateSource) {
+                updates.tags = ['Đơn hàng']; // Auto-assign "Order" as source
+              }
+              
               supabase
                 .from('customers')
-                .update({ assignee_id: orderStats.assignedAssignee })
+                .update(updates)
                 .eq('id', customer.id)
                 .then(() => {
-                  console.log(`Synced assignee_id for customer ${customer.id}`);
+                  console.log(`Synced data for customer ${customer.id}`, updates);
                 });
             }
 
@@ -186,7 +198,9 @@ const CustomerCare = () => {
               // Auto-assign manager from orders if customer doesn't have one
               manager_id: customer.manager_id || orderStats.assignedManager,
               // Auto-assign assignee from orders if customer doesn't have one
-              assignee_id: customer.assignee_id || orderStats.assignedAssignee
+              assignee_id: customer.assignee_id || orderStats.assignedAssignee,
+              // Auto-assign source if customer has orders but no source
+              tags: (customer.tags && customer.tags.length > 0) ? customer.tags : (orderStats.count > 0 ? ['Đơn hàng'] : customer.tags)
             };
           }
 
