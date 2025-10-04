@@ -84,7 +84,7 @@ const CustomerCare = () => {
       // Fetch orders to get real purchase data
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select('id, customer_id, total_amount, status, created_at, payment_date, manager_id')
+        .select('id, customer_id, total_amount, status, created_at, payment_date, manager_id, assignee_id')
         .neq('status', 'cancelled')
         .not('total_amount', 'is', null)
         .not('manager_id', 'is', null); // Only get orders with assigned managers
@@ -110,7 +110,8 @@ const CustomerCare = () => {
               count: 0,
               totalSpent: 0,
               lastPurchase: null,
-              assignedManager: null // Track manager from orders
+              assignedManager: null, // Track manager from orders
+              assignedAssignee: null // Track assignee from orders
             };
           }
           
@@ -129,6 +130,15 @@ const CustomerCare = () => {
                 new Date(purchaseDate) > new Date(acc[order.customer_id].lastManagerAssignment || '1970-01-01')) {
               acc[order.customer_id].assignedManager = order.manager_id;
               acc[order.customer_id].lastManagerAssignment = purchaseDate;
+            }
+          }
+          
+          // Track assignee from most recent order with assignee_id
+          if (order.assignee_id) {
+            if (!acc[order.customer_id].assignedAssignee || 
+                new Date(purchaseDate) > new Date(acc[order.customer_id].lastAssigneeAssignment || '1970-01-01')) {
+              acc[order.customer_id].assignedAssignee = order.assignee_id;
+              acc[order.customer_id].lastAssigneeAssignment = purchaseDate;
             }
           }
           
@@ -156,13 +166,27 @@ const CustomerCare = () => {
               lastPurchase: null
             };
 
+            // Sync assignee_id from orders to customer if needed
+            const shouldUpdateAssignee = !customer.assignee_id && orderStats.assignedAssignee;
+            if (shouldUpdateAssignee) {
+              supabase
+                .from('customers')
+                .update({ assignee_id: orderStats.assignedAssignee })
+                .eq('id', customer.id)
+                .then(() => {
+                  console.log(`Synced assignee_id for customer ${customer.id}`);
+                });
+            }
+
             return {
               ...customer,
               purchase_count: orderStats.count,
               total_spent: orderStats.totalSpent,
               last_purchase_date: orderStats.lastPurchase,
               // Auto-assign manager from orders if customer doesn't have one
-              manager_id: customer.manager_id || orderStats.assignedManager
+              manager_id: customer.manager_id || orderStats.assignedManager,
+              // Auto-assign assignee from orders if customer doesn't have one
+              assignee_id: customer.assignee_id || orderStats.assignedAssignee
             };
           }
 
