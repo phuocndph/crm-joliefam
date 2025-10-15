@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Download, TrendingUp, TrendingDown, BarChart3, PieChart, Users, ShoppingCart, Plus } from "lucide-react";
+import { Calendar, Download, TrendingUp, TrendingDown, BarChart3, PieChart, Users, ShoppingCart, Plus, DollarSign, Package, CheckCircle, Clock, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -254,6 +254,32 @@ const ReportsPage = () => {
     return orderCostPrice;
   }, [productsMap]);
 
+  // Calculate comparison metrics with previous period
+  const comparisonData = useMemo(() => {
+    if (!dateRange?.from || !dateRange?.to) return null;
+
+    const daysDiff = differenceInDays(dateRange.to, dateRange.from);
+    const previousFrom = new Date(dateRange.from);
+    previousFrom.setDate(previousFrom.getDate() - daysDiff - 1);
+    const previousTo = new Date(dateRange.from);
+    previousTo.setDate(previousTo.getDate() - 1);
+
+    const previousOrders = orders.filter(order => {
+      const orderDate = new Date(order.created_at);
+      return orderDate >= previousFrom && orderDate <= previousTo;
+    });
+
+    const previousRevenue = previousOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    const previousOrderCount = previousOrders.length;
+    const previousCompletedOrders = previousOrders.filter(o => o.status === "delivered").length;
+
+    return {
+      previousRevenue,
+      previousOrderCount,
+      previousCompletedOrders,
+    };
+  }, [orders, dateRange]);
+
   // Optimized metrics calculation using useMemo
   const metricsData = useMemo(() => {
     const totalOrderRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
@@ -291,6 +317,14 @@ const ReportsPage = () => {
     const averageOrderValue = totalOrders > 0 ? totalOrderRevenue / totalOrders : 0;
     const averageDailyRevenue = dateRange?.from && dateRange?.to ? totalOrderRevenue / Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1) : 0;
 
+    // Calculate comparison percentages
+    const revenueChange = comparisonData?.previousRevenue ? 
+      ((totalOrderRevenue - comparisonData.previousRevenue) / comparisonData.previousRevenue) * 100 : 0;
+    const orderCountChange = comparisonData?.previousOrderCount ? 
+      ((totalOrders - comparisonData.previousOrderCount) / comparisonData.previousOrderCount) * 100 : 0;
+    const completedOrdersChange = comparisonData?.previousCompletedOrders ? 
+      ((completedOrders - comparisonData.previousCompletedOrders) / comparisonData.previousCompletedOrders) * 100 : 0;
+
     return {
       totalOrderRevenue,
       totalCostPrice,
@@ -308,9 +342,12 @@ const ReportsPage = () => {
       newCustomers,
       totalCustomers,
       averageOrderValue,
-      averageDailyRevenue
+      averageDailyRevenue,
+      revenueChange,
+      orderCountChange,
+      completedOrdersChange,
     };
-  }, [filteredOrders, filteredExpenses, filteredCustomers, deduplicatedCustomers, orderPayments, dateRange, calculateOrderCostPrice]);
+  }, [filteredOrders, filteredExpenses, filteredCustomers, deduplicatedCustomers, orderPayments, dateRange, calculateOrderCostPrice, comparisonData]);
 
   // Optimized monthly data calculation
   const monthlyData = useMemo(() => {
@@ -420,61 +457,150 @@ const ReportsPage = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card>
+              <Card className="border-l-4 border-l-blue-500">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Tổng doanh thu</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Tổng doanh thu</CardTitle>
+                  <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <DollarSign className="h-5 w-5 text-blue-600" />
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(metricsData.totalOrderRevenue)}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {formatCurrency(metricsData.averageDailyRevenue)}/ngày
-                  </p>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Giá vốn</CardTitle>
-                  <TrendingDown className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-orange-600">{formatCurrency(metricsData.totalCostPrice)}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {metricsData.totalOrderRevenue > 0 ? Math.round((metricsData.totalCostPrice / metricsData.totalOrderRevenue) * 100) : 0}% của doanh thu
-                  </p>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Lợi nhuận gộp</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600">{formatCurrency(metricsData.grossProfit)}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {metricsData.totalOrderRevenue > 0 ? Math.round((metricsData.grossProfit / metricsData.totalOrderRevenue) * 100) : 0}% tỷ suất
-                  </p>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Lợi nhuận ròng</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className={`text-2xl font-bold ${metricsData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatCurrency(metricsData.netProfit)}
+                  <div className="flex items-center gap-1 text-xs mt-1">
+                    {metricsData.revenueChange >= 0 ? (
+                      <>
+                        <ArrowUpRight className="h-3 w-3 text-green-600" />
+                        <span className="text-green-600 font-medium">+{metricsData.revenueChange.toFixed(1)}%</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArrowDownRight className="h-3 w-3 text-red-600" />
+                        <span className="text-red-600 font-medium">{metricsData.revenueChange.toFixed(1)}%</span>
+                      </>
+                    )}
+                    <span className="text-muted-foreground">so với kỳ trước</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {metricsData.totalOrderRevenue > 0 ? Math.round((metricsData.netProfit / metricsData.totalOrderRevenue) * 100) : 0}% tỷ suất
-                  </p>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-l-4 border-l-green-500">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Đơn hoàn thành</CardTitle>
+                  <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">{metricsData.completedOrders}</div>
+                  <div className="flex items-center gap-1 text-xs mt-1">
+                    <span className="text-muted-foreground">
+                      {metricsData.totalOrders > 0 ? Math.round((metricsData.completedOrders / metricsData.totalOrders) * 100) : 0}% lệ hoàn thành
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-l-4 border-l-orange-500">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Đơn đang xử lý</CardTitle>
+                  <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-orange-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-orange-600">{metricsData.pendingOrders}</div>
+                  <div className="flex items-center gap-1 text-xs mt-1">
+                    <span className="text-muted-foreground">
+                      {metricsData.totalOrders > 0 ? Math.round((metricsData.pendingOrders / metricsData.totalOrders) * 100) : 0}% đang xử lý
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-l-4 border-l-purple-500">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Giá trị TB/đơn</CardTitle>
+                  <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                    <Package className="h-5 w-5 text-purple-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-purple-600">{formatCurrency(metricsData.averageOrderValue)}</div>
+                  <div className="flex items-center gap-1 text-xs mt-1">
+                    <span className="text-muted-foreground">Trung bình mỗi đơn</span>
+                  </div>
                 </CardContent>
               </Card>
             </div>
           )}
+
+          {/* Additional Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Tổng đơn hàng</CardTitle>
+                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{metricsData.totalOrders}</div>
+                <div className="flex items-center gap-1 text-xs mt-1">
+                  {metricsData.orderCountChange >= 0 ? (
+                    <>
+                      <ArrowUpRight className="h-3 w-3 text-green-600" />
+                      <span className="text-green-600 font-medium">+{metricsData.orderCountChange.toFixed(1)}%</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownRight className="h-3 w-3 text-red-600" />
+                      <span className="text-red-600 font-medium">{metricsData.orderCountChange.toFixed(1)}%</span>
+                    </>
+                  )}
+                  <span className="text-muted-foreground">so với kỳ trước</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Giá vốn</CardTitle>
+                <TrendingDown className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-orange-600">{formatCurrency(metricsData.totalCostPrice)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {metricsData.totalOrderRevenue > 0 ? Math.round((metricsData.totalCostPrice / metricsData.totalOrderRevenue) * 100) : 0}% của doanh thu
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Lợi nhuận gộp</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{formatCurrency(metricsData.grossProfit)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {metricsData.totalOrderRevenue > 0 ? Math.round((metricsData.grossProfit / metricsData.totalOrderRevenue) * 100) : 0}% tỷ suất
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Lợi nhuận ròng</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className={`text-2xl font-bold ${metricsData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(metricsData.netProfit)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {metricsData.totalOrderRevenue > 0 ? Math.round((metricsData.netProfit / metricsData.totalOrderRevenue) * 100) : 0}% tỷ suất
+                </p>
+              </CardContent>
+            </Card>
+          </div>
 
           <div className="space-y-6">
             {/* Revenue Growth Chart with Data Table */}
@@ -641,52 +767,72 @@ const ReportsPage = () => {
 
         <TabsContent value="sales" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
+            <Card className="border-l-4 border-l-blue-500">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Tổng đơn hàng</CardTitle>
-                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium text-muted-foreground">Tổng đơn hàng</CardTitle>
+                <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                  <ShoppingCart className="h-5 w-5 text-blue-600" />
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{metricsData.totalOrders}</div>
-                <p className="text-xs text-muted-foreground">
-                  {metricsData.totalOrders > 0 ? Math.round((metricsData.totalOrders / metricsData.totalOrders) * 100) : 0}% từ đầu kỳ
-                </p>
+                <div className="flex items-center gap-1 text-xs mt-1">
+                  {metricsData.orderCountChange >= 0 ? (
+                    <>
+                      <ArrowUpRight className="h-3 w-3 text-green-600" />
+                      <span className="text-green-600 font-medium">+{metricsData.orderCountChange.toFixed(1)}%</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownRight className="h-3 w-3 text-red-600" />
+                      <span className="text-red-600 font-medium">{metricsData.orderCountChange.toFixed(1)}%</span>
+                    </>
+                  )}
+                  <span className="text-muted-foreground">so với kỳ trước</span>
+                </div>
               </CardContent>
             </Card>
             
-            <Card>
+            <Card className="border-l-4 border-l-green-500">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Đơn hoàn thành</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium text-muted-foreground">Đơn hoàn thành</CardTitle>
+                <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600">{metricsData.completedOrders}</div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground mt-1">
                   {metricsData.totalOrders > 0 ? Math.round((metricsData.completedOrders / metricsData.totalOrders) * 100) : 0}% tỷ lệ hoàn thành
                 </p>
               </CardContent>
             </Card>
             
-            <Card>
+            <Card className="border-l-4 border-l-orange-500">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Đơn đang xử lý</CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium text-muted-foreground">Đơn đang xử lý</CardTitle>
+                <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-orange-600" />
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-orange-500">{metricsData.pendingOrders}</div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground mt-1">
                   {metricsData.totalOrders > 0 ? Math.round((metricsData.pendingOrders / metricsData.totalOrders) * 100) : 0}% đang xử lý
                 </p>
               </CardContent>
             </Card>
             
-            <Card>
+            <Card className="border-l-4 border-l-purple-500">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Giá trị TB/đơn</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium text-muted-foreground">Giá trị TB/đơn</CardTitle>
+                <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Package className="h-5 w-5 text-purple-600" />
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-blue-600">{formatCurrency(metricsData.averageOrderValue)}</div>
+                <div className="text-2xl font-bold text-purple-600">{formatCurrency(metricsData.averageOrderValue)}</div>
+                <p className="text-xs text-muted-foreground mt-1">Trung bình mỗi đơn</p>
               </CardContent>
             </Card>
           </div>
