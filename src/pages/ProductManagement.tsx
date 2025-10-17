@@ -17,7 +17,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { ColumnMappingDialog } from '@/components/ColumnMappingDialog';
 import ProductImageLibrary from '@/components/ProductImageLibrary';
-import { useDebounce } from '@/hooks/useDebounce';
 
 interface Product {
   id: string;
@@ -65,12 +64,10 @@ const ProductManagement = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeSearchTerm, setActiveSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
   const [selectedPriceList, setSelectedPriceList] = useState<string>('');
-  
-  // Debounced search for performance
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [importLoading, setImportLoading] = useState(false);
   const [googleSheetsUrl, setGoogleSheetsUrl] = useState('');
   const [showColumnMapping, setShowColumnMapping] = useState(false);
@@ -136,7 +133,7 @@ const ProductManagement = () => {
   useEffect(() => {
     setCurrentPage(1); // Reset to first page when filters change
     fetchProducts();
-  }, [debouncedSearchTerm, categoryFilter, stockFilter, selectedPriceList]);
+  }, [activeSearchTerm, categoryFilter, stockFilter, selectedPriceList]);
 
   useEffect(() => {
     fetchProducts();
@@ -184,8 +181,8 @@ const ProductManagement = () => {
         query = query.eq('price_list_id', selectedPriceList);
       }
 
-      if (debouncedSearchTerm) {
-        query = query.or(`name.ilike.%${debouncedSearchTerm}%,sku.ilike.%${debouncedSearchTerm}%,description.ilike.%${debouncedSearchTerm}%`);
+      if (activeSearchTerm) {
+        query = query.or(`name.ilike.%${activeSearchTerm}%,sku.ilike.%${activeSearchTerm}%,description.ilike.%${activeSearchTerm}%`);
       }
 
       if (categoryFilter && categoryFilter !== 'all') {
@@ -1056,17 +1053,31 @@ const ProductManagement = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="space-y-2">
+                    <div className="space-y-2 md:col-span-2">
                       <Label htmlFor="search">Tìm kiếm</Label>
-                      <div className="relative">
-                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="search"
-                          placeholder="Tìm sản phẩm, mã SP..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-8"
-                        />
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="search"
+                            placeholder="Tìm sản phẩm, mã SP..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                setActiveSearchTerm(searchTerm);
+                              }
+                            }}
+                            className="pl-8"
+                          />
+                        </div>
+                        <Button 
+                          onClick={() => setActiveSearchTerm(searchTerm)}
+                          className="shrink-0"
+                        >
+                          <Search className="h-4 w-4 mr-2" />
+                          Tìm
+                        </Button>
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -1103,6 +1114,7 @@ const ProductManagement = () => {
                          variant="outline" 
                          onClick={() => {
                            setSearchTerm('');
+                           setActiveSearchTerm('');
                            setCategoryFilter('all');
                            setStockFilter('all');
                            setCurrentPage(1);
