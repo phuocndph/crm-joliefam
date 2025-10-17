@@ -139,10 +139,19 @@ serve(async (req) => {
       
       if (!cleaned) return null
       
-      // Handle Vietnamese format: 1.234.567,89 (dots for thousands, comma for decimal)
+      // Handle Vietnamese format with both dots and commas
       if (cleaned.includes('.') && cleaned.includes(',')) {
-        // Format: 1.234.567,89 -> 1234567.89
-        cleaned = cleaned.replace(/\./g, '').replace(',', '.')
+        // Check if comma is followed by 3 digits (thousands separator, not decimal)
+        const commaIndex = cleaned.lastIndexOf(',')
+        const afterComma = cleaned.substring(commaIndex + 1)
+        
+        if (afterComma.length === 3 && /^\d{3}$/.test(afterComma)) {
+          // Format: 1.450,000 or 1.234.567,890 -> both are thousands separators
+          cleaned = cleaned.replace(/[.,]/g, '')
+        } else {
+          // Format: 1.234.567,89 (comma is decimal) -> 1234567.89
+          cleaned = cleaned.replace(/\./g, '').replace(',', '.')
+        }
       } else if (cleaned.includes(',') && !cleaned.includes('.')) {
         // Format could be: 120,000 (thousands) or 120,50 (decimal)
         const commaIndex = cleaned.lastIndexOf(',')
