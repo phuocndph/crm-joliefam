@@ -35,6 +35,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   const [showSupplement, setShowSupplement] = useState(false);
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
   const [showQuoteSupplementDialog, setShowQuoteSupplementDialog] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   
   const [user, setUser] = useState<any>(null);
   const { toast } = useToast();
@@ -52,6 +53,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   useEffect(() => {
     if (open) {
       setTemplateSettings(getTemplateSettings());
+      setLogoError(false); // Reset logo error state when dialog opens
     }
   }, [open]);
 
@@ -1038,9 +1040,14 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               {/* Logo bên trái - to hơn */}
               <div className="w-40 h-40">
                 <img 
-                  src={templateSettings.logoUrl} 
+                  src={logoError ? '/placeholder.svg' : (templateSettings.logoUrl || '/placeholder.svg')}
                   alt="Company Logo" 
                   className="w-full h-full object-contain border border-gray-300"
+                  onError={(e) => {
+                    console.error('Logo load error, using fallback');
+                    setLogoError(true);
+                    e.currentTarget.src = '/placeholder.svg';
+                  }}
                 />
               </div>
               
