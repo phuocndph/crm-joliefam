@@ -1366,10 +1366,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      trigger_ghn_auto_update: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      trigger_ghn_auto_update: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "manager" | "employee" | "accountant"
