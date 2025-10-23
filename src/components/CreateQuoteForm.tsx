@@ -546,10 +546,10 @@ export function CreateQuoteForm({
       const subtotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
       const vatAmount = watchedValues.includeVAT ? subtotal * watchedValues.vatRate / 100 : 0;
       const calculatedTotal = subtotal + vatAmount;
-      const quoteData = {
+      // Prepare quote data
+      const baseQuoteData = {
         quote_number: data.quoteNumber,
-        customer_id: null,
-        // Would need customer selection
+        customer_id: null, // Would need customer selection
         total_amount: calculatedTotal,
         subtotal: subtotal,
         vat_amount: vatAmount,
@@ -558,24 +558,24 @@ export function CreateQuoteForm({
         price_list_id: data.priceList || null,
         assignee_id: data.responsible || null,
         status: initialData ? initialData.status : "draft",
-        created_at: data.quoteDate.toISOString(), // Đồng bộ ngày tạo với ngày báo giá
-        // Keep original status when editing
         notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy", { locale: vi }) : ""}`,
         items: JSON.stringify(selectedProducts),
         quote_data: JSON.stringify({
           includeVAT: data.includeVAT,
           vatRate: data.vatRate,
           payment1: data.payment1 || 0,
-          payment2: data.payment2 || 0
+          payment2: data.payment2 || 0,
+          quoteDate: data.quoteDate.toISOString() // Lưu ngày báo giá vào quote_data thay vì created_at
         }),
         tenant_id: "default",
         manager_id: user?.id ? user.id.toString() : null
       };
+
       if (initialData) {
-        // Update existing quote
+        // Update existing quote - không update created_at để tránh lỗi
         const {
           error
-        } = await supabase.from("quotes").update(quoteData).eq('id', initialData.id);
+        } = await supabase.from("quotes").update(baseQuoteData).eq('id', initialData.id);
         if (error) throw error;
 
         // Automatically push to orders if quote is approved
@@ -624,7 +624,7 @@ export function CreateQuoteForm({
               total_amount: orderTotal,
               notes: `Được cập nhật từ báo giá ${data.quoteNumber} (${new Date().toLocaleString('vi-VN')})\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
               updated_at: new Date().toISOString(),
-              created_at: data.quoteDate.toISOString(), // Đồng bộ ngày tạo với ngày báo giá
+              // Không update created_at của order để tránh lỗi
               quote_id: initialData.id // Ensure quote_id is set
             };
             const {
@@ -650,11 +650,11 @@ export function CreateQuoteForm({
               customer_id: initialData.customer_id,
               manager_id: user?.id ? user.id.toString() : null,
               assignee_id: data.responsible || null,
-              created_at: data.quoteDate.toISOString(), // Đồng bộ ngày tạo với ngày báo giá
+              // Sử dụng ngày hiện tại cho created_at, lưu quoteDate vào notes
               total_amount: orderTotal,
               status: 'pending',
               items: JSON.stringify(selectedProducts),
-              notes: `Được tạo từ báo giá ${data.quoteNumber} (${new Date().toLocaleString('vi-VN')})\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
+              notes: `Được tạo từ báo giá ${data.quoteNumber} (${new Date().toLocaleString('vi-VN')})\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nNgày báo giá: ${format(data.quoteDate, "dd/MM/yyyy", { locale: vi })}`,
               tenant_id: 'default',
               quote_id: initialData.id
             });
@@ -670,10 +670,14 @@ export function CreateQuoteForm({
           description: initialData.status === 'approved' ? "Đã cập nhật báo giá và đẩy sang đơn hàng tự động" : "Báo giá đã được cập nhật thành công"
         });
       } else {
-        // Create new quote
+        // Create new quote - chỉ khi tạo mới mới set created_at
+        const quoteDataWithCreatedAt = {
+          ...baseQuoteData,
+          created_at: data.quoteDate.toISOString()
+        };
         const {
           error
-        } = await supabase.from("quotes").insert([quoteData]);
+        } = await supabase.from("quotes").insert([quoteDataWithCreatedAt]);
         if (error) throw error;
         toast({
           title: "Thành công",
