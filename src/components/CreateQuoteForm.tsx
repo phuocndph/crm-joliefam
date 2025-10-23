@@ -567,8 +567,8 @@ export function CreateQuoteForm({
           payment2: data.payment2 || 0,
           quoteDate: data.quoteDate.toISOString() // Lưu ngày báo giá vào quote_data thay vì created_at
         }),
-        tenant_id: "default",
-        manager_id: user?.id ? user.id.toString() : null
+        tenant_id: "default"
+        // Không set manager_id khi update, để RLS policy và trigger xử lý
       };
 
       if (initialData) {
@@ -670,10 +670,11 @@ export function CreateQuoteForm({
           description: initialData.status === 'approved' ? "Đã cập nhật báo giá và đẩy sang đơn hàng tự động" : "Báo giá đã được cập nhật thành công"
         });
       } else {
-        // Create new quote - chỉ khi tạo mới mới set created_at
+        // Create new quote - chỉ khi tạo mới mới set created_at và manager_id
         const quoteDataWithCreatedAt = {
           ...baseQuoteData,
-          created_at: data.quoteDate.toISOString()
+          created_at: data.quoteDate.toISOString(),
+          manager_id: user?.id ? user.id.toString() : null
         };
         const {
           error
