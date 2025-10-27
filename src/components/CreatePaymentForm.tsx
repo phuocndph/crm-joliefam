@@ -68,7 +68,25 @@ export function CreatePaymentForm({
   onSubmit 
 }: CreatePaymentFormProps) {
   const [loading, setLoading] = useState(false);
+  const [managerId, setManagerId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Fetch order's manager_id
+  React.useEffect(() => {
+    const fetchOrderManagerId = async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('manager_id')
+        .eq('id', orderId)
+        .single();
+      
+      if (!error && data) {
+        setManagerId(data.manager_id);
+      }
+    };
+    
+    fetchOrderManagerId();
+  }, [orderId]);
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentFormSchema),
@@ -114,6 +132,7 @@ export function CreatePaymentForm({
         installment_number: data.installmentNumber,
         notes: data.notes || null,
         tenant_id: 'default',
+        manager_id: managerId,
       };
 
       console.log('💰 Creating payment:', paymentData);
@@ -141,6 +160,7 @@ export function CreatePaymentForm({
         total_installments: 1,
         remaining_amount: remainingAmount - data.paymentAmount,
         tenant_id: 'default',
+        manager_id: managerId,
       };
 
       console.log('📊 Creating transaction:', transactionData);
