@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useEffect } from 'react';
 
 export interface Manager {
   user_id: string;
@@ -10,7 +11,26 @@ export interface Manager {
 }
 
 export const useManagers = () => {
+  const queryClient = useQueryClient();
   console.log('useManagers hook called');
+  
+  // Set up real-time synchronization
+  useEffect(() => {
+    const channel = supabase
+      .channel('managers-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_roles' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['managers'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['managers'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   return useQuery({
     queryKey: ['managers'],
     queryFn: async () => {
@@ -56,6 +76,7 @@ export const useManagers = () => {
       console.log('useManagers - final managers:', managers);
       return managers as Manager[];
     },
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 0, // Always fresh
+    refetchOnMount: 'always',
   });
 };

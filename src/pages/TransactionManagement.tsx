@@ -76,6 +76,27 @@ const TransactionManagement = () => {
     });
   }, []);
 
+  // Set up real-time synchronization for orders and payments
+  useEffect(() => {
+    console.log('🔧 Setting up real-time order & payment sync...');
+    
+    const channel = supabase
+      .channel('transaction-orders-payments-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        console.log('🔄 Orders changed');
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_payments' }, () => {
+        console.log('🔄 Payments changed');
+        queryClient.invalidateQueries({ queryKey: ['order-payments'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   // Use React Query for orders
   const { data: ordersData = [], isLoading: ordersLoading } = useQuery({
     queryKey: ['orders', selectedManagerId],
@@ -100,7 +121,9 @@ const TransactionManagement = () => {
       if (error) throw error;
       return data || [];
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 0, // Always fresh
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   // Use React Query for order payments
@@ -115,7 +138,9 @@ const TransactionManagement = () => {
       if (error) throw error;
       return data || [];
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 0, // Always fresh
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   useEffect(() => {

@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useEffect } from 'react';
 
 export interface Transaction {
   id: string;
@@ -20,6 +21,36 @@ export interface Transaction {
 }
 
 export const useTransactions = (managerId?: string | null) => {
+  const queryClient = useQueryClient();
+
+  // Set up real-time synchronization
+  useEffect(() => {
+    console.log('🔧 Setting up real-time transaction synchronization...');
+    
+    const channel = supabase
+      .channel('transactions-sync-' + Date.now())
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'transactions'
+        },
+        (payload) => {
+          console.log('🔄 Real-time transaction change:', payload.eventType);
+          queryClient.invalidateQueries({ queryKey: ['transactions'] });
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Transactions real-time status:', status);
+      });
+
+    return () => {
+      console.log('🧹 Cleaning up transactions real-time subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   return useQuery({
     queryKey: ['transactions', managerId],
     queryFn: async () => {
@@ -27,7 +58,6 @@ export const useTransactions = (managerId?: string | null) => {
         .from('transactions')
         .select('*');
 
-      // Filter by manager_id if provided
       if (managerId) {
         query = query.eq('manager_id', managerId);
       }
@@ -37,7 +67,9 @@ export const useTransactions = (managerId?: string | null) => {
       if (error) throw error;
       return data as Transaction[];
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 0, // Always fetch fresh data
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };

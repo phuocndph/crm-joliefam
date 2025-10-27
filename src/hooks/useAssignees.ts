@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useEffect } from 'react';
 
 export interface Assignee {
   id: string;
@@ -11,6 +12,22 @@ export interface Assignee {
 }
 
 export const useAssignees = () => {
+  const queryClient = useQueryClient();
+
+  // Set up real-time synchronization
+  useEffect(() => {
+    const channel = supabase
+      .channel('assignees-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignees' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['assignees'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   return useQuery({
     queryKey: ['assignees'],
     queryFn: async () => {
@@ -22,6 +39,9 @@ export const useAssignees = () => {
       if (error) throw error;
       return data as Assignee[];
     },
+    staleTime: 0, // Always fresh
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 

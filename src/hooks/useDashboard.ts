@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useEffect } from 'react';
 
 interface DashboardStats {
   totalRevenue: number;
@@ -15,6 +16,30 @@ interface DashboardStats {
 }
 
 export const useDashboardStats = () => {
+  const queryClient = useQueryClient();
+
+  // Set up real-time synchronization
+  useEffect(() => {
+    console.log('🔧 Setting up dashboard real-time sync...');
+    
+    const channel = supabase
+      .channel('dashboard-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotes' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   return useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: async (): Promise<DashboardStats> => {
@@ -77,7 +102,9 @@ export const useDashboardStats = () => {
         monthlyCustomers,
       };
     },
-    staleTime: 2 * 60 * 1000, // 2 phút
-    gcTime: 5 * 60 * 1000, // 5 phút
+    staleTime: 0, // Always fresh
+    gcTime: 2 * 60 * 1000, // 2 minutes
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
