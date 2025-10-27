@@ -400,8 +400,8 @@ export default function OrderManagement() {
   // Calculate payment totals
   const calculateTotalPaid = (order: Order | null): number => {
     if (!order) return 0;
-    const payments = (order as any).order_payments || [];
-    return payments.reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
+    // Use total_paid from useOrders hook which calculates correctly
+    return (order as any).total_paid || 0;
   };
 
   const calculateRemainingAmount = (order: Order | null): number => {

@@ -110,8 +110,10 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
       
       return ordersWithPayments;
     },
-    staleTime: 30 * 1000, // 30 seconds for fresher data
+    staleTime: 0, // Always fetch fresh data after invalidation
     gcTime: 2 * 60 * 1000, // 2 minutes
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
