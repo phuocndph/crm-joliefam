@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import { useQuotes, useDeleteQuote } from "@/hooks/useQuotes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -78,12 +79,16 @@ export default function QuotesPage() {
   const [supplementQuote, setSupplementQuote] = useState<any>(null);
   const [editingQuote, setEditingQuote] = useState<any>(null);
   const [editingQuoteDetails, setEditingQuoteDetails] = useState<any>(null);
-  const [quotes, setQuotes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { role: userRole } = useUserRole(user);
   const { hasPermission } = useEmployeePermissions(user, userRole);
   const queryClient = useQueryClient();
+  
+  // Use React Query for quotes with real-time updates
+  const { data: quotes = [], isLoading: loading, refetch: refetchQuotes } = useQuotes({ 
+    managerId: userRole === 'manager' ? user?.id : 'all' 
+  });
+  const deleteQuoteMutation = useDeleteQuote();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -100,106 +105,7 @@ export default function QuotesPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  useEffect(() => {
-    // Chỉ tải khi đã xác định được vai trò và người dùng
-    if (!userRole) return;
-    
-    loadQuotes();
-    
-    // Set up real-time subscription for quotes
-    const quotesChannel = supabase
-      .channel('quotes-realtime')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'quotes' 
-      }, (payload) => {
-        console.log('📝 Quotes real-time update received:', payload.eventType, payload.new);
-        loadQuotes(); // Reload quotes when any change occurs
-      })
-      .subscribe((status) => {
-        console.log('📝 Quotes real-time subscription status:', status);
-      });
-
-    return () => {
-      console.log('📝 Cleaning up quotes real-time subscription');
-      supabase.removeChannel(quotesChannel);
-    };
-  }, [userRole, user]);
-
-  const loadQuotes = async () => {
-    try {
-      setLoading(true);
-      let query = supabase
-        .from('quotes')
-        .select(`
-          *,
-          customers (
-            name,
-            email,
-            phone,
-            address,
-            company
-          ),
-          assignees (
-            name
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (userRole === 'manager' && user?.id) {
-        query = query.eq('manager_id', user.id.toString());
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      
-      const formattedQuotes = data?.map(quote => {
-        // Extract customer name from notes if no customer_id
-        let customerName = 'Không có tên';
-        if (quote.customers?.name) {
-          customerName = quote.customers.name;
-        } else if (quote.notes) {
-          const customerMatch = quote.notes.match(/Khách hàng:\s*(.+)/);
-          if (customerMatch && customerMatch[1].trim()) {
-            customerName = customerMatch[1].trim();
-          }
-        }
-
-        // Extract other info from notes
-        const extractFromNotes = (pattern: RegExp) => {
-          if (!quote.notes) return '';
-          const match = quote.notes.match(pattern);
-          return match && match[1] ? match[1].trim() : '';
-        };
-
-        return {
-          ...quote,
-          customerName,
-          customerEmail: quote.customers?.email || extractFromNotes(/Email:\s*([^\n\r]+)/),
-          customerPhone: quote.customers?.phone || extractFromNotes(/Điện thoại:\s*([^\n\r]+)/),
-          customerAddress: quote.customers?.address || extractFromNotes(/Địa chỉ:\s*([^\n\r]+)/),
-          customerCompany: quote.customers?.company || '',
-          quoteDate: quote.created_at,
-          expiryDate: extractFromNotes(/Ngày hết hạn:\s*(.+)/) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          responsible: quote.assignees?.name || 'Chưa phân công',
-          totalAmount: quote.total_amount || 0
-        };
-      }) || [];
-      
-      setQuotes(formattedQuotes);
-    } catch (error) {
-      console.error('Error loading quotes:', error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách báo giá",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Real-time subscription is now handled in useQuotes hook
 
   const filteredQuotes = quotes
     .filter(
@@ -218,7 +124,8 @@ export default function QuotesPage() {
 
   const handleCreateQuote = async () => {
     setShowCreateForm(false);
-    await loadQuotes();
+    await refetchQuotes();
+    queryClient.invalidateQueries({ queryKey: ['quotes'] });
     toast({
       title: "Thành công",
       description: "Báo giá đã được tạo thành công",
@@ -227,9 +134,10 @@ export default function QuotesPage() {
 
   const handleEditQuote = async () => {
     setEditingQuote(null);
-    await loadQuotes();
+    await refetchQuotes();
     
     // Invalidate orders cache to refresh orders page if needed
+    queryClient.invalidateQueries({ queryKey: ['quotes'] });
     queryClient.invalidateQueries({ queryKey: ['orders'] });
     
     toast({
@@ -240,14 +148,7 @@ export default function QuotesPage() {
 
   const handleDeleteQuote = async (quoteId: string) => {
     try {
-      const { error } = await supabase
-        .from('quotes')
-        .delete()
-        .eq('id', quoteId);
-
-      if (error) throw error;
-
-      setQuotes(quotes.filter((quote) => quote.id !== quoteId));
+      await deleteQuoteMutation.mutateAsync(quoteId);
       toast({
         title: "Thành công",
         description: "Báo giá đã được xóa thành công",
@@ -381,9 +282,10 @@ export default function QuotesPage() {
         }
       }
 
-      await loadQuotes();
+      await refetchQuotes();
       
       // Also invalidate orders cache since we created a new order
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       
       toast({
@@ -409,7 +311,8 @@ export default function QuotesPage() {
 
       if (error) throw error;
 
-      await loadQuotes();
+      await refetchQuotes();
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
       toast({
         title: "Thành công",
         description: "Báo giá đã được từ chối",
@@ -466,7 +369,7 @@ export default function QuotesPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <CreateAssigneeForm onSuccess={loadQuotes} />
+            <CreateAssigneeForm onSuccess={refetchQuotes} />
             <Button 
               variant="outline" 
               onClick={() => setShowTemplateSettings(true)} 
@@ -694,7 +597,7 @@ export default function QuotesPage() {
           open={!!supplementQuote}
           onOpenChange={(open) => !open && setSupplementQuote(null)}
           quote={supplementQuote}
-          onUpdate={loadQuotes}
+          onUpdate={refetchQuotes}
         />
 
       {/* Edit Quote Details Dialog */}
@@ -702,7 +605,7 @@ export default function QuotesPage() {
         open={!!editingQuoteDetails}
         onOpenChange={(open) => !open && setEditingQuoteDetails(null)}
         quote={editingQuoteDetails}
-        onUpdate={loadQuotes}
+        onUpdate={refetchQuotes}
       />
 
       {/* Template Settings Dialog */}
