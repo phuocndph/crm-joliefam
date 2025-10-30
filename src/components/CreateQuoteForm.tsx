@@ -533,6 +533,34 @@ export function CreateQuoteForm({
       });
       return;
     }
+    
+    // Calculate total
+    const subtotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
+    const vatAmount = watchedValues.includeVAT ? subtotal * watchedValues.vatRate / 100 : 0;
+    const calculatedTotal = subtotal + vatAmount;
+    
+    // Validate numeric limits (database has precision 10, scale 2 - max value: 99,999,999.99)
+    const MAX_NUMERIC_VALUE = 99999999.99;
+    if (subtotal > MAX_NUMERIC_VALUE || calculatedTotal > MAX_NUMERIC_VALUE || vatAmount > MAX_NUMERIC_VALUE) {
+      toast({
+        title: "Lỗi",
+        description: `Giá trị vượt quá giới hạn cho phép (tối đa ${MAX_NUMERIC_VALUE.toLocaleString('vi-VN')} VNĐ). Vui lòng giảm số lượng hoặc đơn giá.`,
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Check individual product totals
+    const invalidProduct = selectedProducts.find(item => item.total > MAX_NUMERIC_VALUE);
+    if (invalidProduct) {
+      toast({
+        title: "Lỗi",
+        description: `Sản phẩm "${invalidProduct.name}" có tổng tiền vượt quá giới hạn (${invalidProduct.total.toLocaleString('vi-VN')} VNĐ). Vui lòng giảm số lượng hoặc đơn giá.`,
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setIsLoading(true);
     try {
       // Get current user
@@ -541,11 +569,6 @@ export function CreateQuoteForm({
           user
         }
       } = await supabase.auth.getUser();
-
-      // Calculate total
-      const subtotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
-      const vatAmount = watchedValues.includeVAT ? subtotal * watchedValues.vatRate / 100 : 0;
-      const calculatedTotal = subtotal + vatAmount;
       // Prepare quote data
       const baseQuoteData = {
         quote_number: data.quoteNumber,
