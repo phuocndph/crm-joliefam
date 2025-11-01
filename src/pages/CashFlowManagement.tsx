@@ -430,18 +430,35 @@ export default function CashFlowManagement() {
     };
   }, [orders, expenses, calculateOrderCostPrice]);
 
-  // Optimized order profits calculation
+  // Optimized order profits calculation with proportional expense allocation
   const orderProfits = useMemo(() => {
     const deliveredOrders = orders.filter(order => order.total_amount > 0);
     const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
-    const orderCount = deliveredOrders.length || 1;
-    const allocatedExpensePerOrder = totalExpenses / orderCount;
+    
+    // Debug logs
+    console.log('=== DEBUG Chi phí ===');
+    console.log('Số lượng chi phí:', expenses.length);
+    console.log('Tổng chi phí:', totalExpenses);
+    console.log('Chi phí chi tiết:', expenses.map(e => ({ 
+      date: e.expense_date, 
+      amount: e.amount, 
+      desc: e.description 
+    })));
+    
+    // Calculate total revenue for proportional allocation
+    const totalRevenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
 
     return deliveredOrders.map(order => {
       const revenue = Number(order.total_amount) || 0;
       const totalCostPrice = calculateOrderCostPrice(order);
       const profitBefore = revenue - totalCostPrice;
-      const profitAfter = revenue - totalCostPrice - allocatedExpensePerOrder;
+      
+      // Allocate expenses proportionally based on revenue
+      const allocatedExpensePerOrder = totalRevenue > 0 
+        ? (revenue / totalRevenue) * totalExpenses 
+        : 0;
+      
+      const profitAfter = profitBefore - allocatedExpensePerOrder;
 
       return {
         id: order.id,
