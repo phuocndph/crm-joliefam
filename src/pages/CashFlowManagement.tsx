@@ -883,46 +883,48 @@ export default function CashFlowManagement() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Đơn hàng</TableHead>
-                            <TableHead>Khách hàng</TableHead>
-                            <TableHead>Ngày</TableHead>
-                            <TableHead>Doanh thu</TableHead>
-                            {role !== 'accountant' && <TableHead>Giá sản xuất</TableHead>}
-                            {role !== 'accountant' && <TableHead>Lợi nhuận trước</TableHead>}
-                            {role !== 'accountant' && <TableHead>Chi phí phân bổ</TableHead>}
-                            {role !== 'accountant' && <TableHead>Lợi nhuận sau</TableHead>}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {Array.from({ length: 5 }).map((_, index) => (
-                            <TableRow key={index}>
-                              <TableCell><div className="h-4 w-16 bg-gray-200 rounded animate-pulse" /></TableCell>
-                              <TableCell><div className="h-4 w-20 bg-gray-200 rounded animate-pulse" /></TableCell>
-                              <TableCell><div className="h-4 w-20 bg-gray-200 rounded animate-pulse" /></TableCell>
-                              <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>
-                              {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
-                              {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
-                              {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
-                              {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
-                ) : orderProfits.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="text-muted-foreground mb-2">
-                      Không có đơn hàng nào trong khoảng thời gian đã chọn
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      Chỉ hiển thị đơn hàng đã giao có đầy đủ dữ liệu doanh thu và giá gốc
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                     {/* Summary Card - Hide profit data for accountants */}
-                     {role !== 'accountant' && (
+                              <TableHead>Đơn hàng</TableHead>
+                              <TableHead>Khách hàng</TableHead>
+                              <TableHead>Ngày</TableHead>
+                              <TableHead>Doanh thu</TableHead>
+                              {role !== 'accountant' && <TableHead>Giá sản xuất</TableHead>}
+                              {role !== 'accountant' && <TableHead>Lợi nhuận trước</TableHead>}
+                              <TableHead>Chi phí phân bổ</TableHead>
+                              {role !== 'accountant' && <TableHead>Lợi nhuận sau</TableHead>}
+                              {role !== 'accountant' && <TableHead>Tỉ xuất lợi nhuận (%)</TableHead>}
+                           </TableRow>
+                         </TableHeader>
+                         <TableBody>
+                           {Array.from({ length: 5 }).map((_, index) => (
+                             <TableRow key={index}>
+                               <TableCell><div className="h-4 w-16 bg-gray-200 rounded animate-pulse" /></TableCell>
+                               <TableCell><div className="h-4 w-20 bg-gray-200 rounded animate-pulse" /></TableCell>
+                               <TableCell><div className="h-4 w-20 bg-gray-200 rounded animate-pulse" /></TableCell>
+                               <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>
+                               {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
+                               {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
+                               <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>
+                               {role !== 'accountant' && <TableCell><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></TableCell>}
+                               {role !== 'accountant' && <TableCell><div className="h-4 w-16 bg-gray-200 rounded animate-pulse" /></TableCell>}
+                             </TableRow>
+                           ))}
+                         </TableBody>
+                       </Table>
+                     </div>
+                   </div>
+                 ) : orderProfits.length === 0 ? (
+                   <div className="text-center py-8">
+                     <div className="text-muted-foreground mb-2">
+                       Không có đơn hàng nào trong khoảng thời gian đã chọn
+                     </div>
+                     <div className="text-sm text-gray-500">
+                       Chỉ hiển thị đơn hàng đã giao có đầy đủ dữ liệu doanh thu và giá gốc
+                     </div>
+                   </div>
+                 ) : (
+                   <>
+                      {/* Summary Card - Hide profit data for accountants */}
+                      {role !== 'accountant' && (
                        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
                          <h4 className="text-sm font-semibold text-blue-900 mb-3">Tổng kết lợi nhuận</h4>
                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -948,7 +950,7 @@ export default function CashFlowManagement() {
                            </div>
                          </div>
                        </div>
-                     )}
+                      )}
 
                     <div className="rounded-md border">
                       <Table>
@@ -962,6 +964,7 @@ export default function CashFlowManagement() {
                              {role !== 'accountant' && <TableHead>Lợi nhuận trước</TableHead>}
                              <TableHead>Chi phí phân bổ</TableHead>
                              {role !== 'accountant' && <TableHead>Lợi nhuận sau</TableHead>}
+                             {role !== 'accountant' && <TableHead>Tỉ xuất lợi nhuận (%)</TableHead>}
                            </TableRow>
                          </TableHeader>
                         <TableBody>
@@ -992,6 +995,20 @@ export default function CashFlowManagement() {
                                {role !== 'accountant' && (
                                  <TableCell className={`font-semibold ${profit.profit_after >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                    {formatCurrency(profit.profit_after)}
+                                 </TableCell>
+                               )}
+                               {role !== 'accountant' && (
+                                 <TableCell className={`font-semibold ${
+                                   profit.total_amount > 0 
+                                     ? (profit.profit_after / profit.total_amount * 100) >= 0 
+                                       ? 'text-green-600' 
+                                       : 'text-red-600'
+                                     : 'text-gray-400'
+                                 }`}>
+                                   {profit.total_amount > 0 
+                                     ? `${(profit.profit_after / profit.total_amount * 100).toFixed(2)}%`
+                                     : 'N/A'
+                                   }
                                  </TableCell>
                                )}
                             </TableRow>
