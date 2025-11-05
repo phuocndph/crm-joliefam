@@ -203,11 +203,17 @@ export default function CashFlowManagement() {
     return `${amount.toLocaleString()}đ`;
   };
 
-  // Use React Query for expenses
+  // Use React Query for expenses - query based on selected period
   const { data: expensesData = [], isLoading: expensesLoading } = useQuery({
     queryKey: ['expenses', selectedManagerId, selectedYear, selectedMonth, filterPeriod, dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async () => {
-      const dateRange = getDateRange();
+      const periodRange = getDateRange();
+      
+      console.log('=== Fetching Expenses ===');
+      console.log('Date range:', {
+        start: periodRange.start.toISOString(),
+        end: periodRange.end.toISOString()
+      });
       
       let expensesQuery = supabase
         .from('expenses')
@@ -218,11 +224,16 @@ export default function CashFlowManagement() {
       }
 
       const { data, error } = await expensesQuery
-        .gte('expense_date', dateRange.start.toISOString())
-        .lte('expense_date', dateRange.end.toISOString())
+        .gte('expense_date', periodRange.start.toISOString())
+        .lte('expense_date', periodRange.end.toISOString())
         .order('expense_date', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching expenses:', error);
+        throw error;
+      }
+      
+      console.log('Fetched expenses:', data?.length || 0);
       return data || [];
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -435,18 +446,16 @@ export default function CashFlowManagement() {
     const deliveredOrders = orders.filter(order => order.total_amount > 0);
     const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
     
-    // Debug logs
-    console.log('=== DEBUG Chi phí ===');
-    console.log('Số lượng chi phí:', expenses.length);
-    console.log('Tổng chi phí:', totalExpenses);
-    console.log('Chi phí chi tiết:', expenses.map(e => ({ 
-      date: e.expense_date, 
-      amount: e.amount, 
-      desc: e.description 
-    })));
-    
     // Calculate total revenue for proportional allocation
     const totalRevenue = deliveredOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+
+    console.log('=== Phân bổ chi phí ===');
+    console.log('Kỳ:', filterPeriod, selectedYear, selectedMonth);
+    console.log('Số đơn hàng:', deliveredOrders.length);
+    console.log('Tổng doanh thu:', totalRevenue);
+    console.log('Số chi phí trong kỳ:', expenses.length);
+    console.log('Tổng chi phí trong kỳ:', totalExpenses);
+    console.log('Phương pháp phân bổ: Theo tỷ lệ doanh thu');
 
     return deliveredOrders.map(order => {
       const revenue = Number(order.total_amount) || 0;
@@ -472,7 +481,7 @@ export default function CashFlowManagement() {
         profit_after: profitAfter
       };
     });
-  }, [orders, expenses, calculateOrderCostPrice]);
+  }, [orders, expenses, calculateOrderCostPrice, filterPeriod, selectedYear, selectedMonth]);
 
   // Update local state when data changes
   useEffect(() => {
@@ -872,6 +881,36 @@ export default function CashFlowManagement() {
           </TabsContent>
 
           <TabsContent value="profit" className="space-y-6">
+            {/* Expense Allocation Info */}
+            {!loading && !productsLoading && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="text-sm font-semibold text-blue-900 mb-2">Thông tin phân bổ chi phí</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-blue-600">Số đơn hàng:</span>
+                    <div className="font-bold">{orders.filter(o => o.total_amount > 0).length}</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-600">Số chi phí trong kỳ:</span>
+                    <div className="font-bold">{expenses.length}</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-600">Tổng chi phí:</span>
+                    <div className="font-bold text-orange-600">{formatCurrency(cashFlowStats.totalExpenses)}</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-600">Phương pháp:</span>
+                    <div className="font-bold text-sm">Phân bổ theo tỷ lệ doanh thu</div>
+                  </div>
+                </div>
+                {expenses.length === 0 && (
+                  <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                    ⚠️ Không có chi phí nào trong kỳ này. Lợi nhuận sau = Lợi nhuận trước
+                  </div>
+                )}
+              </div>
+            )}
+            
             {/* Profit Details Table */}
             <Card>
               <CardHeader>
