@@ -107,6 +107,10 @@ const ProductManagement = () => {
   const [specifications, setSpecifications] = useState('');
   const [inStock, setInStock] = useState(true);
 
+  // Bulk paste state
+  const [bulkPasteText, setBulkPasteText] = useState('');
+  const [bulkPasteLoading, setBulkPasteLoading] = useState(false);
+
   // Edit form state
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -469,6 +473,114 @@ const ProductManagement = () => {
       });
     } finally {
       setCreateProductLoading(false);
+    }
+  };
+
+  const handleBulkPaste = async () => {
+    if (!selectedPriceList) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng chọn bảng giá trước khi thêm sản phẩm",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!bulkPasteText.trim()) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập dữ liệu sản phẩm",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setBulkPasteLoading(true);
+
+    try {
+      const lines = bulkPasteText.trim().split('\n').filter(line => line.trim());
+      const products = [];
+      let errorLines = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        const parts = line.split('|').map(p => p.trim());
+
+        if (parts.length < 2) {
+          errorLines.push(`Dòng ${i + 1}: Không đủ thông tin (cần ít nhất Mã SP và Tên SP)`);
+          continue;
+        }
+
+        const [
+          sku,
+          name,
+          category = null,
+          specifications = null,
+          costPrice = null,
+          price = null,
+          description = null,
+          inStock = '1'
+        ] = parts;
+
+        if (!sku || !name) {
+          errorLines.push(`Dòng ${i + 1}: Thiếu Mã SP hoặc Tên SP`);
+          continue;
+        }
+
+        products.push({
+          sku,
+          name,
+          category: category || null,
+          specifications: specifications || null,
+          cost_price: costPrice && !isNaN(parseFloat(costPrice)) ? parseFloat(costPrice) : null,
+          price: price && !isNaN(parseFloat(price)) ? parseFloat(price) : null,
+          description: description || null,
+          in_stock: inStock === '1' || inStock.toLowerCase() === 'true' || inStock.toLowerCase() === 'còn hàng',
+          manager_id: user?.id || null,
+          price_list_id: selectedPriceList,
+        });
+      }
+
+      if (errorLines.length > 0) {
+        toast({
+          title: "Cảnh báo",
+          description: `Có ${errorLines.length} dòng lỗi:\n${errorLines.slice(0, 3).join('\n')}${errorLines.length > 3 ? '\n...' : ''}`,
+          variant: "destructive",
+        });
+      }
+
+      if (products.length === 0) {
+        toast({
+          title: "Lỗi",
+          description: "Không có sản phẩm hợp lệ nào để thêm",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await (supabase as any)
+        .from('products')
+        .insert(products);
+
+      if (error) throw error;
+
+      toast({
+        title: "Thành công",
+        description: `Đã thêm ${products.length} sản phẩm thành công${errorLines.length > 0 ? ` (${errorLines.length} dòng lỗi)` : ''}`,
+      });
+
+      setBulkPasteText('');
+      setCurrentPage(1);
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Error bulk creating products:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể thêm sản phẩm",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkPasteLoading(false);
     }
   };
 
@@ -929,116 +1041,176 @@ const ProductManagement = () => {
                 </CardHeader>
                 {showCreateForm && (
                   <CardContent>
-                    <form onSubmit={handleCreateProduct} className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="sku">Mã SP *</Label>
-                          <Input
-                            id="sku"
-                            value={sku}
-                            onChange={(e) => setSku(e.target.value)}
-                            required
-                            placeholder="VD: SP001"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="name">Tên sản phẩm *</Label>
-                          <Input
-                            id="name"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            required
-                            placeholder="Tên sản phẩm"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="category">Danh mục</Label>
-                          <Input
-                            id="category"
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value)}
-                            placeholder="Danh mục"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="specifications">Quy cách</Label>
-                          <Input
-                            id="specifications"
-                            value={specifications}
-                            onChange={(e) => setSpecifications(e.target.value)}
-                            placeholder="Quy cách"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="costPrice">Giá gốc (VND)</Label>
-                          <Input
-                            id="costPrice"
-                            type="number"
-                            step="1000"
-                            value={costPrice}
-                            onChange={(e) => setCostPrice(e.target.value)}
-                            placeholder="0"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="price">Giá bán (VND)</Label>
-                          <Input
-                            id="price"
-                            type="number"
-                            step="1000"
-                            value={price}
-                            onChange={(e) => setPrice(e.target.value)}
-                            placeholder="0"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="inStock">Tình trạng</Label>
-                          <div className="flex items-center space-x-2 h-10">
-                            <Switch
-                              id="inStock"
-                              checked={inStock}
-                              onCheckedChange={setInStock}
+                    <Tabs defaultValue="single" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="single">Thêm từng sản phẩm</TabsTrigger>
+                        <TabsTrigger value="bulk">Thêm nhiều sản phẩm</TabsTrigger>
+                      </TabsList>
+                      
+                      <TabsContent value="single" className="mt-4">
+                        <form onSubmit={handleCreateProduct} className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="sku">Mã SP *</Label>
+                              <Input
+                                id="sku"
+                                value={sku}
+                                onChange={(e) => setSku(e.target.value)}
+                                required
+                                placeholder="VD: SP001"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="name">Tên sản phẩm *</Label>
+                              <Input
+                                id="name"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                required
+                                placeholder="Tên sản phẩm"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="category">Danh mục</Label>
+                              <Input
+                                id="category"
+                                value={category}
+                                onChange={(e) => setCategory(e.target.value)}
+                                placeholder="Danh mục"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="specifications">Quy cách</Label>
+                              <Input
+                                id="specifications"
+                                value={specifications}
+                                onChange={(e) => setSpecifications(e.target.value)}
+                                placeholder="Quy cách"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="costPrice">Giá gốc (VND)</Label>
+                              <Input
+                                id="costPrice"
+                                type="number"
+                                step="1000"
+                                value={costPrice}
+                                onChange={(e) => setCostPrice(e.target.value)}
+                                placeholder="0"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="price">Giá bán (VND)</Label>
+                              <Input
+                                id="price"
+                                type="number"
+                                step="1000"
+                                value={price}
+                                onChange={(e) => setPrice(e.target.value)}
+                                placeholder="0"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="inStock">Tình trạng</Label>
+                              <div className="flex items-center space-x-2 h-10">
+                                <Switch
+                                  id="inStock"
+                                  checked={inStock}
+                                  onCheckedChange={setInStock}
+                                />
+                                <Label htmlFor="inStock" className="text-sm">
+                                  {inStock ? 'Còn hàng' : 'Hết hàng'}
+                                </Label>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="description">Mô tả</Label>
+                            <Textarea
+                              id="description"
+                              value={description}
+                              onChange={(e) => setDescription(e.target.value)}
+                              rows={2}
+                              placeholder="Mô tả chi tiết sản phẩm..."
                             />
-                            <Label htmlFor="inStock" className="text-sm">
-                              {inStock ? 'Còn hàng' : 'Hết hàng'}
-                            </Label>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button type="submit" disabled={createProductLoading}>
+                              {createProductLoading ? 'Đang tạo...' : 'Tạo sản phẩm'}
+                            </Button>
+                            <Button 
+                              type="button" 
+                              variant="outline"
+                              onClick={() => {
+                                setName('');
+                                setDescription('');
+                                setPrice('');
+                                setCostPrice('');
+                                setSku('');
+                                setCategory('');
+                                setSpecifications('');
+                                setInStock(true);
+                              }}
+                            >
+                              Xóa form
+                            </Button>
+                          </div>
+                        </form>
+                      </TabsContent>
+                      
+                      <TabsContent value="bulk" className="mt-4">
+                        <div className="space-y-4">
+                          <div className="bg-muted/50 p-4 rounded-lg border">
+                            <h4 className="font-medium mb-2 text-sm">Định dạng dữ liệu:</h4>
+                            <p className="text-xs text-muted-foreground mb-2">
+                              Mỗi dòng là một sản phẩm, các trường phân tách bằng dấu "|". Thứ tự:
+                            </p>
+                            <code className="text-xs bg-background px-2 py-1 rounded block">
+                              Mã SP | Tên SP | Danh mục | Quy cách | Giá gốc | Giá bán | Mô tả | Tình trạng
+                            </code>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Ví dụ: <code className="bg-background px-1 py-0.5 rounded">SP001 | Áo thun trắng | Áo | Size M | 100000 | 150000 | Áo cotton 100% | 1</code>
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              * Tình trạng: 1 = Còn hàng, 0 = Hết hàng
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              * Chỉ cần Mã SP và Tên SP là bắt buộc
+                            </p>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="bulkPaste">Dán dữ liệu sản phẩm</Label>
+                            <Textarea
+                              id="bulkPaste"
+                              value={bulkPasteText}
+                              onChange={(e) => setBulkPasteText(e.target.value)}
+                              rows={10}
+                              placeholder="Dán dữ liệu sản phẩm ở đây, mỗi dòng một sản phẩm..."
+                              className="font-mono text-xs"
+                            />
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            <Button 
+                              onClick={handleBulkPaste} 
+                              disabled={bulkPasteLoading || !bulkPasteText.trim()}
+                            >
+                              {bulkPasteLoading ? 'Đang xử lý...' : 'Thêm tất cả'}
+                            </Button>
+                            <Button 
+                              type="button" 
+                              variant="outline"
+                              onClick={() => setBulkPasteText('')}
+                            >
+                              Xóa
+                            </Button>
                           </div>
                         </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="description">Mô tả</Label>
-                        <Textarea
-                          id="description"
-                          value={description}
-                          onChange={(e) => setDescription(e.target.value)}
-                          rows={2}
-                          placeholder="Mô tả chi tiết sản phẩm..."
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button type="submit" disabled={createProductLoading}>
-                          {createProductLoading ? 'Đang tạo...' : 'Tạo sản phẩm'}
-                        </Button>
-                        <Button 
-                          type="button" 
-                          variant="outline"
-                          onClick={() => {
-                            setName('');
-                            setDescription('');
-                            setPrice('');
-                            setCostPrice('');
-                            setSku('');
-                            setCategory('');
-                            setSpecifications('');
-                            setInStock(true);
-                          }}
-                        >
-                          Xóa form
-                        </Button>
-                      </div>
-                    </form>
+                      </TabsContent>
+                    </Tabs>
                   </CardContent>
                 )}
               </Card>
