@@ -504,7 +504,10 @@ const ProductManagement = () => {
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
-        const parts = line.split('|').map(p => p.trim());
+        // Support both tab-separated (from Excel) and pipe-separated
+        const parts = line.includes('\t') 
+          ? line.split('\t').map(p => p.trim())
+          : line.split('|').map(p => p.trim());
 
         if (parts.length < 2) {
           errorLines.push(`Dòng ${i + 1}: Không đủ thông tin (cần ít nhất Mã SP và Tên SP)`);
@@ -1163,34 +1166,67 @@ const ProductManagement = () => {
                       <TabsContent value="bulk" className="mt-4">
                         <div className="space-y-4">
                           <div className="bg-muted/50 p-4 rounded-lg border">
-                            <h4 className="font-medium mb-2 text-sm">Định dạng dữ liệu:</h4>
-                            <p className="text-xs text-muted-foreground mb-2">
-                              Mỗi dòng là một sản phẩm, các trường phân tách bằng dấu "|". Thứ tự:
+                            <h4 className="font-medium mb-3 text-sm flex items-center gap-2">
+                              <FileSpreadsheet className="h-4 w-4" />
+                              Nhập dữ liệu theo cột (dán từ Excel)
+                            </h4>
+                            <p className="text-xs text-muted-foreground mb-3">
+                              Copy dữ liệu từ Excel và dán vào ô bên dưới. Mỗi dòng là một sản phẩm, các cột tự động phân tách.
                             </p>
-                            <code className="text-xs bg-background px-2 py-1 rounded block">
-                              Mã SP | Tên SP | Danh mục | Quy cách | Giá gốc | Giá bán | Mô tả | Tình trạng
-                            </code>
-                            <p className="text-xs text-muted-foreground mt-2">
-                              Ví dụ: <code className="bg-background px-1 py-0.5 rounded">SP001 | Áo thun trắng | Áo | Size M | 100000 | 150000 | Áo cotton 100% | 1</code>
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              * Tình trạng: 1 = Còn hàng, 0 = Hết hàng
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              * Chỉ cần Mã SP và Tên SP là bắt buộc
-                            </p>
+                            
+                            {/* Table header visual guide */}
+                            <div className="overflow-x-auto mb-3">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="bg-background">
+                                    <TableHead className="text-xs font-bold border">Mã SP *</TableHead>
+                                    <TableHead className="text-xs font-bold border">Tên SP *</TableHead>
+                                    <TableHead className="text-xs font-bold border">Danh mục</TableHead>
+                                    <TableHead className="text-xs font-bold border">Quy cách</TableHead>
+                                    <TableHead className="text-xs font-bold border">Giá gốc</TableHead>
+                                    <TableHead className="text-xs font-bold border">Giá bán</TableHead>
+                                    <TableHead className="text-xs font-bold border">Mô tả</TableHead>
+                                    <TableHead className="text-xs font-bold border">Tình trạng</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  <TableRow className="bg-muted/30">
+                                    <TableCell className="text-xs border font-mono">SP001</TableCell>
+                                    <TableCell className="text-xs border font-mono">Áo thun trắng</TableCell>
+                                    <TableCell className="text-xs border font-mono">Áo</TableCell>
+                                    <TableCell className="text-xs border font-mono">Size M</TableCell>
+                                    <TableCell className="text-xs border font-mono">100000</TableCell>
+                                    <TableCell className="text-xs border font-mono">150000</TableCell>
+                                    <TableCell className="text-xs border font-mono">Cotton 100%</TableCell>
+                                    <TableCell className="text-xs border font-mono">1</TableCell>
+                                  </TableRow>
+                                </TableBody>
+                              </Table>
+                            </div>
+                            
+                            <div className="space-y-1 text-xs text-muted-foreground">
+                              <p>✓ Copy trực tiếp từ Excel (dùng Tab để phân tách cột)</p>
+                              <p>✓ Hoặc nhập thủ công với dấu "|" phân tách: <code className="bg-background px-1 rounded">SP001 | Áo thun | Áo | ...</code></p>
+                              <p>✓ Tình trạng: 1 = Còn hàng, 0 = Hết hàng</p>
+                              <p>✓ Chỉ cần Mã SP và Tên SP là bắt buộc</p>
+                            </div>
                           </div>
                           
                           <div className="space-y-2">
-                            <Label htmlFor="bulkPaste">Dán dữ liệu sản phẩm</Label>
+                            <Label htmlFor="bulkPaste" className="text-sm font-medium">
+                              Dán dữ liệu từ Excel (theo cột)
+                            </Label>
                             <Textarea
                               id="bulkPaste"
                               value={bulkPasteText}
                               onChange={(e) => setBulkPasteText(e.target.value)}
-                              rows={10}
-                              placeholder="Dán dữ liệu sản phẩm ở đây, mỗi dòng một sản phẩm..."
-                              className="font-mono text-xs"
+                              rows={12}
+                              placeholder="Chọn và copy các cột từ Excel, sau đó dán vào đây...&#10;&#10;Ví dụ:&#10;SP001    Áo thun trắng    Áo    Size M    100000    150000    Cotton 100%    1&#10;SP002    Quần jean xanh    Quần    Size L    200000    300000    Jean co giãn    1"
+                              className="font-mono text-xs resize-none"
                             />
+                            <p className="text-xs text-muted-foreground">
+                              Đã dán {bulkPasteText.trim().split('\n').filter(l => l.trim()).length} dòng
+                            </p>
                           </div>
                           
                           <div className="flex gap-2">
@@ -1198,7 +1234,7 @@ const ProductManagement = () => {
                               onClick={handleBulkPaste} 
                               disabled={bulkPasteLoading || !bulkPasteText.trim()}
                             >
-                              {bulkPasteLoading ? 'Đang xử lý...' : 'Thêm tất cả'}
+                              {bulkPasteLoading ? 'Đang xử lý...' : 'Thêm tất cả sản phẩm'}
                             </Button>
                             <Button 
                               type="button" 
