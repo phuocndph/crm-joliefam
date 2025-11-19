@@ -9,6 +9,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautif
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
 import { AssigneeManagement } from './AssigneeManagement';
+import { AuthStatusBadge } from './AuthStatusBadge';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -759,7 +760,7 @@ export function CreateQuoteForm({
               {initialData ? 'Chỉnh sửa báo giá' : 'Tạo báo giá mới'}
             </h1>
             <div className="flex items-center gap-2">
-              
+              <AuthStatusBadge />
               <Button variant="ghost" size="sm" onClick={onClose}>
                 <X className="h-4 w-4" />
               </Button>

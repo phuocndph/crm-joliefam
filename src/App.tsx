@@ -1,9 +1,11 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { supabase } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -27,6 +29,45 @@ const queryClient = new QueryClient();
 const AppRoutes = () => {
   const isMobile = useIsMobile();
   const LayoutComponent = isMobile ? MobileLayout : MainLayout;
+
+  useEffect(() => {
+    // Set up session refresh
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'TOKEN_REFRESHED') {
+          console.log('✅ Session token refreshed automatically');
+        }
+        
+        if (event === 'SIGNED_OUT') {
+          console.log('⚠️ User signed out');
+        }
+      }
+    );
+
+    // Auto-refresh 5 minutes before expiry
+    const refreshInterval = setInterval(async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        const expiresAt = session.expires_at;
+        if (!expiresAt) return;
+
+        const now = Math.floor(Date.now() / 1000);
+        const timeRemaining = expiresAt - now;
+
+        // Refresh if less than 5 minutes remaining
+        if (timeRemaining < 300 && timeRemaining > 0) {
+          console.log('🔄 Auto-refreshing session token...');
+          await supabase.auth.refreshSession();
+        }
+      }
+    }, 60000); // Check every minute
+
+    return () => {
+      subscription.unsubscribe();
+      clearInterval(refreshInterval);
+    };
+  }, []);
 
   return (
     <Routes>
