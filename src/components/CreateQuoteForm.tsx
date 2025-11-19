@@ -525,6 +525,19 @@ export function CreateQuoteForm({
     }
   };
   const handleSubmit = async (data: QuoteFormData) => {
+    // Check authentication BEFORE processing
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      toast({
+        title: "⚠️ Phiên đăng nhập đã hết hạn",
+        description: "Vui lòng đăng nhập lại để tiếp tục tạo báo giá.",
+        variant: "destructive"
+      });
+      setIsLoading(false);
+      return;
+    }
+
     if (selectedProducts.length === 0) {
       toast({
         title: "Lỗi",
@@ -536,12 +549,6 @@ export function CreateQuoteForm({
     
     setIsLoading(true);
     try {
-      // Get current user
-      const {
-        data: {
-          user
-        }
-      } = await supabase.auth.getUser();
 
       // Calculate total
       const subtotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
@@ -687,11 +694,25 @@ export function CreateQuoteForm({
         });
       }
       onSubmit?.();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating quote:", error);
+      
+      // Parse specific error types
+      let errorMessage = "Không thể tạo báo giá. Vui lòng thử lại.";
+      
+      if (error.message?.includes('row-level security')) {
+        errorMessage = "⚠️ Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+      } else if (error.message?.includes('JWT')) {
+        errorMessage = "🔐 Token không hợp lệ. Vui lòng đăng nhập lại.";
+      } else if (error.message?.includes('Authentication required')) {
+        errorMessage = "🔒 Yêu cầu xác thực. Vui lòng đăng nhập.";
+      } else if (error.message) {
+        errorMessage = `Lỗi: ${error.message}`;
+      }
+      
       toast({
-        title: "Lỗi",
-        description: "Không thể tạo báo giá",
+        title: "Lỗi tạo báo giá",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
