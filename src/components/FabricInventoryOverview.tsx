@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Package2, ArrowRight, Edit, Trash2 } from "lucide-react";
-import { useFabricInventory, useFabricTypes, useWarehouses, useCreateTransaction, useUpdateInventory, useCreateTransfer, useUpdateFabricType, useDeleteFabricType, useCreateFabricVariant } from "@/hooks/useFabrics";
+import { useFabricInventory, useFabricTypes, useFabricVariants, useWarehouses, useCreateTransaction, useUpdateInventory, useCreateTransfer, useUpdateFabricType, useDeleteFabricType, useCreateFabricVariant } from "@/hooks/useFabrics";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from "@/hooks/use-toast";
 import { FabricTransactionsTable } from "@/components/FabricTransactionsTable";
@@ -15,6 +15,7 @@ import { FabricTransactionsTable } from "@/components/FabricTransactionsTable";
 export const FabricInventoryOverview = () => {
   const { data: inventory = [] } = useFabricInventory();
   const { data: fabricTypes = [] } = useFabricTypes();
+  const { data: fabricVariants = [] } = useFabricVariants();
   const { data: warehouses = [] } = useWarehouses();
   const createTransaction = useCreateTransaction();
   const updateInventory = useUpdateInventory();
@@ -193,12 +194,14 @@ export const FabricInventoryOverview = () => {
       }
 
       // Check if fabric variant exists for this fabric type, if not create one
-      let fabricVariantId = newInbound.fabric_type_id;
+      let fabricVariantId: string;
       
-      // Try to find existing inventory with this fabric_type_id as fabric_variant_id
-      const existingInventory = inventory.find(item => item.fabric_variant_id === newInbound.fabric_type_id);
+      // Find existing variant with this fabric_type_id
+      const existingVariant = fabricVariants.find(variant => variant.fabric_type_id === newInbound.fabric_type_id);
       
-      if (!existingInventory) {
+      if (existingVariant) {
+        fabricVariantId = existingVariant.id;
+      } else {
         // Create fabric variant from fabric type
         try {
           const newVariant = await createFabricVariant.mutateAsync({
@@ -209,10 +212,14 @@ export const FabricInventoryOverview = () => {
             unit: 'm' // Default unit
           });
           fabricVariantId = newVariant.id;
-        } catch (variantError) {
-          // If variant creation fails, use fabric_type_id directly
-          console.log('Using fabric_type_id as variant_id:', newInbound.fabric_type_id);
-          fabricVariantId = newInbound.fabric_type_id;
+        } catch (variantError: any) {
+          console.error('Error creating fabric variant:', variantError);
+          toast({ 
+            title: "Lỗi tạo biến thể vải", 
+            description: variantError?.message || "Không thể tạo biến thể vải. Vui lòng thử lại.",
+            variant: "destructive" 
+          });
+          return;
         }
       }
 
