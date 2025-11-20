@@ -134,7 +134,8 @@ export const FabricInventoryOverview = () => {
 
   // Format input value for display
   const formatInputValue = (value: number) => {
-    if (value === 0) return '';
+    if (value === null || value === undefined) return '';
+    if (value === 0) return '0'; // ✅ Hiển thị "0" thay vì rỗng
     return formatNumber(value);
   };
 
@@ -494,27 +495,48 @@ export const FabricInventoryOverview = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Tổng số lượng nhập (mét)</Label>
+                <Label>
+                  Tổng số lượng nhập (mét)
+                  {newInbound.quantity === 0 && newInbound.quantityDisplay !== '' && (
+                    <span className="text-xs text-destructive ml-2">
+                      ⚠️ Vui lòng nhập số lượng hợp lệ
+                    </span>
+                  )}
+                </Label>
                 <Input
                   type="text"
                   value={newInbound.quantityDisplay || ''}
                   onChange={(e) => {
                     const inputValue = e.target.value;
+                    const parsedValue = parseInputValue(inputValue);
                     setNewInbound(prev => ({ 
                       ...prev, 
-                      quantityDisplay: inputValue,
-                      quantity: parseInputValue(inputValue)
+                      quantityDisplay: inputValue,     // Giữ nguyên raw input
+                      quantity: parsedValue
                     }));
                   }}
                   onBlur={(e) => {
-                    const numericValue = parseInputValue(e.target.value);
-                    setNewInbound(prev => ({ 
-                      ...prev, 
-                      quantityDisplay: formatInputValue(numericValue),
-                      quantity: numericValue
-                    }));
+                    const inputValue = e.target.value;
+                    const numericValue = parseInputValue(inputValue);
+                    
+                    // Chỉ format nếu có giá trị hợp lệ
+                    if (inputValue && numericValue > 0) {
+                      setNewInbound(prev => ({ 
+                        ...prev, 
+                        quantityDisplay: formatNumber(numericValue),
+                        quantity: numericValue
+                      }));
+                    } else {
+                      // Nếu rỗng hoặc = 0, reset về 0
+                      setNewInbound(prev => ({ 
+                        ...prev, 
+                        quantityDisplay: '',
+                        quantity: 0
+                      }));
+                    }
                   }}
                   placeholder="Nhập số lượng (ví dụ: 1645,2)"
+                  className={newInbound.quantity === 0 && newInbound.quantityDisplay !== '' ? 'border-destructive' : ''}
                 />
               </div>
               <div className="space-y-2">
@@ -540,19 +562,32 @@ export const FabricInventoryOverview = () => {
                   value={newInbound.transferDisplay || ''}
                   onChange={(e) => {
                     const inputValue = e.target.value;
+                    const parsedValue = parseInputValue(inputValue);
                     setNewInbound(prev => ({ 
                       ...prev, 
-                      transferDisplay: inputValue,
-                      transfer_to_bacninh: parseInputValue(inputValue)
+                      transferDisplay: inputValue,     // Giữ nguyên raw input
+                      transfer_to_bacninh: parsedValue
                     }));
                   }}
                   onBlur={(e) => {
-                    const numericValue = parseInputValue(e.target.value);
-                    setNewInbound(prev => ({ 
-                      ...prev, 
-                      transferDisplay: formatInputValue(numericValue),
-                      transfer_to_bacninh: numericValue
-                    }));
+                    const inputValue = e.target.value;
+                    const numericValue = parseInputValue(inputValue);
+                    
+                    // Chỉ format nếu có giá trị hợp lệ
+                    if (inputValue && numericValue > 0) {
+                      setNewInbound(prev => ({ 
+                        ...prev, 
+                        transferDisplay: formatNumber(numericValue),
+                        transfer_to_bacninh: numericValue
+                      }));
+                    } else {
+                      // Nếu rỗng hoặc = 0, reset về 0
+                      setNewInbound(prev => ({ 
+                        ...prev, 
+                        transferDisplay: '',
+                        transfer_to_bacninh: 0
+                      }));
+                    }
                   }}
                   placeholder="Số lượng chuyển sang Bắc Ninh (ví dụ: 500,5)"
                 />
@@ -580,7 +615,7 @@ export const FabricInventoryOverview = () => {
                 <Button variant="outline" onClick={() => setShowInboundDialog(false)}>
                   Hủy
                 </Button>
-                <Button onClick={handleInboundSubmit} disabled={createTransaction.isPending}>
+                <Button onClick={handleInboundSubmit} disabled={createTransaction.isPending || newInbound.quantity <= 0}>
                   {createTransaction.isPending ? "Đang xử lý..." : "Nhập kho"}
                 </Button>
               </div>
