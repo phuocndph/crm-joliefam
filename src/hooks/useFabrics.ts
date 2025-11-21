@@ -306,6 +306,7 @@ export const useCreateTransaction = () => {
       recipient_name?: string;
       notes?: string;
       transaction_date?: string;
+      manager_id?: string | null; // Add manager_id to type
     }) => {
       const { data: result, error } = await supabase
         .from('fabric_transactions')
