@@ -126,6 +126,11 @@ export function CreateQuoteForm({
     toast
   } = useToast();
 
+  // User and role state
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [managerId, setManagerId] = useState<string | null>(null);
+
   // Create new product states
   const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [createProductLoading, setCreateProductLoading] = useState(false);
@@ -230,6 +235,36 @@ export function CreateQuoteForm({
 
   // Use the enhanced search utilities
   const searchResult = useProductSearch(products, debouncedSearchTerm);
+
+  // Load user, role, and manager ID
+  useEffect(() => {
+    const fetchUserAndRole = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+      
+      if (user) {
+        // Get user role
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role, assigned_by')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (roleData) {
+          setUserRole(roleData.role);
+          
+          // If employee, use manager's ID (assigned_by), else use own ID
+          if (roleData.role === 'employee' && roleData.assigned_by) {
+            setManagerId(roleData.assigned_by);
+          } else {
+            setManagerId(user.id);
+          }
+        }
+      }
+    };
+    
+    fetchUserAndRole();
+  }, []);
 
   // Load price lists and products
   useEffect(() => {
@@ -657,7 +692,7 @@ export function CreateQuoteForm({
             } = await supabase.from("orders").insert({
               order_number: orderNumber,
               customer_id: initialData.customer_id,
-              manager_id: user?.id ? user.id.toString() : null,
+              manager_id: managerId, // Use correct manager_id
               assignee_id: data.responsible || null,
               // Sử dụng ngày hiện tại cho created_at, lưu quoteDate vào notes
               total_amount: orderTotal,
@@ -683,7 +718,7 @@ export function CreateQuoteForm({
         const quoteDataWithCreatedAt = {
           ...baseQuoteData,
           created_at: data.quoteDate.toISOString(),
-          manager_id: user?.id ? user.id.toString() : null
+          manager_id: managerId // Use correct manager_id based on role
         };
         const {
           error

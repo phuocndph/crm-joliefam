@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { useFabricInventory, useFabricTypes, useFabricVariants, useWarehouses, u
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from "@/hooks/use-toast";
 import { FabricTransactionsTable } from "@/components/FabricTransactionsTable";
+import { supabase } from "@/integrations/supabase/client";
 
 export const FabricInventoryOverview = () => {
   const { data: inventory = [] } = useFabricInventory();
@@ -23,6 +24,10 @@ export const FabricInventoryOverview = () => {
   const updateFabricType = useUpdateFabricType();
   const deleteFabricType = useDeleteFabricType();
   const createFabricVariant = useCreateFabricVariant();
+
+  // User and role state for manager_id
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [managerId, setManagerId] = useState<string | null>(null);
   
   // Debug log
   console.log('FabricInventoryOverview - fabricTypes:', fabricTypes);
@@ -54,6 +59,36 @@ export const FabricInventoryOverview = () => {
     transferDisplay: '',
     notes: ''
   });
+
+  // Fetch user and manager ID on mount
+  useEffect(() => {
+    const fetchUserAndManagerId = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+      
+      if (user) {
+        // Get user role and manager ID
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role, assigned_by')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (roleData) {
+          // If employee/accountant, use their manager's ID if exists, else use own ID
+          if ((roleData.role === 'employee' || roleData.role === 'accountant') && roleData.assigned_by) {
+            setManagerId(roleData.assigned_by);
+          } else {
+            setManagerId(user.id);
+          }
+        } else {
+          setManagerId(user.id);
+        }
+      }
+    };
+    
+    fetchUserAndManagerId();
+  }, []);
 
   // Process inventory data for table display
   const inventoryData = inventory.map(item => ({
@@ -233,7 +268,8 @@ export const FabricInventoryOverview = () => {
         quantity: hanoiQuantity,
         packages_count: newInbound.packages_count,
         supplier_name: newInbound.supplier_name,
-        notes: newInbound.notes
+        notes: newInbound.notes,
+        manager_id: managerId // Add manager_id
       });
 
       // Update Hanoi inventory
@@ -257,7 +293,8 @@ export const FabricInventoryOverview = () => {
           warehouse_id: bacninhWarehouse.id,
           transaction_type: 'transfer_in',
           quantity: newInbound.transfer_to_bacninh,
-          notes: `Chuyển từ kho Hà Nội`
+          notes: `Chuyển từ kho Hà Nội`,
+          manager_id: managerId // Add manager_id
         });
 
         // Update Bac Ninh inventory
