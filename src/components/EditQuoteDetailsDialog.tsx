@@ -55,8 +55,30 @@ export function EditQuoteDetailsDialog({
   const [createdDate, setCreatedDate] = useState<Date | undefined>(undefined);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [managerId, setManagerId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Get current user and manager_id for RLS
+  useEffect(() => {
+    const fetchManagerId = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role, assigned_by')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (roleData?.role === 'employee' && roleData.assigned_by) {
+          setManagerId(roleData.assigned_by.toString());
+        } else {
+          setManagerId(user.id);
+        }
+      }
+    };
+    fetchManagerId();
+  }, []);
 
   useEffect(() => {
     if (quote) {
@@ -76,6 +98,7 @@ export function EditQuoteDetailsDialog({
           created_at: createdDate.toISOString(),
           quote_date: createdDate.toISOString(),
           status: status,
+          manager_id: managerId, // Include manager_id for RLS validation
         })
         .eq('id', quote.id);
 

@@ -609,11 +609,11 @@ export function CreateQuoteForm({
           vatRate: data.vatRate,
           payment1: data.payment1 || 0,
           payment2: data.payment2 || 0,
-          quoteDate: data.quoteDate.toISOString() // Lưu ngày báo giá vào quote_data thay vì created_at
-        }),
-        tenant_id: "default"
-        // Không set manager_id khi update, để RLS policy và trigger xử lý
-      };
+        quoteDate: data.quoteDate.toISOString() // Lưu ngày báo giá vào quote_data thay vì created_at
+      }),
+      tenant_id: "default",
+      manager_id: managerId // CRITICAL: Include manager_id for RLS validation during updates
+    };
 
       if (initialData) {
         // Update existing quote - không update created_at để tránh lỗi
