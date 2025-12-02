@@ -23,10 +23,44 @@ serve(async (req) => {
   }
 
   try {
+    // Get authorization header from request
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      throw new Error('Authentication required')
+    }
+
+    // Create authenticated Supabase client using user's token
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: authHeader }
+        }
+      }
     )
+
+    // Get current user and their manager_id
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      throw new Error('Failed to authenticate user')
+    }
+
+    // Get user's role to determine manager_id
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role, assigned_by')
+      .eq('user_id', user.id)
+      .single()
+
+    // For employees/accountants, use their assigned_by (manager's ID), otherwise use their own ID
+    const managerId = (roleData?.role === 'employee' || roleData?.role === 'accountant') && roleData.assigned_by
+      ? roleData.assigned_by
+      : user.id
+
+    console.log('User ID:', user.id)
+    console.log('User Role:', roleData?.role)
+    console.log('Manager ID:', managerId)
 
     const { googleSheetsUrl, priceListId, columnMapping } = await req.json()
 
@@ -204,7 +238,8 @@ serve(async (req) => {
       if (values.length > 0 && values[0]) { // Skip empty rows
         const product: any = {
           price_list_id: priceListId,
-          tenant_id: 'default'
+          tenant_id: 'default',
+          manager_id: managerId // CRITICAL: Include manager_id for RLS validation
         }
 
         if (columnMapping) {
