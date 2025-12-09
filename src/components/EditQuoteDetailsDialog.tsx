@@ -56,25 +56,31 @@ export function EditQuoteDetailsDialog({
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [managerId, setManagerId] = useState<string | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true); // Track user data loading
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Get current user and manager_id for RLS
   useEffect(() => {
     const fetchManagerId = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role, assigned_by')
-          .eq('user_id', user.id)
-          .single();
-        
-        if (roleData?.role === 'employee' && roleData.assigned_by) {
-          setManagerId(roleData.assigned_by.toString());
-        } else {
-          setManagerId(user.id);
+      setIsLoadingUser(true); // Start loading
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: roleData } = await supabase
+            .from('user_roles')
+            .select('role, assigned_by')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (roleData?.role === 'employee' && roleData.assigned_by) {
+            setManagerId(roleData.assigned_by.toString());
+          } else {
+            setManagerId(user.id);
+          }
         }
+      } finally {
+        setIsLoadingUser(false); // End loading
       }
     };
     fetchManagerId();
@@ -89,6 +95,16 @@ export function EditQuoteDetailsDialog({
 
   const handleSave = async () => {
     if (!quote || !createdDate) return;
+
+    // CRITICAL: Validate managerId before submit to prevent race condition
+    if (!managerId) {
+      toast({
+        title: "Lỗi xác thực",
+        description: "⚠️ Đang tải thông tin người dùng. Vui lòng đợi vài giây và thử lại.",
+        variant: "destructive"
+      });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -210,8 +226,8 @@ export function EditQuoteDetailsDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Hủy
           </Button>
-          <Button onClick={handleSave} disabled={loading || !createdDate}>
-            {loading ? "Đang lưu..." : "Lưu thay đổi"}
+          <Button onClick={handleSave} disabled={loading || !createdDate || isLoadingUser || !managerId}>
+            {isLoadingUser ? "Đang tải..." : loading ? "Đang lưu..." : "Lưu thay đổi"}
           </Button>
         </DialogFooter>
       </DialogContent>
