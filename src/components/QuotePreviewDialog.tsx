@@ -493,7 +493,11 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `BaoGia_${quote.quoteNumber}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      // Format filename: BG-TênKH-NgàyHiệnTại (dd-mm-yyyy)
+      const today = new Date();
+      const formattedDate = `${today.getDate().toString().padStart(2, '0')}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getFullYear()}`;
+      const safeCustomerName = customerName.replace(/[\\/:*?"<>|]/g, '').trim();
+      a.download = `BG-${safeCustomerName}-${formattedDate}.xlsx`;
       a.click();
       window.URL.revokeObjectURL(url);
 
