@@ -130,6 +130,7 @@ export function CreateQuoteForm({
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [managerId, setManagerId] = useState<string | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true); // Track user data loading
 
   // Create new product states
   const [showCreateProduct, setShowCreateProduct] = useState(false);
@@ -239,27 +240,32 @@ export function CreateQuoteForm({
   // Load user, role, and manager ID
   useEffect(() => {
     const fetchUserAndRole = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUser(user);
-      
-      if (user) {
-        // Get user role
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role, assigned_by')
-          .eq('user_id', user.id)
-          .single();
+      setIsLoadingUser(true); // Start loading
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setCurrentUser(user);
         
-        if (roleData) {
-          setUserRole(roleData.role);
+        if (user) {
+          // Get user role
+          const { data: roleData } = await supabase
+            .from('user_roles')
+            .select('role, assigned_by')
+            .eq('user_id', user.id)
+            .single();
           
-          // If employee, use manager's ID (assigned_by), else use own ID
-          if (roleData.role === 'employee' && roleData.assigned_by) {
-            setManagerId(roleData.assigned_by);
-          } else {
-            setManagerId(user.id);
+          if (roleData) {
+            setUserRole(roleData.role);
+            
+            // If employee, use manager's ID (assigned_by), else use own ID
+            if (roleData.role === 'employee' && roleData.assigned_by) {
+              setManagerId(roleData.assigned_by);
+            } else {
+              setManagerId(user.id);
+            }
           }
         }
+      } finally {
+        setIsLoadingUser(false); // End loading
       }
     };
     
@@ -561,6 +567,16 @@ export function CreateQuoteForm({
     }
   };
   const handleSubmit = async (data: QuoteFormData) => {
+    // CRITICAL: Validate managerId before submit to prevent race condition
+    if (!managerId) {
+      toast({
+        title: "Lỗi xác thực",
+        description: "⚠️ Đang tải thông tin người dùng. Vui lòng đợi vài giây và thử lại.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Check authentication BEFORE processing
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
@@ -1488,8 +1504,8 @@ export function CreateQuoteForm({
               <Button type="button" variant="outline" onClick={onClose}>
                 Hủy
               </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isLoading}>
-                {initialData ? 'Cập nhật báo giá' : 'Tạo báo giá'}
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isLoading || isLoadingUser || !managerId}>
+                {isLoadingUser ? 'Đang tải...' : isLoading ? 'Đang lưu...' : initialData ? 'Cập nhật báo giá' : 'Tạo báo giá'}
               </Button>
             </div>
           </form>
