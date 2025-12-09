@@ -112,9 +112,7 @@ export function EditQuoteDetailsDialog({
         .from('quotes')
         .update({
           created_at: createdDate.toISOString(),
-          quote_date: createdDate.toISOString(),
           status: status,
-          manager_id: managerId, // Include manager_id for RLS validation
         })
         .eq('id', quote.id);
 
