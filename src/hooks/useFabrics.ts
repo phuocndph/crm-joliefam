@@ -1,9 +1,101 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { useEffect } from 'react';
+
+// Real-time subscription hook for fabric data
+const useFabricRealtime = () => {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    console.log('🔧 Setting up real-time fabric synchronization...');
+    
+    const channel = supabase
+      .channel('fabrics-sync-' + Date.now())
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fabric_types' },
+        () => {
+          console.log('🔄 Real-time fabric_types change');
+          queryClient.invalidateQueries({ queryKey: ['fabric-types'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fabric_variants' },
+        () => {
+          console.log('🔄 Real-time fabric_variants change');
+          queryClient.invalidateQueries({ queryKey: ['fabric-variants'] });
+          queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fabric_widths' },
+        () => {
+          console.log('🔄 Real-time fabric_widths change');
+          queryClient.invalidateQueries({ queryKey: ['fabric-widths'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fabric_inventory' },
+        () => {
+          console.log('🔄 Real-time fabric_inventory change');
+          queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fabric_transactions' },
+        () => {
+          console.log('🔄 Real-time fabric_transactions change');
+          queryClient.invalidateQueries({ queryKey: ['fabric-transactions'] });
+          queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fabric_transfers' },
+        () => {
+          console.log('🔄 Real-time fabric_transfers change');
+          queryClient.invalidateQueries({ queryKey: ['fabric-transfers'] });
+          queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fabric_usage' },
+        () => {
+          console.log('🔄 Real-time fabric_usage change');
+          queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
+          queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'warehouses' },
+        () => {
+          console.log('🔄 Real-time warehouses change');
+          queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Fabrics real-time status:', status);
+      });
+
+    return () => {
+      console.log('🧹 Cleaning up fabrics real-time subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+};
 
 // Fabric Types hooks
 export const useFabricTypes = () => {
+  const queryClient = useQueryClient();
+  useFabricRealtime();
+
   return useQuery({
     queryKey: ['fabric-types'],
     queryFn: async () => {
@@ -15,6 +107,10 @@ export const useFabricTypes = () => {
       if (error) throw error;
       return data;
     },
+    staleTime: 0,
+    gcTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
@@ -83,6 +179,8 @@ export const useDeleteFabricType = () => {
 
 // Fabric Variants hooks
 export const useFabricVariants = () => {
+  useFabricRealtime();
+
   return useQuery({
     queryKey: ['fabric-variants'],
     queryFn: async () => {
@@ -97,6 +195,10 @@ export const useFabricVariants = () => {
       if (error) throw error;
       return data;
     },
+    staleTime: 0,
+    gcTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
@@ -134,6 +236,8 @@ export const useCreateFabricVariant = () => {
 
 // Fabric Widths hooks
 export const useFabricWidths = () => {
+  useFabricRealtime();
+
   return useQuery({
     queryKey: ['fabric-widths'],
     queryFn: async () => {
@@ -145,6 +249,10 @@ export const useFabricWidths = () => {
       if (error) throw error;
       return data;
     },
+    staleTime: 0,
+    gcTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
@@ -170,6 +278,8 @@ export const useCreateFabricWidth = () => {
 
 // Warehouses hooks
 export const useWarehouses = () => {
+  useFabricRealtime();
+
   return useQuery({
     queryKey: ['warehouses'],
     queryFn: async () => {
@@ -182,11 +292,17 @@ export const useWarehouses = () => {
       if (error) throw error;
       return data;
     },
+    staleTime: 0,
+    gcTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
 // Fabric Inventory hooks
 export const useFabricInventory = () => {
+  useFabricRealtime();
+
   return useQuery({
     queryKey: ['fabric-inventory'],
     queryFn: async () => {
@@ -205,6 +321,10 @@ export const useFabricInventory = () => {
       if (error) throw error;
       return data;
     },
+    staleTime: 0,
+    gcTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
@@ -267,6 +387,8 @@ export const useUpdateInventory = () => {
 
 // Fabric Transactions hooks
 export const useFabricTransactions = () => {
+  useFabricRealtime();
+
   return useQuery({
     queryKey: ['fabric-transactions'],
     queryFn: async () => {
@@ -286,6 +408,10 @@ export const useFabricTransactions = () => {
       if (error) throw error;
       return data;
     },
+    staleTime: 0,
+    gcTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
@@ -306,7 +432,7 @@ export const useCreateTransaction = () => {
       recipient_name?: string;
       notes?: string;
       transaction_date?: string;
-      manager_id?: string | null; // Add manager_id to type
+      manager_id?: string | null;
     }) => {
       const { data: result, error } = await supabase
         .from('fabric_transactions')
@@ -371,6 +497,8 @@ export const useUpdateTransaction = () => {
 
 // Fabric Transfers hooks
 export const useFabricTransfers = () => {
+  useFabricRealtime();
+
   return useQuery({
     queryKey: ['fabric-transfers'],
     queryFn: async () => {
@@ -390,6 +518,10 @@ export const useFabricTransfers = () => {
       if (error) throw error;
       return data;
     },
+    staleTime: 0,
+    gcTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
@@ -456,6 +588,8 @@ export const useUpdateTransferStatus = () => {
 
 // Fabric Usage hooks
 export const useFabricUsage = () => {
+  useFabricRealtime();
+
   return useQuery({
     queryKey: ['fabric-usage'],
     queryFn: async () => {
@@ -474,10 +608,16 @@ export const useFabricUsage = () => {
       if (error) throw error;
       return data;
     },
+    staleTime: 0,
+    gcTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
 export const useFabricUsageByOrder = (orderId?: string) => {
+  useFabricRealtime();
+
   return useQuery({
     queryKey: ['fabric-usage', orderId],
     queryFn: async () => {
@@ -501,6 +641,10 @@ export const useFabricUsageByOrder = (orderId?: string) => {
       return data;
     },
     enabled: !!orderId,
+    staleTime: 0,
+    gcTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
@@ -509,24 +653,22 @@ export const useCreateFabricUsage = () => {
   
   return useMutation({
     mutationFn: async (data: {
-      order_id?: string | null;
-      order_number: string;
+      order_id: string;
       fabric_variant_id: string;
       warehouse_id: string;
       quantity_used: number;
-      customer_name: string;
+      unit?: string;
+      notes?: string;
+      usage_date?: string;
+      order_number?: string;
+      customer_name?: string;
       customer_code?: string;
       order_type?: string;
       fabric_width?: string;
-      usage_date?: string;
-      notes?: string;
     }) => {
       const { data: result, error } = await supabase
         .from('fabric_usage')
-        .insert({
-          ...data,
-          order_id: data.order_id || crypto.randomUUID() // Generate UUID if null
-        })
+        .insert(data)
         .select()
         .single();
       
@@ -536,8 +678,6 @@ export const useCreateFabricUsage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
       queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
-      // Force immediate refetch
-      queryClient.refetchQueries({ queryKey: ['fabric-usage'] });
       toast({ title: "Thành công", description: "Đã ghi nhận sử dụng vải" });
     },
   });
@@ -547,20 +687,36 @@ export const useUpdateFabricUsage = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const { data: updatedData, error } = await supabase
+    mutationFn: async (data: {
+      id: string;
+      order_id?: string;
+      fabric_variant_id?: string;
+      warehouse_id?: string;
+      quantity_used?: number;
+      unit?: string;
+      notes?: string;
+      usage_date?: string;
+      order_number?: string;
+      customer_name?: string;
+      customer_code?: string;
+      order_type?: string;
+      fabric_width?: string;
+    }) => {
+      const { id, ...updateData } = data;
+      const { data: result, error } = await supabase
         .from('fabric_usage')
-        .update(data)
+        .update(updateData)
         .eq('id', id)
         .select()
         .single();
       
       if (error) throw error;
-      return updatedData;
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
       queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+      toast({ title: "Thành công", description: "Đã cập nhật sử dụng vải" });
     },
   });
 };
@@ -580,6 +736,7 @@ export const useDeleteFabricUsage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
       queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+      toast({ title: "Thành công", description: "Đã xóa ghi nhận sử dụng vải" });
     },
   });
 };
