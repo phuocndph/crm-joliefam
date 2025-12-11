@@ -164,17 +164,15 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
     try {
       await updateFabricUsage.mutateAsync({
         id: editingRecord.id,
-        data: {
-          order_number: editForm.order_number,
-          customer_name: editForm.customer_name,
-          customer_code: editForm.customer_code || null,
-          order_type: editForm.order_type || null,
-          fabric_variant_id: editForm.fabric_variant_id,
-          quantity_used: editForm.quantity_used,
-          fabric_width: editForm.fabric_width || null,
-          usage_date: editForm.usage_date,
-          notes: editForm.notes || null
-        }
+        order_number: editForm.order_number,
+        customer_name: editForm.customer_name,
+        customer_code: editForm.customer_code || undefined,
+        order_type: editForm.order_type || undefined,
+        fabric_variant_id: editForm.fabric_variant_id,
+        quantity_used: editForm.quantity_used,
+        fabric_width: editForm.fabric_width || undefined,
+        usage_date: editForm.usage_date,
+        notes: editForm.notes || undefined
       });
 
       toast({
