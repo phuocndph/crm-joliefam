@@ -256,8 +256,8 @@ export function CreateQuoteForm({
           if (roleData) {
             setUserRole(roleData.role);
             
-            // If employee, use manager's ID (assigned_by), else use own ID
-            if (roleData.role === 'employee' && roleData.assigned_by) {
+            // If employee or accountant, use manager's ID (assigned_by), else use own ID
+            if ((roleData.role === 'employee' || roleData.role === 'accountant') && roleData.assigned_by) {
               setManagerId(roleData.assigned_by);
             } else {
               setManagerId(user.id);

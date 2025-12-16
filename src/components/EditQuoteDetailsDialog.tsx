@@ -73,7 +73,7 @@ export function EditQuoteDetailsDialog({
             .eq('user_id', user.id)
             .single();
           
-          if (roleData?.role === 'employee' && roleData.assigned_by) {
+          if ((roleData?.role === 'employee' || roleData?.role === 'accountant') && roleData.assigned_by) {
             setManagerId(roleData.assigned_by.toString());
           } else {
             setManagerId(user.id);
