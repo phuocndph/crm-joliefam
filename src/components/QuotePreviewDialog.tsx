@@ -59,12 +59,12 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
   if (!quote) return null;
 
-  // Parse customer info from notes
+  // Parse customer info - prioritize quote.customerName from hook
   const notes = quote.notes || '';
-  const customerName = notes.match(/Khách hàng:\s*(.+)/)?.[1] || 'NGUYEN DUC PHUOC';
-  const phone = notes.match(/Điện thoại:\s*(.+)/)?.[1] || '';
+  const customerName = quote.customerName || notes.match(/Khách hàng:\s*(.+)/)?.[1] || 'NGUYEN DUC PHUOC';
+  const phone = quote.customerPhone || notes.match(/Điện thoại:\s*(.+)/)?.[1] || '';
   const email = notes.match(/Email:\s*(.+)/)?.[1] || '';
-  const address = notes.match(/Địa chỉ:\s*(.+)/)?.[1] || '';
+  const address = quote.customerAddress || notes.match(/Địa chỉ:\s*(.+)/)?.[1] || '';
   const expiryDate = notes.match(/Ngày hết hạn:\s*(.+)/)?.[1] || '21/08/2025';
 
   // Parse items with real data
@@ -313,64 +313,68 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       currentRow++;
 
+      // Track starting row for formulas
+      const itemsStartRow = currentRow;
+
       // Quote items with Times New Roman font and images - use corrected items
       for (let index = 0; index < correctedItems.length; index++) {
         const item = correctedItems[index];
-        const rowData = [
-          index + 1,
-          item.name || item.sku || '', // Sử dụng tên sản phẩm thay vì SKU
-          item.specifications || '', // Quy cách
-          item.description || 'Vải T225 40% Cotton 35% Polyester 25% Lụa, mật độ sợi 225 sợi/inch vuông. Vải ít nhăn, không xù, không bai màu',
-          item.quantity || 144,
-          item.price || 140000,
-          item.total, // Use corrected total
-          '', // Placeholder cho hình ảnh
-          ''
-        ];
+        
+        // Set values for each column
+        const cellA = worksheet.getCell(`A${currentRow}`);
+        cellA.value = index + 1;
+        cellA.font = { name: 'Times New Roman', size: 10 };
+        cellA.alignment = { horizontal: 'center', vertical: 'middle' };
+        cellA.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
 
-        rowData.forEach((value, colIndex) => {
-          if (colIndex === 7) return; // Skip image column for now
-          
-          const cell = worksheet.getCell(`${String.fromCharCode(65 + colIndex)}${currentRow}`);
-          cell.value = value;
-          cell.font = { name: 'Times New Roman', size: 10 };
-          cell.border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' }
-          };
-          
-          // Add border to image column H for aesthetics
-          if (colIndex === 7) {
-            cell.border = {
-              top: { style: 'medium' },
-              left: { style: 'medium' },
-              bottom: { style: 'medium' },
-              right: { style: 'medium' }
-            };
-          }
-          
-          if (colIndex === 0 || colIndex === 4) { // STT và Số lượng
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-          } else if (colIndex >= 5 && colIndex <= 6) { // Đơn giá và Thành tiền
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            if (typeof value === 'number') {
-              cell.numFmt = '#,##0';
-            }
-          } else if (colIndex >= 1 && colIndex <= 3) { // Text columns
-            cell.alignment = { wrapText: true, vertical: 'middle' };
-          }
-        });
+        const cellB = worksheet.getCell(`B${currentRow}`);
+        cellB.value = item.name || item.sku || '';
+        cellB.font = { name: 'Times New Roman', size: 10 };
+        cellB.alignment = { wrapText: true, vertical: 'middle' };
+        cellB.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
 
-        // Add border to image column H
-        const imageCell = worksheet.getCell(`H${currentRow}`);
-        imageCell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        };
+        const cellC = worksheet.getCell(`C${currentRow}`);
+        cellC.value = item.specifications || '';
+        cellC.font = { name: 'Times New Roman', size: 10 };
+        cellC.alignment = { wrapText: true, vertical: 'middle' };
+        cellC.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+        const cellD = worksheet.getCell(`D${currentRow}`);
+        cellD.value = item.description || '';
+        cellD.font = { name: 'Times New Roman', size: 10 };
+        cellD.alignment = { wrapText: true, vertical: 'middle' };
+        cellD.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+        const cellE = worksheet.getCell(`E${currentRow}`);
+        cellE.value = item.quantity || 1;
+        cellE.font = { name: 'Times New Roman', size: 10 };
+        cellE.alignment = { horizontal: 'center', vertical: 'middle' };
+        cellE.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+        const cellF = worksheet.getCell(`F${currentRow}`);
+        cellF.value = item.price || 0;
+        cellF.font = { name: 'Times New Roman', size: 10 };
+        cellF.alignment = { horizontal: 'center', vertical: 'middle' };
+        cellF.numFmt = '#,##0';
+        cellF.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+        // Column G: THÀNH TIỀN = SỐ LƯỢNG * ĐƠN GIÁ (Formula)
+        const cellG = worksheet.getCell(`G${currentRow}`);
+        cellG.value = { formula: `E${currentRow}*F${currentRow}` };
+        cellG.font = { name: 'Times New Roman', size: 10 };
+        cellG.alignment = { horizontal: 'center', vertical: 'middle' };
+        cellG.numFmt = '#,##0';
+        cellG.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+        // Column H: HÌNH ẢNH
+        const cellH = worksheet.getCell(`H${currentRow}`);
+        cellH.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+        // Column I: Ghi chú
+        const cellI = worksheet.getCell(`I${currentRow}`);
+        cellI.value = '';
+        cellI.font = { name: 'Times New Roman', size: 10 };
+        cellI.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
 
         // Add image if available - moved to column H
         if (item.selectedImage) {
@@ -401,48 +405,57 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         
         currentRow++;
       }
+      
+      // Track items end row for SUM formula
+      const itemsEndRow = currentRow - 1;
 
       currentRow++;
 
-      // Totals section with Times New Roman font - conditional VAT display
-      const totalsData = [
-        ['TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', formatCurrency(subtotal)],
-        ...(includeVAT ? [
-          [`GTGT (${vatRate}%)`, formatCurrency(vatAmount)],
-          ['TỔNG TIỀN ĐÃ BAO GỒM GTGT', formatCurrency(totalWithVat)]
-        ] : []),
-        ['THANH TOÁN LẦN 1', formatCurrency(firstPayment)],
-        ['CÒN LẠI', formatCurrency(remaining)]
-      ];
-
-      totalsData.forEach(([label, value]) => {
+      // Totals section with Excel formulas
+      // Helper function to add total row
+      const addTotalRow = (label: string, valueOrFormula: string | { formula: string }, isFormula: boolean = false) => {
         worksheet.mergeCells(`A${currentRow}:G${currentRow}`);
         const labelCell = worksheet.getCell(`A${currentRow}`);
         labelCell.value = label;
         labelCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFC00000' } };
         labelCell.alignment = { horizontal: 'left', vertical: 'middle' };
-        labelCell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        };
+        labelCell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
 
-        // Merge & Center total amount in columns H and I
         worksheet.mergeCells(`H${currentRow}:I${currentRow}`);
         const valueCell = worksheet.getCell(`H${currentRow}`);
-        valueCell.value = value;
+        valueCell.value = isFormula ? valueOrFormula : valueOrFormula;
         valueCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFC00000' } };
         valueCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        valueCell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        };
+        valueCell.numFmt = '#,##0';
+        valueCell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        
+        return currentRow++;
+      };
 
-        currentRow++;
-      });
+      // Row 1: TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT = SUM(G items)
+      const subtotalRow = currentRow;
+      addTotalRow('TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT', { formula: `SUM(G${itemsStartRow}:G${itemsEndRow})` }, true);
+
+      let vatRow = 0;
+      let totalWithVatRow = 0;
+      
+      if (includeVAT) {
+        // Row 2: GTGT = Subtotal * vatRate%
+        vatRow = currentRow;
+        addTotalRow(`GTGT (${vatRate}%)`, { formula: `H${subtotalRow}*${vatRate}/100` }, true);
+        
+        // Row 3: TỔNG TIỀN ĐÃ BAO GỒM GTGT = Subtotal + VAT
+        totalWithVatRow = currentRow;
+        addTotalRow('TỔNG TIỀN ĐÃ BAO GỒM GTGT', { formula: `H${subtotalRow}+H${vatRow}` }, true);
+      }
+
+      // Row 4: THANH TOÁN LẦN 1 (editable value)
+      const payment1Row = currentRow;
+      addTotalRow('THANH TOÁN LẦN 1', firstPayment as any, false);
+
+      // Row 5: CÒN LẠI = Total - Payment1
+      const totalRefRow = includeVAT ? totalWithVatRow : subtotalRow;
+      addTotalRow('CÒN LẠI', { formula: `H${totalRefRow}-H${payment1Row}` }, true);
 
       currentRow += 2;
 
