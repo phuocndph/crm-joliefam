@@ -412,20 +412,22 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       currentRow++;
 
       // Totals section with Excel formulas
-      // Helper function to add total row
+      // Helper function to add total row with merge A-D for label, E-I for value
       const addTotalRow = (label: string, valueOrFormula: string | { formula: string }, isFormula: boolean = false) => {
-        worksheet.mergeCells(`A${currentRow}:G${currentRow}`);
+        // Merge A-D for label (4 columns)
+        worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
         const labelCell = worksheet.getCell(`A${currentRow}`);
         labelCell.value = label;
         labelCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFC00000' } };
-        labelCell.alignment = { horizontal: 'left', vertical: 'middle' };
+        labelCell.alignment = { horizontal: 'center', vertical: 'middle' };
         labelCell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
 
-        worksheet.mergeCells(`H${currentRow}:I${currentRow}`);
-        const valueCell = worksheet.getCell(`H${currentRow}`);
+        // Merge E-I for value (5 columns)
+        worksheet.mergeCells(`E${currentRow}:I${currentRow}`);
+        const valueCell = worksheet.getCell(`E${currentRow}`);
         valueCell.value = isFormula ? valueOrFormula : valueOrFormula;
         valueCell.font = { name: 'Times New Roman', bold: true, size: 11, color: { argb: 'FFC00000' } };
-        valueCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        valueCell.alignment = { horizontal: 'right', vertical: 'middle' };
         valueCell.numFmt = '#,##0';
         valueCell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
         
@@ -440,22 +442,22 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       let totalWithVatRow = 0;
       
       if (includeVAT) {
-        // Row 2: GTGT = Subtotal * vatRate%
+        // Row 2: GTGT = Subtotal * vatRate% (use column E for formulas now)
         vatRow = currentRow;
-        addTotalRow(`GTGT (${vatRate}%)`, { formula: `H${subtotalRow}*${vatRate}/100` }, true);
+        addTotalRow(`GTGT (${vatRate}%)`, { formula: `E${subtotalRow}*${vatRate}/100` }, true);
         
         // Row 3: TỔNG TIỀN ĐÃ BAO GỒM GTGT = Subtotal + VAT
         totalWithVatRow = currentRow;
-        addTotalRow('TỔNG TIỀN ĐÃ BAO GỒM GTGT', { formula: `H${subtotalRow}+H${vatRow}` }, true);
+        addTotalRow('TỔNG TIỀN ĐÃ BAO GỒM GTGT', { formula: `E${subtotalRow}+E${vatRow}` }, true);
       }
 
       // Row 4: THANH TOÁN LẦN 1 (editable value)
       const payment1Row = currentRow;
       addTotalRow('THANH TOÁN LẦN 1', firstPayment as any, false);
 
-      // Row 5: CÒN LẠI = Total - Payment1
+      // Row 5: CÒN LẠI = Total - Payment1 (use column E for formulas now)
       const totalRefRow = includeVAT ? totalWithVatRow : subtotalRow;
-      addTotalRow('CÒN LẠI', { formula: `H${totalRefRow}-H${payment1Row}` }, true);
+      addTotalRow('CÒN LẠI', { formula: `E${totalRefRow}-E${payment1Row}` }, true);
 
       currentRow += 2;
 

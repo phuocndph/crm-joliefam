@@ -38,7 +38,7 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
     bankInfo: "Ngân hàng TMCP đầu tư và phát triển Việt Nam ( BIDV) - Chi nhánh Hà Nội : 2110199996",
     quoteTitleColor: "#1976d2",
     companyTitleColor: "#d32f2f",
-    logoUrl: "/lovable-uploads/6b66a50f-3a2e-4f5a-bad8-950cf55392fa.png",
+    logoUrl: "/lovable-uploads/443e6de9-e8d8-4bdc-ba8a-ff9a4c542193.png",
     terms: [
       "Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.",
       "Thanh toán: 30% trước khi sản xuất, 70% trước khi giao hàng.",
@@ -350,7 +350,7 @@ export const getTemplateSettings = (): TemplateSettings => {
     bankInfo: "Ngân hàng TMCP đầu tư và phát triển Việt Nam ( BIDV) - Chi nhánh Hà Nội : 2110199996",
     quoteTitleColor: "#1976d2",
     companyTitleColor: "#d32f2f",
-    logoUrl: "/lovable-uploads/6b66a50f-3a2e-4f5a-bad8-950cf55392fa.png",
+    logoUrl: "/lovable-uploads/443e6de9-e8d8-4bdc-ba8a-ff9a4c542193.png",
     terms: [
       "Bảo giá có hiệu lực trong 15 ngày kể từ ngày lập.",
       "Thanh toán: 30% trước khi sản xuất, 70% trước khi giao hàng.",
