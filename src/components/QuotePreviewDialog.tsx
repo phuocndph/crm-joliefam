@@ -413,7 +413,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       // Totals section with Excel formulas
       // Helper function to add total row with merge A-D for label, E-I for value
-      const addTotalRow = (label: string, valueOrFormula: string | { formula: string }, isFormula: boolean = false) => {
+      const addTotalRow = (label: string, valueOrFormula: string | number | { formula: string }, isFormula: boolean = false) => {
         // Merge A-D for label (4 columns)
         worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
         const labelCell = worksheet.getCell(`A${currentRow}`);
@@ -451,9 +451,10 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         addTotalRow('TỔNG TIỀN ĐÃ BAO GỒM GTGT', { formula: `E${subtotalRow}+E${vatRow}` }, true);
       }
 
-      // Row 4: THANH TOÁN LẦN 1 (editable value)
+      // Row 4: THANH TOÁN LẦN 1 (editable value) - ensure it's a number
       const payment1Row = currentRow;
-      addTotalRow('THANH TOÁN LẦN 1', firstPayment as any, false);
+      const safeFirstPayment = typeof firstPayment === 'number' && !isNaN(firstPayment) ? firstPayment : 0;
+      addTotalRow('THANH TOÁN LẦN 1', safeFirstPayment, false);
 
       // Row 5: CÒN LẠI = Total - Payment1 (use column E for formulas now)
       const totalRefRow = includeVAT ? totalWithVatRow : subtotalRow;
@@ -508,11 +509,12 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      // Format filename: BG-TênKH-NgàyHiệnTại (dd-mm-yyyy)
+      // Format filename: BG-{SốBáoGiá}-{TênKH}-{dd-mm-yyyy}.xlsx
       const today = new Date();
       const formattedDate = `${today.getDate().toString().padStart(2, '0')}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getFullYear()}`;
+      const safeQuoteNumber = (quote.quote_number || quote.quoteNumber || 'KHONG-SO').replace(/[\\/:*?"<>|]/g, '').trim();
       const safeCustomerName = customerName.replace(/[\\/:*?"<>|]/g, '').trim();
-      a.download = `BG-${safeCustomerName}-${formattedDate}.xlsx`;
+      a.download = `BG-${safeQuoteNumber}-${safeCustomerName}-${formattedDate}.xlsx`;
       a.click();
       window.URL.revokeObjectURL(url);
 
