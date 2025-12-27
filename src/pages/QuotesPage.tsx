@@ -59,6 +59,7 @@ import {
   Settings,
   Calculator,
   Calendar,
+  Copy,
 } from "lucide-react";
 
 const statusLabels = {
@@ -327,6 +328,58 @@ export default function QuotesPage() {
     }
   };
 
+  const handleDuplicateQuote = async (quote: any) => {
+    try {
+      // Generate new quote number
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const newQuoteNumber = `BG-${dateStr}-${randomSuffix}`;
+
+      // Copy data from original quote (exclude auto-generated fields)
+      const duplicate = {
+        quote_number: newQuoteNumber,
+        customer_id: quote.customer_id,
+        manager_id: quote.manager_id,
+        assignee_id: quote.assignee_id,
+        price_list_id: quote.price_list_id,
+        items: quote.items,
+        total_amount: quote.total_amount,
+        subtotal: quote.subtotal,
+        vat_amount: quote.vat_amount,
+        include_vat: quote.include_vat,
+        vat_rate: quote.vat_rate,
+        notes: quote.notes 
+          ? `[Nhân bản từ ${quote.quote_number}] ${quote.notes}` 
+          : `Nhân bản từ ${quote.quote_number}`,
+        quote_data: quote.quote_data,
+        status: 'draft',
+        tenant_id: 'default',
+      };
+
+      const { error } = await supabase
+        .from('quotes')
+        .insert(duplicate);
+
+      if (error) throw error;
+
+      await refetchQuotes();
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+
+      toast({
+        title: "Nhân bản thành công",
+        description: `Đã tạo báo giá mới: ${newQuoteNumber}`,
+      });
+    } catch (error) {
+      console.error('Error duplicating quote:', error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể nhân bản báo giá",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Calculate stats
   const stats = [
     {
@@ -503,6 +556,13 @@ export default function QuotesPage() {
                             >
                               <Eye className="mr-2 h-4 w-4" />
                               Xem
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDuplicateQuote(quote)}
+                              className="hover:bg-primary hover:text-primary-foreground transition-colors"
+                            >
+                              <Copy className="mr-2 h-4 w-4" />
+                              Nhân bản
                             </DropdownMenuItem>
                             {hasPermission('quote_supplement') && (
                               <DropdownMenuItem
