@@ -357,19 +357,24 @@ export default function QuotesPage() {
         tenant_id: 'default',
       };
 
-      const { error } = await supabase
+      const { data: newQuote, error } = await supabase
         .from('quotes')
-        .insert(duplicate);
+        .insert(duplicate)
+        .select()
+        .single();
 
       if (error) throw error;
 
-      await refetchQuotes();
+      // Force immediate UI update
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      await refetchQuotes();
 
       toast({
         title: "Nhân bản thành công",
         description: `Đã tạo báo giá mới: ${newQuoteNumber}`,
       });
+
+      console.log('✅ Quote duplicated successfully:', newQuote);
     } catch (error) {
       console.error('Error duplicating quote:', error);
       toast({
