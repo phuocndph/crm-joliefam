@@ -365,16 +365,18 @@ export default function QuotesPage() {
 
       if (error) throw error;
 
-      // Force immediate UI update
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      await refetchQuotes();
+      console.log('✅ Quote duplicated successfully:', newQuote);
+
+      // Force immediate UI update - invalidate ALL quote queries
+      await queryClient.invalidateQueries({ 
+        queryKey: ['quotes'],
+        refetchType: 'all'
+      });
 
       toast({
         title: "Nhân bản thành công",
         description: `Đã tạo báo giá mới: ${newQuoteNumber}`,
       });
-
-      console.log('✅ Quote duplicated successfully:', newQuote);
     } catch (error) {
       console.error('Error duplicating quote:', error);
       toast({
