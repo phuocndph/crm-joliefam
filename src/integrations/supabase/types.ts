@@ -1127,6 +1127,63 @@ export type Database = {
         }
         Relationships: []
       }
+      quote_template_settings: {
+        Row: {
+          address: string | null
+          bank_info: string | null
+          company_name: string | null
+          company_title: string | null
+          company_title_color: string | null
+          created_at: string | null
+          footer_note: string | null
+          headquarters: string | null
+          id: string
+          logo_url: string | null
+          phone: string | null
+          quote_title_color: string | null
+          tax_code: string | null
+          tenant_id: string | null
+          terms: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          address?: string | null
+          bank_info?: string | null
+          company_name?: string | null
+          company_title?: string | null
+          company_title_color?: string | null
+          created_at?: string | null
+          footer_note?: string | null
+          headquarters?: string | null
+          id?: string
+          logo_url?: string | null
+          phone?: string | null
+          quote_title_color?: string | null
+          tax_code?: string | null
+          tenant_id?: string | null
+          terms?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string | null
+          bank_info?: string | null
+          company_name?: string | null
+          company_title?: string | null
+          company_title_color?: string | null
+          created_at?: string | null
+          footer_note?: string | null
+          headquarters?: string | null
+          id?: string
+          logo_url?: string | null
+          phone?: string | null
+          quote_title_color?: string | null
+          tax_code?: string | null
+          tenant_id?: string | null
+          terms?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       quotes: {
         Row: {
           assignee_id: string | null
