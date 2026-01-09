@@ -22,7 +22,7 @@ import * as ExcelJS from 'exceljs';
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
-import { getTemplateSettings } from './QuoteTemplateSettings';
+import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { QuoteSupplementDialog } from './QuoteSupplementDialog';
 
 interface QuotePreviewDialogProps {
@@ -41,7 +41,9 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   const { toast } = useToast();
   const { role: userRole } = useUserRole(user);
   const { hasPermission } = useEmployeePermissions(user, userRole);
-  const [templateSettings, setTemplateSettings] = useState(getTemplateSettings());
+  
+  // Use template settings from Supabase
+  const { settings: templateSettings, refetch: refetchTemplateSettings } = useTemplateSettings();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -49,13 +51,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     });
   }, []);
 
-  // Load template settings when dialog opens
+  // Refetch template settings when dialog opens
   useEffect(() => {
     if (open) {
-      setTemplateSettings(getTemplateSettings());
+      refetchTemplateSettings();
       setLogoError(false); // Reset logo error state when dialog opens
     }
-  }, [open]);
+  }, [open, refetchTemplateSettings]);
 
   if (!quote) return null;
 
@@ -243,10 +245,11 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       currentRow += 2;
 
-      // Date info on row 9 - merge from A to I
+      // Date info on row 9 - merge from A to I (dynamic date from quote)
+      const quoteDate = quote.created_at ? new Date(quote.created_at) : currentDate;
       worksheet.mergeCells(`A9:I9`);
       const dateCell = worksheet.getCell(`A9`);
-      dateCell.value = `Hà Nội ngày 2 tháng 8 năm 2025`;
+      dateCell.value = `Hà Nội ngày ${quoteDate.getDate()} tháng ${quoteDate.getMonth() + 1} năm ${quoteDate.getFullYear()}`;
       dateCell.font = { name: 'Times New Roman', size: 12, italic: true };
       dateCell.alignment = { horizontal: 'center' };
 
@@ -582,8 +585,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
         return;
       }
 
-      // Get template settings
-      const templateSettings = getTemplateSettings();
+      // Template settings already available from hook
       
       // Create a clean print version
       const printWindow = window.open('', '_blank');
