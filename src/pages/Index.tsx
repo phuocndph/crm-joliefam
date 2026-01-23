@@ -1,22 +1,20 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Building2, ArrowRight, Shield, Users, BarChart3, Zap } from "lucide-react";
 
 const Index = () => {
-  const navigate = useNavigate();
-
   useEffect(() => {
     // Check if user is already logged in
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        navigate("/dashboard");
+        // Use hard navigation to avoid Router-context issues during HMR
+        window.location.assign("/dashboard");
       }
     };
     checkUser();
-  }, [navigate]);
+  }, []);
 
   const features = [
     {
@@ -51,7 +49,7 @@ const Index = () => {
             <span className="text-2xl font-bold text-white">CRM Enterprise</span>
           </div>
           <Button 
-            onClick={() => navigate("/auth")} 
+            onClick={() => window.location.assign("/auth")} 
             variant="outline" 
             className="bg-white/10 border-white/20 text-white hover:bg-white/20"
           >
@@ -77,7 +75,7 @@ const Index = () => {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button 
-                onClick={() => navigate("/auth")}
+                onClick={() => window.location.assign("/auth")}
                 size="xl"
                 className="bg-white text-primary hover:bg-white/90 shadow-xl"
               >
@@ -120,7 +118,7 @@ const Index = () => {
                 <p><strong>Password:</strong> SuperAdmin123!</p>
               </div>
               <Button 
-                onClick={() => navigate("/auth")}
+                onClick={() => window.location.assign("/auth")}
                 className="mt-4 w-full bg-white text-primary hover:bg-white/90"
               >
                 Trải nghiệm ngay
