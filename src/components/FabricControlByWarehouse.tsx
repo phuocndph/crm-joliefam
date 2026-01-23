@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Badge } from '@/components/ui/badge';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
 import { Plus, Filter, Search, Package, TrendingUp, ArrowRight } from 'lucide-react';
-import { useFabricUsage, useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransfer, useUpdateInventory } from '@/hooks/useFabrics';
+import { useFabricUsage, useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransfer, useUpdateInventory, useCreateTransaction } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -38,6 +38,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   const createFabricUsage = useCreateFabricUsage();
   const createTransfer = useCreateTransfer();
   const updateInventory = useUpdateInventory();
+  const createTransaction = useCreateTransaction();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedManager, setSelectedManager] = useState('all');
   const [selectedFabricType, setSelectedFabricType] = useState('all');
@@ -334,6 +335,24 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         minimum_stock: toInventoryItem?.minimum_stock || 0,
         maximum_stock: toInventoryItem?.maximum_stock || 0
       });
+
+      // Create transfer transactions for history
+      await createTransaction.mutateAsync({
+        fabric_variant_id: fabricVariant.id,
+        warehouse_id: fromWarehouse.id,
+        transaction_type: 'transfer_out',
+        quantity: -transferQuantity,
+        notes: `Chuyển đến ${toWarehouse.name}. ${transferNotes || ''}`
+      });
+
+      await createTransaction.mutateAsync({
+        fabric_variant_id: fabricVariant.id,
+        warehouse_id: toWarehouse.id,
+        transaction_type: 'transfer_in',
+        quantity: transferQuantity,
+        notes: `Nhận từ ${fromWarehouse.name}. ${transferNotes || ''}`
+      });
+
       setSelectedFabricForTransfer('');
       setTransferQuantity(0);
       setTransferNotes('');

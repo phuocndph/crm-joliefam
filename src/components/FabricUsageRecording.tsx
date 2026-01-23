@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory } from '@/hooks/useFabrics';
+import { useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransaction } from '@/hooks/useFabrics';
 import { useOrders } from '@/hooks/useOrders';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -34,6 +34,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
   const { data: fabricInventory } = useFabricInventory();
   
   const createFabricUsage = useCreateFabricUsage();
+  const createTransaction = useCreateTransaction();
 
   const [showDialog, setShowDialog] = useState(false);
   const [formData, setFormData] = useState({
@@ -194,6 +195,15 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
         };
         console.log('=== DEBUG: Sending usage data ===', usageData);
         await createFabricUsage.mutateAsync(usageData);
+
+        // Create outbound transaction for history
+        await createTransaction.mutateAsync({
+          fabric_variant_id: fabricItem.fabric_variant_id,
+          warehouse_id: formData.warehouse_id,
+          transaction_type: 'outbound',
+          quantity: -fabricItem.quantity_used, // Negative for outbound
+          notes: `Xuất vải cho đơn hàng ${formData.order_number} - ${formData.customer_name || 'Khách hàng'}`
+        });
       }
 
       // Reset form
