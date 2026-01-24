@@ -287,14 +287,24 @@ export const FabricInventoryOverview = () => {
 
       // If transferring to Bac Ninh
       if (newInbound.transfer_to_bacninh > 0 && bacninhWarehouse) {
-        // Create transfer transaction
+        // Create transfer_out transaction from Hanoi (phải có đủ cặp transfer_out + transfer_in)
+        await createTransaction.mutateAsync({
+          fabric_variant_id: fabricVariantId,
+          warehouse_id: hanoiWarehouse.id,
+          transaction_type: 'transfer_out',
+          quantity: -newInbound.transfer_to_bacninh, // Số âm cho transfer_out
+          notes: `Chuyển đến kho Bắc Ninh`,
+          manager_id: managerId
+        });
+
+        // Create transfer_in transaction for Bac Ninh
         await createTransaction.mutateAsync({
           fabric_variant_id: fabricVariantId,
           warehouse_id: bacninhWarehouse.id,
           transaction_type: 'transfer_in',
           quantity: newInbound.transfer_to_bacninh,
           notes: `Chuyển từ kho Hà Nội`,
-          manager_id: managerId // Add manager_id
+          manager_id: managerId
         });
 
         // Update Bac Ninh inventory
