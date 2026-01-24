@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransaction } from '@/hooks/useFabrics';
+import { useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransaction, useUpdateInventory } from '@/hooks/useFabrics';
 import { useOrders } from '@/hooks/useOrders';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -35,6 +35,7 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
   
   const createFabricUsage = useCreateFabricUsage();
   const createTransaction = useCreateTransaction();
+  const updateInventory = useUpdateInventory();
 
   const [showDialog, setShowDialog] = useState(false);
   const [formData, setFormData] = useState({
@@ -195,14 +196,30 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
         };
         console.log('=== DEBUG: Sending usage data ===', usageData);
         await createFabricUsage.mutateAsync(usageData);
-
-        // Create outbound transaction for history
+        
+        // Trừ tồn kho: Tìm inventory hiện tại và trừ đi số lượng đã sử dụng
+        const currentInventory = fabricInventory?.find(inv => 
+          inv.fabric_variant_id === fabricItem.fabric_variant_id && 
+          inv.warehouse_id === formData.warehouse_id
+        );
+        
+        if (currentInventory) {
+          const newStock = Math.max(0, currentInventory.current_stock - fabricItem.quantity_used);
+          await updateInventory.mutateAsync({
+            fabric_variant_id: fabricItem.fabric_variant_id,
+            warehouse_id: formData.warehouse_id,
+            current_stock: newStock,
+            packages_count: currentInventory.packages_count || 0
+          });
+        }
+        
+        // Tạo transaction outbound để ghi nhận lịch sử (chỉ logging, không ảnh hưởng tồn kho)
         await createTransaction.mutateAsync({
           fabric_variant_id: fabricItem.fabric_variant_id,
           warehouse_id: formData.warehouse_id,
           transaction_type: 'outbound',
-          quantity: -fabricItem.quantity_used, // Negative for outbound
-          notes: `Xuất vải cho đơn hàng ${formData.order_number} - ${formData.customer_name || 'Khách hàng'}`
+          quantity: fabricItem.quantity_used, // Số dương để hiển thị số lượng xuất
+          notes: `Cắt vải cho đơn hàng ${formData.order_number} - ${formData.customer_name || 'Khách hàng'}`
         });
       }
 

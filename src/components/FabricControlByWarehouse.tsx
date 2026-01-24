@@ -47,6 +47,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [selectedFabricForTransfer, setSelectedFabricForTransfer] = useState<string>('');
   const [transferQuantity, setTransferQuantity] = useState(0);
+  const [transferPackagesCount, setTransferPackagesCount] = useState(0);
   const [transferNotes, setTransferNotes] = useState('');
   const [newUsage, setNewUsage] = useState({
     order_number: '',
@@ -314,10 +315,12 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
       const fromInventoryItem = inventory.find(item => item.fabric_variant_id === fabricVariant.id && item.warehouse_id === fromWarehouse.id);
       if (fromInventoryItem) {
         const newFromStock = Math.max(0, fromInventoryItem.current_stock - transferQuantity);
+        const newFromPackages = Math.max(0, (fromInventoryItem.packages_count || 0) - transferPackagesCount);
         await updateInventory.mutateAsync({
           fabric_variant_id: fabricVariant.id,
           warehouse_id: fromWarehouse.id,
           current_stock: newFromStock,
+          packages_count: newFromPackages,
           reserved_stock: fromInventoryItem.reserved_stock || 0,
           minimum_stock: fromInventoryItem.minimum_stock || 0,
           maximum_stock: fromInventoryItem.maximum_stock || 0
@@ -327,10 +330,12 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
       // Update inventory - add to destination warehouse
       const toInventoryItem = inventory.find(item => item.fabric_variant_id === fabricVariant.id && item.warehouse_id === toWarehouse.id);
       const newToStock = (toInventoryItem?.current_stock || 0) + transferQuantity;
+      const newToPackages = (toInventoryItem?.packages_count || 0) + transferPackagesCount;
       await updateInventory.mutateAsync({
         fabric_variant_id: fabricVariant.id,
         warehouse_id: toWarehouse.id,
         current_stock: newToStock,
+        packages_count: newToPackages,
         reserved_stock: toInventoryItem?.reserved_stock || 0,
         minimum_stock: toInventoryItem?.minimum_stock || 0,
         maximum_stock: toInventoryItem?.maximum_stock || 0
@@ -342,6 +347,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         warehouse_id: fromWarehouse.id,
         transaction_type: 'transfer_out',
         quantity: -transferQuantity,
+        packages_count: -transferPackagesCount,
         notes: `Chuyển đến ${toWarehouse.name}. ${transferNotes || ''}`
       });
 
@@ -350,11 +356,13 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         warehouse_id: toWarehouse.id,
         transaction_type: 'transfer_in',
         quantity: transferQuantity,
+        packages_count: transferPackagesCount,
         notes: `Nhận từ ${fromWarehouse.name}. ${transferNotes || ''}`
       });
 
       setSelectedFabricForTransfer('');
       setTransferQuantity(0);
+      setTransferPackagesCount(0);
       setTransferNotes('');
       setShowTransferDialog(false);
       toast({
@@ -444,6 +452,10 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
               <p className="text-xs text-muted-foreground">
                 Tồn kho hiện tại: {fabricSummaryArray.find(f => f.fabricName === selectedFabricForTransfer)?.currentWarehouse.toFixed(2) || 0}m
               </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Số kiện chuyển</Label>
+              <Input type="number" value={transferPackagesCount} onChange={e => setTransferPackagesCount(parseInt(e.target.value) || 0)} placeholder="Nhập số kiện (tùy chọn)" min={0} />
             </div>
             <div className="space-y-2">
               <Label>Ghi chú</Label>
