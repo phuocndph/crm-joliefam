@@ -1423,6 +1423,22 @@ export type Database = {
         }
         Returns: boolean
       }
+      record_fabric_usage_and_transaction: {
+        Args: {
+          p_customer_code?: string
+          p_customer_name?: string
+          p_fabric_variant_id: string
+          p_fabric_width?: string
+          p_notes?: string
+          p_order_id: string
+          p_order_number: string
+          p_order_type?: string
+          p_quantity_used: number
+          p_usage_date?: string
+          p_warehouse_id: string
+        }
+        Returns: Json
+      }
       trigger_ghn_auto_update: { Args: never; Returns: undefined }
     }
     Enums: {
