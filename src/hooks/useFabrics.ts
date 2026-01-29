@@ -648,6 +648,74 @@ export const useFabricUsageByOrder = (orderId?: string) => {
   });
 };
 
+// New atomic RPC mutation for recording fabric usage + transaction together
+export const useRecordFabricUsageAtomic = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (data: {
+      order_id: string;
+      order_number: string;
+      fabric_variant_id: string;
+      warehouse_id: string;
+      quantity_used: number;
+      customer_name?: string;
+      customer_code?: string;
+      order_type?: string;
+      fabric_width?: string;
+      usage_date?: string;
+      notes?: string;
+    }) => {
+      console.log('🔧 [RPC] record_fabric_usage_and_transaction START', data);
+      
+      const { data: result, error } = await supabase.rpc('record_fabric_usage_and_transaction', {
+        p_order_id: data.order_id,
+        p_order_number: data.order_number,
+        p_fabric_variant_id: data.fabric_variant_id,
+        p_warehouse_id: data.warehouse_id,
+        p_quantity_used: data.quantity_used,
+        p_customer_name: data.customer_name || null,
+        p_customer_code: data.customer_code || null,
+        p_order_type: data.order_type || null,
+        p_fabric_width: data.fabric_width || null,
+        p_usage_date: data.usage_date || new Date().toISOString().split('T')[0],
+        p_notes: data.notes || null
+      });
+
+      if (error) {
+        console.error('🔴 [RPC] record_fabric_usage_and_transaction ERROR:', error);
+        throw error;
+      }
+
+      // Check if the RPC returned an error in the result
+      if (result && typeof result === 'object' && 'success' in result) {
+        const rpcResult = result as { success: boolean; error?: string; error_code?: string; hint?: string };
+        if (!rpcResult.success) {
+          console.error('🔴 [RPC] record_fabric_usage_and_transaction FAILED:', rpcResult);
+          const errorMessage = rpcResult.error || 'Unknown error';
+          const errorWithDetails = new Error(errorMessage) as Error & { code?: string; hint?: string };
+          errorWithDetails.code = rpcResult.error_code;
+          errorWithDetails.hint = rpcResult.hint;
+          throw errorWithDetails;
+        }
+      }
+
+      console.log('✅ [RPC] record_fabric_usage_and_transaction SUCCESS:', result);
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
+      queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['fabric-transactions'] });
+      toast({ title: "Thành công", description: "Đã ghi nhận sử dụng vải" });
+    },
+    onError: (error: Error & { code?: string; hint?: string }) => {
+      console.error('🔴 [Mutation] useRecordFabricUsageAtomic ERROR:', error);
+      // Don't show toast here - let the component handle it for detailed display
+    },
+  });
+};
+
 export const useCreateFabricUsage = () => {
   const queryClient = useQueryClient();
   

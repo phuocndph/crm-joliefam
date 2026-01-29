@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransaction } from '@/hooks/useFabrics';
+import { useFabricVariants, useWarehouses, useFabricInventory, useRecordFabricUsageAtomic } from '@/hooks/useFabrics';
 import { useOrders } from '@/hooks/useOrders';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -33,8 +33,8 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
   const { data: orders } = useOrders();
   const { data: fabricInventory } = useFabricInventory();
   
-  const createFabricUsage = useCreateFabricUsage();
-  const createTransaction = useCreateTransaction();
+  // Use the new atomic RPC mutation
+  const recordFabricUsage = useRecordFabricUsageAtomic();
 
   const [showDialog, setShowDialog] = useState(false);
   const [formData, setFormData] = useState({
@@ -155,6 +155,19 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
     console.log('=== DEBUG: Form submission started ===');
     console.log('Form data:', formData);
     
+    // Check session first
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      console.error('Session error:', sessionError);
+      toast({ 
+        title: "Phiên đăng nhập hết hạn", 
+        description: "Vui lòng đăng nhập lại để tiếp tục.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    // Validate required fields
     if (!formData.order_number || !formData.warehouse_id || formData.fabricItems.some(item => !item.fabric_variant_id || item.quantity_used <= 0)) {
       toast({ 
         title: "Lỗi", 
@@ -162,6 +175,13 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
         variant: "destructive" 
       });
       return;
+    }
+
+    // Ensure order_id is a valid UUID - generate one if not found
+    let orderId = formData.order_id;
+    if (!orderId) {
+      orderId = crypto.randomUUID();
+      console.log('Generated new order_id:', orderId);
     }
 
     // Check inventory for each fabric item
@@ -178,31 +198,22 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
     }
 
     try {
-      // Create multiple fabric usage records for each fabric item
+      // Use the atomic RPC for each fabric item
       for (const fabricItem of formData.fabricItems) {
-        const usageData = {
-          order_id: formData.order_id || null, // Send null instead of empty string
+        console.log('=== DEBUG: Recording fabric usage for item ===', fabricItem);
+        
+        await recordFabricUsage.mutateAsync({
+          order_id: orderId,
           order_number: formData.order_number,
           fabric_variant_id: fabricItem.fabric_variant_id,
           warehouse_id: formData.warehouse_id,
           quantity_used: fabricItem.quantity_used,
-          customer_name: formData.customer_name,
-          customer_code: formData.order_category, // Use order_category
-          order_type: formData.order_type,
-          fabric_width: null,
+          customer_name: formData.customer_name || undefined,
+          customer_code: formData.order_category || undefined,
+          order_type: formData.order_type || undefined,
+          fabric_width: undefined,
           usage_date: formData.usage_date,
-          notes: formData.notes
-        };
-        console.log('=== DEBUG: Sending usage data ===', usageData);
-        await createFabricUsage.mutateAsync(usageData);
-
-        // Create outbound transaction for history
-        await createTransaction.mutateAsync({
-          fabric_variant_id: fabricItem.fabric_variant_id,
-          warehouse_id: formData.warehouse_id,
-          transaction_type: 'outbound',
-          quantity: -fabricItem.quantity_used, // Negative for outbound
-          notes: `Xuất vải cho đơn hàng ${formData.order_number} - ${formData.customer_name || 'Khách hàng'}`
+          notes: formData.notes || `Xuất vải cho đơn hàng ${formData.order_number} - ${formData.customer_name || 'Khách hàng'}`
         });
       }
 
@@ -228,11 +239,32 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
       
       setShowDialog(false);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error recording fabric usage:', error);
+      
+      // Build detailed error message
+      let errorMessage = 'Có lỗi xảy ra khi ghi nhận sử dụng vải';
+      let errorDetails = '';
+      
+      if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      if (error?.code) {
+        errorDetails += `\nMã lỗi: ${error.code}`;
+      }
+      
+      if (error?.hint) {
+        errorDetails += `\nGợi ý: ${error.hint}`;
+      }
+      
+      if (error?.details) {
+        errorDetails += `\nChi tiết: ${error.details}`;
+      }
+      
       toast({ 
-        title: "Lỗi", 
-        description: "Có lỗi xảy ra khi ghi nhận sử dụng vải", 
+        title: "Lỗi ghi nhận", 
+        description: errorMessage + errorDetails,
         variant: "destructive" 
       });
     }
@@ -426,8 +458,8 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                 <Button variant="outline" onClick={() => setShowDialog(false)}>
                   Hủy
                 </Button>
-                <Button onClick={handleSubmit} disabled={createFabricUsage.isPending}>
-                  {createFabricUsage.isPending ? "Đang ghi nhận..." : "Ghi nhận"}
+                <Button onClick={handleSubmit} disabled={recordFabricUsage.isPending}>
+                  {recordFabricUsage.isPending ? "Đang ghi nhận..." : "Ghi nhận"}
                 </Button>
               </div>
             </DialogContent>
