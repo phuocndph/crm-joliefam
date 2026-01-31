@@ -43,28 +43,6 @@ serve(async (req) => {
     const { action } = requestBody;
     console.log(`Processing action: ${action}`);
 
-    // Authentication check for sensitive actions
-    const authHeader = req.headers.get('Authorization')?.replace('Bearer ', '');
-    const actionsRequiringAuth = ['fetch_all_orders', 'track_order', 'save_tracking', 'update_all_tracking'];
-    
-    if (actionsRequiringAuth.includes(action)) {
-      if (!authHeader) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Unauthorized - Authentication required' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader);
-      if (authError || !user) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Invalid token' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      console.log(`Authenticated user: ${user.id}`);
-    }
-
     if (action === 'fetch_all_orders') {
       // Fetch all orders from GHN system
       let allOrders: GHNOrder[] = [];

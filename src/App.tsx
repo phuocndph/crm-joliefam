@@ -1,8 +1,7 @@
 import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import { SafeTooltipProvider } from "@/components/ui/safe-tooltip-provider";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -27,13 +26,10 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Wrapper component to handle layout selection
-const LayoutWrapper = () => {
+const AppRoutes = () => {
   const isMobile = useIsMobile();
-  return isMobile ? <MobileLayout /> : <MainLayout />;
-};
+  const LayoutComponent = isMobile ? MobileLayout : MainLayout;
 
-const AppContent = () => {
   useEffect(() => {
     // Set up session refresh
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -77,7 +73,7 @@ const AppContent = () => {
     <Routes>
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<Auth />} />
-      <Route element={<LayoutWrapper />}>
+      <Route path="/" element={<LayoutComponent />}>
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="user-management" element={<UserManagement />} />
         <Route path="customers" element={<CustomerManagement />} />
@@ -98,17 +94,15 @@ const AppContent = () => {
 };
 
 const App = () => (
-  <ErrorBoundary>
-    <QueryClientProvider client={queryClient}>
-      <SafeTooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AppContent />
-        </BrowserRouter>
-      </SafeTooltipProvider>
-    </QueryClientProvider>
-  </ErrorBoundary>
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
 );
 
 export default App;

@@ -163,11 +163,7 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
           <CommandList className="max-h-[300px] overflow-y-auto">
             <CommandEmpty>Không tìm thấy loại vải phù hợp.</CommandEmpty>
             {Object.entries(groupedVariants).map(([typeName, variants]) => (
-              <CommandGroup 
-                key={typeName} 
-                heading={typeName}
-                className="border-b border-border/50 last:border-b-0 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-primary [&_[cmdk-group-heading]]:bg-muted/50 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:rounded-sm [&_[cmdk-group-heading]]:mb-1"
-              >
+              <CommandGroup key={typeName} heading={typeName}>
                 {variants.map((variant) => {
                   const stock = getStock(variant.id);
                   return (
@@ -175,25 +171,21 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
                       key={variant.id}
                       value={variant.id}
                       onSelect={() => handleSelect(variant.id)}
-                      className="cursor-pointer py-2"
+                      className="cursor-pointer"
                     >
                       <Check
                         className={cn(
-                          'mr-2 h-4 w-4 shrink-0',
-                          value === variant.id ? 'opacity-100 text-primary' : 'opacity-0'
+                          'mr-2 h-4 w-4',
+                          value === variant.id ? 'opacity-100' : 'opacity-0'
                         )}
                       />
-                      <div className="flex items-center justify-between w-full">
-                        <span className="font-medium text-foreground truncate">
-                          {variant.variant_name}
-                        </span>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{variant.variant_name}</span>
                         <span className={cn(
-                          'ml-2 text-xs font-medium px-2 py-0.5 rounded-full shrink-0',
-                          stock > 0 
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
-                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                          'text-xs',
+                          stock > 0 ? 'text-muted-foreground' : 'text-destructive'
                         )}>
-                          {stock}m
+                          Còn lại: {stock}m
                         </span>
                       </div>
                     </CommandItem>
