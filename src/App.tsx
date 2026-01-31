@@ -4,8 +4,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { SafeTooltipProvider } from "@/components/SafeTooltipProvider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ThemeProvider } from "next-themes";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -25,6 +27,32 @@ import MobileLayout from "./components/layout/MobileLayout";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+// Fallback UI khi app crash
+const AppErrorFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="text-center space-y-4 max-w-md">
+      <h1 className="text-2xl font-bold text-foreground">Đã xảy ra lỗi</h1>
+      <p className="text-muted-foreground">
+        Ứng dụng gặp sự cố. Vui lòng tải lại trang.
+      </p>
+      <button
+        onClick={() => {
+          // Clear caches and reload
+          if ('caches' in window) {
+            caches.keys().then(names => {
+              names.forEach(name => caches.delete(name));
+            });
+          }
+          window.location.reload();
+        }}
+        className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+      >
+        Tải lại trang
+      </button>
+    </div>
+  </div>
+);
 
 const AppRoutes = () => {
   const isMobile = useIsMobile();
@@ -96,13 +124,17 @@ const AppRoutes = () => {
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <SafeTooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </SafeTooltipProvider>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <SafeTooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <ErrorBoundary fallback={<AppErrorFallback />}>
+              <AppRoutes />
+            </ErrorBoundary>
+          </BrowserRouter>
+        </SafeTooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 };

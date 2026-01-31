@@ -21,4 +21,8 @@ export default defineConfig(({ mode }) => ({
     // Prevent duplicate React instances (fixes: Invalid hook call / useState null)
     dedupe: ["react", "react-dom", "react/jsx-runtime"],
   },
+  optimizeDeps: {
+    // Force Vite to pre-bundle React as a single instance
+    include: ["react", "react-dom", "react/jsx-runtime"],
+  },
 }));
