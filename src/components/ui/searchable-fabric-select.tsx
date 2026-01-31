@@ -72,19 +72,51 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
     return `${typeName} - ${variant.variant_name} - Còn lại: ${stock}m`;
   };
 
-  // Filter and sort variants as a flat list
-  const sortedVariants = useMemo(() => {
-    if (!fabricVariants) return [];
+  // Group variants by fabric type and filter by search term
+  const groupedVariants = useMemo(() => {
+    if (!fabricVariants) return {};
 
     const normalizedSearch = removeAccents(searchTerm.toLowerCase().trim());
 
-    return fabricVariants
-      .filter((variant) => {
-        if (!normalizedSearch) return true;
-        const normalizedName = removeAccents(variant.variant_name.toLowerCase());
-        return normalizedName.includes(normalizedSearch);
-      })
-      .sort((a, b) => a.variant_name.localeCompare(b.variant_name, 'vi'));
+    const filtered = fabricVariants.filter((variant) => {
+      if (!normalizedSearch) return true;
+
+      const normalizedName = removeAccents(variant.variant_name.toLowerCase());
+      const normalizedType = removeAccents(
+        variant.fabric_types?.name?.toLowerCase() || ''
+      );
+      const normalizedWidth = removeAccents(
+        (variant.width_code || '').toLowerCase()
+      );
+
+      return (
+        normalizedName.includes(normalizedSearch) ||
+        normalizedType.includes(normalizedSearch) ||
+        normalizedWidth.includes(normalizedSearch)
+      );
+    });
+
+    // Group by fabric type
+    const grouped: Record<string, FabricVariant[]> = {};
+    filtered.forEach((variant) => {
+      const typeName = variant.fabric_types?.name || 'Khác';
+      if (!grouped[typeName]) {
+        grouped[typeName] = [];
+      }
+      grouped[typeName].push(variant);
+    });
+
+    // Sort groups alphabetically
+    const sortedGrouped: Record<string, FabricVariant[]> = {};
+    Object.keys(grouped)
+      .sort((a, b) => a.localeCompare(b, 'vi'))
+      .forEach((key) => {
+        sortedGrouped[key] = grouped[key].sort((a, b) =>
+          a.variant_name.localeCompare(b.variant_name, 'vi')
+        );
+      });
+
+    return sortedGrouped;
   }, [fabricVariants, searchTerm]);
 
   // Find selected variant
@@ -130,39 +162,37 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
           </div>
           <CommandList className="max-h-[300px] overflow-y-auto">
             <CommandEmpty>Không tìm thấy loại vải phù hợp.</CommandEmpty>
-            <CommandGroup>
-              {sortedVariants.map((variant) => {
-                const stock = getStock(variant.id);
-                return (
-                  <CommandItem
-                    key={variant.id}
-                    value={variant.id}
-                    onSelect={() => handleSelect(variant.id)}
-                    className="cursor-pointer py-2"
-                  >
-                    <Check
-                      className={cn(
-                        'mr-2 h-4 w-4 shrink-0',
-                        value === variant.id ? 'opacity-100 text-primary' : 'opacity-0'
-                      )}
-                    />
-                    <div className="flex items-center justify-between w-full">
-                      <span className="font-medium text-foreground truncate">
-                        {variant.variant_name}
-                      </span>
-                      <span className={cn(
-                        'ml-2 text-xs font-medium px-2 py-0.5 rounded-full shrink-0',
-                        stock > 0 
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
-                          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                      )}>
-                        {stock}m
-                      </span>
-                    </div>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
+            {Object.entries(groupedVariants).map(([typeName, variants]) => (
+              <CommandGroup key={typeName} heading={typeName}>
+                {variants.map((variant) => {
+                  const stock = getStock(variant.id);
+                  return (
+                    <CommandItem
+                      key={variant.id}
+                      value={variant.id}
+                      onSelect={() => handleSelect(variant.id)}
+                      className="cursor-pointer"
+                    >
+                      <Check
+                        className={cn(
+                          'mr-2 h-4 w-4',
+                          value === variant.id ? 'opacity-100' : 'opacity-0'
+                        )}
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-medium">{variant.variant_name}</span>
+                        <span className={cn(
+                          'text-xs',
+                          stock > 0 ? 'text-muted-foreground' : 'text-destructive'
+                        )}>
+                          Còn lại: {stock}m
+                        </span>
+                      </div>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            ))}
           </CommandList>
         </Command>
       </PopoverContent>
