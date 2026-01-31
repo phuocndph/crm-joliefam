@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { useFabricTypes, useCreateFabricType, useUpdateFabricType, useDeleteFabricType, useFabricVariants, useCreateFabricVariant } from '@/hooks/useFabrics';
+import { useFabricTypes, useCreateFabricType, useUpdateFabricType, useDeleteFabricType, useFabricVariants } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 
 export const FabricTypeManagement = () => {
@@ -17,7 +17,6 @@ export const FabricTypeManagement = () => {
   const createFabricType = useCreateFabricType();
   const updateFabricType = useUpdateFabricType();
   const deleteFabricType = useDeleteFabricType();
-  const createFabricVariant = useCreateFabricVariant();
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingType, setEditingType] = useState<any>(null);
@@ -47,21 +46,8 @@ export const FabricTypeManagement = () => {
         });
         toast({ title: "Thành công", description: "Đã cập nhật loại vải" });
       } else {
-        // Create new fabric type
-        const newType = await createFabricType.mutateAsync(formData);
-        
-        // Auto-create corresponding fabric variant
-        try {
-          await createFabricVariant.mutateAsync({
-            fabric_type_id: newType.id,
-            variant_name: formData.name,
-            unit: 'm'
-          });
-          toast({ title: "Thành công", description: "Đã thêm loại vải mới và tạo biến thể tương ứng" });
-        } catch (variantError) {
-          console.error('Error creating variant:', variantError);
-          toast({ title: "Thành công", description: "Đã thêm loại vải mới (lưu ý: chưa tạo được biến thể)" });
-        }
+        await createFabricType.mutateAsync(formData);
+        toast({ title: "Thành công", description: "Đã thêm loại vải mới" });
       }
       
       setFormData({ name: '', description: '' });
@@ -106,23 +92,11 @@ export const FabricTypeManagement = () => {
 
   const handleQuickAdd = async (fabricName: string) => {
     try {
-      const newType = await createFabricType.mutateAsync({
+      await createFabricType.mutateAsync({
         name: fabricName,
         description: `Loại vải ${fabricName}`
       });
-      
-      // Auto-create corresponding variant
-      try {
-        await createFabricVariant.mutateAsync({
-          fabric_type_id: newType.id,
-          variant_name: fabricName,
-          unit: 'm'
-        });
-        toast({ title: "Thành công", description: `Đã thêm loại vải ${fabricName} và tạo biến thể tương ứng` });
-      } catch (variantError) {
-        console.error('Error creating variant:', variantError);
-        toast({ title: "Thành công", description: `Đã thêm loại vải ${fabricName} (lưu ý: chưa tạo được biến thể)` });
-      }
+      toast({ title: "Thành công", description: `Đã thêm loại vải ${fabricName}` });
     } catch (error) {
       console.error('Error:', error);
       toast({ title: "Lỗi", description: "Không thể thêm loại vải", variant: "destructive" });
