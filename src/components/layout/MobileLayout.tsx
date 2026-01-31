@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useNavigate, Outlet, useLocation } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Button } from "@/components/ui/button";
@@ -9,27 +9,26 @@ import { Building2, LogOut, Settings, Bell, User, Key, Menu, Home, Users2, Packa
 import { toast } from "@/hooks/use-toast";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import { cn } from "@/lib/utils";
+
 const MobileLayout = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const navigate = useNavigate();
   const location = useLocation();
-  const {
-    role: userRole,
-    loading: roleLoading
-  } = useUserRole(user);
+  const { role: userRole, loading: roleLoading } = useUserRole(user);
+
+  // Safe navigation function using window.location
+  const safeNavigate = useCallback((path: string) => {
+    window.location.assign(path);
+  }, []);
+
   useEffect(() => {
     // Get current user
     const getUser = async () => {
-      const {
-        data: {
-          session
-        }
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        navigate("/auth");
+        window.location.assign("/auth");
         return;
       }
       setUser(session.user);
@@ -38,19 +37,16 @@ const MobileLayout = () => {
     getUser();
 
     // Listen for auth changes
-    const {
-      data: {
-        subscription
-      }
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || !session) {
-        navigate("/auth");
+        window.location.assign("/auth");
       } else if (session) {
         setUser(session.user);
       }
     });
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, []);
+
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut();
@@ -58,7 +54,7 @@ const MobileLayout = () => {
         title: "Đăng xuất thành công",
         description: "Hẹn gặp lại bạn!"
       });
-      navigate("/auth");
+      window.location.assign("/auth");
     } catch (error: any) {
       toast({
         title: "Lỗi đăng xuất",
@@ -225,7 +221,7 @@ const MobileLayout = () => {
                     {/* Menu Items */}
                     <div className="space-y-2">
                       {menuItems.map((menuItem, idx) => <Button key={idx} variant="ghost" className={cn("w-full justify-start h-12 px-4", isActive(menuItem.path) && "bg-sidebar-accent text-sidebar-accent-foreground")} onClick={() => {
-                  navigate(menuItem.path);
+                  safeNavigate(menuItem.path);
                   setIsMenuOpen(false);
                 }}>
                           <menuItem.icon className="h-5 w-5 mr-3" />
@@ -241,7 +237,7 @@ const MobileLayout = () => {
                     </div>
                   </div>
                 </SheetContent>
-              </Sheet> : <Button key={index} variant="ghost" size="sm" className={cn("flex flex-col items-center gap-1 h-12 px-3 rounded-lg", isActive(item.path) && "bg-sidebar-accent text-sidebar-accent-foreground", "hover:bg-sidebar-accent")} onClick={() => navigate(item.path)}>
+              </Sheet> : <Button key={index} variant="ghost" size="sm" className={cn("flex flex-col items-center gap-1 h-12 px-3 rounded-lg", isActive(item.path) && "bg-sidebar-accent text-sidebar-accent-foreground", "hover:bg-sidebar-accent")} onClick={() => safeNavigate(item.path)}>
                 <item.icon className="h-5 w-5" />
                 <span className="text-xs font-medium">{item.label}</span>
               </Button>)}
@@ -250,9 +246,9 @@ const MobileLayout = () => {
 
       {/* Floating Action Button for Quick Actions */}
       <Button size="icon" className="fixed bottom-24 right-4 h-14 w-14 rounded-full shadow-lg z-40" onClick={() => {
-      // Quick action menu - could expand this
-      navigate("/customers?new=true");
-    }}>
+        // Quick action menu - could expand this
+        safeNavigate("/customers?new=true");
+      }}>
         <Plus className="h-6 w-6" />
       </Button>
       
