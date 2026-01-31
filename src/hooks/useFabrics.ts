@@ -99,12 +99,17 @@ export const useFabricTypes = () => {
   return useQuery({
     queryKey: ['fabric-types'],
     queryFn: async () => {
+      console.log('📊 [useFabricTypes] Fetching fabric types...');
       const { data, error } = await supabase
         .from('fabric_types')
         .select('*')
         .order('name');
       
-      if (error) throw error;
+      if (error) {
+        console.error('🔴 [useFabricTypes] Error:', error);
+        throw error;
+      }
+      console.log('✅ [useFabricTypes] Fetched', data?.length || 0, 'fabric types');
       return data;
     },
     staleTime: 0,
@@ -184,6 +189,7 @@ export const useFabricVariants = () => {
   return useQuery({
     queryKey: ['fabric-variants'],
     queryFn: async () => {
+      console.log('📊 [useFabricVariants] Fetching fabric variants...');
       const { data, error } = await supabase
         .from('fabric_variants')
         .select(`
@@ -192,7 +198,11 @@ export const useFabricVariants = () => {
         `)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('🔴 [useFabricVariants] Error:', error);
+        throw error;
+      }
+      console.log('✅ [useFabricVariants] Fetched', data?.length || 0, 'fabric variants');
       return data;
     },
     staleTime: 0,
@@ -306,6 +316,7 @@ export const useFabricInventory = () => {
   return useQuery({
     queryKey: ['fabric-inventory'],
     queryFn: async () => {
+      console.log('📊 [useFabricInventory] Fetching fabric inventory...');
       const { data, error } = await supabase
         .from('fabric_inventory')
         .select(`
@@ -318,7 +329,11 @@ export const useFabricInventory = () => {
         `)
         .order('last_updated', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('🔴 [useFabricInventory] Error:', error);
+        throw error;
+      }
+      console.log('✅ [useFabricInventory] Fetched', data?.length || 0, 'inventory records');
       return data;
     },
     staleTime: 0,
