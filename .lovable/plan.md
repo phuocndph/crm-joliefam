@@ -1,135 +1,89 @@
 
 
-## Vấn đề: Preview Editor dùng code cũ (cached)
+## Đơn giản hóa Dropdown chọn loại vải
 
-### Phân tích nguyên nhân gốc
+### Vấn đề hiện tại
 
-Từ stack trace lỗi runtime:
+Từ hình ảnh bạn cung cấp, dropdown đang hiển thị trùng lặp:
+- Heading danh mục: "110g - kem" 
+- Tên biến thể bên dưới: "110g - kem"
+
+Điều này gây rối mắt và không cần thiết vì tên danh mục và tên biến thể thường giống nhau.
+
+### Giải pháp
+
+Bỏ hoàn toàn phần nhóm theo danh mục (`CommandGroup` với heading), chỉ hiển thị danh sách phẳng các loại vải.
+
+### Kết quả mong đợi
+
+**Trước:**
 ```
-at Auth (https://...project.com/src/pages/Auth.tsx:29:22)
+110g - kem              ← heading danh mục
+  110g - kem    638.51m ← item
+  
+110g Trắng              ← heading danh mục  
+  110g Trắng       0m   ← item
 ```
 
-Dòng 29 trong **code cũ** là: `const navigate = useNavigate();`
-Trong khi **code mới** đã xóa dòng này hoàn toàn.
-
-**Kết luận**: Preview Editor đang serve phiên bản code cũ của `Auth.tsx`, HMR không cập nhật đúng.
+**Sau:**
+```
+110g - kem       638.51m
+110g Trắng           0m
+120g Trắng           0m
+Chống thấm chần      0m
+...
+```
 
 ---
 
-## Giải pháp
+### Chi tiết kỹ thuật
 
-### Bước 1: Force hard refresh cho Preview
-
-Yêu cầu người dùng thực hiện hard refresh trong Preview:
-- **Windows**: Ctrl + Shift + R
-- **Mac**: Cmd + Shift + R
-
-### Bước 2: Thêm cấu hình Vite để đảm bảo HMR hoạt động đúng
-
-Cập nhật `vite.config.ts` để thêm cấu hình HMR rõ ràng hơn và optimizeDeps để force re-bundle:
-
-```typescript
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react-swc";
-import path from "path";
-import { componentTagger } from "lovable-tagger";
-
-export default defineConfig(({ mode }) => ({
-  server: {
-    host: "::",
-    port: 8080,
-    hmr: {
-      overlay: true,
-    },
-  },
-  plugins: [
-    react(),
-    mode === 'development' && componentTagger(),
-  ].filter(Boolean),
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-    dedupe: ['react', 'react-dom', 'react-router-dom'],
-  },
-  optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom'],
-    force: true, // Force re-optimization
-  },
-}));
-```
-
-### Bước 3: Sửa triệt để MainLayout và MobileLayout
-
-Mặc dù lỗi hiện tại đến từ cache, các file `MainLayout.tsx` và `MobileLayout.tsx` vẫn còn sử dụng `useNavigate()`. Cần sửa để tránh lỗi tương tự trong tương lai.
-
-**MainLayout.tsx** - Thay đổi:
-- Xóa `useNavigate()` import và khai báo
-- Thay `navigate("/auth")` bằng `window.location.assign("/auth")`
-- Giữ lại `useNavigate` cho các navigation trong app (sau khi đã authenticated) nếu cần, hoặc thay hết
-
-**MobileLayout.tsx** - Tương tự:
-- Thay các `navigate()` calls bằng `window.location.assign()`
-
----
-
-## File cần chỉnh sửa
+#### File cần chỉnh sửa
 
 | File | Thay đổi |
 |------|----------|
-| `vite.config.ts` | Thêm `optimizeDeps.force: true` và cấu hình HMR rõ ràng |
-| `src/components/layout/MainLayout.tsx` | Thay `useNavigate()` bằng `window.location.assign()` cho auth-related navigation |
-| `src/components/layout/MobileLayout.tsx` | Thay `useNavigate()` bằng `window.location.assign()` cho auth-related navigation |
+| `src/components/ui/searchable-fabric-select.tsx` | Bỏ grouping, hiển thị danh sách phẳng |
 
----
+#### Thay đổi logic:
 
-## Chi tiết kỹ thuật
+**Trước:** Nhóm variants theo `fabric_types.name`, render mỗi nhóm trong `CommandGroup` với heading
 
-### MainLayout.tsx - Thay đổi cần thực hiện
+**Sau:** Render trực tiếp tất cả variants trong một `CommandGroup` duy nhất không có heading
 
-```typescript
-// TRƯỚC (dòng 24, 32, 44, 60)
-const navigate = useNavigate();
-navigate("/auth");
+```tsx
+// Thay vì groupedVariants và nhiều CommandGroup
+// Chỉ cần một danh sách phẳng đã sắp xếp
 
-// SAU
-// Xóa const navigate = useNavigate();
-window.location.assign("/auth");
+const sortedVariants = useMemo(() => {
+  if (!fabricVariants) return [];
+  
+  const normalizedSearch = removeAccents(searchTerm.toLowerCase().trim());
+  
+  return fabricVariants
+    .filter((variant) => {
+      if (!normalizedSearch) return true;
+      const normalizedName = removeAccents(variant.variant_name.toLowerCase());
+      return normalizedName.includes(normalizedSearch);
+    })
+    .sort((a, b) => a.variant_name.localeCompare(b.variant_name, 'vi'));
+}, [fabricVariants, searchTerm]);
 ```
 
-Các vị trí cần thay:
-- Dòng 32: `navigate("/auth")` → `window.location.assign("/auth")`
-- Dòng 44: `navigate("/auth")` → `window.location.assign("/auth")`  
-- Dòng 60: `navigate("/auth")` → `window.location.assign("/auth")`
+---
 
-### MobileLayout.tsx - Thay đổi cần thực hiện
+### Tiêu chí hoàn thành
 
-Tương tự, thay các `navigate("/auth")` bằng `window.location.assign("/auth")`.
-
-Các vị trí cần thay:
-- Dòng 32: `navigate("/auth")` → `window.location.assign("/auth")`
-- Dòng 47: `navigate("/auth")` → `window.location.assign("/auth")`
-- Dòng 61: `navigate("/auth")` → `window.location.assign("/auth")`
-
-Các navigation khác trong app (như `navigate("/customers")`, `navigate(menuItem.path)`) có thể giữ nguyên vì chúng được gọi sau khi user đã authenticated và Router context ổn định.
+1. Dropdown hiển thị danh sách phẳng, không có heading danh mục
+2. Mỗi item chỉ hiển thị: **Tên loại vải** + **Badge số lượng tồn**
+3. Danh sách được sắp xếp theo alphabet
+4. Tìm kiếm vẫn hoạt động bình thường
 
 ---
 
-## Kết quả mong đợi
+### Kiểm tra sau triển khai
 
-1. Không còn lỗi "useNavigate() may be used only in the context of a Router component"
-2. Preview Editor hoạt động bình thường không còn màn hình trắng
-3. HMR cập nhật đúng khi sửa code
-4. Đăng nhập/đăng xuất hoạt động ổn định
-
----
-
-## Kiểm tra sau triển khai
-
-1. Hard refresh Preview (Ctrl+Shift+R)
-2. Mở trang `/` → phải hiển thị landing page
-3. Click "Đăng nhập" → chuyển đến `/auth` không lỗi
-4. Đăng nhập → chuyển đến `/dashboard` thành công
-5. Đăng xuất → quay lại `/auth` không lỗi
-6. Thử edit 1 file bất kỳ và save → HMR cập nhật không bị trắng màn hình
+1. Mở form "Ghi nhận sử dụng vải"
+2. Click dropdown chọn loại vải
+3. Xác nhận không còn heading danh mục trùng lặp
+4. Thử tìm kiếm loại vải để đảm bảo vẫn hoạt động
 
