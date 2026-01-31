@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Outlet } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -21,7 +21,6 @@ const MainLayout = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
-  const navigate = useNavigate();
   const { role: userRole, loading: roleLoading } = useUserRole(user);
 
   useEffect(() => {
@@ -29,7 +28,7 @@ const MainLayout = () => {
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        navigate("/auth");
+        window.location.assign("/auth");
         return;
       }
       setUser(session.user);
@@ -41,14 +40,14 @@ const MainLayout = () => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || !session) {
-        navigate("/auth");
+        window.location.assign("/auth");
       } else if (session) {
         setUser(session.user);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, []);
 
   const handleSignOut = async () => {
     try {
@@ -57,7 +56,7 @@ const MainLayout = () => {
         title: "Đăng xuất thành công",
         description: "Hẹn gặp lại bạn!",
       });
-      navigate("/auth");
+      window.location.assign("/auth");
     } catch (error: any) {
       toast({
         title: "Lỗi đăng xuất",
