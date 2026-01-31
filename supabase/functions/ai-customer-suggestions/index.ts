@@ -13,12 +13,29 @@ serve(async (req) => {
   }
 
   try {
-    const { customer, action_type = 'next_action' } = await req.json()
+    // Authentication check
+    const authHeader = req.headers.get('Authorization')?.replace('Bearer ', '');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized', suggestion: 'Liên hệ tư vấn' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    const supabaseClient = createClient(
+    const supabaseAdmin = createClient(
       'https://kmxfljxsmnozvvgypdei.supabase.co',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    )
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(authHeader);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid token', suggestion: 'Liên hệ tư vấn' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { customer, action_type = 'next_action' } = await req.json()
 
     // Get the Gemini API key
     const geminiApiKey = Deno.env.get('GOOGLE_GEMINI_API_KEY')
