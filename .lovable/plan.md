@@ -1,95 +1,75 @@
 
 
-## Vấn đề: Màn hình trắng với lỗi "Router context"
+## Vấn đề: Preview Editor dùng code cũ (cached)
 
-### Nguyên nhân đã xác định
+### Phân tích nguyên nhân gốc
 
-Sau khi kiểm tra các file, tôi phát hiện **nguyên nhân chính xác**:
-
-**File `src/pages/Auth.tsx` đang sử dụng `useNavigate()` hook (dòng 19, 26, 49)**, trong khi các component quan trọng khác như `Index.tsx` và `MainLayout.tsx` đã được chuyển sang sử dụng `window.location.assign()` để tránh lỗi này.
-
-Lỗi xảy ra do:
-1. Trong quá trình Hot Module Replacement (HMR) hoặc khi có race condition
-2. React Router context có thể bị mất trước khi component render xong
-3. `useNavigate()` được gọi khi component chưa có Router context
-
-### So sánh cách tiếp cận
-
-| Component | Hiện tại | Trạng thái |
-|-----------|----------|-----------|
-| `Index.tsx` | `window.location.assign()` | ✅ An toàn |
-| `MainLayout.tsx` | `window.location.assign()` | ✅ An toàn |
-| `MobileLayout.tsx` | `window.location.assign()` | ✅ An toàn |
-| **`Auth.tsx`** | **`useNavigate()`** | ❌ **Gây lỗi** |
-
-### Vấn đề phụ trong `vite.config.ts`
-
-File `vite.config.ts` hiện tại **thiếu cấu hình dedupe React** để đảm bảo chỉ có một instance React:
-
-```typescript
-// Hiện tại: Không có dedupe
-resolve: {
-  alias: {
-    "@": path.resolve(__dirname, "./src"),
-  },
-}
-
-// Nên thêm:
-resolve: {
-  alias: {
-    "@": path.resolve(__dirname, "./src"),
-  },
-  dedupe: ['react', 'react-dom', 'react-router-dom'],
-}
+Từ stack trace lỗi runtime:
 ```
+at Auth (https://...project.com/src/pages/Auth.tsx:29:22)
+```
+
+Dòng 29 trong **code cũ** là: `const navigate = useNavigate();`
+Trong khi **code mới** đã xóa dòng này hoàn toàn.
+
+**Kết luận**: Preview Editor đang serve phiên bản code cũ của `Auth.tsx`, HMR không cập nhật đúng.
 
 ---
 
-## Kế hoạch sửa lỗi
+## Giải pháp
 
-### Bước 1: Sửa Auth.tsx - Thay useNavigate bằng window.location.assign
+### Bước 1: Force hard refresh cho Preview
 
-**Thay đổi cần thực hiện:**
+Yêu cầu người dùng thực hiện hard refresh trong Preview:
+- **Windows**: Ctrl + Shift + R
+- **Mac**: Cmd + Shift + R
 
-1. Xóa import và khai báo `useNavigate`:
-```typescript
-// XÓA dòng này
-import { useNavigate } from "react-router-dom";
-// XÓA dòng này  
-const navigate = useNavigate();
-```
+### Bước 2: Thêm cấu hình Vite để đảm bảo HMR hoạt động đúng
 
-2. Thay đổi các lệnh điều hướng:
-```typescript
-// Dòng 26: Thay
-navigate("/dashboard");
-// Thành
-window.location.assign("/dashboard");
-
-// Dòng 49: Thay
-navigate("/dashboard");
-// Thành  
-window.location.assign("/dashboard");
-```
-
-3. Xóa `navigate` khỏi dependency array của useEffect (dòng 30)
-
-### Bước 2: Cập nhật vite.config.ts - Thêm dedupe
-
-Thêm cấu hình `dedupe` để đảm bảo chỉ có một instance của React và React Router:
+Cập nhật `vite.config.ts` để thêm cấu hình HMR rõ ràng hơn và optimizeDeps để force re-bundle:
 
 ```typescript
-resolve: {
-  alias: {
-    "@": path.resolve(__dirname, "./src"),
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react-swc";
+import path from "path";
+import { componentTagger } from "lovable-tagger";
+
+export default defineConfig(({ mode }) => ({
+  server: {
+    host: "::",
+    port: 8080,
+    hmr: {
+      overlay: true,
+    },
   },
-  dedupe: ['react', 'react-dom', 'react-router-dom'],
-},
+  plugins: [
+    react(),
+    mode === 'development' && componentTagger(),
+  ].filter(Boolean),
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+    dedupe: ['react', 'react-dom', 'react-router-dom'],
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom'],
+    force: true, // Force re-optimization
+  },
+}));
 ```
 
-### Bước 3 (Tùy chọn): Thêm Error Boundary
+### Bước 3: Sửa triệt để MainLayout và MobileLayout
 
-Tạo `ErrorBoundary` component để bắt lỗi và hiển thị giao diện thân thiện thay vì màn hình trắng.
+Mặc dù lỗi hiện tại đến từ cache, các file `MainLayout.tsx` và `MobileLayout.tsx` vẫn còn sử dụng `useNavigate()`. Cần sửa để tránh lỗi tương tự trong tương lai.
+
+**MainLayout.tsx** - Thay đổi:
+- Xóa `useNavigate()` import và khai báo
+- Thay `navigate("/auth")` bằng `window.location.assign("/auth")`
+- Giữ lại `useNavigate` cho các navigation trong app (sau khi đã authenticated) nếu cần, hoặc thay hết
+
+**MobileLayout.tsx** - Tương tự:
+- Thay các `navigate()` calls bằng `window.location.assign()`
 
 ---
 
@@ -97,24 +77,59 @@ Tạo `ErrorBoundary` component để bắt lỗi và hiển thị giao diện t
 
 | File | Thay đổi |
 |------|----------|
-| `src/pages/Auth.tsx` | Thay `useNavigate()` bằng `window.location.assign()` |
-| `vite.config.ts` | Thêm cấu hình `dedupe` cho React |
+| `vite.config.ts` | Thêm `optimizeDeps.force: true` và cấu hình HMR rõ ràng |
+| `src/components/layout/MainLayout.tsx` | Thay `useNavigate()` bằng `window.location.assign()` cho auth-related navigation |
+| `src/components/layout/MobileLayout.tsx` | Thay `useNavigate()` bằng `window.location.assign()` cho auth-related navigation |
+
+---
+
+## Chi tiết kỹ thuật
+
+### MainLayout.tsx - Thay đổi cần thực hiện
+
+```typescript
+// TRƯỚC (dòng 24, 32, 44, 60)
+const navigate = useNavigate();
+navigate("/auth");
+
+// SAU
+// Xóa const navigate = useNavigate();
+window.location.assign("/auth");
+```
+
+Các vị trí cần thay:
+- Dòng 32: `navigate("/auth")` → `window.location.assign("/auth")`
+- Dòng 44: `navigate("/auth")` → `window.location.assign("/auth")`  
+- Dòng 60: `navigate("/auth")` → `window.location.assign("/auth")`
+
+### MobileLayout.tsx - Thay đổi cần thực hiện
+
+Tương tự, thay các `navigate("/auth")` bằng `window.location.assign("/auth")`.
+
+Các vị trí cần thay:
+- Dòng 32: `navigate("/auth")` → `window.location.assign("/auth")`
+- Dòng 47: `navigate("/auth")` → `window.location.assign("/auth")`
+- Dòng 61: `navigate("/auth")` → `window.location.assign("/auth")`
+
+Các navigation khác trong app (như `navigate("/customers")`, `navigate(menuItem.path)`) có thể giữ nguyên vì chúng được gọi sau khi user đã authenticated và Router context ổn định.
 
 ---
 
 ## Kết quả mong đợi
 
 1. Không còn lỗi "useNavigate() may be used only in the context of a Router component"
-2. Màn hình Auth hiển thị bình thường
-3. Điều hướng sau đăng nhập hoạt động ổn định
-4. Không còn màn hình trắng khi HMR hoặc refresh trang
+2. Preview Editor hoạt động bình thường không còn màn hình trắng
+3. HMR cập nhật đúng khi sửa code
+4. Đăng nhập/đăng xuất hoạt động ổn định
 
 ---
 
 ## Kiểm tra sau triển khai
 
-1. Mở trang `/auth` → phải hiển thị form đăng nhập
-2. Đăng nhập thành công → chuyển đến `/dashboard`
-3. Refresh trang nhiều lần → không bị màn hình trắng
-4. Mở DevTools Console → không có lỗi Router context
+1. Hard refresh Preview (Ctrl+Shift+R)
+2. Mở trang `/` → phải hiển thị landing page
+3. Click "Đăng nhập" → chuyển đến `/auth` không lỗi
+4. Đăng nhập → chuyển đến `/dashboard` thành công
+5. Đăng xuất → quay lại `/auth` không lỗi
+6. Thử edit 1 file bất kỳ và save → HMR cập nhật không bị trắng màn hình
 
