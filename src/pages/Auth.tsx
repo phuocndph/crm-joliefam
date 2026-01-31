@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,18 +15,18 @@ const Auth = () => {
   const [lastName, setLastName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     // Check if user is already logged in
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        navigate("/dashboard");
+        // Use hard navigation to avoid Router-context issues during HMR
+        window.location.assign("/dashboard");
       }
     };
     checkUser();
-  }, [navigate]);
+  }, []);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +45,7 @@ const Auth = () => {
           title: "Đăng nhập thành công!",
           description: "Chào mừng bạn trở lại hệ thống CRM.",
         });
-        navigate("/dashboard");
+        window.location.assign("/dashboard");
       }
     } catch (error: any) {
       toast({
