@@ -4,22 +4,11 @@ import { Toaster as Sonner, toast } from "sonner"
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  // Safe theme access - fallback to "system" if ThemeProvider is not available
-  let resolvedTheme: ToasterProps["theme"] = "system"
-  
-  try {
-    const themeContext = useTheme()
-    if (themeContext?.theme) {
-      resolvedTheme = themeContext.theme as ToasterProps["theme"]
-    }
-  } catch {
-    // ThemeProvider not available, use fallback
-    console.warn("ThemeProvider not found, using system theme for Sonner")
-  }
+  const { theme = "system" } = useTheme()
 
   return (
     <Sonner
-      theme={resolvedTheme}
+      theme={theme as ToasterProps["theme"]}
       className="toaster group"
       toastOptions={{
         classNames: {
