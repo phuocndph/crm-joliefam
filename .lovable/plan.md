@@ -1,110 +1,146 @@
 
 
-## Vấn đề: Chức năng hoạt động trong Editor nhưng lỗi trên URL Published
+## Tổng quan vấn đề
 
-### Phân tích nguyên nhân
+Dropdown chọn loại vải trong form **"Ghi nhận sử dụng vải"** (`FabricUsageRecording.tsx`) hiện tại có 2 vấn đề:
 
-Sau khi điều tra kỹ, tôi xác định được các nguyên nhân tiềm năng:
-
-**1. Service Worker cache code cũ (Khả năng cao nhất)**
-
-- Ứng dụng có PWA Service Worker (`sw.js`) đang cache JS/CSS/HTML
-- Published URL (`crm-joliefam.lovable.app`) có thể đang serve code cũ từ cache
-- Editor Preview luôn có code mới từ Vite HMR (Hot Module Replacement)
-- Phiên bản cache (`joliefam-crm-v2`) có thể chưa được cập nhật khi deploy
-
-**2. Domain-specific localStorage**
-
-- Session Supabase được lưu trong `localStorage` 
-- Mỗi domain có localStorage riêng biệt
-- Tuy nhiên user đã xác nhận đăng nhập thành công và thấy thông tin đúng → loại trừ nguyên nhân này
-
-**3. Code bundle khác nhau**
-
-- Lovable Editor inject thêm script (lovable.js) vào preview
-- Published build không có script này
-- Có thể có race condition hoặc timing issue
+1. **Thiếu thông tin loại vải (fabric type)**: Chỉ hiển thị tên biến thể (`variant_name`) + số lượng còn lại, không hiển thị loại vải gốc
+2. **Khó tìm kiếm**: Danh sách dài (20+ loại vải) nhưng không có chức năng tìm kiếm, phải cuộn để tìm
 
 ---
 
-### Kế hoạch sửa lỗi
+## Giải pháp đề xuất
 
-#### Bước 1: Cập nhật Service Worker để force refresh (ưu tiên cao)
+Thay thế component `<Select>` hiện tại bằng **Searchable Combobox** sử dụng `cmdk` (đã có sẵn trong project qua `@/components/ui/command.tsx`).
 
-Thay đổi `public/sw.js`:
-- Tăng phiên bản cache từ `joliefam-crm-v2` lên `joliefam-crm-v3`
-- Thêm logic xóa toàn bộ cache cũ khi activate
-- Đảm bảo code mới nhất luôn được sử dụng sau khi publish
-
-#### Bước 2: Thêm console logging chi tiết cho production
-
-Thêm logging vào các hooks và components quan trọng để debug:
-- `useUserRole.tsx` - log chi tiết role fetch result
-- `useFabrics.ts` - log chi tiết RPC calls
-- Error boundary để catch lỗi không mong muốn
-
-#### Bước 3: Kiểm tra và xác nhận environment consistency
-
-Tạo một component debug nhỏ hiển thị:
-- Current user ID và role
-- Supabase connection status
-- Service Worker version
-- Last deploy timestamp
-
-Điều này giúp user và developer xác định nhanh vấn đề khi lỗi xảy ra.
+### Tính năng mới:
+- Hiển thị **[Loại vải] - [Tên biến thể] - [Khổ vải] - Còn lại: XXm**
+- Ô tìm kiếm hỗ trợ tiếng Việt có dấu và không dấu
+- Nhóm theo loại vải để dễ tìm
+- Click để mở dropdown, gõ để tìm kiếm
 
 ---
 
-### Hướng dẫn người dùng (thực hiện ngay)
+## Chi tiết kỹ thuật
 
-Trong khi chờ fix code, người dùng có thể thử các bước sau để clear cache:
-
-**Trên Chrome/Edge:**
-1. Mở Developer Tools (F12)
-2. Click chuột phải vào nút Refresh → "Empty Cache and Hard Reload"
-3. Hoặc vào Settings → Clear browsing data → Cached images and files
-
-**Unregister Service Worker:**
-1. Mở `crm-joliefam.lovable.app` 
-2. Mở Developer Tools (F12) → Application tab
-3. Service Workers → Unregister
-4. Refresh trang
-
-**Nếu dùng PWA đã cài đặt:**
-1. Gỡ cài đặt app
-2. Clear cache trình duyệt
-3. Cài đặt lại PWA
-
----
-
-### File sẽ chỉnh sửa
+### File cần thay đổi
 
 | File | Thay đổi |
 |------|----------|
-| `public/sw.js` | Tăng cache version, thêm logic force clear cache |
-| `src/hooks/useUserRole.tsx` | Thêm console.log chi tiết cho debugging |
-| `src/hooks/useFabrics.ts` | Thêm logging cho RPC calls |
-| `src/App.tsx` | (Tùy chọn) Thêm error boundary component |
+| `src/components/FabricUsageRecording.tsx` | Thay `<Select>` bằng Searchable Combobox, hiển thị thêm fabric type name |
+| `src/components/ui/searchable-fabric-select.tsx` | Tạo component mới - Searchable Fabric Select |
+
+### Cấu trúc dữ liệu hiện có
+
+Từ `useFabricVariants()`, mỗi variant đã có:
+```
+{
+  id: string
+  variant_name: string          // "T300t - K305"
+  fabric_type_id: string
+  width_code: string | null     // "K280", "K260"
+  fabric_types: {               // JOIN từ fabric_types
+    name: string                // "Vải Cotton", "Lụa tổng hợp"
+    description: string | null
+  }
+}
+```
+
+### Định dạng hiển thị mới
+
+```
+[Loại vải] - [Tên biến thể] - Còn lại: XXm
+```
+
+Ví dụ:
+- `Vải T300 - T300t - K305 - Còn lại: 150m`
+- `Lụa tổng hợp - Lụa tổng hợp sọc be - Còn lại: 390m`
+
+### Component SearchableFabricSelect
+
+```tsx
+// Props
+interface SearchableFabricSelectProps {
+  value: string;                    // fabric_variant_id đã chọn
+  onValueChange: (value: string) => void;
+  fabricVariants: FabricVariant[];
+  fabricInventory: FabricInventory[];
+  warehouseId: string;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+// Tính năng
+- Sử dụng Popover + Command từ shadcn/ui
+- Tìm kiếm hỗ trợ tiếng Việt (removeAccents)
+- Nhóm theo fabric_types.name
+- Hiển thị số lượng tồn kho theo warehouse đã chọn
+- Highlight kết quả tìm kiếm
+```
+
+### Logic tìm kiếm
+
+```ts
+// Sử dụng hàm removeAccents đã có từ src/lib/searchUtils.ts
+const matchesSearch = (variant, searchTerm) => {
+  const normalizedSearch = removeAccents(searchTerm.toLowerCase());
+  const normalizedName = removeAccents(variant.variant_name.toLowerCase());
+  const normalizedType = removeAccents(variant.fabric_types?.name?.toLowerCase() || '');
+  
+  return normalizedName.includes(normalizedSearch) || 
+         normalizedType.includes(normalizedSearch);
+};
+```
 
 ---
 
-### Tiêu chí hoàn thành
+## Kết quả mong đợi
 
-1. Published URL hoạt động giống như Editor Preview
-2. Service Worker luôn serve code mới nhất sau publish
-3. Console logs hiển thị thông tin debug hữu ích khi có lỗi
-4. Tất cả tài khoản (admin, manager, accountant, employee) đều có thể:
-   - Xem danh sách dữ liệu
-   - Tạo mới đơn hàng, khách hàng
-   - Ghi nhận sử dụng vải
+### Trước:
+```
+[Select dropdown]
+├── T300t - K305 - Còn lại: 0m
+├── T300t - K260 - Còn lại: 0m
+├── T250t - K280 - Còn lại: 0m
+└── ... (cuộn để tìm)
+```
+
+### Sau:
+```
+[🔍 Tìm kiếm loại vải...]
+
+Vải T300
+├── Vải T300 - T300t - K305 - Còn lại: 0m
+├── Vải T300 - T300t - K260 - Còn lại: 0m
+
+Vải T250  
+├── Vải T250 - T250t - K280 - Còn lại: 0m
+├── Vải T250 - T250t - K260 - Còn lại: 0m
+
+Lụa tổng hợp
+├── Lụa tổng hợp - Lụa tổng hợp sọc be - Còn lại: 390m
+├── Lụa tổng hợp - Lụa tổng hợp xanh lá - Còn lại: 100m
+└── ...
+```
 
 ---
 
-### Kiểm tra sau khi triển khai
+## Tiêu chí hoàn thành
 
-1. Publish app mới
-2. Trên thiết bị/trình duyệt bị lỗi: clear cache và unregister Service Worker
-3. Đăng nhập với tài khoản bị lỗi trước đó
-4. Thử các chức năng: xem danh sách, tạo mới đơn hàng, ghi nhận sử dụng vải
-5. Xác nhận dữ liệu xuất hiện và lưu thành công
+1. Dropdown hiển thị đầy đủ: **Loại vải - Tên biến thể - Số lượng tồn**
+2. Có ô tìm kiếm hoạt động tốt với tiếng Việt có dấu và không dấu
+3. Kết quả được nhóm theo loại vải
+4. Chọn được vải và giá trị được lưu đúng (fabric_variant_id)
+5. Hiển thị số lượng tồn kho đúng theo kho đã chọn
+
+---
+
+## Kiểm tra sau triển khai
+
+1. Mở form "Ghi nhận sử dụng vải"
+2. Click vào dropdown chọn loại vải → thấy ô tìm kiếm
+3. Gõ "lụa" hoặc "lua" → thấy kết quả lọc đúng
+4. Gõ "T300" → thấy các loại vải T300 hiện lên
+5. Chọn 1 loại vải → dropdown đóng lại, hiển thị tên đã chọn
+6. Xác nhận số lượng tồn kho hiển thị đúng
 
