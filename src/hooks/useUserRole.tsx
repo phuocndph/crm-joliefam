@@ -10,13 +10,18 @@ export const useUserRole = (user: User | null) => {
 
   useEffect(() => {
     const fetchUserRole = async () => {
+      console.log('🔐 [useUserRole] START - User:', user?.id || 'null', 'Email:', user?.email || 'null');
+      
       if (!user) {
+        console.log('🔐 [useUserRole] No user provided, setting role to null');
         setRole(null);
         setLoading(false);
         return;
       }
 
       try {
+        console.log('🔐 [useUserRole] Fetching role from user_roles table for user:', user.id);
+        
         const { data, error } = await supabase
           .from('user_roles')
           .select('role')
@@ -24,16 +29,23 @@ export const useUserRole = (user: User | null) => {
           .single();
 
         if (error) {
-          console.error('Error fetching user role:', error);
+          console.error('🔴 [useUserRole] Error fetching role:', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+          });
           setRole(null);
         } else {
+          console.log('✅ [useUserRole] Role fetched successfully:', data?.role);
           setRole(data?.role || null);
         }
       } catch (error) {
-        console.error('Error fetching user role:', error);
+        console.error('🔴 [useUserRole] Unexpected error:', error);
         setRole(null);
       } finally {
         setLoading(false);
+        console.log('🔐 [useUserRole] END - Loading complete');
       }
     };
 
