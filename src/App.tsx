@@ -27,10 +27,13 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const AppRoutes = () => {
+// Wrapper component to handle layout selection
+const LayoutWrapper = () => {
   const isMobile = useIsMobile();
-  const LayoutComponent = isMobile ? MobileLayout : MainLayout;
+  return isMobile ? <MobileLayout /> : <MainLayout />;
+};
 
+const AppContent = () => {
   useEffect(() => {
     // Set up session refresh
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -74,7 +77,7 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<Auth />} />
-      <Route path="/" element={<LayoutComponent />}>
+      <Route element={<LayoutWrapper />}>
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="user-management" element={<UserManagement />} />
         <Route path="customers" element={<CustomerManagement />} />
@@ -101,7 +104,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <AppRoutes />
+          <AppContent />
         </BrowserRouter>
       </SafeTooltipProvider>
     </QueryClientProvider>
