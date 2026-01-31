@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Minus, X, AlertTriangle } from 'lucide-react';
+import { Plus, X, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { useFabricVariants, useWarehouses, useFabricInventory, useRecordFabricUs
 import { useOrders } from '@/hooks/useOrders';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { SearchableFabricSelect } from '@/components/ui/searchable-fabric-select';
 
 interface FabricUsageRecordingProps {
   warehouseName: string;
@@ -389,28 +390,20 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Loại vải *</Label>
-                        <Select 
-                          value={item.fabric_variant_id} 
-                          onValueChange={(value) => updateFabricItem(index, 'fabric_variant_id', value)}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Chọn loại vải" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {fabricVariants?.map((variant) => {
-                              const inventory = fabricInventory?.find(inv => 
-                                inv.fabric_variant_id === variant.id && inv.warehouse_id === formData.warehouse_id
-                              );
-                              const currentStock = inventory?.current_stock || 0;
-                              
-                              return (
-                                <SelectItem key={`${variant.id}-${index}`} value={variant.id}>
-                                  {variant.variant_name} - Còn lại: {currentStock}m
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
+                        <SearchableFabricSelect
+                          value={item.fabric_variant_id}
+                          onValueChange={(value, availableStock) => {
+                            updateFabricItem(index, 'fabric_variant_id', value);
+                            if (availableStock !== undefined) {
+                              updateFabricItem(index, 'available_stock', availableStock);
+                            }
+                          }}
+                          fabricVariants={fabricVariants}
+                          fabricInventory={fabricInventory}
+                          warehouseId={formData.warehouse_id}
+                          placeholder="Tìm và chọn loại vải..."
+                          disabled={!formData.warehouse_id}
+                        />
                         {item.fabric_variant_id && item.available_stock !== undefined && (
                           <div className="text-sm text-muted-foreground">
                             Số lượng có sẵn: {item.available_stock}m
