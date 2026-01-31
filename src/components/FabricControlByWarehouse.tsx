@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
-import { Plus, Filter, Search, Package, TrendingUp, ArrowRight } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Plus, Filter, Search, Package, TrendingUp, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useFabricUsage, useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransfer, useUpdateInventory, useCreateTransaction } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -48,6 +49,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   const [selectedFabricForTransfer, setSelectedFabricForTransfer] = useState<string>('');
   const [transferQuantity, setTransferQuantity] = useState(0);
   const [transferNotes, setTransferNotes] = useState('');
+  const [isInventoryExpanded, setIsInventoryExpanded] = useState(false);
   const [newUsage, setNewUsage] = useState({
     order_number: '',
     fabric_variant_id: '',
@@ -381,46 +383,74 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         <p className="text-muted-foreground">Theo dõi sử dụng vải theo đơn hàng và khách hàng</p>
       </div>
 
-      {/* Fabric Inventory Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {fabricSummaryArray.map((fabric, index) => {
-        const getCardClass = () => {
-          if (fabric.currentWarehouse < 500) return "border-red-500 bg-red-50";
-          if (fabric.currentWarehouse < 1000) return "border-yellow-500 bg-yellow-50";
-          return "";
-        };
-        const getTextClass = () => {
-          if (fabric.currentWarehouse < 500) return "text-red-700";
-          if (fabric.currentWarehouse < 1000) return "text-yellow-700";
-          return "";
-        };
-        const canTransfer = fabric.currentWarehouse > 0;
-        return <Card key={index} className={getCardClass()}>
-              <CardHeader className="pb-2">
-                <CardTitle className={`text-sm font-medium ${getTextClass()}`}>Vải {fabric.fabricName}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className={`text-sm font-medium ${getTextClass()}`}>Tồn kho:</span>
-                    <span className={`text-lg font-bold ${getTextClass()}`}>{fabric.currentWarehouse.toLocaleString('vi-VN', { maximumFractionDigits: 3 }).replace(/,000$/, '')}m</span>
-                  </div>
-                  {canTransfer && <div className="pt-2 border-t">
-                      <Button variant="outline" size="sm" className="w-full" onClick={() => handleTransferClick(fabric.fabricName)}>
-                        <ArrowRight className="mr-2 h-4 w-4" />
-                        Chuyển kho
-                      </Button>
-                    </div>}
-                </div>
-              </CardContent>
-            </Card>;
-      })}
-        {fabricSummaryArray.length === 0 && <Card>
-            <CardContent className="text-center text-muted-foreground py-8">
-              Chưa có dữ liệu tồn kho vải
-            </CardContent>
-          </Card>}
-      </div>
+      {/* Fabric Inventory Cards - Collapsible */}
+      <Collapsible open={isInventoryExpanded} onOpenChange={setIsInventoryExpanded}>
+        <div className="flex items-center justify-between">
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="flex items-center gap-2 p-0 h-auto hover:bg-transparent">
+              <Package className="h-5 w-5 text-primary" />
+              <span className="font-semibold">Tồn kho vải ({fabricSummaryArray.length} loại)</span>
+              {isInventoryExpanded ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          {!isInventoryExpanded && fabricSummaryArray.length > 0 && (
+            <span className="text-sm text-muted-foreground">
+              Nhấn để xem chi tiết
+            </span>
+          )}
+        </div>
+        <CollapsibleContent className="mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {fabricSummaryArray.map((fabric, index) => {
+              const getCardClass = () => {
+                if (fabric.currentWarehouse < 500) return "border-red-500 bg-red-50";
+                if (fabric.currentWarehouse < 1000) return "border-yellow-500 bg-yellow-50";
+                return "";
+              };
+              const getTextClass = () => {
+                if (fabric.currentWarehouse < 500) return "text-red-700";
+                if (fabric.currentWarehouse < 1000) return "text-yellow-700";
+                return "";
+              };
+              const canTransfer = fabric.currentWarehouse > 0;
+              return (
+                <Card key={index} className={getCardClass()}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className={`text-sm font-medium ${getTextClass()}`}>Vải {fabric.fabricName}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className={`text-sm font-medium ${getTextClass()}`}>Tồn kho:</span>
+                        <span className={`text-lg font-bold ${getTextClass()}`}>{fabric.currentWarehouse.toLocaleString('vi-VN', { maximumFractionDigits: 3 }).replace(/,000$/, '')}m</span>
+                      </div>
+                      {canTransfer && (
+                        <div className="pt-2 border-t">
+                          <Button variant="outline" size="sm" className="w-full" onClick={() => handleTransferClick(fabric.fabricName)}>
+                            <ArrowRight className="mr-2 h-4 w-4" />
+                            Chuyển kho
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+            {fabricSummaryArray.length === 0 && (
+              <Card>
+                <CardContent className="text-center text-muted-foreground py-8">
+                  Chưa có dữ liệu tồn kho vải
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Transfer Dialog */}
 
