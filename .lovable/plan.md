@@ -1,40 +1,57 @@
 
 
-## Cải thiện giao diện Dropdown chọn loại vải
+## Lỗi phát hiện: Invalid Hook Call - Multiple React Instances
 
-### Vấn đề hiện tại
+### Mô tả lỗi
 
-Dropdown chọn loại vải trong form "Ghi nhận sử dụng vải" có giao diện rối mắt:
-- Mỗi item hiển thị 2 dòng riêng biệt (tên biến thể + số lượng tồn) khiến danh sách dài và khó đọc
-- Thiếu phân tách rõ ràng giữa các nhóm loại vải
-- Styling chưa tối ưu cho việc scan nhanh
+Ứng dụng đang gặp lỗi nghiêm trọng khiến **màn hình trắng hoàn toàn**:
+
+```
+TypeError: Cannot read properties of null (reading 'useState')
+at TooltipProvider
+```
+
+Nguyên nhân: **Có nhiều bản sao React trong ứng dụng**. Thư viện `@radix-ui/react-tooltip` đang sử dụng một instance React khác với instance chính của ứng dụng.
+
+---
 
 ### Giải pháp
 
-Cải thiện UI của `SearchableFabricSelect` component để dễ nhìn và chuyên nghiệp hơn:
+#### Bước 1: Cấu hình Vite để dedupe React
 
-**1. Đổi layout từ 2 dòng sang 1 dòng:**
+Thêm `dedupe` configuration vào `vite.config.ts` để đảm bảo chỉ có một instance React duy nhất:
 
-Thay vì:
+```typescript
+resolve: {
+  alias: {
+    "@": path.resolve(__dirname, "./src"),
+  },
+  dedupe: ['react', 'react-dom', 'react/jsx-runtime'],
+},
+optimizeDeps: {
+  include: ['react', 'react-dom', 'react/jsx-runtime'],
+},
 ```
-120g Trắng
-Còn lại: 0m
-```
 
-Thành:
-```
-120g Trắng • 0m
-```
+#### Bước 2: Tạo SafeTooltipProvider với Error Boundary
 
-**2. Thêm visual indicators:**
-- Badge màu cho số lượng tồn (xanh nếu > 0, đỏ nếu = 0)
-- Icon check rõ ràng hơn cho item đã chọn
-- Separator giữa các nhóm
+Tạo một wrapper component an toàn để bọc TooltipProvider:
 
-**3. Cải thiện typography:**
-- Tăng font weight cho tên vải
-- Màu sắc phân biệt rõ giữa tên và số lượng
-- Padding và spacing đồng đều hơn
+| File mới | Mô tả |
+|----------|-------|
+| `src/components/ui/safe-tooltip-provider.tsx` | Component bọc TooltipProvider với try-catch và fallback |
+
+#### Bước 3: Cập nhật App.tsx
+
+Thay thế `TooltipProvider` bằng `SafeTooltipProvider` trong `src/App.tsx`.
+
+#### Bước 4: Tạo Error Boundary toàn cục
+
+Tạo component Error Boundary để catch lỗi và hiển thị UI thay vì màn hình trắng.
+
+| File mới | Mô tả |
+|----------|-------|
+| `src/components/ErrorBoundary.tsx` | Global error boundary component |
 
 ---
 
@@ -44,89 +61,99 @@ Thành:
 
 | File | Thay đổi |
 |------|----------|
-| `src/components/ui/searchable-fabric-select.tsx` | Cải thiện layout và styling |
+| `vite.config.ts` | Thêm `dedupe` và `optimizeDeps` |
+| `src/components/ui/safe-tooltip-provider.tsx` | Tạo mới - Safe wrapper cho TooltipProvider |
+| `src/components/ErrorBoundary.tsx` | Tạo mới - Error Boundary component |
+| `src/App.tsx` | Sử dụng SafeTooltipProvider và ErrorBoundary |
+| `src/main.tsx` | Bọc App với StrictMode đúng cách |
 
-#### Thay đổi cụ thể trong CommandItem:
-
-**Trước:**
-```tsx
-<div className="flex flex-col">
-  <span className="font-medium">{variant.variant_name}</span>
-  <span className="text-xs text-muted-foreground">
-    Còn lại: {stock}m
-  </span>
-</div>
-```
-
-**Sau:**
-```tsx
-<div className="flex items-center justify-between w-full">
-  <span className="font-medium text-foreground">
-    {variant.variant_name}
-  </span>
-  <span className={cn(
-    "ml-2 text-xs font-medium px-2 py-0.5 rounded-full",
-    stock > 0 
-      ? "bg-green-100 text-green-700" 
-      : "bg-red-100 text-red-700"
-  )}>
-    {stock}m
-  </span>
-</div>
-```
-
-#### Thêm separator giữa các nhóm:
+#### SafeTooltipProvider implementation
 
 ```tsx
-<CommandGroup key={typeName} heading={typeName} className="border-b last:border-b-0">
+import React from 'react';
+import { TooltipProvider } from './tooltip';
+
+interface SafeTooltipProviderProps {
+  children: React.ReactNode;
+}
+
+export const SafeTooltipProvider: React.FC<SafeTooltipProviderProps> = ({ children }) => {
+  try {
+    return <TooltipProvider delayDuration={0}>{children}</TooltipProvider>;
+  } catch (error) {
+    console.error('TooltipProvider failed, rendering without tooltip support:', error);
+    return <>{children}</>;
+  }
+};
 ```
 
-#### Cải thiện heading style:
+#### ErrorBoundary implementation
 
 ```tsx
-// Trong CommandGroup styling
-className="[&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-primary [&_[cmdk-group-heading]]:bg-muted/50 [&_[cmdk-group-heading]]:py-2"
-```
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 
----
+interface Props {
+  children: ReactNode;
+}
 
-### Kết quả mong đợi
+interface State {
+  hasError: boolean;
+  error?: Error;
+}
 
-**Trước:**
-```
-Vải T300
-├── 120g Trắng
-│   Còn lại: 0m
-├── 120g Xanh
-│   Còn lại: 50m
-```
+export class ErrorBoundary extends Component<Props, State> {
+  public state: State = { hasError: false };
 
-**Sau:**
-```
-━━━ Vải T300 ━━━
-├── 120g Trắng                    [0m]  ← badge đỏ
-├── 120g Xanh                    [50m]  ← badge xanh
-━━━ Lụa tổng hợp ━━━
-├── Lụa sọc be                  [390m]  ← badge xanh
+  public static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Application error:', error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center p-8">
+            <h1 className="text-2xl font-bold text-destructive mb-4">
+              Đã xảy ra lỗi
+            </h1>
+            <p className="text-muted-foreground mb-4">
+              {this.state.error?.message}
+            </p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded"
+            >
+              Tải lại trang
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 ```
 
 ---
 
 ### Tiêu chí hoàn thành
 
-1. Mỗi item vải hiển thị trên **1 dòng** thay vì 2 dòng
-2. Số lượng tồn kho hiển thị dạng **badge màu** ở bên phải
-3. Tên nhóm loại vải có **background màu nhạt** để phân biệt
-4. **Border/separator** giữa các nhóm
-5. Dễ scan nhanh và tìm kiếm
+1. Ứng dụng không còn hiển thị màn hình trắng
+2. Không còn lỗi "Invalid hook call" trong console
+3. Tất cả trang hoạt động bình thường
+4. Nếu có lỗi xảy ra, Error Boundary hiển thị thông báo thân thiện thay vì crash
 
 ---
 
 ### Kiểm tra sau triển khai
 
-1. Mở form "Ghi nhận sử dụng vải"
-2. Click dropdown chọn loại vải
-3. Xác nhận giao diện mới gọn gàng, dễ nhìn
-4. Kiểm tra màu badge: xanh cho vải có tồn, đỏ cho vải hết
-5. Thử tìm kiếm để đảm bảo vẫn hoạt động tốt
+1. Reload trang chủ (/) → phải hiển thị bình thường
+2. Điều hướng đến các trang khác (dashboard, fabrics, orders...)
+3. Mở Developer Console (F12) → không còn lỗi "Invalid hook call"
+4. Thử các tooltip trong ứng dụng (hover các nút) → phải hoạt động
 
