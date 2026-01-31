@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Package2, ArrowRight, Edit, Trash2 } from "lucide-react";
+import { Plus, Package2, ArrowRight, Edit, Trash2, RefreshCw } from "lucide-react";
 import { useFabricInventory, useFabricTypes, useFabricVariants, useWarehouses, useCreateTransaction, useUpdateInventory, useCreateTransfer, useUpdateFabricType, useDeleteFabricType, useCreateFabricVariant } from "@/hooks/useFabrics";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { FabricTransactionsTable } from "@/components/FabricTransactionsTable";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,6 +40,7 @@ export const FabricInventoryOverview = () => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedFabric, setSelectedFabric] = useState<any>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [selectedFabricForTransfer, setSelectedFabricForTransfer] = useState<string>('');
   const [transferQuantity, setTransferQuantity] = useState(0);
   const [transferPackagesCount, setTransferPackagesCount] = useState(0);
@@ -89,6 +91,54 @@ export const FabricInventoryOverview = () => {
     
     fetchUserAndManagerId();
   }, []);
+
+  // Find missing fabric types without variants
+  const missingFabricTypes = fabricTypes.filter(type => 
+    !fabricVariants.some(variant => variant.fabric_type_id === type.id)
+  );
+
+  // Sync all fabric types - create variants for types that don't have one
+  const handleSyncAllFabricTypes = async () => {
+    if (missingFabricTypes.length === 0) {
+      toast({ title: "Thông báo", description: "Tất cả loại vải đã có biến thể tương ứng" });
+      return;
+    }
+
+    setIsSyncing(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (const type of missingFabricTypes) {
+        try {
+          await createFabricVariant.mutateAsync({
+            fabric_type_id: type.id,
+            variant_name: type.name,
+            unit: 'm'
+          });
+          successCount++;
+        } catch (error) {
+          console.error(`Error creating variant for ${type.name}:`, error);
+          errorCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        toast({ 
+          title: "Thành công", 
+          description: `Đã đồng bộ ${successCount} loại vải${errorCount > 0 ? `, ${errorCount} lỗi` : ''}` 
+        });
+      } else if (errorCount > 0) {
+        toast({ 
+          title: "Lỗi", 
+          description: `Không thể đồng bộ ${errorCount} loại vải`,
+          variant: "destructive"
+        });
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Process inventory data for table display
   const inventoryData = inventory.map(item => ({
@@ -503,14 +553,30 @@ export const FabricInventoryOverview = () => {
         <div>
           <h2 className="text-xl font-semibold">Tổng số lượng vải</h2>
           <p className="text-sm text-muted-foreground">Quản lý tồn kho tổng thể các loại vải</p>
+          {missingFabricTypes.length > 0 && (
+            <Badge variant="secondary" className="mt-1">
+              {missingFabricTypes.length} loại vải chưa có biến thể
+            </Badge>
+          )}
         </div>
-        <Dialog open={showInboundDialog} onOpenChange={setShowInboundDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Package2 className="mr-2 h-4 w-4" />
-              Nhập kho vải
+        <div className="flex gap-2">
+          {missingFabricTypes.length > 0 && (
+            <Button 
+              variant="outline" 
+              onClick={handleSyncAllFabricTypes}
+              disabled={isSyncing}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Đang đồng bộ...' : `Đồng bộ ${missingFabricTypes.length} loại vải`}
             </Button>
-          </DialogTrigger>
+          )}
+          <Dialog open={showInboundDialog} onOpenChange={setShowInboundDialog}>
+            <DialogTrigger asChild>
+              <Button>
+                <Package2 className="mr-2 h-4 w-4" />
+                Nhập kho vải
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Nhập kho vải mới</DialogTitle>
@@ -666,6 +732,7 @@ export const FabricInventoryOverview = () => {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Fabric Summary Table */}
