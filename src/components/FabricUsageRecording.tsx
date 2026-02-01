@@ -415,10 +415,14 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
                         <Label>Số lượng sử dụng (m) *</Label>
                         <Input
                           type="number"
-                          step="0.01"
+                          step="any"
+                          min="0"
                           className={`w-full ${item.available_stock !== undefined && item.quantity_used > item.available_stock ? 'border-destructive' : ''}`}
-                          value={item.quantity_used}
-                          onChange={(e) => updateFabricItem(index, 'quantity_used', Number(e.target.value))}
+                          value={item.quantity_used === 0 ? '' : item.quantity_used}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateFabricItem(index, 'quantity_used', val === '' ? 0 : parseFloat(val) || 0);
+                          }}
                           placeholder="Nhập số lượng"
                         />
                         {item.available_stock !== undefined && item.quantity_used > item.available_stock && (

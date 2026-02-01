@@ -1,146 +1,108 @@
 
 
+# Plan sửa lỗi trắng trang (Blank Screen / Invalid Hook Call)
+
 ## Tổng quan vấn đề
 
-Dropdown chọn loại vải trong form **"Ghi nhận sử dụng vải"** (`FabricUsageRecording.tsx`) hiện tại có 2 vấn đề:
+Ứng dụng gặp lỗi "Cannot read properties of null (reading 'useState')" khiến trang hiển thị trắng. Nguyên nhân gốc:
 
-1. **Thiếu thông tin loại vải (fabric type)**: Chỉ hiển thị tên biến thể (`variant_name`) + số lượng còn lại, không hiển thị loại vải gốc
-2. **Khó tìm kiếm**: Danh sách dài (20+ loại vải) nhưng không có chức năng tìm kiếm, phải cuộn để tìm
+1. **Duplicate React instances**: Vite pre-bundle tạo ra nhiều chunk React riêng biệt
+2. **Missing ThemeProvider**: Component `Sonner` sử dụng `useTheme()` từ `next-themes` nhưng không có `ThemeProvider` wrapper
+3. **HMR cache conflicts**: Sau khi cập nhật code, các module cũ và mới conflict với nhau
 
----
+## Giải pháp
 
-## Giải pháp đề xuất
+### Bước 1: Wrap ứng dụng với ThemeProvider
 
-Thay thế component `<Select>` hiện tại bằng **Searchable Combobox** sử dụng `cmdk` (đã có sẵn trong project qua `@/components/ui/command.tsx`).
+Component `Sonner` (toast) sử dụng `useTheme()` từ `next-themes`. Hook này yêu cầu `ThemeProvider` bao bọc, nếu không sẽ trả về null và crash.
 
-### Tính năng mới:
-- Hiển thị **[Loại vải] - [Tên biến thể] - [Khổ vải] - Còn lại: XXm**
-- Ô tìm kiếm hỗ trợ tiếng Việt có dấu và không dấu
-- Nhóm theo loại vải để dễ tìm
-- Click để mở dropdown, gõ để tìm kiếm
+**File cần sửa**: `src/App.tsx`
 
----
+**Thay đổi**:
+- Import `ThemeProvider` từ `next-themes`
+- Wrap toàn bộ ứng dụng trong `ThemeProvider`
 
-## Chi tiết kỹ thuật
+```text
+Cấu trúc hiện tại:
+QueryClientProvider > SafeTooltipProvider > Toaster + Sonner + BrowserRouter
 
-### File cần thay đổi
-
-| File | Thay đổi |
-|------|----------|
-| `src/components/FabricUsageRecording.tsx` | Thay `<Select>` bằng Searchable Combobox, hiển thị thêm fabric type name |
-| `src/components/ui/searchable-fabric-select.tsx` | Tạo component mới - Searchable Fabric Select |
-
-### Cấu trúc dữ liệu hiện có
-
-Từ `useFabricVariants()`, mỗi variant đã có:
+Cấu trúc mới:
+QueryClientProvider > ThemeProvider > SafeTooltipProvider > Toaster + Sonner + BrowserRouter
 ```
-{
-  id: string
-  variant_name: string          // "T300t - K305"
-  fabric_type_id: string
-  width_code: string | null     // "K280", "K260"
-  fabric_types: {               // JOIN từ fabric_types
-    name: string                // "Vải Cotton", "Lụa tổng hợp"
-    description: string | null
-  }
+
+### Bước 2: Cấu hình Vite optimizeDeps để force dedupe
+
+Thêm cấu hình `optimizeDeps` để Vite xử lý React thống nhất trong quá trình pre-bundling.
+
+**File cần sửa**: `vite.config.ts`
+
+**Thêm**:
+```typescript
+optimizeDeps: {
+  include: ["react", "react-dom", "react/jsx-runtime"],
 }
 ```
 
-### Định dạng hiển thị mới
+### Bước 3: Tạo ErrorBoundary toàn app với fallback thân thiện
 
-```
-[Loại vải] - [Tên biến thể] - Còn lại: XXm
-```
+Thêm một layer ErrorBoundary ở cấp cao nhất để nếu có lỗi runtime, hiển thị màn hình lỗi với nút reload thay vì trắng trang.
 
-Ví dụ:
-- `Vải T300 - T300t - K305 - Còn lại: 150m`
-- `Lụa tổng hợp - Lụa tổng hợp sọc be - Còn lại: 390m`
+**File cần sửa**: `src/App.tsx`
 
-### Component SearchableFabricSelect
+**Thêm**:
+- Wrap `AppRoutes` trong `ErrorBoundary`
+- Tạo fallback component hiển thị thông báo lỗi và nút "Tải lại trang"
 
-```tsx
-// Props
-interface SearchableFabricSelectProps {
-  value: string;                    // fabric_variant_id đã chọn
-  onValueChange: (value: string) => void;
-  fabricVariants: FabricVariant[];
-  fabricInventory: FabricInventory[];
-  warehouseId: string;
-  placeholder?: string;
-  disabled?: boolean;
+### Bước 4: Xử lý Sonner an toàn hơn
+
+Sửa `src/components/ui/sonner.tsx` để có fallback nếu `useTheme()` không có context.
+
+**Thay đổi**:
+```typescript
+// Trước
+const { theme = "system" } = useTheme()
+
+// Sau - thêm try-catch hoặc kiểm tra
+let resolvedTheme = "system"
+try {
+  const { theme } = useTheme()
+  if (theme) resolvedTheme = theme
+} catch {
+  // Fallback nếu không có ThemeProvider
 }
-
-// Tính năng
-- Sử dụng Popover + Command từ shadcn/ui
-- Tìm kiếm hỗ trợ tiếng Việt (removeAccents)
-- Nhóm theo fabric_types.name
-- Hiển thị số lượng tồn kho theo warehouse đã chọn
-- Highlight kết quả tìm kiếm
 ```
 
-### Logic tìm kiếm
-
-```ts
-// Sử dụng hàm removeAccents đã có từ src/lib/searchUtils.ts
-const matchesSearch = (variant, searchTerm) => {
-  const normalizedSearch = removeAccents(searchTerm.toLowerCase());
-  const normalizedName = removeAccents(variant.variant_name.toLowerCase());
-  const normalizedType = removeAccents(variant.fabric_types?.name?.toLowerCase() || '');
-  
-  return normalizedName.includes(normalizedSearch) || 
-         normalizedType.includes(normalizedSearch);
-};
-```
+Hoặc đơn giản hơn: hardcode theme thay vì dùng hook động.
 
 ---
 
-## Kết quả mong đợi
+## Thông tin kỹ thuật
 
-### Trước:
-```
-[Select dropdown]
-├── T300t - K305 - Còn lại: 0m
-├── T300t - K260 - Còn lại: 0m
-├── T250t - K280 - Còn lại: 0m
-└── ... (cuộn để tìm)
-```
+### Files cần thay đổi
 
-### Sau:
-```
-[🔍 Tìm kiếm loại vải...]
+| File | Hành động |
+|------|-----------|
+| `src/App.tsx` | Thêm `ThemeProvider` wrapper, wrap `AppRoutes` trong `ErrorBoundary` |
+| `vite.config.ts` | Thêm `optimizeDeps.include` |
+| `src/components/ui/sonner.tsx` | Loại bỏ phụ thuộc vào `useTheme()` hoặc hardcode theme |
 
-Vải T300
-├── Vải T300 - T300t - K305 - Còn lại: 0m
-├── Vải T300 - T300t - K260 - Còn lại: 0m
+### Luồng khởi động sau sửa
 
-Vải T250  
-├── Vải T250 - T250t - K280 - Còn lại: 0m
-├── Vải T250 - T250t - K260 - Còn lại: 0m
-
-Lụa tổng hợp
-├── Lụa tổng hợp - Lụa tổng hợp sọc be - Còn lại: 390m
-├── Lụa tổng hợp - Lụa tổng hợp xanh lá - Còn lại: 100m
-└── ...
+```text
+QueryClientProvider
+  └─ ThemeProvider (NEW - cung cấp context cho next-themes)
+       └─ SafeTooltipProvider (có ErrorBoundary bao bọc)
+            └─ Toaster (shadcn toast)
+            └─ Sonner (sonner toast - giờ có ThemeProvider context)
+            └─ BrowserRouter
+                 └─ ErrorBoundary (NEW - fallback UI nếu crash)
+                      └─ AppRoutes
 ```
 
----
+### Kết quả mong đợi
 
-## Tiêu chí hoàn thành
-
-1. Dropdown hiển thị đầy đủ: **Loại vải - Tên biến thể - Số lượng tồn**
-2. Có ô tìm kiếm hoạt động tốt với tiếng Việt có dấu và không dấu
-3. Kết quả được nhóm theo loại vải
-4. Chọn được vải và giá trị được lưu đúng (fabric_variant_id)
-5. Hiển thị số lượng tồn kho đúng theo kho đã chọn
-
----
-
-## Kiểm tra sau triển khai
-
-1. Mở form "Ghi nhận sử dụng vải"
-2. Click vào dropdown chọn loại vải → thấy ô tìm kiếm
-3. Gõ "lụa" hoặc "lua" → thấy kết quả lọc đúng
-4. Gõ "T300" → thấy các loại vải T300 hiện lên
-5. Chọn 1 loại vải → dropdown đóng lại, hiển thị tên đã chọn
-6. Xác nhận số lượng tồn kho hiển thị đúng
+- Ứng dụng không còn trắng trang
+- Nếu có lỗi runtime khác, hiển thị màn hình lỗi thân thiện với nút reload
+- Sonner toast hoạt động với theme tự động
+- Vite pre-bundle React thống nhất, không còn duplicate instances
 
