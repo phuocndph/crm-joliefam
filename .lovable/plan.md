@@ -1,113 +1,122 @@
 
 
-# Cải thiện bảng tồn kho vải - Gọn gàng, dễ nhìn hơn
+# Kế hoạch khắc phục triệt để lỗi Duplicate React Instances
 
-## Vấn đề hiện tại
+## Vấn đề gốc rễ
 
-Bảng tồn kho vải đang hiển thị dưới dạng **grid cards 3 cột**:
-- Mỗi loại vải chiếm 1 card riêng biệt với CardHeader + CardContent
-- Với 47+ loại vải → Tốn rất nhiều diện tích màn hình
-- Phải cuộn nhiều để xem hết
-- Khó so sánh tồn kho giữa các loại vải
+Lỗi **"Cannot read properties of null (reading 'useState')"** xảy ra do có nhiều instance React được load cùng lúc. Nguyên nhân:
 
-## Giải pháp: Chuyển sang dạng bảng (Table) compact
+1. **Inconsistent imports**: Có 3 kiểu import React khác nhau trong codebase (91+ files)
+2. **Vite pre-bundling không đủ mạnh**: Cấu hình `dedupe` và `optimizeDeps` chưa hoàn chỉnh
+3. **Service Worker cache**: Module cũ được cache và conflict với module mới
+4. **tsconfig thiếu cấu hình esModuleInterop**: Gây khác biệt khi bundler resolve import
 
-Thay vì grid cards, sử dụng **Table dạng spreadsheet** với các hàng compact:
+---
 
-```text
-Trước (Cards):
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ Vải T200t    │  │ Vải T250t    │  │ Vải T300t    │
-│ Tồn: 1,608m  │  │ Tồn: 403m    │  │ Tồn: 568m    │
-│ [Chuyển kho] │  │ [Chuyển kho] │  │ [Chuyển kho] │
-└──────────────┘  └──────────────┘  └──────────────┘
-... (47+ cards, tốn nhiều diện tích)
+## Giải pháp toàn diện (3 bước)
 
-Sau (Table compact):
-┌───┬─────────────────────────────┬──────────────┬────────────┐
-│ # │ Tên vải                     │ Tồn kho      │ Thao tác   │
-├───┼─────────────────────────────┼──────────────┼────────────┤
-│ 1 │ Vải T200t - K280            │ 1,608m       │ [Chuyển]   │
-│ 2 │ Vải T250t - K260            │ 403m (⚠️)    │ [Chuyển]   │
-│ 3 │ Vải T300t - K280            │ 568m         │ [Chuyển]   │
-│...│ ...                         │ ...          │ ...        │
-└───┴─────────────────────────────┴──────────────┴────────────┘
+### Bước 1: Cập nhật Vite config với alias tuyệt đối
+
+Thay vì chỉ dùng `dedupe`, sử dụng **alias** để ép tất cả import React về cùng 1 module path.
+
+**File: `vite.config.ts`**
+
+```typescript
+resolve: {
+  alias: {
+    "@": path.resolve(__dirname, "./src"),
+    // Force single React instance by aliasing to exact path
+    "react": path.resolve(__dirname, "node_modules/react"),
+    "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
+  },
+  dedupe: ["react", "react-dom", "react/jsx-runtime"],
+},
+optimizeDeps: {
+  include: [
+    "react", 
+    "react-dom", 
+    "react/jsx-runtime",
+    "react-dom/client"
+  ],
+  force: true,
+  esbuildOptions: {
+    // Ensure consistent module resolution
+    mainFields: ["module", "main"],
+  },
+},
 ```
 
-## Chi tiết thay đổi
+### Bước 2: Thêm esModuleInterop vào tsconfig
 
-### File: `src/components/FabricControlByWarehouse.tsx`
+Đảm bảo TypeScript và bundler xử lý import thống nhất.
 
-**Thay thế grid cards (dòng 407-451) bằng Table compact:**
+**File: `tsconfig.app.json`**
 
-1. Sử dụng component `Table` thay vì grid cards
-2. Mỗi hàng chỉ chiếm 1 dòng với các cột:
-   - STT
-   - Tên vải
-   - Tồn kho (có highlight màu theo mức cảnh báo)
-   - Nút "Chuyển kho" (nhỏ gọn)
-3. Thêm tính năng sắp xếp theo tồn kho (cao → thấp hoặc thấp → cao)
-4. Ẩn các loại vải có tồn = 0 (với toggle để hiện/ẩn)
+```json
+{
+  "compilerOptions": {
+    // ... existing config
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+  }
+}
+```
 
-### Cải tiến thêm:
+### Bước 3: Cleanup Service Worker cache
 
-1. **Thêm bộ lọc nhanh**:
-   - Toggle "Chỉ hiện vải còn hàng" 
-   - Tìm kiếm theo tên vải
+Thêm script vào `index.html` để unregister Service Worker cũ và clear cache trong development/preview.
 
-2. **Hiển thị màu theo mức tồn**:
-   - Đỏ: < 500m (cảnh báo)
-   - Vàng: 500-1000m (chú ý)
-   - Bình thường: > 1000m
+**File: `index.html`**
 
-3. **Responsive**:
-   - Desktop: Bảng đầy đủ 4 cột
-   - Mobile: Ẩn cột STT, thu gọn nút
+Thay đổi script đăng ký SW để:
+- Chỉ register SW khi ở production domain thực
+- Tự động unregister và clear cache nếu không phải production
+
+```html
+<script>
+  // Only register SW on real production domain
+  const isProduction = window.location.hostname === 'crm-joliefam.lovable.app';
+  
+  if ('serviceWorker' in navigator) {
+    if (isProduction) {
+      navigator.serviceWorker.register('/sw.js');
+    } else {
+      // Unregister SW and clear caches in preview/dev
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(reg => reg.unregister());
+      });
+      if ('caches' in window) {
+        caches.keys().then(names => names.forEach(name => caches.delete(name)));
+      }
+    }
+  }
+</script>
+```
 
 ---
 
 ## Thông tin kỹ thuật
 
-### File cần sửa
+### Files cần sửa
 
 | File | Thay đổi |
 |------|----------|
-| `src/components/FabricControlByWarehouse.tsx` | Thay grid cards bằng Table compact, thêm filter/sort |
+| `vite.config.ts` | Thêm alias resolve cho react/react-dom, cập nhật optimizeDeps |
+| `tsconfig.app.json` | Thêm esModuleInterop và allowSyntheticDefaultImports |
+| `index.html` | Sửa script SW để chỉ register ở production |
 
-### Code structure mới
+### Tại sao giải pháp này ổn định hơn?
 
-```typescript
-// Thêm state cho filter và sort
-const [showZeroStock, setShowZeroStock] = useState(false);
-const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-const [fabricSearch, setFabricSearch] = useState('');
+1. **Alias tuyệt đối**: Bất kể import kiểu nào (`import * as React`, `import React`, `import { useState }`), Vite sẽ resolve về cùng 1 file trong node_modules
 
-// Filter và sort data
-const displayedFabrics = useMemo(() => {
-  let filtered = fabricSummaryArray;
-  
-  if (!showZeroStock) {
-    filtered = filtered.filter(f => f.currentWarehouse > 0);
-  }
-  
-  if (fabricSearch) {
-    filtered = filtered.filter(f => 
-      f.fabricName.toLowerCase().includes(fabricSearch.toLowerCase())
-    );
-  }
-  
-  return filtered.sort((a, b) => 
-    sortOrder === 'desc' 
-      ? b.currentWarehouse - a.currentWarehouse 
-      : a.currentWarehouse - b.currentWarehouse
-  );
-}, [fabricSummaryArray, showZeroStock, sortOrder, fabricSearch]);
-```
+2. **esModuleInterop**: Đảm bảo TypeScript và Vite xử lý default/named exports nhất quán
+
+3. **SW cleanup**: Loại bỏ cache cũ gây conflict trong preview environment
 
 ### Kết quả mong đợi
 
-- Giảm ~70% diện tích so với grid cards
-- Dễ so sánh tồn kho giữa các loại vải
-- Nhanh chóng tìm thấy vải cần thiết
-- Vẫn giữ đầy đủ chức năng chuyển kho
+- Chỉ có 1 React instance được load
+- Không còn lỗi "Invalid hook call" 
+- Ứng dụng hoạt động ổn định cả preview và production
+- Hot Module Replacement (HMR) hoạt động đúng
 
