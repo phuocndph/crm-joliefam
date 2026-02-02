@@ -1,78 +1,81 @@
 
-## Mục tiêu
-Làm cho dropdown tìm kiếm (Command/cmdk trong Popover) **cuộn được bằng con lăn chuột** để tìm sản phẩm/vải dễ dàng, ổn định trên Chrome/Edge/Safari.
 
----
+# Cải thiện tìm kiếm đa năng cho dropdown chọn vải
 
-## Chẩn đoán nhanh (vì sao hiện tại vẫn không cuộn)
-Hiện `CommandList` đang được bọc bởi `ScrollArea` với `className="max-h-[300px]"`.
+## Vấn đề hiện tại
 
-Trong Radix `ScrollArea`, **Root cần có chiều cao cụ thể** để tạo vùng “viewport” có overflow.  
-Nhưng component `ScrollArea` của dự án đang set:
+Chức năng tìm kiếm hiện chỉ tìm theo `variant_name` (tên biến thể) và yêu cầu chuỗi ký tự phải nằm liên tục trong tên. Điều này gây khó khăn khi:
+- Muốn tìm theo tên loại vải (fabric type)
+- Gõ không đầy đủ hoặc gõ tắt
+- Nhớ không chính xác thứ tự các từ
 
-- `Root`: `relative overflow-hidden` (không tự tạo scroll)
-- `Viewport`: `className="h-full w-full"`
+## Giải pháp
 
-Khi `Root` chỉ có `max-height` (không có `height`), `h-full` của Viewport thường **không có chiều cao thực để bám theo**, dẫn đến:
-- Vùng list không trở thành vùng scroll đúng nghĩa, hoặc
-- Trông như có giới hạn hiển thị, nhưng wheel event không làm list cuộn.
+Mở rộng tìm kiếm để:
+1. Tìm trong cả **tên biến thể** (`variant_name`) và **tên loại vải** (`fabric_types.name`)
+2. Hỗ trợ tìm kiếm theo **từng từ riêng lẻ** - chỉ cần các từ xuất hiện trong tên (không cần đúng thứ tự)
+3. Hỗ trợ **fuzzy matching** - cho phép bỏ qua một số ký tự
 
-Kết quả: danh sách dài nhưng **mouse wheel không “ăn”**.
+## Thay đổi cần thực hiện
 
----
+### File: `src/components/ui/searchable-fabric-select.tsx`
 
-## Cách sửa (ổn định nhất)
-### 1) Sửa `CommandList` để ScrollArea có “height” thật (không chỉ max-height)
-**File:** `src/components/ui/command.tsx`
+Cập nhật logic filter trong `sortedVariants`:
 
-- Đổi `ScrollArea className="max-h-[300px]"` thành chiều cao rõ ràng:
-  - `h-[300px]` (đơn giản nhất, chắc chắn hoạt động)
-  - hoặc dùng chiều cao linh hoạt theo màn hình:
-    - `h-[min(320px,calc(100vh-220px))]` để không bị tràn màn hình khi ở laptop nhỏ.
+```typescript
+const sortedVariants = useMemo(() => {
+  if (!fabricVariants) return [];
 
-Đồng thời giữ padding của list như hiện tại.
+  const normalizedSearch = removeAccents(searchTerm.toLowerCase().trim());
+  
+  // Không có từ khóa => trả về tất cả
+  if (!normalizedSearch) {
+    return fabricVariants.sort((a, b) => 
+      a.variant_name.localeCompare(b.variant_name, 'vi')
+    );
+  }
 
-**Kỳ vọng:** ngay lập tức wheel scroll hoạt động vì viewport đã có height => overflow thật.
+  // Tách từ khóa thành các từ riêng lẻ
+  const searchWords = normalizedSearch.split(/\s+/).filter(w => w.length > 0);
 
----
+  return fabricVariants
+    .filter((variant) => {
+      // Gộp tất cả text có thể tìm kiếm
+      const variantText = removeAccents(variant.variant_name.toLowerCase());
+      const typeText = removeAccents(
+        (variant.fabric_types?.name || '').toLowerCase()
+      );
+      const combinedText = `${variantText} ${typeText}`;
 
-### 2) Tăng “khả năng bắt cuộn” (tránh scroll bị Popover/parent nuốt event)
-**File:** `src/components/ui/scroll-area.tsx`
+      // Kiểm tra TẤT CẢ các từ đều xuất hiện trong text
+      return searchWords.every(word => combinedText.includes(word));
+    })
+    .sort((a, b) => a.variant_name.localeCompare(b.variant_name, 'vi'));
+}, [fabricVariants, searchTerm]);
+```
 
-Cập nhật `Viewport` để:
-- Thêm `overscroll-contain` / `overscroll-y-contain` (Tailwind) để wheel không “bị kéo” lên body
-- Thêm `style={{ overscrollBehavior: "contain" }}` nếu cần chắc chắn
-- Đảm bảo viewport là nơi scroll (Radix đã làm đúng), nhưng thêm class giúp browser xử lý tốt hơn trong popup.
+## Ví dụ hoạt động
 
-**Kỳ vọng:** cuộn mượt, không bị “khựng”, không cuộn cả trang phía sau khi scroll tới đáy.
+| Từ khóa gõ | Kết quả tìm được |
+|------------|------------------|
+| `cotton` | Tất cả vải có chữ "cotton" trong tên biến thể HOẶC loại vải |
+| `trang 160` | Vải có cả "trắng" và "160" (không cần đúng thứ tự) |
+| `lua` | Tìm được "Lụa" (bỏ dấu) |
+| `160 trang` | Vẫn tìm được "Trắng 160cm" |
 
----
+## Chi tiết kỹ thuật
 
-### 3) Kiểm tra các dropdown “tìm sản phẩm” khác có dùng `CommandList` không
-Hiện trong repo chỉ thấy `SearchableFabricSelect` dùng `CommandList`.  
-Nhưng nếu phần “tìm sản phẩm” đang dùng component khác (ví dụ một searchable select riêng), ta sẽ:
-- Chuyển nó qua dùng `CommandList` chung (đã fix scroll), hoặc
-- Áp dụng cùng pattern: vùng list phải có height cố định + overflow/ScrollArea đúng.
+| Thay đổi | Mô tả |
+|----------|-------|
+| Mở rộng phạm vi tìm kiếm | Thêm `fabric_types.name` vào text tìm kiếm |
+| Tách từ khóa | Dùng `split(/\s+/)` để tách thành mảng các từ |
+| Logic matching | Dùng `every()` để đảm bảo tất cả từ đều match |
+| Giữ nguyên | Vẫn dùng `removeAccents` để hỗ trợ tiếng Việt |
 
----
+## Kết quả mong đợi
 
-## Tiêu chí nghiệm thu (bắt buộc test)
-1) Mở dropdown tìm vải/sản phẩm.
-2) Dùng con lăn chuột cuộn xuống liên tục ít nhất 30–50 item: phải cuộn mượt.
-3) Cuộn tới đáy: không làm trang phía sau bị cuộn giật.
-4) Test trên laptop touchpad (2-finger scroll) nếu có.
-
----
-
-## Các file sẽ chỉnh
-- `src/components/ui/command.tsx`
-  - Thay `max-h-[300px]` bằng `h-[...]` cho `ScrollArea` wrapper của `CommandList`.
-- `src/components/ui/scroll-area.tsx`
-  - Bổ sung `overscroll`/style cho `Viewport` để tối ưu wheel scroll trong popup.
-
----
-
-## Rủi ro & phương án dự phòng
-- Nếu vẫn không cuộn: khả năng có `wheel` event bị chặn ở một layer khác.
-  - Khi đó sẽ bổ sung `onWheelCapture={(e)=>e.stopPropagation()}` vào Viewport hoặc PopoverContent để đảm bảo event đi đúng vùng scroll (chỉ dùng khi cần, tránh tác dụng phụ).
+- Tìm kiếm linh hoạt hơn, không cần gõ chính xác
+- Tìm được cả theo tên biến thể và loại vải
+- Gõ nhiều từ theo bất kỳ thứ tự nào đều tìm được
+- Vẫn hỗ trợ tiếng Việt có dấu và không dấu
 
