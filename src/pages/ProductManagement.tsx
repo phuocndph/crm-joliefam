@@ -128,11 +128,11 @@ const ProductManagement = () => {
   }, []);
 
   useEffect(() => {
-    if (currentUserRole && !roleLoading) {
+    if (user) {
       fetchPriceLists();
       fetchProducts();
     }
-  }, [currentUserRole, roleLoading]);
+  }, [user]);
 
   useEffect(() => {
     setCurrentPage(1); // Reset to first page when filters change
