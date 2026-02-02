@@ -128,7 +128,7 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <CommandList className="max-h-[300px] overflow-y-auto">
+          <CommandList>
             <CommandEmpty>Không tìm thấy loại vải phù hợp.</CommandEmpty>
             <CommandGroup>
               {sortedVariants.map((variant) => {
