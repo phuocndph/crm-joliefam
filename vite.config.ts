@@ -24,5 +24,7 @@ export default defineConfig(({ mode }) => ({
   optimizeDeps: {
     // Force Vite to pre-bundle React as a single instance
     include: ["react", "react-dom", "react/jsx-runtime"],
+    // Force rebuild to clear stale cache causing duplicate React instances
+    force: true,
   },
 }));
