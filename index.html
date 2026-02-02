@@ -48,19 +48,34 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     
-    <!-- Register Service Worker for PWA -->
+    <!-- Register Service Worker for PWA - only on production -->
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
-              console.log('SW registered: ', registration);
-            })
-            .catch((registrationError) => {
-              console.log('SW registration failed: ', registrationError);
+      (function() {
+        const isProduction = window.location.hostname === 'crm-joliefam.lovable.app';
+        
+        if ('serviceWorker' in navigator) {
+          if (isProduction) {
+            // Register SW only on production
+            window.addEventListener('load', () => {
+              navigator.serviceWorker.register('/sw.js')
+                .then((registration) => {
+                  console.log('SW registered: ', registration);
+                })
+                .catch((registrationError) => {
+                  console.log('SW registration failed: ', registrationError);
+                });
             });
-        });
-      }
+          } else {
+            // Unregister SW and clear caches in preview/dev to prevent stale module conflicts
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+              registrations.forEach(reg => reg.unregister());
+            });
+            if ('caches' in window) {
+              caches.keys().then(names => names.forEach(name => caches.delete(name)));
+            }
+          }
+        }
+      })();
     </script>
   </body>
 </html>
