@@ -283,8 +283,8 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
           </div>
           <Dialog open={showDialog} onOpenChange={setShowDialog}>
             <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
+              <Button size="lg" className="shadow-lg">
+                <Plus className="mr-2 h-5 w-5" />
                 Ghi nhận sử dụng vải
               </Button>
             </DialogTrigger>

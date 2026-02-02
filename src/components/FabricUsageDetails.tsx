@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, Calendar, Edit, Trash2, Plus, X } from 'lucide-react';
+import { Search, Filter, Calendar, Edit, Trash2, Plus, X, ChevronDown, ChevronUp, FileText, MessageSquare } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -12,6 +12,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SafeTooltipProvider } from '@/components/SafeTooltipProvider';
 import { useFabricUsage, useFabricTypes, useWarehouses, useFabricVariants, useUpdateFabricUsage, useDeleteFabricUsage } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -72,6 +75,8 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
     from: undefined,
     to: undefined
   });
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
 
   // Edit states
   const [editingRecord, setEditingRecord] = useState<FabricUsageRecord | null>(null);
@@ -134,6 +139,15 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
     
     return { totalRecords, totalQuantity, uniqueOrders };
   }, [filteredData]);
+
+  // Count active filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (searchTerm) count++;
+    if (selectedFabricType !== 'all') count++;
+    if (dateRange.from || dateRange.to) count++;
+    return count;
+  }, [searchTerm, selectedFabricType, dateRange]);
 
   const formatQuantity = (quantity: number, unit: string = 'm') => {
     return `${quantity.toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${unit}`;
@@ -210,331 +224,359 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex justify-between items-center">
-          <div>
-            <CardTitle>Chi tiết sử dụng vải - {warehouseName}</CardTitle>
-            <CardDescription>
-              Theo dõi và quản lý chi tiết việc sử dụng vải tại kho {warehouseName}
-            </CardDescription>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Badge variant="secondary">
-              {summaryStats.totalRecords} bản ghi
-            </Badge>
-            <Badge variant="outline">
-              {summaryStats.uniqueOrders} đơn hàng
-            </Badge>
-            <Badge variant="outline">
-              Tổng: {formatQuantity(summaryStats.totalQuantity)}
-            </Badge>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Filters */}
-        <div className="space-y-4">
-          <h4 className="font-medium flex items-center">
-            <Filter className="mr-2 h-4 w-4" />
-            Bộ lọc và tìm kiếm
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Tìm kiếm đơn hàng, khách hàng, vải..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <Card>
+        <CardHeader className="pb-3">
+          <CollapsibleTrigger asChild>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-muted/50 -mx-2 px-2 py-1 rounded-lg transition-colors">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                <div>
+                  <CardTitle className="text-base">Chi tiết sử dụng vải - {warehouseName}</CardTitle>
+                  <CardDescription className="text-sm">
+                    {summaryStats.totalRecords} bản ghi • {summaryStats.uniqueOrders} đơn • Nhấn để {isExpanded ? 'thu gọn' : 'mở rộng'}
+                  </CardDescription>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{summaryStats.totalRecords}</Badge>
+                <Badge variant="outline">{formatQuantity(summaryStats.totalQuantity)}</Badge>
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </div>
             </div>
-            <Select value={selectedFabricType} onValueChange={setSelectedFabricType}>
-              <SelectTrigger>
-                <SelectValue placeholder="Tất cả loại vải" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả loại vải</SelectItem>
-                {fabricTypes?.map((type) => (
-                  <SelectItem key={type.id} value={type.id}>
-                    {type.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className={cn(
-                  "justify-start text-left font-normal",
-                  !dateRange.from && "text-muted-foreground"
-                )}>
-                  <Calendar className="mr-2 h-4 w-4" />
-                  {dateRange.from ? (
-                    dateRange.to ? (
-                      <>
-                        {formatDate(dateRange.from)} - {formatDate(dateRange.to)}
-                      </>
-                    ) : (
-                      formatDate(dateRange.from)
-                    )
-                  ) : (
-                    "Chọn khoảng thời gian"
-                  )}
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="space-y-4 pt-0">
+            {/* Collapsible Filters */}
+            <Collapsible open={isFilterExpanded} onOpenChange={setIsFilterExpanded}>
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full justify-between">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4" />
+                    <span>Bộ lọc và tìm kiếm</span>
+                    {activeFilterCount > 0 && (
+                      <Badge variant="secondary" className="ml-1">
+                        {activeFilterCount} bộ lọc
+                      </Badge>
+                    )}
+                  </div>
+                  {isFilterExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  initialFocus
-                  mode="range"
-                  defaultMonth={dateRange.from}
-                  selected={{
-                    from: dateRange.from,
-                    to: dateRange.to
-                  }}
-                  onSelect={(range) => setDateRange({
-                    from: range?.from,
-                    to: range?.to
-                  })}
-                  numberOfMonths={2}
-                  className="pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                setSearchTerm('');
-                setSelectedFabricType('all');
-                setDateRange({ from: undefined, to: undefined });
-              }}
-            >
-              Xóa bộ lọc
-            </Button>
-          </div>
-        </div>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Tìm đơn hàng, khách hàng..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <Select value={selectedFabricType} onValueChange={setSelectedFabricType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Tất cả loại vải" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tất cả loại vải</SelectItem>
+                      {fabricTypes?.map((type) => (
+                        <SelectItem key={type.id} value={type.id}>
+                          {type.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className={cn(
+                        "justify-start text-left font-normal",
+                        !dateRange.from && "text-muted-foreground"
+                      )}>
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {dateRange.from ? (
+                          dateRange.to ? (
+                            <>
+                              {formatDate(dateRange.from)} - {formatDate(dateRange.to)}
+                            </>
+                          ) : (
+                            formatDate(dateRange.from)
+                          )
+                        ) : (
+                          "Chọn ngày"
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        initialFocus
+                        mode="range"
+                        defaultMonth={dateRange.from}
+                        selected={{
+                          from: dateRange.from,
+                          to: dateRange.to
+                        }}
+                        onSelect={(range) => setDateRange({
+                          from: range?.from,
+                          to: range?.to
+                        })}
+                        numberOfMonths={2}
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <Button 
+                    variant={activeFilterCount > 0 ? "destructive" : "outline"}
+                    onClick={() => {
+                      setSearchTerm('');
+                      setSelectedFabricType('all');
+                      setDateRange({ from: undefined, to: undefined });
+                    }}
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    Xóa bộ lọc
+                  </Button>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
 
-        {/* Usage Details Table */}
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-blue-900 text-white">
-                <TableHead className="w-[100px] text-white">Ngày sử dụng</TableHead>
-                <TableHead className="w-[100px] text-white">Số đơn hàng</TableHead>
-                <TableHead className="w-[110px] text-white">Loại đơn hàng</TableHead>
-                <TableHead className="w-[140px] text-white">Khách hàng</TableHead>
-                <TableHead className="w-[100px] text-white">Loại đơn</TableHead>
-                <TableHead className="w-[200px] text-white">Loại vải</TableHead>
-                <TableHead className="w-[80px] text-white">Số lượng</TableHead>
-                <TableHead className="w-[200px] text-white">Ghi chú</TableHead>
-                <TableHead className="w-[100px] text-white">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
+            {/* Usage Details Table with Sticky Header */}
+            <div className="rounded-md border max-h-[500px] overflow-auto">
+              <SafeTooltipProvider>
+                <Table>
+                  <TableHeader className="sticky top-0 z-10">
+                    <TableRow className="bg-primary text-primary-foreground">
+                      <TableHead className="w-[100px] text-primary-foreground">Ngày</TableHead>
+                      <TableHead className="w-[100px] text-primary-foreground">Đơn hàng</TableHead>
+                      <TableHead className="w-[140px] text-primary-foreground">Khách hàng</TableHead>
+                      <TableHead className="w-[120px] text-primary-foreground">Loại</TableHead>
+                      <TableHead className="w-[200px] text-primary-foreground">Vải</TableHead>
+                      <TableHead className="w-[80px] text-primary-foreground text-right">Số lượng</TableHead>
+                      <TableHead className="w-[100px] text-primary-foreground text-center">Thao tác</TableHead>
+                    </TableRow>
+                  </TableHeader>
             <TableBody>
               {filteredData.length > 0 ? (
-                filteredData.map((usage) => (
-                  <TableRow key={usage.id}>
-                    <TableCell className="font-medium">
-                      {formatDate(usage.usage_date)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{usage.order_number}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {usage.order_type === 'new' ? 'Đơn hàng mới' :
-                         usage.order_type === 'replacement' ? 'Đơn đổi trả' :
-                         usage.order_type === 'repair' ? 'Đơn sửa chữa' : 
-                         usage.order_type || '-'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{usage.customer_name}</div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {usage.customer_code === 'don_phuoc' ? 'Đơn Phước' :
-                         usage.customer_code === 'don_hoan' ? 'Đơn Hoan' :
-                         usage.customer_code || '-'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {usage.fabric_variants?.variant_name}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {formatQuantity(usage.quantity_used, usage.unit)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="w-[200px]">
-                      <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                        {usage.notes || '-'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-1">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEdit(usage as FabricUsageRecord)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-2xl">
-                            <DialogHeader>
-                              <DialogTitle>Chỉnh sửa thông tin sử dụng vải</DialogTitle>
-                              <DialogDescription>
-                                Cập nhật thông tin chi tiết về việc sử dụng vải
-                              </DialogDescription>
-                            </DialogHeader>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label>Số đơn hàng</Label>
-                                <Input
-                                  value={editForm.order_number}
-                                  onChange={(e) => setEditForm(prev => ({ ...prev, order_number: e.target.value }))}
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Tên khách hàng</Label>
-                                <Input
-                                  value={editForm.customer_name}
-                                  onChange={(e) => setEditForm(prev => ({ ...prev, customer_name: e.target.value }))}
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Loại đơn</Label>
-                                <Select value={editForm.customer_code} onValueChange={(value) => setEditForm(prev => ({ ...prev, customer_code: value }))}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Chọn loại đơn" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="don_phuoc">Đơn Phước</SelectItem>
-                                    <SelectItem value="don_hoan">Đơn Hoan</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Loại đơn hàng</Label>
-                                <Select value={editForm.order_type} onValueChange={(value) => setEditForm(prev => ({ ...prev, order_type: value }))}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Chọn loại đơn hàng" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="new">Đơn hàng mới</SelectItem>
-                                    <SelectItem value="replacement">Đơn đổi trả</SelectItem>
-                                    <SelectItem value="repair">Đơn sửa chữa</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Loại vải</Label>
-                                <Select value={editForm.fabric_variant_id} onValueChange={(value) => setEditForm(prev => ({ ...prev, fabric_variant_id: value }))}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Chọn loại vải" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {fabricVariants?.map((variant) => (
-                                      <SelectItem key={variant.id} value={variant.id}>
-                                        {variant.variant_name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Số lượng sử dụng (m)</Label>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  value={editForm.quantity_used}
-                                  onChange={(e) => setEditForm(prev => ({ ...prev, quantity_used: Number(e.target.value) }))}
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Chiều rộng vải</Label>
-                                <Input
-                                  value={editForm.fabric_width}
-                                  onChange={(e) => setEditForm(prev => ({ ...prev, fabric_width: e.target.value }))}
-                                  placeholder="Ví dụ: 1.5m"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Ngày sử dụng</Label>
-                                <Input
-                                  type="date"
-                                  value={editForm.usage_date}
-                                  onChange={(e) => setEditForm(prev => ({ ...prev, usage_date: e.target.value }))}
-                                />
-                              </div>
-                            </div>
-                            
-                            <div className="space-y-2">
-                              <Label>Ghi chú</Label>
-                              <Textarea
-                                value={editForm.notes}
-                                onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
-                                placeholder="Ghi chú về việc sử dụng vải"
-                                rows={3}
-                              />
-                            </div>
-
-                            <div className="flex justify-end space-x-2">
-                              <Button variant="outline" onClick={() => setEditingRecord(null)}>
-                                Hủy
-                              </Button>
-                              <Button onClick={handleUpdate} disabled={updateFabricUsage.isPending}>
-                                {updateFabricUsage.isPending ? "Đang cập nhật..." : "Cập nhật"}
-                              </Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Bạn có chắc chắn muốn xóa bản ghi sử dụng vải này? 
-                                Hành động này không thể hoàn tác và sẽ ảnh hưởng đến tồn kho.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Hủy</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDelete(usage.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                filteredData.map((usage) => {
+                  // Merge order_type and customer_code into one combined type
+                  const orderTypeText = usage.order_type === 'new' ? 'Mới' :
+                    usage.order_type === 'replacement' ? 'Đổi trả' :
+                    usage.order_type === 'repair' ? 'Sửa' : '';
+                  const customerCodeText = usage.customer_code === 'don_phuoc' ? 'Phước' :
+                    usage.customer_code === 'don_hoan' ? 'Hoan' : '';
+                  const combinedType = [orderTypeText, customerCodeText].filter(Boolean).join(' / ') || '-';
+                  
+                  return (
+                    <TableRow key={usage.id} className="text-sm">
+                      <TableCell className="py-2">
+                        {formatDate(usage.usage_date)}
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <Badge variant="outline" className="text-xs">{usage.order_number}</Badge>
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <div className="font-medium text-sm">{usage.customer_name}</div>
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <Badge variant="secondary" className="text-xs">{combinedType}</Badge>
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <div className="text-sm truncate max-w-[180px]">
+                          {usage.fabric_variants?.variant_name}
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-2 text-right">
+                        <Badge variant="outline" className="text-xs font-medium text-destructive">
+                          -{formatQuantity(usage.quantity_used, usage.unit)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          {/* Notes as Tooltip */}
+                          {usage.notes && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-[300px]">
+                                <p className="text-sm">{usage.notes}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                          
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                onClick={() => handleEdit(usage as FabricUsageRecord)}
                               >
-                                Xóa
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                                <Edit className="h-3.5 w-3.5" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl">
+                              <DialogHeader>
+                                <DialogTitle>Chỉnh sửa thông tin sử dụng vải</DialogTitle>
+                                <DialogDescription>
+                                  Cập nhật thông tin chi tiết về việc sử dụng vải
+                                </DialogDescription>
+                              </DialogHeader>
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label>Số đơn hàng</Label>
+                                  <Input
+                                    value={editForm.order_number}
+                                    onChange={(e) => setEditForm(prev => ({ ...prev, order_number: e.target.value }))}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Tên khách hàng</Label>
+                                  <Input
+                                    value={editForm.customer_name}
+                                    onChange={(e) => setEditForm(prev => ({ ...prev, customer_name: e.target.value }))}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Loại đơn</Label>
+                                  <Select value={editForm.customer_code} onValueChange={(value) => setEditForm(prev => ({ ...prev, customer_code: value }))}>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Chọn loại đơn" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="don_phuoc">Đơn Phước</SelectItem>
+                                      <SelectItem value="don_hoan">Đơn Hoan</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Loại đơn hàng</Label>
+                                  <Select value={editForm.order_type} onValueChange={(value) => setEditForm(prev => ({ ...prev, order_type: value }))}>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Chọn loại đơn hàng" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="new">Đơn hàng mới</SelectItem>
+                                      <SelectItem value="replacement">Đơn đổi trả</SelectItem>
+                                      <SelectItem value="repair">Đơn sửa chữa</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Loại vải</Label>
+                                  <Select value={editForm.fabric_variant_id} onValueChange={(value) => setEditForm(prev => ({ ...prev, fabric_variant_id: value }))}>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Chọn loại vải" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {fabricVariants?.map((variant) => (
+                                        <SelectItem key={variant.id} value={variant.id}>
+                                          {variant.variant_name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Số lượng sử dụng (m)</Label>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={editForm.quantity_used}
+                                    onChange={(e) => setEditForm(prev => ({ ...prev, quantity_used: Number(e.target.value) }))}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Chiều rộng vải</Label>
+                                  <Input
+                                    value={editForm.fabric_width}
+                                    onChange={(e) => setEditForm(prev => ({ ...prev, fabric_width: e.target.value }))}
+                                    placeholder="Ví dụ: 1.5m"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Ngày sử dụng</Label>
+                                  <Input
+                                    type="date"
+                                    value={editForm.usage_date}
+                                    onChange={(e) => setEditForm(prev => ({ ...prev, usage_date: e.target.value }))}
+                                  />
+                                </div>
+                              </div>
+                              
+                              <div className="space-y-2">
+                                <Label>Ghi chú</Label>
+                                <Textarea
+                                  value={editForm.notes}
+                                  onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                                  placeholder="Ghi chú về việc sử dụng vải"
+                                  rows={3}
+                                />
+                              </div>
+
+                              <div className="flex justify-end space-x-2">
+                                <Button variant="outline" onClick={() => setEditingRecord(null)}>
+                                  Hủy
+                                </Button>
+                                <Button onClick={handleUpdate} disabled={updateFabricUsage.isPending}>
+                                  {updateFabricUsage.isPending ? "Đang cập nhật..." : "Cập nhật"}
+                                </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Bạn có chắc chắn muốn xóa bản ghi sử dụng vải này? 
+                                  Hành động này không thể hoàn tác.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Hủy</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDelete(usage.id)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Xóa
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     Không có dữ liệu sử dụng vải
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
-        </div>
-      </CardContent>
-    </Card>
+        </SafeTooltipProvider>
+      </div>
+    </CardContent>
+  </CollapsibleContent>
+</Card>
+</Collapsible>
   );
 };
