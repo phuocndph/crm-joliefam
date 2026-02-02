@@ -17,14 +17,21 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Force single React instance by aliasing to exact path
+      "react": path.resolve(__dirname, "node_modules/react"),
+      "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
     },
     // Prevent duplicate React instances (fixes: Invalid hook call / useState null)
     dedupe: ["react", "react-dom", "react/jsx-runtime"],
   },
   optimizeDeps: {
     // Force Vite to pre-bundle React as a single instance
-    include: ["react", "react-dom", "react/jsx-runtime"],
+    include: ["react", "react-dom", "react/jsx-runtime", "react-dom/client"],
     // Force rebuild to clear stale cache causing duplicate React instances
     force: true,
+    esbuildOptions: {
+      // Ensure consistent module resolution
+      mainFields: ["module", "main"],
+    },
   },
 }));
