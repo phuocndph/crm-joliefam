@@ -1,83 +1,68 @@
 
 
-# Kế hoạch: Sửa lỗi danh sách bảng giá hiển thị 0
+# Kế hoạch: Đặt nền mặc định là màu trắng
 
-## Nguyên nhân gốc
+## Nguyên nhân
 
-Vấn đề nằm ở **thứ tự khởi tạo và dependencies trong useEffect**:
+Hiện tại ứng dụng đang cấu hình `defaultTheme="system"` trong ThemeProvider, nghĩa là nếu thiết bị của người dùng đang bật **Dark Mode**, app sẽ tự động hiển thị nền đen.
 
-```tsx
-// Dòng 52: user bắt đầu là null
-const [user, setUser] = useState<any>(null);
+### Các nơi cần sửa:
 
-// Dòng 74: useUserRole nhận null, trả về role: null  
-const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
-
-// Dòng 130-135: fetchPriceLists chỉ chạy khi có role
-useEffect(() => {
-  if (currentUserRole && !roleLoading) {
-    fetchPriceLists();  // Không bao giờ chạy nếu role là null
-    fetchProducts();
-  }
-}, [currentUserRole, roleLoading]);
-```
-
-**Vấn đề**: Khi page load:
-1. `user = null` → `currentUserRole = null`
-2. Effect không chạy vì `currentUserRole` là null
-3. Dù sau đó `user` được set, effect có thể không trigger lại đúng cách
+| File | Vấn đề | Cần sửa |
+|------|--------|---------|
+| `src/App.tsx` | `defaultTheme="system"` | Đổi thành `defaultTheme="light"` |
+| `index.html` | `theme-color="#000000"` | Đổi thành `theme-color="#ffffff"` |
+| `public/manifest.json` | `theme_color="#000000"`, `background_color="#ffffff"` | Đổi `theme_color="#ffffff"` |
 
 ---
 
-## Giải pháp
+## Thay đổi cần thực hiện
 
-Sửa logic khởi tạo để đảm bảo `fetchPriceLists()` được gọi:
+### 1. `src/App.tsx` (Dòng 127)
 
-### Thay đổi 1: Đơn giản hóa điều kiện fetch
-
-Bỏ điều kiện kiểm tra role khi fetch price lists vì RLS đã được đơn giản hóa (tất cả authenticated users đều có quyền):
-
+**Trước:**
 ```tsx
-// TRƯỚC:
-useEffect(() => {
-  if (currentUserRole && !roleLoading) {
-    fetchPriceLists();
-    fetchProducts();
-  }
-}, [currentUserRole, roleLoading]);
-
-// SAU:
-useEffect(() => {
-  if (user) {  // Chỉ cần user đã login
-    fetchPriceLists();
-    fetchProducts();
-  }
-}, [user]);
+<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
 ```
 
-### Thay đổi 2: Thêm user vào dependencies
+**Sau:**
+```tsx
+<ThemeProvider attribute="class" defaultTheme="light">
+```
 
-Đảm bảo fetch được trigger khi user state thay đổi.
+Bỏ `enableSystem` để không cho phép theme tự động theo hệ thống.
 
 ---
 
-## File cần sửa
+### 2. `index.html` (Dòng 13, 17, 26)
 
-### `src/pages/ProductManagement.tsx`
-
-**Dòng 130-135** - Sửa useEffect:
-
-```tsx
-// Fetch data khi user đã đăng nhập
-useEffect(() => {
-  if (user) {
-    fetchPriceLists();
-    fetchProducts();
-  }
-}, [user]);
+**Trước:**
+```html
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="msapplication-TileColor" content="#000000">
 ```
 
-Xóa hoặc giữ lại logic check role cho các action buttons như thêm/sửa/xóa nếu cần.
+**Sau:**
+```html
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="msapplication-TileColor" content="#ffffff">
+```
+
+---
+
+### 3. `public/manifest.json` (Dòng 6)
+
+**Trước:**
+```json
+"theme_color": "#000000",
+```
+
+**Sau:**
+```json
+"theme_color": "#ffffff",
+```
 
 ---
 
@@ -85,13 +70,15 @@ Xóa hoặc giữ lại logic check role cho các action buttons như thêm/sử
 
 | Trước | Sau |
 |-------|-----|
-| Danh sách bảng giá: 0 | Danh sách bảng giá: 7 |
-| fetchPriceLists không được gọi | fetchPriceLists chạy khi user login |
+| Nền đen khi thiết bị bật Dark Mode | Nền trắng cố định |
+| Status bar màu đen trên iOS | Status bar màu trắng/mặc định |
+| Theme color đen | Theme color trắng |
 
 ---
 
 ## Thứ tự thực hiện
 
-1. **Sửa ProductManagement.tsx** - Đổi điều kiện useEffect từ check role sang check user
-2. **Kiểm tra** - Refresh trang và xác nhận thấy 7 bảng giá
+1. **Sửa App.tsx** - Đổi `defaultTheme="light"` và bỏ `enableSystem`
+2. **Sửa index.html** - Cập nhật meta tags theme-color
+3. **Sửa manifest.json** - Cập nhật theme_color
 
