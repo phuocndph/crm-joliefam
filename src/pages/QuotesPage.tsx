@@ -430,14 +430,16 @@ export default function QuotesPage() {
           </div>
           <div className="flex gap-2">
             <CreateAssigneeForm onSuccess={refetchQuotes} />
-            <Button 
-              variant="outline" 
-              onClick={() => setShowTemplateSettings(true)} 
-              className="gap-2"
-            >
-              <Settings className="h-4 w-4" />
-              Cài đặt Template
-            </Button>
+            {(userRole === 'manager' || userRole === 'admin') && (
+              <Button 
+                variant="outline" 
+                onClick={() => setShowTemplateSettings(true)} 
+                className="gap-2"
+              >
+                <Settings className="h-4 w-4" />
+                Cài đặt Template
+              </Button>
+            )}
             <Button onClick={() => setShowCreateForm(true)} className="gap-2">
               <Plus className="h-4 w-4" />
               Tạo báo giá mới
@@ -580,7 +582,7 @@ export default function QuotesPage() {
                                 Báo giá phụ
                               </DropdownMenuItem>
                             )}
-                            {quote.status === 'draft' && (
+                            {(userRole === 'manager' || userRole === 'admin') && quote.status === 'draft' && (
                               <DropdownMenuItem
                                 onClick={() => handleApproveQuote(quote)}
                                 className="text-green-600 hover:bg-green-600 hover:text-white transition-colors"
@@ -589,7 +591,7 @@ export default function QuotesPage() {
                                 Duyệt báo giá
                               </DropdownMenuItem>
                             )}
-                            {quote.status === 'draft' && (
+                            {(userRole === 'manager' || userRole === 'admin') && quote.status === 'draft' && (
                               <DropdownMenuItem
                                 onClick={() => handleRejectQuote(quote.id)}
                                 className="text-orange-600 hover:bg-orange-600 hover:text-white transition-colors"
@@ -605,20 +607,24 @@ export default function QuotesPage() {
                               <Edit className="mr-2 h-4 w-4" />
                               Sửa
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setEditingQuoteDetails(quote)}
-                              className="hover:bg-primary hover:text-primary-foreground transition-colors"
-                            >
-                              <Calendar className="mr-2 h-4 w-4" />
-                              Sửa ngày & trạng thái
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDeleteQuote(quote.id)}
-                              className="text-red-600 hover:bg-red-600 hover:text-white transition-colors"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Xóa
-                            </DropdownMenuItem>
+                            {(userRole === 'manager' || userRole === 'admin') && (
+                              <DropdownMenuItem
+                                onClick={() => setEditingQuoteDetails(quote)}
+                                className="hover:bg-primary hover:text-primary-foreground transition-colors"
+                              >
+                                <Calendar className="mr-2 h-4 w-4" />
+                                Sửa ngày & trạng thái
+                              </DropdownMenuItem>
+                            )}
+                            {(userRole === 'manager' || userRole === 'admin') && (
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteQuote(quote.id)}
+                                className="text-red-600 hover:bg-red-600 hover:text-white transition-colors"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Xóa
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
