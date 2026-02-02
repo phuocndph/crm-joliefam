@@ -5,8 +5,10 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Use unique channel name to prevent conflicts across multiple tabs
+    const channelName = `orders-payments-quotes-${Date.now()}`;
     const channel = supabase
-      .channel('orders-and-payments-realtime')
+      .channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
         console.log('📦 Orders real-time update received:', payload.eventType, payload.new);
         queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -20,11 +22,14 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       })
       .subscribe((status) => {
-        console.log('📦 Orders, payments and quotes real-time subscription status:', status);
+        console.log(`📦 ${channelName} subscription status:`, status);
+        if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Orders realtime subscription failed, will retry on next mount');
+        }
       });
 
     return () => {
-      console.log('📦 Cleaning up orders, payments and quotes real-time subscription');
+      console.log(`📦 Cleaning up ${channelName} subscription`);
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
