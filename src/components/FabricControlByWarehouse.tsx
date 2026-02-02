@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Badge } from '@/components/ui/badge';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, Filter, Search, Package, TrendingUp, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Plus, Filter, Search, Package, TrendingUp, ArrowRight, ChevronDown, ChevronUp, ArrowUpDown } from 'lucide-react';
 import { useFabricUsage, useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransfer, useUpdateInventory, useCreateTransaction } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -50,6 +51,9 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   const [transferQuantity, setTransferQuantity] = useState(0);
   const [transferNotes, setTransferNotes] = useState('');
   const [isInventoryExpanded, setIsInventoryExpanded] = useState(false);
+  const [showZeroStock, setShowZeroStock] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [fabricSearch, setFabricSearch] = useState('');
   const [newUsage, setNewUsage] = useState({
     order_number: '',
     fabric_variant_id: '',
@@ -163,6 +167,31 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     }>);
   }, [inventory, warehouseFilter]);
   const fabricSummaryArray = Object.values(fabricSummary);
+
+  // Filtered and sorted fabrics for display
+  const displayedFabrics = useMemo(() => {
+    let filtered = fabricSummaryArray;
+    
+    // Filter out zero stock unless toggled on
+    if (!showZeroStock) {
+      filtered = filtered.filter(f => f.currentWarehouse > 0);
+    }
+    
+    // Filter by search term
+    if (fabricSearch.trim()) {
+      const searchLower = fabricSearch.toLowerCase();
+      filtered = filtered.filter(f => 
+        f.fabricName.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    // Sort by current warehouse stock
+    return filtered.sort((a, b) => 
+      sortOrder === 'desc' 
+        ? b.currentWarehouse - a.currentWarehouse 
+        : a.currentWarehouse - b.currentWarehouse
+    );
+  }, [fabricSummaryArray, showZeroStock, sortOrder, fabricSearch]);
 
   // Calculate summary statistics
   const summary = useMemo(() => {
@@ -383,13 +412,13 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         <p className="text-muted-foreground">Theo dõi sử dụng vải theo đơn hàng và khách hàng</p>
       </div>
 
-      {/* Fabric Inventory Cards - Collapsible */}
+      {/* Fabric Inventory Table - Collapsible */}
       <Collapsible open={isInventoryExpanded} onOpenChange={setIsInventoryExpanded}>
         <div className="flex items-center justify-between">
           <CollapsibleTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 p-0 h-auto hover:bg-transparent">
               <Package className="h-5 w-5 text-primary" />
-              <span className="font-semibold">Tồn kho vải ({fabricSummaryArray.length} loại)</span>
+              <span className="font-semibold">Tồn kho vải ({displayedFabrics.length}/{fabricSummaryArray.length} loại)</span>
               {isInventoryExpanded ? (
                 <ChevronUp className="h-4 w-4" />
               ) : (
@@ -403,51 +432,111 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
             </span>
           )}
         </div>
-        <CollapsibleContent className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {fabricSummaryArray.map((fabric, index) => {
-              const getCardClass = () => {
-                if (fabric.currentWarehouse < 500) return "border-red-500 bg-red-50";
-                if (fabric.currentWarehouse < 1000) return "border-yellow-500 bg-yellow-50";
-                return "";
-              };
-              const getTextClass = () => {
-                if (fabric.currentWarehouse < 500) return "text-red-700";
-                if (fabric.currentWarehouse < 1000) return "text-yellow-700";
-                return "";
-              };
-              const canTransfer = fabric.currentWarehouse > 0;
-              return (
-                <Card key={index} className={getCardClass()}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className={`text-sm font-medium ${getTextClass()}`}>Vải {fabric.fabricName}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className={`text-sm font-medium ${getTextClass()}`}>Tồn kho:</span>
-                        <span className={`text-lg font-bold ${getTextClass()}`}>{fabric.currentWarehouse.toLocaleString('vi-VN', { maximumFractionDigits: 3 }).replace(/,000$/, '')}m</span>
-                      </div>
-                      {canTransfer && (
-                        <div className="pt-2 border-t">
-                          <Button variant="outline" size="sm" className="w-full" onClick={() => handleTransferClick(fabric.fabricName)}>
-                            <ArrowRight className="mr-2 h-4 w-4" />
-                            Chuyển kho
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-            {fabricSummaryArray.length === 0 && (
-              <Card>
-                <CardContent className="text-center text-muted-foreground py-8">
-                  Chưa có dữ liệu tồn kho vải
-                </CardContent>
-              </Card>
-            )}
+        <CollapsibleContent className="mt-4 space-y-4">
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex-1 min-w-[200px] max-w-xs">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Tìm theo tên vải..."
+                  value={fabricSearch}
+                  onChange={(e) => setFabricSearch(e.target.value)}
+                  className="pl-8 h-9"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-zero"
+                checked={showZeroStock}
+                onCheckedChange={setShowZeroStock}
+              />
+              <Label htmlFor="show-zero" className="text-sm cursor-pointer">
+                Hiện vải hết hàng
+              </Label>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+              className="h-9"
+            >
+              <ArrowUpDown className="mr-2 h-4 w-4" />
+              {sortOrder === 'desc' ? 'Cao → Thấp' : 'Thấp → Cao'}
+            </Button>
+          </div>
+
+          {/* Compact Table */}
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="w-12 text-center hidden md:table-cell">#</TableHead>
+                  <TableHead>Tên vải</TableHead>
+                  <TableHead className="w-32 text-right">Tồn kho</TableHead>
+                  <TableHead className="w-24 text-center">Thao tác</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {displayedFabrics.length > 0 ? (
+                  displayedFabrics.map((fabric, index) => {
+                    const getStockClass = () => {
+                      if (fabric.currentWarehouse < 500) return "text-destructive font-semibold";
+                      if (fabric.currentWarehouse < 1000) return "text-amber-600 dark:text-amber-500 font-semibold";
+                      return "text-foreground";
+                    };
+                    const getRowClass = () => {
+                      if (fabric.currentWarehouse < 500) return "bg-destructive/5 hover:bg-destructive/10";
+                      if (fabric.currentWarehouse < 1000) return "bg-amber-50 dark:bg-amber-950/20 hover:bg-amber-100 dark:hover:bg-amber-950/30";
+                      return "";
+                    };
+                    const getStockBadge = () => {
+                      if (fabric.currentWarehouse < 500) return <Badge variant="destructive" className="ml-2 text-xs">Cảnh báo</Badge>;
+                      if (fabric.currentWarehouse < 1000) return <Badge variant="outline" className="ml-2 text-xs border-amber-500 text-amber-600 dark:text-amber-500">Chú ý</Badge>;
+                      return null;
+                    };
+                    const canTransfer = fabric.currentWarehouse > 0;
+                    
+                    return (
+                      <TableRow key={index} className={getRowClass()}>
+                        <TableCell className="text-center text-muted-foreground hidden md:table-cell py-2">
+                          {index + 1}
+                        </TableCell>
+                        <TableCell className="font-medium py-2">
+                          {fabric.fabricName}
+                        </TableCell>
+                        <TableCell className={`text-right py-2 ${getStockClass()}`}>
+                          {fabric.currentWarehouse.toLocaleString('vi-VN', { maximumFractionDigits: 2 })}m
+                          {getStockBadge()}
+                        </TableCell>
+                        <TableCell className="text-center py-2">
+                          {canTransfer && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleTransferClick(fabric.fabricName)}
+                              className="h-7 px-2"
+                            >
+                              <ArrowRight className="h-4 w-4 mr-1" />
+                              <span className="hidden sm:inline">Chuyển</span>
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      {fabricSummaryArray.length === 0 
+                        ? "Chưa có dữ liệu tồn kho vải" 
+                        : "Không tìm thấy vải phù hợp với bộ lọc"}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </div>
         </CollapsibleContent>
       </Collapsible>
