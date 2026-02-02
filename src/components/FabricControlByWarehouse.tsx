@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { supabase } from '@/integrations/supabase/client';
+import { FabricUsageRecording } from '@/components/FabricUsageRecording';
 interface FabricControlByWarehouseProps {
   warehouseName: string;
   warehouseFilter?: string;
@@ -405,11 +406,19 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
     setSelectedFabricForTransfer(fabricName);
     setShowTransferDialog(true);
   };
-  return <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold">Kiểm soát vải {warehouseName}</h2>
-        <p className="text-muted-foreground">Theo dõi sử dụng vải theo đơn hàng và khách hàng</p>
+  return <div className="space-y-4">
+      {/* Header with integrated action button */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">Kiểm soát vải {warehouseName}</h2>
+          <p className="text-sm text-muted-foreground">Theo dõi sử dụng vải theo đơn hàng và khách hàng</p>
+        </div>
+        {/* Integrated FabricUsageRecording button */}
+        <FabricUsageRecording 
+          warehouseName={warehouseName} 
+          warehouseFilter={warehouseFilter || ''} 
+          renderAsButton={true} 
+        />
       </div>
 
       {/* Fabric Inventory Table - Collapsible */}

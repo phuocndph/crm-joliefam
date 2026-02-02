@@ -6,17 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFabricTransactions, useUpdateTransaction, useFabricInventory, useUpdateInventory } from "@/hooks/useFabrics";
-import { ArrowUp, ArrowDown, RefreshCw, Edit } from "lucide-react";
+import { ArrowUp, ArrowDown, RefreshCw, Edit, ChevronDown, ChevronUp, History } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface FabricTransactionsTableProps {
   warehouseFilter?: string;
+  defaultCollapsed?: boolean;
 }
 
-export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsTableProps) => {
+export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = true }: FabricTransactionsTableProps) => {
   const { data: allTransactions = [] } = useFabricTransactions();
   const { data: inventory = [] } = useFabricInventory();
+  const [isOpen, setIsOpen] = useState(!defaultCollapsed);
   
   // Filter transactions by warehouse if filter is provided
   const transactions = warehouseFilter 
@@ -45,15 +48,15 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
   const getTransactionIcon = (type: string) => {
     switch (type) {
       case 'inbound':
-        return <ArrowUp className="h-4 w-4 text-green-600" />;
+        return <ArrowUp className="h-3.5 w-3.5 text-green-600" />;
       case 'outbound':
-        return <ArrowDown className="h-4 w-4 text-red-600" />;
+        return <ArrowDown className="h-3.5 w-3.5 text-red-600" />;
       case 'transfer_in':
-        return <ArrowUp className="h-4 w-4 text-blue-600" />;
+        return <ArrowUp className="h-3.5 w-3.5 text-blue-600" />;
       case 'transfer_out':
-        return <ArrowDown className="h-4 w-4 text-orange-600" />;
+        return <ArrowDown className="h-3.5 w-3.5 text-orange-600" />;
       default:
-        return <RefreshCw className="h-4 w-4 text-gray-600" />;
+        return <RefreshCw className="h-3.5 w-3.5 text-gray-600" />;
     }
   };
 
@@ -87,7 +90,6 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
     }
   };
 
-  // Format number function
   const formatNumber = (num: number) => {
     if (num % 1 === 0) {
       return num.toLocaleString('vi-VN');
@@ -95,7 +97,6 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
     return num.toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
   };
 
-  // Format quantity with sign based on transaction type
   const formatQuantityWithSign = (quantity: number, type: string) => {
     const absQuantity = Math.abs(quantity);
     const formattedNum = formatNumber(absQuantity);
@@ -111,7 +112,7 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
   const handleEditClick = (transaction: any) => {
     setSelectedTransaction(transaction);
     setEditForm({
-      quantity: Math.abs(transaction.quantity), // Take absolute value for editing
+      quantity: Math.abs(transaction.quantity),
       packages_count: transaction.packages_count || 0,
       supplier_name: transaction.supplier_name || '',
       notes: transaction.notes || ''
@@ -130,7 +131,6 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
       const newQuantity = selectedTransaction.transaction_type === 'transfer_out' ? -editForm.quantity : editForm.quantity;
       const quantityDifference = newQuantity - oldQuantity;
 
-      // Update transaction
       await updateTransaction.mutateAsync({
         id: selectedTransaction.id,
         fabric_variant_id: selectedTransaction.fabric_variant_id,
@@ -147,7 +147,6 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
         transaction_date: selectedTransaction.transaction_date
       });
 
-      // Update inventory based on quantity difference
       const existingInventory = inventory.find(item => 
         item.fabric_variant_id === selectedTransaction.fabric_variant_id && 
         item.warehouse_id === selectedTransaction.warehouse_id
@@ -156,8 +155,6 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
       if (existingInventory) {
         const newStock = existingInventory.current_stock + quantityDifference;
         
-        // For inbound transactions, set packages_count directly from the edit form
-        // For other transaction types, calculate the difference
         let newPackagesCount;
         if (selectedTransaction.transaction_type === 'inbound') {
           newPackagesCount = editForm.packages_count;
@@ -179,6 +176,7 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
       setShowEditDialog(false);
       setSelectedTransaction(null);
       setEditForm({ quantity: 0, packages_count: 0, supplier_name: '', notes: '' });
+      toast({ title: "Thành công", description: "Đã cập nhật giao dịch" });
     } catch (error) {
       console.error('Error updating transaction:', error);
       toast({ title: "Lỗi", description: "Có lỗi xảy ra khi cập nhật giao dịch", variant: "destructive" });
@@ -187,157 +185,162 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Lịch sử giao dịch vải</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Theo dõi chi tiết các giao dịch nhập/xuất kho và chuyển kho
-        </p>
-      </CardHeader>
-      <CardContent>
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Ngày giao dịch</TableHead>
-                <TableHead>Loại giao dịch</TableHead>
-                <TableHead>Mã vải</TableHead>
-                <TableHead>Kho</TableHead>
-                <TableHead>Số kiện</TableHead>
-                <TableHead className="text-right">Số lượng (m)</TableHead>
-                <TableHead>Nhà cung cấp/Ghi chú</TableHead>
-                <TableHead className="text-center">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.map((transaction) => (
-                <TableRow key={transaction.id}>
-                  <TableCell className="text-sm">
-                    {new Date(transaction.transaction_date).toLocaleString('vi-VN', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-2">
-                      {getTransactionIcon(transaction.transaction_type)}
-                      <Badge className={getTransactionColor(transaction.transaction_type)}>
-                        {getTransactionTypeText(transaction.transaction_type)}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {transaction.fabric_variants?.variant_name || 'N/A'}
-                  </TableCell>
-                  <TableCell>
-                    {transaction.warehouses?.name || 'N/A'}
-                  </TableCell>
-                  <TableCell>
-                    {formatNumber(transaction.packages_count || 0)}
-                  </TableCell>
-                  <TableCell className={`text-right font-medium ${
-                    transaction.quantity > 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {formatQuantityWithSign(transaction.quantity, transaction.transaction_type)}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                    {transaction.supplier_name || transaction.notes || '-'}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEditClick(transaction)}
-                      className="h-8 w-8 p-0"
-                      title="Sửa giao dịch"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {transactions.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                    Chưa có giao dịch nào
-                  </TableCell>
-                </TableRow>
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CardHeader className="py-3 px-4">
+          <CollapsibleTrigger asChild>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-muted/50 -mx-2 px-2 py-1 rounded-md transition-colors">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-base font-semibold">Lịch sử giao dịch vải</CardTitle>
+                <Badge variant="secondary" className="text-xs">
+                  {transactions.length} giao dịch
+                </Badge>
+              </div>
+              {isOpen ? (
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
               )}
-            </TableBody>
-          </Table>
-        </div>
-
-        {/* Edit Transaction Dialog */}
-        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Sửa giao dịch</DialogTitle>
-              <DialogDescription>
-                Cập nhật thông tin giao dịch. Tồn kho sẽ được điều chỉnh theo số lượng mới.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="bg-muted/50 p-3 rounded-lg text-sm">
-                <div className="font-medium">Thông tin giao dịch:</div>
-                <div>Loại: {selectedTransaction && getTransactionTypeText(selectedTransaction.transaction_type)}</div>
-                <div>Mã vải: {selectedTransaction?.fabric_variants?.variant_name}</div>
-                <div>Kho: {selectedTransaction?.warehouses?.name}</div>
-                <div>Ngày: {selectedTransaction && new Date(selectedTransaction.transaction_date).toLocaleString('vi-VN')}</div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Số lượng (mét)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={editForm.quantity}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
-                  placeholder="Nhập số lượng"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Số kiện</Label>
-                <Input
-                  type="number"
-                  value={editForm.packages_count || ''}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, packages_count: parseInt(e.target.value) || 0 }))}
-                  placeholder="Nhập số kiện"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Nhà cung cấp</Label>
-                <Input
-                  value={editForm.supplier_name}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, supplier_name: e.target.value }))}
-                  placeholder="Tên nhà cung cấp"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Ghi chú</Label>
-                <Input
-                  value={editForm.notes}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Ghi chú"
-                />
-              </div>
-              
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-                  Hủy
-                </Button>
-                <Button onClick={handleEditSubmit} disabled={updateTransaction.isPending}>
-                  {updateTransaction.isPending ? "Đang cập nhật..." : "Cập nhật"}
-                </Button>
-              </div>
             </div>
-          </DialogContent>
-        </Dialog>
-      </CardContent>
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="pt-0 px-4 pb-4">
+            <div className="rounded-md border max-h-[350px] overflow-auto">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-background">
+                  <TableRow>
+                    <TableHead className="text-xs py-2">Ngày GD</TableHead>
+                    <TableHead className="text-xs py-2">Loại</TableHead>
+                    <TableHead className="text-xs py-2">Mã vải</TableHead>
+                    <TableHead className="text-xs py-2">Kiện</TableHead>
+                    <TableHead className="text-right text-xs py-2">Số lượng</TableHead>
+                    <TableHead className="text-xs py-2">Ghi chú</TableHead>
+                    <TableHead className="text-center text-xs py-2 w-[60px]">Sửa</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transactions.map((transaction) => (
+                    <TableRow key={transaction.id} className="text-xs">
+                      <TableCell className="py-1.5">
+                        {new Date(transaction.transaction_date).toLocaleDateString('vi-VN')}
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <div className="flex items-center gap-1">
+                          {getTransactionIcon(transaction.transaction_type)}
+                          <Badge className={`${getTransactionColor(transaction.transaction_type)} text-xs px-1.5 py-0`}>
+                            {getTransactionTypeText(transaction.transaction_type)}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-1.5 font-medium truncate max-w-[120px]">
+                        {transaction.fabric_variants?.variant_name || 'N/A'}
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        {formatNumber(transaction.packages_count || 0)}
+                      </TableCell>
+                      <TableCell className={`py-1.5 text-right font-medium ${
+                        transaction.quantity > 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {formatQuantityWithSign(transaction.quantity, transaction.transaction_type)}
+                      </TableCell>
+                      <TableCell className="py-1.5 text-muted-foreground truncate max-w-[150px]">
+                        {transaction.supplier_name || transaction.notes || '-'}
+                      </TableCell>
+                      <TableCell className="py-1.5 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditClick(transaction)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {transactions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-6 text-sm">
+                        Chưa có giao dịch nào
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* Edit Transaction Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sửa giao dịch</DialogTitle>
+            <DialogDescription>
+              Cập nhật thông tin giao dịch. Tồn kho sẽ được điều chỉnh theo số lượng mới.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted/50 p-3 rounded-lg text-sm">
+              <div className="font-medium">Thông tin giao dịch:</div>
+              <div>Loại: {selectedTransaction && getTransactionTypeText(selectedTransaction.transaction_type)}</div>
+              <div>Mã vải: {selectedTransaction?.fabric_variants?.variant_name}</div>
+              <div>Kho: {selectedTransaction?.warehouses?.name}</div>
+              <div>Ngày: {selectedTransaction && new Date(selectedTransaction.transaction_date).toLocaleString('vi-VN')}</div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Số lượng (mét)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={editForm.quantity}
+                onChange={(e) => setEditForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
+                placeholder="Nhập số lượng"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Số kiện</Label>
+              <Input
+                type="number"
+                value={editForm.packages_count || ''}
+                onChange={(e) => setEditForm(prev => ({ ...prev, packages_count: parseInt(e.target.value) || 0 }))}
+                placeholder="Nhập số kiện"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Nhà cung cấp</Label>
+              <Input
+                value={editForm.supplier_name}
+                onChange={(e) => setEditForm(prev => ({ ...prev, supplier_name: e.target.value }))}
+                placeholder="Tên nhà cung cấp"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Ghi chú</Label>
+              <Input
+                value={editForm.notes}
+                onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Ghi chú"
+              />
+            </div>
+            
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+                Hủy
+              </Button>
+              <Button onClick={handleEditSubmit} disabled={updateTransaction.isPending}>
+                {updateTransaction.isPending ? "Đang cập nhật..." : "Cập nhật"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };

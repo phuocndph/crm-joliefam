@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, Calendar, Edit, Trash2, Plus, X } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Search, Filter, Calendar, Edit, Trash2, ChevronDown, ChevronUp, FileText, Package, ShoppingCart } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -12,6 +12,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useFabricUsage, useFabricTypes, useWarehouses, useFabricVariants, useUpdateFabricUsage, useDeleteFabricUsage } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -72,6 +74,7 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
     from: undefined,
     to: undefined
   });
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   // Edit states
   const [editingRecord, setEditingRecord] = useState<FabricUsageRecord | null>(null);
@@ -87,6 +90,15 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
     notes: ''
   });
 
+  // Count active filters
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (searchTerm) count++;
+    if (selectedFabricType !== 'all') count++;
+    if (dateRange.from || dateRange.to) count++;
+    return count;
+  }, [searchTerm, selectedFabricType, dateRange]);
+
   // Filter the individual fabric usage records
   const filteredData = useMemo(() => {
     if (!fabricUsage) return [];
@@ -97,25 +109,21 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
     );
 
     return fabricUsage.filter(usage => {
-      // Filter by warehouse
       if (currentWarehouse && usage.warehouse_id !== currentWarehouse.id) {
         return false;
       }
 
-      // Filter by search term
       if (searchTerm && !usage.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) &&
           !usage.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) &&
           !usage.fabric_variants?.fabric_types?.name?.toLowerCase().includes(searchTerm.toLowerCase())) {
         return false;
       }
 
-      // Filter by fabric type
       if (selectedFabricType !== 'all' && 
           usage.fabric_variants?.fabric_type_id !== selectedFabricType) {
         return false;
       }
 
-      // Filter by date range
       if (dateRange.from || dateRange.to) {
         const usageDate = new Date(usage.usage_date);
         if (dateRange.from && usageDate < dateRange.from) return false;
@@ -209,179 +217,198 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
     }
   };
 
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSelectedFabricType('all');
+    setDateRange({ from: undefined, to: undefined });
+  };
+
   return (
     <Card>
-      <CardHeader>
-        <div className="flex justify-between items-center">
-          <div>
-            <CardTitle>Chi tiết sử dụng vải - {warehouseName}</CardTitle>
-            <CardDescription>
-              Theo dõi và quản lý chi tiết việc sử dụng vải tại kho {warehouseName}
-            </CardDescription>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Badge variant="secondary">
+      <CardHeader className="py-3 px-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <CardTitle className="text-base font-semibold">Chi tiết sử dụng vải</CardTitle>
+          {/* Inline summary stats */}
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <FileText className="h-3.5 w-3.5" />
               {summaryStats.totalRecords} bản ghi
-            </Badge>
-            <Badge variant="outline">
-              {summaryStats.uniqueOrders} đơn hàng
-            </Badge>
-            <Badge variant="outline">
+            </span>
+            <span className="text-muted-foreground/50">·</span>
+            <span className="flex items-center gap-1">
+              <ShoppingCart className="h-3.5 w-3.5" />
+              {summaryStats.uniqueOrders} đơn
+            </span>
+            <span className="text-muted-foreground/50">·</span>
+            <span className="flex items-center gap-1 font-medium text-foreground">
+              <Package className="h-3.5 w-3.5" />
               Tổng: {formatQuantity(summaryStats.totalQuantity)}
-            </Badge>
+            </span>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Filters */}
-        <div className="space-y-4">
-          <h4 className="font-medium flex items-center">
-            <Filter className="mr-2 h-4 w-4" />
-            Bộ lọc và tìm kiếm
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Tìm kiếm đơn hàng, khách hàng, vải..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={selectedFabricType} onValueChange={setSelectedFabricType}>
-              <SelectTrigger>
-                <SelectValue placeholder="Tất cả loại vải" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả loại vải</SelectItem>
-                {fabricTypes?.map((type) => (
-                  <SelectItem key={type.id} value={type.id}>
-                    {type.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className={cn(
-                  "justify-start text-left font-normal",
-                  !dateRange.from && "text-muted-foreground"
-                )}>
-                  <Calendar className="mr-2 h-4 w-4" />
-                  {dateRange.from ? (
-                    dateRange.to ? (
-                      <>
-                        {formatDate(dateRange.from)} - {formatDate(dateRange.to)}
-                      </>
-                    ) : (
-                      formatDate(dateRange.from)
-                    )
-                  ) : (
-                    "Chọn khoảng thời gian"
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  initialFocus
-                  mode="range"
-                  defaultMonth={dateRange.from}
-                  selected={{
-                    from: dateRange.from,
-                    to: dateRange.to
-                  }}
-                  onSelect={(range) => setDateRange({
-                    from: range?.from,
-                    to: range?.to
-                  })}
-                  numberOfMonths={2}
-                  className="pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                setSearchTerm('');
-                setSelectedFabricType('all');
-                setDateRange({ from: undefined, to: undefined });
-              }}
-            >
-              Xóa bộ lọc
-            </Button>
+      <CardContent className="pt-0 px-4 pb-4 space-y-3">
+        {/* Collapsible Filters */}
+        <Collapsible open={isFiltersOpen} onOpenChange={setIsFiltersOpen}>
+          <div className="flex items-center justify-between">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-2 px-2 h-8">
+                <Filter className="h-3.5 w-3.5" />
+                <span className="text-sm">Bộ lọc</span>
+                {activeFiltersCount > 0 && (
+                  <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                    {activeFiltersCount}
+                  </Badge>
+                )}
+                {isFiltersOpen ? (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            {activeFiltersCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">
+                Xóa bộ lọc
+              </Button>
+            )}
           </div>
-        </div>
+          <CollapsibleContent className="pt-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Tìm đơn hàng, khách hàng..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 h-9"
+                />
+              </div>
+              <Select value={selectedFabricType} onValueChange={setSelectedFabricType}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Tất cả loại vải" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả loại vải</SelectItem>
+                  {fabricTypes?.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn(
+                    "justify-start text-left font-normal h-9",
+                    !dateRange.from && "text-muted-foreground"
+                  )}>
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {dateRange.from ? (
+                      dateRange.to ? (
+                        <>
+                          {formatDate(dateRange.from)} - {formatDate(dateRange.to)}
+                        </>
+                      ) : (
+                        formatDate(dateRange.from)
+                      )
+                    ) : (
+                      "Chọn khoảng thời gian"
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange.from}
+                    selected={{
+                      from: dateRange.from,
+                      to: dateRange.to
+                    }}
+                    onSelect={(range) => setDateRange({
+                      from: range?.from,
+                      to: range?.to
+                    })}
+                    numberOfMonths={2}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
 
-        {/* Usage Details Table */}
-        <div className="rounded-md border">
+        {/* Usage Details Table - Compact with sticky header */}
+        <div className="rounded-md border max-h-[400px] overflow-auto">
           <Table>
-            <TableHeader>
-              <TableRow className="bg-blue-900 text-white">
-                <TableHead className="w-[100px] text-white">Ngày sử dụng</TableHead>
-                <TableHead className="w-[100px] text-white">Số đơn hàng</TableHead>
-                <TableHead className="w-[110px] text-white">Loại đơn hàng</TableHead>
-                <TableHead className="w-[140px] text-white">Khách hàng</TableHead>
-                <TableHead className="w-[100px] text-white">Loại đơn</TableHead>
-                <TableHead className="w-[200px] text-white">Loại vải</TableHead>
-                <TableHead className="w-[80px] text-white">Số lượng</TableHead>
-                <TableHead className="w-[200px] text-white">Ghi chú</TableHead>
-                <TableHead className="w-[100px] text-white">Thao tác</TableHead>
+            <TableHeader className="sticky top-0 z-10 bg-background">
+              <TableRow className="bg-primary/90 hover:bg-primary/90">
+                <TableHead className="w-[90px] text-primary-foreground text-xs py-2">Ngày</TableHead>
+                <TableHead className="w-[100px] text-primary-foreground text-xs py-2">Đơn hàng</TableHead>
+                <TableHead className="w-[130px] text-primary-foreground text-xs py-2">Khách hàng</TableHead>
+                <TableHead className="w-[100px] text-primary-foreground text-xs py-2">Loại</TableHead>
+                <TableHead className="w-[180px] text-primary-foreground text-xs py-2">Vải</TableHead>
+                <TableHead className="w-[70px] text-right text-primary-foreground text-xs py-2">SL</TableHead>
+                <TableHead className="w-[80px] text-center text-primary-foreground text-xs py-2">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredData.length > 0 ? (
                 filteredData.map((usage) => (
-                  <TableRow key={usage.id}>
-                    <TableCell className="font-medium">
+                  <TableRow key={usage.id} className="text-xs">
+                    <TableCell className="py-1.5">
                       {formatDate(usage.usage_date)}
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{usage.order_number}</Badge>
+                    <TableCell className="py-1.5">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Badge variant="outline" className="text-xs font-normal">
+                              {usage.order_number}
+                            </Badge>
+                          </TooltipTrigger>
+                          {usage.notes && (
+                            <TooltipContent side="right" className="max-w-[300px]">
+                              <p className="text-xs">{usage.notes}</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      </TooltipProvider>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {usage.order_type === 'new' ? 'Đơn hàng mới' :
-                         usage.order_type === 'replacement' ? 'Đơn đổi trả' :
-                         usage.order_type === 'repair' ? 'Đơn sửa chữa' : 
-                         usage.order_type || '-'}
-                      </Badge>
+                    <TableCell className="py-1.5 truncate max-w-[130px]">
+                      {usage.customer_name || '-'}
                     </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{usage.customer_name}</div>
+                    <TableCell className="py-1.5">
+                      <span className="text-muted-foreground text-xs">
+                        {usage.order_type === 'new' ? 'Mới' :
+                         usage.order_type === 'replacement' ? 'Đổi trả' :
+                         usage.order_type === 'repair' ? 'Sửa chữa' : '-'}
+                        {usage.customer_code && (
+                          <> · {usage.customer_code === 'don_phuoc' ? 'Phước' : 
+                                usage.customer_code === 'don_hoan' ? 'Hoan' : ''}</>
+                        )}
+                      </span>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {usage.customer_code === 'don_phuoc' ? 'Đơn Phước' :
-                         usage.customer_code === 'don_hoan' ? 'Đơn Hoan' :
-                         usage.customer_code || '-'}
-                      </Badge>
+                    <TableCell className="py-1.5 truncate max-w-[180px]">
+                      {usage.fabric_variants?.variant_name}
                     </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {usage.fabric_variants?.variant_name}
-                      </div>
+                    <TableCell className="py-1.5 text-right font-medium">
+                      <span className="text-destructive">
+                        -{formatQuantity(usage.quantity_used, usage.unit)}
+                      </span>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {formatQuantity(usage.quantity_used, usage.unit)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="w-[200px]">
-                      <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                        {usage.notes || '-'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-1">
+                    <TableCell className="py-1.5">
+                      <div className="flex items-center justify-center gap-0.5">
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
+                              className="h-6 w-6 p-0"
                               onClick={() => handleEdit(usage as FabricUsageRecord)}
                             >
-                              <Edit className="h-4 w-4" />
+                              <Edit className="h-3 w-3" />
                             </Button>
                           </DialogTrigger>
                           <DialogContent className="max-w-2xl">
@@ -448,20 +475,12 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
                                 </Select>
                               </div>
                               <div className="space-y-2">
-                                <Label>Số lượng sử dụng (m)</Label>
+                                <Label>Số lượng (m)</Label>
                                 <Input
                                   type="number"
                                   step="0.01"
                                   value={editForm.quantity_used}
-                                  onChange={(e) => setEditForm(prev => ({ ...prev, quantity_used: Number(e.target.value) }))}
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Chiều rộng vải</Label>
-                                <Input
-                                  value={editForm.fabric_width}
-                                  onChange={(e) => setEditForm(prev => ({ ...prev, fabric_width: e.target.value }))}
-                                  placeholder="Ví dụ: 1.5m"
+                                  onChange={(e) => setEditForm(prev => ({ ...prev, quantity_used: parseFloat(e.target.value) || 0 }))}
                                 />
                               </div>
                               <div className="space-y-2">
@@ -472,41 +491,48 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
                                   onChange={(e) => setEditForm(prev => ({ ...prev, usage_date: e.target.value }))}
                                 />
                               </div>
-                            </div>
-                            
-                            <div className="space-y-2">
-                              <Label>Ghi chú</Label>
-                              <Textarea
-                                value={editForm.notes}
-                                onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
-                                placeholder="Ghi chú về việc sử dụng vải"
-                                rows={3}
-                              />
+                              <div className="space-y-2 md:col-span-2">
+                                <Label>Ghi chú</Label>
+                                <Textarea
+                                  value={editForm.notes}
+                                  onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                                  rows={2}
+                                />
+                              </div>
                             </div>
 
-                            <div className="flex justify-end space-x-2">
-                              <Button variant="outline" onClick={() => setEditingRecord(null)}>
+                            <div className="flex justify-end space-x-2 pt-4">
+                              <Button
+                                variant="outline"
+                                onClick={() => setEditingRecord(null)}
+                              >
                                 Hủy
                               </Button>
-                              <Button onClick={handleUpdate} disabled={updateFabricUsage.isPending}>
-                                {updateFabricUsage.isPending ? "Đang cập nhật..." : "Cập nhật"}
+                              <Button
+                                onClick={handleUpdate}
+                                disabled={updateFabricUsage.isPending}
+                              >
+                                {updateFabricUsage.isPending ? 'Đang lưu...' : 'Lưu thay đổi'}
                               </Button>
                             </div>
                           </DialogContent>
                         </Dialog>
-
+                        
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              <Trash2 className="h-4 w-4" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-3 w-3" />
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
                               <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Bạn có chắc chắn muốn xóa bản ghi sử dụng vải này? 
-                                Hành động này không thể hoàn tác và sẽ ảnh hưởng đến tồn kho.
+                                Bạn có chắc chắn muốn xóa bản ghi này? Hành động này không thể hoàn tác.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -526,7 +552,7 @@ export const FabricUsageDetails: React.FC<FabricUsageDetailsProps> = ({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground text-sm">
                     Không có dữ liệu sử dụng vải
                   </TableCell>
                 </TableRow>

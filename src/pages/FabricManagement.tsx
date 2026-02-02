@@ -15,10 +15,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { FabricInventoryOverview } from '@/components/FabricInventoryOverview';
 import { FabricControlByWarehouse } from '@/components/FabricControlByWarehouse';
-import { FabricUsageRecording } from '@/components/FabricUsageRecording';
 import { FabricUsageDetails } from '@/components/FabricUsageDetails';
 import { FabricTypeManagement } from '@/components/FabricTypeManagement';
-
 import { FabricTransactionsTable } from '@/components/FabricTransactionsTable';
 import { useFabricTypes, useFabricVariants, useFabricWidths, useWarehouses, useFabricInventory, useFabricTransactions, useFabricTransfers, useFabricUsage, useCreateFabricType, useCreateFabricVariant, useCreateFabricWidth, useUpdateInventory, useCreateTransaction, useCreateTransfer, useUpdateTransferStatus, useCreateFabricUsage } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
@@ -385,17 +383,15 @@ const FabricManagement = () => {
         {/* Hanoi Control Tab */}
         <TabsContent value="hanoi-control" className="space-y-4">
           <FabricControlByWarehouse warehouseName="Hà Nội" warehouseFilter="hanoi" />
-          <FabricUsageRecording warehouseName="Hà Nội" warehouseFilter="hanoi" />
           <FabricUsageDetails warehouseName="Hà Nội" warehouseFilter="hanoi" />
-          <FabricTransactionsTable warehouseFilter="hanoi" />
+          <FabricTransactionsTable warehouseFilter="hanoi" defaultCollapsed={true} />
         </TabsContent>
 
         {/* Bac Ninh Control Tab */}
         <TabsContent value="bacninh-control" className="space-y-4">
           <FabricControlByWarehouse warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
-          <FabricUsageRecording warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
           <FabricUsageDetails warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
-          <FabricTransactionsTable warehouseFilter="bacninh" />
+          <FabricTransactionsTable warehouseFilter="bacninh" defaultCollapsed={true} />
         </TabsContent>
 
         {/* Fabric Types Tab */}
