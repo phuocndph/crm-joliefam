@@ -1,164 +1,103 @@
 
-# ✅ Kế hoạch khắc phục lỗi đồng bộ dữ liệu Realtime - ĐÃ HOÀN THÀNH
 
+# Cải thiện giao diện trang Quản lý vải - Giảm rối mắt
 
-## Tổng quan vấn đề
+## Vấn đề hiện tại
 
-Sau khi kiểm tra hệ thống, tôi phát hiện:
+Từ hình ảnh bạn cung cấp, tôi nhận thấy:
 
-### Bảng đã có trong Realtime Publication (6 bảng):
-- customers
-- orders
-- quotes
-- products
-- transactions
-- finance_data
-
-### Bảng CHƯA có trong Realtime Publication (20 bảng):
-| Bảng | Mức độ quan trọng | Lý do cần Realtime |
-|------|-------------------|---------------------|
-| `fabric_inventory` | CAO | Cập nhật tồn kho liên tục |
-| `fabric_transactions` | CAO | Giao dịch nhập/xuất vải |
-| `fabric_usage` | CAO | Ghi nhận sử dụng vải |
-| `fabric_variants` | CAO | Thay đổi biến thể vải |
-| `fabric_transfers` | CAO | Chuyển kho giữa các warehouse |
-| `fabric_types` | TRUNG BÌNH | Loại vải ít thay đổi |
-| `fabric_widths` | TRUNG BÌNH | Khổ vải ít thay đổi |
-| `warehouses` | TRUNG BÌNH | Kho ít thay đổi |
-| `order_payments` | CAO | Thanh toán đơn hàng |
-| `assignees` | TRUNG BÌNH | Người phụ trách |
-| `ghn_tracking` | CAO | Tracking vận chuyển GHN |
-| `profiles` | TRUNG BÌNH | Thông tin người dùng |
-| `user_roles` | THẤP | Phân quyền |
-| `price_lists` | TRUNG BÌNH | Bảng giá |
-| `expenses` | CAO | Chi phí |
-| `ai_settings` | THẤP | Cài đặt AI |
-| `customer_predictions` | THẤP | Dự đoán khách hàng |
-| `employee_permissions` | THẤP | Quyền nhân viên |
-| `password_reset_logs` | KHÔNG CẦN | Logs không cần realtime |
-| `quote_template_settings` | THẤP | Template báo giá |
-
-### Vấn đề với Channel Names
-
-| Hook | Channel Name | Vấn đề |
-|------|--------------|--------|
-| `useOrders` | `orders-and-payments-realtime` | Static - xung đột nhiều tab |
-| `useAssignees` | `assignees-sync` | Static - xung đột nhiều tab |
-| `useFabricRealtime` | `fabrics-sync-{Date.now()}` | Đã unique |
-| `useCustomers` | `customers-sync-{Date.now()}` | Đã unique |
+1. **Quá nhiều Card xếp chồng** - Mỗi section là 1 card riêng, tạo cảm giác phân mảnh
+2. **Thông tin trùng lặp** - "Ghi nhận sử dụng vải" và "Chi tiết sử dụng vải" có header tương tự, gây nhầm lẫn
+3. **Các badge thống kê nằm lộn xộn** - Badge "1 bản ghi", "1 đơn hàng", "Tổng: 165,4 m" nằm rải rác
+4. **Thiếu phân cấp thị giác** - Không rõ đâu là thông tin chính, đâu là phụ
+5. **Card "Tồn kho vải" bị thu nhỏ** - Thông tin quan trọng nhưng không nổi bật
 
 ---
 
-## Giải pháp chi tiết
+## Giải pháp đề xuất
 
-### Thay đổi 1: Migration thêm bảng vào Realtime Publication
+### Thay đổi 1: Gộp các section vào layout rõ ràng hơn
 
-Tạo migration SQL để thêm tất cả các bảng quan trọng vào `supabase_realtime` publication:
+**Trước:** 4 Card riêng biệt xếp chồng lên nhau
+**Sau:** Chia thành 2 phần chính:
+- **Phần trên**: Tồn kho vải (collapsible) + Nút ghi nhận
+- **Phần dưới**: Bảng chi tiết (mặc định hiện)
 
-```sql
--- Thêm các bảng fabric vào realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE fabric_inventory;
-ALTER PUBLICATION supabase_realtime ADD TABLE fabric_transactions;
-ALTER PUBLICATION supabase_realtime ADD TABLE fabric_usage;
-ALTER PUBLICATION supabase_realtime ADD TABLE fabric_variants;
-ALTER PUBLICATION supabase_realtime ADD TABLE fabric_transfers;
-ALTER PUBLICATION supabase_realtime ADD TABLE fabric_types;
-ALTER PUBLICATION supabase_realtime ADD TABLE fabric_widths;
-ALTER PUBLICATION supabase_realtime ADD TABLE warehouses;
+### Thay đổi 2: Di chuyển nút "Ghi nhận sử dụng vải" lên vị trí nổi bật
 
--- Thêm các bảng order/payment
-ALTER PUBLICATION supabase_realtime ADD TABLE order_payments;
+- Đặt nút cạnh tiêu đề "Kiểm soát vải Bắc Ninh" thay vì trong card riêng
+- Bỏ card "Ghi nhận sử dụng vải" vì chỉ chứa 1 nút
+- Tiết kiệm 1 hàng Card không cần thiết
 
--- Thêm các bảng khác
-ALTER PUBLICATION supabase_realtime ADD TABLE assignees;
-ALTER PUBLICATION supabase_realtime ADD TABLE ghn_tracking;
-ALTER PUBLICATION supabase_realtime ADD TABLE profiles;
-ALTER PUBLICATION supabase_realtime ADD TABLE expenses;
-ALTER PUBLICATION supabase_realtime ADD TABLE price_lists;
-```
+### Thay đổi 3: Cải thiện thông tin thống kê
 
-### Thay đổi 2: Cập nhật `useOrders.ts`
+- Gộp các badge thống kê vào 1 hàng summary nhỏ gọn
+- Dùng icon + số liệu thay vì badge rời rạc
+- Hiển thị ngay dưới tiêu đề section
 
-Sửa channel name thành unique và thêm error handling:
+### Thay đổi 4: Bảng "Chi tiết sử dụng vải" mặc định mở
 
-```tsx
-// Trước:
-.channel('orders-and-payments-realtime')
-
-// Sau:
-.channel('orders-payments-quotes-' + Date.now())
-.subscribe((status) => {
-  if (status === 'CHANNEL_ERROR') {
-    console.error('❌ Orders realtime subscription failed, will retry on mount');
-  }
-});
-```
-
-### Thay đổi 3: Cập nhật `useAssignees.ts`
-
-Sửa channel name thành unique:
-
-```tsx
-// Trước:
-.channel('assignees-sync')
-
-// Sau:
-.channel('assignees-sync-' + Date.now())
-```
-
-### Thay đổi 4: Tạo utility hook để tái sử dụng
-
-Tạo file `src/hooks/useRealtimeSubscription.ts` để chuẩn hóa realtime subscription:
-
-```tsx
-export const useRealtimeSubscription = (
-  tables: { table: string; event?: '*' | 'INSERT' | 'UPDATE' | 'DELETE' }[],
-  queryKeys: string[][],
-  channelPrefix: string
-) => {
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    const channelName = `${channelPrefix}-${Date.now()}`;
-    let channel = supabase.channel(channelName);
-
-    tables.forEach(({ table, event = '*' }) => {
-      channel = channel.on(
-        'postgres_changes',
-        { event, schema: 'public', table },
-        (payload) => {
-          console.log(`🔄 ${table} change:`, payload.eventType);
-          queryKeys.forEach(key => {
-            queryClient.invalidateQueries({ queryKey: key });
-          });
-        }
-      );
-    });
-
-    channel.subscribe((status) => {
-      console.log(`📡 ${channelPrefix} status:`, status);
-      if (status === 'CHANNEL_ERROR') {
-        console.error(`❌ ${channelPrefix} subscription failed`);
-      }
-    });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient, channelPrefix]);
-};
-```
+- Vì đây là thông tin chính người dùng cần xem
+- Bỏ phần header card thừa, chỉ giữ bảng
+- Bộ lọc thu gọn mặc định, có badge cho biết số filter đang active
 
 ---
 
-## File cần thay đổi
+## Chi tiết thay đổi theo file
 
-| File | Thay đổi |
-|------|----------|
-| `supabase/migrations/[new].sql` | Thêm 14 bảng vào realtime publication |
-| `src/hooks/useOrders.ts` | Unique channel name + error handling |
-| `src/hooks/useAssignees.ts` | Unique channel name |
-| `src/hooks/useRealtimeSubscription.ts` (mới) | Utility hook chuẩn hóa |
+### File 1: `src/components/FabricUsageRecording.tsx`
+
+Đơn giản hóa component - chỉ export Dialog trigger button thay vì cả Card wrapper:
+
+```tsx
+// Trước: Card + CardHeader + Button
+// Sau: Chỉ Button (sẽ được đặt trong component cha)
+```
+
+### File 2: `src/components/FabricUsageDetails.tsx`
+
+Cải thiện layout và giảm chiều cao header:
+
+| Thay đổi | Chi tiết |
+|----------|----------|
+| Giảm padding header | Từ `p-6` xuống `p-4` |
+| Gộp badges thành 1 dòng | Inline với font nhỏ hơn |
+| Bộ lọc trong Collapsible | Mặc định thu gọn |
+| Bảng có sticky header | Cuộn dễ dàng hơn |
+
+### File 3: `src/components/FabricControlByWarehouse.tsx`
+
+Tích hợp nút "Ghi nhận sử dụng vải" vào header:
+
+```tsx
+<div className="flex justify-between items-center">
+  <div>
+    <h2>Kiểm soát vải {warehouseName}</h2>
+    <p className="text-sm text-muted-foreground">...</p>
+  </div>
+  <Button onClick={openRecordDialog}>
+    <Plus /> Ghi nhận sử dụng vải
+  </Button>
+</div>
+```
+
+### File 4: `src/pages/FabricManagement.tsx`
+
+Cập nhật layout trong TabsContent:
+
+```tsx
+<TabsContent value="bacninh-control" className="space-y-4">
+  {/* Bỏ FabricUsageRecording riêng */}
+  <FabricControlByWarehouse 
+    warehouseName="Bắc Ninh" 
+    warehouseFilter="bacninh"
+    showRecordButton={true}  // Tích hợp nút vào component này
+  />
+  <FabricUsageDetails warehouseName="Bắc Ninh" warehouseFilter="bacninh" />
+  {/* Lịch sử giao dịch mặc định thu gọn */}
+  <FabricTransactionsTable warehouseFilter="bacninh" defaultCollapsed={true} />
+</TabsContent>
+```
 
 ---
 
@@ -166,25 +105,42 @@ export const useRealtimeSubscription = (
 
 | Trước | Sau |
 |-------|-----|
-| 6 bảng có realtime | 20 bảng có realtime |
-| CHANNEL_ERROR khi mở nhiều tab | Không còn xung đột channel |
-| Dữ liệu fabric không tự cập nhật | Fabric sync ngay lập tức |
-| Thanh toán order không sync | Payment sync realtime |
+| 4 Card xếp chồng | 2-3 section gọn gàng |
+| Nút trong Card riêng | Nút nằm cạnh tiêu đề |
+| Badges rời rạc | Summary inline nhỏ gọn |
+| Trang dài phải cuộn nhiều | Giao diện compact hơn |
+| Khó phân biệt section | Phân cấp thị giác rõ ràng |
+
+---
+
+## Mockup layout mới
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Kiểm soát vải Bắc Ninh              [+ Ghi nhận sử dụng vải] │
+│  ▼ Tồn kho vải (19/43 loại)                 Nhấn để xem chi tiết │
+├──────────────────────────────────────────────────────────────┤
+│  Chi tiết sử dụng vải         1 bản ghi · 1 đơn · Tổng: 165m │
+│  ┌─[Bộ lọc ▼]────────────────────────────────────────────┐   │
+│  │  (Thu gọn mặc định - click để mở)                     │   │
+│  └───────────────────────────────────────────────────────┘   │
+│  ┌───────────────────────────────────────────────────────┐   │
+│  │ Ngày │ Đơn hàng │ Khách hàng │ Vải │ SL │ Thao tác   │   │
+│  ├──────┼──────────┼────────────┼─────┼────┼────────────┤   │
+│  │ ...  │ ...      │ ...        │ ... │... │ ✏️ 🗑️       │   │
+│  └───────────────────────────────────────────────────────┘   │
+├──────────────────────────────────────────────────────────────┤
+│  ▶ Lịch sử giao dịch (5 giao dịch)      [Thu gọn mặc định]   │
+└──────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Thứ tự thực hiện
 
-1. **Migration** - Thêm các bảng vào `supabase_realtime` publication
-2. **useOrders.ts** - Sửa channel name thành unique
-3. **useAssignees.ts** - Sửa channel name thành unique
-4. **useRealtimeSubscription.ts** - Tạo utility hook (tùy chọn, có thể làm sau)
+1. **Cao**: Di chuyển nút "Ghi nhận sử dụng vải" vào header của FabricControlByWarehouse
+2. **Cao**: Bọc bộ lọc trong Collapsible, mặc định thu gọn
+3. **Trung bình**: Gộp badges thành summary inline
+4. **Trung bình**: FabricTransactionsTable mặc định collapsed
+5. **Thấp**: Giảm padding các Card header
 
----
-
-## Lưu ý kỹ thuật
-
-- Migration sẽ tự động apply khi deploy
-- Các bảng đã có trong publication sẽ bị bỏ qua (idempotent)
-- Unique channel name = `prefix-{Date.now()}` đảm bảo không xung đột
-- Real-time subscription chỉ hoạt động nếu bảng đã có trong publication
