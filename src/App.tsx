@@ -124,7 +124,7 @@ const AppRoutes = () => {
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <ThemeProvider attribute="class" defaultTheme="light">
         <SafeTooltipProvider>
           <Toaster />
           <Sonner />
