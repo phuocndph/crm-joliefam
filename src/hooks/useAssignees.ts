@@ -14,14 +14,21 @@ export interface Assignee {
 export const useAssignees = () => {
   const queryClient = useQueryClient();
 
-  // Set up real-time synchronization
+  // Set up real-time synchronization with unique channel name
   useEffect(() => {
+    const channelName = `assignees-sync-${Date.now()}`;
     const channel = supabase
-      .channel('assignees-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignees' }, () => {
+      .channel(channelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignees' }, (payload) => {
+        console.log('👤 Assignees real-time update received:', payload.eventType);
         queryClient.invalidateQueries({ queryKey: ['assignees'] });
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`👤 ${channelName} subscription status:`, status);
+        if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Assignees realtime subscription failed');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
