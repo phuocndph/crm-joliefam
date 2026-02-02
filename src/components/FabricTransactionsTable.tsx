@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFabricTransactions, useUpdateTransaction, useFabricInventory, useUpdateInventory } from "@/hooks/useFabrics";
-import { ArrowUp, ArrowDown, RefreshCw, Edit, ChevronDown, ChevronUp, History } from "lucide-react";
+import { ArrowUp, ArrowDown, RefreshCw, Edit } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface FabricTransactionsTableProps {
@@ -18,7 +17,6 @@ interface FabricTransactionsTableProps {
 export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsTableProps) => {
   const { data: allTransactions = [] } = useFabricTransactions();
   const { data: inventory = [] } = useFabricInventory();
-  const [isExpanded, setIsExpanded] = useState(false);
   
   // Filter transactions by warehouse if filter is provided
   const transactions = warehouseFilter 
@@ -188,47 +186,28 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
   };
 
   return (
-    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-      <Card>
-        <CardHeader className="pb-3">
-          <CollapsibleTrigger asChild>
-            <div className="flex items-center justify-between cursor-pointer hover:bg-muted/50 -mx-2 px-2 py-1 rounded-lg transition-colors">
-              <div className="flex items-center gap-2">
-                <History className="h-5 w-5 text-primary" />
-                <div>
-                  <CardTitle className="text-base">Lịch sử giao dịch vải</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    {transactions.length} giao dịch • Nhấn để {isExpanded ? 'thu gọn' : 'mở rộng'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary">{transactions.length}</Badge>
-                {isExpanded ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-              </div>
-            </div>
-          </CollapsibleTrigger>
-        </CardHeader>
-        <CollapsibleContent>
-          <CardContent className="pt-0">
-            <div className="rounded-md border max-h-[500px] overflow-auto">
-              <Table>
-                <TableHeader className="sticky top-0 bg-background z-10">
-                  <TableRow>
-                    <TableHead>Ngày giao dịch</TableHead>
-                    <TableHead>Loại giao dịch</TableHead>
-                    <TableHead>Mã vải</TableHead>
-                    <TableHead>Kho</TableHead>
-                    <TableHead>Số kiện</TableHead>
-                    <TableHead className="text-right">Số lượng (m)</TableHead>
-                    <TableHead>Nhà cung cấp/Ghi chú</TableHead>
-                    <TableHead className="text-center">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
+    <Card>
+      <CardHeader>
+        <CardTitle>Lịch sử giao dịch vải</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Theo dõi chi tiết các giao dịch nhập/xuất kho và chuyển kho
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Ngày giao dịch</TableHead>
+                <TableHead>Loại giao dịch</TableHead>
+                <TableHead>Mã vải</TableHead>
+                <TableHead>Kho</TableHead>
+                <TableHead>Số kiện</TableHead>
+                <TableHead className="text-right">Số lượng (m)</TableHead>
+                <TableHead>Nhà cung cấp/Ghi chú</TableHead>
+                <TableHead className="text-center">Thao tác</TableHead>
+              </TableRow>
+            </TableHeader>
             <TableBody>
               {transactions.map((transaction) => (
                 <TableRow key={transaction.id}>
@@ -289,8 +268,6 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
             </TableBody>
           </Table>
         </div>
-      </CardContent>
-    </CollapsibleContent>
 
         {/* Edit Transaction Dialog */}
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
@@ -360,7 +337,7 @@ export const FabricTransactionsTable = ({ warehouseFilter }: FabricTransactionsT
             </div>
           </DialogContent>
         </Dialog>
-      </Card>
-    </Collapsible>
+      </CardContent>
+    </Card>
   );
 };
