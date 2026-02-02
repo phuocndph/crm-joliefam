@@ -72,17 +72,33 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
     return `${typeName} - ${variant.variant_name} - Còn lại: ${stock}m`;
   };
 
-  // Filter and sort variants as a flat list
+  // Filter and sort variants as a flat list with multi-word search
   const sortedVariants = useMemo(() => {
     if (!fabricVariants) return [];
 
     const normalizedSearch = removeAccents(searchTerm.toLowerCase().trim());
 
+    // No search term => return all sorted
+    if (!normalizedSearch) {
+      return [...fabricVariants].sort((a, b) => 
+        a.variant_name.localeCompare(b.variant_name, 'vi')
+      );
+    }
+
+    // Split search into individual words
+    const searchWords = normalizedSearch.split(/\s+/).filter(w => w.length > 0);
+
     return fabricVariants
       .filter((variant) => {
-        if (!normalizedSearch) return true;
-        const normalizedName = removeAccents(variant.variant_name.toLowerCase());
-        return normalizedName.includes(normalizedSearch);
+        // Combine all searchable text
+        const variantText = removeAccents(variant.variant_name.toLowerCase());
+        const typeText = removeAccents(
+          (variant.fabric_types?.name || '').toLowerCase()
+        );
+        const combinedText = `${variantText} ${typeText}`;
+
+        // Check ALL search words appear in the combined text
+        return searchWords.every(word => combinedText.includes(word));
       })
       .sort((a, b) => a.variant_name.localeCompare(b.variant_name, 'vi'));
   }, [fabricVariants, searchTerm]);
