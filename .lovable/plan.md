@@ -1,108 +1,113 @@
 
 
-# Plan sửa lỗi trắng trang (Blank Screen / Invalid Hook Call)
+# Cải thiện bảng tồn kho vải - Gọn gàng, dễ nhìn hơn
 
-## Tổng quan vấn đề
+## Vấn đề hiện tại
 
-Ứng dụng gặp lỗi "Cannot read properties of null (reading 'useState')" khiến trang hiển thị trắng. Nguyên nhân gốc:
+Bảng tồn kho vải đang hiển thị dưới dạng **grid cards 3 cột**:
+- Mỗi loại vải chiếm 1 card riêng biệt với CardHeader + CardContent
+- Với 47+ loại vải → Tốn rất nhiều diện tích màn hình
+- Phải cuộn nhiều để xem hết
+- Khó so sánh tồn kho giữa các loại vải
 
-1. **Duplicate React instances**: Vite pre-bundle tạo ra nhiều chunk React riêng biệt
-2. **Missing ThemeProvider**: Component `Sonner` sử dụng `useTheme()` từ `next-themes` nhưng không có `ThemeProvider` wrapper
-3. **HMR cache conflicts**: Sau khi cập nhật code, các module cũ và mới conflict với nhau
+## Giải pháp: Chuyển sang dạng bảng (Table) compact
 
-## Giải pháp
-
-### Bước 1: Wrap ứng dụng với ThemeProvider
-
-Component `Sonner` (toast) sử dụng `useTheme()` từ `next-themes`. Hook này yêu cầu `ThemeProvider` bao bọc, nếu không sẽ trả về null và crash.
-
-**File cần sửa**: `src/App.tsx`
-
-**Thay đổi**:
-- Import `ThemeProvider` từ `next-themes`
-- Wrap toàn bộ ứng dụng trong `ThemeProvider`
+Thay vì grid cards, sử dụng **Table dạng spreadsheet** với các hàng compact:
 
 ```text
-Cấu trúc hiện tại:
-QueryClientProvider > SafeTooltipProvider > Toaster + Sonner + BrowserRouter
+Trước (Cards):
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ Vải T200t    │  │ Vải T250t    │  │ Vải T300t    │
+│ Tồn: 1,608m  │  │ Tồn: 403m    │  │ Tồn: 568m    │
+│ [Chuyển kho] │  │ [Chuyển kho] │  │ [Chuyển kho] │
+└──────────────┘  └──────────────┘  └──────────────┘
+... (47+ cards, tốn nhiều diện tích)
 
-Cấu trúc mới:
-QueryClientProvider > ThemeProvider > SafeTooltipProvider > Toaster + Sonner + BrowserRouter
+Sau (Table compact):
+┌───┬─────────────────────────────┬──────────────┬────────────┐
+│ # │ Tên vải                     │ Tồn kho      │ Thao tác   │
+├───┼─────────────────────────────┼──────────────┼────────────┤
+│ 1 │ Vải T200t - K280            │ 1,608m       │ [Chuyển]   │
+│ 2 │ Vải T250t - K260            │ 403m (⚠️)    │ [Chuyển]   │
+│ 3 │ Vải T300t - K280            │ 568m         │ [Chuyển]   │
+│...│ ...                         │ ...          │ ...        │
+└───┴─────────────────────────────┴──────────────┴────────────┘
 ```
 
-### Bước 2: Cấu hình Vite optimizeDeps để force dedupe
+## Chi tiết thay đổi
 
-Thêm cấu hình `optimizeDeps` để Vite xử lý React thống nhất trong quá trình pre-bundling.
+### File: `src/components/FabricControlByWarehouse.tsx`
 
-**File cần sửa**: `vite.config.ts`
+**Thay thế grid cards (dòng 407-451) bằng Table compact:**
 
-**Thêm**:
-```typescript
-optimizeDeps: {
-  include: ["react", "react-dom", "react/jsx-runtime"],
-}
-```
+1. Sử dụng component `Table` thay vì grid cards
+2. Mỗi hàng chỉ chiếm 1 dòng với các cột:
+   - STT
+   - Tên vải
+   - Tồn kho (có highlight màu theo mức cảnh báo)
+   - Nút "Chuyển kho" (nhỏ gọn)
+3. Thêm tính năng sắp xếp theo tồn kho (cao → thấp hoặc thấp → cao)
+4. Ẩn các loại vải có tồn = 0 (với toggle để hiện/ẩn)
 
-### Bước 3: Tạo ErrorBoundary toàn app với fallback thân thiện
+### Cải tiến thêm:
 
-Thêm một layer ErrorBoundary ở cấp cao nhất để nếu có lỗi runtime, hiển thị màn hình lỗi với nút reload thay vì trắng trang.
+1. **Thêm bộ lọc nhanh**:
+   - Toggle "Chỉ hiện vải còn hàng" 
+   - Tìm kiếm theo tên vải
 
-**File cần sửa**: `src/App.tsx`
+2. **Hiển thị màu theo mức tồn**:
+   - Đỏ: < 500m (cảnh báo)
+   - Vàng: 500-1000m (chú ý)
+   - Bình thường: > 1000m
 
-**Thêm**:
-- Wrap `AppRoutes` trong `ErrorBoundary`
-- Tạo fallback component hiển thị thông báo lỗi và nút "Tải lại trang"
-
-### Bước 4: Xử lý Sonner an toàn hơn
-
-Sửa `src/components/ui/sonner.tsx` để có fallback nếu `useTheme()` không có context.
-
-**Thay đổi**:
-```typescript
-// Trước
-const { theme = "system" } = useTheme()
-
-// Sau - thêm try-catch hoặc kiểm tra
-let resolvedTheme = "system"
-try {
-  const { theme } = useTheme()
-  if (theme) resolvedTheme = theme
-} catch {
-  // Fallback nếu không có ThemeProvider
-}
-```
-
-Hoặc đơn giản hơn: hardcode theme thay vì dùng hook động.
+3. **Responsive**:
+   - Desktop: Bảng đầy đủ 4 cột
+   - Mobile: Ẩn cột STT, thu gọn nút
 
 ---
 
 ## Thông tin kỹ thuật
 
-### Files cần thay đổi
+### File cần sửa
 
-| File | Hành động |
-|------|-----------|
-| `src/App.tsx` | Thêm `ThemeProvider` wrapper, wrap `AppRoutes` trong `ErrorBoundary` |
-| `vite.config.ts` | Thêm `optimizeDeps.include` |
-| `src/components/ui/sonner.tsx` | Loại bỏ phụ thuộc vào `useTheme()` hoặc hardcode theme |
+| File | Thay đổi |
+|------|----------|
+| `src/components/FabricControlByWarehouse.tsx` | Thay grid cards bằng Table compact, thêm filter/sort |
 
-### Luồng khởi động sau sửa
+### Code structure mới
 
-```text
-QueryClientProvider
-  └─ ThemeProvider (NEW - cung cấp context cho next-themes)
-       └─ SafeTooltipProvider (có ErrorBoundary bao bọc)
-            └─ Toaster (shadcn toast)
-            └─ Sonner (sonner toast - giờ có ThemeProvider context)
-            └─ BrowserRouter
-                 └─ ErrorBoundary (NEW - fallback UI nếu crash)
-                      └─ AppRoutes
+```typescript
+// Thêm state cho filter và sort
+const [showZeroStock, setShowZeroStock] = useState(false);
+const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+const [fabricSearch, setFabricSearch] = useState('');
+
+// Filter và sort data
+const displayedFabrics = useMemo(() => {
+  let filtered = fabricSummaryArray;
+  
+  if (!showZeroStock) {
+    filtered = filtered.filter(f => f.currentWarehouse > 0);
+  }
+  
+  if (fabricSearch) {
+    filtered = filtered.filter(f => 
+      f.fabricName.toLowerCase().includes(fabricSearch.toLowerCase())
+    );
+  }
+  
+  return filtered.sort((a, b) => 
+    sortOrder === 'desc' 
+      ? b.currentWarehouse - a.currentWarehouse 
+      : a.currentWarehouse - b.currentWarehouse
+  );
+}, [fabricSummaryArray, showZeroStock, sortOrder, fabricSearch]);
 ```
 
 ### Kết quả mong đợi
 
-- Ứng dụng không còn trắng trang
-- Nếu có lỗi runtime khác, hiển thị màn hình lỗi thân thiện với nút reload
-- Sonner toast hoạt động với theme tự động
-- Vite pre-bundle React thống nhất, không còn duplicate instances
+- Giảm ~70% diện tích so với grid cards
+- Dễ so sánh tồn kho giữa các loại vải
+- Nhanh chóng tìm thấy vải cần thiết
+- Vẫn giữ đầy đủ chức năng chuyển kho
 
