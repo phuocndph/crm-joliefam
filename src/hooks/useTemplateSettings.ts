@@ -90,6 +90,32 @@ export function useTemplateSettings() {
 
   useEffect(() => {
     fetchSettings();
+    
+    // Setup realtime subscription for live sync
+    const channelName = `template-settings-${Date.now()}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'quote_template_settings',
+          filter: 'tenant_id=eq.default'
+        },
+        (payload) => {
+          console.log('📡 Template settings changed:', payload);
+          fetchSettings(); // Re-fetch when data changes
+        }
+      )
+      .subscribe((status) => {
+        console.log(`📡 Template settings subscription status:`, status);
+      });
+
+    return () => {
+      console.log(`📡 Cleaning up ${channelName} subscription`);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const saveSettings = async (newSettings: TemplateSettings): Promise<boolean> => {
