@@ -1,84 +1,141 @@
 
 
-# Kế hoạch: Đặt nền mặc định là màu trắng
+# Kế hoạch: Cho phép Manager lưu Template và Đồng bộ Realtime cho Nhân viên
 
-## Nguyên nhân
+## Tình trạng hiện tại
 
-Hiện tại ứng dụng đang cấu hình `defaultTheme="system"` trong ThemeProvider, nghĩa là nếu thiết bị của người dùng đang bật **Dark Mode**, app sẽ tự động hiển thị nền đen.
+| Tính năng | Trạng thái |
+|-----------|------------|
+| **RLS INSERT/UPDATE** | Chỉ cho Admin |
+| **RLS SELECT** | Tất cả authenticated users |
+| **Realtime subscription** | Chưa được bật cho bảng này |
 
-### Các nơi cần sửa:
+## Yêu cầu
 
-| File | Vấn đề | Cần sửa |
-|------|--------|---------|
-| `src/App.tsx` | `defaultTheme="system"` | Đổi thành `defaultTheme="light"` |
-| `index.html` | `theme-color="#000000"` | Đổi thành `theme-color="#ffffff"` |
-| `public/manifest.json` | `theme_color="#000000"`, `background_color="#ffffff"` | Đổi `theme_color="#ffffff"` |
+1. **Manager và Admin** có thể tạo và lưu cài đặt Template
+2. **Nhân viên** chỉ xem được - không chỉnh sửa
+3. **Dữ liệu đồng bộ realtime** - khi Manager/Admin lưu, Nhân viên thấy ngay lập tức
 
 ---
 
 ## Thay đổi cần thực hiện
 
-### 1. `src/App.tsx` (Dòng 127)
+### Phần 1: Cập nhật RLS Policies (Database)
 
-**Trước:**
-```tsx
-<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+Xóa policies cũ chỉ cho Admin và tạo policies mới cho phép Manager:
+
+```sql
+-- Xóa policies cũ
+DROP POLICY IF EXISTS "Admins can insert template settings" ON quote_template_settings;
+DROP POLICY IF EXISTS "Admins can update template settings" ON quote_template_settings;
+
+-- Tạo policies mới cho Manager và Admin
+CREATE POLICY "Managers can insert template settings"
+ON quote_template_settings FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_roles 
+    WHERE user_id = auth.uid() 
+    AND role IN ('admin', 'manager')
+  )
+);
+
+CREATE POLICY "Managers can update template settings"
+ON quote_template_settings FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM user_roles 
+    WHERE user_id = auth.uid() 
+    AND role IN ('admin', 'manager')
+  )
+);
 ```
 
-**Sau:**
-```tsx
-<ThemeProvider attribute="class" defaultTheme="light">
+### Phần 2: Bật Realtime cho bảng quote_template_settings
+
+```sql
+-- Thêm bảng vào Realtime publication
+ALTER PUBLICATION supabase_realtime ADD TABLE quote_template_settings;
 ```
 
-Bỏ `enableSystem` để không cho phép theme tự động theo hệ thống.
+### Phần 3: Cập nhật Frontend - useTemplateSettings Hook
+
+Thêm realtime subscription để nhân viên nhận được cập nhật ngay lập tức:
+
+```typescript
+// Trong useTemplateSettings.ts
+useEffect(() => {
+  fetchSettings();
+  
+  // Setup realtime subscription
+  const channel = supabase
+    .channel(`template-settings-${Date.now()}`)
+    .on(
+      'postgres_changes',
+      { 
+        event: '*', 
+        schema: 'public', 
+        table: 'quote_template_settings',
+        filter: "tenant_id=eq.default"
+      },
+      (payload) => {
+        console.log('Template settings changed:', payload);
+        fetchSettings(); // Re-fetch when data changes
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+```
 
 ---
 
-### 2. `index.html` (Dòng 13, 17, 26)
+## File cần sửa
 
-**Trước:**
-```html
-<meta name="theme-color" content="#000000">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="msapplication-TileColor" content="#000000">
-```
-
-**Sau:**
-```html
-<meta name="theme-color" content="#ffffff">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="msapplication-TileColor" content="#ffffff">
-```
-
----
-
-### 3. `public/manifest.json` (Dòng 6)
-
-**Trước:**
-```json
-"theme_color": "#000000",
-```
-
-**Sau:**
-```json
-"theme_color": "#ffffff",
-```
+| File | Thay đổi |
+|------|----------|
+| **Database Migration** | Cập nhật RLS policies và bật Realtime |
+| **src/hooks/useTemplateSettings.ts** | Thêm realtime subscription |
 
 ---
 
 ## Kết quả mong đợi
 
-| Trước | Sau |
-|-------|-----|
-| Nền đen khi thiết bị bật Dark Mode | Nền trắng cố định |
-| Status bar màu đen trên iOS | Status bar màu trắng/mặc định |
-| Theme color đen | Theme color trắng |
+| Vai trò | Xem cài đặt | Lưu cài đặt | Nhận realtime update |
+|---------|-------------|-------------|---------------------|
+| Admin | ✅ | ✅ | ✅ |
+| Manager | ✅ | ✅ | ✅ |
+| Employee | ✅ | ❌ | ✅ (auto-refresh) |
+| Accountant | ✅ | ❌ | ✅ (auto-refresh) |
+
+---
+
+## Luồng hoạt động
+
+```text
+Manager/Admin lưu cài đặt
+        ↓
+Database UPDATE thành công
+        ↓
+Realtime trigger phát sự kiện
+        ↓
+Tất cả client (Employee) nhận event
+        ↓
+fetchSettings() chạy lại
+        ↓
+UI tự động cập nhật
+```
 
 ---
 
 ## Thứ tự thực hiện
 
-1. **Sửa App.tsx** - Đổi `defaultTheme="light"` và bỏ `enableSystem`
-2. **Sửa index.html** - Cập nhật meta tags theme-color
-3. **Sửa manifest.json** - Cập nhật theme_color
+1. **Migration** - Cập nhật RLS policies (cho Manager) và bật Realtime
+2. **Sửa useTemplateSettings.ts** - Thêm realtime subscription
+3. **Kiểm tra** - Đăng nhập 2 tài khoản (Manager + Employee) để test đồng bộ
 
