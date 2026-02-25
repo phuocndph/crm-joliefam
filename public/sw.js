@@ -1,5 +1,5 @@
 // Service worker for PWA functionality - v3 with aggressive cache busting
-const CACHE_NAME = 'joliefam-crm-v3';
+const CACHE_NAME = 'joliefam-crm-v4';
 const urlsToCache = [
   '/',
   '/icon-192.png',
