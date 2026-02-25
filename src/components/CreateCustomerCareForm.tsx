@@ -107,8 +107,9 @@ const { toast } = useToast();
           notes: structuredNotes,
           assignee_id: formData.assignedTo,
           current_status: formData.currentStatus,
-          tags: [formData.source], // Store source as tags
-          auto_tags: [formData.followUpType], // Store follow-up type as auto_tags
+        tags: [formData.source], // Store source as tags
+        auto_tags: [formData.followUpType], // Store follow-up type as auto_tags
+        last_care_date: lastUpdateDate ? lastUpdateDate.toISOString() : new Date().toISOString(),
         });
 
       if (error) {
