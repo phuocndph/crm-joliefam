@@ -255,7 +255,15 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
   };
 
   const dialogContent = (
-    <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+    <DialogContent 
+      className="max-w-5xl max-h-[90vh] overflow-y-auto"
+      onInteractOutside={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('[data-radix-popper-content-wrapper]')) {
+          e.preventDefault();
+        }
+      }}
+    >
       <DialogHeader>
         <DialogTitle>Ghi nhận sử dụng vải - {warehouseName}</DialogTitle>
         <DialogDescription>
