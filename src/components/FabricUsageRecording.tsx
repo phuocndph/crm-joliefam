@@ -88,14 +88,12 @@ export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({
             ...prev,
             order_id: order.id,
             customer_name: order.customers?.name || '',
-            notes: `Xuất vải cho đơn hàng ${orderNumber} - ${order.customers?.name || 'Khách hàng'}`
           }));
         } else {
           setFormData(prev => ({
             ...prev,
             order_id: '',
             customer_name: '',
-            notes: `Xuất vải cho đơn hàng ${orderNumber}`
           }));
         }
       } catch (error) {
