@@ -43,7 +43,8 @@ const permissionLabels: Record<PermissionType, string> = {
   quote_supplement: 'Quyền xem báo giá phụ',
   customer_care: 'Chăm sóc khách hàng - Hỗ trợ và tư vấn',
   fabric_management: 'Quản lý vải - Kho vải và giao dịch',
-  ghn_tracking: 'Theo dõi GHN - Tra cứu vận chuyển'
+  ghn_tracking: 'Theo dõi GHN - Tra cứu vận chuyển',
+  quote_approval: 'Duyệt báo giá - Cho phép duyệt và từ chối báo giá'
 };
 
 const EmployeePermissionManagement = () => {

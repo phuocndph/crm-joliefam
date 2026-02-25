@@ -582,7 +582,7 @@ export default function QuotesPage() {
                                 Báo giá phụ
                               </DropdownMenuItem>
                             )}
-                            {(userRole === 'manager' || userRole === 'admin') && quote.status === 'draft' && (
+                            {(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')) && quote.status === 'draft' && (
                               <DropdownMenuItem
                                 onClick={() => handleApproveQuote(quote)}
                                 className="text-green-600 hover:bg-green-600 hover:text-white transition-colors"
@@ -591,7 +591,7 @@ export default function QuotesPage() {
                                 Duyệt báo giá
                               </DropdownMenuItem>
                             )}
-                            {(userRole === 'manager' || userRole === 'admin') && quote.status === 'draft' && (
+                            {(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')) && quote.status === 'draft' && (
                               <DropdownMenuItem
                                 onClick={() => handleRejectQuote(quote.id)}
                                 className="text-orange-600 hover:bg-orange-600 hover:text-white transition-colors"
