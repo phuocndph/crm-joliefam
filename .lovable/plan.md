@@ -1,77 +1,53 @@
 
 
-# Kế hoạch: Thêm chức năng bật/tắt quyền duyệt báo giá cho nhân viên
+# Kế hoạch: Sửa lỗi "Ngày Cập Nhật Cuối" luôn trả về ngày hiện tại
 
-## Mô tả
+## Nguyên nhân
 
-Hiện tại chỉ **Manager** và **Admin** mới thấy nút "Duyệt báo giá" và "Từ chối". Yêu cầu là thêm một permission mới để Manager/Admin có thể bật quyền này cho nhân viên cụ thể.
+Trong `CreateCustomerCareForm.tsx`, khi insert khách hàng (dòng 103-112), trường `last_care_date` **không được truyền vào**. Do đó database sử dụng giá trị mặc định là `now()` (ngày hiện tại), bất kể người dùng chọn ngày nào.
 
----
+Ngày mà người dùng chọn (`lastUpdateDate`) chỉ được ghi vào `notes` dưới dạng text, không được lưu vào cột `last_care_date`.
 
-## Thay đổi cần thực hiện
+## Giải pháp
 
-### 1. Thêm permission type mới: `quote_approval`
+### File: `src/components/CreateCustomerCareForm.tsx` (Dòng 103-112)
 
-**File: `src/hooks/useEmployeePermissions.tsx`**
+Thêm `last_care_date` vào object insert, sử dụng ngày người dùng đã chọn:
 
-Thêm `'quote_approval'` vào `PermissionType`:
-
+**Trước:**
 ```typescript
-export type PermissionType = 
-  | 'dashboard'
-  | ...
-  | 'quote_approval';  // MỚI
+const { data, error } = await supabase
+  .from('customers')
+  .insert({
+    name: formData.customerName,
+    notes: structuredNotes,
+    assignee_id: formData.assignedTo,
+    current_status: formData.currentStatus,
+    tags: [formData.source],
+    auto_tags: [formData.followUpType],
+  });
 ```
 
-### 2. Thêm label cho permission mới
-
-**File: `src/components/EmployeePermissionManagement.tsx`**
-
-Thêm vào `permissionLabels`:
-
+**Sau:**
 ```typescript
-quote_approval: 'Duyệt báo giá - Cho phép duyệt và từ chối báo giá'
+const { data, error } = await supabase
+  .from('customers')
+  .insert({
+    name: formData.customerName,
+    notes: structuredNotes,
+    assignee_id: formData.assignedTo,
+    current_status: formData.currentStatus,
+    tags: [formData.source],
+    auto_tags: [formData.followUpType],
+    last_care_date: lastUpdateDate ? lastUpdateDate.toISOString() : new Date().toISOString(),
+  });
 ```
 
-### 3. Cập nhật điều kiện hiển thị nút Duyệt/Từ chối
+Nếu người dùng chọn ngày, dùng ngày đó. Nếu không chọn, mặc định là ngày hiện tại.
 
-**File: `src/pages/QuotesPage.tsx`** (Dòng 585 và 594)
+## Kết quả mong đợi
 
-Thay đổi điều kiện từ:
-```tsx
-{(userRole === 'manager' || userRole === 'admin') && quote.status === 'draft' && (
-```
-
-Thành:
-```tsx
-{(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')) && quote.status === 'draft' && (
-```
-
-Áp dụng cho cả 2 nút: **Duyệt báo giá** (dòng 585) và **Từ chối** (dòng 594).
-
----
-
-## Luồng hoạt động
-
-```text
-Manager vào Quản lý phân quyền
-        ↓
-Bật "Duyệt báo giá" cho nhân viên X
-        ↓
-Nhân viên X đăng nhập
-        ↓
-Thấy nút "Duyệt báo giá" và "Từ chối" trong menu
-```
-
----
-
-## File cần sửa
-
-| File | Thay đổi |
-|------|----------|
-| `src/hooks/useEmployeePermissions.tsx` | Thêm `quote_approval` vào PermissionType |
-| `src/components/EmployeePermissionManagement.tsx` | Thêm label cho permission mới |
-| `src/pages/QuotesPage.tsx` | Cập nhật điều kiện hiển thị nút Duyệt/Từ chối |
-
-Không cần migration database vì bảng `employee_permissions` lưu `permission_type` dạng text, không bị ràng buộc enum.
+| Trước | Sau |
+|-------|-----|
+| Luôn lưu ngày hiện tại (do DB default) | Lưu đúng ngày người dùng đã chọn |
 
