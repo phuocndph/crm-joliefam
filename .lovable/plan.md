@@ -1,33 +1,54 @@
 
 
-# Sửa lỗi không chọn được loại vải trong dropdown
+# Sửa lỗi không nhấp được mục trong dropdown chọn vải
 
-## Nguyên nhân
+## Nguyên nhân gốc
 
-`SearchableFabricSelect` sử dụng `Popover` bên trong `Dialog`. Khi Popover mở ra, nó bị Dialog chặn sự kiện click do:
-1. **Z-index xung đột**: Cả Dialog và Popover đều dùng `z-50`
-2. **Pointer events**: Dialog overlay chặn click trước khi tới CommandItem
+`SearchableFabricSelect` (Popover) nằm bên trong `DialogContent` của `FabricUsageRecording.tsx`. Khi click vào một mục trong dropdown:
+
+1. Sự kiện click lan truyền lên đến Dialog
+2. Dialog xử lý sự kiện này như một "click bên ngoài" (interact outside) và can thiệp vào event
+3. Kết quả: `CommandItem.onSelect` không được kích hoạt dù dropdown vẫn mở
+
+Fix `z-index` và `onPointerDownOutside` trước đó chỉ ngăn Popover đóng, nhưng không ngăn Dialog can thiệp vào sự kiện click.
 
 ## Giải pháp
 
-### File: `src/components/ui/searchable-fabric-select.tsx`
+### File 1: `src/components/FabricUsageRecording.tsx` (dòng 258)
 
-1. Tăng z-index của `PopoverContent` từ `z-50` lên `z-[9999]` để luôn nằm trên Dialog
-2. Thêm `onPointerDownOutside` handler để ngăn Popover đóng không mong muốn khi click trong Dialog
-
-**Thay đổi cụ thể (dòng ~120):**
+Thêm `onInteractOutside` vào `DialogContent` để ngăn Dialog can thiệp khi click vào Popover:
 
 ```typescript
 // Trước:
-<PopoverContent className="w-[400px] p-0 z-50" align="start">
+<DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
 
 // Sau:
-<PopoverContent 
-  className="w-[400px] p-0 z-[9999]" 
-  align="start"
-  onPointerDownOutside={(e) => e.preventDefault()}
+<DialogContent 
+  className="max-w-5xl max-h-[90vh] overflow-y-auto"
+  onInteractOutside={(e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-radix-popper-content-wrapper]')) {
+      e.preventDefault();
+    }
+  }}
 >
 ```
 
-Chỉ cần sửa 1 dòng duy nhất trong 1 file.
+### File 2: `src/components/ui/searchable-fabric-select.tsx` (dòng 120)
+
+Thêm `modal={false}` vào Popover để tránh tạo thêm một lớp modal chồng lên Dialog:
+
+```typescript
+// Trước:
+<Popover open={open} onOpenChange={setOpen}>
+
+// Sau:
+<Popover open={open} onOpenChange={setOpen} modal={false}>
+```
+
+## Kết quả mong đợi
+
+- Dropdown mở bình thường
+- Click vào mục trong danh sách se chon duoc loai vai
+- Dialog không bị đóng khi tương tác với dropdown
 
