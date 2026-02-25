@@ -19,8 +19,12 @@ interface Customer {
   email: string | null;
   phone: string | null;
   manager_id: string | null;
+  assignee_id: string | null;
   tags: string[] | null;
+  auto_tags: string[] | null;
   notes: string | null;
+  current_status: string | null;
+  last_care_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -84,20 +88,50 @@ const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: Edi
     }
   }, [open]);
 
+  // Parse structured data from notes
+  const parseNotesData = (notes: string | null) => {
+    if (!notes) return { closingScore: "", nextAction: "", cleanNotes: "" };
+    
+    const lines = notes.split('\n');
+    let closingScore = "";
+    let nextAction = "";
+    const cleanLines: string[] = [];
+    
+    for (const line of lines) {
+      const scoreMatch = line.match(/^Điểm đánh giá:\s*(.+)$/);
+      const actionMatch = line.match(/^Hành động tiếp theo:\s*(.+)$/);
+      const dateMatch = line.match(/^Ngày cập nhật:\s*.+$/);
+      
+      if (scoreMatch) {
+        closingScore = scoreMatch[1].trim();
+      } else if (actionMatch) {
+        nextAction = actionMatch[1].trim();
+      } else if (dateMatch) {
+        // skip date line
+      } else {
+        cleanLines.push(line);
+      }
+    }
+    
+    return { closingScore, nextAction, cleanNotes: cleanLines.join('\n').trim() };
+  };
+
   // Initialize form with customer data - wait for assignees to load first
   useEffect(() => {
     if (customer && open && !loadingAssignees) {
+      const { closingScore, nextAction, cleanNotes } = parseNotesData(customer.notes);
+      
       setFormData({
         customerName: customer.name || "",
-        assignedTo: customer.manager_id || "",
+        assignedTo: customer.assignee_id || "",
         source: customer.tags && customer.tags.length > 0 ? customer.tags[0] : "",
-        currentStatus: (customer as any).current_status || "waiting-payment",
-        followUpType: (customer as any).follow_up_type || "first-contact",
-        closingScore: (customer as any).closing_score || "",
-        nextAction: (customer as any).next_action || "",
-        notes: customer.notes || ""
+        currentStatus: customer.current_status || "waiting-payment",
+        followUpType: customer.auto_tags && customer.auto_tags.length > 0 ? customer.auto_tags[0] : "",
+        closingScore,
+        nextAction,
+        notes: cleanNotes
       });
-      setLastUpdateDate(new Date(customer.updated_at));
+      setLastUpdateDate(customer.last_care_date ? new Date(customer.last_care_date) : new Date(customer.updated_at));
     }
   }, [customer, open, loadingAssignees]);
 
@@ -142,15 +176,25 @@ const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: Edi
         return;
       }
 
+      // Build structured notes matching Create form format
+      const structuredNotes = [
+        formData.notes,
+        formData.nextAction ? `Hành động tiếp theo: ${formData.nextAction}` : '',
+        formData.closingScore ? `Điểm đánh giá: ${formData.closingScore}` : '',
+        lastUpdateDate ? `Ngày cập nhật: ${format(lastUpdateDate, 'dd/MM/yyyy')}` : ''
+      ].filter(Boolean).join('\n');
+
       // Update customer record
       const { error } = await supabase
         .from('customers')
         .update({
           name: formData.customerName,
-          notes: formData.notes,
-          manager_id: formData.assignedTo,
+          notes: structuredNotes,
+          assignee_id: formData.assignedTo,
           tags: formData.source ? [formData.source] : null,
           current_status: formData.currentStatus,
+          auto_tags: formData.followUpType ? [formData.followUpType] : null,
+          last_care_date: lastUpdateDate?.toISOString() || new Date().toISOString(),
         })
         .eq('id', customer.id);
 
