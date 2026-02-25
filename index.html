@@ -55,18 +55,39 @@
         
         if ('serviceWorker' in navigator) {
           if (isProduction) {
-            // Register SW only on production
             window.addEventListener('load', () => {
               navigator.serviceWorker.register('/sw.js')
                 .then((registration) => {
-                  console.log('SW registered: ', registration);
+                  console.log('SW registered:', registration);
+                  registration.update();
+                  setInterval(() => registration.update(), 60 * 1000);
+                  registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    if (newWorker) {
+                      newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                          console.log('New SW installed, sending SKIP_WAITING');
+                          newWorker.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                      });
+                    }
+                  });
                 })
-                .catch((registrationError) => {
-                  console.log('SW registration failed: ', registrationError);
+                .catch((err) => {
+                  console.log('SW registration failed:', err);
                 });
             });
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+              console.log('New SW active, reloading for latest version...');
+              window.location.reload();
+            });
+            navigator.serviceWorker.addEventListener('message', (event) => {
+              if (event.data && event.data.type === 'SW_UPDATED') {
+                console.log('SW updated to', event.data.version, '- reloading');
+                window.location.reload();
+              }
+            });
           } else {
-            // Unregister SW and clear caches in preview/dev to prevent stale module conflicts
             navigator.serviceWorker.getRegistrations().then(registrations => {
               registrations.forEach(reg => reg.unregister());
             });
