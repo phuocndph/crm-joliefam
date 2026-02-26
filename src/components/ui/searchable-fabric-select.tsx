@@ -121,7 +121,12 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0 z-[9999] bg-popover" align="start">
+      <PopoverContent
+        className="w-[400px] p-0 z-[9999] bg-popover pointer-events-auto"
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         {/* Search input */}
         <div className="flex items-center border-b border-border px-3">
           <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
@@ -131,10 +136,11 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
             placeholder="Tìm kiếm loại vải..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            onMouseDown={(e) => e.stopPropagation()}
           />
         </div>
 
-        {/* Scrollable list - plain div, no cmdk/ScrollArea */}
+        {/* Scrollable list */}
         <div className="max-h-[300px] overflow-y-auto overscroll-contain p-1">
           {sortedVariants.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
@@ -148,6 +154,10 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
                   key={variant.id}
                   role="option"
                   aria-selected={value === variant.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                   onClick={() => handleSelect(variant.id)}
                   className={cn(
                     'flex items-center px-2 py-2 rounded-sm cursor-pointer text-sm select-none',
