@@ -1,27 +1,29 @@
 
 
-# Fix gia tri mac dinh "Thep" trong chi tiet don hang
+# Hien thi chat lieu tu bao gia trong chi tiet don hang
 
 ## Nguyen nhan
 
-Dong 659 trong `src/pages/OrderManagement.tsx`:
-```typescript
-{item.material || "Thép"}
-```
-Khi san pham trong don hang khong co truong `material`, he thong hien thi "Thep" lam gia tri mac dinh. Day la gia tri khong phu hop voi nganh rem/noi that.
+Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
+
+Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
+
+Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
 
 ## Giai phap
 
 ### File: `src/pages/OrderManagement.tsx`
 
-Thay doi dong 659: doi fallback tu `"Thép"` thanh `"-"` (giong cac truong khac nhu specifications, notes):
+Thay doi dong 659: doc `item.description` thay vi `item.material`:
 
 ```typescript
 // Truoc:
-{item.material || "Thép"}
+{item.material || "-"}
 
 // Sau:
-{item.material || "-"}
+{item.description || "-"}
 ```
 
-Chi thay doi 1 dong, khong anh huong den bat ky logic nao khac.
+Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
+
+Chi thay doi 1 dong, khong anh huong logic nao khac.
