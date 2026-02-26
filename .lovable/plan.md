@@ -1,88 +1,61 @@
 
 
-# Thay the SearchableFabricSelect - Bo cmdk, dung Popover don gian
+# Fix dropdown chon vai khong click duoc trong Dialog
 
-## Nguyen nhan goc
+## Nguyen nhan
 
-Component `SearchableFabricSelect` dang dung `cmdk` (Command) ket hop voi Radix `ScrollArea` trong `CommandList`. Van de:
+`SearchableFabricSelect` dung `Popover` ben trong `Dialog`. Khi `PopoverContent` render qua Portal, no nam ngoai DOM tree cua Dialog. Ket qua:
 
-1. **Xung dot cuon**: `cmdk` tu dat `max-height` va `overflow: auto` inline len `CommandPrimitive.List`, trong khi `ScrollArea` cung co `overflow: hidden` va Viewport rieng. Hai lop cuon chong len nhau khien con lan chuot khong hoat dong.
-2. **Xung dot click**: `cmdk` quan ly focus/selection bang ban phim, ket hop voi `Popover modal={false}` va `onPointerDownOutside preventDefault` co the chan pointer events.
-3. **cmdk khong can thiet**: Component da dung `shouldFilter={false}` va input tim kiem rieng, nen cmdk khong cung cap gia tri gi.
+1. **Con tro text (I-beam)**: Input search trong PopoverContent dang duoc auto-focus, khien click vao bat ky dau trong popover deu bi xu ly nhu click vao vung text
+2. **Dropdown bi tat**: Dialog nhan click ngoai pham vi cua no (vi PopoverContent nam ngoai Dialog DOM) va co the dong popover
 
 ## Giai phap
 
-Viet lai `SearchableFabricSelect` bo hoan toan cmdk, chi dung:
-- `Popover` + `PopoverContent` (da hoat dong tot)
-- Input tim kiem thuong
-- Div cuon voi `overflow-y: auto` va `max-height` co dinh
-- Cac item la div/button thong thuong voi `onClick`
-
 ### File: `src/components/ui/searchable-fabric-select.tsx`
 
-Viet lai toan bo component:
+Thay doi chinh:
 
-```typescript
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Check, ChevronsUpDown, Search } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { removeAccents } from '@/lib/searchUtils';
+1. **Them `onOpenAutoFocus={(e) => e.preventDefault()}`** vao PopoverContent de ngan Radix tu dong focus vao content (tranh I-beam cursor)
+2. **Focus input bang `setTimeout` thay vi de Radix tu lam** - giu logic focus thu cong hien tai
+3. **Them `pointer-events-auto`** vao PopoverContent de dam bao click events luon hoat dong
+4. **Them `onCloseAutoFocus={(e) => e.preventDefault()}`** de ngan focus bi chuyen ve trigger khi dong (tranh xung dot voi Dialog)
 
-// Giu nguyen interfaces (FabricVariant, FabricInventory, Props)
+```text
+PopoverContent truoc:
+  className="w-[400px] p-0 z-[9999] bg-popover"
 
-export const SearchableFabricSelect = ({ ... }) => {
-  // Giu nguyen logic: state, getStock, sortedVariants, handleSelect
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        {/* Giu nguyen Button trigger */}
-      </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0 z-[9999]" align="start">
-        {/* Input tim kiem don gian */}
-        <div className="flex items-center border-b px-3">
-          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-          <input ... />
-        </div>
-        
-        {/* Danh sach cuon - KHONG dung ScrollArea hay cmdk */}
-        <div 
-          className="max-h-[300px] overflow-y-auto overscroll-contain p-1"
-        >
-          {sortedVariants.length === 0 ? (
-            <p>Khong tim thay...</p>
-          ) : (
-            sortedVariants.map(variant => (
-              <div
-                key={variant.id}
-                onClick={() => handleSelect(variant.id)}
-                className="flex items-center px-2 py-2 rounded-sm 
-                           cursor-pointer hover:bg-accent text-sm"
-              >
-                <Check ... />
-                <span>{variant.variant_name}</span>
-                <span>{stock}m</span>
-              </div>
-            ))
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-};
+PopoverContent sau:
+  className="w-[400px] p-0 z-[9999] bg-popover pointer-events-auto"
+  onOpenAutoFocus={(e) => e.preventDefault()}
+  onCloseAutoFocus={(e) => e.preventDefault()}
 ```
 
-### Diem quan trong
+5. **Cac item option**: Giu nguyen `cursor-pointer` va `select-none`, them `onMouseDown` voi `e.preventDefault()` de ngan mat focus va popover bi dong
 
-- **Khong thay doi** `command.tsx` hay `scroll-area.tsx` (tranh anh huong cac component khac)
-- **Khong thay doi** file su dung (`FabricUsageRecording.tsx`) vi interface props giu nguyen
-- **Giu nguyen** toan bo logic tim kiem, loc, sap xep
-- Chi thay lop UI ben trong tu cmdk sang HTML/Tailwind don gian
-- Popover chuyen sang `modal` mac dinh (bo `modal={false}`) va bo `onPointerDownOutside preventDefault` de click ngoai dong popover binh thuong
+```typescript
+<div
+  key={variant.id}
+  role="option"
+  aria-selected={value === variant.id}
+  onMouseDown={(e) => {
+    e.preventDefault();  // Ngan mat focus -> ngan popover dong
+    e.stopPropagation(); // Ngan event leo len Dialog
+  }}
+  onClick={() => handleSelect(variant.id)}
+  className={cn(
+    'flex items-center px-2 py-2 rounded-sm cursor-pointer text-sm select-none',
+    'hover:bg-accent hover:text-accent-foreground',
+    value === variant.id && 'bg-accent'
+  )}
+>
+```
+
+6. **Search input**: Them `onMouseDown={(e) => e.stopPropagation()}` de ngan click vao input bi Dialog chan
+
+## Tac dong
+
+- Chi thay doi 1 file: `src/components/ui/searchable-fabric-select.tsx`
+- Khong anh huong den Dialog, Popover, hay bat ky component nao khac
+- Giu nguyen toan bo logic tim kiem, loc, sap xep, hien thi ton kho
+- Interface props khong thay doi nen `FabricUsageRecording.tsx` khong can sua
 
