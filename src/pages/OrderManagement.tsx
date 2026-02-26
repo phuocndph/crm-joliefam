@@ -656,7 +656,7 @@ export default function OrderManagement() {
                               <td className="border-r border-gray-200 p-2">{index + 1}</td>
                               <td className="border-r border-gray-200 p-2">{item.name || `Sản phẩm ${index + 1}`}</td>
                               <td className="border-r border-gray-200 p-2">{item.specifications || "-"}</td>
-                              <td className="border-r border-gray-200 p-2">{item.material || "Thép"}</td>
+                              <td className="border-r border-gray-200 p-2">{item.material || "-"}</td>
                               <td className="border-r border-gray-200 p-2">{item.quantity || 1}</td>
                               <td className="border-r border-gray-200 p-2">{(item.price || 0).toLocaleString()}đ</td>
                               <td className="border-r border-gray-200 p-2 font-medium">{((item.quantity || 1) * (item.price || 0)).toLocaleString()}đ</td>
