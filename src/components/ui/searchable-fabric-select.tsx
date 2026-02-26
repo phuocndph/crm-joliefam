@@ -1,15 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Check, ChevronsUpDown, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
 import {
   Popover,
   PopoverContent,
@@ -55,8 +47,17 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Get current stock for a fabric variant in the selected warehouse
+  // Auto-focus search input when popover opens
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 0);
+    } else {
+      setSearchTerm('');
+    }
+  }, [open]);
+
   const getStock = (fabricVariantId: string): number => {
     if (!fabricInventory || !warehouseId) return 0;
     const inventory = fabricInventory.find(
@@ -65,59 +66,46 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
     return inventory?.current_stock || 0;
   };
 
-  // Get display label for a fabric variant
   const getDisplayLabel = (variant: FabricVariant): string => {
     const typeName = variant.fabric_types?.name || 'Không xác định';
     const stock = getStock(variant.id);
     return `${typeName} - ${variant.variant_name} - Còn lại: ${stock}m`;
   };
 
-  // Filter and sort variants as a flat list with multi-word search
   const sortedVariants = useMemo(() => {
     if (!fabricVariants) return [];
 
     const normalizedSearch = removeAccents(searchTerm.toLowerCase().trim());
 
-    // No search term => return all sorted
     if (!normalizedSearch) {
-      return [...fabricVariants].sort((a, b) => 
+      return [...fabricVariants].sort((a, b) =>
         a.variant_name.localeCompare(b.variant_name, 'vi')
       );
     }
 
-    // Split search into individual words
     const searchWords = normalizedSearch.split(/\s+/).filter(w => w.length > 0);
 
     return fabricVariants
       .filter((variant) => {
-        // Combine all searchable text
         const variantText = removeAccents(variant.variant_name.toLowerCase());
-        const typeText = removeAccents(
-          (variant.fabric_types?.name || '').toLowerCase()
-        );
+        const typeText = removeAccents((variant.fabric_types?.name || '').toLowerCase());
         const combinedText = `${variantText} ${typeText}`;
-
-        // Check ALL search words appear in the combined text
         return searchWords.every(word => combinedText.includes(word));
       })
       .sort((a, b) => a.variant_name.localeCompare(b.variant_name, 'vi'));
   }, [fabricVariants, searchTerm]);
 
-  // Find selected variant
   const selectedVariant = fabricVariants?.find((v) => v.id === value);
-  const selectedLabel = selectedVariant
-    ? getDisplayLabel(selectedVariant)
-    : placeholder;
+  const selectedLabel = selectedVariant ? getDisplayLabel(selectedVariant) : placeholder;
 
   const handleSelect = (variantId: string) => {
     const stock = getStock(variantId);
     onValueChange(variantId, stock);
     setOpen(false);
-    setSearchTerm('');
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen} modal={false}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -133,54 +121,66 @@ export const SearchableFabricSelect: React.FC<SearchableFabricSelectProps> = ({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0 z-[9999]" align="start" onPointerDownOutside={(e) => e.preventDefault()}>
-        <Command shouldFilter={false}>
-          <div className="flex items-center border-b px-3">
-            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-            <input
-              className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder="Tìm kiếm loại vải..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <CommandList>
-            <CommandEmpty>Không tìm thấy loại vải phù hợp.</CommandEmpty>
-            <CommandGroup>
-              {sortedVariants.map((variant) => {
-                const stock = getStock(variant.id);
-                return (
-                  <CommandItem
-                    key={variant.id}
-                    value={variant.id}
-                    onSelect={() => handleSelect(variant.id)}
-                    className="cursor-pointer py-2"
-                  >
-                    <Check
+      <PopoverContent className="w-[400px] p-0 z-[9999] bg-popover" align="start">
+        {/* Search input */}
+        <div className="flex items-center border-b border-border px-3">
+          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+          <input
+            ref={inputRef}
+            className="flex h-11 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+            placeholder="Tìm kiếm loại vải..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        {/* Scrollable list - plain div, no cmdk/ScrollArea */}
+        <div className="max-h-[300px] overflow-y-auto overscroll-contain p-1">
+          {sortedVariants.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Không tìm thấy loại vải phù hợp.
+            </p>
+          ) : (
+            sortedVariants.map((variant) => {
+              const stock = getStock(variant.id);
+              return (
+                <div
+                  key={variant.id}
+                  role="option"
+                  aria-selected={value === variant.id}
+                  onClick={() => handleSelect(variant.id)}
+                  className={cn(
+                    'flex items-center px-2 py-2 rounded-sm cursor-pointer text-sm select-none',
+                    'hover:bg-accent hover:text-accent-foreground',
+                    value === variant.id && 'bg-accent'
+                  )}
+                >
+                  <Check
+                    className={cn(
+                      'mr-2 h-4 w-4 shrink-0',
+                      value === variant.id ? 'opacity-100 text-primary' : 'opacity-0'
+                    )}
+                  />
+                  <div className="flex items-center justify-between w-full min-w-0">
+                    <span className="font-medium text-foreground truncate">
+                      {variant.variant_name}
+                    </span>
+                    <span
                       className={cn(
-                        'mr-2 h-4 w-4 shrink-0',
-                        value === variant.id ? 'opacity-100 text-primary' : 'opacity-0'
-                      )}
-                    />
-                    <div className="flex items-center justify-between w-full">
-                      <span className="font-medium text-foreground truncate">
-                        {variant.variant_name}
-                      </span>
-                      <span className={cn(
                         'ml-2 text-xs font-medium px-2 py-0.5 rounded-full shrink-0',
-                        stock > 0 
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                        stock > 0
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                           : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                      )}>
-                        {stock}m
-                      </span>
-                    </div>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
+                      )}
+                    >
+                      {stock}m
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   );
