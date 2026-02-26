@@ -1,68 +1,88 @@
 
 
-# Hoàn thiện: Đồng bộ Service Worker v4 và chống reload loop
+# Thay the SearchableFabricSelect - Bo cmdk, dung Popover don gian
 
-## Trạng thái hiện tại
+## Nguyen nhan goc
 
-### Fix ghi chú - DA XONG, KHONG CAN THAY DOI
-- File `src/components/FabricUsageRecording.tsx` da duoc sua dung
-- Khong tu dong dien `notes` khi nhap so don hang
-- Khi submit, neu `notes` trong se tu tao ghi chu mac dinh (dong 196)
-- Khong xung dot voi bat ky chuc nang nao khac
+Component `SearchableFabricSelect` dang dung `cmdk` (Command) ket hop voi Radix `ScrollArea` trong `CommandList`. Van de:
 
-### Service Worker - CAN SUA
-
-**Van de 1**: `CACHE_NAME` la `v4` nhung tat ca log va message van ghi "v3"
-- Trinh duyet nhan dien SW moi qua noi dung file (byte-level comparison), nen CACHE_NAME v4 da du de kich hoat update
-- Nhung log "v3" gay nham lan khi debug, va `postMessage({ version: 'v3' })` gui sai thong tin
-
-**Van de 2**: Trong `index.html`, ca `controllerchange` va `SW_UPDATED` message deu goi `window.location.reload()` -> co the reload 2 lan
+1. **Xung dot cuon**: `cmdk` tu dat `max-height` va `overflow: auto` inline len `CommandPrimitive.List`, trong khi `ScrollArea` cung co `overflow: hidden` va Viewport rieng. Hai lop cuon chong len nhau khien con lan chuot khong hoat dong.
+2. **Xung dot click**: `cmdk` quan ly focus/selection bang ban phim, ket hop voi `Popover modal={false}` va `onPointerDownOutside preventDefault` co the chan pointer events.
+3. **cmdk khong can thiet**: Component da dung `shouldFilter={false}` va input tim kiem rieng, nen cmdk khong cung cap gia tri gi.
 
 ## Giai phap
 
-### File: `public/sw.js`
+Viet lai `SearchableFabricSelect` bo hoan toan cmdk, chi dung:
+- `Popover` + `PopoverContent` (da hoat dong tot)
+- Input tim kiem thuong
+- Div cuon voi `overflow-y: auto` va `max-height` co dinh
+- Cac item la div/button thong thuong voi `onClick`
 
-Doi tat ca "SW v3" thanh "SW v4" va cap nhat version trong postMessage:
+### File: `src/components/ui/searchable-fabric-select.tsx`
 
-- Dong 1: Doi comment thanh `// Service worker for PWA functionality - v4`
-- Dong 12: `'SW v4: Installing...'`
-- Dong 16: `'SW v4: Caching essential files'`
-- Dong 20: `'SW v4: skipWaiting()'`
-- Dong 28: `'SW v4: Activating...'`
-- Dong 31: `'SW v4: Found caches:'`
-- Dong 36: `'SW v4: Deleting old cache:'`
-- Dong 42: `'SW v4: Old caches cleared, claiming all clients'`
-- Dong 49: `'SW v4: Notifying client to refresh:'`
-- Dong 50: `{ type: 'SW_UPDATED', version: 'v4' }`
-- Dong 92: `'SW v4: Network failed...'`
-- Dong 117: `'SW v4: Received message:'`
-- Dong 120: `'SW v4: Received SKIP_WAITING, activating now'`
-- Dong 125: `{ version: 'v4', cacheName: CACHE_NAME }`
-- Dong 137: `'SW v4: Service Worker script loaded'`
+Viet lai toan bo component:
 
-### File: `index.html`
+```typescript
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Check, ChevronsUpDown, Search } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { removeAccents } from '@/lib/searchUtils';
 
-Them bien `refreshing` de chong reload loop, va xoa listener `SW_UPDATED` (khong can thiet vi `controllerchange` da xu ly):
+// Giu nguyen interfaces (FabricVariant, FabricInventory, Props)
 
-```javascript
-// Thay dong 80-88 bang:
-let refreshing = false;
-navigator.serviceWorker.addEventListener('controllerchange', () => {
-  if (refreshing) return;
-  refreshing = true;
-  console.log('New SW active, reloading for latest version...');
-  window.location.reload();
-});
+export const SearchableFabricSelect = ({ ... }) => {
+  // Giu nguyen logic: state, getStock, sortedVariants, handleSelect
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        {/* Giu nguyen Button trigger */}
+      </PopoverTrigger>
+      <PopoverContent className="w-[400px] p-0 z-[9999]" align="start">
+        {/* Input tim kiem don gian */}
+        <div className="flex items-center border-b px-3">
+          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+          <input ... />
+        </div>
+        
+        {/* Danh sach cuon - KHONG dung ScrollArea hay cmdk */}
+        <div 
+          className="max-h-[300px] overflow-y-auto overscroll-contain p-1"
+        >
+          {sortedVariants.length === 0 ? (
+            <p>Khong tim thay...</p>
+          ) : (
+            sortedVariants.map(variant => (
+              <div
+                key={variant.id}
+                onClick={() => handleSelect(variant.id)}
+                className="flex items-center px-2 py-2 rounded-sm 
+                           cursor-pointer hover:bg-accent text-sm"
+              >
+                <Check ... />
+                <span>{variant.variant_name}</span>
+                <span>{stock}m</span>
+              </div>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
 ```
 
-Xoa phan `navigator.serviceWorker.addEventListener('message', ...)` (dong 84-89) vi `controllerchange` da du de reload khi SW moi kich hoat.
+### Diem quan trong
 
-## Tac dong
+- **Khong thay doi** `command.tsx` hay `scroll-area.tsx` (tranh anh huong cac component khac)
+- **Khong thay doi** file su dung (`FabricUsageRecording.tsx`) vi interface props giu nguyen
+- **Giu nguyen** toan bo logic tim kiem, loc, sap xep
+- Chi thay lop UI ben trong tu cmdk sang HTML/Tailwind don gian
+- Popover chuyen sang `modal` mac dinh (bo `modal={false}`) va bo `onPointerDownOutside preventDefault` de click ngoai dong popover binh thuong
 
-- **Khong anh huong** den chuc nang ghi nhan vai, quan ly don hang, hay bat ky tinh nang nao khac
-- Chi thay doi SW va script dang ky SW - hoan toan doc lap voi logic ung dung
-- Sau khi Publish, nguoi dung production se nhan ban moi trong vong 60 giay ma khong bi reload nhieu lan
-
-## Buoc tiep theo
-
-Sau khi code duoc cap nhat, can nhan **Publish > Update** de day len production.
