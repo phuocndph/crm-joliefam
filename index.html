@@ -77,15 +77,12 @@
                   console.log('SW registration failed:', err);
                 });
             });
+            let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
+              if (refreshing) return;
+              refreshing = true;
               console.log('New SW active, reloading for latest version...');
               window.location.reload();
-            });
-            navigator.serviceWorker.addEventListener('message', (event) => {
-              if (event.data && event.data.type === 'SW_UPDATED') {
-                console.log('SW updated to', event.data.version, '- reloading');
-                window.location.reload();
-              }
             });
           } else {
             navigator.serviceWorker.getRegistrations().then(registrations => {
