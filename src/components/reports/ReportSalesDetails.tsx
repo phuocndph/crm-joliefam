@@ -46,7 +46,7 @@ const ReportSalesDetails = ({ filteredOrders, monthlyData, formatCurrency }: Rep
           const key = item.sku || item.name || "unknown";
           const existing = productMap.get(key) || { name: item.name || "N/A", sku: item.sku || "-", quantity: 0, revenue: 0 };
           existing.quantity += Number(item.quantity || 0);
-          existing.revenue += Number(item.total || item.price || 0) * Number(item.quantity || 1);
+          existing.revenue += Number(item.total || 0) || (Number(item.price || 0) * Number(item.quantity || 1));
           productMap.set(key, existing);
         });
       } catch { /* skip */ }
