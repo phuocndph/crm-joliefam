@@ -1,36 +1,29 @@
 
 
-# Sua loi tinh doanh thu sai trong bao cao
+# Hien thi chat lieu tu bao gia trong chi tiet don hang
 
-## Van de
+## Nguyen nhan
 
-**ReportOverviewDetails.tsx dong 68** van con loi nhan doi doanh thu - cung loi da sua trong ReportSalesDetails nhung chua sua o day:
+Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
 
-```typescript
-// LOI: item.total da bao gom quantity roi, nhan them quantity = nhan doi
-existing.revenue += Number(item.total || item.price || 0) * Number(item.quantity || 1);
-```
+Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
 
-Khi `item.total` da = `price * quantity`, nhan them `quantity` se ra gia tri gap doi.
+Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
 
 ## Giai phap
 
-### File: `src/components/reports/ReportOverviewDetails.tsx` (dong 68)
+### File: `src/pages/OrderManagement.tsx`
 
-Sua thanh logic giong ReportSalesDetails da fix:
+Thay doi dong 659: doc `item.description` thay vi `item.material`:
 
 ```typescript
-existing.revenue += Number(item.total || 0) || (Number(item.price || 0) * Number(item.quantity || 1));
+// Truoc:
+{item.material || "-"}
+
+// Sau:
+{item.description || "-"}
 ```
 
-Logic: Uu tien dung `item.total` truc tiep (da bao gom quantity). Chi khi `total` = 0 hoac khong co moi tinh `price * quantity`.
+Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
 
-Chi thay doi 1 dong duy nhat.
-
-## Cac file khac - Da kiem tra
-
-- **ReportSalesDetails.tsx**: Da fix dung
-- **ReportFinancialDetails.tsx**: Khong tinh revenue theo item, dung `order.total_amount` - dung
-- **ReportCustomerDetails.tsx**: Dung `order.total_amount` - dung
-- **ReportsPage.tsx metricsData**: Dung `order.total_amount` - dung
-
+Chi thay doi 1 dong, khong anh huong logic nao khac.
