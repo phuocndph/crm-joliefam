@@ -1,4 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
+import ReportOverviewDetails from "@/components/reports/ReportOverviewDetails";
+import ReportSalesDetails from "@/components/reports/ReportSalesDetails";
+import ReportFinancialDetails from "@/components/reports/ReportFinancialDetails";
+import ReportCustomerDetails from "@/components/reports/ReportCustomerDetails";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Download, TrendingUp, TrendingDown, BarChart3, PieChart, Users, ShoppingCart, Plus, DollarSign, Package, CheckCircle, Clock, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -763,6 +767,9 @@ const ReportsPage = () => {
               </CardContent>
             </Card>
           </div>
+
+          {/* Detailed sections */}
+          <ReportOverviewDetails filteredOrders={filteredOrders} formatCurrency={formatCurrency} />
         </TabsContent>
 
         <TabsContent value="sales" className="space-y-6">
@@ -872,6 +879,9 @@ const ReportsPage = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Detailed sales sections */}
+          <ReportSalesDetails filteredOrders={filteredOrders} monthlyData={monthlyData} formatCurrency={formatCurrency} />
         </TabsContent>
 
         <TabsContent value="financial" className="space-y-6">
@@ -1011,6 +1021,15 @@ const ReportsPage = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Detailed financial sections */}
+          <ReportFinancialDetails
+            filteredOrders={filteredOrders}
+            filteredExpenses={filteredExpenses}
+            orderPayments={orderPayments}
+            monthlyData={monthlyData}
+            formatCurrency={formatCurrency}
+          />
         </TabsContent>
 
         <TabsContent value="customers" className="space-y-6">
@@ -1097,6 +1116,13 @@ const ReportsPage = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Detailed customer sections */}
+          <ReportCustomerDetails
+            filteredOrders={filteredOrders}
+            customers={customers}
+            formatCurrency={formatCurrency}
+          />
         </TabsContent>
       </Tabs>
     </div>
