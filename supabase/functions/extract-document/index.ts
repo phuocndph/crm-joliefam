@@ -141,17 +141,84 @@ async function extractTextFromDOCX(data: Uint8Array): Promise<string> {
 }
 
 async function extractTextFromPDF(data: Uint8Array): Promise<string> {
-  // Use regex extraction as primary method
+  // Try regex extraction first
   let text = extractTextFromPDFRegex(data);
-  
   console.log(`PDF regex extraction got ${text.length} chars`);
-  
-  // If regex got very little, indicate AI cleanup is needed
-  if (text.length < 50) {
-    text = "[PDF cần AI để đọc nội dung. Nội dung có thể được mã hóa hoặc nén.]";
+
+  // If regex got very little, use AI to read the PDF
+  if (text.length < 100) {
+    console.log("Regex insufficient, using AI Gateway to extract PDF text...");
+    text = await extractPDFWithAI(data);
   }
-  
+
   return text;
+}
+
+async function extractPDFWithAI(data: Uint8Array): Promise<string> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    console.error("LOVABLE_API_KEY not available for PDF AI extraction");
+    return "[Không có API key để đọc PDF]";
+  }
+
+  try {
+    // Convert to base64 in chunks to avoid stack overflow
+    const chunkSize = 32768;
+    let base64 = "";
+    for (let i = 0; i < data.length; i += chunkSize) {
+      const chunk = data.slice(i, i + chunkSize);
+      base64 += btoa(String.fromCharCode(...chunk));
+    }
+
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: "Bạn là công cụ trích xuất văn bản từ PDF. Hãy đọc file PDF được gửi và trả về TOÀN BỘ nội dung text trong file. Giữ nguyên cấu trúc, tiêu đề, đoạn văn. Chỉ trả về nội dung thuần túy, KHÔNG thêm giải thích hay bình luận.",
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "file",
+                file: {
+                  filename: "document.pdf",
+                  file_data: `data:application/pdf;base64,${base64}`,
+                },
+              },
+              {
+                type: "text",
+                text: "Hãy trích xuất toàn bộ nội dung text từ file PDF này. Trả về nội dung thuần túy.",
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("AI PDF extraction error:", response.status, errText);
+      if (response.status === 429) return "[Hệ thống đang bận, vui lòng thử lại sau]";
+      if (response.status === 402) return "[Đã hết quota AI, vui lòng liên hệ quản trị viên]";
+      return "[Không thể đọc PDF qua AI]";
+    }
+
+    const result = await response.json();
+    const content = result.choices?.[0]?.message?.content || "";
+    console.log(`AI PDF extraction got ${content.length} chars`);
+    return content;
+  } catch (err) {
+    console.error("AI PDF extraction failed:", err);
+    return "[Lỗi khi đọc PDF qua AI]";
+  }
 }
 
 function extractTextFromPDFRegex(data: Uint8Array): string {
