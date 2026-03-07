@@ -21,9 +21,9 @@ serve(async (req) => {
       });
     }
 
-    const GEMINI_API_KEY = Deno.env.get("GOOGLE_GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      throw new Error("GOOGLE_GEMINI_API_KEY is not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -73,7 +73,6 @@ serve(async (req) => {
       }
 
       if (context.length + docContent.length > MAX_CONTEXT) {
-        // Add truncated version
         const remaining = MAX_CONTEXT - context.length;
         if (remaining > 200) {
           context += "\n\n---\n" + docContent.substring(0, remaining) + "...(cắt bớt)";
@@ -86,7 +85,6 @@ serve(async (req) => {
       sources.push({ id: doc.id, title: doc.title, type: doc.document_type });
     }
 
-    // Build messages for Gemini
     const systemPrompt = `Bạn là trợ lý AI hỗ trợ nhân viên bán hàng trả lời câu hỏi của khách hàng. 
 
 HƯỚNG DẪN:
@@ -99,11 +97,11 @@ HƯỚNG DẪN:
 KHO KIẾN THỨC:
 ${context || "(Chưa có tài liệu nào trong kho kiến thức)"}`;
 
+    // Build messages array
     const messages: { role: string; content: string }[] = [
       { role: "system", content: systemPrompt },
     ];
 
-    // Add chat history for context
     if (chatHistory && Array.isArray(chatHistory)) {
       for (const msg of chatHistory.slice(-6)) {
         messages.push({ role: msg.role, content: msg.content });
@@ -112,36 +110,41 @@ ${context || "(Chưa có tài liệu nào trong kho kiến thức)"}`;
 
     messages.push({ role: "user", content: question });
 
-    // Call Gemini API
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-    const geminiBody = {
-      contents: messages.map((m) => ({
-        role: m.role === "assistant" ? "model" : m.role === "system" ? "user" : "user",
-        parts: [{ text: m.role === "system" ? `[System Instructions]\n${m.content}` : m.content }],
-      })),
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 2048,
-      },
-    };
-
-    const geminiResponse = await fetch(geminiUrl, {
+    // Call Lovable AI Gateway
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(geminiBody),
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages,
+      }),
     });
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error("Gemini API error:", geminiResponse.status, errorText);
-      throw new Error(`Gemini API error: ${geminiResponse.status}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("AI Gateway error:", response.status, errorText);
+
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: "Hệ thống đang bận, vui lòng thử lại sau ít phút." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: "Đã hết quota AI, vui lòng liên hệ quản trị viên." }), {
+          status: 402,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      throw new Error(`AI Gateway error: ${response.status}`);
     }
 
-    const geminiData = await geminiResponse.json();
-    const answer =
-      geminiData.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "Xin lỗi, tôi không thể trả lời câu hỏi này.";
+    const data = await response.json();
+    const answer = data.choices?.[0]?.message?.content || "Xin lỗi, tôi không thể trả lời câu hỏi này.";
 
     // Save chat history
     await supabase.from("knowledge_chat_history").insert({
