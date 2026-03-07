@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.52.0";
 import JSZip from "https://esm.sh/jszip@3.10.1";
-import { getDocument } from "https://esm.sh/pdfjs-serverless@0.6.0";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -141,27 +141,17 @@ async function extractTextFromDOCX(data: Uint8Array): Promise<string> {
 }
 
 async function extractTextFromPDF(data: Uint8Array): Promise<string> {
-  try {
-    const doc = await getDocument(data).promise;
-    const textParts: string[] = [];
-
-    for (let i = 1; i <= doc.numPages; i++) {
-      const page = await doc.getPage(i);
-      const content = await page.getTextContent();
-      const pageText = content.items
-        .map((item: any) => item.str)
-        .join(" ");
-      if (pageText.trim()) {
-        textParts.push(pageText);
-      }
-    }
-
-    console.log(`PDF extracted ${doc.numPages} pages, total chars: ${textParts.join("\n").length}`);
-    return textParts.join("\n");
-  } catch (err) {
-    console.error("PDF extraction with pdfjs failed, trying regex fallback:", err);
-    return extractTextFromPDFRegex(data);
+  // Use regex extraction as primary method
+  let text = extractTextFromPDFRegex(data);
+  
+  console.log(`PDF regex extraction got ${text.length} chars`);
+  
+  // If regex got very little, indicate AI cleanup is needed
+  if (text.length < 50) {
+    text = "[PDF cần AI để đọc nội dung. Nội dung có thể được mã hóa hoặc nén.]";
   }
+  
+  return text;
 }
 
 function extractTextFromPDFRegex(data: Uint8Array): string {
