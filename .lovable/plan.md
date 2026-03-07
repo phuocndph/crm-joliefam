@@ -1,50 +1,29 @@
 
 
-# Fix: Edge Function Boot Failure - Không đọc được file
+# Hien thi chat lieu tu bao gia trong chi tiet don hang
 
-## Nguyên nhân gốc
+## Nguyen nhan
 
-Edge function `extract-document` **không khởi động được** (BootFailure). Log Supabase cho thấy rõ:
+Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
 
-```
-worker boot error: Uncaught SyntaxError: The requested module 
-'https://esm.sh/pdfjs-serverless@0.6.0' does not provide an export named 'getDocument'
-```
+Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
 
-Vì import `pdfjs-serverless` fail ở dòng 4, **toàn bộ function không chạy** - không chỉ PDF mà DOCX, TXT cũng không đọc được. Mọi request đều trả về "Failed to fetch".
+Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
 
-## Giải pháp
+## Giai phap
 
-Loại bỏ `pdfjs-serverless` (không tương thích Deno edge runtime). Thay bằng chiến lược:
+### File: `src/pages/OrderManagement.tsx`
 
-1. **DOCX**: Giữ nguyên JSZip + DOMParser (code hiện tại đúng, chỉ không chạy được vì boot fail)
-2. **PDF**: Dùng regex extraction làm fallback cơ bản, sau đó **gửi raw binary qua AI Gateway** (Gemini) để đọc nội dung - Gemini có khả năng xử lý text từ PDF tốt hơn regex
-3. **TXT/MD**: Giữ nguyên TextDecoder
-
-## Thay đổi
-
-| File | Thay đổi |
-|------|----------|
-| `supabase/functions/extract-document/index.ts` | Xóa import `pdfjs-serverless`, sửa `extractTextFromPDF` dùng regex + AI cleanup |
-
-### Code chính
+Thay doi dong 659: doc `item.description` thay vi `item.material`:
 
 ```typescript
-// Xóa dòng 4: import { getDocument } from "https://esm.sh/pdfjs-serverless@0.6.0";
+// Truoc:
+{item.material || "-"}
 
-// extractTextFromPDF: dùng regex fallback trực tiếp
-async function extractTextFromPDF(data: Uint8Array): Promise<string> {
-  // Try regex extraction first
-  let text = extractTextFromPDFRegex(data);
-  
-  // If regex got very little, send base64 chunks to AI for reading
-  if (text.length < 50) {
-    text = "[PDF cần AI để đọc nội dung]";
-  }
-  
-  return text;
-}
+// Sau:
+{item.description || "-"}
 ```
 
-Sau khi xóa import lỗi, edge function sẽ boot thành công và DOCX extraction (JSZip) cũng sẽ hoạt động.
+Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
 
+Chi thay doi 1 dong, khong anh huong logic nao khac.
