@@ -851,31 +851,37 @@ const ReportsPage = () => {
             </CardHeader>
             <CardContent>
               <div className="h-64">
+                {metricsData.totalOrders > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
+                  <RechartsPieChart>
                     <Pie
                       data={[
                         { name: "Hoàn thành", value: metricsData.completedOrders, fill: "#10b981" },
                         { name: "Đang xử lý", value: metricsData.pendingOrders, fill: "#f59e0b" },
                         { name: "Khác", value: Math.max(0, metricsData.totalOrders - metricsData.completedOrders - metricsData.pendingOrders), fill: "#6b7280" }
-                      ]}
+                      ].filter(d => d.value > 0)}
                       cx="50%"
                       cy="50%"
                       outerRadius={80}
                       dataKey="value"
-                      label
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                     >
                       {[
                         { name: "Hoàn thành", value: metricsData.completedOrders, fill: "#10b981" },
                         { name: "Đang xử lý", value: metricsData.pendingOrders, fill: "#f59e0b" },
                         { name: "Khác", value: Math.max(0, metricsData.totalOrders - metricsData.completedOrders - metricsData.pendingOrders), fill: "#6b7280" }
-                      ].map((entry, index) => (
+                      ].filter(d => d.value > 0).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.fill} />
                       ))}
                     </Pie>
-                    <Tooltip />
-                  </PieChart>
+                    <Tooltip formatter={(value: number) => [value, 'Đơn hàng']} />
+                  </RechartsPieChart>
                 </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Chưa có dữ liệu đơn hàng
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
