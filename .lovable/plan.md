@@ -1,29 +1,51 @@
 
 
-# Hien thi chat lieu tu bao gia trong chi tiet don hang
+# Fix Document Extraction - DOCX & PDF
 
-## Nguyen nhan
+## Root Causes
 
-Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
+1. **Stack overflow (line 75)**: `btoa(String.fromCharCode(...uint8Array.slice(0, 500000)))` spreads up to 500k arguments, exceeding the call stack limit. This unused variable crashes the function for larger files.
 
-Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
+2. **DOCX extraction broken**: `extractTextFromDOCX` decodes compressed ZIP binary as UTF-8 text, then searches for `<w:t>` XML tags. Since DOCX content is compressed inside the ZIP, the XML is never visible in plain text. Result: only garbage metadata or empty string.
 
-Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
+3. **PDF extraction weak**: Regex-based `Tj/TJ` extraction only works on uncompressed PDF streams. Most modern PDFs use compressed streams (FlateDecode), so no text is found.
 
-## Giai phap
+## Solution
 
-### File: `src/pages/OrderManagement.tsx`
+Rewrite `supabase/functions/extract-document/index.ts` with:
 
-Thay doi dong 659: doc `item.description` thay vi `item.material`:
+### DOCX: Use JSZip library
+- Import `JSZip` from `https://esm.sh/jszip@3.10.1`
+- Properly decompress the ZIP archive
+- Read `word/document.xml` from the decompressed entries
+- Parse `<w:t>` tags from the actual XML content
+- Handle paragraph breaks (`<w:p>`) for proper formatting
 
-```typescript
-// Truoc:
-{item.material || "-"}
+### PDF: Use pdfjs-serverless
+- Import from `https://esm.sh/pdfjs-serverless@0.6.0`
+- Properly parse PDF structure and extract text from all pages
+- Falls back to regex method if library fails
 
-// Sau:
-{item.description || "-"}
+### Remove crash
+- Delete the unused `base64Content` line that causes stack overflow
+
+### Keep AI cleanup step
+- After successful raw extraction, still send to Lovable AI Gateway for formatting cleanup
+
+## File Changes
+
+| File | Change |
+|------|--------|
+| `supabase/functions/extract-document/index.ts` | Complete rewrite of extraction logic using JSZip + pdfjs-serverless |
+
+## Flow After Fix
+
+```text
+Upload DOCX → Edge Function downloads from Storage
+  → JSZip.loadAsync(data) decompresses ZIP
+  → Read word/document.xml as string
+  → Parse <w:t> tags → raw Vietnamese text
+  → AI Gateway cleans up formatting
+  → Return clean text content
 ```
 
-Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
-
-Chi thay doi 1 dong, khong anh huong logic nao khac.
