@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical } from "lucide-react";
+import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical, Save } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
@@ -110,6 +110,12 @@ export function CreateQuoteForm({
   const [imageDialogOpen, setImageDialogOpen] = useState<{
     [key: number]: boolean;
   }>({});
+  
+  // Auto-save draft states
+  const DRAFT_KEY = 'quote-draft-autosave';
+  const [showDraftRecovery, setShowDraftRecovery] = useState(false);
+  const [savedDraft, setSavedDraft] = useState<any>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   
   // Drag and drop functionality
   const handleDragEnd = (result: DropResult) => {
@@ -745,6 +751,9 @@ export function CreateQuoteForm({
           description: "Báo giá đã được tạo thành công"
         });
       }
+      // Clear draft after successful submit
+      localStorage.removeItem(DRAFT_KEY);
+      setLastSavedAt(null);
       onSubmit?.();
     } catch (error: any) {
       console.error("Error creating quote:", error);
@@ -772,6 +781,69 @@ export function CreateQuoteForm({
     }
   };
   const watchedValues = form.watch();
+
+  // Auto-save draft to localStorage (only for new quotes, not editing)
+  const debouncedFormData = useDebounce(JSON.stringify(watchedValues), 3000);
+  const debouncedProducts = useDebounce(JSON.stringify(selectedProducts), 3000);
+
+  useEffect(() => {
+    if (initialData) return; // Don't auto-save when editing existing quote
+    if (!watchedValues.customerName && selectedProducts.length === 0) return; // Don't save empty forms
+    
+    try {
+      const draft = {
+        formData: watchedValues,
+        selectedProducts,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      setLastSavedAt(format(new Date(), 'HH:mm:ss'));
+    } catch (e) {
+      console.warn('Failed to save draft:', e);
+    }
+  }, [debouncedFormData, debouncedProducts, initialData]);
+
+  // Check for saved draft on mount (only for new quotes)
+  useEffect(() => {
+    if (initialData) return;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw);
+        setSavedDraft(draft);
+        setShowDraftRecovery(true);
+      }
+    } catch (e) {
+      localStorage.removeItem(DRAFT_KEY);
+    }
+  }, [initialData]);
+
+  const restoreDraft = () => {
+    if (!savedDraft) return;
+    try {
+      const { formData, selectedProducts: draftProducts } = savedDraft;
+      form.reset({
+        ...formData,
+        quoteDate: formData.quoteDate ? new Date(formData.quoteDate) : new Date(),
+        expiryDate: formData.expiryDate ? new Date(formData.expiryDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      });
+      if (draftProducts && draftProducts.length > 0) {
+        setSelectedProducts(draftProducts);
+      }
+      toast({ title: "Đã khôi phục", description: "Bản nháp đã được khôi phục thành công" });
+    } catch (e) {
+      console.error('Failed to restore draft:', e);
+      toast({ title: "Lỗi", description: "Không thể khôi phục bản nháp", variant: "destructive" });
+    }
+    setShowDraftRecovery(false);
+    setSavedDraft(null);
+  };
+
+  const discardDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setShowDraftRecovery(false);
+    setSavedDraft(null);
+  };
 
   // Ensure all totals are correctly calculated
   const correctedProducts = selectedProducts.map(item => ({
@@ -811,6 +883,12 @@ export function CreateQuoteForm({
               {initialData ? 'Chỉnh sửa báo giá' : 'Tạo báo giá mới'}
             </h1>
             <div className="flex items-center gap-2">
+              {lastSavedAt && !initialData && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Save className="h-3 w-3" />
+                  Đã lưu nháp lúc {lastSavedAt}
+                </span>
+              )}
               <AuthStatusBadge />
               <Button variant="ghost" size="sm" onClick={onClose}>
                 <X className="h-4 w-4" />
@@ -819,6 +897,25 @@ export function CreateQuoteForm({
           </div>
         </div>
       </div>
+
+      {/* Draft recovery banner */}
+      {showDraftRecovery && savedDraft && (
+        <div className="border-b bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
+          <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+            <p className="text-sm text-amber-800 dark:text-amber-200">
+              📝 Bạn có bản nháp chưa lưu từ {savedDraft.savedAt ? format(new Date(savedDraft.savedAt), 'HH:mm dd/MM/yyyy', { locale: vi }) : 'trước đó'}. Khôi phục?
+            </p>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="default" onClick={restoreDraft}>
+                Khôi phục
+              </Button>
+              <Button size="sm" variant="outline" onClick={discardDraft}>
+                Bỏ qua
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="container mx-auto px-4 py-6 space-y-6">
         <Form {...form}>
