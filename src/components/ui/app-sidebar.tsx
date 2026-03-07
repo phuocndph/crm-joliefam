@@ -10,7 +10,8 @@ import {
   Settings,
   UserCheck,
   Truck,
-  Scissors
+  Scissors,
+  BookOpen
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -107,6 +108,13 @@ const menuItems = [
     icon: BarChart3,
     description: "Thống kê và phân tích",
     permission: "reports" as const
+  },
+  { 
+    title: "Kho Kiến Thức", 
+    url: "/knowledge-base", 
+    icon: BookOpen,
+    description: "AI hỗ trợ bán hàng",
+    permission: "knowledge_base" as const
   },
   { 
     title: "Quản lý nhân viên", 

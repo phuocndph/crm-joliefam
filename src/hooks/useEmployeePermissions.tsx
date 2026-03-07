@@ -16,7 +16,8 @@ export type PermissionType =
   | 'customer_care'
   | 'fabric_management'
   | 'ghn_tracking'
-  | 'quote_approval';
+  | 'quote_approval'
+  | 'knowledge_base';
 
 export interface EmployeePermission {
   permission_type: PermissionType;
