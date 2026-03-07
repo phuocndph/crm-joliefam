@@ -1,29 +1,45 @@
 
 
-# Hien thi chat lieu tu bao gia trong chi tiet don hang
+# Tu dong luu nhap (Auto-save Draft) cho form Bao gia
 
-## Nguyen nhan
-
-Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
-
-Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
-
-Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
+## Van de
+Khi dang tao bao gia, neu may tinh tat, trinh duyet bi dong, hoac an nham nut "Huy", toan bo du lieu form se bi mat.
 
 ## Giai phap
+Su dung `localStorage` de tu dong luu nhap (auto-save) form bao gia moi vai giay. Khi mo lai form, neu co ban nhap cu, hoi nguoi dung co muon khoi phuc khong.
 
-### File: `src/pages/OrderManagement.tsx`
+## Chi tiet ky thuat
 
-Thay doi dong 659: doc `item.description` thay vi `item.material`:
+### File thay doi: `src/components/CreateQuoteForm.tsx`
 
+1. **Tu dong luu vao localStorage** moi 3 giay (debounce):
+   - Luu tat ca du lieu form (`form.watch()`) + `selectedProducts` + cac state khac (includeVAT, vatRate, payment1, payment2...)
+   - Key: `quote-draft-autosave`
+   - Su dung `useEffect` voi `useDebounce` de tranh luu qua nhieu lan
+
+2. **Khoi phuc khi mo form**:
+   - Khi component mount, kiem tra `localStorage` co ban nhap khong
+   - Neu co, hien thi 1 banner/alert hoi: "Ban co ban nhap chua luu. Khoi phuc?" voi 2 nut: "Khoi phuc" va "Bo qua"
+   - Neu khoi phuc: dien lai tat ca du lieu form va selectedProducts
+   - Neu bo qua: xoa ban nhap khoi localStorage
+
+3. **Xoa ban nhap khi submit thanh cong**:
+   - Sau khi tao bao gia thanh cong, xoa `quote-draft-autosave` khoi localStorage
+
+4. **Hien thi trang thai luu**:
+   - Them 1 dong text nho "Da luu nhap luc HH:MM:SS" o goc form de nguoi dung biet du lieu dang duoc bao ve
+
+### Du lieu luu
 ```typescript
-// Truoc:
-{item.material || "-"}
-
-// Sau:
-{item.description || "-"}
+interface QuoteDraft {
+  formData: QuoteFormData;
+  selectedProducts: QuoteItem[];
+  savedAt: string; // ISO timestamp
+}
 ```
 
-Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
+### Khong thay doi gi khac
+- Khong can thay doi database
+- Khong them dependency moi
+- Chi sua 1 file duy nhat
 
-Chi thay doi 1 dong, khong anh huong logic nao khac.
