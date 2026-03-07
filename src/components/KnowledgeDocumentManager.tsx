@@ -17,6 +17,10 @@ import {
   Loader2,
   File,
   Edit,
+  Search,
+  Eye,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -41,6 +45,7 @@ export function KnowledgeDocumentManager() {
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Text form
   const [textTitle, setTextTitle] = useState("");
@@ -55,6 +60,9 @@ export function KnowledgeDocumentManager() {
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   const [editFaqAnswer, setEditFaqAnswer] = useState("");
+
+  // Preview dialog
+  const [previewDoc, setPreviewDoc] = useState<KnowledgeDocument | null>(null);
 
   useEffect(() => {
     fetchDocuments();
@@ -97,16 +105,12 @@ export function KnowledgeDocumentManager() {
 
     setUploading(true);
     try {
-      const fileName = `${Date.now()}_${file.name}`;
+      const storagePath = `${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage
         .from("knowledge-files")
-        .upload(fileName, file);
+        .upload(storagePath, file);
 
       if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from("knowledge-files")
-        .getPublicUrl(fileName);
 
       // Extract text content
       let content = "";
@@ -119,11 +123,11 @@ export function KnowledgeDocumentManager() {
       if (fileType === "text" || file.name.endsWith(".md")) {
         content = await file.text();
       } else {
-        // Use edge function to extract
+        // Use edge function with storage path (not public URL)
         try {
           const { data: extractData, error: extractError } =
             await supabase.functions.invoke("extract-document", {
-              body: { fileUrl: urlData.publicUrl, fileName: file.name },
+              body: { storagePath, fileName: file.name },
             });
 
           if (extractError) throw extractError;
@@ -140,12 +144,18 @@ export function KnowledgeDocumentManager() {
           title: file.name,
           content,
           document_type: fileType,
-          file_url: urlData.publicUrl,
+          file_url: storagePath,
         });
 
       if (insertError) throw insertError;
 
-      toast.success("Upload tài liệu thành công!");
+      const contentLen = content.length;
+      const isExtracted = contentLen > 50 && !content.startsWith("[");
+      toast.success(
+        isExtracted
+          ? `Upload thành công! Đã đọc ${contentLen.toLocaleString()} ký tự`
+          : "Upload thành công! Nội dung cần chỉnh sửa thủ công."
+      );
       fetchDocuments();
     } catch (err: any) {
       console.error("Upload error:", err);
@@ -206,12 +216,8 @@ export function KnowledgeDocumentManager() {
   const handleDelete = async (doc: KnowledgeDocument) => {
     if (!confirm(`Xóa "${doc.title}"?`)) return;
 
-    // Delete file from storage if exists
     if (doc.file_url) {
-      const fileName = doc.file_url.split("/").pop();
-      if (fileName) {
-        await supabase.storage.from("knowledge-files").remove([fileName]);
-      }
+      await supabase.storage.from("knowledge-files").remove([doc.file_url]);
     }
 
     const { error } = await supabase
@@ -261,6 +267,15 @@ export function KnowledgeDocumentManager() {
     fetchDocuments();
   };
 
+  const getContentStatus = (doc: KnowledgeDocument) => {
+    const content = doc.document_type === "faq" ? doc.faq_answer : doc.content;
+    const len = content?.length || 0;
+    if (len === 0 || content?.startsWith("[")) {
+      return { icon: AlertCircle, color: "text-destructive", label: "Chưa có nội dung" };
+    }
+    return { icon: CheckCircle2, color: "text-success", label: `${len.toLocaleString()} ký tự` };
+  };
+
   const getTypeBadge = (type: string) => {
     const map: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
       pdf: { label: "PDF", variant: "default" },
@@ -271,6 +286,10 @@ export function KnowledgeDocumentManager() {
     const item = map[type] || { label: type, variant: "secondary" as const };
     return <Badge variant={item.variant}>{item.label}</Badge>;
   };
+
+  const filteredDocs = documents.filter((doc) =>
+    doc.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -308,7 +327,7 @@ export function KnowledgeDocumentManager() {
                 <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
               )}
               <p className="text-xs text-muted-foreground">
-                {uploading ? "Đang upload..." : "PDF, DOCX, TXT (tối đa 20MB)"}
+                {uploading ? "Đang upload & đọc nội dung..." : "PDF, DOCX, TXT (tối đa 20MB)"}
               </p>
             </label>
           </div>
@@ -359,42 +378,83 @@ export function KnowledgeDocumentManager() {
 
       {/* Document list */}
       <div className="border-t">
-        <div className="p-3 pb-1">
+        <div className="p-3 pb-1 space-y-2">
           <p className="text-xs font-medium text-muted-foreground">
-            Tài liệu ({documents.length})
+            Tài liệu ({filteredDocs.length})
           </p>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Tìm tài liệu..."
+              className="text-xs h-7 pl-7"
+            />
+          </div>
         </div>
         <ScrollArea className="h-[200px]">
           <div className="px-3 pb-3 space-y-1.5">
             {loading && <p className="text-xs text-muted-foreground text-center py-4">Đang tải...</p>}
-            {!loading && documents.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-4">Chưa có tài liệu nào</p>
+            {!loading && filteredDocs.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-4">
+                {searchQuery ? "Không tìm thấy" : "Chưa có tài liệu nào"}
+              </p>
             )}
-            {documents.map((doc) => (
-              <Card key={doc.id} className="p-2 flex items-center gap-2">
-                <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{doc.title}</p>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    {getTypeBadge(doc.document_type)}
-                    <span className="text-[10px] text-muted-foreground">
-                      {new Date(doc.created_at).toLocaleDateString("vi-VN")}
-                    </span>
+            {filteredDocs.map((doc) => {
+              const status = getContentStatus(doc);
+              const StatusIcon = status.icon;
+              return (
+                <Card key={doc.id} className="p-2 flex items-center gap-2">
+                  <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{doc.title}</p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {getTypeBadge(doc.document_type)}
+                      <StatusIcon className={`h-3 w-3 ${status.color}`} />
+                      <span className="text-[10px] text-muted-foreground">{status.label}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(doc)}>
-                    <Edit className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDelete(doc)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              </Card>
-            ))}
+                  <div className="flex gap-0.5">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setPreviewDoc(doc)}>
+                      <Eye className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(doc)}>
+                      <Edit className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDelete(doc)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         </ScrollArea>
       </div>
+
+      {/* Preview Dialog */}
+      <Dialog open={!!previewDoc} onOpenChange={() => setPreviewDoc(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {previewDoc && getTypeBadge(previewDoc.document_type)}
+              {previewDoc?.title}
+            </DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh]">
+            <div className="text-sm whitespace-pre-wrap">
+              {previewDoc?.document_type === "faq" ? (
+                <div className="space-y-2">
+                  <p className="font-medium">Câu hỏi: {previewDoc?.title}</p>
+                  <p>{previewDoc?.faq_answer || "Chưa có câu trả lời"}</p>
+                </div>
+              ) : (
+                previewDoc?.content || "Chưa có nội dung"
+              )}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Dialog */}
       <Dialog open={!!editDoc} onOpenChange={() => setEditDoc(null)}>
@@ -414,7 +474,7 @@ export function KnowledgeDocumentManager() {
               </div>
             ) : (
               <div>
-                <Label>Nội dung</Label>
+                <Label>Nội dung ({editContent.length.toLocaleString()} ký tự)</Label>
                 <Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={8} />
               </div>
             )}

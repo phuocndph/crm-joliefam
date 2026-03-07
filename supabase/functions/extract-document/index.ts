@@ -23,6 +23,9 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    // Auth client to verify user
     const supabase = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -35,36 +38,84 @@ serve(async (req) => {
       });
     }
 
-    const { fileUrl, fileName } = await req.json();
-    if (!fileUrl) {
-      return new Response(JSON.stringify({ error: "fileUrl is required" }), {
+    const { storagePath, fileName } = await req.json();
+    if (!storagePath) {
+      return new Response(JSON.stringify({ error: "storagePath is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Download the file from storage
-    const fileResponse = await fetch(fileUrl);
-    if (!fileResponse.ok) {
-      throw new Error(`Failed to download file: ${fileResponse.status}`);
+    // Use service role to download from private bucket
+    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const { data: fileData, error: downloadError } = await adminClient.storage
+      .from("knowledge-files")
+      .download(storagePath);
+
+    if (downloadError || !fileData) {
+      throw new Error(`Failed to download file: ${downloadError?.message || "No data"}`);
     }
 
-    const arrayBuffer = await fileResponse.arrayBuffer();
+    const arrayBuffer = await fileData.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
 
     let extractedText = "";
-    const lowerName = (fileName || "").toLowerCase();
+    const lowerName = (fileName || storagePath || "").toLowerCase();
 
-    if (lowerName.endsWith(".pdf")) {
-      // Simple PDF text extraction - extract readable text strings
-      extractedText = extractTextFromPDF(uint8Array);
-    } else if (lowerName.endsWith(".docx")) {
-      // DOCX is a ZIP containing XML
-      extractedText = await extractTextFromDOCX(uint8Array);
-    } else if (lowerName.endsWith(".txt") || lowerName.endsWith(".md")) {
+    if (lowerName.endsWith(".txt") || lowerName.endsWith(".md")) {
       extractedText = new TextDecoder().decode(uint8Array);
+    } else if (lowerName.endsWith(".pdf") || lowerName.endsWith(".docx")) {
+      // Use AI Gateway to extract text from binary documents
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (!LOVABLE_API_KEY) {
+        throw new Error("LOVABLE_API_KEY is not configured");
+      }
+
+      // Convert to base64 for AI processing
+      const base64Content = btoa(String.fromCharCode(...uint8Array.slice(0, 500000)));
+      
+      // For PDF/DOCX, try basic extraction first, then use AI to clean up
+      let rawText = "";
+      if (lowerName.endsWith(".pdf")) {
+        rawText = extractTextFromPDF(uint8Array);
+      } else {
+        rawText = extractTextFromDOCX(uint8Array);
+      }
+
+      if (rawText.length > 100) {
+        // Raw extraction worked, use AI to clean it up
+        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-3-flash-preview",
+            messages: [
+              {
+                role: "system",
+                content: "Bạn là công cụ xử lý văn bản. Nhiệm vụ: nhận đoạn text thô được trích xuất từ file, làm sạch và trả về nội dung có cấu trúc. Giữ nguyên toàn bộ nội dung, chỉ sửa lỗi format. Trả về nội dung thuần túy, KHÔNG thêm giải thích.",
+              },
+              {
+                role: "user",
+                content: `Làm sạch đoạn text sau được trích xuất từ file ${lowerName.endsWith(".pdf") ? "PDF" : "DOCX"}:\n\n${rawText.substring(0, 25000)}`,
+              },
+            ],
+          }),
+        });
+
+        if (aiResponse.ok) {
+          const aiData = await aiResponse.json();
+          extractedText = aiData.choices?.[0]?.message?.content || rawText;
+        } else {
+          extractedText = rawText;
+        }
+      } else {
+        // Raw extraction failed, tell user
+        extractedText = "[Không thể tự động đọc nội dung file này. File có thể được mã hóa hoặc chứa hình ảnh. Vui lòng nhập nội dung thủ công bằng cách chỉnh sửa tài liệu.]";
+      }
     } else {
-      // Try as plain text
       try {
         extractedText = new TextDecoder().decode(uint8Array);
       } catch {
@@ -72,7 +123,7 @@ serve(async (req) => {
       }
     }
 
-    // Clean up extracted text
+    // Clean up
     extractedText = extractedText
       .replace(/\x00/g, "")
       .replace(/\r\n/g, "\n")
@@ -97,23 +148,19 @@ serve(async (req) => {
 });
 
 function extractTextFromPDF(data: Uint8Array): string {
-  // Simple PDF text extraction by finding text between BT and ET markers
   const text = new TextDecoder("latin1").decode(data);
   const textParts: string[] = [];
 
-  // Extract text from PDF streams
   const streamRegex = /stream\s*([\s\S]*?)\s*endstream/g;
   let match;
   while ((match = streamRegex.exec(text)) !== null) {
     const stream = match[1];
-    // Look for text showing operators: Tj, TJ, '
     const tjRegex = /\(([^)]*)\)\s*Tj/g;
     let tjMatch;
     while ((tjMatch = tjRegex.exec(stream)) !== null) {
       textParts.push(tjMatch[1]);
     }
 
-    // TJ arrays
     const tjArrayRegex = /\[([^\]]*)\]\s*TJ/g;
     let tjArrMatch;
     while ((tjArrMatch = tjArrayRegex.exec(stream)) !== null) {
@@ -128,16 +175,13 @@ function extractTextFromPDF(data: Uint8Array): string {
   return textParts.join(" ").replace(/\\n/g, "\n").replace(/\\\(/g, "(").replace(/\\\)/g, ")");
 }
 
-async function extractTextFromDOCX(data: Uint8Array): Promise<string> {
-  // DOCX files are ZIP archives containing word/document.xml
-  // Use a simple approach: find XML text content
+function extractTextFromDOCX(data: Uint8Array): string {
   try {
+    // DOCX is a ZIP file. Look for PK signature and try to find word/document.xml
     const text = new TextDecoder("utf-8", { fatal: false }).decode(data);
-    
-    // Try to find readable text patterns in the DOCX
     const textParts: string[] = [];
-    
-    // Look for <w:t> tags which contain text in DOCX XML
+
+    // Look for <w:t> tags
     const wtRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
     let match;
     while ((match = wtRegex.exec(text)) !== null) {
@@ -145,14 +189,13 @@ async function extractTextFromDOCX(data: Uint8Array): Promise<string> {
         textParts.push(match[1]);
       }
     }
-    
+
     if (textParts.length > 0) {
       return textParts.join(" ");
     }
-    
-    // Fallback: extract any readable text
+
     return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().substring(0, 50000);
   } catch {
-    return "[Không thể đọc file DOCX. Vui lòng nhập nội dung thủ công.]";
+    return "";
   }
 }
