@@ -818,6 +818,81 @@ export type Database = {
           },
         ]
       }
+      knowledge_chat_history: {
+        Row: {
+          answer: string
+          created_at: string
+          id: string
+          manager_id: string | null
+          question: string
+          sources: Json | null
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          answer: string
+          created_at?: string
+          id?: string
+          manager_id?: string | null
+          question: string
+          sources?: Json | null
+          tenant_id?: string
+          user_id: string
+        }
+        Update: {
+          answer?: string
+          created_at?: string
+          id?: string
+          manager_id?: string | null
+          question?: string
+          sources?: Json | null
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      knowledge_documents: {
+        Row: {
+          content: string | null
+          created_at: string
+          created_by: string | null
+          document_type: string
+          faq_answer: string | null
+          file_url: string | null
+          id: string
+          manager_id: string | null
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_type?: string
+          faq_answer?: string | null
+          file_url?: string | null
+          id?: string
+          manager_id?: string | null
+          tenant_id?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_type?: string
+          faq_answer?: string | null
+          file_url?: string | null
+          id?: string
+          manager_id?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       order_payments: {
         Row: {
           created_at: string
