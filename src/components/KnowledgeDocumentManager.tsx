@@ -105,7 +105,8 @@ export function KnowledgeDocumentManager() {
 
     setUploading(true);
     try {
-      const storagePath = `${Date.now()}_${file.name}`;
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `${Date.now()}_${safeName}`;
       const { error: uploadError } = await supabase.storage
         .from("knowledge-files")
         .upload(storagePath, file);
