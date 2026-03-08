@@ -2,7 +2,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.52.0";
 import JSZip from "https://esm.sh/jszip@3.10.1";
 
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -47,6 +46,8 @@ serve(async (req) => {
       });
     }
 
+    console.log(`Extracting document: ${fileName || storagePath}`);
+
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: fileData, error: downloadError } = await adminClient.storage
       .from("knowledge-files")
@@ -58,6 +59,7 @@ serve(async (req) => {
 
     const arrayBuffer = await fileData.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
+    console.log(`File size: ${uint8Array.length} bytes`);
 
     let extractedText = "";
     const lowerName = (fileName || storagePath || "").toLowerCase();
@@ -92,6 +94,8 @@ serve(async (req) => {
       extractedText = "[Không thể tự động đọc nội dung file này. File có thể được mã hóa hoặc chứa hình ảnh. Vui lòng nhập nội dung thủ công.]";
     }
 
+    console.log(`Extraction complete: ${extractedText.length} chars`);
+
     return new Response(
       JSON.stringify({ content: extractedText.substring(0, 100000) }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -115,7 +119,6 @@ async function extractTextFromDOCX(data: Uint8Array): Promise<string> {
     }
     const docXml = await docXmlFile.async("string");
 
-    // Parse using DOMParser
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(docXml, "text/xml");
 
@@ -141,17 +144,30 @@ async function extractTextFromDOCX(data: Uint8Array): Promise<string> {
 }
 
 async function extractTextFromPDF(data: Uint8Array): Promise<string> {
-  // Try regex extraction first
   let text = extractTextFromPDFRegex(data);
   console.log(`PDF regex extraction got ${text.length} chars`);
 
-  // If regex got very little, use AI to read the PDF
   if (text.length < 100) {
     console.log("Regex insufficient, using AI Gateway to extract PDF text...");
     text = await extractPDFWithAI(data);
   }
 
   return text;
+}
+
+// Safe base64 encoding that avoids stack overflow
+function uint8ArrayToBase64(data: Uint8Array): string {
+  const chunkSize = 8192;
+  let base64 = "";
+  for (let i = 0; i < data.length; i += chunkSize) {
+    const chunk = data.slice(i, Math.min(i + chunkSize, data.length));
+    let binaryStr = "";
+    for (let j = 0; j < chunk.length; j++) {
+      binaryStr += String.fromCharCode(chunk[j]);
+    }
+    base64 += btoa(binaryStr);
+  }
+  return base64;
 }
 
 async function extractPDFWithAI(data: Uint8Array): Promise<string> {
@@ -162,13 +178,13 @@ async function extractPDFWithAI(data: Uint8Array): Promise<string> {
   }
 
   try {
-    // Convert to base64 in chunks to avoid stack overflow
-    const chunkSize = 32768;
-    let base64 = "";
-    for (let i = 0; i < data.length; i += chunkSize) {
-      const chunk = data.slice(i, i + chunkSize);
-      base64 += btoa(String.fromCharCode(...chunk));
+    // Check file size - if > 5MB, warn
+    if (data.length > 5 * 1024 * 1024) {
+      console.log(`Large PDF: ${(data.length / 1024 / 1024).toFixed(1)}MB, may take longer...`);
     }
+
+    const base64 = uint8ArrayToBase64(data);
+    console.log(`Base64 encoded: ${base64.length} chars`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

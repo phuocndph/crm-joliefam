@@ -861,6 +861,7 @@ export type Database = {
           file_url: string | null
           id: string
           manager_id: string | null
+          search_vector: unknown
           tenant_id: string
           title: string
           updated_at: string
@@ -874,6 +875,7 @@ export type Database = {
           file_url?: string | null
           id?: string
           manager_id?: string | null
+          search_vector?: unknown
           tenant_id?: string
           title: string
           updated_at?: string
@@ -887,6 +889,7 @@ export type Database = {
           file_url?: string | null
           id?: string
           manager_id?: string | null
+          search_vector?: unknown
           tenant_id?: string
           title?: string
           updated_at?: string

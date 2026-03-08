@@ -40,7 +40,7 @@ serve(async (req) => {
       });
     }
 
-    const { question, chatHistory } = await req.json();
+    const { question, chatHistory, stream: useStream } = await req.json();
     if (!question) {
       return new Response(JSON.stringify({ error: "Question is required" }), {
         status: 400,
@@ -48,23 +48,43 @@ serve(async (req) => {
       });
     }
 
-    // Fetch all knowledge documents accessible to this user
-    const { data: documents, error: docError } = await supabase
+    // Smart document retrieval using full-text search
+    let documents: any[] = [];
+    let sources: { id: string; title: string; type: string }[] = [];
+
+    // Try full-text search first
+    const searchTerms = question.replace(/[^\w\sÀ-ỹ]/g, "").trim();
+    
+    const { data: searchDocs, error: searchError } = await supabase
       .from("knowledge_documents")
       .select("id, title, content, document_type, faq_answer")
-      .order("created_at", { ascending: false });
+      .textSearch("search_vector", searchTerms, { type: "plain" })
+      .limit(5);
 
-    if (docError) {
-      console.error("Error fetching documents:", docError);
-      throw new Error("Failed to fetch knowledge documents");
+    if (!searchError && searchDocs && searchDocs.length > 0) {
+      documents = searchDocs;
+      console.log(`Full-text search found ${documents.length} relevant documents`);
+    } else {
+      // Fallback: fetch all documents (limited)
+      console.log("Full-text search returned no results, fetching all documents");
+      const { data: allDocs, error: docError } = await supabase
+        .from("knowledge_documents")
+        .select("id, title, content, document_type, faq_answer")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (docError) {
+        console.error("Error fetching documents:", docError);
+        throw new Error("Failed to fetch knowledge documents");
+      }
+      documents = allDocs || [];
     }
 
     // Build context from documents, limit to ~30k chars
     let context = "";
-    const sources: { id: string; title: string; type: string }[] = [];
     const MAX_CONTEXT = 30000;
 
-    for (const doc of documents || []) {
+    for (const doc of documents) {
       let docContent = "";
       if (doc.document_type === "faq") {
         docContent = `[FAQ] ${doc.title}\nCâu trả lời: ${doc.faq_answer || doc.content || ""}`;
@@ -97,7 +117,6 @@ HƯỚNG DẪN:
 KHO KIẾN THỨC:
 ${context || "(Chưa có tài liệu nào trong kho kiến thức)"}`;
 
-    // Build messages array
     const messages: { role: string; content: string }[] = [
       { role: "system", content: systemPrompt },
     ];
@@ -110,7 +129,67 @@ ${context || "(Chưa có tài liệu nào trong kho kiến thức)"}`;
 
     messages.push({ role: "user", content: question });
 
-    // Call Lovable AI Gateway
+    // Streaming mode
+    if (useStream) {
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages,
+          stream: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("AI Gateway stream error:", response.status, errorText);
+
+        if (response.status === 429) {
+          return new Response(JSON.stringify({ error: "Hệ thống đang bận, vui lòng thử lại sau ít phút." }), {
+            status: 429,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (response.status === 402) {
+          return new Response(JSON.stringify({ error: "Đã hết quota AI, vui lòng liên hệ quản trị viên." }), {
+            status: 402,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        throw new Error(`AI Gateway error: ${response.status}`);
+      }
+
+      // Create a transform stream that prepends sources info as first SSE event
+      const encoder = new TextEncoder();
+      const sourcesEvent = `data: ${JSON.stringify({ sources })}\n\n`;
+      
+      const transformStream = new TransformStream({
+        start(controller) {
+          // Send sources as the first event
+          controller.enqueue(encoder.encode(sourcesEvent));
+        },
+        transform(chunk, controller) {
+          controller.enqueue(chunk);
+        },
+      });
+
+      // Pipe the AI response through our transform
+      response.body!.pipeTo(transformStream.writable);
+
+      // Save chat history asynchronously (collect full answer later via client)
+      // We'll save from client side after stream completes
+
+      return new Response(transformStream.readable, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      });
+    }
+
+    // Non-streaming mode (fallback)
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {

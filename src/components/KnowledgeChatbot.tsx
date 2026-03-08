@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Bot, User, Loader2, Trash2, Copy, Check, History } from "lucide-react";
+import { Send, Bot, User, Loader2, Trash2, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 
@@ -20,6 +20,9 @@ const SUGGESTED_QUESTIONS = [
   "Quy trình đặt hàng?",
 ];
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
 export function KnowledgeChatbot() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -32,7 +35,6 @@ export function KnowledgeChatbot() {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Load recent chat history
   useEffect(() => {
     const loadHistory = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -47,7 +49,6 @@ export function KnowledgeChatbot() {
 
       if (data && data.length > 0) {
         const history: ChatMessage[] = [];
-        // Reverse to show oldest first
         for (const item of data.reverse()) {
           history.push({ role: "user", content: item.question });
           history.push({
@@ -70,6 +71,19 @@ export function KnowledgeChatbot() {
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
+  const saveChatHistory = useCallback(async (question: string, answer: string, sources: any[]) => {
+    try {
+      await supabase.from("knowledge_chat_history").insert({
+        user_id: (await supabase.auth.getUser()).data.user?.id,
+        question,
+        answer,
+        sources: sources.length > 0 ? sources : null,
+      });
+    } catch (e) {
+      console.error("Failed to save chat history:", e);
+    }
+  }, []);
+
   const sendMessage = async (question?: string) => {
     const text = (question || input).trim();
     if (!text || isLoading) return;
@@ -80,24 +94,125 @@ export function KnowledgeChatbot() {
     setIsLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke("knowledge-chat", {
-        body: {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) throw new Error("Not authenticated");
+
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/knowledge-chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: SUPABASE_KEY,
+        },
+        body: JSON.stringify({
           question: text,
           chatHistory: messages.slice(-6),
-        },
+          stream: true,
+        }),
       });
 
-      if (error) throw error;
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || `Error ${resp.status}`);
+      }
 
-      const assistantMsg: ChatMessage = {
-        role: "assistant",
-        content: data.answer,
-        sources: data.sources,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
+      if (!resp.body) throw new Error("No response body");
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+      let assistantSoFar = "";
+      let streamSources: any[] = [];
+      let streamDone = false;
+      let isFirstSourceEvent = true;
+
+      while (!streamDone) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") {
+            streamDone = true;
+            break;
+          }
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+
+            // First event is sources
+            if (isFirstSourceEvent && parsed.sources) {
+              streamSources = parsed.sources;
+              isFirstSourceEvent = false;
+              continue;
+            }
+            isFirstSourceEvent = false;
+
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              assistantSoFar += content;
+              setMessages((prev) => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant") {
+                  return prev.map((m, i) =>
+                    i === prev.length - 1 ? { ...m, content: assistantSoFar, sources: streamSources.length > 0 ? streamSources : undefined } : m
+                  );
+                }
+                return [...prev, { role: "assistant", content: assistantSoFar, sources: streamSources.length > 0 ? streamSources : undefined }];
+              });
+            }
+          } catch {
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
+        }
+      }
+
+      // Final flush
+      if (textBuffer.trim()) {
+        for (let raw of textBuffer.split("\n")) {
+          if (!raw) continue;
+          if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+          if (raw.startsWith(":") || raw.trim() === "") continue;
+          if (!raw.startsWith("data: ")) continue;
+          const jsonStr = raw.slice(6).trim();
+          if (jsonStr === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              assistantSoFar += content;
+              setMessages((prev) => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant") {
+                  return prev.map((m, i) =>
+                    i === prev.length - 1 ? { ...m, content: assistantSoFar } : m
+                  );
+                }
+                return [...prev, { role: "assistant", content: assistantSoFar }];
+              });
+            }
+          } catch { /* ignore */ }
+        }
+      }
+
+      // Save history after stream completes
+      if (assistantSoFar) {
+        saveChatHistory(text, assistantSoFar, streamSources);
+      }
     } catch (err: any) {
       console.error("Chat error:", err);
-      toast.error("Không thể gửi câu hỏi. Vui lòng thử lại.");
+      toast.error(err.message || "Không thể gửi câu hỏi. Vui lòng thử lại.");
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "Đã xảy ra lỗi. Vui lòng thử lại sau." },
@@ -109,10 +224,15 @@ export function KnowledgeChatbot() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between p-3 border-b">
+      <div className="flex items-center justify-between p-3 border-b bg-card">
         <div className="flex items-center gap-2">
-          <Bot className="h-5 w-5 text-primary" />
-          <h3 className="font-semibold text-sm">Trợ lý AI - Kho Kiến Thức</h3>
+          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+            <Bot className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm">Trợ lý AI</h3>
+            <p className="text-[10px] text-muted-foreground">Kho Kiến Thức</p>
+          </div>
         </div>
         {messages.length > 0 && (
           <Button variant="ghost" size="sm" onClick={() => setMessages([])}>
@@ -124,10 +244,12 @@ export function KnowledgeChatbot() {
       <ScrollArea className="flex-1 p-4">
         {messages.length === 0 && historyLoaded && (
           <div className="text-center text-muted-foreground py-8 space-y-4">
-            <Bot className="h-12 w-12 mx-auto opacity-30" />
+            <div className="w-16 h-16 rounded-full bg-primary/5 flex items-center justify-center mx-auto">
+              <Bot className="h-8 w-8 text-primary/30" />
+            </div>
             <div className="space-y-1">
-              <p className="text-sm">Hỏi bất kỳ câu hỏi nào về sản phẩm, dịch vụ...</p>
-              <p className="text-xs">AI sẽ trả lời dựa trên tài liệu trong kho kiến thức</p>
+              <p className="text-sm font-medium">Xin chào! Tôi có thể giúp gì?</p>
+              <p className="text-xs">Hỏi bất kỳ câu hỏi nào về sản phẩm, dịch vụ...</p>
             </div>
             <div className="flex flex-wrap justify-center gap-2 mt-4">
               {SUGGESTED_QUESTIONS.map((q, i) => (
@@ -135,7 +257,7 @@ export function KnowledgeChatbot() {
                   key={i}
                   variant="outline"
                   size="sm"
-                  className="text-xs h-auto py-1.5 px-3"
+                  className="text-xs h-auto py-1.5 px-3 rounded-full"
                   onClick={() => sendMessage(q)}
                 >
                   {q}
@@ -149,19 +271,19 @@ export function KnowledgeChatbot() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               {msg.role === "assistant" && (
-                <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
                   <Bot className="h-4 w-4 text-primary" />
                 </div>
               )}
               <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm ${
                   msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
+                    ? "bg-primary text-primary-foreground rounded-br-md"
+                    : "bg-muted rounded-bl-md"
                 }`}
               >
                 {msg.role === "assistant" ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <div className="prose prose-sm dark:prose-invert max-w-none [&>p]:mb-1.5 [&>ul]:mb-1.5 [&>ol]:mb-1.5">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
@@ -169,12 +291,14 @@ export function KnowledgeChatbot() {
                 )}
                 {msg.sources && msg.sources.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-border/50">
-                    <p className="text-xs text-muted-foreground mb-1">📚 Tài liệu tham khảo:</p>
-                    {msg.sources.map((s, j) => (
-                      <span key={j} className="inline-block text-xs bg-background/50 rounded px-1.5 py-0.5 mr-1 mb-1">
-                        {s.title}
-                      </span>
-                    ))}
+                    <p className="text-xs text-muted-foreground mb-1">📚 Tham khảo:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {msg.sources.map((s, j) => (
+                        <span key={j} className="inline-block text-[10px] bg-background/50 rounded-full px-2 py-0.5">
+                          {s.title}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {msg.role === "assistant" && (
@@ -186,7 +310,7 @@ export function KnowledgeChatbot() {
                       onClick={() => handleCopy(msg.content, i)}
                     >
                       {copiedIndex === i ? (
-                        <Check className="h-3 w-3 text-success" />
+                        <Check className="h-3 w-3 text-primary" />
                       ) : (
                         <Copy className="h-3 w-3 text-muted-foreground" />
                       )}
@@ -195,19 +319,23 @@ export function KnowledgeChatbot() {
                 )}
               </div>
               {msg.role === "user" && (
-                <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary flex items-center justify-center">
+                <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary flex items-center justify-center mt-0.5">
                   <User className="h-4 w-4 text-primary-foreground" />
                 </div>
               )}
             </div>
           ))}
-          {isLoading && (
-            <div className="flex gap-2 items-center">
+          {isLoading && messages[messages.length - 1]?.role === "user" && (
+            <div className="flex gap-2 items-start">
               <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
                 <Bot className="h-4 w-4 text-primary" />
               </div>
-              <div className="bg-muted rounded-lg px-3 py-2">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <div className="bg-muted rounded-2xl rounded-bl-md px-3.5 py-2.5">
+                <div className="flex gap-1">
+                  <span className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:0ms]" />
+                  <span className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:150ms]" />
+                  <span className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:300ms]" />
+                </div>
               </div>
             </div>
           )}
@@ -215,7 +343,7 @@ export function KnowledgeChatbot() {
         </div>
       </ScrollArea>
 
-      <div className="p-3 border-t">
+      <div className="p-3 border-t bg-card">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -228,10 +356,10 @@ export function KnowledgeChatbot() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Nhập câu hỏi..."
             disabled={isLoading}
-            className="flex-1"
+            className="flex-1 rounded-full"
           />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim()}>
-            <Send className="h-4 w-4" />
+          <Button type="submit" size="icon" disabled={isLoading || !input.trim()} className="rounded-full">
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </form>
       </div>
