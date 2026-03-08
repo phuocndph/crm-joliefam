@@ -48,6 +48,40 @@ serve(async (req) => {
       });
     }
 
+    // ===== GET USER ROLE =====
+    const { data: userRole } = await supabase.rpc("get_user_role", { _user_id: user.id });
+    const role = userRole || "employee";
+    const isManagerOrAdmin = role === "admin" || role === "manager";
+    console.log(`User role: ${role}, isManagerOrAdmin: ${isManagerOrAdmin}`);
+
+    // ===== CHECK PROFIT/FINANCIAL RESTRICTION =====
+    const wantsProfitData = /lợi nhuận|profit|lãi|margin|giá vốn|cost.?price|chi phí|biên lợi|lời|lỗ|biên độ/i.test(question.toLowerCase());
+    
+    if (wantsProfitData && !isManagerOrAdmin) {
+      const blockedMsg = "Xin lỗi, thông tin về lợi nhuận, giá vốn và chi phí chỉ dành cho tài khoản quản lý. Vui lòng liên hệ quản lý của bạn nếu cần thông tin này.";
+      
+      // Save to history
+      await supabase.from("knowledge_chat_history").insert({
+        user_id: user.id,
+        question,
+        answer: blockedMsg,
+        sources: null,
+      });
+
+      if (useStream) {
+        const encoder = new TextEncoder();
+        const body = `data: ${JSON.stringify({ sources: [] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: { content: blockedMsg } }] })}\n\ndata: [DONE]\n\n`;
+        return new Response(encoder.encode(body), {
+          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({ answer: blockedMsg, sources: [] }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // ===== FETCH KNOWLEDGE DOCUMENTS =====
     let knowledgeContext = "";
     let sources: { id: string; title: string; type: string }[] = [];
