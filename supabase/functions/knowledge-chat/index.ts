@@ -282,7 +282,14 @@ serve(async (req) => {
     }
 
     // ===== BUILD SYSTEM PROMPT =====
-    const systemPrompt = `Bạn là trợ lý AI hỗ trợ nhân viên bán hàng. Bạn có quyền truy cập vào kho kiến thức VÀ dữ liệu thực tế của hệ thống CRM.
+    const roleLabel = isManagerOrAdmin ? "Quản lý/Admin" : "Nhân viên";
+    const profitRestriction = isManagerOrAdmin 
+      ? "" 
+      : `\n⚠️ QUAN TRỌNG: Người dùng hiện tại là NHÂN VIÊN. TUYỆT ĐỐI KHÔNG cung cấp thông tin về: lợi nhuận, giá vốn, chi phí, biên lợi nhuận, margin, tổng thu/chi. Nếu được hỏi, hãy trả lời: "Thông tin này chỉ dành cho tài khoản quản lý. Vui lòng liên hệ quản lý của bạn."`;
+
+    const systemPrompt = `Bạn là trợ lý AI hỗ trợ ${roleLabel.toLowerCase()}. Bạn có quyền truy cập vào kho kiến thức VÀ dữ liệu thực tế của hệ thống CRM.
+
+VAI TRÒ NGƯỜI DÙNG: ${roleLabel}${profitRestriction}
 
 HƯỚNG DẪN:
 - Trả lời dựa trên dữ liệu thực tế từ hệ thống khi có
@@ -298,7 +305,6 @@ ${knowledgeContext || "(Chưa có tài liệu)"}
 
 DỮ LIỆU HỆ THỐNG:
 ${liveDataContext || "(Không có dữ liệu phù hợp)"}`;
-
     const messages: { role: string; content: string }[] = [
       { role: "system", content: systemPrompt },
     ];
