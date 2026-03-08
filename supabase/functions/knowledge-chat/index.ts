@@ -126,13 +126,13 @@ serve(async (req) => {
     let sources: { id: string; title: string; type: string }[] = [];
     let documents = docsResult.data || [];
 
-    // Fallback if text search returned nothing
-    if (documents.length === 0) {
+    // Fallback if text search returned nothing (skip for conversational)
+    if (documents.length === 0 && !isConversational) {
       const { data: allDocs } = await supabase
         .from("knowledge_documents")
         .select("id, title, content, document_type, faq_answer")
         .order("created_at", { ascending: false })
-        .limit(5);
+        .limit(3);
       documents = allDocs || [];
     }
 
