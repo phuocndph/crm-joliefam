@@ -52,7 +52,6 @@ serve(async (req) => {
     const { data: userRole } = await supabase.rpc("get_user_role", { _user_id: user.id });
     const role = userRole || "employee";
     const isManagerOrAdmin = role === "admin" || role === "manager";
-    console.log(`User role: ${role}, isManagerOrAdmin: ${isManagerOrAdmin}`);
 
     // ===== CHECK PROFIT/FINANCIAL RESTRICTION =====
     const wantsProfitData = /lợi nhuận|profit|lãi|margin|giá vốn|cost.?price|chi phí|biên lợi|lời|lỗ|biên độ/i.test(question.toLowerCase());
@@ -60,14 +59,6 @@ serve(async (req) => {
     if (wantsProfitData && !isManagerOrAdmin) {
       const blockedMsg = "Xin lỗi, thông tin về lợi nhuận, giá vốn và chi phí chỉ dành cho tài khoản quản lý. Vui lòng liên hệ quản lý của bạn nếu cần thông tin này.";
       
-      // Save to history
-      await supabase.from("knowledge_chat_history").insert({
-        user_id: user.id,
-        question,
-        answer: blockedMsg,
-        sources: null,
-      });
-
       if (useStream) {
         const encoder = new TextEncoder();
         const body = `data: ${JSON.stringify({ sources: [] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: { content: blockedMsg } }] })}\n\ndata: [DONE]\n\n`;
@@ -82,242 +73,196 @@ serve(async (req) => {
       );
     }
 
-    // ===== FETCH KNOWLEDGE DOCUMENTS =====
+    // ===== DETECT WHAT DATA IS NEEDED =====
+    const lowerQ = question.toLowerCase();
+    const wantsCustomers = /khách|kh|customer|chăm sóc|care|theo dõi|trạng thái|liên hệ|điện thoại|phone|email|mã kh|tag/i.test(lowerQ);
+    const wantsProducts = /sản phẩm|product|giá|price|hàng|mặt hàng|danh mục|category|sku|tồn kho|stock/i.test(lowerQ);
+    const wantsQuotes = /báo giá|quote|bảng giá|đơn giá|quotation|bg/i.test(lowerQ);
+    const wantsTransactions = /giao dịch|transaction|thanh toán|payment|thu|chi|doanh thu|revenue|tài chính|finance|lợi nhuận/i.test(lowerQ);
+    const wantsOrders = /đơn hàng|order|đơn|giao hàng|delivery|trạng thái đơn/i.test(lowerQ);
+    const isGeneral = !wantsCustomers && !wantsProducts && !wantsQuotes && !wantsTransactions && !wantsOrders;
+
+    // ===== RUN ALL QUERIES IN PARALLEL =====
+    const searchTerms = question.replace(/[^\w\sÀ-ỹ]/g, "").trim();
+
+    const [docsResult, customersResult, productsResult, quotesResult, transactionsResult, ordersResult] = await Promise.all([
+      // Knowledge docs
+      supabase
+        .from("knowledge_documents")
+        .select("id, title, content, document_type, faq_answer")
+        .textSearch("search_vector", searchTerms, { type: "plain" })
+        .limit(5),
+
+      // Customers (only if needed)
+      (wantsCustomers || isGeneral)
+        ? supabase
+            .from("customers")
+            .select("name, phone, company, customer_code, current_status, auto_tags, total_spent, purchase_count", { count: "exact" })
+            .order("updated_at", { ascending: false })
+            .limit(wantsCustomers ? 20 : 5)
+        : Promise.resolve({ data: null, count: 0 }),
+
+      // Products (only if needed)
+      (wantsProducts || isGeneral)
+        ? supabase
+            .from("products")
+            .select(isManagerOrAdmin
+              ? "name, sku, price, cost_price, category, in_stock"
+              : "name, sku, price, category, in_stock", { count: "exact" })
+            .order("updated_at", { ascending: false })
+            .limit(wantsProducts ? 30 : 10)
+        : Promise.resolve({ data: null, count: 0 }),
+
+      // Quotes (only if needed)
+      (wantsQuotes || isGeneral)
+        ? supabase
+            .from("quotes")
+            .select("quote_number, status, total_amount, created_at", { count: "exact" })
+            .order("created_at", { ascending: false })
+            .limit(wantsQuotes ? 15 : 5)
+        : Promise.resolve({ data: null, count: 0 }),
+
+      // Transactions (only if needed + manager only)
+      ((wantsTransactions || isGeneral) && isManagerOrAdmin)
+        ? supabase
+            .from("transactions")
+            .select("type, amount, description, date", { count: "exact" })
+            .order("date", { ascending: false })
+            .limit(wantsTransactions ? 20 : 5)
+        : Promise.resolve({ data: null, count: 0 }),
+
+      // Orders (only if needed)
+      (wantsOrders || isGeneral)
+        ? supabase
+            .from("orders")
+            .select("order_number, display_order_number, status, total_amount, payment_status, created_at", { count: "exact" })
+            .order("created_at", { ascending: false })
+            .limit(wantsOrders ? 15 : 5)
+        : Promise.resolve({ data: null, count: 0 }),
+    ]);
+
+    // ===== BUILD KNOWLEDGE CONTEXT =====
     let knowledgeContext = "";
     let sources: { id: string; title: string; type: string }[] = [];
+    let documents = docsResult.data || [];
 
-    const searchTerms = question.replace(/[^\w\sÀ-ỹ]/g, "").trim();
-    
-    const { data: searchDocs } = await supabase
-      .from("knowledge_documents")
-      .select("id, title, content, document_type, faq_answer")
-      .textSearch("search_vector", searchTerms, { type: "plain" })
-      .limit(5);
-
-    let documents = searchDocs || [];
+    // Fallback if text search returned nothing
     if (documents.length === 0) {
       const { data: allDocs } = await supabase
         .from("knowledge_documents")
         .select("id, title, content, document_type, faq_answer")
         .order("created_at", { ascending: false })
-        .limit(10);
+        .limit(5);
       documents = allDocs || [];
     }
 
     for (const doc of documents) {
-      let docContent = "";
-      if (doc.document_type === "faq") {
-        docContent = `[FAQ] ${doc.title}\nCâu trả lời: ${doc.faq_answer || doc.content || ""}`;
-      } else {
-        docContent = `[${doc.document_type.toUpperCase()}] ${doc.title}\n${doc.content || ""}`;
-      }
-      if (knowledgeContext.length + docContent.length > 15000) break;
+      let docContent = doc.document_type === "faq"
+        ? `[FAQ] ${doc.title}\n${doc.faq_answer || doc.content || ""}`
+        : `[${doc.document_type.toUpperCase()}] ${doc.title}\n${(doc.content || "").substring(0, 2000)}`;
+      if (knowledgeContext.length + docContent.length > 8000) break;
       knowledgeContext += "\n---\n" + docContent;
       sources.push({ id: doc.id, title: doc.title, type: doc.document_type });
     }
 
-    // ===== FETCH LIVE DATA (respects RLS) =====
-    const lowerQ = question.toLowerCase();
+    // ===== BUILD LIVE DATA CONTEXT =====
     let liveDataContext = "";
 
-    // Detect which data the question is about
-    const wantsCustomers = /khách|kh|customer|chăm sóc|care|theo dõi|trạng thái|liên hệ|điện thoại|phone|email|mã kh|tag/i.test(lowerQ);
-    const wantsProducts = /sản phẩm|product|giá|price|hàng|mặt hàng|danh mục|category|sku|tồn kho|stock/i.test(lowerQ);
-    const wantsQuotes = /báo giá|quote|bảng giá|đơn giá|quotation|bg/i.test(lowerQ);
-    const wantsTransactions = /giao dịch|transaction|thanh toán|payment|thu|chi|doanh thu|revenue|tài chính|finance/i.test(lowerQ);
-    const wantsOrders = /đơn hàng|order|đơn|giao hàng|delivery|trạng thái đơn/i.test(lowerQ);
-    
-    // If question is general or unclear, include summary of all
-    const isGeneral = !wantsCustomers && !wantsProducts && !wantsQuotes && !wantsTransactions && !wantsOrders;
-
-    // --- CUSTOMERS ---
-    if (wantsCustomers || isGeneral) {
-      try {
-        const { data: customers, count } = await supabase
-          .from("customers")
-          .select("name, phone, email, company, customer_code, current_status, auto_tags, notes, total_spent, purchase_count, last_care_date, last_purchase_date", { count: "exact" })
-          .order("updated_at", { ascending: false })
-          .limit(wantsCustomers ? 30 : 10);
-
-        if (customers && customers.length > 0) {
-          liveDataContext += `\n\n📋 DỮ LIỆU KHÁCH HÀNG (${count || customers.length} khách, hiển thị ${customers.length}):\n`;
-          for (const c of customers) {
-            const tags = [...(c.auto_tags || [])].join(", ");
-            const status = c.current_status || "N/A";
-            let line = `• ${c.customer_code || "?"} - ${c.name}`;
-            if (c.phone) line += ` | SĐT: ${c.phone}`;
-            if (c.company) line += ` | CTY: ${c.company}`;
-            line += ` | Trạng thái: ${status}`;
-            if (tags) line += ` | Tags: ${tags}`;
-            if (c.total_spent) line += ` | Tổng chi: ${Number(c.total_spent).toLocaleString("vi-VN")}đ`;
-            if (c.purchase_count) line += ` | Số lần mua: ${c.purchase_count}`;
-            if (c.notes) {
-              // Extract closing score and next action from notes
-              const scoreMatch = c.notes.match(/Điểm đánh giá:\s*(\d+)/);
-              const actionMatch = c.notes.match(/Hành động tiếp theo:\s*(.+?)(?:\n|$)/);
-              if (scoreMatch) line += ` | Điểm: ${scoreMatch[1]}/10`;
-              if (actionMatch) line += ` | HĐ tiếp: ${actionMatch[1].trim()}`;
-            }
-            liveDataContext += line + "\n";
-          }
-        }
-      } catch (e) {
-        console.error("Error fetching customers:", e);
+    // Customers
+    const customers = customersResult.data as any[];
+    if (customers && customers.length > 0) {
+      liveDataContext += `\n📋 KHÁCH HÀNG (${(customersResult as any).count || customers.length} tổng, hiển thị ${customers.length}):\n`;
+      for (const c of customers) {
+        const tags = (c.auto_tags || []).join(", ");
+        let line = `• ${c.customer_code || "?"} - ${c.name}`;
+        if (c.phone) line += ` | ${c.phone}`;
+        if (c.company) line += ` | ${c.company}`;
+        line += ` | ${c.current_status || "N/A"}`;
+        if (tags) line += ` | ${tags}`;
+        if (c.total_spent) line += ` | ${Number(c.total_spent).toLocaleString("vi-VN")}đ`;
+        liveDataContext += line + "\n";
       }
     }
 
-    // --- PRODUCTS ---
-    if (wantsProducts || isGeneral) {
-      try {
-        // Only include cost_price for managers/admins
-        const selectFields = isManagerOrAdmin
-          ? "name, sku, price, cost_price, category, description, specifications, in_stock"
-          : "name, sku, price, category, description, specifications, in_stock";
-        
-        const { data: products, count } = await supabase
-          .from("products")
-          .select(selectFields, { count: "exact" })
-          .order("updated_at", { ascending: false })
-          .limit(wantsProducts ? 50 : 15);
-
-        if (products && products.length > 0) {
-          liveDataContext += `\n\n🛍️ DỮ LIỆU SẢN PHẨM (${count || products.length} SP, hiển thị ${products.length}):\n`;
-          for (const p of products) {
-            let line = `• ${(p as any).sku || "?"} - ${(p as any).name}`;
-            if ((p as any).price) line += ` | Giá: ${Number((p as any).price).toLocaleString("vi-VN")}đ`;
-            if (isManagerOrAdmin && (p as any).cost_price) line += ` | Giá vốn: ${Number((p as any).cost_price).toLocaleString("vi-VN")}đ`;
-            if ((p as any).category) line += ` | DM: ${(p as any).category}`;
-            if ((p as any).specifications) line += ` | QC: ${(p as any).specifications}`;
-            if ((p as any).description) line += ` | Mô tả: ${((p as any).description as string).substring(0, 100)}`;
-            line += ` | ${(p as any).in_stock ? "Còn hàng" : "Hết hàng"}`;
-            liveDataContext += line + "\n";
-          }
-        }
-      } catch (e) {
-        console.error("Error fetching products:", e);
+    // Products
+    const products = productsResult.data as any[];
+    if (products && products.length > 0) {
+      liveDataContext += `\n🛍️ SẢN PHẨM (${(productsResult as any).count || products.length} tổng, hiển thị ${products.length}):\n`;
+      for (const p of products) {
+        let line = `• ${p.sku || "?"} - ${p.name}`;
+        if (p.price) line += ` | ${Number(p.price).toLocaleString("vi-VN")}đ`;
+        if (isManagerOrAdmin && p.cost_price) line += ` | Vốn: ${Number(p.cost_price).toLocaleString("vi-VN")}đ`;
+        if (p.category) line += ` | ${p.category}`;
+        line += ` | ${p.in_stock ? "✓" : "✗"}`;
+        liveDataContext += line + "\n";
       }
     }
 
-    // --- QUOTES ---
-    if (wantsQuotes || isGeneral) {
-      try {
-        const { data: quotes, count } = await supabase
-          .from("quotes")
-          .select("quote_number, status, total_amount, items, created_at, notes, include_vat, vat_amount, subtotal", { count: "exact" })
-          .order("created_at", { ascending: false })
-          .limit(wantsQuotes ? 20 : 5);
-
-        if (quotes && quotes.length > 0) {
-          liveDataContext += `\n\n📄 DỮ LIỆU BÁO GIÁ (${count || quotes.length} BG, hiển thị ${quotes.length}):\n`;
-          for (const q of quotes) {
-            let line = `• ${q.quote_number} | Trạng thái: ${q.status} | Tổng: ${Number(q.total_amount || 0).toLocaleString("vi-VN")}đ`;
-            if (q.include_vat) line += ` (VAT: ${Number(q.vat_amount || 0).toLocaleString("vi-VN")}đ)`;
-            line += ` | Ngày: ${new Date(q.created_at).toLocaleDateString("vi-VN")}`;
-            if (q.items && Array.isArray(q.items)) {
-              const itemNames = q.items.slice(0, 3).map((it: any) => it.name || "?").join(", ");
-              line += ` | SP: ${itemNames}`;
-              if (q.items.length > 3) line += `... (+${q.items.length - 3})`;
-            }
-            liveDataContext += line + "\n";
-          }
-        }
-      } catch (e) {
-        console.error("Error fetching quotes:", e);
+    // Quotes
+    const quotes = quotesResult.data as any[];
+    if (quotes && quotes.length > 0) {
+      liveDataContext += `\n📄 BÁO GIÁ (${(quotesResult as any).count || quotes.length} tổng, hiển thị ${quotes.length}):\n`;
+      for (const q of quotes) {
+        liveDataContext += `• ${q.quote_number} | ${q.status} | ${Number(q.total_amount || 0).toLocaleString("vi-VN")}đ | ${new Date(q.created_at).toLocaleDateString("vi-VN")}\n`;
       }
     }
 
-    // --- TRANSACTIONS (managers/admins only for detailed financial data) ---
-    if ((wantsTransactions || isGeneral) && isManagerOrAdmin) {
-      try {
-        const { data: transactions, count } = await supabase
-          .from("transactions")
-          .select("type, amount, description, category, date, payment_type", { count: "exact" })
-          .order("date", { ascending: false })
-          .limit(wantsTransactions ? 30 : 10);
-
-        if (transactions && transactions.length > 0) {
-          liveDataContext += `\n\n💰 DỮ LIỆU GIAO DỊCH (${count || transactions.length} GD, hiển thị ${transactions.length}):\n`;
-          let totalIncome = 0, totalExpense = 0;
-          for (const t of transactions) {
-            const amt = Number(t.amount || 0);
-            if (t.type === "income") totalIncome += amt;
-            else totalExpense += amt;
-            let line = `• ${t.type === "income" ? "Thu" : "Chi"}: ${amt.toLocaleString("vi-VN")}đ`;
-            if (t.description) line += ` | ${t.description}`;
-            if (t.category) line += ` | DM: ${t.category}`;
-            line += ` | Ngày: ${new Date(t.date).toLocaleDateString("vi-VN")}`;
-            liveDataContext += line + "\n";
-          }
-          liveDataContext += `Tổng thu: ${totalIncome.toLocaleString("vi-VN")}đ | Tổng chi: ${totalExpense.toLocaleString("vi-VN")}đ\n`;
-        }
-      } catch (e) {
-        console.error("Error fetching transactions:", e);
+    // Transactions
+    const transactions = transactionsResult.data as any[];
+    if (transactions && transactions.length > 0) {
+      let totalIncome = 0, totalExpense = 0;
+      liveDataContext += `\n💰 GIAO DỊCH (${(transactionsResult as any).count || transactions.length} tổng, hiển thị ${transactions.length}):\n`;
+      for (const t of transactions) {
+        const amt = Number(t.amount || 0);
+        if (t.type === "income") totalIncome += amt; else totalExpense += amt;
+        liveDataContext += `• ${t.type === "income" ? "Thu" : "Chi"}: ${amt.toLocaleString("vi-VN")}đ | ${t.description || ""} | ${new Date(t.date).toLocaleDateString("vi-VN")}\n`;
       }
+      liveDataContext += `Tổng thu: ${totalIncome.toLocaleString("vi-VN")}đ | Tổng chi: ${totalExpense.toLocaleString("vi-VN")}đ\n`;
     } else if (wantsTransactions && !isManagerOrAdmin) {
-      liveDataContext += `\n\n💰 GIAO DỊCH: Thông tin chi tiết giao dịch chỉ dành cho tài khoản quản lý.\n`;
+      liveDataContext += `\n💰 Thông tin giao dịch chỉ dành cho tài khoản quản lý.\n`;
     }
 
-    // --- ORDERS ---
-    if (wantsOrders || isGeneral) {
-      try {
-        const { data: orders, count } = await supabase
-          .from("orders")
-          .select("order_number, display_order_number, status, total_amount, payment_status, delivery_date, delivered_date, notes, created_at", { count: "exact" })
-          .order("created_at", { ascending: false })
-          .limit(wantsOrders ? 20 : 5);
-
-        if (orders && orders.length > 0) {
-          liveDataContext += `\n\n📦 DỮ LIỆU ĐƠN HÀNG (${count || orders.length} ĐH, hiển thị ${orders.length}):\n`;
-          for (const o of orders) {
-            let line = `• ${o.display_order_number || o.order_number} | TT: ${o.status} | Tổng: ${Number(o.total_amount || 0).toLocaleString("vi-VN")}đ`;
-            line += ` | Thanh toán: ${o.payment_status || "N/A"}`;
-            if (o.delivery_date) line += ` | Giao: ${new Date(o.delivery_date).toLocaleDateString("vi-VN")}`;
-            line += ` | Ngày tạo: ${new Date(o.created_at).toLocaleDateString("vi-VN")}`;
-            liveDataContext += line + "\n";
-          }
-        }
-      } catch (e) {
-        console.error("Error fetching orders:", e);
+    // Orders
+    const orders = ordersResult.data as any[];
+    if (orders && orders.length > 0) {
+      liveDataContext += `\n📦 ĐƠN HÀNG (${(ordersResult as any).count || orders.length} tổng, hiển thị ${orders.length}):\n`;
+      for (const o of orders) {
+        liveDataContext += `• ${o.display_order_number || o.order_number} | ${o.status} | ${Number(o.total_amount || 0).toLocaleString("vi-VN")}đ | TT: ${o.payment_status || "N/A"} | ${new Date(o.created_at).toLocaleDateString("vi-VN")}\n`;
       }
     }
 
     // ===== BUILD SYSTEM PROMPT =====
-    const roleLabel = isManagerOrAdmin ? "Quản lý/Admin" : "Nhân viên";
-    const profitRestriction = isManagerOrAdmin 
-      ? "" 
-      : `\n⚠️ QUAN TRỌNG: Người dùng hiện tại là NHÂN VIÊN. TUYỆT ĐỐI KHÔNG cung cấp thông tin về: lợi nhuận, giá vốn, chi phí, biên lợi nhuận, margin, tổng thu/chi. Nếu được hỏi, hãy trả lời: "Thông tin này chỉ dành cho tài khoản quản lý. Vui lòng liên hệ quản lý của bạn."`;
+    const roleLabel = isManagerOrAdmin ? "Quản lý" : "Nhân viên";
+    const profitRestriction = isManagerOrAdmin ? "" : "\n⚠️ KHÔNG cung cấp thông tin lợi nhuận, giá vốn, chi phí cho nhân viên.";
 
-    const systemPrompt = `Bạn là trợ lý AI hỗ trợ ${roleLabel.toLowerCase()}. Bạn có quyền truy cập vào kho kiến thức VÀ dữ liệu thực tế của hệ thống CRM.
+    const systemPrompt = `Bạn là trợ lý AI CRM cho ${roleLabel}.${profitRestriction}
 
-VAI TRÒ NGƯỜI DÙNG: ${roleLabel}${profitRestriction}
+HƯỚNG DẪN: Trả lời tiếng Việt, ngắn gọn, dựa trên dữ liệu thực tế. Format số tiền VNĐ.
 
-HƯỚNG DẪN:
-- Trả lời dựa trên dữ liệu thực tế từ hệ thống khi có
-- Kết hợp với tài liệu kiến thức khi cần giải thích chính sách, quy trình
-- Nếu không tìm thấy thông tin, nói rõ: "Tôi không tìm thấy thông tin này. Vui lòng liên hệ quản lý."
-- Trả lời bằng tiếng Việt, ngắn gọn, chuyên nghiệp
-- Có thể tổng hợp, phân tích, so sánh dữ liệu khi được hỏi
-- Khi trả lời về số liệu, ghi rõ nguồn (ví dụ: "Theo dữ liệu hệ thống...")
-- Format số tiền theo VNĐ, ngày theo dd/mm/yyyy
+KHO KIẾN THỨC:${knowledgeContext || " (Trống)"}
 
-KHO KIẾN THỨC:
-${knowledgeContext || "(Chưa có tài liệu)"}
+DỮ LIỆU:${liveDataContext || " (Không có)"}`;
 
-DỮ LIỆU HỆ THỐNG:
-${liveDataContext || "(Không có dữ liệu phù hợp)"}`;
+    console.log(`Context: knowledge=${knowledgeContext.length}, liveData=${liveDataContext.length}, system=${systemPrompt.length}`);
+
+    // ===== BUILD MESSAGES (truncate history) =====
     const messages: { role: string; content: string }[] = [
       { role: "system", content: systemPrompt },
     ];
 
     if (chatHistory && Array.isArray(chatHistory)) {
-      for (const msg of chatHistory.slice(-6)) {
-        messages.push({ role: msg.role, content: msg.content });
+      // Only keep last 4 messages, truncate each to 500 chars
+      for (const msg of chatHistory.slice(-4)) {
+        messages.push({
+          role: msg.role,
+          content: (msg.content as string).length > 500
+            ? (msg.content as string).substring(0, 500) + "..."
+            : msg.content,
+        });
       }
     }
 
     messages.push({ role: "user", content: question });
-
-    console.log(`Context size: knowledge=${knowledgeContext.length}, liveData=${liveDataContext.length}, total system prompt=${systemPrompt.length}`);
 
     // ===== CALL AI =====
     if (useStream) {
@@ -336,15 +281,10 @@ ${liveDataContext || "(Không có dữ liệu phù hợp)"}`;
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("AI Gateway stream error:", response.status, errorText);
+        console.error("AI Gateway error:", response.status, errorText);
         if (response.status === 429) {
-          return new Response(JSON.stringify({ error: "Hệ thống đang bận, vui lòng thử lại sau ít phút." }), {
+          return new Response(JSON.stringify({ error: "Hệ thống đang bận, vui lòng thử lại sau." }), {
             status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        if (response.status === 402) {
-          return new Response(JSON.stringify({ error: "Đã hết quota AI, vui lòng liên hệ quản trị viên." }), {
-            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
         throw new Error(`AI Gateway error: ${response.status}`);
@@ -352,15 +292,12 @@ ${liveDataContext || "(Không có dữ liệu phù hợp)"}`;
 
       const encoder = new TextEncoder();
       const sourcesEvent = `data: ${JSON.stringify({ sources })}\n\n`;
-      
       const transformStream = new TransformStream();
       const reader = response.body!.getReader();
       const writer = transformStream.writable.getWriter();
 
-      // Write sources event first
       await writer.write(encoder.encode(sourcesEvent));
 
-      // Manual read loop to flush each chunk immediately
       (async () => {
         try {
           while (true) {
@@ -398,37 +335,26 @@ ${liveDataContext || "(Không có dữ liệu phù hợp)"}`;
     if (!response.ok) {
       const errorText = await response.text();
       console.error("AI Gateway error:", response.status, errorText);
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Hệ thống đang bận, vui lòng thử lại sau ít phút." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Đã hết quota AI, vui lòng liên hệ quản trị viên." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
       throw new Error(`AI Gateway error: ${response.status}`);
     }
 
     const data = await response.json();
-    const answer = data.choices?.[0]?.message?.content || "Xin lỗi, tôi không thể trả lời câu hỏi này.";
+    const answer = data.choices?.[0]?.message?.content || "Xin lỗi, không thể trả lời.";
 
-    await supabase.from("knowledge_chat_history").insert({
-      user_id: user.id,
-      question,
-      answer,
-      sources: sources.length > 0 ? sources : null,
+    // Save history (fire and forget)
+    supabase.from("knowledge_chat_history").insert({
+      user_id: user.id, question, answer, sources: sources.length > 0 ? sources : null,
     });
 
     return new Response(
       JSON.stringify({ answer, sources }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (error) {
     console.error("knowledge-chat error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: error.message || "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
