@@ -48,17 +48,69 @@ serve(async (req) => {
       });
     }
 
-    // ===== GET USER ROLE =====
-    const { data: userRole } = await supabase.rpc("get_user_role", { _user_id: user.id });
-    const role = userRole || "employee";
+    // ===== DETECT WHAT DATA IS NEEDED =====
+    const lowerQ = question.toLowerCase().trim();
+    
+    // Skip data fetching for short conversational messages
+    const isConversational = lowerQ.length < 10 && /^(ok|vâng|dạ|ừ|được|hi|hello|xin chào|cảm ơn|thanks|bye|tạm biệt|có|không|rồi|oke|okie|yeah|yes|no|tiếp|next|à|uh|uhm|hmm)$/i.test(lowerQ);
+
+    const wantsCustomers = !isConversational && /khách|kh|customer|chăm sóc|care|theo dõi|trạng thái|liên hệ|điện thoại|phone|email|mã kh|tag/i.test(lowerQ);
+    const wantsProducts = !isConversational && /sản phẩm|product|giá|price|hàng|mặt hàng|danh mục|category|sku|tồn kho|stock/i.test(lowerQ);
+    const wantsQuotes = !isConversational && /báo giá|quote|bảng giá|đơn giá|quotation|bg/i.test(lowerQ);
+    const wantsTransactions = !isConversational && /giao dịch|transaction|thanh toán|payment|thu|chi|doanh thu|revenue|tài chính|finance|lợi nhuận/i.test(lowerQ);
+    const wantsOrders = !isConversational && /đơn hàng|order|đơn|giao hàng|delivery|trạng thái đơn/i.test(lowerQ);
+    const needsData = wantsCustomers || wantsProducts || wantsQuotes || wantsTransactions || wantsOrders;
+
+    // ===== RUN ALL QUERIES IN PARALLEL (including role) =====
+    const searchTerms = question.replace(/[^\w\sÀ-ỹ]/g, "").trim();
+    const emptyResult = Promise.resolve({ data: null, count: 0 });
+
+    const [roleResult, docsResult, customersResult, productsResult, quotesResult, transactionsResult, ordersResult] = await Promise.all([
+      // Role query
+      supabase.rpc("get_user_role", { _user_id: user.id }),
+
+      // Knowledge docs (skip for conversational)
+      isConversational ? emptyResult :
+        supabase
+          .from("knowledge_documents")
+          .select("id, title, content, document_type, faq_answer")
+          .textSearch("search_vector", searchTerms, { type: "plain" })
+          .limit(3),
+
+      // Customers
+      wantsCustomers
+        ? supabase.from("customers").select("name, phone, company, customer_code, current_status, auto_tags, total_spent", { count: "exact" }).order("updated_at", { ascending: false }).limit(15)
+        : emptyResult,
+
+      // Products
+      wantsProducts
+        ? supabase.from("products").select("name, sku, price, category, in_stock", { count: "exact" }).order("updated_at", { ascending: false }).limit(20)
+        : emptyResult,
+
+      // Quotes
+      wantsQuotes
+        ? supabase.from("quotes").select("quote_number, status, total_amount, created_at", { count: "exact" }).order("created_at", { ascending: false }).limit(10)
+        : emptyResult,
+
+      // Transactions
+      wantsTransactions
+        ? supabase.from("transactions").select("type, amount, description, date", { count: "exact" }).order("date", { ascending: false }).limit(15)
+        : emptyResult,
+
+      // Orders
+      wantsOrders
+        ? supabase.from("orders").select("order_number, display_order_number, status, total_amount, payment_status, created_at", { count: "exact" }).order("created_at", { ascending: false }).limit(10)
+        : emptyResult,
+    ]);
+
+    const role = (roleResult.data as string) || "employee";
     const isManagerOrAdmin = role === "admin" || role === "manager";
 
     // ===== CHECK PROFIT/FINANCIAL RESTRICTION =====
-    const wantsProfitData = /lợi nhuận|profit|lãi|margin|giá vốn|cost.?price|chi phí|biên lợi|lời|lỗ|biên độ/i.test(question.toLowerCase());
+    const wantsProfitData = /lợi nhuận|profit|lãi|margin|giá vốn|cost.?price|chi phí|biên lợi|lời|lỗ|biên độ/i.test(lowerQ);
     
     if (wantsProfitData && !isManagerOrAdmin) {
-      const blockedMsg = "Xin lỗi, thông tin về lợi nhuận, giá vốn và chi phí chỉ dành cho tài khoản quản lý. Vui lòng liên hệ quản lý của bạn nếu cần thông tin này.";
-      
+      const blockedMsg = "Xin lỗi, thông tin về lợi nhuận, giá vốn và chi phí chỉ dành cho tài khoản quản lý.";
       if (useStream) {
         const encoder = new TextEncoder();
         const body = `data: ${JSON.stringify({ sources: [] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: { content: blockedMsg } }] })}\n\ndata: [DONE]\n\n`;
@@ -66,93 +118,21 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no" },
         });
       }
-
-      return new Response(
-        JSON.stringify({ answer: blockedMsg, sources: [] }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ answer: blockedMsg, sources: [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-
-    // ===== DETECT WHAT DATA IS NEEDED =====
-    const lowerQ = question.toLowerCase();
-    const wantsCustomers = /khách|kh|customer|chăm sóc|care|theo dõi|trạng thái|liên hệ|điện thoại|phone|email|mã kh|tag/i.test(lowerQ);
-    const wantsProducts = /sản phẩm|product|giá|price|hàng|mặt hàng|danh mục|category|sku|tồn kho|stock/i.test(lowerQ);
-    const wantsQuotes = /báo giá|quote|bảng giá|đơn giá|quotation|bg/i.test(lowerQ);
-    const wantsTransactions = /giao dịch|transaction|thanh toán|payment|thu|chi|doanh thu|revenue|tài chính|finance|lợi nhuận/i.test(lowerQ);
-    const wantsOrders = /đơn hàng|order|đơn|giao hàng|delivery|trạng thái đơn/i.test(lowerQ);
-    const isGeneral = !wantsCustomers && !wantsProducts && !wantsQuotes && !wantsTransactions && !wantsOrders;
-
-    // ===== RUN ALL QUERIES IN PARALLEL =====
-    const searchTerms = question.replace(/[^\w\sÀ-ỹ]/g, "").trim();
-
-    const [docsResult, customersResult, productsResult, quotesResult, transactionsResult, ordersResult] = await Promise.all([
-      // Knowledge docs
-      supabase
-        .from("knowledge_documents")
-        .select("id, title, content, document_type, faq_answer")
-        .textSearch("search_vector", searchTerms, { type: "plain" })
-        .limit(5),
-
-      // Customers (only if needed)
-      (wantsCustomers || isGeneral)
-        ? supabase
-            .from("customers")
-            .select("name, phone, company, customer_code, current_status, auto_tags, total_spent, purchase_count", { count: "exact" })
-            .order("updated_at", { ascending: false })
-            .limit(wantsCustomers ? 20 : 5)
-        : Promise.resolve({ data: null, count: 0 }),
-
-      // Products (only if needed)
-      (wantsProducts || isGeneral)
-        ? supabase
-            .from("products")
-            .select(isManagerOrAdmin
-              ? "name, sku, price, cost_price, category, in_stock"
-              : "name, sku, price, category, in_stock", { count: "exact" })
-            .order("updated_at", { ascending: false })
-            .limit(wantsProducts ? 30 : 10)
-        : Promise.resolve({ data: null, count: 0 }),
-
-      // Quotes (only if needed)
-      (wantsQuotes || isGeneral)
-        ? supabase
-            .from("quotes")
-            .select("quote_number, status, total_amount, created_at", { count: "exact" })
-            .order("created_at", { ascending: false })
-            .limit(wantsQuotes ? 15 : 5)
-        : Promise.resolve({ data: null, count: 0 }),
-
-      // Transactions (only if needed + manager only)
-      ((wantsTransactions || isGeneral) && isManagerOrAdmin)
-        ? supabase
-            .from("transactions")
-            .select("type, amount, description, date", { count: "exact" })
-            .order("date", { ascending: false })
-            .limit(wantsTransactions ? 20 : 5)
-        : Promise.resolve({ data: null, count: 0 }),
-
-      // Orders (only if needed)
-      (wantsOrders || isGeneral)
-        ? supabase
-            .from("orders")
-            .select("order_number, display_order_number, status, total_amount, payment_status, created_at", { count: "exact" })
-            .order("created_at", { ascending: false })
-            .limit(wantsOrders ? 15 : 5)
-        : Promise.resolve({ data: null, count: 0 }),
-    ]);
 
     // ===== BUILD KNOWLEDGE CONTEXT =====
     let knowledgeContext = "";
     let sources: { id: string; title: string; type: string }[] = [];
     let documents = docsResult.data || [];
 
-    // Fallback if text search returned nothing
-    if (documents.length === 0) {
+    // Fallback if text search returned nothing (skip for conversational)
+    if (documents.length === 0 && !isConversational) {
       const { data: allDocs } = await supabase
         .from("knowledge_documents")
         .select("id, title, content, document_type, faq_answer")
         .order("created_at", { ascending: false })
-        .limit(5);
+        .limit(3);
       documents = allDocs || [];
     }
 
