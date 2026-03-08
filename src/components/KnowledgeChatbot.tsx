@@ -93,6 +93,9 @@ export function KnowledgeChatbot() {
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
@@ -107,9 +110,10 @@ export function KnowledgeChatbot() {
         },
         body: JSON.stringify({
           question: text,
-          chatHistory: messages.slice(-6),
+          chatHistory: messages.slice(-4),
           stream: true,
         }),
+        signal: controller.signal,
       });
 
       if (!resp.ok) {
