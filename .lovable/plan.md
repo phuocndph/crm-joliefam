@@ -1,53 +1,29 @@
 
 
-# Fix Streaming - Response hiện từng token real-time
+# Hien thi chat lieu tu bao gia trong chi tiet don hang
 
-## Vấn đề
+## Nguyen nhan
 
-Streaming code logic đúng nhưng response headers thiếu các header quan trọng để ngăn proxy/CDN buffering:
-- Thiếu `Cache-Control: no-cache` 
-- Thiếu `Connection: keep-alive`
-- Thiếu `X-Accel-Buffering: no` (nginx proxy)
+Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
 
-Supabase Edge Functions chạy qua reverse proxy, nếu không có các header này, proxy sẽ buffer toàn bộ response rồi mới gửi cho client => user thấy chờ lâu rồi hiện hết một lúc.
+Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
 
-## Thay đổi
+Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
 
-### File: `supabase/functions/knowledge-chat/index.ts`
+## Giai phap
 
-1. **Thêm SSE headers** vào response streaming (line 367-369):
+### File: `src/pages/OrderManagement.tsx`
+
+Thay doi dong 659: doc `item.description` thay vi `item.material`:
+
 ```typescript
-return new Response(transformStream.readable, {
-  headers: {
-    ...corsHeaders,
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive", 
-    "X-Accel-Buffering": "no",
-  },
-});
+// Truoc:
+{item.material || "-"}
+
+// Sau:
+{item.description || "-"}
 ```
 
-2. **Cũng thêm headers cho blocked message streaming response** (line 74-76) để nhất quán.
+Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
 
-3. **Flush từng chunk nhỏ hơn**: Thay vì `pipeTo` trực tiếp (có thể bị batch), đọc từng chunk từ AI Gateway và enqueue ngay lập tức qua manual read loop để đảm bảo mỗi chunk được flush ngay:
-```typescript
-const reader = response.body!.getReader();
-const writer = transformStream.writable.getWriter();
-await writer.write(encoder.encode(sourcesEvent));
-
-(async () => {
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) { writer.close(); break; }
-      await writer.write(value);
-    }
-  } catch (e) { writer.abort(e); }
-})();
-
-return new Response(transformStream.readable, { ... });
-```
-
-Tổng cộng chỉ sửa 1 file edge function, deploy lại.
-
+Chi thay doi 1 dong, khong anh huong logic nao khac.
