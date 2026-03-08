@@ -72,7 +72,7 @@ serve(async (req) => {
         const encoder = new TextEncoder();
         const body = `data: ${JSON.stringify({ sources: [] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: { content: blockedMsg } }] })}\n\ndata: [DONE]\n\n`;
         return new Response(encoder.encode(body), {
-          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+          headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no" },
         });
       }
 
@@ -353,19 +353,32 @@ ${liveDataContext || "(Không có dữ liệu phù hợp)"}`;
       const encoder = new TextEncoder();
       const sourcesEvent = `data: ${JSON.stringify({ sources })}\n\n`;
       
-      const transformStream = new TransformStream({
-        start(controller) {
-          controller.enqueue(encoder.encode(sourcesEvent));
-        },
-        transform(chunk, controller) {
-          controller.enqueue(chunk);
-        },
-      });
+      const transformStream = new TransformStream();
+      const reader = response.body!.getReader();
+      const writer = transformStream.writable.getWriter();
 
-      response.body!.pipeTo(transformStream.writable);
+      // Write sources event first
+      await writer.write(encoder.encode(sourcesEvent));
+
+      // Manual read loop to flush each chunk immediately
+      (async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) { writer.close(); break; }
+            await writer.write(value);
+          }
+        } catch (e) { writer.abort(e); }
+      })();
 
       return new Response(transformStream.readable, {
-        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
       });
     }
 
