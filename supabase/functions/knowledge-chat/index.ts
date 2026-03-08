@@ -48,6 +48,40 @@ serve(async (req) => {
       });
     }
 
+    // ===== GET USER ROLE =====
+    const { data: userRole } = await supabase.rpc("get_user_role", { _user_id: user.id });
+    const role = userRole || "employee";
+    const isManagerOrAdmin = role === "admin" || role === "manager";
+    console.log(`User role: ${role}, isManagerOrAdmin: ${isManagerOrAdmin}`);
+
+    // ===== CHECK PROFIT/FINANCIAL RESTRICTION =====
+    const wantsProfitData = /lợi nhuận|profit|lãi|margin|giá vốn|cost.?price|chi phí|biên lợi|lời|lỗ|biên độ/i.test(question.toLowerCase());
+    
+    if (wantsProfitData && !isManagerOrAdmin) {
+      const blockedMsg = "Xin lỗi, thông tin về lợi nhuận, giá vốn và chi phí chỉ dành cho tài khoản quản lý. Vui lòng liên hệ quản lý của bạn nếu cần thông tin này.";
+      
+      // Save to history
+      await supabase.from("knowledge_chat_history").insert({
+        user_id: user.id,
+        question,
+        answer: blockedMsg,
+        sources: null,
+      });
+
+      if (useStream) {
+        const encoder = new TextEncoder();
+        const body = `data: ${JSON.stringify({ sources: [] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: { content: blockedMsg } }] })}\n\ndata: [DONE]\n\n`;
+        return new Response(encoder.encode(body), {
+          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({ answer: blockedMsg, sources: [] }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // ===== FETCH KNOWLEDGE DOCUMENTS =====
     let knowledgeContext = "";
     let sources: { id: string; title: string; type: string }[] = [];
@@ -135,22 +169,27 @@ serve(async (req) => {
     // --- PRODUCTS ---
     if (wantsProducts || isGeneral) {
       try {
+        // Only include cost_price for managers/admins
+        const selectFields = isManagerOrAdmin
+          ? "name, sku, price, cost_price, category, description, specifications, in_stock"
+          : "name, sku, price, category, description, specifications, in_stock";
+        
         const { data: products, count } = await supabase
           .from("products")
-          .select("name, sku, price, cost_price, category, description, specifications, in_stock", { count: "exact" })
+          .select(selectFields, { count: "exact" })
           .order("updated_at", { ascending: false })
           .limit(wantsProducts ? 50 : 15);
 
         if (products && products.length > 0) {
           liveDataContext += `\n\n🛍️ DỮ LIỆU SẢN PHẨM (${count || products.length} SP, hiển thị ${products.length}):\n`;
           for (const p of products) {
-            let line = `• ${p.sku || "?"} - ${p.name}`;
-            if (p.price) line += ` | Giá: ${Number(p.price).toLocaleString("vi-VN")}đ`;
-            if (p.cost_price) line += ` | Giá vốn: ${Number(p.cost_price).toLocaleString("vi-VN")}đ`;
-            if (p.category) line += ` | DM: ${p.category}`;
-            if (p.specifications) line += ` | QC: ${p.specifications}`;
-            if (p.description) line += ` | Mô tả: ${p.description.substring(0, 100)}`;
-            line += ` | ${p.in_stock ? "Còn hàng" : "Hết hàng"}`;
+            let line = `• ${(p as any).sku || "?"} - ${(p as any).name}`;
+            if ((p as any).price) line += ` | Giá: ${Number((p as any).price).toLocaleString("vi-VN")}đ`;
+            if (isManagerOrAdmin && (p as any).cost_price) line += ` | Giá vốn: ${Number((p as any).cost_price).toLocaleString("vi-VN")}đ`;
+            if ((p as any).category) line += ` | DM: ${(p as any).category}`;
+            if ((p as any).specifications) line += ` | QC: ${(p as any).specifications}`;
+            if ((p as any).description) line += ` | Mô tả: ${((p as any).description as string).substring(0, 100)}`;
+            line += ` | ${(p as any).in_stock ? "Còn hàng" : "Hết hàng"}`;
             liveDataContext += line + "\n";
           }
         }
@@ -187,8 +226,8 @@ serve(async (req) => {
       }
     }
 
-    // --- TRANSACTIONS ---
-    if (wantsTransactions || isGeneral) {
+    // --- TRANSACTIONS (managers/admins only for detailed financial data) ---
+    if ((wantsTransactions || isGeneral) && isManagerOrAdmin) {
       try {
         const { data: transactions, count } = await supabase
           .from("transactions")
@@ -214,6 +253,8 @@ serve(async (req) => {
       } catch (e) {
         console.error("Error fetching transactions:", e);
       }
+    } else if (wantsTransactions && !isManagerOrAdmin) {
+      liveDataContext += `\n\n💰 GIAO DỊCH: Thông tin chi tiết giao dịch chỉ dành cho tài khoản quản lý.\n`;
     }
 
     // --- ORDERS ---
@@ -241,7 +282,14 @@ serve(async (req) => {
     }
 
     // ===== BUILD SYSTEM PROMPT =====
-    const systemPrompt = `Bạn là trợ lý AI hỗ trợ nhân viên bán hàng. Bạn có quyền truy cập vào kho kiến thức VÀ dữ liệu thực tế của hệ thống CRM.
+    const roleLabel = isManagerOrAdmin ? "Quản lý/Admin" : "Nhân viên";
+    const profitRestriction = isManagerOrAdmin 
+      ? "" 
+      : `\n⚠️ QUAN TRỌNG: Người dùng hiện tại là NHÂN VIÊN. TUYỆT ĐỐI KHÔNG cung cấp thông tin về: lợi nhuận, giá vốn, chi phí, biên lợi nhuận, margin, tổng thu/chi. Nếu được hỏi, hãy trả lời: "Thông tin này chỉ dành cho tài khoản quản lý. Vui lòng liên hệ quản lý của bạn."`;
+
+    const systemPrompt = `Bạn là trợ lý AI hỗ trợ ${roleLabel.toLowerCase()}. Bạn có quyền truy cập vào kho kiến thức VÀ dữ liệu thực tế của hệ thống CRM.
+
+VAI TRÒ NGƯỜI DÙNG: ${roleLabel}${profitRestriction}
 
 HƯỚNG DẪN:
 - Trả lời dựa trên dữ liệu thực tế từ hệ thống khi có
@@ -257,7 +305,6 @@ ${knowledgeContext || "(Chưa có tài liệu)"}
 
 DỮ LIỆU HỆ THỐNG:
 ${liveDataContext || "(Không có dữ liệu phù hợp)"}`;
-
     const messages: { role: string; content: string }[] = [
       { role: "system", content: systemPrompt },
     ];
