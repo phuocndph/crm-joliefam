@@ -226,8 +226,8 @@ serve(async (req) => {
       }
     }
 
-    // --- TRANSACTIONS ---
-    if (wantsTransactions || isGeneral) {
+    // --- TRANSACTIONS (managers/admins only for detailed financial data) ---
+    if ((wantsTransactions || isGeneral) && isManagerOrAdmin) {
       try {
         const { data: transactions, count } = await supabase
           .from("transactions")
@@ -253,6 +253,8 @@ serve(async (req) => {
       } catch (e) {
         console.error("Error fetching transactions:", e);
       }
+    } else if (wantsTransactions && !isManagerOrAdmin) {
+      liveDataContext += `\n\n💰 GIAO DỊCH: Thông tin chi tiết giao dịch chỉ dành cho tài khoản quản lý.\n`;
     }
 
     // --- ORDERS ---
