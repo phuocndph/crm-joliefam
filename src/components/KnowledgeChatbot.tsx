@@ -93,6 +93,9 @@ export function KnowledgeChatbot() {
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
@@ -107,9 +110,10 @@ export function KnowledgeChatbot() {
         },
         body: JSON.stringify({
           question: text,
-          chatHistory: messages.slice(-6),
+          chatHistory: messages.slice(-4),
           stream: true,
         }),
+        signal: controller.signal,
       });
 
       if (!resp.ok) {
@@ -211,13 +215,22 @@ export function KnowledgeChatbot() {
         saveChatHistory(text, assistantSoFar, streamSources);
       }
     } catch (err: any) {
-      console.error("Chat error:", err);
-      toast.error(err.message || "Không thể gửi câu hỏi. Vui lòng thử lại.");
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Đã xảy ra lỗi. Vui lòng thử lại sau." },
-      ]);
+      if (err.name === "AbortError") {
+        toast.error("Phản hồi quá lâu. Vui lòng thử lại.");
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "Phản hồi quá lâu (>30s). Vui lòng thử câu hỏi ngắn hơn." },
+        ]);
+      } else {
+        console.error("Chat error:", err);
+        toast.error(err.message || "Không thể gửi câu hỏi. Vui lòng thử lại.");
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "Đã xảy ra lỗi. Vui lòng thử lại sau." },
+        ]);
+      }
     } finally {
+      clearTimeout(timeout);
       setIsLoading(false);
     }
   };

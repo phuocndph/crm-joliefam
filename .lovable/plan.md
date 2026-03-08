@@ -1,35 +1,29 @@
 
 
-# Fix Chatbot Speed - Giảm thời gian phản hồi & tránh WORKER_LIMIT
+# Hien thi chat lieu tu bao gia trong chi tiet don hang
 
-## Nguyên nhân
+## Nguyen nhan
 
-Edge Function đang thực hiện quá nhiều công việc trong 1 request:
-- 7 database queries song song (role + docs + 5 data tables) ngay cả khi chỉ cần 1-2
-- Fallback query bổ sung (line 131) nếu text search trả về rỗng
-- System prompt lớn (~7KB) gửi cho AI mỗi lần
-- Model `google/gemini-3-flash-preview` có thể chậm hơn `google/gemini-2.5-flash-lite`
+Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
 
-## Thay đổi (1 file: `supabase/functions/knowledge-chat/index.ts`)
+Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
 
-### 1. Dùng model nhanh hơn
-Chuyển từ `google/gemini-3-flash-preview` sang `google/gemini-2.5-flash-lite` - nhanh nhất, phù hợp cho chatbot Q&A đơn giản.
+Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
 
-### 2. Tách role query ra khỏi Promise.all
-Gọi `get_user_role` trước, dùng kết quả để quyết định có cần fetch data không. Nếu câu hỏi conversational → skip toàn bộ, gọi AI ngay.
+## Giai phap
 
-### 3. Giảm data fetch triệt để
-- Chỉ fetch **tối đa 1-2 loại data** thay vì 5 loại song song
-- Giảm limit xuống (10 customers, 10 products, 5 quotes/orders/transactions)
-- Bỏ fallback query (line 131-137) - nếu text search không tìm thấy thì không cần context
+### File: `src/pages/OrderManagement.tsx`
 
-### 4. Cắt giảm system prompt
-- Rút gọn instructions xuống 2-3 dòng
-- Giới hạn tổng context tối đa 4000 chars (thay vì 8000)
+Thay doi dong 659: doc `item.description` thay vi `item.material`:
 
-### 5. Thêm max_tokens để AI trả lời ngắn gọn hơn
-Thêm `max_tokens: 500` vào AI request để giới hạn độ dài response, giảm thời gian generate.
+```typescript
+// Truoc:
+{item.material || "-"}
 
-### 6. Thêm timeout cho client
-Trong `KnowledgeChatbot.tsx`, thêm `AbortController` với timeout 30s - nếu quá lâu thì báo lỗi thay vì loading mãi.
+// Sau:
+{item.description || "-"}
+```
 
+Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
+
+Chi thay doi 1 dong, khong anh huong logic nao khac.
