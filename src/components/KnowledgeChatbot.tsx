@@ -310,7 +310,7 @@ export function KnowledgeChatbot() {
                       onClick={() => handleCopy(msg.content, i)}
                     >
                       {copiedIndex === i ? (
-                        <Check className="h-3 w-3 text-green-500" />
+                        <Check className="h-3 w-3 text-primary" />
                       ) : (
                         <Copy className="h-3 w-3 text-muted-foreground" />
                       )}
