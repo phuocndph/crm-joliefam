@@ -169,22 +169,27 @@ serve(async (req) => {
     // --- PRODUCTS ---
     if (wantsProducts || isGeneral) {
       try {
+        // Only include cost_price for managers/admins
+        const selectFields = isManagerOrAdmin
+          ? "name, sku, price, cost_price, category, description, specifications, in_stock"
+          : "name, sku, price, category, description, specifications, in_stock";
+        
         const { data: products, count } = await supabase
           .from("products")
-          .select("name, sku, price, cost_price, category, description, specifications, in_stock", { count: "exact" })
+          .select(selectFields, { count: "exact" })
           .order("updated_at", { ascending: false })
           .limit(wantsProducts ? 50 : 15);
 
         if (products && products.length > 0) {
           liveDataContext += `\n\n🛍️ DỮ LIỆU SẢN PHẨM (${count || products.length} SP, hiển thị ${products.length}):\n`;
           for (const p of products) {
-            let line = `• ${p.sku || "?"} - ${p.name}`;
-            if (p.price) line += ` | Giá: ${Number(p.price).toLocaleString("vi-VN")}đ`;
-            if (p.cost_price) line += ` | Giá vốn: ${Number(p.cost_price).toLocaleString("vi-VN")}đ`;
-            if (p.category) line += ` | DM: ${p.category}`;
-            if (p.specifications) line += ` | QC: ${p.specifications}`;
-            if (p.description) line += ` | Mô tả: ${p.description.substring(0, 100)}`;
-            line += ` | ${p.in_stock ? "Còn hàng" : "Hết hàng"}`;
+            let line = `• ${(p as any).sku || "?"} - ${(p as any).name}`;
+            if ((p as any).price) line += ` | Giá: ${Number((p as any).price).toLocaleString("vi-VN")}đ`;
+            if (isManagerOrAdmin && (p as any).cost_price) line += ` | Giá vốn: ${Number((p as any).cost_price).toLocaleString("vi-VN")}đ`;
+            if ((p as any).category) line += ` | DM: ${(p as any).category}`;
+            if ((p as any).specifications) line += ` | QC: ${(p as any).specifications}`;
+            if ((p as any).description) line += ` | Mô tả: ${((p as any).description as string).substring(0, 100)}`;
+            line += ` | ${(p as any).in_stock ? "Còn hàng" : "Hết hàng"}`;
             liveDataContext += line + "\n";
           }
         }
