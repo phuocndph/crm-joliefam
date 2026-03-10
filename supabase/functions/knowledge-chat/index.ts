@@ -8,36 +8,29 @@ const corsHeaders = {
 };
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash-lite";
+const MODEL = "google/gemini-3-flash-preview";
 
 // Parse Vietnamese date patterns from question
 function parseDateRange(question: string): { start: string; end: string } | null {
   const q = question.toLowerCase().trim();
   const currentYear = new Date().getFullYear();
 
-  // Pattern: "từ dd/mm/yyyy đến dd/mm/yyyy" or "dd/mm/yyyy đến dd/mm/yyyy"
   const rangeMatch = q.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s*(?:đến|tới|-)\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
   if (rangeMatch) {
     const [, d1, m1, y1, d2, m2, y2] = rangeMatch;
     const year1 = y1 ? parseInt(y1) : (y2 ? parseInt(y2) : currentYear);
     const year2 = y2 ? parseInt(y2) : year1;
-    const start = `${year1}-${m1.padStart(2, "0")}-${d1.padStart(2, "0")}`;
-    const end = `${year2}-${m2.padStart(2, "0")}-${d2.padStart(2, "0")}`;
-    return { start, end };
+    return { start: `${year1}-${m1.padStart(2, "0")}-${d1.padStart(2, "0")}`, end: `${year2}-${m2.padStart(2, "0")}-${d2.padStart(2, "0")}` };
   }
 
-  // Pattern: "tháng X/yyyy" or "tháng X năm yyyy" or "tháng X"
   const monthMatch = q.match(/tháng\s+(\d{1,2})(?:\s*[\/\-]\s*|\s+năm\s+)?(\d{4})?/);
   if (monthMatch) {
     const month = parseInt(monthMatch[1]);
     const year = monthMatch[2] ? parseInt(monthMatch[2]) : currentYear;
-    const start = `${year}-${String(month).padStart(2, "0")}-01`;
     const lastDay = new Date(year, month, 0).getDate();
-    const end = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
-    return { start, end };
+    return { start: `${year}-${String(month).padStart(2, "0")}-01`, end: `${year}-${String(month).padStart(2, "0")}-${lastDay}` };
   }
 
-  // Pattern: "ngày dd/mm" or "ngày dd/mm/yyyy"
   const dayMatch = q.match(/ngày\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
   if (dayMatch) {
     const [, d, m, y] = dayMatch;
@@ -58,8 +51,7 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Missing authorization" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -72,19 +64,10 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const { question, chatHistory, stream: useStream } = await req.json();
     if (!question) {
       return new Response(JSON.stringify({ error: "Question is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -99,15 +82,26 @@ serve(async (req) => {
       ];
       if (chatHistory?.length) {
         for (const m of chatHistory.slice(-2)) {
-          msgs.push({ role: m.role, content: (m.content as string).substring(0, 200) });
+          msgs.push({ role: m.role, content: (m.content as string).substring(0, 150) });
         }
       }
       msgs.push({ role: "user", content: question });
-
-      return await callAI(LOVABLE_API_KEY, msgs, [], useStream, corsHeaders);
+      return await callAI(LOVABLE_API_KEY, msgs, [], useStream, corsHeaders, true);
     }
 
-    // Get role first (lightweight query)
+    // Auth + role check in parallel with parsing
+    const [{ data: { user }, error: authError }, bodyParsed] = await Promise.all([
+      supabase.auth.getUser(),
+      Promise.resolve({ dateRange: parseDateRange(question) }),
+    ]);
+
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Role check
     const { data: roleData } = await supabase.rpc("get_user_role", { _user_id: user.id });
     const role = (roleData as string) || "employee";
     const isManagerOrAdmin = role === "admin" || role === "manager";
@@ -115,12 +109,10 @@ serve(async (req) => {
     // Check profit restriction
     const wantsProfitData = /lợi nhuận|profit|lãi|margin|giá vốn|cost.?price|chi phí|biên lợi|lời|lỗ/i.test(lowerQ);
     if (wantsProfitData && !isManagerOrAdmin) {
-      const blockedMsg = "Xin lỗi, thông tin về lợi nhuận và giá vốn chỉ dành cho tài khoản quản lý.";
-      return sendBlockedResponse(blockedMsg, useStream, corsHeaders);
+      return sendBlockedResponse("Xin lỗi, thông tin về lợi nhuận và giá vốn chỉ dành cho tài khoản quản lý.", useStream, corsHeaders);
     }
 
-    // Parse date range from question
-    const dateRange = parseDateRange(question);
+    const dateRange = bodyParsed.dateRange;
 
     // Detect intent
     const wantsCustomers = /khách|customer|chăm sóc|liên hệ|phone|email|mã kh/i.test(lowerQ);
@@ -129,23 +121,22 @@ serve(async (req) => {
     const wantsOrders = /đơn hàng|order|đơn|giao hàng|delivery/i.test(lowerQ);
     const wantsTransactions = /giao dịch|transaction|thanh toán|thu|chi|doanh thu|tài chính|revenue/i.test(lowerQ);
     const wantsRevenueSummary = /doanh thu|revenue|tổng thu|tổng chi|thu chi|báo cáo tài|tổng kết/i.test(lowerQ);
+    const wantsData = wantsCustomers || wantsProducts || wantsQuotes || wantsOrders || wantsTransactions || wantsRevenueSummary;
 
-    // Parallel fetch - only what's needed
+    // Skip knowledge docs for pure data queries (saves 200-500ms)
+    const skipDocs = wantsData && (!!dateRange || wantsTransactions || wantsOrders || wantsRevenueSummary);
+
     const searchTerms = question.replace(/[^\w\sÀ-ỹ]/g, "").trim();
     const empty = Promise.resolve({ data: null, count: 0 });
 
-    // Skip knowledge docs search for data-specific queries with dates
-    const skipDocs = !!dateRange && (wantsTransactions || wantsOrders);
-
+    // Parallel fetch - knowledge docs + data
     const [docsResult, dataResult] = await Promise.all([
-      // Knowledge docs
       skipDocs ? empty : supabase
         .from("knowledge_documents")
         .select("id, title, content, document_type, faq_answer")
         .textSearch("search_vector", searchTerms, { type: "plain" })
         .limit(3),
 
-      // Fetch the PRIMARY data type needed with date filtering
       wantsTransactions || wantsRevenueSummary
         ? (() => {
             let q = supabase.from("transactions").select("type, amount, description, date", { count: "exact" });
@@ -204,33 +195,19 @@ serve(async (req) => {
       const total = (dataResult as any).count || rows.length;
 
       if ((wantsTransactions || wantsRevenueSummary) && rows.length > 0) {
-        // Aggregate transactions server-side
-        let totalIncome = 0;
-        let totalExpense = 0;
-        let incomeCount = 0;
-        let expenseCount = 0;
+        let totalIncome = 0, totalExpense = 0, incomeCount = 0, expenseCount = 0;
         for (const t of rows) {
-          if (t.type === "income") {
-            totalIncome += Number(t.amount || 0);
-            incomeCount++;
-          } else {
-            totalExpense += Number(t.amount || 0);
-            expenseCount++;
-          }
+          if (t.type === "income") { totalIncome += Number(t.amount || 0); incomeCount++; }
+          else { totalExpense += Number(t.amount || 0); expenseCount++; }
         }
-        const net = totalIncome - totalExpense;
         const fmt = (n: number) => n.toLocaleString("vi-VN");
-
         dataCtx = `\nTỔNG HỢP GIAO DỊCH${dateLabel} (${total} giao dịch):`;
         dataCtx += `\n- Tổng thu: ${fmt(totalIncome)}đ (${incomeCount} giao dịch)`;
         dataCtx += `\n- Tổng chi: ${fmt(totalExpense)}đ (${expenseCount} giao dịch)`;
-        dataCtx += `\n- Chênh lệch (thu - chi): ${fmt(net)}đ`;
-
-        // Also show top 5 recent items for detail
+        dataCtx += `\n- Chênh lệch: ${fmt(totalIncome - totalExpense)}đ`;
         if (rows.length > 0) {
-          const topRows = rows.slice(0, 5);
           dataCtx += "\nChi tiết gần nhất:";
-          for (const t of topRows) {
+          for (const t of rows.slice(0, 5)) {
             dataCtx += `\n  ${t.type === "income" ? "Thu" : "Chi"} ${fmt(Number(t.amount || 0))}đ ${t.description || ""}`;
           }
         }
@@ -243,26 +220,15 @@ serve(async (req) => {
           `${p.sku || "?"} ${p.name} ${p.price ? Number(p.price).toLocaleString("vi-VN") + "đ" : ""} ${p.category || ""} ${p.in_stock ? "✓" : "✗"}`
         ).join("\n");
       } else if (wantsOrders) {
-        // Aggregate orders if date range
         if (dateRange) {
           let totalAmount = 0;
           const statusCount: Record<string, number> = {};
-          for (const o of rows) {
-            totalAmount += Number(o.total_amount || 0);
-            const s = o.status || "unknown";
-            statusCount[s] = (statusCount[s] || 0) + 1;
-          }
+          for (const o of rows) { totalAmount += Number(o.total_amount || 0); const s = o.status || "unknown"; statusCount[s] = (statusCount[s] || 0) + 1; }
           dataCtx = `\nTỔNG HỢP ĐƠN HÀNG${dateLabel} (${total} đơn):`;
           dataCtx += `\n- Tổng giá trị: ${totalAmount.toLocaleString("vi-VN")}đ`;
-          for (const [status, count] of Object.entries(statusCount)) {
-            dataCtx += `\n- ${status}: ${count} đơn`;
-          }
-          // Show top 5
-          const topOrders = rows.slice(0, 5);
+          for (const [status, count] of Object.entries(statusCount)) dataCtx += `\n- ${status}: ${count} đơn`;
           dataCtx += "\nChi tiết:";
-          for (const o of topOrders) {
-            dataCtx += `\n  ${o.display_order_number || o.order_number} ${o.status} ${Number(o.total_amount || 0).toLocaleString("vi-VN")}đ TT:${o.payment_status || "?"}`;
-          }
+          for (const o of rows.slice(0, 5)) dataCtx += `\n  ${o.display_order_number || o.order_number} ${o.status} ${Number(o.total_amount || 0).toLocaleString("vi-VN")}đ TT:${o.payment_status || "?"}`;
         } else {
           dataCtx = `\nĐƠN HÀNG (${total}):\n` + rows.map((o: any) =>
             `${o.display_order_number || o.order_number} ${o.status} ${Number(o.total_amount || 0).toLocaleString("vi-VN")}đ TT:${o.payment_status || "?"}`
@@ -278,22 +244,23 @@ serve(async (req) => {
     }
 
     const profitNote = isManagerOrAdmin ? "" : " Không tiết lộ giá vốn/lợi nhuận.";
-    const systemPrompt = `Trợ lý AI CRM (${isManagerOrAdmin ? "Quản lý" : "NV"}).${profitNote} Trả lời tiếng Việt, ngắn gọn, chính xác. Dữ liệu đã được tổng hợp sẵn - trả lời dựa trên dữ liệu được cung cấp, không đoán.${knowledgeCtx ? "\n\nTài liệu:" + knowledgeCtx : ""}${dataCtx ? "\n\n" + dataCtx : ""}`;
+    const systemPrompt = `Trợ lý AI CRM (${isManagerOrAdmin ? "QL" : "NV"}).${profitNote} Trả lời tiếng Việt, ngắn gọn, chính xác. Dữ liệu đã tổng hợp sẵn - trả lời dựa trên dữ liệu, không đoán.${knowledgeCtx ? "\n\nTài liệu:" + knowledgeCtx : ""}${dataCtx ? "\n\n" + dataCtx : ""}`;
 
     console.log(`ctx: kb=${knowledgeCtx.length} data=${dataCtx.length} total=${systemPrompt.length} dateRange=${JSON.stringify(dateRange)}`);
 
     const messages: any[] = [{ role: "system", content: systemPrompt }];
+    // Only send last 2 messages of history (reduced from 4), trimmed to 150 chars
     if (chatHistory?.length) {
-      for (const msg of chatHistory.slice(-4)) {
+      for (const msg of chatHistory.slice(-2)) {
         messages.push({
           role: msg.role,
-          content: (msg.content as string).length > 300 ? (msg.content as string).substring(0, 300) + "..." : msg.content,
+          content: (msg.content as string).length > 150 ? (msg.content as string).substring(0, 150) + "..." : msg.content,
         });
       }
     }
     messages.push({ role: "user", content: question });
 
-    return await callAI(LOVABLE_API_KEY, messages, sources, useStream, corsHeaders);
+    return await callAI(LOVABLE_API_KEY, messages, sources, useStream, corsHeaders, wantsData);
 
   } catch (error) {
     console.error("knowledge-chat error:", error);
@@ -304,11 +271,17 @@ serve(async (req) => {
   }
 });
 
-async function callAI(apiKey: string, messages: any[], sources: any[], useStream: boolean, cors: Record<string, string>) {
+async function callAI(apiKey: string, messages: any[], sources: any[], useStream: boolean, cors: Record<string, string>, isDataQuery = false) {
   const response = await fetch(AI_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: MODEL, messages, stream: !!useStream, max_tokens: 500 }),
+    body: JSON.stringify({
+      model: MODEL,
+      messages,
+      stream: !!useStream,
+      max_tokens: isDataQuery ? 400 : 500,
+      temperature: 0,
+    }),
   });
 
   if (!response.ok) {
