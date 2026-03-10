@@ -51,13 +51,25 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     });
   }, []);
 
-  // Refetch template settings when dialog opens
+  // Refetch template settings when dialog opens, reset state when closes
   useEffect(() => {
     if (open) {
       refetchTemplateSettings();
-      setLogoError(false); // Reset logo error state when dialog opens
+      setLogoError(false);
+    } else {
+      // Reset all internal states when dialog closes to prevent overlay conflicts
+      setShowSupplement(false);
+      setShowTemplateSettings(false);
+      setShowQuoteSupplementDialog(false);
     }
   }, [open, refetchTemplateSettings]);
+
+  // Safety cleanup: ensure pointer-events are restored when dialog unmounts or closes
+  useEffect(() => {
+    return () => {
+      document.body.style.pointerEvents = '';
+    };
+  }, []);
 
   if (!quote) return null;
 
