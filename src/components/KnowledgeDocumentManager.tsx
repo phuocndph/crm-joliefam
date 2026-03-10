@@ -423,12 +423,16 @@ export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocument
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setPreviewDoc(doc)}>
                       <Eye className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(doc)}>
-                      <Edit className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDelete(doc)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    {canDelete && (
+                      <>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(doc)}>
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDelete(doc)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </Card>
               );

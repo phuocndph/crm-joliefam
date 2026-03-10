@@ -62,12 +62,10 @@ const KnowledgeBase = () => {
         <h1 className="text-xl md:text-2xl font-bold">Kho Kiến Thức</h1>
       </div>
 
-      <div className={`grid gap-4 h-[calc(100vh-180px)] ${isManager ? "md:grid-cols-[400px_1fr]" : ""}`}>
-        {isManager && (
-          <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
-            <KnowledgeDocumentManager />
-          </div>
-        )}
+      <div className="grid gap-4 h-[calc(100vh-180px)] md:grid-cols-[400px_1fr]">
+        <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
+          <KnowledgeDocumentManager canDelete={isManager} />
+        </div>
         <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
           <KnowledgeChatbot />
         </div>
