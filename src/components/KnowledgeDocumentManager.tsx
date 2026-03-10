@@ -41,7 +41,11 @@ interface KnowledgeDocument {
   created_at: string;
 }
 
-export function KnowledgeDocumentManager() {
+interface KnowledgeDocumentManagerProps {
+  canDelete?: boolean;
+}
+
+export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocumentManagerProps) {
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
