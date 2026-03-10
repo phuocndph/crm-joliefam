@@ -1009,7 +1009,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+    <Dialog open={open} onOpenChange={(val) => {
+      onOpenChange(val);
+      if (!val) {
+        document.body.style.pointerEvents = '';
+      }
+    }}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader className="flex-shrink-0 pb-4 border-b">
           <DialogTitle className="text-xl font-semibold text-primary">
