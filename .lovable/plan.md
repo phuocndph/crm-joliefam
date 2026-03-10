@@ -1,25 +1,29 @@
 
 
-# Phân quyền Kho Kiến Thức - Nhân viên chỉ được thêm, không được xóa tài liệu
+# Hien thi chat lieu tu bao gia trong chi tiet don hang
 
-## Vấn đề hiện tại
+## Nguyen nhan
 
-1. `KnowledgeBase.tsx` chỉ hiển thị panel quản lý tài liệu cho admin/manager (`isManager`). Nhân viên chỉ thấy chatbot.
-2. `KnowledgeDocumentManager.tsx` không có khái niệm role - ai vào cũng thấy nút Xóa, Sửa.
+Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
 
-## Thay đổi
+Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
 
-### File 1: `src/components/KnowledgeDocumentManager.tsx`
-- Thêm prop `canDelete?: boolean` (mặc định `true`)
-- Khi `canDelete = false`: ẩn nút Xóa (Trash2) và nút Sửa (Edit) trên mỗi tài liệu
-- Nhân viên vẫn thấy đầy đủ: upload file, thêm text, thêm FAQ, xem preview
+Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
 
-### File 2: `src/pages/KnowledgeBase.tsx`
-- Hiển thị panel tài liệu cho cả nhân viên (không chỉ manager)
-- Truyền `canDelete={isManager}` vào `KnowledgeDocumentManager`
-- Desktop: nhân viên cũng thấy layout 2 cột (tài liệu + chatbot)
-- Mobile: nhân viên cũng thấy tabs Chat AI / Tài liệu (giống manager)
+## Giai phap
 
-### Không cần thay đổi database
-RLS trên `knowledge_documents` đã cho phép authenticated users full access. Việc ẩn nút xóa ở UI là đủ cho yêu cầu này. Nếu cần thắt chặt thêm ở DB level (chỉ manager mới xóa được), sẽ cần thêm RLS policy riêng.
+### File: `src/pages/OrderManagement.tsx`
 
+Thay doi dong 659: doc `item.description` thay vi `item.material`:
+
+```typescript
+// Truoc:
+{item.material || "-"}
+
+// Sau:
+{item.description || "-"}
+```
+
+Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
+
+Chi thay doi 1 dong, khong anh huong logic nao khac.

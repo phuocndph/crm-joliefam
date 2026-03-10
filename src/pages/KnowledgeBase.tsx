@@ -26,22 +26,8 @@ const KnowledgeBase = () => {
 
   const isManager = role === "admin" || role === "manager";
 
-  // Mobile: use tabs for manager, full chatbot for employee
+  // Mobile: always show tabs (Chat AI / Tài liệu)
   if (isMobile) {
-    if (!isManager) {
-      return (
-        <div className="h-[calc(100vh-64px)] flex flex-col">
-          <div className="flex items-center gap-2 p-3 border-b">
-            <BookOpen className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-bold">Kho Kiến Thức</h1>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <KnowledgeChatbot />
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="h-[calc(100vh-64px)] flex flex-col">
         <div className="flex items-center gap-2 p-3 border-b">
@@ -61,7 +47,7 @@ const KnowledgeBase = () => {
             <KnowledgeChatbot />
           </TabsContent>
           <TabsContent value="docs" className="flex-1 overflow-hidden m-0 border-t">
-            <KnowledgeDocumentManager />
+            <KnowledgeDocumentManager canDelete={isManager} />
           </TabsContent>
         </Tabs>
       </div>
@@ -76,12 +62,10 @@ const KnowledgeBase = () => {
         <h1 className="text-xl md:text-2xl font-bold">Kho Kiến Thức</h1>
       </div>
 
-      <div className={`grid gap-4 h-[calc(100vh-180px)] ${isManager ? "md:grid-cols-[400px_1fr]" : ""}`}>
-        {isManager && (
-          <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
-            <KnowledgeDocumentManager />
-          </div>
-        )}
+      <div className="grid gap-4 h-[calc(100vh-180px)] md:grid-cols-[400px_1fr]">
+        <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
+          <KnowledgeDocumentManager canDelete={isManager} />
+        </div>
         <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
           <KnowledgeChatbot />
         </div>
