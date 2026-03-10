@@ -653,6 +653,9 @@ export default function QuotesPage() {
       {/* Edit Quote Dialog */}
       <Dialog open={!!editingQuote} onOpenChange={(open) => !open && setEditingQuote(null)}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Chỉnh sửa báo giá</DialogTitle>
+          </DialogHeader>
           <CreateQuoteForm 
             onClose={() => setEditingQuote(null)}
             onSubmit={handleEditQuote}
