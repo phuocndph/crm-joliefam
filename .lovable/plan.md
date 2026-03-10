@@ -1,29 +1,34 @@
 
 
-# Hien thi chat lieu tu bao gia trong chi tiet don hang
+# Tối ưu tốc độ phản hồi Chatbot AI
 
-## Nguyen nhan
+## Phân tích bottleneck hiện tại
 
-Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
+1. **Model**: đang dùng `gemini-2.5-flash-lite` - nhanh nhưng `gemini-3-flash-preview` mới hơn và được khuyến nghị
+2. **Tuần tự không cần thiết**: `getUser()` → `get_user_role()` → data fetch. Role check có thể chạy song song với data fetch
+3. **Knowledge docs search chạy luôn** kể cả khi câu hỏi rõ ràng là về dữ liệu (khách hàng, đơn hàng...)
+4. **Chat history gửi quá nhiều**: 4 tin nhắn x 300 ký tự = thêm ~1200 token vào prompt
+5. **Thiếu `temperature: 0`**: model mất thêm thời gian sampling
 
-Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
+## Thay đổi
 
-Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
+### File: `supabase/functions/knowledge-chat/index.ts`
 
-## Giai phap
+1. **Đổi model sang `google/gemini-3-flash-preview`** - model mới nhất, nhanh hơn
 
-### File: `src/pages/OrderManagement.tsx`
+2. **Song song hóa auth + role**: Gộp `getUser()` và `get_user_role()` thành 1 bước, sau đó chạy song song knowledge docs + data fetch
 
-Thay doi dong 659: doc `item.description` thay vi `item.material`:
+3. **Skip knowledge docs search cho câu hỏi dữ liệu thuần**: Khi detect rõ intent (doanh thu, đơn hàng, khách hàng...) → không cần search tài liệu, tiết kiệm 200-500ms
 
-```typescript
-// Truoc:
-{item.material || "-"}
+4. **Giảm chat history xuống 2 tin nhắn** (từ 4), cắt content xuống 150 ký tự (từ 300)
 
-// Sau:
-{item.description || "-"}
-```
+5. **Thêm `temperature: 0`** để model trả lời nhanh hơn, không cần sampling
 
-Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
+6. **Giảm `max_tokens` xuống 400** cho câu hỏi dữ liệu (vốn chỉ cần trả lời ngắn)
 
-Chi thay doi 1 dong, khong anh huong logic nao khac.
+### File: `src/components/KnowledgeChatbot.tsx`
+
+7. **Giảm chat history gửi lên từ 4 xuống 2 tin nhắn** - giảm payload size
+
+Ước tính cải thiện: giảm ~30-50% thời gian phản hồi (từ 5-8s xuống 2-4s).
+
