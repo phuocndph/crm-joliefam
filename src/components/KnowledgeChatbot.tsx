@@ -110,7 +110,7 @@ export function KnowledgeChatbot() {
         },
         body: JSON.stringify({
           question: text,
-          chatHistory: messages.slice(-4),
+          chatHistory: messages.slice(-2),
           stream: true,
         }),
         signal: controller.signal,
