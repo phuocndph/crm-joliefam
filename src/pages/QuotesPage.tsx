@@ -640,6 +640,9 @@ export default function QuotesPage() {
       {/* Create Quote Dialog */}
       <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Tạo báo giá mới</DialogTitle>
+          </DialogHeader>
           <CreateQuoteForm 
             onClose={() => setShowCreateForm(false)}
             onSubmit={handleCreateQuote}
@@ -650,6 +653,9 @@ export default function QuotesPage() {
       {/* Edit Quote Dialog */}
       <Dialog open={!!editingQuote} onOpenChange={(open) => !open && setEditingQuote(null)}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Chỉnh sửa báo giá</DialogTitle>
+          </DialogHeader>
           <CreateQuoteForm 
             onClose={() => setEditingQuote(null)}
             onSubmit={handleEditQuote}

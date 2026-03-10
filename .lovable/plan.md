@@ -1,37 +1,29 @@
 
 
-# Fix: UI bị đơ sau khi đóng dialog xem báo giá
+# Hien thi chat lieu tu bao gia trong chi tiet don hang
 
-## Nguyên nhân gốc
+## Nguyen nhan
 
-`QuotePreviewDialog.tsx` chứa một **Dialog lồng bên trong Dialog** (dòng 1244-1250): `QuoteSupplementDialog` được render **bên trong** thẻ `<Dialog>` chính. Khi dialog cha đóng, Radix UI không cleanup đúng `pointer-events: none` trên `document.body`, khiến toàn bộ trang không click được.
+Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
 
-Ngoài ra, khi dialog đóng, các state nội bộ (`showQuoteSupplementDialog`, `showTemplateSettings`) không được reset → có thể gây xung đột overlay.
+Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
 
-## Thay đổi
+Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
 
-### File: `src/components/QuotePreviewDialog.tsx`
+## Giai phap
 
-1. **Di chuyển QuoteSupplementDialog ra ngoài thẻ `<Dialog>` chính** - render nó ở cùng cấp (sibling), không phải con (child) của Dialog. Thay đổi từ:
-```
-<Dialog>
-  <DialogContent>...</DialogContent>
-  <QuoteSupplementDialog ... />  ← BÊN TRONG
-</Dialog>
-```
-thành:
-```
-<Dialog>
-  <DialogContent>...</DialogContent>
-</Dialog>
-<QuoteSupplementDialog ... />  ← BÊN NGOÀI
+### File: `src/pages/OrderManagement.tsx`
+
+Thay doi dong 659: doc `item.description` thay vi `item.material`:
+
+```typescript
+// Truoc:
+{item.material || "-"}
+
+// Sau:
+{item.description || "-"}
 ```
 
-2. **Reset tất cả state nội bộ khi dialog đóng**: Thêm `useEffect` theo dõi `open`, khi `open = false` thì reset `showQuoteSupplementDialog`, `showTemplateSettings` về `false`.
+Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
 
-3. **Thêm safety cleanup**: Trong `onOpenChange` callback, đảm bảo xóa `pointer-events: none` khỏi `document.body` khi đóng.
-
-### File: `src/pages/QuotesPage.tsx`
-
-4. **Thêm `DialogTitle` cho Create/Edit Quote dialogs** (dòng 641-658) để fix console error accessibility warning.
-
+Chi thay doi 1 dong, khong anh huong logic nao khac.

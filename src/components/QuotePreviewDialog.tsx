@@ -51,13 +51,25 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     });
   }, []);
 
-  // Refetch template settings when dialog opens
+  // Refetch template settings when dialog opens, reset state when closes
   useEffect(() => {
     if (open) {
       refetchTemplateSettings();
-      setLogoError(false); // Reset logo error state when dialog opens
+      setLogoError(false);
+    } else {
+      // Reset all internal states when dialog closes to prevent overlay conflicts
+      setShowSupplement(false);
+      setShowTemplateSettings(false);
+      setShowQuoteSupplementDialog(false);
     }
   }, [open, refetchTemplateSettings]);
+
+  // Safety cleanup: ensure pointer-events are restored when dialog unmounts or closes
+  useEffect(() => {
+    return () => {
+      document.body.style.pointerEvents = '';
+    };
+  }, []);
 
   if (!quote) return null;
 
@@ -997,7 +1009,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+    <Dialog open={open} onOpenChange={(val) => {
+      onOpenChange(val);
+      if (!val) {
+        document.body.style.pointerEvents = '';
+      }
+    }}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader className="flex-shrink-0 pb-4 border-b">
           <DialogTitle className="text-xl font-semibold text-primary">
@@ -1239,15 +1257,20 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           </div>
         </div>
       </DialogContent>
-
-      {/* Dialogs */}
-      {showQuoteSupplementDialog && (
-        <QuoteSupplementDialog
-          open={showQuoteSupplementDialog}
-          onOpenChange={setShowQuoteSupplementDialog}
-          quote={quote}
-        />
-      )}
     </Dialog>
+
+    {/* QuoteSupplementDialog rendered OUTSIDE parent Dialog to prevent nested dialog issues */}
+    <QuoteSupplementDialog
+      open={showQuoteSupplementDialog}
+      onOpenChange={(val) => {
+        setShowQuoteSupplementDialog(val);
+        if (!val) {
+          // Ensure pointer-events are restored after closing nested dialog
+          document.body.style.pointerEvents = '';
+        }
+      }}
+      quote={quote}
+    />
+    </>
   );
 }
