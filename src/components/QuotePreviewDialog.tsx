@@ -1251,15 +1251,20 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
           </div>
         </div>
       </DialogContent>
-
-      {/* Dialogs */}
-      {showQuoteSupplementDialog && (
-        <QuoteSupplementDialog
-          open={showQuoteSupplementDialog}
-          onOpenChange={setShowQuoteSupplementDialog}
-          quote={quote}
-        />
-      )}
     </Dialog>
+
+    {/* QuoteSupplementDialog rendered OUTSIDE parent Dialog to prevent nested dialog issues */}
+    <QuoteSupplementDialog
+      open={showQuoteSupplementDialog}
+      onOpenChange={(val) => {
+        setShowQuoteSupplementDialog(val);
+        if (!val) {
+          // Ensure pointer-events are restored after closing nested dialog
+          document.body.style.pointerEvents = '';
+        }
+      }}
+      quote={quote}
+    />
+    </>
   );
 }
