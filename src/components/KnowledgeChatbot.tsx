@@ -23,6 +23,22 @@ const SUGGESTED_QUESTIONS = [
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+/** Parse one SSE line → content string or null */
+function parseSSELine(line: string): { content?: string; sources?: any[]; done?: boolean } | null {
+  if (!line.startsWith("data: ")) return null;
+  const json = line.slice(6).trim();
+  if (json === "[DONE]") return { done: true };
+  try {
+    const parsed = JSON.parse(json);
+    if (parsed.sources) return { sources: parsed.sources };
+    const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+    if (content) return { content };
+    return null;
+  } catch {
+    return null; // incomplete JSON, skip
+  }
+}
+
 export function KnowledgeChatbot() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -30,38 +46,43 @@ export function KnowledgeChatbot() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Load chat history on mount
   useEffect(() => {
-    const loadHistory = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { setHistoryLoaded(true); return; }
 
-      const { data } = await supabase
-        .from("knowledge_chat_history")
-        .select("question, answer, sources")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(5);
+        const { data } = await supabase
+          .from("knowledge_chat_history")
+          .select("question, answer, sources")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(5);
 
-      if (data && data.length > 0) {
-        const history: ChatMessage[] = [];
-        for (const item of data.reverse()) {
-          history.push({ role: "user", content: item.question });
-          history.push({
-            role: "assistant",
-            content: item.answer,
-            sources: (item.sources as any[]) || undefined,
-          });
+        if (data && data.length > 0) {
+          const history: ChatMessage[] = [];
+          for (const item of data.reverse()) {
+            history.push({ role: "user", content: item.question });
+            history.push({
+              role: "assistant",
+              content: item.answer,
+              sources: (item.sources as any[]) || undefined,
+            });
+          }
+          setMessages(history);
         }
-        setMessages(history);
+      } catch (e) {
+        console.error("Failed to load chat history:", e);
       }
       setHistoryLoaded(true);
-    };
-    loadHistory();
+    })();
   }, []);
 
   const handleCopy = async (content: string, index: number) => {
@@ -73,8 +94,10 @@ export function KnowledgeChatbot() {
 
   const saveChatHistory = useCallback(async (question: string, answer: string, sources: any[]) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
       await supabase.from("knowledge_chat_history").insert({
-        user_id: (await supabase.auth.getUser()).data.user?.id,
+        user_id: user.id,
         question,
         answer,
         sources: sources.length > 0 ? sources : null,
@@ -88,19 +111,19 @@ export function KnowledgeChatbot() {
     const text = (question || input).trim();
     if (!text || isLoading) return;
 
-    setInput("");
-    const userMsg: ChatMessage = { role: "user", content: text };
-    setMessages((prev) => [...prev, userMsg]);
-    setIsLoading(true);
-
+    // Cancel previous request if any
+    abortRef.current?.abort();
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
-    let streamTimeout: ReturnType<typeof setTimeout> | null = null;
+    abortRef.current = controller;
+
+    setInput("");
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setIsLoading(true);
 
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      if (!token) throw new Error("Not authenticated");
+      if (!token) throw new Error("Chưa đăng nhập");
 
       const resp = await fetch(`${SUPABASE_URL}/functions/v1/knowledge-chat`, {
         method: "POST",
@@ -119,135 +142,119 @@ export function KnowledgeChatbot() {
 
       if (!resp.ok) {
         const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || `Error ${resp.status}`);
+        throw new Error(errData.error || `Lỗi server (${resp.status})`);
       }
 
-      if (!resp.body) throw new Error("No response body");
+      if (!resp.body) throw new Error("Không nhận được phản hồi");
 
+      // Stream processing
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
-      let textBuffer = "";
-      let assistantSoFar = "";
+      let buffer = "";
+      let assistantText = "";
       let streamSources: any[] = [];
-      let streamDone = false;
-      let isFirstSourceEvent = true;
-      let receivedAnyData = false;
+      let gotFirstData = false;
 
-      // 15s timeout if no data arrives at all
-      streamTimeout = setTimeout(() => {
-        if (!receivedAnyData) {
-          controller.abort();
-        }
-      }, 15000);
+      // 20s timeout for first data
+      const firstDataTimeout = setTimeout(() => {
+        if (!gotFirstData) controller.abort();
+      }, 20000);
 
-      while (!streamDone) {
+      const updateAssistant = (text: string, sources?: any[]) => {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant") {
+            return prev.map((m, i) =>
+              i === prev.length - 1
+                ? { ...m, content: text, sources: sources?.length ? sources : m.sources }
+                : m
+            );
+          }
+          return [...prev, { role: "assistant", content: text, sources: sources?.length ? sources : undefined }];
+        });
+      };
+
+      // Read stream
+      while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        receivedAnyData = true;
-        if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null; }
-        textBuffer += decoder.decode(value, { stream: true });
-        let newlineIndex: number;
-        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
-          let line = textBuffer.slice(0, newlineIndex);
-          textBuffer = textBuffer.slice(newlineIndex + 1);
 
+        if (!gotFirstData) {
+          gotFirstData = true;
+          clearTimeout(firstDataTimeout);
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete lines
+        let nlIdx: number;
+        while ((nlIdx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, nlIdx);
+          buffer = buffer.slice(nlIdx + 1);
           if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
+          if (!line || line.startsWith(":")) continue;
 
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") {
-            streamDone = true;
-            break;
+          const result = parseSSELine(line);
+          if (!result) continue;
+          if (result.done) break;
+          if (result.sources) {
+            streamSources = result.sources;
+            continue;
           }
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-
-            // First event is sources
-            if (isFirstSourceEvent && parsed.sources) {
-              streamSources = parsed.sources;
-              isFirstSourceEvent = false;
-              continue;
-            }
-            isFirstSourceEvent = false;
-
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              assistantSoFar += content;
-              setMessages((prev) => {
-                const last = prev[prev.length - 1];
-                if (last?.role === "assistant") {
-                  return prev.map((m, i) =>
-                    i === prev.length - 1 ? { ...m, content: assistantSoFar, sources: streamSources.length > 0 ? streamSources : undefined } : m
-                  );
-                }
-                return [...prev, { role: "assistant", content: assistantSoFar, sources: streamSources.length > 0 ? streamSources : undefined }];
-              });
-            }
-          } catch {
-            textBuffer = line + "\n" + textBuffer;
-            break;
+          if (result.content) {
+            assistantText += result.content;
+            updateAssistant(assistantText, streamSources);
           }
         }
       }
 
-      // Final flush
-      if (textBuffer.trim()) {
-        for (let raw of textBuffer.split("\n")) {
-          if (!raw) continue;
-          if (raw.endsWith("\r")) raw = raw.slice(0, -1);
-          if (raw.startsWith(":") || raw.trim() === "") continue;
-          if (!raw.startsWith("data: ")) continue;
-          const jsonStr = raw.slice(6).trim();
-          if (jsonStr === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              assistantSoFar += content;
-              setMessages((prev) => {
-                const last = prev[prev.length - 1];
-                if (last?.role === "assistant") {
-                  return prev.map((m, i) =>
-                    i === prev.length - 1 ? { ...m, content: assistantSoFar } : m
-                  );
-                }
-                return [...prev, { role: "assistant", content: assistantSoFar }];
-              });
-            }
-          } catch { /* ignore */ }
+      // Flush remaining buffer
+      if (buffer.trim()) {
+        for (const line of buffer.split("\n")) {
+          const trimmed = line.replace(/\r$/, "");
+          if (!trimmed || trimmed.startsWith(":")) continue;
+          const result = parseSSELine(trimmed);
+          if (result?.content) {
+            assistantText += result.content;
+            updateAssistant(assistantText, streamSources);
+          }
         }
       }
 
-      // Save history after stream completes
-      if (assistantSoFar) {
-        saveChatHistory(text, assistantSoFar, streamSources);
+      clearTimeout(firstDataTimeout);
+
+      // Show error if no content received
+      if (!assistantText) {
+        updateAssistant("Xin lỗi, không nhận được phản hồi. Vui lòng thử lại.");
+      } else {
+        // Save to history
+        saveChatHistory(text, assistantText, streamSources);
       }
+
     } catch (err: any) {
       if (err.name === "AbortError") {
         toast.error("Phản hồi quá lâu. Vui lòng thử lại.");
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "Phản hồi quá lâu (>30s). Vui lòng thử câu hỏi ngắn hơn." },
+          { role: "assistant", content: "⏱️ Phản hồi quá lâu. Vui lòng thử câu hỏi ngắn hơn." },
         ]);
       } else {
         console.error("Chat error:", err);
-        toast.error(err.message || "Không thể gửi câu hỏi. Vui lòng thử lại.");
+        toast.error(err.message || "Lỗi kết nối");
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "Đã xảy ra lỗi. Vui lòng thử lại sau." },
+          { role: "assistant", content: `⚠️ ${err.message || "Đã xảy ra lỗi"}. Vui lòng thử lại.` },
         ]);
       }
     } finally {
-      clearTimeout(timeout);
-      if (streamTimeout) clearTimeout(streamTimeout);
       setIsLoading(false);
+      abortRef.current = null;
     }
   };
 
   return (
     <div className="flex flex-col h-full">
+      {/* Header */}
       <div className="flex items-center justify-between p-3 border-b bg-card">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
@@ -265,6 +272,7 @@ export function KnowledgeChatbot() {
         )}
       </div>
 
+      {/* Messages */}
       <ScrollArea className="flex-1 p-4">
         {messages.length === 0 && historyLoaded && (
           <div className="text-center text-muted-foreground py-8 space-y-4">
@@ -349,6 +357,8 @@ export function KnowledgeChatbot() {
               )}
             </div>
           ))}
+
+          {/* Loading indicator */}
           {isLoading && messages[messages.length - 1]?.role === "user" && (
             <div className="flex gap-2 items-start">
               <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
@@ -367,6 +377,7 @@ export function KnowledgeChatbot() {
         </div>
       </ScrollArea>
 
+      {/* Input */}
       <div className="p-3 border-t bg-card">
         <form
           onSubmit={(e) => {
