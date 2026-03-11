@@ -60,7 +60,9 @@ import {
   Calculator,
   Calendar,
   Copy,
+  FileSignature,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const statusLabels = {
   draft: { label: "Nháp", color: "bg-gray-100 text-gray-800" },
