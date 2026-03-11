@@ -127,9 +127,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
       const sellerBank = seller.bank_info || companySettings.bankInfo;
       const sellerHQ = seller.headquarters || companySettings.headquarters;
 
-      const buyerName = contract.customers?.name || "—";
+      const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
       const buyerAddress = buyer.address || contract.customers?.address || "—";
       const buyerPhone = buyer.phone || contract.customers?.phone || "—";
+      const buyerBankName = buyer.bank_name || "";
+      const buyerBankAccount = buyer.bank_account || "";
+      const buyerBankHolder = buyer.bank_holder || "";
 
       const borderStyle = {
         top: { style: BorderStyle.SINGLE, size: 1 },
@@ -231,13 +234,13 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
       // Party B
       children.push(
         new Paragraph({ children: [new TextRun({ text: "BÊN B (Bên mua):", bold: true, size: 22, font: "Times New Roman" })], spacing: { before: 200 } }),
-        new Paragraph({ children: [new TextRun({ text: "Tên: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerName, size: 20, font: "Times New Roman" })] }),
+        new Paragraph({ children: [new TextRun({ text: "Công ty/Cá nhân: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerName, size: 20, font: "Times New Roman" })] }),
       );
       if (buyer.representative) children.push(new Paragraph({ children: [new TextRun({ text: "Đại diện: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: `${buyer.representative}${buyer.position ? ` - ${buyer.position}` : ""}`, size: 20, font: "Times New Roman" })] }));
-      if (contract.customers?.company) children.push(new Paragraph({ children: [new TextRun({ text: "Công ty: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: contract.customers.company, size: 20, font: "Times New Roman" })] }));
       children.push(new Paragraph({ children: [new TextRun({ text: "Địa chỉ: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerAddress, size: 20, font: "Times New Roman" })] }));
       if (buyer.tax_code) children.push(new Paragraph({ children: [new TextRun({ text: "Mã số thuế: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyer.tax_code, size: 20, font: "Times New Roman" })] }));
-      children.push(new Paragraph({ children: [new TextRun({ text: "Điện thoại: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerPhone, size: 20, font: "Times New Roman" })], spacing: { after: 200 } }));
+      children.push(new Paragraph({ children: [new TextRun({ text: "Điện thoại: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerPhone, size: 20, font: "Times New Roman" })] }));
+      if (buyerBankName) children.push(new Paragraph({ children: [new TextRun({ text: "Ngân hàng: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: `${buyerBankName}${buyerBankAccount ? ` - STK: ${buyerBankAccount}` : ""}${buyerBankHolder ? ` - Chủ TK: ${buyerBankHolder}` : ""}`, size: 20, font: "Times New Roman" })], spacing: { after: 200 } }));
 
       // Articles
       if (articles.length > 0) {
@@ -375,12 +378,14 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           {/* Party B - Buyer */}
           <div className="p-3 border rounded">
             <p className="font-bold mb-1">BÊN B (Bên mua):</p>
-            <p><strong>Tên:</strong> {contract.customers?.name || "—"}</p>
+            <p><strong>Công ty/Cá nhân:</strong> {buyer.company_name || contract.customers?.company || contract.customers?.name || "—"}</p>
             {buyer.representative && <p><strong>Đại diện:</strong> {buyer.representative} {buyer.position ? `- ${buyer.position}` : ""}</p>}
-            {(contract.customers?.company) && <p><strong>Công ty:</strong> {contract.customers.company}</p>}
             <p><strong>Địa chỉ:</strong> {buyer.address || contract.customers?.address || "—"}</p>
             {buyer.tax_code && <p><strong>Mã số thuế:</strong> {buyer.tax_code}</p>}
             <p><strong>Điện thoại:</strong> {buyer.phone || contract.customers?.phone || "—"}</p>
+            {buyer.bank_name && (
+              <p><strong>Ngân hàng:</strong> {buyer.bank_name}{buyer.bank_account ? ` - STK: ${buyer.bank_account}` : ""}{buyer.bank_holder ? ` - Chủ TK: ${buyer.bank_holder}` : ""}</p>
+            )}
           </div>
 
           {/* Articles with product table in first article */}

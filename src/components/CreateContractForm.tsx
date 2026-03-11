@@ -10,7 +10,8 @@ import { useCreateContract, generateContractNumber } from "@/hooks/useContracts"
 import { useContractTemplates, defaultArticles } from "@/hooks/useContractTemplates";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Loader2, Plus, Trash2, Search, Sparkles, Link } from "lucide-react";
 
 interface CreateContractFormProps {
   onSuccess: () => void;
@@ -34,6 +35,11 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   const { toast } = useToast();
 
   const [templateId, setTemplateId] = useState("");
+  const [lookingUpTax, setLookingUpTax] = useState(false);
+  const [parsingText, setParsingText] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [showLinkCustomer, setShowLinkCustomer] = useState(false);
+
   const [formData, setFormData] = useState({
     contract_number: generateContractNumber(),
     customer_id: prefillData?.customer_id || "",
@@ -65,11 +71,15 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   );
 
   const [buyerInfo, setBuyerInfo] = useState({
+    company_name: "",
     representative: "",
-    position: "",
+    position: "Giám đốc",
     address: "",
     tax_code: "",
     phone: "",
+    bank_name: "",
+    bank_account: "",
+    bank_holder: "",
   });
 
   // When template is selected, apply its settings
@@ -87,19 +97,92 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     }));
   };
 
-  // Auto-fill buyer info from selected customer
+  // Auto-fill buyer info from linked customer
   useEffect(() => {
     if (formData.customer_id && customers) {
       const c = customers.find((cust: any) => cust.id === formData.customer_id);
       if (c) {
         setBuyerInfo(prev => ({
           ...prev,
-          address: c.address || "",
-          phone: c.phone || "",
+          company_name: prev.company_name || c.company || c.name || "",
+          address: prev.address || c.address || "",
+          phone: prev.phone || c.phone || "",
         }));
       }
     }
   }, [formData.customer_id, customers]);
+
+  // AI Tax Code Lookup
+  const handleTaxLookup = async () => {
+    if (!buyerInfo.tax_code.trim()) {
+      toast({ title: "Vui lòng nhập mã số thuế", variant: "destructive" });
+      return;
+    }
+    setLookingUpTax(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
+        body: { type: "tax_code", data: buyerInfo.tax_code.trim() },
+      });
+      if (error) throw error;
+      if (data && !data.error) {
+        setBuyerInfo(prev => ({
+          ...prev,
+          company_name: data.company_name || prev.company_name,
+          representative: data.representative || prev.representative,
+          position: data.position || prev.position,
+          address: data.address || prev.address,
+          phone: data.phone || prev.phone,
+          bank_name: data.bank_name || prev.bank_name,
+          bank_account: data.bank_account || prev.bank_account,
+          bank_holder: data.bank_holder || prev.bank_holder,
+        }));
+        toast({ title: "Đã tìm thấy thông tin doanh nghiệp!" });
+      } else {
+        toast({ title: "Không tìm thấy thông tin", description: data?.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Lỗi tra cứu MST", description: err.message, variant: "destructive" });
+    } finally {
+      setLookingUpTax(false);
+    }
+  };
+
+  // AI Parse Text
+  const handleParseText = async () => {
+    if (!pasteText.trim()) {
+      toast({ title: "Vui lòng dán thông tin doanh nghiệp", variant: "destructive" });
+      return;
+    }
+    setParsingText(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
+        body: { type: "parse_text", data: pasteText.trim() },
+      });
+      if (error) throw error;
+      if (data && !data.error) {
+        setBuyerInfo(prev => ({
+          ...prev,
+          company_name: data.company_name || prev.company_name,
+          representative: data.representative || prev.representative,
+          position: data.position || prev.position,
+          address: data.address || prev.address,
+          tax_code: data.tax_code || prev.tax_code,
+          phone: data.phone || prev.phone,
+          bank_name: data.bank_name || prev.bank_name,
+          bank_account: data.bank_account || prev.bank_account,
+          bank_holder: data.bank_holder || prev.bank_holder,
+        }));
+        setPasteText("");
+        toast({ title: "Đã phân tích và điền thông tin!" });
+      } else {
+        toast({ title: "Không thể phân tích", description: data?.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Lỗi phân tích", description: err.message, variant: "destructive" });
+    } finally {
+      setParsingText(false);
+    }
+  };
 
   // Calculations
   const subtotal = items.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0);
@@ -119,8 +202,8 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.customer_id) {
-      toast({ title: "Vui lòng chọn khách hàng", variant: "destructive" });
+    if (!buyerInfo.company_name.trim()) {
+      toast({ title: "Vui lòng nhập tên công ty/cá nhân Bên B", variant: "destructive" });
       return;
     }
     if (items.every(it => !it.name.trim())) {
@@ -140,7 +223,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     try {
       await createContract.mutateAsync({
         contract_number: formData.contract_number,
-        customer_id: formData.customer_id,
+        customer_id: formData.customer_id || null,
         quote_id: formData.quote_id || null,
         order_id: formData.order_id || null,
         title: formData.title,
@@ -194,42 +277,105 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           <Input value={formData.contract_number} onChange={e => setFormData(p => ({ ...p, contract_number: e.target.value }))} />
         </div>
         <div>
-          <Label>Khách hàng (Bên B) *</Label>
-          <Select value={formData.customer_id} onValueChange={v => setFormData(p => ({ ...p, customer_id: v }))}>
-            <SelectTrigger><SelectValue placeholder="Chọn khách hàng" /></SelectTrigger>
-            <SelectContent>
-              {customers?.map((c: any) => (
-                <SelectItem key={c.id} value={c.id}>{c.name} {c.company ? `- ${c.company}` : ''}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label>Tiêu đề hợp đồng</Label>
+          <Input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} />
         </div>
       </div>
 
-      <div>
-        <Label>Tiêu đề hợp đồng</Label>
-        <Input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} />
-      </div>
+      {/* BUYER INFO - BÊN B */}
+      <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+        <Label className="text-base font-semibold">THÔNG TIN BÊN B (Bên mua)</Label>
 
-      {/* Buyer extra info */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Người đại diện Bên B</Label>
-          <Input value={buyerInfo.representative} onChange={e => setBuyerInfo(p => ({ ...p, representative: e.target.value }))} placeholder="Ông/Bà..." />
+        {/* AI Paste & Parse */}
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Dán thông tin doanh nghiệp để AI tự động điền</Label>
+          <div className="flex gap-2">
+            <Textarea
+              value={pasteText}
+              onChange={e => setPasteText(e.target.value)}
+              placeholder="Dán text chứa thông tin công ty, MST, địa chỉ, ngân hàng..."
+              rows={2}
+              className="text-sm"
+            />
+            <Button type="button" variant="outline" onClick={handleParseText} disabled={parsingText} className="shrink-0">
+              {parsingText ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              <span className="ml-1 hidden sm:inline">AI</span>
+            </Button>
+          </div>
         </div>
-        <div>
-          <Label>Chức vụ</Label>
-          <Input value={buyerInfo.position} onChange={e => setBuyerInfo(p => ({ ...p, position: e.target.value }))} />
+
+        <div className="grid grid-cols-1 gap-3">
+          <div>
+            <Label>Tên công ty / Cá nhân *</Label>
+            <Input value={buyerInfo.company_name} onChange={e => setBuyerInfo(p => ({ ...p, company_name: e.target.value }))} placeholder="Tên doanh nghiệp hoặc cá nhân" />
+          </div>
         </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>MST Bên B</Label>
-          <Input value={buyerInfo.tax_code} onChange={e => setBuyerInfo(p => ({ ...p, tax_code: e.target.value }))} />
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Người đại diện</Label>
+            <Input value={buyerInfo.representative} onChange={e => setBuyerInfo(p => ({ ...p, representative: e.target.value }))} placeholder="Ông/Bà..." />
+          </div>
+          <div>
+            <Label>Chức vụ</Label>
+            <Input value={buyerInfo.position} onChange={e => setBuyerInfo(p => ({ ...p, position: e.target.value }))} placeholder="Giám đốc" />
+          </div>
         </div>
+
         <div>
-          <Label>SĐT Bên B</Label>
-          <Input value={buyerInfo.phone} onChange={e => setBuyerInfo(p => ({ ...p, phone: e.target.value }))} />
+          <Label>Địa chỉ</Label>
+          <Input value={buyerInfo.address} onChange={e => setBuyerInfo(p => ({ ...p, address: e.target.value }))} placeholder="Địa chỉ doanh nghiệp" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Mã số thuế</Label>
+            <div className="flex gap-1">
+              <Input value={buyerInfo.tax_code} onChange={e => setBuyerInfo(p => ({ ...p, tax_code: e.target.value }))} placeholder="MST" />
+              <Button type="button" size="icon" variant="outline" onClick={handleTaxLookup} disabled={lookingUpTax} title="Tra cứu MST">
+                {lookingUpTax ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <Label>Số điện thoại</Label>
+            <Input value={buyerInfo.phone} onChange={e => setBuyerInfo(p => ({ ...p, phone: e.target.value }))} placeholder="SĐT" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <Label>Ngân hàng</Label>
+            <Input value={buyerInfo.bank_name} onChange={e => setBuyerInfo(p => ({ ...p, bank_name: e.target.value }))} placeholder="Tên ngân hàng" />
+          </div>
+          <div>
+            <Label>Số tài khoản</Label>
+            <Input value={buyerInfo.bank_account} onChange={e => setBuyerInfo(p => ({ ...p, bank_account: e.target.value }))} placeholder="STK" />
+          </div>
+          <div>
+            <Label>Chủ tài khoản</Label>
+            <Input value={buyerInfo.bank_holder} onChange={e => setBuyerInfo(p => ({ ...p, bank_holder: e.target.value }))} placeholder="Chủ TK" />
+          </div>
+        </div>
+
+        {/* Optional: Link to CRM customer */}
+        <div className="pt-2 border-t">
+          <Button type="button" variant="ghost" size="sm" onClick={() => setShowLinkCustomer(!showLinkCustomer)} className="text-xs text-muted-foreground">
+            <Link className="h-3 w-3 mr-1" />
+            {showLinkCustomer ? "Ẩn" : "Liên kết KH trong hệ thống (tùy chọn)"}
+          </Button>
+          {showLinkCustomer && (
+            <div className="mt-2">
+              <Select value={formData.customer_id} onValueChange={v => setFormData(p => ({ ...p, customer_id: v }))}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Chọn khách hàng (tùy chọn)" /></SelectTrigger>
+                <SelectContent>
+                  {customers?.map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name} {c.company ? `- ${c.company}` : ''}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       </div>
 
