@@ -257,7 +257,43 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
         );
       }
 
-      // Signatures removed per user request
+      // Signature section (text only, no borders)
+      const noBorder = { top: { style: BorderStyle.NONE, size: 0 }, bottom: { style: BorderStyle.NONE, size: 0 }, left: { style: BorderStyle.NONE, size: 0 }, right: { style: BorderStyle.NONE, size: 0 } };
+      children.push(
+        new Paragraph({ text: "", spacing: { before: 400 } }),
+        new DocxTable({
+          rows: [
+            new DocxTableRow({
+              children: [
+                new DocxTableCell({
+                  children: [
+                    new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN A", bold: true, size: 22, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
+                    new Paragraph({ children: [new TextRun({ text: "(Ký, ghi rõ họ tên)", italics: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
+                    new Paragraph({ text: "", spacing: { after: 100 } }),
+                    new Paragraph({ text: "", spacing: { after: 100 } }),
+                    new Paragraph({ text: "", spacing: { after: 100 } }),
+                  ],
+                  borders: noBorder,
+                  width: { size: 50, type: WidthType.PERCENTAGE },
+                }),
+                new DocxTableCell({
+                  children: [
+                    new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN B", bold: true, size: 22, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
+                    new Paragraph({ children: [new TextRun({ text: "(Ký, ghi rõ họ tên)", italics: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
+                    new Paragraph({ text: "", spacing: { after: 100 } }),
+                    new Paragraph({ text: "", spacing: { after: 100 } }),
+                    new Paragraph({ text: "", spacing: { after: 100 } }),
+                  ],
+                  borders: noBorder,
+                  width: { size: 50, type: WidthType.PERCENTAGE },
+                }),
+              ],
+            }),
+          ],
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: { top: { style: BorderStyle.NONE, size: 0 }, bottom: { style: BorderStyle.NONE, size: 0 }, left: { style: BorderStyle.NONE, size: 0 }, right: { style: BorderStyle.NONE, size: 0 }, insideHorizontal: { style: BorderStyle.NONE, size: 0 }, insideVertical: { style: BorderStyle.NONE, size: 0 } },
+        }),
+      );
 
       const doc = new Document({
         sections: [{
