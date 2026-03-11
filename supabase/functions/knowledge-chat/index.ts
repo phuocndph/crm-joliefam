@@ -313,7 +313,10 @@ async function callAI(apiKey: string, messages: any[], sources: any[], useStream
           if (done) { writer.close(); break; }
           await writer.write(value);
         }
-      } catch (e) { writer.abort(e); }
+      } catch (e) {
+        console.error("Stream pipe error:", e);
+        try { writer.abort(e); } catch (_) { /* already closed */ }
+      }
     })();
     return new Response(transformStream.readable, {
       headers: { ...cors, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" },
