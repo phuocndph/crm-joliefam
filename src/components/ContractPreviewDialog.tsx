@@ -257,39 +257,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
         );
       }
 
-      // Signatures
-      children.push(
-        new Paragraph({ text: "", spacing: { before: 400 } }),
-        new DocxTable({
-          rows: [
-            new DocxTableRow({
-              children: [
-                new DocxTableCell({
-                  children: [
-                    new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN A", bold: true, size: 22, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
-                    new Paragraph({ children: [new TextRun({ text: "(Ký, ghi rõ họ tên)", italics: true, size: 18, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
-                    new Paragraph({ text: "" }),
-                    new Paragraph({ text: "" }),
-                    new Paragraph({ text: "" }),
-                  ],
-                  borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
-                }),
-                new DocxTableCell({
-                  children: [
-                    new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN B", bold: true, size: 22, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
-                    new Paragraph({ children: [new TextRun({ text: "(Ký, ghi rõ họ tên)", italics: true, size: 18, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
-                    new Paragraph({ text: "" }),
-                    new Paragraph({ text: "" }),
-                    new Paragraph({ text: "" }),
-                  ],
-                  borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
-                }),
-              ],
-            }),
-          ],
-          width: { size: 100, type: WidthType.PERCENTAGE },
-        }),
-      );
+      // Signatures removed per user request
 
       const doc = new Document({
         sections: [{
