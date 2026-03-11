@@ -38,8 +38,10 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   const [templateId, setTemplateId] = useState("");
   const [lookingUpTax, setLookingUpTax] = useState(false);
   const [parsingText, setParsingText] = useState(false);
+  const [parsingImage, setParsingImage] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [showLinkCustomer, setShowLinkCustomer] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     contract_number: generateContractNumber(),
