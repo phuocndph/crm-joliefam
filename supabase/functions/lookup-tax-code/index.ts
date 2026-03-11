@@ -12,15 +12,53 @@ serve(async (req) => {
     const { type, data } = await req.json();
 
     if (type === "tax_code") {
-      // Use VietQR.io real API for accurate tax code lookup
       const taxCode = data.toString().trim();
-      console.log("Looking up tax code via VietQR:", taxCode);
+      console.log("Looking up tax code:", taxCode);
 
+      // 1. Try escodata.net first (has representative info)
+      try {
+        console.log("Trying escodata.net...");
+        const escoResponse = await fetch(`https://escodata.net/api-mst/${taxCode}.htm`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (escoResponse.ok) {
+          const escoResult = await escoResponse.json();
+          console.log("escodata response:", JSON.stringify(escoResult));
+
+          if (escoResult.error === 0 && escoResult.data) {
+            const d = escoResult.data;
+            // escodata returns two possible formats
+            const companyName = d.ten || d.name || "";
+            const representative = d.daidien || "";
+            const address = d.dc || d.address || "";
+            const phone = d.dt || "";
+            const mst = d.mst || d.id || taxCode;
+            return new Response(JSON.stringify({
+              company_name: companyName,
+              representative: representative,
+              position: representative ? "Giám đốc" : "",
+              address: address,
+              tax_code: mst,
+              phone: phone,
+              bank_name: "",
+              bank_account: "",
+              bank_holder: "",
+            }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+      } catch (e) {
+        console.log("escodata.net failed, falling back to VietQR:", e);
+      }
+
+      // 2. Fallback to VietQR (no representative data)
+      console.log("Falling back to VietQR...");
       let response: Response | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
-        if (attempt > 0) {
-          await new Promise(r => setTimeout(r, 1000 * attempt));
-        }
+        if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
         response = await fetch(`https://api.vietqr.io/v2/business/${taxCode}`, {
           method: "GET",
           headers: { "Content-Type": "application/json" },
@@ -30,8 +68,6 @@ serve(async (req) => {
       }
 
       if (!response || !response.ok) {
-        const status = response?.status || 500;
-        console.error("VietQR API error:", status);
         return new Response(JSON.stringify({ error: "Không thể tra cứu MST. Vui lòng thử lại sau." }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -39,71 +75,19 @@ serve(async (req) => {
       }
 
       const result = await response.json();
-      console.log("VietQR response:", JSON.stringify(result));
-
       if (result.code === "00" && result.data) {
         const d = result.data;
-        const baseInfo = {
+        return new Response(JSON.stringify({
           company_name: d.name || "",
-          representative: d.representative || "",
-          position: d.representative ? "Giám đốc" : "",
+          representative: "",
+          position: "",
           address: d.address || "",
           tax_code: d.id || taxCode,
           phone: "",
           bank_name: "",
           bank_account: "",
           bank_holder: "",
-        };
-
-        // If representative is missing, try AI to supplement
-        if (!baseInfo.representative && baseInfo.company_name) {
-          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-          if (LOVABLE_API_KEY) {
-            try {
-              console.log("VietQR missing representative, using AI to supplement...");
-              const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  model: "google/gemini-3-flash-preview",
-                  messages: [
-                    {
-                      role: "system",
-                      content: `Bạn là trợ lý tra cứu thông tin doanh nghiệp Việt Nam. Cho biết tên công ty và MST, hãy tìm thông tin người đại diện pháp luật và chức vụ. Trả về JSON thuần (không markdown):
-{"representative": "tên người đại diện", "position": "chức vụ"}
-Nếu không biết chắc chắn thì để chuỗi rỗng "".`
-                    },
-                    {
-                      role: "user",
-                      content: `Công ty: ${baseInfo.company_name}\nMST: ${taxCode}\nĐịa chỉ: ${baseInfo.address}\n\nTìm thông tin người đại diện pháp luật và chức vụ.`
-                    },
-                  ],
-                }),
-              });
-
-              if (aiResponse.ok) {
-                const aiResult = await aiResponse.json();
-                const content = aiResult.choices?.[0]?.message?.content || "";
-                try {
-                  const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-                  const parsed = JSON.parse(cleaned);
-                  if (parsed.representative) baseInfo.representative = parsed.representative;
-                  if (parsed.position) baseInfo.position = parsed.position;
-                  console.log("AI supplemented representative:", parsed);
-                } catch {
-                  console.log("AI response not parseable, skipping supplement");
-                }
-              }
-            } catch (e) {
-              console.log("AI supplement failed, returning base info:", e);
-            }
-          }
-        }
-
-        return new Response(JSON.stringify(baseInfo), {
+        }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       } else {
