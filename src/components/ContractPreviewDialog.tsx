@@ -234,13 +234,13 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
       // Party B
       children.push(
         new Paragraph({ children: [new TextRun({ text: "BÊN B (Bên mua):", bold: true, size: 22, font: "Times New Roman" })], spacing: { before: 200 } }),
-        new Paragraph({ children: [new TextRun({ text: "Tên: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerName, size: 20, font: "Times New Roman" })] }),
+        new Paragraph({ children: [new TextRun({ text: "Công ty/Cá nhân: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerName, size: 20, font: "Times New Roman" })] }),
       );
       if (buyer.representative) children.push(new Paragraph({ children: [new TextRun({ text: "Đại diện: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: `${buyer.representative}${buyer.position ? ` - ${buyer.position}` : ""}`, size: 20, font: "Times New Roman" })] }));
-      if (contract.customers?.company) children.push(new Paragraph({ children: [new TextRun({ text: "Công ty: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: contract.customers.company, size: 20, font: "Times New Roman" })] }));
       children.push(new Paragraph({ children: [new TextRun({ text: "Địa chỉ: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerAddress, size: 20, font: "Times New Roman" })] }));
       if (buyer.tax_code) children.push(new Paragraph({ children: [new TextRun({ text: "Mã số thuế: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyer.tax_code, size: 20, font: "Times New Roman" })] }));
-      children.push(new Paragraph({ children: [new TextRun({ text: "Điện thoại: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerPhone, size: 20, font: "Times New Roman" })], spacing: { after: 200 } }));
+      children.push(new Paragraph({ children: [new TextRun({ text: "Điện thoại: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerPhone, size: 20, font: "Times New Roman" })] }));
+      if (buyerBankName) children.push(new Paragraph({ children: [new TextRun({ text: "Ngân hàng: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: `${buyerBankName}${buyerBankAccount ? ` - STK: ${buyerBankAccount}` : ""}${buyerBankHolder ? ` - Chủ TK: ${buyerBankHolder}` : ""}`, size: 20, font: "Times New Roman" })], spacing: { after: 200 } }));
 
       // Articles
       if (articles.length > 0) {
