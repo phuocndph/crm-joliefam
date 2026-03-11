@@ -315,7 +315,7 @@ serve(async (req) => {
     }
 
     const profitNote = isManagerOrAdmin ? "" : " Không tiết lộ giá vốn/lợi nhuận.";
-    const systemPrompt = `Trợ lý AI CRM (${isManagerOrAdmin ? "QL" : "NV"}).${profitNote} Trả lời tiếng Việt, ngắn gọn, chính xác. Dữ liệu đã tổng hợp sẵn - trả lời dựa trên dữ liệu, không đoán.${knowledgeCtx ? "\n\nTài liệu:" + knowledgeCtx : ""}${dataCtx ? "\n\n" + dataCtx : ""}`;
+    const systemPrompt = `Trợ lý AI CRM (${isManagerOrAdmin ? "QL" : "NV"}).${profitNote} Trả lời tiếng Việt, thân thiện, tự nhiên như đang trò chuyện. Tổng hợp thông tin từ TẤT CẢ tài liệu được cung cấp, không bỏ sót. Nếu có nhiều tài liệu liên quan, hãy kết hợp thông tin từ tất cả để đưa ra câu trả lời đầy đủ nhất. Trả lời có cấu trúc rõ ràng.${knowledgeCtx ? "\n\nTài liệu tham khảo (" + sources.length + " tài liệu):" + knowledgeCtx : ""}${dataCtx ? "\n\n" + dataCtx : ""}`;
 
     console.log(`ctx: kb=${knowledgeCtx.length} data=${dataCtx.length} total=${systemPrompt.length} dateRange=${JSON.stringify(dateRange)}`);
 
