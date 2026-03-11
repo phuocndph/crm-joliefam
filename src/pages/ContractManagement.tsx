@@ -188,7 +188,7 @@ const ContractManagement = () => {
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>Tạo hợp đồng mới</DialogTitle></DialogHeader>
-          <CreateContractForm onSuccess={() => setShowCreate(false)} />
+          <CreateContractForm onSuccess={() => setShowCreate(false)} prefillData={prefillData} />
         </DialogContent>
       </Dialog>
 
