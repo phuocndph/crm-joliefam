@@ -145,7 +145,7 @@ export function KnowledgeChatbot() {
         if (done) break;
         receivedAnyData = true;
         if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null; }
-
+        textBuffer += decoder.decode(value, { stream: true });
         let newlineIndex: number;
         while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
           let line = textBuffer.slice(0, newlineIndex);
