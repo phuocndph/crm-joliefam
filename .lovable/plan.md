@@ -1,29 +1,32 @@
 
 
-# Hien thi chat lieu tu bao gia trong chi tiet don hang
+# Fix: Chatbot không trả lời
 
-## Nguyen nhan
+## Nguyên nhân
 
-Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
+Từ edge function logs, function chạy thành công (`ctx: kb=0 data=0 total=124`) nhưng không có log lỗi nào từ AI call. Có 2 vấn đề:
 
-Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
+1. **Model `google/gemini-3-flash-preview` có thể không hỗ trợ streaming đúng cách** trên Lovable AI Gateway. Khi non-streaming (`stream: false`), function trả lời bình thường (đã test thành công). Nhưng khi streaming, response có thể bị lỗi âm thầm trong async pipe mà không log lỗi.
 
-Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
+2. **Lỗi streaming bị nuốt**: Trong `callAI`, async pipe (`reader.read()` → `writer.write()`) chạy ngoài try/catch chính. Nếu AI trả về lỗi trong stream, writer bị abort nhưng **không log gì**, khiến client thấy loading mãi.
 
-## Giai phap
+## Thay đổi
 
-### File: `src/pages/OrderManagement.tsx`
+### File: `supabase/functions/knowledge-chat/index.ts`
 
-Thay doi dong 659: doc `item.description` thay vi `item.material`:
+1. **Đổi model về `google/gemini-2.5-flash`** - model ổn định hơn, hỗ trợ streaming tốt trên Lovable Gateway.
 
+2. **Thêm error logging trong streaming pipe** - log lỗi khi pipe fail để dễ debug:
 ```typescript
-// Truoc:
-{item.material || "-"}
-
-// Sau:
-{item.description || "-"}
+} catch (e) { 
+  console.error("Stream pipe error:", e);
+  writer.abort(e); 
+}
 ```
 
-Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
+3. **Thêm fallback**: Nếu AI response không phải streaming format (body trống), trả về lỗi rõ ràng thay vì treo.
 
-Chi thay doi 1 dong, khong anh huong logic nao khac.
+### File: `src/components/KnowledgeChatbot.tsx`
+
+4. **Thêm timeout cho streaming**: Nếu stream không nhận được data nào trong 15 giây đầu → hiển thị thông báo lỗi, không để loading mãi.
+
