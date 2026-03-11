@@ -143,7 +143,8 @@ export function KnowledgeChatbot() {
       while (!streamDone) {
         const { done, value } = await reader.read();
         if (done) break;
-        textBuffer += decoder.decode(value, { stream: true });
+        receivedAnyData = true;
+        if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null; }
 
         let newlineIndex: number;
         while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
