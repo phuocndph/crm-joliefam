@@ -350,8 +350,8 @@ async function callAI(apiKey: string, messages: any[], sources: any[], useStream
       model: MODEL,
       messages,
       stream: !!useStream,
-      max_tokens: isDataQuery ? 500 : 600,
-      temperature: 0,
+      max_tokens: isDataQuery ? 800 : 1000,
+      temperature: 0.3,
     }),
   });
 
