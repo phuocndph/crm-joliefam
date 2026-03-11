@@ -187,10 +187,8 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     }
   };
 
-  // AI Parse Image
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Shared image analysis logic
+  const processImageFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       toast({ title: "Vui lòng chọn file hình ảnh", variant: "destructive" });
       return;
@@ -204,10 +202,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1]); // remove data:...;base64, prefix
-        };
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
@@ -237,7 +232,28 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       toast({ title: "Lỗi phân tích hình ảnh", description: err.message, variant: "destructive" });
     } finally {
       setParsingImage(false);
-      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  };
+
+  // File input handler
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processImageFile(file);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  // Ctrl+V paste image handler
+  const handlePasteImage = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) await processImageFile(file);
+        return;
+      }
     }
   };
 
@@ -350,7 +366,8 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
             <Textarea
               value={pasteText}
               onChange={e => setPasteText(e.target.value)}
-              placeholder="Dán text chứa thông tin công ty, MST, địa chỉ, ngân hàng..."
+              onPaste={handlePasteImage}
+              placeholder="Dán text hoặc Ctrl+V ảnh chứa thông tin công ty, MST, địa chỉ, ngân hàng..."
               rows={2}
               className="text-sm"
             />
