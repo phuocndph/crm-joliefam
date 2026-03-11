@@ -378,12 +378,14 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           {/* Party B - Buyer */}
           <div className="p-3 border rounded">
             <p className="font-bold mb-1">BÊN B (Bên mua):</p>
-            <p><strong>Tên:</strong> {contract.customers?.name || "—"}</p>
+            <p><strong>Công ty/Cá nhân:</strong> {buyer.company_name || contract.customers?.company || contract.customers?.name || "—"}</p>
             {buyer.representative && <p><strong>Đại diện:</strong> {buyer.representative} {buyer.position ? `- ${buyer.position}` : ""}</p>}
-            {(contract.customers?.company) && <p><strong>Công ty:</strong> {contract.customers.company}</p>}
             <p><strong>Địa chỉ:</strong> {buyer.address || contract.customers?.address || "—"}</p>
             {buyer.tax_code && <p><strong>Mã số thuế:</strong> {buyer.tax_code}</p>}
             <p><strong>Điện thoại:</strong> {buyer.phone || contract.customers?.phone || "—"}</p>
+            {buyer.bank_name && (
+              <p><strong>Ngân hàng:</strong> {buyer.bank_name}{buyer.bank_account ? ` - STK: ${buyer.bank_account}` : ""}{buyer.bank_holder ? ` - Chủ TK: ${buyer.bank_holder}` : ""}</p>
+            )}
           </div>
 
           {/* Articles with product table in first article */}
