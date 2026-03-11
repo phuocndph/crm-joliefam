@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-3-flash-preview";
+const MODEL = "google/gemini-2.5-flash";
 
 // Parse Vietnamese date patterns from question
 function parseDateRange(question: string): { start: string; end: string } | null {
