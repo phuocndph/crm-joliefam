@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useContracts } from "@/hooks/useContracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
