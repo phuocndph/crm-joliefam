@@ -95,6 +95,7 @@ export function KnowledgeChatbot() {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45000);
+    let streamTimeout: ReturnType<typeof setTimeout> | null = null;
 
     try {
       const session = await supabase.auth.getSession();
