@@ -414,8 +414,8 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
               className="text-sm"
             />
             <div className="flex flex-col gap-1 shrink-0">
-              <Button type="button" variant="outline" size="sm" onClick={handleParseText} disabled={parsingText} title="AI phân tích text">
-                {parsingText ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              <Button type="button" variant="outline" size="sm" onClick={handleAIAnalyze} disabled={parsingText || parsingImage} title={imagePreview ? "AI phân tích ảnh" : "AI phân tích text"}>
+                {(parsingText || parsingImage) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 <span className="ml-1 hidden sm:inline">AI</span>
               </Button>
               <Button type="button" variant="outline" size="sm" onClick={() => imageInputRef.current?.click()} disabled={parsingImage} title="Tải ảnh chứa thông tin DN">
