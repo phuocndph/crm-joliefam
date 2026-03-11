@@ -4,17 +4,19 @@ import { useContracts } from "@/hooks/useContracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreateContractForm } from "@/components/CreateContractForm";
 import { EditContractDialog } from "@/components/EditContractDialog";
 import { DeleteContractDialog } from "@/components/DeleteContractDialog";
 import { ContractPreviewDialog } from "@/components/ContractPreviewDialog";
+import { ContractTemplateManager } from "@/components/ContractTemplateManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Filter } from "lucide-react";
+import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   draft: { label: "Nháp", variant: "secondary" },
@@ -35,8 +37,8 @@ const ContractManagement = () => {
   const [editContract, setEditContract] = useState<any>(null);
   const [deleteContract, setDeleteContract] = useState<any>(null);
   const [previewContract, setPreviewContract] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState("contracts");
 
-  // Prefill data from URL params (from QuotesPage)
   const prefillData = useMemo(() => {
     const fromQuote = searchParams.get('from_quote');
     if (!fromQuote) return undefined;
@@ -55,11 +57,9 @@ const ContractManagement = () => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
   }, []);
 
-  // Auto-open create form if coming from quote
   useEffect(() => {
     if (prefillData) {
       setShowCreate(true);
-      // Clear URL params after opening
       setSearchParams({}, { replace: true });
     }
   }, [prefillData]);
@@ -98,95 +98,108 @@ const ContractManagement = () => {
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: "Tổng hợp đồng", value: stats.total, color: "text-foreground" },
-          { label: "Đang hiệu lực", value: stats.active, color: "text-blue-600" },
-          { label: "Nháp", value: stats.draft, color: "text-muted-foreground" },
-          { label: "Hoàn thành", value: stats.completed, color: "text-green-600" },
-        ].map((s, i) => (
-          <Card key={i}>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">{s.label}</p>
-              <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="contracts"><FileSignature className="h-4 w-4 mr-1" />Danh sách HĐ</TabsTrigger>
+          <TabsTrigger value="templates"><Settings className="h-4 w-4 mr-1" />Mẫu hợp đồng</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="contracts" className="space-y-4 mt-4">
+          {/* Stats */}
+          <div className="grid grid-cols-4 gap-4">
+            {[
+              { label: "Tổng hợp đồng", value: stats.total, color: "text-foreground" },
+              { label: "Đang hiệu lực", value: stats.active, color: "text-blue-600" },
+              { label: "Nháp", value: stats.draft, color: "text-muted-foreground" },
+              { label: "Hoàn thành", value: stats.completed, color: "text-green-600" },
+            ].map((s, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <p className="text-sm text-muted-foreground">{s.label}</p>
+                  <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Filters */}
+          <div className="flex gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Tìm kiếm hợp đồng..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
+            </div>
+            <div className="flex gap-1">
+              {["all", "draft", "active", "completed", "cancelled"].map(s => (
+                <Button key={s} size="sm" variant={statusFilter === s ? "default" : "outline"} onClick={() => setStatusFilter(s)}>
+                  {s === "all" ? "Tất cả" : statusConfig[s]?.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Table */}
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Mã HĐ</TableHead>
+                    <TableHead>Khách hàng</TableHead>
+                    <TableHead>Tiêu đề</TableHead>
+                    <TableHead>Giá trị</TableHead>
+                    <TableHead>Đặt cọc</TableHead>
+                    <TableHead>Ngày ký</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead className="w-[60px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
+                  ) : filtered.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có hợp đồng nào</TableCell></TableRow>
+                  ) : (
+                    filtered.map((c: any) => {
+                      const st = statusConfig[c.status] || statusConfig.draft;
+                      return (
+                        <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setPreviewContract(c)}>
+                          <TableCell className="font-medium text-primary">{c.contract_number}</TableCell>
+                          <TableCell>{c.customers?.name || "—"}</TableCell>
+                          <TableCell className="max-w-[200px] truncate">{c.title || "—"}</TableCell>
+                          <TableCell>{formatCurrency(c.total_amount)}</TableCell>
+                          <TableCell>{formatCurrency(c.deposit_amount)}</TableCell>
+                          <TableCell>{formatDate(c.contract_date)}</TableCell>
+                          <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
+                          <TableCell onClick={e => e.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setPreviewContract(c)}><Eye className="h-4 w-4 mr-2" />Xem</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setEditContract(c)}><Edit className="h-4 w-4 mr-2" />Sửa</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setDeleteContract(c)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Xóa</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
-        ))}
-      </div>
+        </TabsContent>
 
-      {/* Filters */}
-      <div className="flex gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Tìm kiếm hợp đồng..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
-        </div>
-        <div className="flex gap-1">
-          {["all", "draft", "active", "completed", "cancelled"].map(s => (
-            <Button key={s} size="sm" variant={statusFilter === s ? "default" : "outline"} onClick={() => setStatusFilter(s)}>
-              {s === "all" ? "Tất cả" : statusConfig[s]?.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mã HĐ</TableHead>
-                <TableHead>Khách hàng</TableHead>
-                <TableHead>Tiêu đề</TableHead>
-                <TableHead>Giá trị</TableHead>
-                <TableHead>Đặt cọc</TableHead>
-                <TableHead>Ngày ký</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="w-[60px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có hợp đồng nào</TableCell></TableRow>
-              ) : (
-                filtered.map((c: any) => {
-                  const st = statusConfig[c.status] || statusConfig.draft;
-                  return (
-                    <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setPreviewContract(c)}>
-                      <TableCell className="font-medium text-primary">{c.contract_number}</TableCell>
-                      <TableCell>{c.customers?.name || "—"}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{c.title || "—"}</TableCell>
-                      <TableCell>{formatCurrency(c.total_amount)}</TableCell>
-                      <TableCell>{formatCurrency(c.deposit_amount)}</TableCell>
-                      <TableCell>{formatDate(c.contract_date)}</TableCell>
-                      <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
-                      <TableCell onClick={e => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setPreviewContract(c)}><Eye className="h-4 w-4 mr-2" />Xem</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setEditContract(c)}><Edit className="h-4 w-4 mr-2" />Sửa</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setDeleteContract(c)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Xóa</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+        <TabsContent value="templates" className="mt-4">
+          <ContractTemplateManager />
+        </TabsContent>
+      </Tabs>
 
       {/* Dialogs */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader><DialogTitle>Tạo hợp đồng mới</DialogTitle></DialogHeader>
           <CreateContractForm onSuccess={() => setShowCreate(false)} prefillData={prefillData} />
         </DialogContent>

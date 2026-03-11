@@ -4,10 +4,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useCustomers } from "@/hooks/useCustomers";
 import { useCreateContract, generateContractNumber } from "@/hooks/useContracts";
+import { useContractTemplates, defaultArticles } from "@/hooks/useContractTemplates";
+import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 
 interface CreateContractFormProps {
   onSuccess: () => void;
@@ -21,37 +24,98 @@ interface CreateContractFormProps {
   };
 }
 
+const emptyItem = { name: "", specifications: "", quantity: 1, price: 0 };
+
 export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFormProps) => {
   const { data: customers } = useCustomers();
+  const { data: templates } = useContractTemplates();
+  const { settings: companySettings } = useTemplateSettings();
   const createContract = useCreateContract();
   const { toast } = useToast();
 
+  const [templateId, setTemplateId] = useState("");
   const [formData, setFormData] = useState({
     contract_number: generateContractNumber(),
     customer_id: prefillData?.customer_id || "",
     quote_id: prefillData?.quote_id || "",
     order_id: prefillData?.order_id || "",
-    title: prefillData?.title || "",
-    total_amount: prefillData?.total_amount || 0,
-    deposit_percentage: 70,
-    deposit_amount: 0,
+    title: prefillData?.title || "HỢP ĐỒNG KINH TẾ",
     contract_date: new Date().toISOString().slice(0, 10),
     start_date: "",
     end_date: "",
     notes: "",
-    items: prefillData?.items || [],
-    terms: [
-      "Đặt cọc 70% giá trị hợp đồng khi ký.",
-      "Thanh toán 30% còn lại khi hoàn thành lắp đặt.",
-      "Bảo hành sản phẩm 24 tháng.",
-      "Hợp đồng có hiệu lực kể từ ngày ký."
+    include_vat: false,
+    vat_rate: 8,
+    deposit_percentage: 70,
+    legal_basis: [
+      "Căn cứ Luật Thương mại số 36/2005/QH11 ngày 14/06/2005;",
+      "Căn cứ Bộ luật Dân sự số 91/2015/QH13 ngày 24/11/2015;",
+      "Căn cứ vào nhu cầu và khả năng của hai bên."
     ],
+    articles: defaultArticles,
   });
 
+  const [items, setItems] = useState<any[]>(
+    prefillData?.items?.length ? prefillData.items.map((it: any) => ({
+      name: it.name || "",
+      specifications: it.specifications || it.description || "",
+      quantity: it.quantity || 1,
+      price: it.price || 0,
+    })) : [{ ...emptyItem }]
+  );
+
+  const [buyerInfo, setBuyerInfo] = useState({
+    representative: "",
+    position: "",
+    address: "",
+    tax_code: "",
+    phone: "",
+  });
+
+  // When template is selected, apply its settings
+  const handleTemplateChange = (id: string) => {
+    setTemplateId(id);
+    const tmpl = templates?.find(t => t.id === id);
+    if (!tmpl) return;
+    setFormData(prev => ({
+      ...prev,
+      include_vat: tmpl.include_vat,
+      vat_rate: tmpl.vat_rate,
+      deposit_percentage: tmpl.payment_terms?.deposit_percentage || 70,
+      legal_basis: tmpl.legal_basis || prev.legal_basis,
+      articles: tmpl.articles?.length ? tmpl.articles : prev.articles,
+    }));
+  };
+
+  // Auto-fill buyer info from selected customer
   useEffect(() => {
-    const deposit = (formData.total_amount * formData.deposit_percentage) / 100;
-    setFormData(prev => ({ ...prev, deposit_amount: deposit }));
-  }, [formData.total_amount, formData.deposit_percentage]);
+    if (formData.customer_id && customers) {
+      const c = customers.find((cust: any) => cust.id === formData.customer_id);
+      if (c) {
+        setBuyerInfo(prev => ({
+          ...prev,
+          address: c.address || "",
+          phone: c.phone || "",
+        }));
+      }
+    }
+  }, [formData.customer_id, customers]);
+
+  // Calculations
+  const subtotal = items.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0);
+  const vatAmount = formData.include_vat ? subtotal * formData.vat_rate / 100 : 0;
+  const totalAmount = subtotal + vatAmount;
+  const depositAmount = totalAmount * formData.deposit_percentage / 100;
+
+  const addItem = () => setItems([...items, { ...emptyItem }]);
+  const removeItem = (i: number) => setItems(items.filter((_, j) => j !== i));
+  const updateItem = (i: number, field: string, value: any) => {
+    const u = [...items];
+    u[i] = { ...u[i], [field]: value };
+    setItems(u);
+  };
+
+  const formatCurrency = (val: number) => val.toLocaleString("vi-VN") + " ₫";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +123,19 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       toast({ title: "Vui lòng chọn khách hàng", variant: "destructive" });
       return;
     }
+    if (items.every(it => !it.name.trim())) {
+      toast({ title: "Vui lòng nhập ít nhất 1 sản phẩm", variant: "destructive" });
+      return;
+    }
+
+    const sellerInfo = {
+      company_name: companySettings.companyName,
+      address: companySettings.address,
+      headquarters: companySettings.headquarters,
+      phone: companySettings.phone,
+      tax_code: companySettings.taxCode,
+      bank_info: companySettings.bankInfo,
+    };
 
     try {
       await createContract.mutateAsync({
@@ -67,15 +144,24 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
         quote_id: formData.quote_id || null,
         order_id: formData.order_id || null,
         title: formData.title,
-        total_amount: formData.total_amount,
-        deposit_amount: formData.deposit_amount,
+        total_amount: totalAmount,
+        subtotal,
+        vat_amount: vatAmount,
+        include_vat: formData.include_vat,
+        vat_rate: formData.vat_rate,
+        deposit_amount: depositAmount,
         deposit_percentage: formData.deposit_percentage,
         contract_date: formData.contract_date,
         start_date: formData.start_date || null,
         end_date: formData.end_date || null,
         notes: formData.notes || null,
-        items: formData.items,
-        terms: formData.terms,
+        items: items.map((it, i) => ({ ...it, total: it.quantity * it.price, stt: i + 1 })),
+        terms: formData.articles.map(a => `${a.title}\n${a.content}`),
+        legal_basis: formData.legal_basis,
+        seller_info: sellerInfo,
+        buyer_info: buyerInfo,
+        articles: formData.articles,
+        template_id: templateId || null,
         status: "draft",
       });
       toast({ title: "Tạo hợp đồng thành công!" });
@@ -85,17 +171,30 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     }
   };
 
-  const formatCurrency = (val: number) => val.toLocaleString("vi-VN") + " ₫";
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+    <form onSubmit={handleSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-2">
+      {/* Template selection */}
+      {templates && templates.length > 0 && (
+        <div>
+          <Label>Chọn mẫu hợp đồng</Label>
+          <Select value={templateId} onValueChange={handleTemplateChange}>
+            <SelectTrigger><SelectValue placeholder="-- Chọn mẫu (tùy chọn) --" /></SelectTrigger>
+            <SelectContent>
+              {templates.map((t: any) => (
+                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label>Mã hợp đồng</Label>
+          <Label>Số hợp đồng</Label>
           <Input value={formData.contract_number} onChange={e => setFormData(p => ({ ...p, contract_number: e.target.value }))} />
         </div>
         <div>
-          <Label>Khách hàng *</Label>
+          <Label>Khách hàng (Bên B) *</Label>
           <Select value={formData.customer_id} onValueChange={v => setFormData(p => ({ ...p, customer_id: v }))}>
             <SelectTrigger><SelectValue placeholder="Chọn khách hàng" /></SelectTrigger>
             <SelectContent>
@@ -109,25 +208,98 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
 
       <div>
         <Label>Tiêu đề hợp đồng</Label>
-        <Input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} placeholder="VD: Hợp đồng cung cấp rèm cửa" />
+        <Input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} />
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      {/* Buyer extra info */}
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label>Tổng giá trị</Label>
-          <Input type="number" value={formData.total_amount} onChange={e => setFormData(p => ({ ...p, total_amount: Number(e.target.value) }))} />
-          <p className="text-xs text-muted-foreground mt-1">{formatCurrency(formData.total_amount)}</p>
+          <Label>Người đại diện Bên B</Label>
+          <Input value={buyerInfo.representative} onChange={e => setBuyerInfo(p => ({ ...p, representative: e.target.value }))} placeholder="Ông/Bà..." />
         </div>
         <div>
-          <Label>% Đặt cọc</Label>
-          <Input type="number" value={formData.deposit_percentage} onChange={e => setFormData(p => ({ ...p, deposit_percentage: Number(e.target.value) }))} />
+          <Label>Chức vụ</Label>
+          <Input value={buyerInfo.position} onChange={e => setBuyerInfo(p => ({ ...p, position: e.target.value }))} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>MST Bên B</Label>
+          <Input value={buyerInfo.tax_code} onChange={e => setBuyerInfo(p => ({ ...p, tax_code: e.target.value }))} />
         </div>
         <div>
-          <Label>Tiền cọc</Label>
-          <Input value={formatCurrency(formData.deposit_amount)} disabled className="bg-muted" />
+          <Label>SĐT Bên B</Label>
+          <Input value={buyerInfo.phone} onChange={e => setBuyerInfo(p => ({ ...p, phone: e.target.value }))} />
         </div>
       </div>
 
+      {/* Product table */}
+      <div>
+        <Label className="text-base font-semibold">Bảng sản phẩm / dịch vụ</Label>
+        <div className="mt-2 border rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted">
+                <th className="p-2 text-left w-8">TT</th>
+                <th className="p-2 text-left">Sản phẩm</th>
+                <th className="p-2 text-left">Kích thước/Quy cách</th>
+                <th className="p-2 text-right w-16">SL</th>
+                <th className="p-2 text-right w-28">Đơn giá</th>
+                <th className="p-2 text-right w-28">Thành tiền</th>
+                <th className="p-2 w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, i) => (
+                <tr key={i} className="border-t">
+                  <td className="p-2 text-muted-foreground">{i + 1}</td>
+                  <td className="p-1"><Input value={item.name} onChange={e => updateItem(i, "name", e.target.value)} placeholder="Tên SP" className="h-8" /></td>
+                  <td className="p-1"><Input value={item.specifications} onChange={e => updateItem(i, "specifications", e.target.value)} placeholder="Kích thước" className="h-8" /></td>
+                  <td className="p-1"><Input type="number" value={item.quantity} onChange={e => updateItem(i, "quantity", Number(e.target.value))} className="h-8 text-right" /></td>
+                  <td className="p-1"><Input type="number" value={item.price} onChange={e => updateItem(i, "price", Number(e.target.value))} className="h-8 text-right" /></td>
+                  <td className="p-2 text-right font-medium">{formatCurrency(item.quantity * item.price)}</td>
+                  <td className="p-1">
+                    {items.length > 1 && (
+                      <Button type="button" size="icon" variant="ghost" onClick={() => removeItem(i)} className="h-7 w-7 text-destructive">
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="p-2 border-t">
+            <Button type="button" size="sm" variant="outline" onClick={addItem}><Plus className="h-3 w-3 mr-1" />Thêm sản phẩm</Button>
+          </div>
+        </div>
+
+        {/* Totals */}
+        <div className="mt-3 space-y-1 text-sm">
+          <div className="flex justify-between"><span>Tổng cộng:</span><span className="font-medium">{formatCurrency(subtotal)}</span></div>
+          <div className="flex items-center gap-3">
+            <Switch checked={formData.include_vat} onCheckedChange={v => setFormData(p => ({ ...p, include_vat: v }))} />
+            <span>VAT</span>
+            {formData.include_vat && (
+              <>
+                <Input type="number" value={formData.vat_rate} onChange={e => setFormData(p => ({ ...p, vat_rate: Number(e.target.value) }))} className="h-7 w-16" />
+                <span>% = {formatCurrency(vatAmount)}</span>
+              </>
+            )}
+          </div>
+          <div className="flex justify-between text-base font-bold text-primary">
+            <span>TỔNG GIÁ TRỊ HỢP ĐỒNG:</span>
+            <span>{formatCurrency(totalAmount)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span>Đặt cọc</span>
+            <Input type="number" value={formData.deposit_percentage} onChange={e => setFormData(p => ({ ...p, deposit_percentage: Number(e.target.value) }))} className="h-7 w-16" />
+            <span>% = <strong>{formatCurrency(depositAmount)}</strong></span>
+          </div>
+        </div>
+      </div>
+
+      {/* Dates */}
       <div className="grid grid-cols-3 gap-4">
         <div>
           <Label>Ngày ký</Label>
@@ -145,7 +317,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
 
       <div>
         <Label>Ghi chú</Label>
-        <Textarea value={formData.notes} onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))} rows={3} placeholder="Ghi chú thêm..." />
+        <Textarea value={formData.notes} onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))} rows={2} />
       </div>
 
       <Button type="submit" className="w-full" disabled={createContract.isPending}>

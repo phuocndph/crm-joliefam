@@ -125,8 +125,58 @@ export type Database = {
         }
         Relationships: []
       }
+      contract_templates: {
+        Row: {
+          articles: Json | null
+          created_at: string
+          id: string
+          include_vat: boolean | null
+          item_columns: Json | null
+          legal_basis: Json | null
+          manager_id: string | null
+          name: string
+          payment_terms: Json | null
+          seller_info: Json | null
+          tenant_id: string
+          updated_at: string
+          vat_rate: number | null
+        }
+        Insert: {
+          articles?: Json | null
+          created_at?: string
+          id?: string
+          include_vat?: boolean | null
+          item_columns?: Json | null
+          legal_basis?: Json | null
+          manager_id?: string | null
+          name: string
+          payment_terms?: Json | null
+          seller_info?: Json | null
+          tenant_id?: string
+          updated_at?: string
+          vat_rate?: number | null
+        }
+        Update: {
+          articles?: Json | null
+          created_at?: string
+          id?: string
+          include_vat?: boolean | null
+          item_columns?: Json | null
+          legal_basis?: Json | null
+          manager_id?: string | null
+          name?: string
+          payment_terms?: Json | null
+          seller_info?: Json | null
+          tenant_id?: string
+          updated_at?: string
+          vat_rate?: number | null
+        }
+        Relationships: []
+      }
       contracts: {
         Row: {
+          articles: Json | null
+          buyer_info: Json | null
           content: string | null
           contract_date: string | null
           contract_number: string
@@ -136,20 +186,29 @@ export type Database = {
           deposit_percentage: number | null
           end_date: string | null
           id: string
+          include_vat: boolean | null
           items: Json | null
+          legal_basis: Json | null
           manager_id: string | null
           notes: string | null
           order_id: string | null
           quote_id: string | null
+          seller_info: Json | null
           start_date: string | null
           status: string
+          subtotal: number | null
+          template_id: string | null
           tenant_id: string
           terms: Json | null
           title: string
           total_amount: number | null
           updated_at: string
+          vat_amount: number | null
+          vat_rate: number | null
         }
         Insert: {
+          articles?: Json | null
+          buyer_info?: Json | null
           content?: string | null
           contract_date?: string | null
           contract_number: string
@@ -159,20 +218,29 @@ export type Database = {
           deposit_percentage?: number | null
           end_date?: string | null
           id?: string
+          include_vat?: boolean | null
           items?: Json | null
+          legal_basis?: Json | null
           manager_id?: string | null
           notes?: string | null
           order_id?: string | null
           quote_id?: string | null
+          seller_info?: Json | null
           start_date?: string | null
           status?: string
+          subtotal?: number | null
+          template_id?: string | null
           tenant_id?: string
           terms?: Json | null
           title?: string
           total_amount?: number | null
           updated_at?: string
+          vat_amount?: number | null
+          vat_rate?: number | null
         }
         Update: {
+          articles?: Json | null
+          buyer_info?: Json | null
           content?: string | null
           contract_date?: string | null
           contract_number?: string
@@ -182,18 +250,25 @@ export type Database = {
           deposit_percentage?: number | null
           end_date?: string | null
           id?: string
+          include_vat?: boolean | null
           items?: Json | null
+          legal_basis?: Json | null
           manager_id?: string | null
           notes?: string | null
           order_id?: string | null
           quote_id?: string | null
+          seller_info?: Json | null
           start_date?: string | null
           status?: string
+          subtotal?: number | null
+          template_id?: string | null
           tenant_id?: string
           terms?: Json | null
           title?: string
           total_amount?: number | null
           updated_at?: string
+          vat_amount?: number | null
+          vat_rate?: number | null
         }
         Relationships: [
           {
@@ -222,6 +297,13 @@ export type Database = {
             columns: ["quote_id"]
             isOneToOne: false
             referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "contract_templates"
             referencedColumns: ["id"]
           },
         ]
