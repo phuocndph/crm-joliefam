@@ -83,6 +83,13 @@ const menuItems = [
     permission: "orders" as const
   },
   { 
+    title: "Hợp đồng", 
+    url: "/contracts", 
+    icon: FileSignature,
+    description: "Quản lý hợp đồng khách hàng",
+    permission: "contracts" as const
+  },
+  { 
     title: "Theo dõi GHN", 
     url: "/ghn-tracking", 
     icon: Truck,
