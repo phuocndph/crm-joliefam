@@ -40,6 +40,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   const [parsingText, setParsingText] = useState(false);
   const [parsingImage, setParsingImage] = useState(false);
   const [pasteText, setPasteText] = useState("");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [showLinkCustomer, setShowLinkCustomer] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -200,12 +201,14 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
 
     setParsingImage(true);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onload = () => resolve(reader.result as string);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+      setImagePreview(dataUrl);
+      const base64 = dataUrl.split(",")[1];
 
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
         body: { type: "parse_image", data: { base64, mimeType: file.type } },
@@ -389,6 +392,20 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
               />
             </div>
           </div>
+          {imagePreview && (
+            <div className="relative mt-2 inline-block">
+              <img src={imagePreview} alt="Preview" className="max-h-32 rounded-md border border-border object-contain" />
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                className="absolute -top-2 -right-2 h-5 w-5 rounded-full"
+                onClick={() => setImagePreview(null)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-3">
