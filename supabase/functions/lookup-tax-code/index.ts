@@ -29,13 +29,19 @@ serve(async (req) => {
 
           if (escoResult.error === 0 && escoResult.data) {
             const d = escoResult.data;
+            // escodata returns two possible formats
+            const companyName = d.ten || d.name || "";
+            const representative = d.daidien || "";
+            const address = d.dc || d.address || "";
+            const phone = d.dt || "";
+            const mst = d.mst || d.id || taxCode;
             return new Response(JSON.stringify({
-              company_name: d.ten || "",
-              representative: d.daidien || "",
-              position: d.daidien ? "Giám đốc" : "",
-              address: d.dc || "",
-              tax_code: d.mst || taxCode,
-              phone: d.dt || "",
+              company_name: companyName,
+              representative: representative,
+              position: representative ? "Giám đốc" : "",
+              address: address,
+              tax_code: mst,
+              phone: phone,
               bank_name: "",
               bank_account: "",
               bank_holder: "",
