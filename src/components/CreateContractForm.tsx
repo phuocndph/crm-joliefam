@@ -343,9 +343,9 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
         <Label className="text-base font-semibold">THÔNG TIN BÊN B (Bên mua)</Label>
 
-        {/* AI Paste & Parse */}
+        {/* AI Paste & Parse + Image Upload */}
         <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Dán thông tin doanh nghiệp để AI tự động điền</Label>
+          <Label className="text-xs text-muted-foreground">Dán thông tin hoặc tải ảnh chứa thông tin doanh nghiệp để AI tự động điền</Label>
           <div className="flex gap-2">
             <Textarea
               value={pasteText}
@@ -354,10 +354,23 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
               rows={2}
               className="text-sm"
             />
-            <Button type="button" variant="outline" onClick={handleParseText} disabled={parsingText} className="shrink-0">
-              {parsingText ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              <span className="ml-1 hidden sm:inline">AI</span>
-            </Button>
+            <div className="flex flex-col gap-1 shrink-0">
+              <Button type="button" variant="outline" size="sm" onClick={handleParseText} disabled={parsingText} title="AI phân tích text">
+                {parsingText ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                <span className="ml-1 hidden sm:inline">AI</span>
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => imageInputRef.current?.click()} disabled={parsingImage} title="Tải ảnh chứa thông tin DN">
+                {parsingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                <span className="ml-1 hidden sm:inline">Ảnh</span>
+              </Button>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageUpload}
+              />
+            </div>
           </div>
         </div>
 
