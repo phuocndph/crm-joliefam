@@ -201,12 +201,14 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
 
     setParsingImage(true);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onload = () => resolve(reader.result as string);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+      setImagePreview(dataUrl);
+      const base64 = dataUrl.split(",")[1];
 
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
         body: { type: "parse_image", data: { base64, mimeType: file.type } },
