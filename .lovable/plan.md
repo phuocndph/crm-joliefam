@@ -1,29 +1,49 @@
 
 
-# Hien thi chat lieu tu bao gia trong chi tiet don hang
+## Plan: Đổi API tra cứu MST sang escodata.net
 
-## Nguyen nhan
+### Vấn đề
+VietQR API (`api.vietqr.io`) không trả về trường **người đại diện** và **chức vụ** — chỉ có tên công ty và địa chỉ.
 
-Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
+### Giải pháp
+Chuyển sang API **escodata.net** — API miễn phí, trả về đầy đủ thông tin:
+- `ten` → Tên công ty
+- `daidien` → Người đại diện (**trường đang thiếu**)
+- `dc` → Địa chỉ
+- `dt` → Số điện thoại
+- `mst` → Mã số thuế
+- `tinhtrang` → Tình trạng hoạt động
 
-Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
+### Chiến lược: Dùng escodata làm nguồn chính, VietQR làm backup
 
-Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
+Vì escodata không có 100% MST (ví dụ FPT `0101248141` không tìm thấy), nên sẽ:
+1. **Thử escodata.net trước** — nếu thành công, dùng dữ liệu (có đầy đủ người đại diện)
+2. **Nếu escodata lỗi → fallback sang VietQR** — lấy được tên + địa chỉ, người đại diện để trống cho user tự điền
 
-## Giai phap
+### Chi tiết kỹ thuật
 
-### File: `src/pages/OrderManagement.tsx`
+**File: `supabase/functions/lookup-tax-code/index.ts`**
 
-Thay doi dong 659: doc `item.description` thay vi `item.material`:
+Thay đổi phần `type === "tax_code"`:
+- Gọi `https://escodata.net/api-mst/{taxCode}.htm` trước
+- Nếu `error === 0` và có `data.daidien`: trả về mapping đầy đủ
+- Nếu không: fallback sang VietQR API hiện tại (giữ nguyên logic cũ)
+- Xóa bỏ hoàn toàn phần AI supplement representative (ngăn hallucination)
 
-```typescript
-// Truoc:
-{item.material || "-"}
+Mapping escodata → response:
 
-// Sau:
-{item.description || "-"}
+```text
+escodata field  →  response field
+data.ten        →  company_name
+data.daidien    →  representative
+"Giám đốc"     →  position (default)
+data.dc         →  address
+data.mst        →  tax_code
+data.dt         →  phone
 ```
 
-Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
+### Không cần thay đổi
+- Frontend code — response format giữ nguyên
+- Secrets — escodata.net không cần API key
+- Database — không thay đổi
 
-Chi thay doi 1 dong, khong anh huong logic nao khac.
