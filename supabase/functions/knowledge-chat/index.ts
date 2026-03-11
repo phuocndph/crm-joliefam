@@ -154,15 +154,41 @@ serve(async (req) => {
     const skipDocs = wantsData && (!!dateRange || wantsTransactions || wantsOrders || wantsRevenueSummary);
 
     const searchTerms = question.replace(/[^\w\sÀ-ỹ]/g, "").trim();
+    const searchWords = searchTerms.split(/\s+/).filter(w => w.length > 1);
     const empty = Promise.resolve({ data: null, count: 0 });
+
+    // Build flexible search: try full-text first, then fallback to ilike
+    const buildDocSearch = async () => {
+      if (skipDocs) return { data: null, count: 0 };
+      
+      // Strategy 1: Full-text search with OR logic (any word matches)
+      const tsQuery = searchWords.slice(0, 6).join(" | ");
+      const { data: tsResults } = await supabase
+        .from("knowledge_documents")
+        .select("id, title, content, document_type, faq_answer")
+        .textSearch("search_vector", tsQuery, { type: "plain" })
+        .limit(8);
+      
+      if (tsResults && tsResults.length >= 2) return { data: tsResults, count: tsResults.length };
+      
+      // Strategy 2: Fallback to ilike search on title + content
+      const likePattern = `%${searchWords.slice(0, 3).join("%")}%`;
+      const { data: likeResults } = await supabase
+        .from("knowledge_documents")
+        .select("id, title, content, document_type, faq_answer")
+        .or(`title.ilike.${likePattern},content.ilike.${likePattern},faq_answer.ilike.${likePattern}`)
+        .limit(8);
+      
+      // Merge unique results
+      const allDocs = [...(tsResults || []), ...(likeResults || [])];
+      const seen = new Set<string>();
+      const unique = allDocs.filter(d => { if (seen.has(d.id)) return false; seen.add(d.id); return true; });
+      return { data: unique.slice(0, 10), count: unique.length };
+    };
 
     // Parallel fetch - knowledge docs + business data
     const [docsResult, dataResult] = await Promise.all([
-      skipDocs ? empty : supabase
-        .from("knowledge_documents")
-        .select("id, title, content, document_type, faq_answer")
-        .textSearch("search_vector", searchTerms, { type: "plain" })
-        .limit(3),
+      buildDocSearch(),
 
       wantsTransactions || wantsRevenueSummary
         ? (() => {
