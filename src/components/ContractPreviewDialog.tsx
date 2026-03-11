@@ -170,8 +170,8 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
       if (contract.include_vat) {
         const subtotalRow = new DocxTableRow({
           children: [
-            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: "TỔNG CỘNG:", bold: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.RIGHT })], columnSpan: 5, borders: borderStyle }),
-            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: formatCurrency(subtotal), bold: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.RIGHT })], borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: "TỔNG CỘNG:", bold: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.LEFT })], columnSpan: 5, borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: formatCurrency(subtotal), bold: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.LEFT })], borders: borderStyle }),
           ],
         });
         const vatRow = new DocxTableRow({
