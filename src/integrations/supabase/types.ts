@@ -74,6 +74,158 @@ export type Database = {
         }
         Relationships: []
       }
+      contract_template_settings: {
+        Row: {
+          address: string | null
+          bank_info: string | null
+          company_name: string | null
+          company_title: string | null
+          created_at: string | null
+          default_terms: Json | null
+          footer_note: string | null
+          headquarters: string | null
+          id: string
+          logo_url: string | null
+          phone: string | null
+          tax_code: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          address?: string | null
+          bank_info?: string | null
+          company_name?: string | null
+          company_title?: string | null
+          created_at?: string | null
+          default_terms?: Json | null
+          footer_note?: string | null
+          headquarters?: string | null
+          id?: string
+          logo_url?: string | null
+          phone?: string | null
+          tax_code?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string | null
+          bank_info?: string | null
+          company_name?: string | null
+          company_title?: string | null
+          created_at?: string | null
+          default_terms?: Json | null
+          footer_note?: string | null
+          headquarters?: string | null
+          id?: string
+          logo_url?: string | null
+          phone?: string | null
+          tax_code?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      contracts: {
+        Row: {
+          content: string | null
+          contract_date: string | null
+          contract_number: string
+          created_at: string
+          customer_id: string | null
+          deposit_amount: number | null
+          deposit_percentage: number | null
+          end_date: string | null
+          id: string
+          items: Json | null
+          manager_id: string | null
+          notes: string | null
+          order_id: string | null
+          quote_id: string | null
+          start_date: string | null
+          status: string
+          tenant_id: string
+          terms: Json | null
+          title: string
+          total_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          content?: string | null
+          contract_date?: string | null
+          contract_number: string
+          created_at?: string
+          customer_id?: string | null
+          deposit_amount?: number | null
+          deposit_percentage?: number | null
+          end_date?: string | null
+          id?: string
+          items?: Json | null
+          manager_id?: string | null
+          notes?: string | null
+          order_id?: string | null
+          quote_id?: string | null
+          start_date?: string | null
+          status?: string
+          tenant_id?: string
+          terms?: Json | null
+          title?: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          content?: string | null
+          contract_date?: string | null
+          contract_number?: string
+          created_at?: string
+          customer_id?: string | null
+          deposit_amount?: number | null
+          deposit_percentage?: number | null
+          end_date?: string | null
+          id?: string
+          items?: Json | null
+          manager_id?: string | null
+          notes?: string | null
+          order_id?: string | null
+          quote_id?: string | null
+          start_date?: string | null
+          status?: string
+          tenant_id?: string
+          terms?: Json | null
+          title?: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contracts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "payment_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "contracts_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_predictions: {
         Row: {
           confidence_score: number | null
