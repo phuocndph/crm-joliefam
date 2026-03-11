@@ -1,29 +1,16 @@
 
 
-# Hien thi chat lieu tu bao gia trong chi tiet don hang
+## Plan: Sửa build error và kiểm tra quyền hợp đồng
 
-## Nguyen nhan
+### Vấn đề gốc
+1. **Build đang lỗi hoàn toàn** vì file `ContractPreviewDialog.tsx` import thư viện `docx` nhưng package này chưa được thêm vào `package.json`. Khi build fail, toàn bộ app không cập nhật được — nên dù quyền `contracts` đã được lưu đúng trong DB cho user `nguyenhuonggiang@company.com`, app vẫn không hoạt động.
 
-Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
+2. **Dữ liệu phân quyền đã đúng**: User `b5421b2d-7145-4ca7-8ca0-b9d366d4caf4` đã có record `permission_type: contracts, enabled: true` trong bảng `employee_permissions`. RLS policies cũng cho phép employee đọc quyền của chính mình.
 
-Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
+### Giải pháp
+**Thêm package `docx` vào `package.json`** — đây là thay đổi duy nhất cần thiết để fix build error. Sau khi build thành công, app sẽ hoạt động bình thường và user sẽ thấy menu Hợp đồng.
 
-Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
+### Chi tiết kỹ thuật
+- File: `package.json` — thêm `"docx": "^9.1.1"` vào dependencies
+- Không cần thay đổi code hay database
 
-## Giai phap
-
-### File: `src/pages/OrderManagement.tsx`
-
-Thay doi dong 659: doc `item.description` thay vi `item.material`:
-
-```typescript
-// Truoc:
-{item.material || "-"}
-
-// Sau:
-{item.description || "-"}
-```
-
-Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
-
-Chi thay doi 1 dong, khong anh huong logic nao khac.
