@@ -16,15 +16,24 @@ serve(async (req) => {
       const taxCode = data.toString().trim();
       console.log("Looking up tax code via VietQR:", taxCode);
 
-      const response = await fetch(`https://api.vietqr.io/v2/business/${taxCode}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) {
+          await new Promise(r => setTimeout(r, 1000 * attempt));
+        }
+        response = await fetch(`https://api.vietqr.io/v2/business/${taxCode}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (response.status !== 429) break;
+        console.log(`VietQR rate limited, retry ${attempt + 1}...`);
+      }
 
-      if (!response.ok) {
-        console.error("VietQR API error:", response.status);
-        return new Response(JSON.stringify({ error: "Không thể tra cứu MST" }), {
-          status: response.status,
+      if (!response || !response.ok) {
+        const status = response?.status || 500;
+        console.error("VietQR API error:", status);
+        return new Response(JSON.stringify({ error: "Không thể tra cứu MST. Vui lòng thử lại sau." }), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
