@@ -366,7 +366,8 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
             <Textarea
               value={pasteText}
               onChange={e => setPasteText(e.target.value)}
-              placeholder="Dán text chứa thông tin công ty, MST, địa chỉ, ngân hàng..."
+              onPaste={handlePasteImage}
+              placeholder="Dán text hoặc Ctrl+V ảnh chứa thông tin công ty, MST, địa chỉ, ngân hàng..."
               rows={2}
               className="text-sm"
             />
