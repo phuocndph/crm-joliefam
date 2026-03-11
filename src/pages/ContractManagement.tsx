@@ -164,7 +164,7 @@ const ContractManagement = () => {
                       return (
                         <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setPreviewContract(c)}>
                           <TableCell className="font-medium text-primary">{c.contract_number}</TableCell>
-                          <TableCell>{c.customers?.name || "—"}</TableCell>
+                          <TableCell>{c.customers?.name || c.buyer_info?.company_name || "—"}</TableCell>
                           <TableCell className="max-w-[200px] truncate">{c.title || "—"}</TableCell>
                           <TableCell>{formatCurrency(c.total_amount)}</TableCell>
                           <TableCell>{formatCurrency(c.deposit_amount)}</TableCell>
