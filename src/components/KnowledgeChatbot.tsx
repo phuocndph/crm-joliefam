@@ -241,6 +241,7 @@ export function KnowledgeChatbot() {
       }
     } finally {
       clearTimeout(timeout);
+      if (streamTimeout) clearTimeout(streamTimeout);
       setIsLoading(false);
     }
   };
