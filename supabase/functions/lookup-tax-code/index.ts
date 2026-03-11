@@ -132,6 +132,80 @@ Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ tr�
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
+    } else if (type === "parse_image") {
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+      const { base64, mimeType } = data;
+      if (!base64) {
+        return new Response(JSON.stringify({ error: "No image data" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            {
+              role: "system",
+              content: `Bạn là trợ lý phân tích thông tin doanh nghiệp Việt Nam từ hình ảnh. Luôn trả về kết quả dưới dạng JSON với cấu trúc sau (không markdown, không giải thích thêm):
+{
+  "company_name": "tên công ty/cá nhân",
+  "representative": "người đại diện",
+  "position": "chức vụ (mặc định Giám đốc)",
+  "address": "địa chỉ",
+  "tax_code": "mã số thuế",
+  "phone": "số điện thoại",
+  "bank_name": "tên ngân hàng",
+  "bank_account": "số tài khoản",
+  "bank_holder": "chủ tài khoản"
+}
+Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ trả JSON thuần, không bọc trong code block.`
+            },
+            {
+              role: "user",
+              content: [
+                { type: "image_url", image_url: { url: `data:${mimeType || "image/png"};base64,${base64}` } },
+                { type: "text", text: "Phân tích hình ảnh này và trích xuất tất cả thông tin doanh nghiệp/cá nhân: tên công ty, MST, địa chỉ, SĐT, ngân hàng, người đại diện, chức vụ." },
+              ],
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          return new Response(JSON.stringify({ error: "Rate limit exceeded. Vui lòng thử lại sau." }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const t = await response.text();
+        console.error("AI gateway error:", response.status, t);
+        throw new Error("AI gateway error");
+      }
+
+      const result = await response.json();
+      const content = result.choices?.[0]?.message?.content || "";
+      let parsed: any = {};
+      try {
+        const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+        parsed = JSON.parse(cleaned);
+      } catch {
+        console.error("Failed to parse AI image response:", content);
+        parsed = { raw: content };
+      }
+
+      return new Response(JSON.stringify(parsed), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+
     } else {
       return new Response(JSON.stringify({ error: "Invalid type" }), {
         status: 400,

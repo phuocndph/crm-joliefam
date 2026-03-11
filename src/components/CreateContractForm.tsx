@@ -11,7 +11,8 @@ import { useContractTemplates, defaultArticles } from "@/hooks/useContractTempla
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Plus, Trash2, Search, Sparkles, Link } from "lucide-react";
+import { Loader2, Plus, Trash2, Search, Sparkles, Link, ImagePlus } from "lucide-react";
+import { useRef } from "react";
 
 interface CreateContractFormProps {
   onSuccess: () => void;
@@ -37,8 +38,10 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   const [templateId, setTemplateId] = useState("");
   const [lookingUpTax, setLookingUpTax] = useState(false);
   const [parsingText, setParsingText] = useState(false);
+  const [parsingImage, setParsingImage] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [showLinkCustomer, setShowLinkCustomer] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     contract_number: generateContractNumber(),
@@ -184,6 +187,60 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     }
   };
 
+  // AI Parse Image
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Vui lòng chọn file hình ảnh", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Hình ảnh quá lớn (tối đa 5MB)", variant: "destructive" });
+      return;
+    }
+
+    setParsingImage(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]); // remove data:...;base64, prefix
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
+        body: { type: "parse_image", data: { base64, mimeType: file.type } },
+      });
+      if (error) throw error;
+      if (data && !data.error && !data.raw) {
+        setBuyerInfo(prev => ({
+          ...prev,
+          company_name: data.company_name || prev.company_name,
+          representative: data.representative || prev.representative,
+          position: data.position || prev.position,
+          address: data.address || prev.address,
+          tax_code: data.tax_code || prev.tax_code,
+          phone: data.phone || prev.phone,
+          bank_name: data.bank_name || prev.bank_name,
+          bank_account: data.bank_account || prev.bank_account,
+          bank_holder: data.bank_holder || prev.bank_holder,
+        }));
+        toast({ title: "Đã phân tích hình ảnh và điền thông tin!" });
+      } else {
+        toast({ title: "Không thể phân tích hình ảnh", description: data?.error || data?.raw, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Lỗi phân tích hình ảnh", description: err.message, variant: "destructive" });
+    } finally {
+      setParsingImage(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  };
+
   // Calculations
   const subtotal = items.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0);
   const vatAmount = formData.include_vat ? subtotal * formData.vat_rate / 100 : 0;
@@ -286,9 +343,9 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
         <Label className="text-base font-semibold">THÔNG TIN BÊN B (Bên mua)</Label>
 
-        {/* AI Paste & Parse */}
+        {/* AI Paste & Parse + Image Upload */}
         <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Dán thông tin doanh nghiệp để AI tự động điền</Label>
+          <Label className="text-xs text-muted-foreground">Dán thông tin hoặc tải ảnh chứa thông tin doanh nghiệp để AI tự động điền</Label>
           <div className="flex gap-2">
             <Textarea
               value={pasteText}
@@ -297,10 +354,23 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
               rows={2}
               className="text-sm"
             />
-            <Button type="button" variant="outline" onClick={handleParseText} disabled={parsingText} className="shrink-0">
-              {parsingText ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              <span className="ml-1 hidden sm:inline">AI</span>
-            </Button>
+            <div className="flex flex-col gap-1 shrink-0">
+              <Button type="button" variant="outline" size="sm" onClick={handleParseText} disabled={parsingText} title="AI phân tích text">
+                {parsingText ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                <span className="ml-1 hidden sm:inline">AI</span>
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => imageInputRef.current?.click()} disabled={parsingImage} title="Tải ảnh chứa thông tin DN">
+                {parsingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                <span className="ml-1 hidden sm:inline">Ảnh</span>
+              </Button>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageUpload}
+              />
+            </div>
           </div>
         </div>
 
