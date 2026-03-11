@@ -187,6 +187,60 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     }
   };
 
+  // AI Parse Image
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Vui lòng chọn file hình ảnh", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Hình ảnh quá lớn (tối đa 5MB)", variant: "destructive" });
+      return;
+    }
+
+    setParsingImage(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]); // remove data:...;base64, prefix
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
+        body: { type: "parse_image", data: { base64, mimeType: file.type } },
+      });
+      if (error) throw error;
+      if (data && !data.error && !data.raw) {
+        setBuyerInfo(prev => ({
+          ...prev,
+          company_name: data.company_name || prev.company_name,
+          representative: data.representative || prev.representative,
+          position: data.position || prev.position,
+          address: data.address || prev.address,
+          tax_code: data.tax_code || prev.tax_code,
+          phone: data.phone || prev.phone,
+          bank_name: data.bank_name || prev.bank_name,
+          bank_account: data.bank_account || prev.bank_account,
+          bank_holder: data.bank_holder || prev.bank_holder,
+        }));
+        toast({ title: "Đã phân tích hình ảnh và điền thông tin!" });
+      } else {
+        toast({ title: "Không thể phân tích hình ảnh", description: data?.error || data?.raw, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Lỗi phân tích hình ảnh", description: err.message, variant: "destructive" });
+    } finally {
+      setParsingImage(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  };
+
   // Calculations
   const subtotal = items.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0);
   const vatAmount = formData.include_vat ? subtotal * formData.vat_rate / 100 : 0;
