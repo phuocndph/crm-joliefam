@@ -131,6 +131,14 @@ export function KnowledgeChatbot() {
       let streamSources: any[] = [];
       let streamDone = false;
       let isFirstSourceEvent = true;
+      let receivedAnyData = false;
+
+      // 15s timeout if no data arrives at all
+      streamTimeout = setTimeout(() => {
+        if (!receivedAnyData) {
+          controller.abort();
+        }
+      }, 15000);
 
       while (!streamDone) {
         const { done, value } = await reader.read();
