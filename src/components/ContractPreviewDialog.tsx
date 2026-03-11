@@ -127,9 +127,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
       const sellerBank = seller.bank_info || companySettings.bankInfo;
       const sellerHQ = seller.headquarters || companySettings.headquarters;
 
-      const buyerName = contract.customers?.name || "—";
+      const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
       const buyerAddress = buyer.address || contract.customers?.address || "—";
       const buyerPhone = buyer.phone || contract.customers?.phone || "—";
+      const buyerBankName = buyer.bank_name || "";
+      const buyerBankAccount = buyer.bank_account || "";
+      const buyerBankHolder = buyer.bank_holder || "";
 
       const borderStyle = {
         top: { style: BorderStyle.SINGLE, size: 1 },
