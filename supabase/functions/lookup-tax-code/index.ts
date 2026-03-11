@@ -43,17 +43,67 @@ serve(async (req) => {
 
       if (result.code === "00" && result.data) {
         const d = result.data;
-        return new Response(JSON.stringify({
+        const baseInfo = {
           company_name: d.name || "",
-          representative: d.representative || "",  // VietQR doesn't always return this
-          position: "Giám đốc",
+          representative: d.representative || "",
+          position: d.representative ? "Giám đốc" : "",
           address: d.address || "",
           tax_code: d.id || taxCode,
           phone: "",
           bank_name: "",
           bank_account: "",
           bank_holder: "",
-        }), {
+        };
+
+        // If representative is missing, try AI to supplement
+        if (!baseInfo.representative && baseInfo.company_name) {
+          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+          if (LOVABLE_API_KEY) {
+            try {
+              console.log("VietQR missing representative, using AI to supplement...");
+              const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-3-flash-preview",
+                  messages: [
+                    {
+                      role: "system",
+                      content: `Bạn là trợ lý tra cứu thông tin doanh nghiệp Việt Nam. Cho biết tên công ty và MST, hãy tìm thông tin người đại diện pháp luật và chức vụ. Trả về JSON thuần (không markdown):
+{"representative": "tên người đại diện", "position": "chức vụ"}
+Nếu không biết chắc chắn thì để chuỗi rỗng "".`
+                    },
+                    {
+                      role: "user",
+                      content: `Công ty: ${baseInfo.company_name}\nMST: ${taxCode}\nĐịa chỉ: ${baseInfo.address}\n\nTìm thông tin người đại diện pháp luật và chức vụ.`
+                    },
+                  ],
+                }),
+              });
+
+              if (aiResponse.ok) {
+                const aiResult = await aiResponse.json();
+                const content = aiResult.choices?.[0]?.message?.content || "";
+                try {
+                  const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+                  const parsed = JSON.parse(cleaned);
+                  if (parsed.representative) baseInfo.representative = parsed.representative;
+                  if (parsed.position) baseInfo.position = parsed.position;
+                  console.log("AI supplemented representative:", parsed);
+                } catch {
+                  console.log("AI response not parseable, skipping supplement");
+                }
+              }
+            } catch (e) {
+              console.log("AI supplement failed, returning base info:", e);
+            }
+          }
+        }
+
+        return new Response(JSON.stringify(baseInfo), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       } else {
