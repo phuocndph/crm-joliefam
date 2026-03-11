@@ -40,6 +40,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   const [parsingText, setParsingText] = useState(false);
   const [parsingImage, setParsingImage] = useState(false);
   const [pasteText, setPasteText] = useState("");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [showLinkCustomer, setShowLinkCustomer] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
