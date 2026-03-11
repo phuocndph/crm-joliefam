@@ -1,52 +1,29 @@
 
 
-# Cải thiện UI hiển thị tin nhắn chatbot
+# Hien thi chat lieu tu bao gia trong chi tiet don hang
 
-## Thay đổi chính
+## Nguyen nhan
 
-### 1. Bong bóng tin nhắn đẹp hơn
-- **User messages**: Thêm gradient xanh đậm, shadow mềm, và hiệu ứng xuất hiện mượt
-- **Assistant messages**: Nền trắng/gray với border mỏng, shadow nhẹ, typography cải thiện
-- **Animations**: Thêm `animate-in slide-in` cho tin nhắn mới
+Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
 
-### 2. Avatar và header
-- **AI Avatar**: Gradient background với icon Bot, thêm hiệu ứng pulse khi đang trả lời
-- **User Avatar**: Gradient cam/xanh đậm hơn
-- **Typing indicator**: 3 chấm với animation mượt hơn, có hiệu ứng wave
+Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
 
-### 3. Markdown rendering đẹp hơn
-- **Headings**: Font weight đậm, màu primary, spacing tốt hơn
-- **Lists**: Custom bullet points với màu primary, indent đẹp
-- **Code blocks**: Background xám nhạt, rounded corners, font monospace
-- **Links**: Màu primary với hover underline
-- **Paragraphs**: Line height 1.6, margin hợp lý
+Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
 
-### 4. Sources (Tài liệu tham khảo)
-- **Card style**: Badge có màu theo loại tài liệu (PDF, DOC, URL...)
-- **Icon**: Thêm icon file-type cho từng loại
-- **Layout**: Hiển thị dạng flex wrap với gap đều
+## Giai phap
 
-### 5. Input area
-- **Textarea thay vì Input**: Cho phép nhập nhiều dòng, auto-resize
-- **Focus ring**: Gradient border khi focus
-- **Send button**: Gradient background, hiệu ứng scale khi hover
+### File: `src/pages/OrderManagement.tsx`
 
-### 6. Scroll và layout
-- **Smooth scroll**: Cải thiện scroll behavior
-- **Message grouping**: Giảm gap giữa tin nhắn cùng role
-- **Timestamp**: Hiển thị thời gian gửi (tùy chọn)
+Thay doi dong 659: doc `item.description` thay vi `item.material`:
 
-## Các file cần sửa
+```typescript
+// Truoc:
+{item.material || "-"}
 
-### `src/components/KnowledgeChatbot.tsx`
-- Thêm imports mới (Textarea, các icon bổ sung)
-- Cải thiện CSS classes cho message bubbles
-- Thêm animation keyframes
-- Cải thiện ReactMarkdown styling với components prop
-- Thêm icon cho sources theo type
+// Sau:
+{item.description || "-"}
+```
 
-### CSS bổ sung trong file
-- Custom animations cho message appear
-- Typing indicator animation
-- Markdown content styling
+Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
 
+Chi thay doi 1 dong, khong anh huong logic nao khac.
