@@ -60,7 +60,9 @@ import {
   Calculator,
   Calendar,
   Copy,
+  FileSignature,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const statusLabels = {
   draft: { label: "Nháp", color: "bg-gray-100 text-gray-800" },
@@ -625,6 +627,23 @@ export default function QuotesPage() {
                                 Xóa
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem
+                              onClick={() => {
+                                const items = Array.isArray(quote.items) ? quote.items : [];
+                                const params = new URLSearchParams({
+                                  from_quote: quote.id,
+                                  customer_id: quote.customer_id || '',
+                                  total: String(quote.total_amount || 0),
+                                  title: `HĐ từ báo giá ${quote.quote_number}`,
+                                  items: JSON.stringify(items),
+                                });
+                                window.location.href = `/contracts?${params.toString()}`;
+                              }}
+                              className="text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
+                            >
+                              <FileSignature className="mr-2 h-4 w-4" />
+                              Tạo hợp đồng
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

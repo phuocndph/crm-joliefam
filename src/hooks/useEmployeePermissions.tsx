@@ -17,7 +17,8 @@ export type PermissionType =
   | 'fabric_management'
   | 'ghn_tracking'
   | 'quote_approval'
-  | 'knowledge_base';
+  | 'knowledge_base'
+  | 'contracts';
 
 export interface EmployeePermission {
   permission_type: PermissionType;

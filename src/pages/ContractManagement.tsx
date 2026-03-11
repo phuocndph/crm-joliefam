@@ -1,0 +1,208 @@
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useContracts } from "@/hooks/useContracts";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { CreateContractForm } from "@/components/CreateContractForm";
+import { EditContractDialog } from "@/components/EditContractDialog";
+import { DeleteContractDialog } from "@/components/DeleteContractDialog";
+import { ContractPreviewDialog } from "@/components/ContractPreviewDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/useUserRole";
+import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Filter } from "lucide-react";
+
+const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  draft: { label: "Nháp", variant: "secondary" },
+  active: { label: "Đang hiệu lực", variant: "default" },
+  completed: { label: "Hoàn thành", variant: "outline" },
+  cancelled: { label: "Đã hủy", variant: "destructive" },
+};
+
+const ContractManagement = () => {
+  const [user, setUser] = useState<any>(null);
+  const { role: userRole } = useUserRole(user);
+  const { data: contracts, isLoading } = useContracts();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [showCreate, setShowCreate] = useState(false);
+  const [editContract, setEditContract] = useState<any>(null);
+  const [deleteContract, setDeleteContract] = useState<any>(null);
+  const [previewContract, setPreviewContract] = useState<any>(null);
+
+  // Prefill data from URL params (from QuotesPage)
+  const prefillData = useMemo(() => {
+    const fromQuote = searchParams.get('from_quote');
+    if (!fromQuote) return undefined;
+    let items: any[] = [];
+    try { items = JSON.parse(searchParams.get('items') || '[]'); } catch {}
+    return {
+      quote_id: fromQuote,
+      customer_id: searchParams.get('customer_id') || '',
+      total_amount: Number(searchParams.get('total') || 0),
+      title: searchParams.get('title') || '',
+      items,
+    };
+  }, [searchParams]);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+  }, []);
+
+  // Auto-open create form if coming from quote
+  useEffect(() => {
+    if (prefillData) {
+      setShowCreate(true);
+      // Clear URL params after opening
+      setSearchParams({}, { replace: true });
+    }
+  }, [prefillData]);
+
+  const filtered = (contracts || []).filter((c: any) => {
+    const matchSearch = !searchTerm ||
+      c.contract_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.customers?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = statusFilter === "all" || c.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
+  const formatDate = (d: string) => d ? new Date(d).toLocaleDateString("vi-VN") : "—";
+
+  const stats = {
+    total: (contracts || []).length,
+    active: (contracts || []).filter((c: any) => c.status === "active").length,
+    draft: (contracts || []).filter((c: any) => c.status === "draft").length,
+    completed: (contracts || []).filter((c: any) => c.status === "completed").length,
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <FileSignature className="h-6 w-6 text-primary" />
+            Quản lý Hợp đồng
+          </h1>
+          <p className="text-muted-foreground">Tạo và quản lý hợp đồng với khách hàng</p>
+        </div>
+        <Button onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4 mr-1" />Tạo hợp đồng
+        </Button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        {[
+          { label: "Tổng hợp đồng", value: stats.total, color: "text-foreground" },
+          { label: "Đang hiệu lực", value: stats.active, color: "text-blue-600" },
+          { label: "Nháp", value: stats.draft, color: "text-muted-foreground" },
+          { label: "Hoàn thành", value: stats.completed, color: "text-green-600" },
+        ].map((s, i) => (
+          <Card key={i}>
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground">{s.label}</p>
+              <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Tìm kiếm hợp đồng..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
+        </div>
+        <div className="flex gap-1">
+          {["all", "draft", "active", "completed", "cancelled"].map(s => (
+            <Button key={s} size="sm" variant={statusFilter === s ? "default" : "outline"} onClick={() => setStatusFilter(s)}>
+              {s === "all" ? "Tất cả" : statusConfig[s]?.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Table */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Mã HĐ</TableHead>
+                <TableHead>Khách hàng</TableHead>
+                <TableHead>Tiêu đề</TableHead>
+                <TableHead>Giá trị</TableHead>
+                <TableHead>Đặt cọc</TableHead>
+                <TableHead>Ngày ký</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <TableHead className="w-[60px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
+              ) : filtered.length === 0 ? (
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có hợp đồng nào</TableCell></TableRow>
+              ) : (
+                filtered.map((c: any) => {
+                  const st = statusConfig[c.status] || statusConfig.draft;
+                  return (
+                    <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setPreviewContract(c)}>
+                      <TableCell className="font-medium text-primary">{c.contract_number}</TableCell>
+                      <TableCell>{c.customers?.name || "—"}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">{c.title || "—"}</TableCell>
+                      <TableCell>{formatCurrency(c.total_amount)}</TableCell>
+                      <TableCell>{formatCurrency(c.deposit_amount)}</TableCell>
+                      <TableCell>{formatDate(c.contract_date)}</TableCell>
+                      <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setPreviewContract(c)}><Eye className="h-4 w-4 mr-2" />Xem</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setEditContract(c)}><Edit className="h-4 w-4 mr-2" />Sửa</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setDeleteContract(c)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Xóa</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Dialogs */}
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Tạo hợp đồng mới</DialogTitle></DialogHeader>
+          <CreateContractForm onSuccess={() => setShowCreate(false)} prefillData={prefillData} />
+        </DialogContent>
+      </Dialog>
+
+      {editContract && (
+        <EditContractDialog open={!!editContract} onOpenChange={o => !o && setEditContract(null)} contract={editContract} />
+      )}
+      {deleteContract && (
+        <DeleteContractDialog open={!!deleteContract} onOpenChange={o => !o && setDeleteContract(null)} contract={deleteContract} />
+      )}
+      {previewContract && (
+        <ContractPreviewDialog open={!!previewContract} onOpenChange={o => !o && setPreviewContract(null)} contract={previewContract} />
+      )}
+    </div>
+  );
+};
+
+export default ContractManagement;

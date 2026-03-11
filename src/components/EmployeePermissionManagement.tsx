@@ -45,7 +45,8 @@ const permissionLabels: Record<PermissionType, string> = {
   fabric_management: 'Quản lý vải - Kho vải và giao dịch',
   ghn_tracking: 'Theo dõi GHN - Tra cứu vận chuyển',
   quote_approval: 'Duyệt báo giá - Cho phép duyệt và từ chối báo giá',
-  knowledge_base: 'Kho Kiến Thức - AI hỗ trợ bán hàng'
+  knowledge_base: 'Kho Kiến Thức - AI hỗ trợ bán hàng',
+  contracts: 'Hợp đồng - Quản lý hợp đồng khách hàng'
 };
 
 const EmployeePermissionManagement = () => {
