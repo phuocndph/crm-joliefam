@@ -95,6 +95,7 @@ export function KnowledgeChatbot() {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45000);
+    let streamTimeout: ReturnType<typeof setTimeout> | null = null;
 
     try {
       const session = await supabase.auth.getSession();
@@ -130,12 +131,21 @@ export function KnowledgeChatbot() {
       let streamSources: any[] = [];
       let streamDone = false;
       let isFirstSourceEvent = true;
+      let receivedAnyData = false;
+
+      // 15s timeout if no data arrives at all
+      streamTimeout = setTimeout(() => {
+        if (!receivedAnyData) {
+          controller.abort();
+        }
+      }, 15000);
 
       while (!streamDone) {
         const { done, value } = await reader.read();
         if (done) break;
+        receivedAnyData = true;
+        if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null; }
         textBuffer += decoder.decode(value, { stream: true });
-
         let newlineIndex: number;
         while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
           let line = textBuffer.slice(0, newlineIndex);
@@ -231,6 +241,7 @@ export function KnowledgeChatbot() {
       }
     } finally {
       clearTimeout(timeout);
+      if (streamTimeout) clearTimeout(streamTimeout);
       setIsLoading(false);
     }
   };

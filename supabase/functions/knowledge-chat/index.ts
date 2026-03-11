@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-3-flash-preview";
+const MODEL = "google/gemini-2.5-flash";
 
 // Parse Vietnamese date patterns from question
 function parseDateRange(question: string): { start: string; end: string } | null {
@@ -313,7 +313,10 @@ async function callAI(apiKey: string, messages: any[], sources: any[], useStream
           if (done) { writer.close(); break; }
           await writer.write(value);
         }
-      } catch (e) { writer.abort(e); }
+      } catch (e) {
+        console.error("Stream pipe error:", e);
+        try { writer.abort(e); } catch (_) { /* already closed */ }
+      }
     })();
     return new Response(transformStream.readable, {
       headers: { ...cors, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" },
