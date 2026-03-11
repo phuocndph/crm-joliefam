@@ -2,9 +2,13 @@ import { useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Printer, Download } from "lucide-react";
+import { Printer, Download, FileText, FileDown } from "lucide-react";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
+import { useToast } from "@/hooks/use-toast";
 import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, AlignmentType, BorderStyle, HeadingLevel } from "docx";
+import { saveAs } from "file-saver";
 
 interface Props {
   open: boolean;
@@ -22,6 +26,7 @@ const statusMap: Record<string, { label: string; color: string }> = {
 export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) => {
   const printRef = useRef<HTMLDivElement>(null);
   const { settings: companySettings } = useTemplateSettings();
+  const { toast } = useToast();
 
   if (!contract) return null;
 
@@ -69,6 +74,251 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
     link.click();
   };
 
+  const handleDownloadPDF = async () => {
+    if (!printRef.current) return;
+    try {
+      toast({ title: "Đang tạo PDF..." });
+      const canvas = await html2canvas(printRef.current, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+
+      const pdfWidth = 210; // A4 width in mm
+      const pdfHeight = 297; // A4 height in mm
+      const margin = 10;
+      const contentWidth = pdfWidth - margin * 2;
+      const contentHeight = (imgHeight * contentWidth) / imgWidth;
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      let position = margin;
+      let remainingHeight = contentHeight;
+      const pageContentHeight = pdfHeight - margin * 2;
+
+      // First page
+      pdf.addImage(imgData, "JPEG", margin, position, contentWidth, contentHeight);
+
+      // Add more pages if content is longer than one page
+      if (contentHeight > pageContentHeight) {
+        remainingHeight -= pageContentHeight;
+        while (remainingHeight > 0) {
+          position -= pageContentHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, "JPEG", margin, position, contentWidth, contentHeight);
+          remainingHeight -= pageContentHeight;
+        }
+      }
+
+      pdf.save(`${contract.contract_number}.pdf`);
+      toast({ title: "Đã tải PDF thành công!" });
+    } catch (err) {
+      console.error("PDF export error:", err);
+      toast({ title: "Lỗi tạo PDF", variant: "destructive" });
+    }
+  };
+
+  const handleDownloadWord = async () => {
+    try {
+      toast({ title: "Đang tạo file Word..." });
+
+      const sellerName = seller.company_name || companySettings.companyName;
+      const sellerAddress = seller.address || companySettings.address;
+      const sellerPhone = seller.phone || companySettings.phone;
+      const sellerTaxCode = seller.tax_code || companySettings.taxCode;
+      const sellerBank = seller.bank_info || companySettings.bankInfo;
+      const sellerHQ = seller.headquarters || companySettings.headquarters;
+
+      const buyerName = contract.customers?.name || "—";
+      const buyerAddress = buyer.address || contract.customers?.address || "—";
+      const buyerPhone = buyer.phone || contract.customers?.phone || "—";
+
+      const borderStyle = {
+        top: { style: BorderStyle.SINGLE, size: 1 },
+        bottom: { style: BorderStyle.SINGLE, size: 1 },
+        left: { style: BorderStyle.SINGLE, size: 1 },
+        right: { style: BorderStyle.SINGLE, size: 1 },
+      };
+
+      // Build product table rows
+      const headerRow = new DocxTableRow({
+        children: ["TT", "Tên sản phẩm", "Kích thước/Quy cách", "SL", "Đơn giá", "Thành tiền"].map((text, idx) =>
+          new DocxTableCell({
+            children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.CENTER })],
+            borders: borderStyle,
+            width: idx === 0 ? { size: 600, type: WidthType.DXA } : idx === 3 ? { size: 700, type: WidthType.DXA } : { size: 1800, type: WidthType.DXA },
+          })
+        ),
+      });
+
+      const itemRows = items.map((item: any, i: number) =>
+        new DocxTableRow({
+          children: [
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(i + 1), size: 20, font: "Times New Roman" })], alignment: AlignmentType.CENTER })], borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: item.name || "—", size: 20, font: "Times New Roman" })] })], borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: item.specifications || item.description || "—", size: 20, font: "Times New Roman" })] })], borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(item.quantity || 1), size: 20, font: "Times New Roman" })], alignment: AlignmentType.CENTER })], borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: formatCurrency(item.price || 0), size: 20, font: "Times New Roman" })], alignment: AlignmentType.RIGHT })], borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: formatCurrency((item.price || 0) * (item.quantity || 1)), size: 20, font: "Times New Roman" })], alignment: AlignmentType.RIGHT })], borders: borderStyle }),
+          ],
+        })
+      );
+
+      // Total row
+      const totalRow = new DocxTableRow({
+        children: [
+          new DocxTableCell({
+            children: [new Paragraph({ children: [new TextRun({ text: "TỔNG GIÁ TRỊ HỢP ĐỒNG:", bold: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.RIGHT })],
+            columnSpan: 5, borders: borderStyle,
+          }),
+          new DocxTableCell({
+            children: [new Paragraph({ children: [new TextRun({ text: formatCurrency(totalAmount), bold: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.RIGHT })],
+            borders: borderStyle,
+          }),
+        ],
+      });
+
+      const tableRows = [headerRow, ...itemRows, totalRow];
+
+      // Add VAT rows if applicable
+      if (contract.include_vat) {
+        const subtotalRow = new DocxTableRow({
+          children: [
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: "TỔNG CỘNG:", bold: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.RIGHT })], columnSpan: 5, borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: formatCurrency(subtotal), bold: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.RIGHT })], borders: borderStyle }),
+          ],
+        });
+        const vatRow = new DocxTableRow({
+          children: [
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: `VAT (${contract.vat_rate || 8}%):`, size: 20, font: "Times New Roman" })], alignment: AlignmentType.RIGHT })], columnSpan: 5, borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: formatCurrency(vatAmount), size: 20, font: "Times New Roman" })], alignment: AlignmentType.RIGHT })], borders: borderStyle }),
+          ],
+        });
+        // Replace totalRow with subtotal + vat + total
+        tableRows.pop();
+        tableRows.push(subtotalRow, vatRow, totalRow);
+      }
+
+      // Build document sections
+      const children: any[] = [
+        new Paragraph({ children: [new TextRun({ text: "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold: true, size: 24, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
+        new Paragraph({ children: [new TextRun({ text: "Độc lập – Tự do – Hạnh phúc", bold: true, size: 24, font: "Times New Roman", underline: {} })], alignment: AlignmentType.CENTER }),
+        new Paragraph({ children: [new TextRun({ text: "————————", size: 20, font: "Times New Roman" })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
+        new Paragraph({ children: [new TextRun({ text: contract.title || "HỢP ĐỒNG KINH TẾ", bold: true, size: 32, font: "Times New Roman", color: "1a56db" })], alignment: AlignmentType.CENTER, spacing: { before: 200 } }),
+        new Paragraph({ children: [new TextRun({ text: `Số: ${contract.contract_number}`, size: 22, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
+      ];
+
+      if (contract.contract_date) {
+        children.push(new Paragraph({ children: [new TextRun({ text: `Ngày ${formatDate(contract.contract_date)}`, italics: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }));
+      }
+
+      // Legal basis
+      legalBasis.forEach((l: string) => {
+        children.push(new Paragraph({ children: [new TextRun({ text: `- ${l}`, italics: true, size: 20, font: "Times New Roman" })], spacing: { after: 40 } }));
+      });
+
+      children.push(new Paragraph({ children: [new TextRun({ text: "Hai bên cùng thỏa thuận ký kết hợp đồng với các điều khoản sau:", bold: true, size: 22, font: "Times New Roman" })], alignment: AlignmentType.CENTER, spacing: { before: 200, after: 200 } }));
+
+      // Party A
+      children.push(
+        new Paragraph({ children: [new TextRun({ text: "BÊN A (Bên bán):", bold: true, size: 22, font: "Times New Roman" })], spacing: { before: 200 } }),
+        new Paragraph({ children: [new TextRun({ text: "Công ty: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerName, size: 20, font: "Times New Roman" })] }),
+        new Paragraph({ children: [new TextRun({ text: "Địa chỉ: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerAddress, size: 20, font: "Times New Roman" })] }),
+      );
+      if (sellerHQ) children.push(new Paragraph({ children: [new TextRun({ text: "Trụ sở: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerHQ, size: 20, font: "Times New Roman" })] }));
+      children.push(new Paragraph({ children: [new TextRun({ text: "Điện thoại: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerPhone, size: 20, font: "Times New Roman" })] }));
+      if (sellerTaxCode) children.push(new Paragraph({ children: [new TextRun({ text: "Mã số thuế: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerTaxCode, size: 20, font: "Times New Roman" })] }));
+      if (sellerBank) children.push(new Paragraph({ children: [new TextRun({ text: "Ngân hàng: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerBank, size: 20, font: "Times New Roman" })] }));
+
+      // Party B
+      children.push(
+        new Paragraph({ children: [new TextRun({ text: "BÊN B (Bên mua):", bold: true, size: 22, font: "Times New Roman" })], spacing: { before: 200 } }),
+        new Paragraph({ children: [new TextRun({ text: "Tên: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerName, size: 20, font: "Times New Roman" })] }),
+      );
+      if (buyer.representative) children.push(new Paragraph({ children: [new TextRun({ text: "Đại diện: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: `${buyer.representative}${buyer.position ? ` - ${buyer.position}` : ""}`, size: 20, font: "Times New Roman" })] }));
+      if (contract.customers?.company) children.push(new Paragraph({ children: [new TextRun({ text: "Công ty: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: contract.customers.company, size: 20, font: "Times New Roman" })] }));
+      children.push(new Paragraph({ children: [new TextRun({ text: "Địa chỉ: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerAddress, size: 20, font: "Times New Roman" })] }));
+      if (buyer.tax_code) children.push(new Paragraph({ children: [new TextRun({ text: "Mã số thuế: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyer.tax_code, size: 20, font: "Times New Roman" })] }));
+      children.push(new Paragraph({ children: [new TextRun({ text: "Điện thoại: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: buyerPhone, size: 20, font: "Times New Roman" })], spacing: { after: 200 } }));
+
+      // Articles
+      if (articles.length > 0) {
+        articles.forEach((article: any, idx: number) => {
+          children.push(new Paragraph({ children: [new TextRun({ text: article.title, bold: true, size: 22, font: "Times New Roman" })], spacing: { before: 200 } }));
+
+          // Split content by newlines
+          const lines = (article.content || "").split("\n");
+          lines.forEach((line: string) => {
+            children.push(new Paragraph({ children: [new TextRun({ text: line, size: 20, font: "Times New Roman" })], spacing: { after: 40 } }));
+          });
+
+          // Insert product table after first article
+          if (idx === 0 && items.length > 0) {
+            children.push(
+              new DocxTable({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
+              new Paragraph({ children: [new TextRun({ text: `Tiền cọc (${contract.deposit_percentage || 70}%): ${formatCurrency(contract.deposit_amount || 0)}`, bold: true, size: 20, font: "Times New Roman" })], spacing: { before: 100 } }),
+              new Paragraph({ children: [new TextRun({ text: `Còn lại: ${formatCurrency(totalAmount - (contract.deposit_amount || 0))}`, bold: true, size: 20, font: "Times New Roman" })], spacing: { after: 200 } }),
+            );
+          }
+        });
+      }
+
+      // Notes
+      if (contract.notes) {
+        children.push(
+          new Paragraph({ children: [new TextRun({ text: "Ghi chú:", bold: true, size: 20, font: "Times New Roman" })], spacing: { before: 200 } }),
+          new Paragraph({ children: [new TextRun({ text: contract.notes, size: 20, font: "Times New Roman" })] }),
+        );
+      }
+
+      // Signatures
+      children.push(
+        new Paragraph({ text: "", spacing: { before: 400 } }),
+        new DocxTable({
+          rows: [
+            new DocxTableRow({
+              children: [
+                new DocxTableCell({
+                  children: [
+                    new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN A", bold: true, size: 22, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
+                    new Paragraph({ children: [new TextRun({ text: "(Ký, ghi rõ họ tên)", italics: true, size: 18, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
+                    new Paragraph({ text: "" }),
+                    new Paragraph({ text: "" }),
+                    new Paragraph({ text: "" }),
+                  ],
+                  borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
+                }),
+                new DocxTableCell({
+                  children: [
+                    new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN B", bold: true, size: 22, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
+                    new Paragraph({ children: [new TextRun({ text: "(Ký, ghi rõ họ tên)", italics: true, size: 18, font: "Times New Roman" })], alignment: AlignmentType.CENTER }),
+                    new Paragraph({ text: "" }),
+                    new Paragraph({ text: "" }),
+                    new Paragraph({ text: "" }),
+                  ],
+                  borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
+                }),
+              ],
+            }),
+          ],
+          width: { size: 100, type: WidthType.PERCENTAGE },
+        }),
+      );
+
+      const doc = new Document({
+        sections: [{
+          properties: { page: { margin: { top: 720, bottom: 720, left: 1080, right: 720 } } },
+          children,
+        }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `${contract.contract_number}.docx`);
+      toast({ title: "Đã tải file Word thành công!" });
+    } catch (err) {
+      console.error("Word export error:", err);
+      toast({ title: "Lỗi tạo file Word", variant: "destructive" });
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -79,9 +329,11 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4">
           <Button size="sm" variant="outline" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />In</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadImage}><Download className="h-4 w-4 mr-1" />Tải ảnh</Button>
+          <Button size="sm" variant="outline" onClick={handleDownloadPDF}><FileDown className="h-4 w-4 mr-1" />Xuất PDF</Button>
+          <Button size="sm" variant="outline" onClick={handleDownloadWord}><FileText className="h-4 w-4 mr-1" />Xuất Word</Button>
         </div>
 
         <div ref={printRef} className="bg-white p-8 rounded-lg border space-y-5 text-sm" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000", lineHeight: 1.7 }}>
@@ -89,7 +341,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           <div className="text-center space-y-1">
             <p className="font-bold text-sm">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
             <p className="font-bold text-sm" style={{ textDecoration: "underline" }}>Độc lập – Tự do – Hạnh phúc</p>
-            <p className="text-xs text-gray-500 mt-2">————————</p>
+            <p className="text-xs mt-2" style={{ color: "#6b7280" }}>————————</p>
           </div>
 
           <div className="text-center mt-4">
@@ -138,7 +390,6 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
                 <p className="font-bold mt-4">{article.title}</p>
                 <div className="whitespace-pre-wrap text-sm">{article.content}</div>
 
-                {/* Insert product table after first article */}
                 {idx === 0 && items.length > 0 && (
                   <div className="mt-3">
                     <table className="w-full border-collapse text-sm">
@@ -199,7 +450,6 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
               </div>
             ))
           ) : (
-            /* Fallback: old-style display if no articles */
             <>
               {items.length > 0 && (
                 <div>
@@ -238,7 +488,6 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
             </>
           )}
 
-          {/* Notes */}
           {contract.notes && (
             <div>
               <p className="font-bold">Ghi chú:</p>
@@ -250,12 +499,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           <div className="grid grid-cols-2 gap-8 pt-8 mt-8 text-center" style={{ borderTop: "1px solid #e5e7eb" }}>
             <div>
               <p className="font-bold">ĐẠI DIỆN BÊN A</p>
-              <p className="text-xs italic text-gray-500 mt-1">(Ký, ghi rõ họ tên)</p>
+              <p className="text-xs italic" style={{ color: "#6b7280" }}>(Ký, ghi rõ họ tên)</p>
               <div style={{ height: 80 }}></div>
             </div>
             <div>
               <p className="font-bold">ĐẠI DIỆN BÊN B</p>
-              <p className="text-xs italic text-gray-500 mt-1">(Ký, ghi rõ họ tên)</p>
+              <p className="text-xs italic" style={{ color: "#6b7280" }}>(Ký, ghi rõ họ tên)</p>
               <div style={{ height: 80 }}></div>
             </div>
           </div>
