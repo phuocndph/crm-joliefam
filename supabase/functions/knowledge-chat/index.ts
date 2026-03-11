@@ -218,14 +218,25 @@ serve(async (req) => {
         : empty,
     ]);
 
-    // Build knowledge context
+    // Build knowledge context - include ALL relevant docs
     let knowledgeCtx = "";
     const sources: { id: string; title: string; type: string }[] = [];
-    for (const doc of (docsResult.data || [])) {
+    const docs = (docsResult.data || []) as any[];
+    const maxCtxLen = 8000; // Increased from 4000 to cover more docs
+    for (const doc of docs) {
+      const contentLen = Math.min((doc.content || "").length, Math.floor((maxCtxLen - knowledgeCtx.length) / Math.max(1, docs.length - sources.length)));
       const text = doc.document_type === "faq"
         ? `Q: ${doc.title}\nA: ${doc.faq_answer || doc.content || ""}`
-        : `${doc.title}: ${(doc.content || "").substring(0, 1500)}`;
-      if (knowledgeCtx.length + text.length > 4000) break;
+        : `[${doc.title}]: ${(doc.content || "").substring(0, Math.max(800, contentLen))}`;
+      if (knowledgeCtx.length + text.length > maxCtxLen) {
+        // Still add truncated version
+        const remaining = maxCtxLen - knowledgeCtx.length - 50;
+        if (remaining > 200) {
+          knowledgeCtx += "\n" + text.substring(0, remaining) + "...";
+          sources.push({ id: doc.id, title: doc.title, type: doc.document_type });
+        }
+        break;
+      }
       knowledgeCtx += "\n" + text;
       sources.push({ id: doc.id, title: doc.title, type: doc.document_type });
     }
