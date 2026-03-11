@@ -152,9 +152,48 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   };
 
   // AI Parse Text
-  const handleParseText = async () => {
+  const analyzeImageFromPreview = async () => {
+    if (!imagePreview) return;
+    setParsingImage(true);
+    try {
+      const base64 = imagePreview.split(",")[1];
+      const mimeMatch = imagePreview.match(/^data:(image\/\w+);/);
+      const mimeType = mimeMatch?.[1] || "image/png";
+      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
+        body: { type: "parse_image", data: { base64, mimeType } },
+      });
+      if (error) throw error;
+      if (data && !data.error && !data.raw) {
+        setBuyerInfo(prev => ({
+          ...prev,
+          company_name: data.company_name || prev.company_name,
+          representative: data.representative || prev.representative,
+          position: data.position || prev.position,
+          address: data.address || prev.address,
+          tax_code: data.tax_code || prev.tax_code,
+          phone: data.phone || prev.phone,
+          bank_name: data.bank_name || prev.bank_name,
+          bank_account: data.bank_account || prev.bank_account,
+          bank_holder: data.bank_holder || prev.bank_holder,
+        }));
+        toast({ title: "Đã phân tích hình ảnh và điền thông tin!" });
+      } else {
+        toast({ title: "Không thể phân tích hình ảnh", description: data?.error || data?.raw, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Lỗi phân tích hình ảnh", description: err.message, variant: "destructive" });
+    } finally {
+      setParsingImage(false);
+    }
+  };
+
+  const handleAIAnalyze = async () => {
+    if (imagePreview) {
+      await analyzeImageFromPreview();
+      return;
+    }
     if (!pasteText.trim()) {
-      toast({ title: "Vui lòng dán thông tin doanh nghiệp", variant: "destructive" });
+      toast({ title: "Vui lòng dán thông tin hoặc ảnh doanh nghiệp", variant: "destructive" });
       return;
     }
     setParsingText(true);
