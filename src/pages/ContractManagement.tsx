@@ -27,6 +27,7 @@ const ContractManagement = () => {
   const [user, setUser] = useState<any>(null);
   const { role: userRole } = useUserRole(user);
   const { data: contracts, isLoading } = useContracts();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -35,9 +36,33 @@ const ContractManagement = () => {
   const [deleteContract, setDeleteContract] = useState<any>(null);
   const [previewContract, setPreviewContract] = useState<any>(null);
 
+  // Prefill data from URL params (from QuotesPage)
+  const prefillData = useMemo(() => {
+    const fromQuote = searchParams.get('from_quote');
+    if (!fromQuote) return undefined;
+    let items: any[] = [];
+    try { items = JSON.parse(searchParams.get('items') || '[]'); } catch {}
+    return {
+      quote_id: fromQuote,
+      customer_id: searchParams.get('customer_id') || '',
+      total_amount: Number(searchParams.get('total') || 0),
+      title: searchParams.get('title') || '',
+      items,
+    };
+  }, [searchParams]);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
   }, []);
+
+  // Auto-open create form if coming from quote
+  useEffect(() => {
+    if (prefillData) {
+      setShowCreate(true);
+      // Clear URL params after opening
+      setSearchParams({}, { replace: true });
+    }
+  }, [prefillData]);
 
   const filtered = (contracts || []).filter((c: any) => {
     const matchSearch = !searchTerm ||
