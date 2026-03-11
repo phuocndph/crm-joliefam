@@ -154,15 +154,41 @@ serve(async (req) => {
     const skipDocs = wantsData && (!!dateRange || wantsTransactions || wantsOrders || wantsRevenueSummary);
 
     const searchTerms = question.replace(/[^\w\sÀ-ỹ]/g, "").trim();
+    const searchWords = searchTerms.split(/\s+/).filter(w => w.length > 1);
     const empty = Promise.resolve({ data: null, count: 0 });
+
+    // Build flexible search: try full-text first, then fallback to ilike
+    const buildDocSearch = async () => {
+      if (skipDocs) return { data: null, count: 0 };
+      
+      // Strategy 1: Full-text search with OR logic (any word matches)
+      const tsQuery = searchWords.slice(0, 6).join(" | ");
+      const { data: tsResults } = await supabase
+        .from("knowledge_documents")
+        .select("id, title, content, document_type, faq_answer")
+        .textSearch("search_vector", tsQuery, { type: "plain" })
+        .limit(8);
+      
+      if (tsResults && tsResults.length >= 2) return { data: tsResults, count: tsResults.length };
+      
+      // Strategy 2: Fallback to ilike search on title + content
+      const likePattern = `%${searchWords.slice(0, 3).join("%")}%`;
+      const { data: likeResults } = await supabase
+        .from("knowledge_documents")
+        .select("id, title, content, document_type, faq_answer")
+        .or(`title.ilike.${likePattern},content.ilike.${likePattern},faq_answer.ilike.${likePattern}`)
+        .limit(8);
+      
+      // Merge unique results
+      const allDocs = [...(tsResults || []), ...(likeResults || [])];
+      const seen = new Set<string>();
+      const unique = allDocs.filter(d => { if (seen.has(d.id)) return false; seen.add(d.id); return true; });
+      return { data: unique.slice(0, 10), count: unique.length };
+    };
 
     // Parallel fetch - knowledge docs + business data
     const [docsResult, dataResult] = await Promise.all([
-      skipDocs ? empty : supabase
-        .from("knowledge_documents")
-        .select("id, title, content, document_type, faq_answer")
-        .textSearch("search_vector", searchTerms, { type: "plain" })
-        .limit(3),
+      buildDocSearch(),
 
       wantsTransactions || wantsRevenueSummary
         ? (() => {
@@ -192,14 +218,25 @@ serve(async (req) => {
         : empty,
     ]);
 
-    // Build knowledge context
+    // Build knowledge context - include ALL relevant docs
     let knowledgeCtx = "";
     const sources: { id: string; title: string; type: string }[] = [];
-    for (const doc of (docsResult.data || [])) {
+    const docs = (docsResult.data || []) as any[];
+    const maxCtxLen = 8000; // Increased from 4000 to cover more docs
+    for (const doc of docs) {
+      const contentLen = Math.min((doc.content || "").length, Math.floor((maxCtxLen - knowledgeCtx.length) / Math.max(1, docs.length - sources.length)));
       const text = doc.document_type === "faq"
         ? `Q: ${doc.title}\nA: ${doc.faq_answer || doc.content || ""}`
-        : `${doc.title}: ${(doc.content || "").substring(0, 1500)}`;
-      if (knowledgeCtx.length + text.length > 4000) break;
+        : `[${doc.title}]: ${(doc.content || "").substring(0, Math.max(800, contentLen))}`;
+      if (knowledgeCtx.length + text.length > maxCtxLen) {
+        // Still add truncated version
+        const remaining = maxCtxLen - knowledgeCtx.length - 50;
+        if (remaining > 200) {
+          knowledgeCtx += "\n" + text.substring(0, remaining) + "...";
+          sources.push({ id: doc.id, title: doc.title, type: doc.document_type });
+        }
+        break;
+      }
       knowledgeCtx += "\n" + text;
       sources.push({ id: doc.id, title: doc.title, type: doc.document_type });
     }
@@ -278,7 +315,7 @@ serve(async (req) => {
     }
 
     const profitNote = isManagerOrAdmin ? "" : " Không tiết lộ giá vốn/lợi nhuận.";
-    const systemPrompt = `Trợ lý AI CRM (${isManagerOrAdmin ? "QL" : "NV"}).${profitNote} Trả lời tiếng Việt, ngắn gọn, chính xác. Dữ liệu đã tổng hợp sẵn - trả lời dựa trên dữ liệu, không đoán.${knowledgeCtx ? "\n\nTài liệu:" + knowledgeCtx : ""}${dataCtx ? "\n\n" + dataCtx : ""}`;
+    const systemPrompt = `Trợ lý AI CRM (${isManagerOrAdmin ? "QL" : "NV"}).${profitNote} Trả lời tiếng Việt, thân thiện, tự nhiên như đang trò chuyện. Tổng hợp thông tin từ TẤT CẢ tài liệu được cung cấp, không bỏ sót. Nếu có nhiều tài liệu liên quan, hãy kết hợp thông tin từ tất cả để đưa ra câu trả lời đầy đủ nhất. Trả lời có cấu trúc rõ ràng.${knowledgeCtx ? "\n\nTài liệu tham khảo (" + sources.length + " tài liệu):" + knowledgeCtx : ""}${dataCtx ? "\n\n" + dataCtx : ""}`;
 
     console.log(`ctx: kb=${knowledgeCtx.length} data=${dataCtx.length} total=${systemPrompt.length} dateRange=${JSON.stringify(dateRange)}`);
 
@@ -313,8 +350,8 @@ async function callAI(apiKey: string, messages: any[], sources: any[], useStream
       model: MODEL,
       messages,
       stream: !!useStream,
-      max_tokens: isDataQuery ? 500 : 600,
-      temperature: 0,
+      max_tokens: isDataQuery ? 800 : 1000,
+      temperature: 0.3,
     }),
   });
 
