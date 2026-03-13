@@ -457,7 +457,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
             articles.map((article: any, idx: number) => (
               <div key={idx}>
                 <p className="font-bold mt-4">{article.title}</p>
-                <div className="whitespace-pre-wrap text-sm">{article.content}</div>
+                {/* Điều 3: Dynamic payment terms */}
+                {article.title?.includes("ĐIỀU 3") && article.title?.includes("THANH TOÁN") ? (
+                  generatePaymentTermsHTML()
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm">{article.content}</div>
+                )}
 
                 {idx === 0 && items.length > 0 && (
                   <div className="mt-3">
