@@ -83,6 +83,8 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
         deposit_percentage: contract.deposit_percentage || 70,
         deposit_mode: (contract.deposit_amount && !contract.deposit_percentage) ? "amount" as const : "percent" as const,
         deposit_fixed_amount: contract.deposit_amount || 0,
+        seller_representative: (contract.seller_info as any)?.representative || "",
+        seller_position: (contract.seller_info as any)?.position || "Giám đốc",
       });
 
       // Load buyer info
