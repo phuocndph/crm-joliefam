@@ -49,6 +49,8 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
     deposit_percentage: 70,
     deposit_mode: "percent" as "percent" | "amount",
     deposit_fixed_amount: 0,
+    seller_representative: "",
+    seller_position: "Giám đốc",
   });
 
   const [items, setItems] = useState<any[]>([{ ...emptyItem }]);
@@ -81,6 +83,8 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
         deposit_percentage: contract.deposit_percentage || 70,
         deposit_mode: (contract.deposit_amount && !contract.deposit_percentage) ? "amount" as const : "percent" as const,
         deposit_fixed_amount: contract.deposit_amount || 0,
+        seller_representative: (contract.seller_info as any)?.representative || "",
+        seller_position: (contract.seller_info as any)?.position || "Giám đốc",
       });
 
       // Load buyer info
@@ -314,6 +318,11 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
         status: formData.status,
         items: items.map((it, i) => ({ ...it, total: it.quantity * it.price, stt: i + 1 })),
         buyer_info: buyerInfo,
+        seller_info: {
+          ...((contract.seller_info as any) || {}),
+          representative: formData.seller_representative,
+          position: formData.seller_position,
+        },
       });
       toast({ title: "Cập nhật hợp đồng thành công!" });
       onOpenChange(false);
@@ -346,6 +355,22 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
                   <SelectItem value="cancelled">Đã hủy</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* SELLER INFO - BÊN A */}
+          <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+            <Label className="text-base font-semibold">THÔNG TIN BÊN A (Bên bán)</Label>
+            <p className="text-xs text-muted-foreground">Bổ sung người đại diện Bên A</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Người đại diện Bên A</Label>
+                <Input value={formData.seller_representative} onChange={e => setFormData(p => ({ ...p, seller_representative: e.target.value }))} placeholder="Ông/Bà..." />
+              </div>
+              <div>
+                <Label>Chức vụ</Label>
+                <Input value={formData.seller_position} onChange={e => setFormData(p => ({ ...p, seller_position: e.target.value }))} placeholder="Giám đốc" />
+              </div>
             </div>
           </div>
 
