@@ -4,7 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, ImagePlus, FileUp, Trash2, X } from "lucide-react";
+import { Loader2, Sparkles, FileUp, Trash2, X } from "lucide-react";
 
 interface OrderItem {
   name: string;
@@ -19,12 +19,11 @@ interface AIOrderAnalysisProps {
 
 export const AIOrderAnalysis = ({ onItemsExtracted }: AIOrderAnalysisProps) => {
   const { toast } = useToast();
-  const [mode, setMode] = useState<"text" | "image" | "file" | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [orderText, setOrderText] = useState("");
   const [orderImagePreview, setOrderImagePreview] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-  const orderImageRef = useRef<HTMLInputElement>(null);
   const orderFileRef = useRef<HTMLInputElement>(null);
 
   const handleExtractFromText = async () => {
@@ -41,7 +40,6 @@ export const AIOrderAnalysis = ({ onItemsExtracted }: AIOrderAnalysisProps) => {
       if (data?.items?.length) {
         onItemsExtracted(data.items);
         setOrderText("");
-        setMode(null);
         toast({ title: `Đã trích xuất ${data.items.length} sản phẩm!` });
       } else {
         toast({ title: "Không tìm thấy sản phẩm trong nội dung", variant: "destructive" });
@@ -54,10 +52,7 @@ export const AIOrderAnalysis = ({ onItemsExtracted }: AIOrderAnalysisProps) => {
   };
 
   const handleExtractFromImage = async (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast({ title: "Vui lòng chọn file hình ảnh", variant: "destructive" });
-      return;
-    }
+    if (!file.type.startsWith("image/")) return;
     if (file.size > 5 * 1024 * 1024) {
       toast({ title: "Hình ảnh quá lớn (tối đa 5MB)", variant: "destructive" });
       return;
@@ -91,16 +86,9 @@ export const AIOrderAnalysis = ({ onItemsExtracted }: AIOrderAnalysisProps) => {
   };
 
   const handleExtractFromFile = async (file: File) => {
-    const allowedTypes = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "application/vnd.ms-excel",
-      "text/csv",
-    ];
     const allowedExtensions = [".pdf", ".xlsx", ".xls", ".csv"];
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
-    
-    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(ext)) {
+    if (!allowedExtensions.includes(ext)) {
       toast({ title: "Chỉ hỗ trợ file PDF, Excel (.xlsx, .xls), CSV", variant: "destructive" });
       return;
     }
@@ -108,20 +96,15 @@ export const AIOrderAnalysis = ({ onItemsExtracted }: AIOrderAnalysisProps) => {
       toast({ title: "File quá lớn (tối đa 10MB)", variant: "destructive" });
       return;
     }
-
     setLoading(true);
     setFileName(file.name);
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1]);
-        };
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
         body: { type: "parse_order_file", data: { base64, mimeType: file.type, fileName: file.name } },
       });
@@ -136,10 +119,11 @@ export const AIOrderAnalysis = ({ onItemsExtracted }: AIOrderAnalysisProps) => {
       toast({ title: "Lỗi phân tích file", description: err.message, variant: "destructive" });
     } finally {
       setLoading(false);
+      setFileName(null);
     }
   };
 
-  const handlePasteImage = async (e: React.ClipboardEvent) => {
+  const handlePaste = async (e: React.ClipboardEvent) => {
     const clipItems = e.clipboardData?.items;
     if (!clipItems) return;
     for (const item of Array.from(clipItems)) {
@@ -153,7 +137,7 @@ export const AIOrderAnalysis = ({ onItemsExtracted }: AIOrderAnalysisProps) => {
   };
 
   const reset = () => {
-    setMode(null);
+    setExpanded(false);
     setOrderText("");
     setOrderImagePreview(null);
     setFileName(null);
@@ -162,50 +146,29 @@ export const AIOrderAnalysis = ({ onItemsExtracted }: AIOrderAnalysisProps) => {
   return (
     <div className="border rounded-lg p-3 bg-accent/30 space-y-2">
       <div className="flex items-center justify-between">
-        <Label className="text-xs text-muted-foreground flex items-center gap-1">
+        <Label
+          className="text-xs text-muted-foreground flex items-center gap-1 cursor-pointer"
+          onClick={() => !expanded && setExpanded(true)}
+        >
           <Sparkles className="h-3 w-3" />
-          AI phân tích đơn hàng — tự động điền bảng sản phẩm
+          AI phân tích đơn hàng — dán text/ảnh hoặc tải file
         </Label>
-        {mode && (
+        {expanded && (
           <Button type="button" variant="ghost" size="icon" className="h-5 w-5" onClick={reset}>
             <X className="h-3 w-3" />
           </Button>
         )}
       </div>
 
-      {!mode && (
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setMode("text")} className="text-xs">
-            <Sparkles className="h-3 w-3 mr-1" />Dán text
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => { setMode("image"); setTimeout(() => orderImageRef.current?.click(), 100); }} className="text-xs">
-            <ImagePlus className="h-3 w-3 mr-1" />Ảnh chụp
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => { setMode("file"); setTimeout(() => orderFileRef.current?.click(), 100); }} className="text-xs">
-            <FileUp className="h-3 w-3 mr-1" />File Excel/PDF
-          </Button>
-        </div>
+      {!expanded && (
+        <Button type="button" variant="outline" size="sm" onClick={() => setExpanded(true)} className="text-xs">
+          <Sparkles className="h-3 w-3 mr-1" />Mở AI phân tích
+        </Button>
       )}
 
-      {mode === "text" && (
+      {expanded && (
         <div className="space-y-2">
-          <Textarea
-            value={orderText}
-            onChange={e => setOrderText(e.target.value)}
-            onPaste={handlePasteImage}
-            placeholder="Dán nội dung đơn hàng, báo giá, danh sách sản phẩm... hoặc Ctrl+V ảnh"
-            rows={3}
-            className="text-sm"
-          />
-          <Button type="button" size="sm" onClick={handleExtractFromText} disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
-            Trích xuất sản phẩm
-          </Button>
-        </div>
-      )}
-
-      {mode === "image" && (
-        <div className="space-y-2">
+          {/* Image preview */}
           {orderImagePreview && (
             <div className="relative inline-block">
               <img src={orderImagePreview} alt="Preview" className="max-h-32 rounded-md border border-border object-contain" />
@@ -214,46 +177,59 @@ export const AIOrderAnalysis = ({ onItemsExtracted }: AIOrderAnalysisProps) => {
               </Button>
             </div>
           )}
-          {loading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Đang phân tích ảnh...
-            </div>
-          )}
-        </div>
-      )}
 
-      {mode === "file" && (
-        <div className="space-y-2">
+          {/* Textarea - always visible, supports paste text + Ctrl+V image */}
+          <Textarea
+            value={orderText}
+            onChange={e => setOrderText(e.target.value)}
+            onPaste={handlePaste}
+            placeholder="Dán text đơn hàng hoặc Ctrl+V ảnh báo giá vào đây..."
+            rows={3}
+            className="text-sm"
+            disabled={loading}
+          />
+
+          {/* File upload status */}
           {fileName && (
-            <div className="flex items-center gap-2 text-sm">
-              <FileUp className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <FileUp className="h-4 w-4" />
               <span>{fileName}</span>
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
             </div>
           )}
-          {!fileName && !loading && (
-            <p className="text-xs text-muted-foreground">Chọn file Excel (.xlsx, .xls, .csv) hoặc PDF</p>
+
+          {/* Loading for image */}
+          {loading && !fileName && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Đang phân tích...
+            </div>
           )}
+
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={handleExtractFromText} disabled={loading || !orderText.trim()}>
+              {loading && !fileName ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+              Trích xuất
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => orderFileRef.current?.click()}
+              disabled={loading}
+              className="text-xs"
+            >
+              <FileUp className="h-3 w-3 mr-1" />File Excel/PDF
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* Hidden file inputs */}
-      <input
-        ref={orderImageRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={e => {
-          const file = e.target.files?.[0];
-          if (file) handleExtractFromImage(file);
-          if (orderImageRef.current) orderImageRef.current.value = "";
-        }}
-      />
       <input
         ref={orderFileRef}
         type="file"
-        accept=".pdf,.xlsx,.xls,.csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+        accept=".pdf,.xlsx,.xls,.csv"
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0];

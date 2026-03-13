@@ -227,8 +227,6 @@ serve(async (req) => {
         });
       }
 
-      // For PDF files, send as image to AI (it can read PDF pages)
-      // For Excel files, send the base64 content for AI to parse
       const isExcel = mimeType?.includes("spreadsheet") || mimeType?.includes("excel") || 
                       fileName?.endsWith(".xlsx") || fileName?.endsWith(".xls") || fileName?.endsWith(".csv");
       const isPdf = mimeType === "application/pdf" || fileName?.endsWith(".pdf");
@@ -246,30 +244,46 @@ serve(async (req) => {
           },
         ];
       } else if (isExcel) {
-        // For Excel, decode and send content as text for AI to parse
-        // The AI model can interpret base64 Excel data when sent as a file
-        messages = [
-          { role: "system", content: ORDER_ITEMS_SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: `data:${mimeType || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"};base64,${base64}` } },
-              { type: "text", text: `Trích xuất danh sách sản phẩm/dịch vụ từ file Excel "${fileName || "file.xlsx"}".` },
-            ],
-          },
-        ];
+        // Parse Excel/CSV server-side using SheetJS, then send as text to AI
+        try {
+          const binaryStr = atob(base64);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          const workbook = XLSX.read(bytes, { type: "array" });
+          
+          // Convert all sheets to CSV text
+          let csvText = "";
+          for (const sheetName of workbook.SheetNames) {
+            const sheet = workbook.Sheets[sheetName];
+            const csv = XLSX.utils.sheet_to_csv(sheet);
+            if (csv.trim()) {
+              csvText += `--- Sheet: ${sheetName} ---\n${csv}\n\n`;
+            }
+          }
+          
+          if (!csvText.trim()) {
+            return new Response(JSON.stringify({ error: "File Excel trống, không có dữ liệu" }), {
+              status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          
+          console.log("Parsed Excel to CSV text, length:", csvText.length);
+          messages = [
+            { role: "system", content: ORDER_ITEMS_SYSTEM_PROMPT },
+            { role: "user", content: `Trích xuất danh sách sản phẩm/dịch vụ từ file Excel "${fileName || "file.xlsx"}":\n"""\n${csvText}\n"""` },
+          ];
+        } catch (parseErr) {
+          console.error("Excel parse error:", parseErr);
+          return new Response(JSON.stringify({ error: "Không thể đọc file Excel. Vui lòng kiểm tra file." }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       } else {
-        // Generic file - try sending as-is
-        messages = [
-          { role: "system", content: ORDER_ITEMS_SYSTEM_PROMPT },
-          {
-            role: "user", 
-            content: [
-              { type: "image_url", image_url: { url: `data:${mimeType || "application/octet-stream"};base64,${base64}` } },
-              { type: "text", text: `Trích xuất danh sách sản phẩm/dịch vụ từ file "${fileName || "file"}".` },
-            ],
-          },
-        ];
+        return new Response(JSON.stringify({ error: "Định dạng file không được hỗ trợ" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       const parsed = await callAI(messages);
