@@ -36,6 +36,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
   if (!contract) return null;
 
   const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
+  const formatCurrencyNoSymbol = (val: number) => (val || 0).toLocaleString("vi-VN");
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString("vi-VN") : "—";
   const status = statusMap[contract.status] || statusMap.draft;
   const items = Array.isArray(contract.items) ? contract.items : [];
@@ -47,6 +48,58 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
   const subtotal = contract.subtotal || items.reduce((s: number, it: any) => s + (it.price || 0) * (it.quantity || 1), 0);
   const vatAmount = contract.vat_amount || 0;
   const totalAmount = contract.total_amount || subtotal + vatAmount;
+  const depositAmount = contract.deposit_amount || 0;
+  const depositPercentage = contract.deposit_percentage || 0;
+  const depositMode = seller.deposit_mode || (depositPercentage > 0 ? "percent" : "amount");
+  const remainingAmount = totalAmount - depositAmount;
+
+  // Generate dynamic payment terms for Điều 3
+  const generatePaymentTermsHTML = () => {
+    if (!depositAmount || depositAmount <= 0) {
+      // No deposit - single payment
+      return (
+        <div className="space-y-1">
+          <p>- Bên B thanh toán toàn bộ giá trị hợp đồng sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền {formatCurrencyNoSymbol(totalAmount)}đ ({numberToVietnameseCurrency(totalAmount)} ./.)</p>
+          <p>- Hình thức thanh toán: Tiền mặt hoặc chuyển khoản.</p>
+        </div>
+      );
+    }
+    
+    const dot1Text = depositMode === "percent"
+      ? `Bên B thanh toán ${depositPercentage}% giá trị hợp đồng ngay khi ký hợp đồng. Số tiền ${formatCurrencyNoSymbol(depositAmount)}đ (${numberToVietnameseCurrency(depositAmount)} ./.)`
+      : `Bên B thanh toán ${formatCurrencyNoSymbol(depositAmount)}đ giá trị hợp đồng ngay khi ký hợp đồng. Số tiền ${formatCurrencyNoSymbol(depositAmount)}đ (${numberToVietnameseCurrency(depositAmount)} ./.)`;
+    
+    const remainingPct = depositMode === "percent" ? (100 - depositPercentage) : 0;
+    const dot2Text = depositMode === "percent"
+      ? `Bên B thanh toán ${remainingPct}% còn lại sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền ${formatCurrencyNoSymbol(remainingAmount)}đ (Bằng chữ: ${numberToVietnameseCurrency(remainingAmount)} ./.)`
+      : `Bên B thanh toán số tiền còn lại sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền ${formatCurrencyNoSymbol(remainingAmount)}đ (Bằng chữ: ${numberToVietnameseCurrency(remainingAmount)} ./.)`;
+
+    return (
+      <div className="space-y-1">
+        <p>- Đợt 1: {dot1Text}</p>
+        <p>- Đợt 2: {dot2Text}</p>
+        <p>- Hình thức thanh toán: Tiền mặt hoặc chuyển khoản.</p>
+      </div>
+    );
+  };
+
+  // Generate payment terms text lines for Word export
+  const generatePaymentTermsLines = (): string[] => {
+    if (!depositAmount || depositAmount <= 0) {
+      return [
+        `- Bên B thanh toán toàn bộ giá trị hợp đồng sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền ${formatCurrencyNoSymbol(totalAmount)}đ (${numberToVietnameseCurrency(totalAmount)} ./.)`,
+        "- Hình thức thanh toán: Tiền mặt hoặc chuyển khoản.",
+      ];
+    }
+    const dot1 = depositMode === "percent"
+      ? `- Đợt 1: Bên B thanh toán ${depositPercentage}% giá trị hợp đồng ngay khi ký hợp đồng. Số tiền ${formatCurrencyNoSymbol(depositAmount)}đ (${numberToVietnameseCurrency(depositAmount)} ./.)`
+      : `- Đợt 1: Bên B thanh toán ${formatCurrencyNoSymbol(depositAmount)}đ giá trị hợp đồng ngay khi ký hợp đồng. Số tiền ${formatCurrencyNoSymbol(depositAmount)}đ (${numberToVietnameseCurrency(depositAmount)} ./.)`;
+    const remainingPct = depositMode === "percent" ? (100 - depositPercentage) : 0;
+    const dot2 = depositMode === "percent"
+      ? `- Đợt 2: Bên B thanh toán ${remainingPct}% còn lại sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền ${formatCurrencyNoSymbol(remainingAmount)}đ (Bằng chữ: ${numberToVietnameseCurrency(remainingAmount)} ./.)`
+      : `- Đợt 2: Bên B thanh toán số tiền còn lại sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền ${formatCurrencyNoSymbol(remainingAmount)}đ (Bằng chữ: ${numberToVietnameseCurrency(remainingAmount)} ./.)`;
+    return [dot1, dot2, "- Hình thức thanh toán: Tiền mặt hoặc chuyển khoản."];
+  };
 
   const handlePrint = () => {
     const content = printRef.current;
