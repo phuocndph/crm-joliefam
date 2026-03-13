@@ -51,6 +51,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
     deposit_fixed_amount: 0,
     seller_representative: "",
     seller_position: "Giám đốc",
+    include_shipping: true,
   });
 
   const [items, setItems] = useState<any[]>([{ ...emptyItem }]);
@@ -85,6 +86,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
         deposit_fixed_amount: contract.deposit_amount || 0,
         seller_representative: (contract.seller_info as any)?.representative || "",
         seller_position: (contract.seller_info as any)?.position || "Giám đốc",
+        include_shipping: (contract.seller_info as any)?.include_shipping !== false,
       });
 
       // Load buyer info
@@ -322,6 +324,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
           ...((contract.seller_info as any) || {}),
           representative: formData.seller_representative,
           position: formData.seller_position,
+          include_shipping: formData.include_shipping,
         },
       });
       toast({ title: "Cập nhật hợp đồng thành công!" });
@@ -504,7 +507,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
                   <tr className="bg-muted">
                     <th className="p-2 text-left w-8">TT</th>
                     <th className="p-2 text-left">Sản phẩm</th>
-                    <th className="p-2 text-left"><th className="p-2 text-left">Kích thước</th></th>
+                    <th className="p-2 text-left">Kích thước</th>
                     <th className="p-2 text-right w-16">SL</th>
                     <th className="p-2 text-right w-28">Đơn giá</th>
                     <th className="p-2 text-right w-28">Thành tiền</th>
@@ -552,6 +555,10 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
               <div className="flex justify-between text-base font-bold text-primary">
                 <span>TỔNG GIÁ TRỊ:</span>
                 <span>{formatCurrency(totalAmount)}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch checked={formData.include_shipping} onCheckedChange={v => setFormData(p => ({ ...p, include_shipping: v }))} />
+                <span>Bao gồm vận chuyển</span>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span>Đặt cọc</span>

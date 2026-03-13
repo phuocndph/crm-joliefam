@@ -57,6 +57,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     notes: "",
     seller_representative: "",
     seller_position: "Giám đốc",
+    include_shipping: true,
     include_vat: false,
     vat_rate: 8,
     deposit_percentage: 70,
@@ -342,6 +343,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       bank_info: companySettings.bankInfo,
       representative: formData.seller_representative,
       position: formData.seller_position,
+      include_shipping: formData.include_shipping,
     };
 
     try {
@@ -571,7 +573,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
               <tr className="bg-muted">
                 <th className="p-2 text-left w-8">TT</th>
                 <th className="p-2 text-left">Sản phẩm</th>
-                <th className="p-2 text-left"><th className="p-2 text-left">Kích thước</th></th>
+                <th className="p-2 text-left">Kích thước</th>
                 <th className="p-2 text-right w-16">SL</th>
                 <th className="p-2 text-right w-28">Đơn giá</th>
                 <th className="p-2 text-right w-28">Thành tiền</th>
@@ -619,6 +621,10 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           <div className="flex justify-between text-base font-bold text-primary">
             <span>TỔNG GIÁ TRỊ HỢP ĐỒNG:</span>
             <span>{formatCurrency(totalAmount)}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Switch checked={formData.include_shipping} onCheckedChange={v => setFormData(p => ({ ...p, include_shipping: v }))} />
+            <span>Bao gồm vận chuyển</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span>Đặt cọc</span>

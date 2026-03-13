@@ -11,6 +11,7 @@ import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as D
 import { saveAs } from "file-saver";
 import { HandoverReportDialog } from "@/components/HandoverReportDialog";
 import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
+import { numberToVietnameseCurrency } from "@/lib/numberToText";
 
 interface Props {
   open: boolean;
@@ -246,6 +247,17 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           if (idx === 0 && items.length > 0) {
             children.push(
               new DocxTable({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
+              new Paragraph({ children: [
+                new TextRun({ text: `Tổng giá trị hợp đồng là: ${(totalAmount || 0).toLocaleString("vi-VN")} đồng`, bold: true, size: 20, font: "Times New Roman" }),
+              ], spacing: { before: 100 } }),
+              new Paragraph({ children: [
+                new TextRun({ text: `(Bằng chữ: `, size: 20, font: "Times New Roman" }),
+                new TextRun({ text: `${numberToVietnameseCurrency(totalAmount)} ./.)`, italics: true, size: 20, font: "Times New Roman" }),
+              ], spacing: { after: 60 } }),
+              new Paragraph({ children: [new TextRun({ text: "Lưu ý:", bold: true, size: 20, font: "Times New Roman" })], spacing: { before: 60 } }),
+              new Paragraph({ children: [new TextRun({ text: contract.include_vat ? "- Tổng giá trị trên đã bao gồm thuế GTGT;" : "- Tổng giá trị trên chưa bao gồm thuế GTGT;", size: 20, font: "Times New Roman" })] }),
+              new Paragraph({ children: [new TextRun({ text: seller.include_shipping !== false ? "- Tổng giá trị trên đã bao gồm chi phí vận chuyển đến chân công trình của bên B;" : "- Tổng giá trị trên chưa bao gồm chi phí vận chuyển;", size: 20, font: "Times New Roman" })] }),
+              new Paragraph({ children: [new TextRun({ text: "- Đơn giá trên sẽ không thay đổi trong suốt thời gian hai bên thực hiện hợp đồng.", size: 20, font: "Times New Roman" })], spacing: { after: 60 } }),
               new Paragraph({ children: [new TextRun({ text: `Tiền cọc (${contract.deposit_percentage || 70}%): ${formatCurrency(contract.deposit_amount || 0)}`, bold: true, size: 20, font: "Times New Roman" })], spacing: { before: 100 } }),
               new Paragraph({ children: [new TextRun({ text: `Còn lại: ${formatCurrency(totalAmount - (contract.deposit_amount || 0))}`, bold: true, size: 20, font: "Times New Roman" })], spacing: { after: 200 } }),
             );
@@ -445,6 +457,21 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
                       </tfoot>
                     </table>
 
+                    <div className="mt-3 text-sm space-y-1">
+                      <p><strong>Tổng giá trị hợp đồng là: {(totalAmount || 0).toLocaleString("vi-VN")} đồng</strong></p>
+                      <p>(Bằng chữ: <em>{numberToVietnameseCurrency(totalAmount)} ./.</em>)</p>
+                      <p className="mt-2 font-bold">Lưu ý:</p>
+                      <ul className="list-disc pl-5 space-y-0.5">
+                        {contract.include_vat && <li>Tổng giá trị trên đã bao gồm thuế GTGT;</li>}
+                        {!contract.include_vat && <li>Tổng giá trị trên chưa bao gồm thuế GTGT;</li>}
+                        {seller.include_shipping !== false
+                          ? <li>Tổng giá trị trên đã bao gồm chi phí vận chuyển đến chân công trình của bên B;</li>
+                          : <li>Tổng giá trị trên chưa bao gồm chi phí vận chuyển;</li>
+                        }
+                        <li>Đơn giá trên sẽ không thay đổi trong suốt thời gian hai bên thực hiện hợp đồng.</li>
+                      </ul>
+                    </div>
+
                     <div className="mt-2 text-sm">
                       <p><strong>Tiền cọc ({contract.deposit_percentage || 70}%):</strong> {formatCurrency(contract.deposit_amount || 0)}</p>
                       <p><strong>Còn lại:</strong> {formatCurrency(totalAmount - (contract.deposit_amount || 0))}</p>
@@ -482,8 +509,21 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
                       ))}
                     </tbody>
                   </table>
+                  <div className="mt-3 text-sm space-y-1">
+                    <p><strong>Tổng giá trị hợp đồng là: {(totalAmount || 0).toLocaleString("vi-VN")} đồng</strong></p>
+                    <p>(Bằng chữ: <em>{numberToVietnameseCurrency(totalAmount)} ./.</em>)</p>
+                    <p className="mt-2 font-bold">Lưu ý:</p>
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      {contract.include_vat && <li>Tổng giá trị trên đã bao gồm thuế GTGT;</li>}
+                      {!contract.include_vat && <li>Tổng giá trị trên chưa bao gồm thuế GTGT;</li>}
+                      {seller.include_shipping !== false
+                        ? <li>Tổng giá trị trên đã bao gồm chi phí vận chuyển đến chân công trình của bên B;</li>
+                        : <li>Tổng giá trị trên chưa bao gồm chi phí vận chuyển;</li>
+                      }
+                      <li>Đơn giá trên sẽ không thay đổi trong suốt thời gian hai bên thực hiện hợp đồng.</li>
+                    </ul>
+                  </div>
                   <div className="mt-2 p-3 rounded" style={{ backgroundColor: "#f9fafb" }}>
-                    <p className="font-bold">Tổng: {formatCurrency(totalAmount)}</p>
                     <p>Đặt cọc ({contract.deposit_percentage || 70}%): {formatCurrency(contract.deposit_amount || 0)}</p>
                     <p>Còn lại: {formatCurrency(totalAmount - (contract.deposit_amount || 0))}</p>
                   </div>
