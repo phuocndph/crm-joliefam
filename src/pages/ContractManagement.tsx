@@ -13,10 +13,12 @@ import { CreateContractForm } from "@/components/CreateContractForm";
 import { EditContractDialog } from "@/components/EditContractDialog";
 import { DeleteContractDialog } from "@/components/DeleteContractDialog";
 import { ContractPreviewDialog } from "@/components/ContractPreviewDialog";
+import { HandoverReportDialog } from "@/components/HandoverReportDialog";
+import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
 import { ContractTemplateManager } from "@/components/ContractTemplateManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings } from "lucide-react";
+import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings, ClipboardCheck, Receipt } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   draft: { label: "Nháp", variant: "secondary" },
@@ -37,6 +39,8 @@ const ContractManagement = () => {
   const [editContract, setEditContract] = useState<any>(null);
   const [deleteContract, setDeleteContract] = useState<any>(null);
   const [previewContract, setPreviewContract] = useState<any>(null);
+  const [handoverContract, setHandoverContract] = useState<any>(null);
+  const [paymentRequestContract, setPaymentRequestContract] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("contracts");
 
   const prefillData = useMemo(() => {
@@ -178,6 +182,8 @@ const ContractManagement = () => {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => setPreviewContract(c)}><Eye className="h-4 w-4 mr-2" />Xem</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setEditContract(c)}><Edit className="h-4 w-4 mr-2" />Sửa</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setHandoverContract(c)}><ClipboardCheck className="h-4 w-4 mr-2" />Biên bản bàn giao</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setPaymentRequestContract(c)}><Receipt className="h-4 w-4 mr-2" />Đề nghị thanh toán</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setDeleteContract(c)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Xóa</DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -213,6 +219,12 @@ const ContractManagement = () => {
       )}
       {previewContract && (
         <ContractPreviewDialog open={!!previewContract} onOpenChange={o => !o && setPreviewContract(null)} contract={previewContract} />
+      )}
+      {handoverContract && (
+        <HandoverReportDialog open={!!handoverContract} onOpenChange={o => !o && setHandoverContract(null)} contract={handoverContract} />
+      )}
+      {paymentRequestContract && (
+        <PaymentRequestDialog open={!!paymentRequestContract} onOpenChange={o => !o && setPaymentRequestContract(null)} contract={paymentRequestContract} />
       )}
     </div>
   );

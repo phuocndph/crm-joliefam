@@ -1,45 +1,29 @@
 
 
-## Plan: Thêm tính năng Biên bản Bàn giao & Đề nghị Thanh toán
+# Hien thi chat lieu tu bao gia trong chi tiet don hang
 
-### Tổng quan
-Thêm 2 loại tài liệu mới có thể tạo từ hợp đồng đã có:
-1. **Biên bản bàn giao** (BBBG) — xác nhận hoàn thành giao hàng/lắp đặt
-2. **Đề nghị thanh toán** (ĐNTT) — yêu cầu thanh toán các đợt theo hợp đồng
+## Nguyen nhan
 
-Cả hai tài liệu đều **tự động lấy dữ liệu từ hợp đồng** (Bên A, Bên B, sản phẩm, giá trị, đợt thanh toán) — người dùng chỉ cần bổ sung thông tin cụ thể.
+Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
 
-### Cách tiếp cận
-Không tạo bảng DB mới. Tài liệu được **generate trực tiếp từ dữ liệu hợp đồng** dưới dạng preview + xuất PDF/Word/In, tương tự cách ContractPreviewDialog hoạt động hiện tại.
+Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
 
-### Chi tiết kỹ thuật
+Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
 
-#### 1. Component `HandoverReportDialog.tsx` — Biên bản Bàn giao
-- Props: `contract` (dữ liệu hợp đồng), `open`, `onOpenChange`
-- Tự động điền từ hợp đồng: số HĐ, Bên A (seller_info), Bên B (buyer_info/customers), danh sách sản phẩm (items), ngày ký
-- Cho phép user nhập thêm: ngày bàn giao, ghi chú tình trạng, người đại diện ký
-- Nội dung chuẩn: Căn cứ HĐ → Nội dung bàn giao (bảng SP) → Kết luận (đạt/không đạt) → Chữ ký 2 bên
-- Hỗ trợ: In, xuất PDF, xuất Word (docx)
+## Giai phap
 
-#### 2. Component `PaymentRequestDialog.tsx` — Đề nghị Thanh toán
-- Props: `contract` (dữ liệu hợp đồng), `open`, `onOpenChange`
-- Tự động tính từ hợp đồng: tổng giá trị, tiền đặt cọc (deposit_amount), số tiền còn lại, đợt thanh toán (từ payment_terms trong template)
-- Cho phép user chọn: đợt thanh toán nào, ngày đề nghị, thông tin chuyển khoản
-- Nội dung chuẩn: Kính gửi → Căn cứ HĐ → Bảng tổng hợp thanh toán → Thông tin chuyển khoản Bên A → Chữ ký
-- Hỗ trợ: In, xuất PDF, xuất Word
+### File: `src/pages/OrderManagement.tsx`
 
-#### 3. Tích hợp vào `ContractManagement.tsx`
-- Thêm 2 menu item mới vào DropdownMenu của mỗi hợp đồng:
-  - "Biên bản bàn giao" (icon: ClipboardCheck)
-  - "Đề nghị thanh toán" (icon: Receipt)
-- Thêm state: `handoverContract`, `paymentRequestContract`
-- Render 2 dialog mới
+Thay doi dong 659: doc `item.description` thay vi `item.material`:
 
-#### 4. Tích hợp vào `ContractPreviewDialog.tsx`
-- Thêm 2 nút action ở header: "Tạo BB bàn giao", "Đề nghị thanh toán" để mở trực tiếp từ preview
+```typescript
+// Truoc:
+{item.material || "-"}
 
-### Không thay đổi
-- Database — không cần bảng mới, dữ liệu lấy trực tiếp từ contracts
-- Edge functions — không cần
-- RLS — không thay đổi
+// Sau:
+{item.description || "-"}
+```
 
+Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
+
+Chi thay doi 1 dong, khong anh huong logic nao khac.
