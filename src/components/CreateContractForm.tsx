@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Plus, Trash2, Search, Sparkles, Link, ImagePlus } from "lucide-react";
 import { useRef } from "react";
+import { AIOrderAnalysis } from "@/components/AIOrderAnalysis";
 
 interface CreateContractFormProps {
   onSuccess: () => void;
@@ -525,6 +526,25 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       {/* Product table */}
       <div>
         <Label className="text-base font-semibold">Bảng sản phẩm / dịch vụ</Label>
+        
+        {/* AI Order Analysis */}
+        <div className="mt-2 mb-2">
+          <AIOrderAnalysis onItemsExtracted={(extractedItems) => {
+            const newItems = extractedItems.map(it => ({
+              name: it.name || "",
+              specifications: it.specifications || "",
+              quantity: it.quantity || 1,
+              price: it.price || 0,
+            }));
+            // Replace if current items are empty, otherwise append
+            if (items.length === 1 && !items[0].name.trim()) {
+              setItems(newItems);
+            } else {
+              setItems([...items, ...newItems]);
+            }
+          }} />
+        </div>
+
         <div className="mt-2 border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
