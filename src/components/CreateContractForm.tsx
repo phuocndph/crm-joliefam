@@ -344,6 +344,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       representative: formData.seller_representative,
       position: formData.seller_position,
       include_shipping: formData.include_shipping,
+      deposit_mode: formData.deposit_mode,
     };
 
     try {
