@@ -35,7 +35,17 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
   const seller = contract.seller_info || {};
   const buyer = contract.buyer_info || {};
   const sellerName = seller.company_name || companySettings.companyName || "";
+  const sellerRep = seller.representative || "...";
+  const sellerPos = seller.position || "Giám đốc";
+  const sellerAddr = seller.address || companySettings.address || "...";
+  const sellerPhone = seller.phone || companySettings.phone || "";
+  const sellerTax = seller.tax_code || companySettings.taxCode || "";
   const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
+  const buyerRep = buyer.representative || "...";
+  const buyerPos = buyer.position || "";
+  const buyerAddr = buyer.address || "";
+  const buyerPhone = buyer.phone || "";
+  const buyerTax = buyer.tax_code || "";
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -90,7 +100,7 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
       const font = "Times New Roman";
 
       const headerRow = new DocxTableRow({
-        children: ["TT", "Tên sản phẩm", "Quy cách", "SL", "Tình trạng"].map((text, idx) =>
+        children: ["TT", "Tên sản phẩm", "Kích thước", "SL", "Tình trạng"].map((text, idx) =>
           new DocxTableCell({
             children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 20, font })], alignment: AlignmentType.CENTER })],
             borders: borderStyle,
@@ -111,20 +121,28 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
         })
       );
 
+      const makePartyParagraphs = (label: string, name: string, rep: string, pos: string, addr: string, phone: string, tax: string) => {
+        const paras: Paragraph[] = [
+          new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 22, font })], spacing: { before: 100 } }),
+          new Paragraph({ children: [new TextRun({ text: `Công ty: ${name}`, size: 20, font })] }),
+          new Paragraph({ children: [new TextRun({ text: `Đại diện: ${rep}`, size: 20, font }), ...(pos ? [new TextRun({ text: `    Chức vụ: ${pos}`, size: 20, font })] : [])] }),
+        ];
+        if (addr) paras.push(new Paragraph({ children: [new TextRun({ text: `Địa chỉ: ${addr}`, size: 20, font })] }));
+        if (phone) paras.push(new Paragraph({ children: [new TextRun({ text: `Điện thoại: ${phone}`, size: 20, font })] }));
+        if (tax) paras.push(new Paragraph({ children: [new TextRun({ text: `MST: ${tax}`, size: 20, font })] }));
+        return paras;
+      };
+
       const children: any[] = [
         new Paragraph({ children: [new TextRun({ text: "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold: true, size: 24, font })], alignment: AlignmentType.CENTER }),
         new Paragraph({ children: [new TextRun({ text: "Độc lập – Tự do – Hạnh phúc", bold: true, size: 24, font, underline: {} })], alignment: AlignmentType.CENTER }),
         new Paragraph({ children: [new TextRun({ text: "————————", size: 20, font })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
         new Paragraph({ children: [new TextRun({ text: "BIÊN BẢN BÀN GIAO", bold: true, size: 32, font, color: "1a56db" })], alignment: AlignmentType.CENTER, spacing: { before: 200 } }),
         new Paragraph({ children: [new TextRun({ text: `(Kèm theo Hợp đồng số: ${contract.contract_number})`, italics: true, size: 20, font })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
-        new Paragraph({ children: [new TextRun({ text: `Hôm nay, ngày ${formatDate(handoverDate)}, tại ${seller.address || companySettings.address || "..."}`, size: 20, font })], spacing: { after: 100 } }),
+        new Paragraph({ children: [new TextRun({ text: `Hôm nay, ngày ${formatDate(handoverDate)}, tại ${sellerAddr}`, size: 20, font })], spacing: { after: 100 } }),
         new Paragraph({ children: [new TextRun({ text: `Căn cứ Hợp đồng số ${contract.contract_number} ngày ${formatDate(contract.contract_date)}, hai bên tiến hành bàn giao như sau:`, size: 20, font })], spacing: { after: 200 } }),
-        new Paragraph({ children: [new TextRun({ text: "BÊN GIAO (Bên A):", bold: true, size: 22, font })], spacing: { before: 100 } }),
-        new Paragraph({ children: [new TextRun({ text: `Công ty: ${sellerName}`, size: 20, font })] }),
-        new Paragraph({ children: [new TextRun({ text: `Đại diện: ${seller.representative || "..."}`, size: 20, font })], spacing: { after: 100 } }),
-        new Paragraph({ children: [new TextRun({ text: "BÊN NHẬN (Bên B):", bold: true, size: 22, font })], spacing: { before: 100 } }),
-        new Paragraph({ children: [new TextRun({ text: `Công ty/Cá nhân: ${buyerName}`, size: 20, font })] }),
-        new Paragraph({ children: [new TextRun({ text: `Đại diện: ${buyer.representative || "..."}`, size: 20, font })], spacing: { after: 200 } }),
+        ...makePartyParagraphs("BÊN GIAO (Bên A):", sellerName, sellerRep, sellerPos, sellerAddr, sellerPhone, sellerTax),
+        ...makePartyParagraphs("BÊN NHẬN (Bên B):", buyerName, buyerRep, buyerPos, buyerAddr, buyerPhone, buyerTax),
         new Paragraph({ children: [new TextRun({ text: "I. NỘI DUNG BÀN GIAO:", bold: true, size: 22, font })], spacing: { before: 200 } }),
         new DocxTable({ rows: [headerRow, ...itemRows], width: { size: 100, type: WidthType.PERCENTAGE } }),
         new Paragraph({ children: [new TextRun({ text: "II. KẾT LUẬN:", bold: true, size: 22, font })], spacing: { before: 200 } }),
@@ -148,6 +166,7 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
                   new Paragraph({ children: [new TextRun({ text: "BÊN GIAO (BÊN A)", bold: true, size: 22, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ children: [new TextRun({ text: "(Ký, ghi rõ họ tên)", italics: true, size: 20, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }),
+                  new Paragraph({ children: [new TextRun({ text: sellerRep !== "..." ? sellerRep : "", bold: true, size: 20, font })], alignment: AlignmentType.CENTER }),
                 ],
                 borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
               }),
@@ -156,6 +175,7 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
                   new Paragraph({ children: [new TextRun({ text: "BÊN NHẬN (BÊN B)", bold: true, size: 22, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ children: [new TextRun({ text: "(Ký, ghi rõ họ tên)", italics: true, size: 20, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }),
+                  new Paragraph({ children: [new TextRun({ text: buyerRep !== "..." ? buyerRep : "", bold: true, size: 20, font })], alignment: AlignmentType.CENTER }),
                 ],
                 borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
               }),
@@ -177,6 +197,22 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
       toast({ title: "Lỗi tạo file Word", variant: "destructive" });
     }
   };
+
+  const PartyInfoBlock = ({ label, name, rep, pos, addr, phone, tax }: { label: string; name: string; rep: string; pos: string; addr: string; phone: string; tax: string }) => (
+    <div className="p-3 border rounded">
+      <p className="font-bold mb-1">{label}</p>
+      <p><strong>Công ty:</strong> {name}</p>
+      <p><strong>Đại diện:</strong> {rep}{pos ? <span className="ml-4"><strong>Chức vụ:</strong> {pos}</span> : null}</p>
+      {addr && <p><strong>Địa chỉ:</strong> {addr}</p>}
+      {(phone || tax) && (
+        <p>
+          {phone && <><strong>ĐT:</strong> {phone}</>}
+          {phone && tax && <span className="mx-3">|</span>}
+          {tax && <><strong>MST:</strong> {tax}</>}
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -220,20 +256,11 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
             <p className="text-sm italic">(Kèm theo Hợp đồng số: {contract.contract_number})</p>
           </div>
 
-          <p>Hôm nay, ngày {formatDate(handoverDate)}, tại {seller.address || companySettings.address || "..."}</p>
+          <p>Hôm nay, ngày {formatDate(handoverDate)}, tại {sellerAddr}</p>
           <p>Căn cứ Hợp đồng số {contract.contract_number} ngày {formatDate(contract.contract_date)}, hai bên tiến hành bàn giao như sau:</p>
 
-          <div className="p-3 border rounded">
-            <p className="font-bold mb-1">BÊN GIAO (Bên A):</p>
-            <p><strong>Công ty:</strong> {sellerName}</p>
-            <p><strong>Đại diện:</strong> {seller.representative || "..."}</p>
-          </div>
-
-          <div className="p-3 border rounded">
-            <p className="font-bold mb-1">BÊN NHẬN (Bên B):</p>
-            <p><strong>Công ty/Cá nhân:</strong> {buyerName}</p>
-            <p><strong>Đại diện:</strong> {buyer.representative || "..."}</p>
-          </div>
+          <PartyInfoBlock label="BÊN GIAO (Bên A):" name={sellerName} rep={sellerRep} pos={sellerPos} addr={sellerAddr} phone={sellerPhone} tax={sellerTax} />
+          <PartyInfoBlock label="BÊN NHẬN (Bên B):" name={buyerName} rep={buyerRep} pos={buyerPos} addr={buyerAddr} phone={buyerPhone} tax={buyerTax} />
 
           <p className="font-bold mt-4">I. NỘI DUNG BÀN GIAO:</p>
           <table className="w-full border-collapse text-sm">
@@ -241,7 +268,7 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
               <tr style={{ backgroundColor: "#f3f4f6" }}>
                 <th className="border border-gray-400 p-2 text-center w-10">TT</th>
                 <th className="border border-gray-400 p-2 text-left">Tên sản phẩm</th>
-                <th className="border border-gray-400 p-2 text-left">Quy cách</th>
+                <th className="border border-gray-400 p-2 text-left">Kích thước</th>
                 <th className="border border-gray-400 p-2 text-center w-12">SL</th>
                 <th className="border border-gray-400 p-2 text-center">Tình trạng</th>
               </tr>
@@ -276,11 +303,13 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
               <p className="font-bold">BÊN GIAO (BÊN A)</p>
               <p className="text-xs italic" style={{ color: "#6b7280" }}>(Ký, ghi rõ họ tên)</p>
               <div style={{ height: 80 }}></div>
+              {sellerRep !== "..." && <p className="font-bold">{sellerRep}</p>}
             </div>
             <div>
               <p className="font-bold">BÊN NHẬN (BÊN B)</p>
               <p className="text-xs italic" style={{ color: "#6b7280" }}>(Ký, ghi rõ họ tên)</p>
               <div style={{ height: 80 }}></div>
+              {buyerRep !== "..." && <p className="font-bold">{buyerRep}</p>}
             </div>
           </div>
         </div>

@@ -358,6 +358,22 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
             </div>
           </div>
 
+          {/* SELLER INFO - BÊN A */}
+          <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+            <Label className="text-base font-semibold">THÔNG TIN BÊN A (Bên bán)</Label>
+            <p className="text-xs text-muted-foreground">Bổ sung người đại diện Bên A</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Người đại diện Bên A</Label>
+                <Input value={formData.seller_representative} onChange={e => setFormData(p => ({ ...p, seller_representative: e.target.value }))} placeholder="Ông/Bà..." />
+              </div>
+              <div>
+                <Label>Chức vụ</Label>
+                <Input value={formData.seller_position} onChange={e => setFormData(p => ({ ...p, seller_position: e.target.value }))} placeholder="Giám đốc" />
+              </div>
+            </div>
+          </div>
+
           {/* BUYER INFO */}
           <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
             <Label className="text-base font-semibold">THÔNG TIN BÊN B (Bên mua)</Label>
