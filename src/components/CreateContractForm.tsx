@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Plus, Trash2, Search, Sparkles, Link, ImagePlus } from "lucide-react";
 import { useRef } from "react";
+import { AIOrderAnalysis } from "@/components/AIOrderAnalysis";
 
 interface CreateContractFormProps {
   onSuccess: () => void;
