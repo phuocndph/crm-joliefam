@@ -49,6 +49,8 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
     deposit_percentage: 70,
     deposit_mode: "percent" as "percent" | "amount",
     deposit_fixed_amount: 0,
+    seller_representative: "",
+    seller_position: "Giám đốc",
   });
 
   const [items, setItems] = useState<any[]>([{ ...emptyItem }]);
