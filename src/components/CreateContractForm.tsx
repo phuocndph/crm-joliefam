@@ -343,6 +343,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       bank_info: companySettings.bankInfo,
       representative: formData.seller_representative,
       position: formData.seller_position,
+      include_shipping: formData.include_shipping,
     };
 
     try {
