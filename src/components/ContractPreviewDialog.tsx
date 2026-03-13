@@ -290,18 +290,26 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
         articles.forEach((article: any, idx: number) => {
           children.push(new Paragraph({ children: [new TextRun({ text: article.title, bold: true, size: 22, font: "Times New Roman" })], spacing: { before: 200 } }));
 
-          // Split content by newlines
-          const lines = (article.content || "").split("\n");
-          lines.forEach((line: string) => {
-            children.push(new Paragraph({ children: [new TextRun({ text: line, size: 20, font: "Times New Roman" })], spacing: { after: 40 } }));
-          });
+          // Điều 3: inject dynamic payment terms
+          if (article.title?.includes("ĐIỀU 3") && article.title?.includes("THANH TOÁN")) {
+            const paymentLines = generatePaymentTermsLines();
+            paymentLines.forEach((line: string) => {
+              children.push(new Paragraph({ children: [new TextRun({ text: line, size: 20, font: "Times New Roman" })], spacing: { after: 40 } }));
+            });
+          } else {
+            // Split content by newlines
+            const lines = (article.content || "").split("\n");
+            lines.forEach((line: string) => {
+              children.push(new Paragraph({ children: [new TextRun({ text: line, size: 20, font: "Times New Roman" })], spacing: { after: 40 } }));
+            });
+          }
 
           // Insert product table after first article
           if (idx === 0 && items.length > 0) {
             children.push(
               new DocxTable({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
               new Paragraph({ children: [
-                new TextRun({ text: `Tổng giá trị hợp đồng là: ${(totalAmount || 0).toLocaleString("vi-VN")} đồng`, bold: true, size: 20, font: "Times New Roman" }),
+                new TextRun({ text: `Tổng giá trị hợp đồng là: ${formatCurrencyNoSymbol(totalAmount)} đồng`, bold: true, size: 20, font: "Times New Roman" }),
               ], spacing: { before: 100 } }),
               new Paragraph({ children: [
                 new TextRun({ text: `(Bằng chữ: `, size: 20, font: "Times New Roman" }),
@@ -310,9 +318,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
               new Paragraph({ children: [new TextRun({ text: "Lưu ý:", bold: true, size: 20, font: "Times New Roman" })], spacing: { before: 60 } }),
               new Paragraph({ children: [new TextRun({ text: contract.include_vat ? "- Tổng giá trị trên đã bao gồm thuế GTGT;" : "- Tổng giá trị trên chưa bao gồm thuế GTGT;", size: 20, font: "Times New Roman" })] }),
               new Paragraph({ children: [new TextRun({ text: seller.include_shipping !== false ? "- Tổng giá trị trên đã bao gồm chi phí vận chuyển đến chân công trình của bên B;" : "- Tổng giá trị trên chưa bao gồm chi phí vận chuyển;", size: 20, font: "Times New Roman" })] }),
-              new Paragraph({ children: [new TextRun({ text: "- Đơn giá trên sẽ không thay đổi trong suốt thời gian hai bên thực hiện hợp đồng.", size: 20, font: "Times New Roman" })], spacing: { after: 60 } }),
-              new Paragraph({ children: [new TextRun({ text: `Tiền cọc (${contract.deposit_percentage || 70}%): ${formatCurrency(contract.deposit_amount || 0)}`, bold: true, size: 20, font: "Times New Roman" })], spacing: { before: 100 } }),
-              new Paragraph({ children: [new TextRun({ text: `Còn lại: ${formatCurrency(totalAmount - (contract.deposit_amount || 0))}`, bold: true, size: 20, font: "Times New Roman" })], spacing: { after: 200 } }),
+              new Paragraph({ children: [new TextRun({ text: "- Đơn giá trên sẽ không thay đổi trong suốt thời gian hai bên thực hiện hợp đồng.", size: 20, font: "Times New Roman" })], spacing: { after: 200 } }),
             );
           }
         });
