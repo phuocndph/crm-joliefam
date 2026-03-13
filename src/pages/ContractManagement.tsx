@@ -15,6 +15,7 @@ import { DeleteContractDialog } from "@/components/DeleteContractDialog";
 import { ContractPreviewDialog } from "@/components/ContractPreviewDialog";
 import { HandoverReportDialog } from "@/components/HandoverReportDialog";
 import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
+import { FrameworkContractDialog } from "@/components/FrameworkContractDialog";
 import { ContractTemplateManager } from "@/components/ContractTemplateManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -41,6 +42,7 @@ const ContractManagement = () => {
   const [previewContract, setPreviewContract] = useState<any>(null);
   const [handoverContract, setHandoverContract] = useState<any>(null);
   const [paymentRequestContract, setPaymentRequestContract] = useState<any>(null);
+  const [frameworkContract, setFrameworkContract] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("contracts");
 
   const prefillData = useMemo(() => {
@@ -184,6 +186,7 @@ const ContractManagement = () => {
                                 <DropdownMenuItem onClick={() => setEditContract(c)}><Edit className="h-4 w-4 mr-2" />Sửa</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setHandoverContract(c)}><ClipboardCheck className="h-4 w-4 mr-2" />Biên bản bàn giao</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setPaymentRequestContract(c)}><Receipt className="h-4 w-4 mr-2" />Đề nghị thanh toán</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setFrameworkContract(c)}><FileSignature className="h-4 w-4 mr-2" />HĐ Nguyên tắc</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setDeleteContract(c)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Xóa</DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -225,6 +228,9 @@ const ContractManagement = () => {
       )}
       {paymentRequestContract && (
         <PaymentRequestDialog open={!!paymentRequestContract} onOpenChange={o => !o && setPaymentRequestContract(null)} contract={paymentRequestContract} />
+      )}
+      {frameworkContract && (
+        <FrameworkContractDialog open={!!frameworkContract} onOpenChange={o => !o && setFrameworkContract(null)} contract={frameworkContract} />
       )}
     </div>
   );
