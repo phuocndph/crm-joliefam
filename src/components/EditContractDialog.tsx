@@ -82,7 +82,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
         include_vat: contract.include_vat || false,
         vat_rate: contract.vat_rate || 8,
         deposit_percentage: contract.deposit_percentage || 70,
-        deposit_mode: (contract.deposit_amount && !contract.deposit_percentage) ? "amount" as const : "percent" as const,
+        deposit_mode: ((contract.seller_info as any)?.deposit_mode as "percent" | "amount" | "none") || ((contract.deposit_amount && !contract.deposit_percentage) ? "amount" : "percent"),
         deposit_fixed_amount: contract.deposit_amount || 0,
         seller_representative: (contract.seller_info as any)?.representative || "",
         seller_position: (contract.seller_info as any)?.position || "Giám đốc",
