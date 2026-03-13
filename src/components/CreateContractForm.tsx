@@ -589,7 +589,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
                   <td className="p-2 text-muted-foreground">{i + 1}</td>
                   <td className="p-1"><Input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Tên SP" className="h-8" /></td>
                   <td className="p-1"><Input value={item.specifications} onChange={(e) => updateItem(i, "specifications", e.target.value)} placeholder="Kích thước" className="h-8" /></td>
-                  <td className="p-1 py-[6px]"><Input type="number" value={item.quantity} onChange={(e) => updateItem(i, "quantity", Number(e.target.value))} className="h-8 text-right" /></td>
+                  <td className="p-1 px-[5px] py-[8px]"><Input type="number" value={item.quantity} onChange={(e) => updateItem(i, "quantity", Number(e.target.value))} className="h-8 text-right" /></td>
                   <td className="p-1"><Input type="number" value={item.price} onChange={(e) => updateItem(i, "price", Number(e.target.value))} className="h-8 text-right" /></td>
                   <td className="p-2 text-right font-medium">{formatCurrency(item.quantity * item.price)}</td>
                   <td className="p-1">
