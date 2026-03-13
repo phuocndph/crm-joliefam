@@ -186,6 +186,7 @@ const ContractManagement = () => {
                                 <DropdownMenuItem onClick={() => setEditContract(c)}><Edit className="h-4 w-4 mr-2" />Sửa</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setHandoverContract(c)}><ClipboardCheck className="h-4 w-4 mr-2" />Biên bản bàn giao</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setPaymentRequestContract(c)}><Receipt className="h-4 w-4 mr-2" />Đề nghị thanh toán</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setFrameworkContract(c)}><FileSignature className="h-4 w-4 mr-2" />HĐ Nguyên tắc</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setDeleteContract(c)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Xóa</DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
