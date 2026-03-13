@@ -330,7 +330,13 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           <Button size="sm" variant="outline" onClick={handleDownloadImage}><Download className="h-4 w-4 mr-1" />Tải ảnh</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadPDF}><FileDown className="h-4 w-4 mr-1" />Xuất PDF</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadWord}><FileText className="h-4 w-4 mr-1" />Xuất Word</Button>
+          <div className="border-l mx-1 h-6" />
+          <Button size="sm" variant="outline" onClick={() => setShowHandover(true)}><ClipboardCheck className="h-4 w-4 mr-1" />BB Bàn giao</Button>
+          <Button size="sm" variant="outline" onClick={() => setShowPaymentRequest(true)}><Receipt className="h-4 w-4 mr-1" />Đề nghị TT</Button>
         </div>
+
+        <HandoverReportDialog open={showHandover} onOpenChange={setShowHandover} contract={contract} />
+        <PaymentRequestDialog open={showPaymentRequest} onOpenChange={setShowPaymentRequest} contract={contract} />
 
         <div ref={printRef} className="bg-white p-8 rounded-lg border space-y-5 text-sm" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000", lineHeight: 1.7 }}>
           {/* Header */}
