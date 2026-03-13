@@ -600,10 +600,27 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
             <span>TỔNG GIÁ TRỊ HỢP ĐỒNG:</span>
             <span>{formatCurrency(totalAmount)}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span>Đặt cọc</span>
-            <Input type="number" value={formData.deposit_percentage} onChange={e => setFormData(p => ({ ...p, deposit_percentage: Number(e.target.value) }))} className="h-7 w-16" />
-            <span>% = <strong>{formatCurrency(depositAmount)}</strong></span>
+            <select
+              value={formData.deposit_mode}
+              onChange={e => setFormData(p => ({ ...p, deposit_mode: e.target.value as "percent" | "amount" }))}
+              className="h-7 rounded border border-input bg-background px-2 text-sm"
+            >
+              <option value="percent">%</option>
+              <option value="amount">Số tiền</option>
+            </select>
+            {formData.deposit_mode === "percent" ? (
+              <>
+                <Input type="number" value={formData.deposit_percentage} onChange={e => setFormData(p => ({ ...p, deposit_percentage: Number(e.target.value) }))} className="h-7 w-16" />
+                <span>% = <strong>{formatCurrency(depositAmount)}</strong></span>
+              </>
+            ) : (
+              <>
+                <Input type="number" value={formData.deposit_fixed_amount || ""} onChange={e => setFormData(p => ({ ...p, deposit_fixed_amount: Number(e.target.value) }))} className="h-7 w-32" placeholder="Nhập số tiền" />
+                <span>= <strong>{formatCurrency(depositAmount)}</strong></span>
+              </>
+            )}
           </div>
         </div>
       </div>
