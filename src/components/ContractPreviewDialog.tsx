@@ -401,7 +401,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
                         <tr style={{ backgroundColor: "#f3f4f6" }}>
                           <th className="border border-gray-400 p-2 text-center w-10">TT</th>
                           <th className="border border-gray-400 p-2 text-left">Tên sản phẩm</th>
-                          <th className="border border-gray-400 p-2 text-left">Kích thước/ Quy cách</th>
+                          <th className="border border-gray-400 p-2 text-left"><th className="border border-gray-400 p-2 text-left">Kích thước</th></th>
                           <th className="border border-gray-400 p-2 text-center w-12">SL</th>
                           <th className="border border-gray-400 p-2 text-right w-24">Đơn giá</th>
                           <th className="border border-gray-400 p-2 text-right w-28">Thành tiền</th>
