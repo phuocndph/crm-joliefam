@@ -536,12 +536,8 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
               quantity: it.quantity || 1,
               price: it.price || 0,
             }));
-            // Replace if current items are empty, otherwise append
-            if (items.length === 1 && !items[0].name.trim()) {
-              setItems(newItems);
-            } else {
-              setItems([...items, ...newItems]);
-            }
+            // Always replace old items with new extracted items
+            setItems(newItems);
           }} />
         </div>
 
