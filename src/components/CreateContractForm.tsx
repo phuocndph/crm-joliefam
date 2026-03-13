@@ -573,7 +573,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
               <tr className="bg-muted">
                 <th className="p-2 text-left w-8">TT</th>
                 <th className="p-2 text-left">Sản phẩm</th>
-                <th className="p-2 text-left"><th className="p-2 text-left">Kích thước</th></th>
+                <th className="p-2 text-left">Kích thước</th>
                 <th className="p-2 text-right w-16">SL</th>
                 <th className="p-2 text-right w-28">Đơn giá</th>
                 <th className="p-2 text-right w-28">Thành tiền</th>
