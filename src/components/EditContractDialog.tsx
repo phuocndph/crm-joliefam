@@ -318,6 +318,11 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
         status: formData.status,
         items: items.map((it, i) => ({ ...it, total: it.quantity * it.price, stt: i + 1 })),
         buyer_info: buyerInfo,
+        seller_info: {
+          ...((contract.seller_info as any) || {}),
+          representative: formData.seller_representative,
+          position: formData.seller_position,
+        },
       });
       toast({ title: "Cập nhật hợp đồng thành công!" });
       onOpenChange(false);
