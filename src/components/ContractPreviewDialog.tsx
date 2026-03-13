@@ -132,7 +132,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
 
       // Build product table rows
       const headerRow = new DocxTableRow({
-        children: ["TT", "Tên sản phẩm", "Kích thước/Quy cách", "SL", "Đơn giá", "Thành tiền"].map((text, idx) =>
+        children: ["TT", "Tên sản phẩm", "Kích thước", "SL", "Đơn giá", "Thành tiền"].map((text, idx) =>
           new DocxTableCell({
             children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 20, font: "Times New Roman" })], alignment: AlignmentType.CENTER })],
             borders: borderStyle,
