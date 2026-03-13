@@ -306,7 +306,9 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   const subtotal = items.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0);
   const vatAmount = formData.include_vat ? subtotal * formData.vat_rate / 100 : 0;
   const totalAmount = subtotal + vatAmount;
-  const depositAmount = totalAmount * formData.deposit_percentage / 100;
+  const depositAmount = formData.deposit_mode === "percent"
+    ? totalAmount * formData.deposit_percentage / 100
+    : formData.deposit_fixed_amount;
 
   const addItem = () => setItems([...items, { ...emptyItem }]);
   const removeItem = (i: number) => setItems(items.filter((_, j) => j !== i));
