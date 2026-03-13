@@ -55,7 +55,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     start_date: "",
     end_date: "",
     notes: "",
-    seller_representative: "TRẦN THỊ THANH HOAN",
+    seller_representative: "",
     seller_position: "Giám đốc",
     include_shipping: true,
     include_vat: false,
@@ -64,11 +64,11 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     deposit_mode: "percent" as "percent" | "amount" | "none",
     deposit_fixed_amount: 0,
     legal_basis: [
-      "Căn cứ Luật Thương mại số 36/2005/QH11 ngày 14/06/2005;",
-      "Căn cứ Bộ luật Dân sự số 91/2015/QH13 ngày 24/11/2015;",
-      "Căn cứ vào nhu cầu và khả năng của hai bên."
-    ],
-    articles: defaultArticles,
+    "Căn cứ Luật Thương mại số 36/2005/QH11 ngày 14/06/2005;",
+    "Căn cứ Bộ luật Dân sự số 91/2015/QH13 ngày 24/11/2015;",
+    "Căn cứ vào nhu cầu và khả năng của hai bên."],
+
+    articles: defaultArticles
   });
 
   const [items, setItems] = useState<any[]>(
@@ -76,7 +76,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       name: it.name || "",
       specifications: it.specifications || it.description || "",
       quantity: it.quantity || 1,
-      price: it.price || 0,
+      price: it.price || 0
     })) : [{ ...emptyItem }]
   );
 
@@ -89,21 +89,21 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     phone: "",
     bank_name: "",
     bank_account: "",
-    bank_holder: "",
+    bank_holder: ""
   });
 
   // When template is selected, apply its settings
   const handleTemplateChange = (id: string) => {
     setTemplateId(id);
-    const tmpl = templates?.find(t => t.id === id);
+    const tmpl = templates?.find((t) => t.id === id);
     if (!tmpl) return;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       include_vat: tmpl.include_vat,
       vat_rate: tmpl.vat_rate,
       deposit_percentage: tmpl.payment_terms?.deposit_percentage || 70,
       legal_basis: tmpl.legal_basis || prev.legal_basis,
-      articles: tmpl.articles?.length ? tmpl.articles : prev.articles,
+      articles: tmpl.articles?.length ? tmpl.articles : prev.articles
     }));
   };
 
@@ -112,11 +112,11 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     if (formData.customer_id && customers) {
       const c = customers.find((cust: any) => cust.id === formData.customer_id);
       if (c) {
-        setBuyerInfo(prev => ({
+        setBuyerInfo((prev) => ({
           ...prev,
           company_name: prev.company_name || c.company || c.name || "",
           address: prev.address || c.address || "",
-          phone: prev.phone || c.phone || "",
+          phone: prev.phone || c.phone || ""
         }));
       }
     }
@@ -131,11 +131,11 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     setLookingUpTax(true);
     try {
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
-        body: { type: "tax_code", data: buyerInfo.tax_code.trim() },
+        body: { type: "tax_code", data: buyerInfo.tax_code.trim() }
       });
       if (error) throw error;
       if (data && !data.error) {
-        setBuyerInfo(prev => ({
+        setBuyerInfo((prev) => ({
           ...prev,
           company_name: data.company_name || prev.company_name,
           representative: data.representative || prev.representative,
@@ -144,7 +144,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           phone: data.phone || prev.phone,
           bank_name: data.bank_name || prev.bank_name,
           bank_account: data.bank_account || prev.bank_account,
-          bank_holder: data.bank_holder || prev.bank_holder,
+          bank_holder: data.bank_holder || prev.bank_holder
         }));
         toast({ title: "Đã tìm thấy thông tin doanh nghiệp!" });
       } else {
@@ -166,11 +166,11 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       const mimeMatch = imagePreview.match(/^data:(image\/\w+);/);
       const mimeType = mimeMatch?.[1] || "image/png";
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
-        body: { type: "parse_image", data: { base64, mimeType } },
+        body: { type: "parse_image", data: { base64, mimeType } }
       });
       if (error) throw error;
       if (data && !data.error && !data.raw) {
-        setBuyerInfo(prev => ({
+        setBuyerInfo((prev) => ({
           ...prev,
           company_name: data.company_name || prev.company_name,
           representative: data.representative || prev.representative,
@@ -180,7 +180,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           phone: data.phone || prev.phone,
           bank_name: data.bank_name || prev.bank_name,
           bank_account: data.bank_account || prev.bank_account,
-          bank_holder: data.bank_holder || prev.bank_holder,
+          bank_holder: data.bank_holder || prev.bank_holder
         }));
         toast({ title: "Đã phân tích hình ảnh và điền thông tin!" });
       } else {
@@ -205,11 +205,11 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     setParsingText(true);
     try {
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
-        body: { type: "parse_text", data: pasteText.trim() },
+        body: { type: "parse_text", data: pasteText.trim() }
       });
       if (error) throw error;
       if (data && !data.error) {
-        setBuyerInfo(prev => ({
+        setBuyerInfo((prev) => ({
           ...prev,
           company_name: data.company_name || prev.company_name,
           representative: data.representative || prev.representative,
@@ -219,7 +219,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           phone: data.phone || prev.phone,
           bank_name: data.bank_name || prev.bank_name,
           bank_account: data.bank_account || prev.bank_account,
-          bank_holder: data.bank_holder || prev.bank_holder,
+          bank_holder: data.bank_holder || prev.bank_holder
         }));
         setPasteText("");
         toast({ title: "Đã phân tích và điền thông tin!" });
@@ -256,11 +256,11 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       const base64 = dataUrl.split(",")[1];
 
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
-        body: { type: "parse_image", data: { base64, mimeType: file.type } },
+        body: { type: "parse_image", data: { base64, mimeType: file.type } }
       });
       if (error) throw error;
       if (data && !data.error && !data.raw) {
-        setBuyerInfo(prev => ({
+        setBuyerInfo((prev) => ({
           ...prev,
           company_name: data.company_name || prev.company_name,
           representative: data.representative || prev.representative,
@@ -270,7 +270,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           phone: data.phone || prev.phone,
           bank_name: data.bank_name || prev.bank_name,
           bank_account: data.bank_account || prev.bank_account,
-          bank_holder: data.bank_holder || prev.bank_holder,
+          bank_holder: data.bank_holder || prev.bank_holder
         }));
         toast({ title: "Đã phân tích hình ảnh và điền thông tin!" });
       } else {
@@ -309,11 +309,11 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   const subtotal = items.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0);
   const vatAmount = formData.include_vat ? subtotal * formData.vat_rate / 100 : 0;
   const totalAmount = subtotal + vatAmount;
-  const depositAmount = formData.deposit_mode === "none"
-    ? 0
-    : formData.deposit_mode === "percent"
-      ? totalAmount * formData.deposit_percentage / 100
-      : formData.deposit_fixed_amount;
+  const depositAmount = formData.deposit_mode === "none" ?
+  0 :
+  formData.deposit_mode === "percent" ?
+  totalAmount * formData.deposit_percentage / 100 :
+  formData.deposit_fixed_amount;
 
   const addItem = () => setItems([...items, { ...emptyItem }]);
   const removeItem = (i: number) => setItems(items.filter((_, j) => j !== i));
@@ -331,7 +331,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       toast({ title: "Vui lòng nhập tên công ty/cá nhân Bên B", variant: "destructive" });
       return;
     }
-    if (items.every(it => !it.name.trim())) {
+    if (items.every((it) => !it.name.trim())) {
       toast({ title: "Vui lòng nhập ít nhất 1 sản phẩm", variant: "destructive" });
       return;
     }
@@ -346,7 +346,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       representative: formData.seller_representative,
       position: formData.seller_position,
       include_shipping: formData.include_shipping,
-      deposit_mode: formData.deposit_mode,
+      deposit_mode: formData.deposit_mode
     };
 
     try {
@@ -368,13 +368,13 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
         end_date: formData.end_date || null,
         notes: formData.notes || null,
         items: items.map((it, i) => ({ ...it, total: it.quantity * it.price, stt: i + 1 })),
-        terms: formData.articles.map(a => `${a.title}\n${a.content}`),
+        terms: formData.articles.map((a) => `${a.title}\n${a.content}`),
         legal_basis: formData.legal_basis,
         seller_info: sellerInfo,
         buyer_info: buyerInfo,
         articles: formData.articles,
         template_id: templateId || null,
-        status: "draft",
+        status: "draft"
       });
       toast({ title: "Tạo hợp đồng thành công!" });
       onSuccess();
@@ -386,28 +386,28 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   return (
     <form onSubmit={handleSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-2">
       {/* Template selection */}
-      {templates && templates.length > 0 && (
-        <div>
+      {templates && templates.length > 0 &&
+      <div>
           <Label>Chọn mẫu hợp đồng</Label>
           <Select value={templateId} onValueChange={handleTemplateChange}>
             <SelectTrigger><SelectValue placeholder="-- Chọn mẫu (tùy chọn) --" /></SelectTrigger>
             <SelectContent>
-              {templates.map((t: any) => (
-                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-              ))}
+              {templates.map((t: any) =>
+            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+            )}
             </SelectContent>
           </Select>
         </div>
-      )}
+      }
 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label>Số hợp đồng</Label>
-          <Input value={formData.contract_number} onChange={e => setFormData(p => ({ ...p, contract_number: e.target.value }))} />
+          <Input value={formData.contract_number} onChange={(e) => setFormData((p) => ({ ...p, contract_number: e.target.value }))} />
         </div>
         <div>
           <Label>Tiêu đề hợp đồng</Label>
-          <Input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} />
+          <Input value={formData.title} onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))} />
         </div>
       </div>
 
@@ -418,11 +418,11 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Người đại diện Bên A</Label>
-            <Input value={formData.seller_representative} onChange={e => setFormData(p => ({ ...p, seller_representative: e.target.value }))} placeholder="Ông/Bà..." />
+            <Input value={formData.seller_representative} onChange={(e) => setFormData((p) => ({ ...p, seller_representative: e.target.value }))} placeholder="Ông/Bà..." />
           </div>
           <div>
             <Label>Chức vụ</Label>
-            <Input value={formData.seller_position} onChange={e => setFormData(p => ({ ...p, seller_position: e.target.value }))} placeholder="Giám đốc" />
+            <Input value={formData.seller_position} onChange={(e) => setFormData((p) => ({ ...p, seller_position: e.target.value }))} placeholder="Giám đốc" />
           </div>
         </div>
       </div>
@@ -437,15 +437,15 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           <div className="flex gap-2">
             <Textarea
               value={pasteText}
-              onChange={e => setPasteText(e.target.value)}
+              onChange={(e) => setPasteText(e.target.value)}
               onPaste={handlePasteImage}
               placeholder="Dán text hoặc Ctrl+V ảnh chứa thông tin công ty, MST, địa chỉ, ngân hàng..."
               rows={2}
-              className="text-sm"
-            />
+              className="text-sm" />
+            
             <div className="flex flex-col gap-1 shrink-0">
               <Button type="button" variant="outline" size="sm" onClick={handleAIAnalyze} disabled={parsingText || parsingImage} title={imagePreview ? "AI phân tích ảnh" : "AI phân tích text"}>
-                {(parsingText || parsingImage) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {parsingText || parsingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 <span className="ml-1 hidden sm:inline">AI</span>
               </Button>
               <Button type="button" variant="outline" size="sm" onClick={() => imageInputRef.current?.click()} disabled={parsingImage} title="Tải ảnh chứa thông tin DN">
@@ -457,54 +457,54 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={handleImageUpload}
-              />
+                onChange={handleImageUpload} />
+              
             </div>
           </div>
-          {imagePreview && (
-            <div className="relative mt-2 inline-block">
+          {imagePreview &&
+          <div className="relative mt-2 inline-block">
               <img src={imagePreview} alt="Preview" className="max-h-32 rounded-md border border-border object-contain" />
               <Button
-                type="button"
-                variant="destructive"
-                size="icon"
-                className="absolute -top-2 -right-2 h-5 w-5 rounded-full"
-                onClick={() => setImagePreview(null)}
-              >
+              type="button"
+              variant="destructive"
+              size="icon"
+              className="absolute -top-2 -right-2 h-5 w-5 rounded-full"
+              onClick={() => setImagePreview(null)}>
+              
                 <Trash2 className="h-3 w-3" />
               </Button>
             </div>
-          )}
+          }
         </div>
 
         <div className="grid grid-cols-1 gap-3">
           <div>
             <Label>Tên công ty / Cá nhân *</Label>
-            <Input value={buyerInfo.company_name} onChange={e => setBuyerInfo(p => ({ ...p, company_name: e.target.value }))} placeholder="Tên doanh nghiệp hoặc cá nhân" />
+            <Input value={buyerInfo.company_name} onChange={(e) => setBuyerInfo((p) => ({ ...p, company_name: e.target.value }))} placeholder="Tên doanh nghiệp hoặc cá nhân" />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Người đại diện</Label>
-            <Input value={buyerInfo.representative} onChange={e => setBuyerInfo(p => ({ ...p, representative: e.target.value }))} placeholder="Ông/Bà..." />
+            <Input value={buyerInfo.representative} onChange={(e) => setBuyerInfo((p) => ({ ...p, representative: e.target.value }))} placeholder="Ông/Bà..." />
           </div>
           <div>
             <Label>Chức vụ</Label>
-            <Input value={buyerInfo.position} onChange={e => setBuyerInfo(p => ({ ...p, position: e.target.value }))} placeholder="Giám đốc" />
+            <Input value={buyerInfo.position} onChange={(e) => setBuyerInfo((p) => ({ ...p, position: e.target.value }))} placeholder="Giám đốc" />
           </div>
         </div>
 
         <div>
           <Label>Địa chỉ</Label>
-          <Input value={buyerInfo.address} onChange={e => setBuyerInfo(p => ({ ...p, address: e.target.value }))} placeholder="Địa chỉ doanh nghiệp" />
+          <Input value={buyerInfo.address} onChange={(e) => setBuyerInfo((p) => ({ ...p, address: e.target.value }))} placeholder="Địa chỉ doanh nghiệp" />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Mã số thuế</Label>
             <div className="flex gap-1">
-              <Input value={buyerInfo.tax_code} onChange={e => setBuyerInfo(p => ({ ...p, tax_code: e.target.value }))} placeholder="MST" />
+              <Input value={buyerInfo.tax_code} onChange={(e) => setBuyerInfo((p) => ({ ...p, tax_code: e.target.value }))} placeholder="MST" />
               <Button type="button" size="icon" variant="outline" onClick={handleTaxLookup} disabled={lookingUpTax} title="Tra cứu MST">
                 {lookingUpTax ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               </Button>
@@ -512,22 +512,22 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           </div>
           <div>
             <Label>Số điện thoại</Label>
-            <Input value={buyerInfo.phone} onChange={e => setBuyerInfo(p => ({ ...p, phone: e.target.value }))} placeholder="SĐT" />
+            <Input value={buyerInfo.phone} onChange={(e) => setBuyerInfo((p) => ({ ...p, phone: e.target.value }))} placeholder="SĐT" />
           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-3">
           <div>
             <Label>Ngân hàng</Label>
-            <Input value={buyerInfo.bank_name} onChange={e => setBuyerInfo(p => ({ ...p, bank_name: e.target.value }))} placeholder="Tên ngân hàng" />
+            <Input value={buyerInfo.bank_name} onChange={(e) => setBuyerInfo((p) => ({ ...p, bank_name: e.target.value }))} placeholder="Tên ngân hàng" />
           </div>
           <div>
             <Label>Số tài khoản</Label>
-            <Input value={buyerInfo.bank_account} onChange={e => setBuyerInfo(p => ({ ...p, bank_account: e.target.value }))} placeholder="STK" />
+            <Input value={buyerInfo.bank_account} onChange={(e) => setBuyerInfo((p) => ({ ...p, bank_account: e.target.value }))} placeholder="STK" />
           </div>
           <div>
             <Label>Chủ tài khoản</Label>
-            <Input value={buyerInfo.bank_holder} onChange={e => setBuyerInfo(p => ({ ...p, bank_holder: e.target.value }))} placeholder="Chủ TK" />
+            <Input value={buyerInfo.bank_holder} onChange={(e) => setBuyerInfo((p) => ({ ...p, bank_holder: e.target.value }))} placeholder="Chủ TK" />
           </div>
         </div>
 
@@ -537,18 +537,18 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
             <Link className="h-3 w-3 mr-1" />
             {showLinkCustomer ? "Ẩn" : "Liên kết KH trong hệ thống (tùy chọn)"}
           </Button>
-          {showLinkCustomer && (
-            <div className="mt-2">
-              <Select value={formData.customer_id} onValueChange={v => setFormData(p => ({ ...p, customer_id: v }))}>
+          {showLinkCustomer &&
+          <div className="mt-2">
+              <Select value={formData.customer_id} onValueChange={(v) => setFormData((p) => ({ ...p, customer_id: v }))}>
                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Chọn khách hàng (tùy chọn)" /></SelectTrigger>
                 <SelectContent>
-                  {customers?.map((c: any) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name} {c.company ? `- ${c.company}` : ''}</SelectItem>
-                  ))}
+                  {customers?.map((c: any) =>
+                <SelectItem key={c.id} value={c.id}>{c.name} {c.company ? `- ${c.company}` : ''}</SelectItem>
+                )}
                 </SelectContent>
               </Select>
             </div>
-          )}
+          }
         </div>
       </div>
 
@@ -559,11 +559,11 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
         {/* AI Order Analysis */}
         <div className="mt-2 mb-2">
           <AIOrderAnalysis onItemsExtracted={(extractedItems) => {
-            const newItems = extractedItems.map(it => ({
+            const newItems = extractedItems.map((it) => ({
               name: it.name || "",
               specifications: it.specifications || "",
               quantity: it.quantity || 1,
-              price: it.price || 0,
+              price: it.price || 0
             }));
             // Always replace old items with new extracted items
             setItems(newItems);
@@ -584,23 +584,23 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
               </tr>
             </thead>
             <tbody>
-              {items.map((item, i) => (
-                <tr key={i} className="border-t">
+              {items.map((item, i) =>
+              <tr key={i} className="border-t">
                   <td className="p-2 text-muted-foreground">{i + 1}</td>
-                  <td className="p-1"><Input value={item.name} onChange={e => updateItem(i, "name", e.target.value)} placeholder="Tên SP" className="h-8" /></td>
-                  <td className="p-1"><Input value={item.specifications} onChange={e => updateItem(i, "specifications", e.target.value)} placeholder="Kích thước" className="h-8" /></td>
-                  <td className="p-1"><Input type="number" value={item.quantity} onChange={e => updateItem(i, "quantity", Number(e.target.value))} className="h-8 text-right" /></td>
-                  <td className="p-1"><Input type="number" value={item.price} onChange={e => updateItem(i, "price", Number(e.target.value))} className="h-8 text-right" /></td>
+                  <td className="p-1"><Input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Tên SP" className="h-8" /></td>
+                  <td className="p-1"><Input value={item.specifications} onChange={(e) => updateItem(i, "specifications", e.target.value)} placeholder="Kích thước" className="h-8" /></td>
+                  <td className="p-1 py-[6px]"><Input type="number" value={item.quantity} onChange={(e) => updateItem(i, "quantity", Number(e.target.value))} className="h-8 text-right" /></td>
+                  <td className="p-1"><Input type="number" value={item.price} onChange={(e) => updateItem(i, "price", Number(e.target.value))} className="h-8 text-right" /></td>
                   <td className="p-2 text-right font-medium">{formatCurrency(item.quantity * item.price)}</td>
                   <td className="p-1">
-                    {items.length > 1 && (
-                      <Button type="button" size="icon" variant="ghost" onClick={() => removeItem(i)} className="h-7 w-7 text-destructive">
+                    {items.length > 1 &&
+                  <Button type="button" size="icon" variant="ghost" onClick={() => removeItem(i)} className="h-7 w-7 text-destructive">
                         <Trash2 className="h-3 w-3" />
                       </Button>
-                    )}
+                  }
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
           <div className="p-2 border-t">
@@ -612,49 +612,49 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
         <div className="mt-3 space-y-1 text-sm">
           <div className="flex justify-between"><span>Tổng cộng:</span><span className="font-medium">{formatCurrency(subtotal)}</span></div>
           <div className="flex items-center gap-3">
-            <Switch checked={formData.include_vat} onCheckedChange={v => setFormData(p => ({ ...p, include_vat: v }))} />
+            <Switch checked={formData.include_vat} onCheckedChange={(v) => setFormData((p) => ({ ...p, include_vat: v }))} />
             <span>VAT</span>
-            {formData.include_vat && (
-              <>
-                <Input type="number" value={formData.vat_rate} onChange={e => setFormData(p => ({ ...p, vat_rate: Number(e.target.value) }))} className="h-7 w-16" />
+            {formData.include_vat &&
+            <>
+                <Input type="number" value={formData.vat_rate} onChange={(e) => setFormData((p) => ({ ...p, vat_rate: Number(e.target.value) }))} className="h-7 w-16" />
                 <span>% = {formatCurrency(vatAmount)}</span>
               </>
-            )}
+            }
           </div>
           <div className="flex justify-between text-base font-bold text-primary">
             <span>TỔNG GIÁ TRỊ HỢP ĐỒNG:</span>
             <span>{formatCurrency(totalAmount)}</span>
           </div>
           <div className="flex items-center gap-3">
-            <Switch checked={formData.include_shipping} onCheckedChange={v => setFormData(p => ({ ...p, include_shipping: v }))} />
+            <Switch checked={formData.include_shipping} onCheckedChange={(v) => setFormData((p) => ({ ...p, include_shipping: v }))} />
             <span>Bao gồm vận chuyển</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span>Đặt cọc</span>
             <select
               value={formData.deposit_mode}
-              onChange={e => setFormData(p => ({ ...p, deposit_mode: e.target.value as "percent" | "amount" | "none" }))}
-              className="h-7 rounded border border-input bg-background px-2 text-sm"
-            >
+              onChange={(e) => setFormData((p) => ({ ...p, deposit_mode: e.target.value as "percent" | "amount" | "none" }))}
+              className="h-7 rounded border border-input bg-background px-2 text-sm">
+              
               <option value="percent">%</option>
               <option value="amount">Số tiền</option>
               <option value="none">Không cọc</option>
             </select>
-            {formData.deposit_mode === "percent" && (
-              <>
-                <Input type="number" value={formData.deposit_percentage} onChange={e => setFormData(p => ({ ...p, deposit_percentage: Number(e.target.value) }))} className="h-7 w-16" />
+            {formData.deposit_mode === "percent" &&
+            <>
+                <Input type="number" value={formData.deposit_percentage} onChange={(e) => setFormData((p) => ({ ...p, deposit_percentage: Number(e.target.value) }))} className="h-7 w-16" />
                 <span>% = <strong>{formatCurrency(depositAmount)}</strong></span>
               </>
-            )}
-            {formData.deposit_mode === "amount" && (
-              <>
-                <Input type="number" value={formData.deposit_fixed_amount || ""} onChange={e => setFormData(p => ({ ...p, deposit_fixed_amount: Number(e.target.value) }))} className="h-7 w-32" placeholder="Nhập số tiền" />
+            }
+            {formData.deposit_mode === "amount" &&
+            <>
+                <Input type="number" value={formData.deposit_fixed_amount || ""} onChange={(e) => setFormData((p) => ({ ...p, deposit_fixed_amount: Number(e.target.value) }))} className="h-7 w-32" placeholder="Nhập số tiền" />
                 <span>= <strong>{formatCurrency(depositAmount)}</strong></span>
               </>
-            )}
-            {formData.deposit_mode === "none" && (
-              <span className="text-muted-foreground text-sm">Thanh toán 100% sau khi hoàn thành</span>
-            )}
+            }
+            {formData.deposit_mode === "none" &&
+            <span className="text-muted-foreground text-sm">Thanh toán 100% sau khi hoàn thành</span>
+            }
           </div>
         </div>
       </div>
@@ -663,27 +663,27 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       <div className="grid grid-cols-3 gap-4">
         <div>
           <Label>Ngày ký</Label>
-          <Input type="date" value={formData.contract_date} onChange={e => setFormData(p => ({ ...p, contract_date: e.target.value }))} />
+          <Input type="date" value={formData.contract_date} onChange={(e) => setFormData((p) => ({ ...p, contract_date: e.target.value }))} />
         </div>
         <div>
           <Label>Ngày bắt đầu</Label>
-          <Input type="date" value={formData.start_date} onChange={e => setFormData(p => ({ ...p, start_date: e.target.value }))} />
+          <Input type="date" value={formData.start_date} onChange={(e) => setFormData((p) => ({ ...p, start_date: e.target.value }))} />
         </div>
         <div>
           <Label>Ngày kết thúc</Label>
-          <Input type="date" value={formData.end_date} onChange={e => setFormData(p => ({ ...p, end_date: e.target.value }))} />
+          <Input type="date" value={formData.end_date} onChange={(e) => setFormData((p) => ({ ...p, end_date: e.target.value }))} />
         </div>
       </div>
 
       <div>
         <Label>Ghi chú</Label>
-        <Textarea value={formData.notes} onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))} rows={2} />
+        <Textarea value={formData.notes} onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))} rows={2} />
       </div>
 
       <Button type="submit" className="w-full" disabled={createContract.isPending}>
         {createContract.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
         Tạo hợp đồng
       </Button>
-    </form>
-  );
+    </form>);
+
 };
