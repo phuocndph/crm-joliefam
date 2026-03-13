@@ -36,6 +36,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
   if (!contract) return null;
 
   const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
+  const formatCurrencyNoSymbol = (val: number) => (val || 0).toLocaleString("vi-VN");
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString("vi-VN") : "—";
   const status = statusMap[contract.status] || statusMap.draft;
   const items = Array.isArray(contract.items) ? contract.items : [];
@@ -47,6 +48,58 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
   const subtotal = contract.subtotal || items.reduce((s: number, it: any) => s + (it.price || 0) * (it.quantity || 1), 0);
   const vatAmount = contract.vat_amount || 0;
   const totalAmount = contract.total_amount || subtotal + vatAmount;
+  const depositAmount = contract.deposit_amount || 0;
+  const depositPercentage = contract.deposit_percentage || 0;
+  const depositMode = seller.deposit_mode || (depositPercentage > 0 ? "percent" : "amount");
+  const remainingAmount = totalAmount - depositAmount;
+
+  // Generate dynamic payment terms for Điều 3
+  const generatePaymentTermsHTML = () => {
+    if (!depositAmount || depositAmount <= 0) {
+      // No deposit - single payment
+      return (
+        <div className="space-y-1">
+          <p>- Bên B thanh toán toàn bộ giá trị hợp đồng sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền {formatCurrencyNoSymbol(totalAmount)}đ ({numberToVietnameseCurrency(totalAmount)} ./.)</p>
+          <p>- Hình thức thanh toán: Tiền mặt hoặc chuyển khoản.</p>
+        </div>
+      );
+    }
+    
+    const dot1Text = depositMode === "percent"
+      ? `Bên B thanh toán ${depositPercentage}% giá trị hợp đồng ngay khi ký hợp đồng. Số tiền ${formatCurrencyNoSymbol(depositAmount)}đ (${numberToVietnameseCurrency(depositAmount)} ./.)`
+      : `Bên B thanh toán ${formatCurrencyNoSymbol(depositAmount)}đ giá trị hợp đồng ngay khi ký hợp đồng. Số tiền ${formatCurrencyNoSymbol(depositAmount)}đ (${numberToVietnameseCurrency(depositAmount)} ./.)`;
+    
+    const remainingPct = depositMode === "percent" ? (100 - depositPercentage) : 0;
+    const dot2Text = depositMode === "percent"
+      ? `Bên B thanh toán ${remainingPct}% còn lại sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền ${formatCurrencyNoSymbol(remainingAmount)}đ (Bằng chữ: ${numberToVietnameseCurrency(remainingAmount)} ./.)`
+      : `Bên B thanh toán số tiền còn lại sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền ${formatCurrencyNoSymbol(remainingAmount)}đ (Bằng chữ: ${numberToVietnameseCurrency(remainingAmount)} ./.)`;
+
+    return (
+      <div className="space-y-1">
+        <p>- Đợt 1: {dot1Text}</p>
+        <p>- Đợt 2: {dot2Text}</p>
+        <p>- Hình thức thanh toán: Tiền mặt hoặc chuyển khoản.</p>
+      </div>
+    );
+  };
+
+  // Generate payment terms text lines for Word export
+  const generatePaymentTermsLines = (): string[] => {
+    if (!depositAmount || depositAmount <= 0) {
+      return [
+        `- Bên B thanh toán toàn bộ giá trị hợp đồng sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền ${formatCurrencyNoSymbol(totalAmount)}đ (${numberToVietnameseCurrency(totalAmount)} ./.)`,
+        "- Hình thức thanh toán: Tiền mặt hoặc chuyển khoản.",
+      ];
+    }
+    const dot1 = depositMode === "percent"
+      ? `- Đợt 1: Bên B thanh toán ${depositPercentage}% giá trị hợp đồng ngay khi ký hợp đồng. Số tiền ${formatCurrencyNoSymbol(depositAmount)}đ (${numberToVietnameseCurrency(depositAmount)} ./.)`
+      : `- Đợt 1: Bên B thanh toán ${formatCurrencyNoSymbol(depositAmount)}đ giá trị hợp đồng ngay khi ký hợp đồng. Số tiền ${formatCurrencyNoSymbol(depositAmount)}đ (${numberToVietnameseCurrency(depositAmount)} ./.)`;
+    const remainingPct = depositMode === "percent" ? (100 - depositPercentage) : 0;
+    const dot2 = depositMode === "percent"
+      ? `- Đợt 2: Bên B thanh toán ${remainingPct}% còn lại sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền ${formatCurrencyNoSymbol(remainingAmount)}đ (Bằng chữ: ${numberToVietnameseCurrency(remainingAmount)} ./.)`
+      : `- Đợt 2: Bên B thanh toán số tiền còn lại sau khi Bên A hoàn thành giao hàng và lắp đặt. Số tiền ${formatCurrencyNoSymbol(remainingAmount)}đ (Bằng chữ: ${numberToVietnameseCurrency(remainingAmount)} ./.)`;
+    return [dot1, dot2, "- Hình thức thanh toán: Tiền mặt hoặc chuyển khoản."];
+  };
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -237,18 +290,26 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
         articles.forEach((article: any, idx: number) => {
           children.push(new Paragraph({ children: [new TextRun({ text: article.title, bold: true, size: 22, font: "Times New Roman" })], spacing: { before: 200 } }));
 
-          // Split content by newlines
-          const lines = (article.content || "").split("\n");
-          lines.forEach((line: string) => {
-            children.push(new Paragraph({ children: [new TextRun({ text: line, size: 20, font: "Times New Roman" })], spacing: { after: 40 } }));
-          });
+          // Điều 3: inject dynamic payment terms
+          if (article.title?.includes("ĐIỀU 3") && article.title?.includes("THANH TOÁN")) {
+            const paymentLines = generatePaymentTermsLines();
+            paymentLines.forEach((line: string) => {
+              children.push(new Paragraph({ children: [new TextRun({ text: line, size: 20, font: "Times New Roman" })], spacing: { after: 40 } }));
+            });
+          } else {
+            // Split content by newlines
+            const lines = (article.content || "").split("\n");
+            lines.forEach((line: string) => {
+              children.push(new Paragraph({ children: [new TextRun({ text: line, size: 20, font: "Times New Roman" })], spacing: { after: 40 } }));
+            });
+          }
 
           // Insert product table after first article
           if (idx === 0 && items.length > 0) {
             children.push(
               new DocxTable({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
               new Paragraph({ children: [
-                new TextRun({ text: `Tổng giá trị hợp đồng là: ${(totalAmount || 0).toLocaleString("vi-VN")} đồng`, bold: true, size: 20, font: "Times New Roman" }),
+                new TextRun({ text: `Tổng giá trị hợp đồng là: ${formatCurrencyNoSymbol(totalAmount)} đồng`, bold: true, size: 20, font: "Times New Roman" }),
               ], spacing: { before: 100 } }),
               new Paragraph({ children: [
                 new TextRun({ text: `(Bằng chữ: `, size: 20, font: "Times New Roman" }),
@@ -257,9 +318,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
               new Paragraph({ children: [new TextRun({ text: "Lưu ý:", bold: true, size: 20, font: "Times New Roman" })], spacing: { before: 60 } }),
               new Paragraph({ children: [new TextRun({ text: contract.include_vat ? "- Tổng giá trị trên đã bao gồm thuế GTGT;" : "- Tổng giá trị trên chưa bao gồm thuế GTGT;", size: 20, font: "Times New Roman" })] }),
               new Paragraph({ children: [new TextRun({ text: seller.include_shipping !== false ? "- Tổng giá trị trên đã bao gồm chi phí vận chuyển đến chân công trình của bên B;" : "- Tổng giá trị trên chưa bao gồm chi phí vận chuyển;", size: 20, font: "Times New Roman" })] }),
-              new Paragraph({ children: [new TextRun({ text: "- Đơn giá trên sẽ không thay đổi trong suốt thời gian hai bên thực hiện hợp đồng.", size: 20, font: "Times New Roman" })], spacing: { after: 60 } }),
-              new Paragraph({ children: [new TextRun({ text: `Tiền cọc (${contract.deposit_percentage || 70}%): ${formatCurrency(contract.deposit_amount || 0)}`, bold: true, size: 20, font: "Times New Roman" })], spacing: { before: 100 } }),
-              new Paragraph({ children: [new TextRun({ text: `Còn lại: ${formatCurrency(totalAmount - (contract.deposit_amount || 0))}`, bold: true, size: 20, font: "Times New Roman" })], spacing: { after: 200 } }),
+              new Paragraph({ children: [new TextRun({ text: "- Đơn giá trên sẽ không thay đổi trong suốt thời gian hai bên thực hiện hợp đồng.", size: 20, font: "Times New Roman" })], spacing: { after: 200 } }),
             );
           }
         });
@@ -404,7 +463,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
             articles.map((article: any, idx: number) => (
               <div key={idx}>
                 <p className="font-bold mt-4">{article.title}</p>
-                <div className="whitespace-pre-wrap text-sm">{article.content}</div>
+                {/* Điều 3: Dynamic payment terms */}
+                {article.title?.includes("ĐIỀU 3") && article.title?.includes("THANH TOÁN") ? (
+                  generatePaymentTermsHTML()
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm">{article.content}</div>
+                )}
 
                 {idx === 0 && items.length > 0 && (
                   <div className="mt-3">
@@ -458,7 +522,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
                     </table>
 
                     <div className="mt-3 text-sm space-y-1">
-                      <p><strong>Tổng giá trị hợp đồng là: {(totalAmount || 0).toLocaleString("vi-VN")} đồng</strong></p>
+                      <p><strong>Tổng giá trị hợp đồng là: {formatCurrencyNoSymbol(totalAmount)} đồng</strong></p>
                       <p>(Bằng chữ: <em>{numberToVietnameseCurrency(totalAmount)} ./.</em>)</p>
                       <p className="mt-2 font-bold">Lưu ý:</p>
                       <ul className="list-disc pl-5 space-y-0.5">
@@ -470,11 +534,6 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
                         }
                         <li>Đơn giá trên sẽ không thay đổi trong suốt thời gian hai bên thực hiện hợp đồng.</li>
                       </ul>
-                    </div>
-
-                    <div className="mt-2 text-sm">
-                      <p><strong>Tiền cọc ({contract.deposit_percentage || 70}%):</strong> {formatCurrency(contract.deposit_amount || 0)}</p>
-                      <p><strong>Còn lại:</strong> {formatCurrency(totalAmount - (contract.deposit_amount || 0))}</p>
                     </div>
                   </div>
                 )}
@@ -510,7 +569,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
                     </tbody>
                   </table>
                   <div className="mt-3 text-sm space-y-1">
-                    <p><strong>Tổng giá trị hợp đồng là: {(totalAmount || 0).toLocaleString("vi-VN")} đồng</strong></p>
+                    <p><strong>Tổng giá trị hợp đồng là: {formatCurrencyNoSymbol(totalAmount)} đồng</strong></p>
                     <p>(Bằng chữ: <em>{numberToVietnameseCurrency(totalAmount)} ./.</em>)</p>
                     <p className="mt-2 font-bold">Lưu ý:</p>
                     <ul className="list-disc pl-5 space-y-0.5">
@@ -523,9 +582,9 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
                       <li>Đơn giá trên sẽ không thay đổi trong suốt thời gian hai bên thực hiện hợp đồng.</li>
                     </ul>
                   </div>
-                  <div className="mt-2 p-3 rounded" style={{ backgroundColor: "#f9fafb" }}>
-                    <p>Đặt cọc ({contract.deposit_percentage || 70}%): {formatCurrency(contract.deposit_amount || 0)}</p>
-                    <p>Còn lại: {formatCurrency(totalAmount - (contract.deposit_amount || 0))}</p>
+                  <div className="mt-4">
+                    <p className="font-bold">PHƯƠNG THỨC THANH TOÁN:</p>
+                    {generatePaymentTermsHTML()}
                   </div>
                 </div>
               )}
