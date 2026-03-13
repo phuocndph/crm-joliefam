@@ -47,6 +47,8 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
     include_vat: false,
     vat_rate: 8,
     deposit_percentage: 70,
+    deposit_mode: "percent" as "percent" | "amount",
+    deposit_fixed_amount: 0,
   });
 
   const [items, setItems] = useState<any[]>([{ ...emptyItem }]);
@@ -77,6 +79,8 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
         include_vat: contract.include_vat || false,
         vat_rate: contract.vat_rate || 8,
         deposit_percentage: contract.deposit_percentage || 70,
+        deposit_mode: (contract.deposit_amount && !contract.deposit_percentage) ? "amount" as const : "percent" as const,
+        deposit_fixed_amount: contract.deposit_amount || 0,
       });
 
       // Load buyer info
@@ -270,7 +274,9 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
   const subtotal = items.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0);
   const vatAmount = formData.include_vat ? subtotal * formData.vat_rate / 100 : 0;
   const totalAmount = subtotal + vatAmount;
-  const depositAmount = totalAmount * formData.deposit_percentage / 100;
+  const depositAmount = formData.deposit_mode === "percent"
+    ? totalAmount * formData.deposit_percentage / 100
+    : formData.deposit_fixed_amount;
 
   const addItem = () => setItems([...items, { ...emptyItem }]);
   const removeItem = (i: number) => setItems(items.filter((_, j) => j !== i));
@@ -522,10 +528,27 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
                 <span>TỔNG GIÁ TRỊ:</span>
                 <span>{formatCurrency(totalAmount)}</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span>Đặt cọc</span>
-                <Input type="number" value={formData.deposit_percentage} onChange={e => setFormData(p => ({ ...p, deposit_percentage: Number(e.target.value) }))} className="h-7 w-16" />
-                <span>% = <strong>{formatCurrency(depositAmount)}</strong></span>
+                <select
+                  value={formData.deposit_mode}
+                  onChange={e => setFormData(p => ({ ...p, deposit_mode: e.target.value as "percent" | "amount" }))}
+                  className="h-7 rounded border border-input bg-background px-2 text-sm"
+                >
+                  <option value="percent">%</option>
+                  <option value="amount">Số tiền</option>
+                </select>
+                {formData.deposit_mode === "percent" ? (
+                  <>
+                    <Input type="number" value={formData.deposit_percentage} onChange={e => setFormData(p => ({ ...p, deposit_percentage: Number(e.target.value) }))} className="h-7 w-16" />
+                    <span>% = <strong>{formatCurrency(depositAmount)}</strong></span>
+                  </>
+                ) : (
+                  <>
+                    <Input type="number" value={formData.deposit_fixed_amount || ""} onChange={e => setFormData(p => ({ ...p, deposit_fixed_amount: Number(e.target.value) }))} className="h-7 w-32" placeholder="Nhập số tiền" />
+                    <span>= <strong>{formatCurrency(depositAmount)}</strong></span>
+                  </>
+                )}
               </div>
             </div>
           </div>
