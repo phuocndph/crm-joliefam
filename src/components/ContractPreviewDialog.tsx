@@ -509,8 +509,21 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
                       ))}
                     </tbody>
                   </table>
+                  <div className="mt-3 text-sm space-y-1">
+                    <p><strong>Tổng giá trị hợp đồng là: {(totalAmount || 0).toLocaleString("vi-VN")} đồng</strong></p>
+                    <p>(Bằng chữ: <em>{numberToVietnameseCurrency(totalAmount)} ./.</em>)</p>
+                    <p className="mt-2 font-bold">Lưu ý:</p>
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      {contract.include_vat && <li>Tổng giá trị trên đã bao gồm thuế GTGT;</li>}
+                      {!contract.include_vat && <li>Tổng giá trị trên chưa bao gồm thuế GTGT;</li>}
+                      {seller.include_shipping !== false
+                        ? <li>Tổng giá trị trên đã bao gồm chi phí vận chuyển đến chân công trình của bên B;</li>
+                        : <li>Tổng giá trị trên chưa bao gồm chi phí vận chuyển;</li>
+                      }
+                      <li>Đơn giá trên sẽ không thay đổi trong suốt thời gian hai bên thực hiện hợp đồng.</li>
+                    </ul>
+                  </div>
                   <div className="mt-2 p-3 rounded" style={{ backgroundColor: "#f9fafb" }}>
-                    <p className="font-bold">Tổng: {formatCurrency(totalAmount)}</p>
                     <p>Đặt cọc ({contract.deposit_percentage || 70}%): {formatCurrency(contract.deposit_amount || 0)}</p>
                     <p>Còn lại: {formatCurrency(totalAmount - (contract.deposit_amount || 0))}</p>
                   </div>
