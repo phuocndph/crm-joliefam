@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+import * as cptable from "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/cpexcel.full.mjs";
+XLSX.set_cptable(cptable);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
