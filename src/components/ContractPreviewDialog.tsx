@@ -9,6 +9,8 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, AlignmentType, BorderStyle, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
+import { HandoverReportDialog } from "@/components/HandoverReportDialog";
+import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
 
 interface Props {
   open: boolean;
