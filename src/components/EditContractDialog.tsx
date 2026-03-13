@@ -51,6 +51,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
     deposit_fixed_amount: 0,
     seller_representative: "",
     seller_position: "Giám đốc",
+    include_shipping: true,
   });
 
   const [items, setItems] = useState<any[]>([{ ...emptyItem }]);
