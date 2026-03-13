@@ -338,6 +338,8 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       phone: companySettings.phone,
       tax_code: companySettings.taxCode,
       bank_info: companySettings.bankInfo,
+      representative: formData.seller_representative,
+      position: formData.seller_position,
     };
 
     try {
