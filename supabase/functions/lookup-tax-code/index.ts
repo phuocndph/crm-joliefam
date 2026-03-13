@@ -5,15 +5,22 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const ORDER_ITEMS_SYSTEM_PROMPT = `Bạn là trợ lý trích xuất danh sách sản phẩm/dịch vụ từ đơn hàng, báo giá, hóa đơn Việt Nam.
-Luôn trả về kết quả dưới dạng JSON thuần (không markdown, không giải thích):
-{"items": [{"name":"tên sản phẩm","specifications":"kích thước/quy cách/mô tả","quantity":1,"price":0}]}
-- name: tên sản phẩm/dịch vụ
-- specifications: kích thước, quy cách, chất liệu, mô tả chi tiết
-- quantity: số lượng (số nguyên)
-- price: đơn giá (số, đơn vị VNĐ, không có dấu phân cách)
-Nếu không tìm thấy sản phẩm nào thì trả: {"items": []}
-Chỉ trả JSON thuần.`;
+const ORDER_ITEMS_SYSTEM_PROMPT = `Bạn là trợ lý chuyên trích xuất danh sách sản phẩm/dịch vụ từ đơn hàng, báo giá, hóa đơn Việt Nam.
+
+QUY TẮC QUAN TRỌNG:
+1. Đọc KỸ từng dòng sản phẩm, KHÔNG gộp hay bỏ sót dòng nào.
+2. "name" = chỉ tên sản phẩm/dịch vụ chính xác, KHÔNG kèm kích thước/quy cách.
+3. "specifications" = kích thước, quy cách, chất liệu, mô tả kỹ thuật (tách riêng khỏi tên).
+4. "quantity" = số lượng CHÍNH XÁC từ dữ liệu gốc (số nguyên hoặc số thập phân). KHÔNG đoán, KHÔNG mặc định 1 nếu có số liệu rõ ràng.
+5. "price" = đơn giá CHÍNH XÁC (số nguyên, đơn vị VNĐ). Chuyển đổi: "120.000" hoặc "120,000" = 120000. KHÔNG nhầm thành tiền với đơn giá.
+6. KHÔNG tính thành tiền (quantity × price) vào trường price. Price chỉ là ĐƠN GIÁ.
+7. Nếu có cột "Thành tiền" riêng, BỎ QUA cột đó, chỉ lấy cột "Đơn giá".
+
+Trả về JSON thuần (không markdown, không giải thích, không bọc code block):
+{"items": [{"name":"tên SP","specifications":"quy cách","quantity":1,"price":0}]}
+
+Nếu không tìm thấy sản phẩm nào: {"items": []}`;
+
 
 const BUYER_INFO_SYSTEM_PROMPT = `Bạn là trợ lý phân tích thông tin doanh nghiệp Việt Nam. Luôn trả về kết quả dưới dạng JSON với cấu trúc sau (không markdown, không giải thích thêm):
 {
