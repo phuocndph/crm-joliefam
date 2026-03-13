@@ -39,6 +39,8 @@ const ContractManagement = () => {
   const [editContract, setEditContract] = useState<any>(null);
   const [deleteContract, setDeleteContract] = useState<any>(null);
   const [previewContract, setPreviewContract] = useState<any>(null);
+  const [handoverContract, setHandoverContract] = useState<any>(null);
+  const [paymentRequestContract, setPaymentRequestContract] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("contracts");
 
   const prefillData = useMemo(() => {
