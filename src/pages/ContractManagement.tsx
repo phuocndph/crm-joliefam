@@ -220,6 +220,12 @@ const ContractManagement = () => {
       {previewContract && (
         <ContractPreviewDialog open={!!previewContract} onOpenChange={o => !o && setPreviewContract(null)} contract={previewContract} />
       )}
+      {handoverContract && (
+        <HandoverReportDialog open={!!handoverContract} onOpenChange={o => !o && setHandoverContract(null)} contract={handoverContract} />
+      )}
+      {paymentRequestContract && (
+        <PaymentRequestDialog open={!!paymentRequestContract} onOpenChange={o => !o && setPaymentRequestContract(null)} contract={paymentRequestContract} />
+      )}
     </div>
   );
 };
