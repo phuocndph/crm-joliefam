@@ -18,7 +18,7 @@ import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
 import { ContractTemplateManager } from "@/components/ContractTemplateManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings } from "lucide-react";
+import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings, ClipboardCheck, Receipt } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   draft: { label: "Nháp", variant: "secondary" },
