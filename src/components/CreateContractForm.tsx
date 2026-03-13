@@ -633,22 +633,27 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
             <span>Đặt cọc</span>
             <select
               value={formData.deposit_mode}
-              onChange={e => setFormData(p => ({ ...p, deposit_mode: e.target.value as "percent" | "amount" }))}
+              onChange={e => setFormData(p => ({ ...p, deposit_mode: e.target.value as "percent" | "amount" | "none" }))}
               className="h-7 rounded border border-input bg-background px-2 text-sm"
             >
               <option value="percent">%</option>
               <option value="amount">Số tiền</option>
+              <option value="none">Không cọc</option>
             </select>
-            {formData.deposit_mode === "percent" ? (
+            {formData.deposit_mode === "percent" && (
               <>
                 <Input type="number" value={formData.deposit_percentage} onChange={e => setFormData(p => ({ ...p, deposit_percentage: Number(e.target.value) }))} className="h-7 w-16" />
                 <span>% = <strong>{formatCurrency(depositAmount)}</strong></span>
               </>
-            ) : (
+            )}
+            {formData.deposit_mode === "amount" && (
               <>
                 <Input type="number" value={formData.deposit_fixed_amount || ""} onChange={e => setFormData(p => ({ ...p, deposit_fixed_amount: Number(e.target.value) }))} className="h-7 w-32" placeholder="Nhập số tiền" />
                 <span>= <strong>{formatCurrency(depositAmount)}</strong></span>
               </>
+            )}
+            {formData.deposit_mode === "none" && (
+              <span className="text-muted-foreground text-sm">Thanh toán 100% sau khi hoàn thành</span>
             )}
           </div>
         </div>
