@@ -33,6 +33,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
   const { toast } = useToast();
   const [showHandover, setShowHandover] = useState(false);
   const [showPaymentRequest, setShowPaymentRequest] = useState(false);
+  const [showFramework, setShowFramework] = useState(false);
 
   if (!contract) return null;
 
