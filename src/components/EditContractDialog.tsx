@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Trash2, Search, Sparkles, ImagePlus, Link } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRef } from "react";
+import { AIOrderAnalysis } from "@/components/AIOrderAnalysis";
 
 interface Props {
   open: boolean;
