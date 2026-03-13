@@ -11,6 +11,7 @@ import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as D
 import { saveAs } from "file-saver";
 import { HandoverReportDialog } from "@/components/HandoverReportDialog";
 import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
+import { numberToVietnameseCurrency } from "@/lib/numberToText";
 
 interface Props {
   open: boolean;
