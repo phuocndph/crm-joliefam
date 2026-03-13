@@ -13,6 +13,8 @@ import { CreateContractForm } from "@/components/CreateContractForm";
 import { EditContractDialog } from "@/components/EditContractDialog";
 import { DeleteContractDialog } from "@/components/DeleteContractDialog";
 import { ContractPreviewDialog } from "@/components/ContractPreviewDialog";
+import { HandoverReportDialog } from "@/components/HandoverReportDialog";
+import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
 import { ContractTemplateManager } from "@/components/ContractTemplateManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
