@@ -57,6 +57,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     notes: "",
     seller_representative: "",
     seller_position: "Giám đốc",
+    include_shipping: true,
     include_vat: false,
     vat_rate: 8,
     deposit_percentage: 70,
