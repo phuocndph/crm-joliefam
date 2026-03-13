@@ -324,6 +324,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
           ...((contract.seller_info as any) || {}),
           representative: formData.seller_representative,
           position: formData.seller_position,
+          include_shipping: formData.include_shipping,
         },
       });
       toast({ title: "Cập nhật hợp đồng thành công!" });
