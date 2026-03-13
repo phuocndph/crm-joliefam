@@ -29,6 +29,8 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
   const printRef = useRef<HTMLDivElement>(null);
   const { settings: companySettings } = useTemplateSettings();
   const { toast } = useToast();
+  const [showHandover, setShowHandover] = useState(false);
+  const [showPaymentRequest, setShowPaymentRequest] = useState(false);
 
   if (!contract) return null;
 
