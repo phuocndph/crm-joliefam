@@ -47,6 +47,8 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
     include_vat: false,
     vat_rate: 8,
     deposit_percentage: 70,
+    deposit_mode: "percent" as "percent" | "amount",
+    deposit_fixed_amount: 0,
   });
 
   const [items, setItems] = useState<any[]>([{ ...emptyItem }]);
