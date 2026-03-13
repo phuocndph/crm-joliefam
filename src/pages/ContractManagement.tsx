@@ -229,6 +229,9 @@ const ContractManagement = () => {
       {paymentRequestContract && (
         <PaymentRequestDialog open={!!paymentRequestContract} onOpenChange={o => !o && setPaymentRequestContract(null)} contract={paymentRequestContract} />
       )}
+      {frameworkContract && (
+        <FrameworkContractDialog open={!!frameworkContract} onOpenChange={o => !o && setFrameworkContract(null)} contract={frameworkContract} />
+      )}
     </div>
   );
 };
