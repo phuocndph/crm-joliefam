@@ -556,6 +556,10 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
                 <span>TỔNG GIÁ TRỊ:</span>
                 <span>{formatCurrency(totalAmount)}</span>
               </div>
+              <div className="flex items-center gap-3">
+                <Switch checked={formData.include_shipping} onCheckedChange={v => setFormData(p => ({ ...p, include_shipping: v }))} />
+                <span>Bao gồm vận chuyển</span>
+              </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span>Đặt cọc</span>
                 <select
