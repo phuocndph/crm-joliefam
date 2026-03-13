@@ -58,6 +58,8 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     include_vat: false,
     vat_rate: 8,
     deposit_percentage: 70,
+    deposit_mode: "percent" as "percent" | "amount",
+    deposit_fixed_amount: 0,
     legal_basis: [
       "Căn cứ Luật Thương mại số 36/2005/QH11 ngày 14/06/2005;",
       "Căn cứ Bộ luật Dân sự số 91/2015/QH13 ngày 24/11/2015;",
