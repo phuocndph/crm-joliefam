@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Printer, Download, FileText, FileDown, ClipboardCheck, Receipt } from "lucide-react";
+import { Printer, Download, FileText, FileDown, ClipboardCheck, Receipt, FileSignature } from "lucide-react";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
 import html2canvas from "html2canvas";
