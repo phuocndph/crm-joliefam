@@ -68,7 +68,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
   const sellerPhone = seller.phone || companySettings.phone || "";
   const sellerTax = seller.tax_code || companySettings.taxCode || "";
   const sellerBank = seller.bank_info || companySettings.bankInfo || "";
-  const sellerHQ = seller.headquarters || companySettings.headquarters || "";
+  
   const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
   const buyerRep = buyer.representative || "...";
   const buyerPos = buyer.position || "";

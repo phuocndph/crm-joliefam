@@ -55,7 +55,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     start_date: "",
     end_date: "",
     notes: "",
-    seller_representative: "",
+    seller_representative: "TRẦN THỊ THANH HOAN",
     seller_position: "Giám đốc",
     include_shipping: true,
     include_vat: false,
