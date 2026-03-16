@@ -221,7 +221,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
     <div className="p-3 border rounded">
       <p className="font-bold mb-1">{label}</p>
       <p><strong>Công ty:</strong> {name}</p>
-      {hq && <p><strong>Trụ sở:</strong> {hq}</p>}
+      
       {addr && <p><strong>Địa chỉ:</strong> {addr}</p>}
       <p><strong>Đại diện:</strong> {rep}{pos ? <span className="ml-4"><strong>Chức vụ:</strong> {pos}</span> : null}</p>
       {(phone || tax) && (
