@@ -1,29 +1,32 @@
 
+## Plan: Cập nhật mặc định và loại bỏ trụ sở
 
-# Hien thi chat lieu tu bao gia trong chi tiet don hang
+### 1. Đặt mặc định người đại diện Bên A
+**File:** `src/components/CreateContractForm.tsx`
+- Dòng 58: Thay `seller_representative: ""` → `seller_representative: "TRẦN THỊ THANH HOAN"`
 
-## Nguyen nhan
+### 2. Loại bỏ thông tin trụ sở khỏi seller_info
+**File:** `src/components/CreateContractForm.tsx`
+- Dòng 339-349: Object `sellerInfo` đang tạo từ `companySettings` 
+- Hiện tại không có field `headquarters` trong object này (đã kiểm tra)
+- Không cần thay đổi vì `headquarters` đã không được gửi lên khi submit
 
-Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
+### 3. Kiểm tra các nơi hiển thị thông tin công ty
+**File:** `src/components/ContractPreviewDialog.tsx`
+- Dòng 446: Có điều kiện render `Trụ sở` nếu có dữ liệu
+- Cần **loại bỏ** dòng hiển thị này để không show trụ sở khi xem preview hợp đồng
 
-Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
+**File:** `src/components/FrameworkContractDialog.tsx`
+- Dòng 71: Có biến `sellerHQ` lấy từ `seller.headquarters`
+- Cần kiểm tra xem có được hiển thị ở đâu không, nếu có thì loại bỏ
 
-Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
+### Tóm tắt thay đổi
+1. ✅ Đặt default `seller_representative = "TRẦN THỊ THANH HOAN"` 
+2. ✅ `sellerInfo` đã không gửi `headquarters` (OK)
+3. 🔧 Xóa hiển thị "Trụ sở" trong `ContractPreviewDialog.tsx` (dòng 446)
+4. 🔍 Kiểm tra và xóa hiển thị "Trụ sở" trong `FrameworkContractDialog.tsx` nếu có
 
-## Giai phap
-
-### File: `src/pages/OrderManagement.tsx`
-
-Thay doi dong 659: doc `item.description` thay vi `item.material`:
-
-```typescript
-// Truoc:
-{item.material || "-"}
-
-// Sau:
-{item.description || "-"}
-```
-
-Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
-
-Chi thay doi 1 dong, khong anh huong logic nao khac.
+### Không thay đổi
+- Database schema
+- Template settings (vẫn giữ field `headquarters` cho trường hợp khác)
+- Logic tính toán hợp đồng
