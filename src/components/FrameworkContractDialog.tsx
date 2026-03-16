@@ -68,7 +68,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
   const sellerPhone = seller.phone || companySettings.phone || "";
   const sellerTax = seller.tax_code || companySettings.taxCode || "";
   const sellerBank = seller.bank_info || companySettings.bankInfo || "";
-  const sellerHQ = seller.headquarters || companySettings.headquarters || "";
+  
   const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
   const buyerRep = buyer.representative || "...";
   const buyerPos = buyer.position || "";
@@ -130,7 +130,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
           new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 22, font })], spacing: { before: 100 } }),
           new Paragraph({ children: [new TextRun({ text: `Công ty: ${name}`, size: 20, font })] }),
         ];
-        if (hq) paras.push(new Paragraph({ children: [new TextRun({ text: `Trụ sở: ${hq}`, size: 20, font })] }));
+        
         if (addr) paras.push(new Paragraph({ children: [new TextRun({ text: `Địa chỉ: ${addr}`, size: 20, font })] }));
         paras.push(new Paragraph({ children: [new TextRun({ text: `Đại diện: ${rep}`, size: 20, font }), ...(pos ? [new TextRun({ text: `    Chức vụ: ${pos}`, size: 20, font })] : [])] }));
         if (phone) paras.push(new Paragraph({ children: [new TextRun({ text: `Điện thoại: ${phone}`, size: 20, font })] }));
@@ -147,7 +147,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
         new Paragraph({ children: [new TextRun({ text: `Số: ${frameworkNumber}`, size: 22, font })], alignment: AlignmentType.CENTER }),
         new Paragraph({ children: [new TextRun({ text: `Ngày ${formatDate(frameworkDate)}`, italics: true, size: 20, font })], alignment: AlignmentType.CENTER, spacing: { after: 100 } }),
         new Paragraph({ children: [new TextRun({ text: `(Tham chiếu Hợp đồng số: ${contract.contract_number} ngày ${formatDate(contract.contract_date)})`, italics: true, size: 20, font })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
-        ...makePartyParagraphs("BÊN A (Bên cung cấp):", sellerName, sellerRep, sellerPos, sellerAddr, sellerPhone, sellerTax, sellerBank, sellerHQ),
+        ...makePartyParagraphs("BÊN A (Bên cung cấp):", sellerName, sellerRep, sellerPos, sellerAddr, sellerPhone, sellerTax, sellerBank),
         ...makePartyParagraphs("BÊN B (Bên sử dụng):", buyerName, buyerRep, buyerPos, buyerAddr, buyerPhone, buyerTax),
         new Paragraph({ children: [new TextRun({ text: "Hai bên cùng thỏa thuận ký kết Hợp đồng Nguyên tắc với các điều khoản sau:", bold: true, size: 22, font })], alignment: AlignmentType.CENTER, spacing: { before: 200, after: 200 } }),
       ];
@@ -221,7 +221,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
     <div className="p-3 border rounded">
       <p className="font-bold mb-1">{label}</p>
       <p><strong>Công ty:</strong> {name}</p>
-      {hq && <p><strong>Trụ sở:</strong> {hq}</p>}
+      
       {addr && <p><strong>Địa chỉ:</strong> {addr}</p>}
       <p><strong>Đại diện:</strong> {rep}{pos ? <span className="ml-4"><strong>Chức vụ:</strong> {pos}</span> : null}</p>
       {(phone || tax) && (
@@ -301,7 +301,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
             <p className="text-xs italic">(Tham chiếu Hợp đồng số: {contract.contract_number} ngày {formatDate(contract.contract_date)})</p>
           </div>
 
-          <PartyInfoBlock label="BÊN A (Bên cung cấp):" name={sellerName} rep={sellerRep} pos={sellerPos} addr={sellerAddr} phone={sellerPhone} tax={sellerTax} bank={sellerBank} hq={sellerHQ} />
+          <PartyInfoBlock label="BÊN A (Bên cung cấp):" name={sellerName} rep={sellerRep} pos={sellerPos} addr={sellerAddr} phone={sellerPhone} tax={sellerTax} bank={sellerBank} />
           <PartyInfoBlock label="BÊN B (Bên sử dụng):" name={buyerName} rep={buyerRep} pos={buyerPos} addr={buyerAddr} phone={buyerPhone} tax={buyerTax} />
 
           <p className="font-bold text-center">Hai bên cùng thỏa thuận ký kết Hợp đồng Nguyên tắc với các điều khoản sau:</p>
