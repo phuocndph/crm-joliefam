@@ -138,6 +138,13 @@ export function CreateQuoteForm({
   const [managerId, setManagerId] = useState<string | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true); // Track user data loading
 
+  // Customer search states
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<any[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [customerSearchField, setCustomerSearchField] = useState<'name' | 'phone' | 'address'>('name');
+  const debouncedCustomerSearch = useDebounce(customerSearch, 300);
+
   // Create new product states
   const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [createProductLoading, setCreateProductLoading] = useState(false);
