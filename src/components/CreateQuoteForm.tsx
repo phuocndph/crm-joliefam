@@ -295,7 +295,32 @@ export function CreateQuoteForm({
     }
   }, []);
 
-  // Update form when initialData changes
+  // Search customers from database
+  useEffect(() => {
+    if (!debouncedCustomerSearch || debouncedCustomerSearch.length < 2) {
+      setCustomerResults([]);
+      return;
+    }
+    const searchCustomers = async () => {
+      try {
+        let query = supabase.from('customers').select('id, name, phone, email, address, company').limit(10);
+        const term = `%${debouncedCustomerSearch}%`;
+        if (customerSearchField === 'name') {
+          query = query.ilike('name', term);
+        } else if (customerSearchField === 'phone') {
+          query = query.ilike('phone', term);
+        } else {
+          query = query.ilike('address', term);
+        }
+        const { data } = await query;
+        setCustomerResults(data || []);
+      } catch (e) {
+        console.error('Customer search error:', e);
+      }
+    };
+    searchCustomers();
+  }, [debouncedCustomerSearch, customerSearchField]);
+
   useEffect(() => {
     console.log('CreateQuoteForm useEffect triggered with initialData:', initialData);
     if (initialData) {
