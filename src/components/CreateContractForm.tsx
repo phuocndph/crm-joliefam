@@ -339,7 +339,6 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     const sellerInfo = {
       company_name: companySettings.companyName,
       address: companySettings.address,
-      headquarters: companySettings.headquarters,
       phone: companySettings.phone,
       tax_code: companySettings.taxCode,
       bank_info: companySettings.bankInfo,
