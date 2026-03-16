@@ -130,7 +130,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
           new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 22, font })], spacing: { before: 100 } }),
           new Paragraph({ children: [new TextRun({ text: `Công ty: ${name}`, size: 20, font })] }),
         ];
-        if (hq) paras.push(new Paragraph({ children: [new TextRun({ text: `Trụ sở: ${hq}`, size: 20, font })] }));
+        
         if (addr) paras.push(new Paragraph({ children: [new TextRun({ text: `Địa chỉ: ${addr}`, size: 20, font })] }));
         paras.push(new Paragraph({ children: [new TextRun({ text: `Đại diện: ${rep}`, size: 20, font }), ...(pos ? [new TextRun({ text: `    Chức vụ: ${pos}`, size: 20, font })] : [])] }));
         if (phone) paras.push(new Paragraph({ children: [new TextRun({ text: `Điện thoại: ${phone}`, size: 20, font })] }));
