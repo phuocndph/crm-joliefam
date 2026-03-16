@@ -301,7 +301,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
             <p className="text-xs italic">(Tham chiếu Hợp đồng số: {contract.contract_number} ngày {formatDate(contract.contract_date)})</p>
           </div>
 
-          <PartyInfoBlock label="BÊN A (Bên cung cấp):" name={sellerName} rep={sellerRep} pos={sellerPos} addr={sellerAddr} phone={sellerPhone} tax={sellerTax} bank={sellerBank} hq={sellerHQ} />
+          <PartyInfoBlock label="BÊN A (Bên cung cấp):" name={sellerName} rep={sellerRep} pos={sellerPos} addr={sellerAddr} phone={sellerPhone} tax={sellerTax} bank={sellerBank} />
           <PartyInfoBlock label="BÊN B (Bên sử dụng):" name={buyerName} rep={buyerRep} pos={buyerPos} addr={buyerAddr} phone={buyerPhone} tax={buyerTax} />
 
           <p className="font-bold text-center">Hai bên cùng thỏa thuận ký kết Hợp đồng Nguyên tắc với các điều khoản sau:</p>
