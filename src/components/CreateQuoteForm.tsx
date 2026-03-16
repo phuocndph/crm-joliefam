@@ -138,6 +138,13 @@ export function CreateQuoteForm({
   const [managerId, setManagerId] = useState<string | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true); // Track user data loading
 
+  // Customer search states
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<any[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [customerSearchField, setCustomerSearchField] = useState<'name' | 'phone' | 'address'>('name');
+  const debouncedCustomerSearch = useDebounce(customerSearch, 300);
+
   // Create new product states
   const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [createProductLoading, setCreateProductLoading] = useState(false);
@@ -288,7 +295,32 @@ export function CreateQuoteForm({
     }
   }, []);
 
-  // Update form when initialData changes
+  // Search customers from database
+  useEffect(() => {
+    if (!debouncedCustomerSearch || debouncedCustomerSearch.length < 2) {
+      setCustomerResults([]);
+      return;
+    }
+    const searchCustomers = async () => {
+      try {
+        let query = supabase.from('customers').select('id, name, phone, email, address, company').limit(10);
+        const term = `%${debouncedCustomerSearch}%`;
+        if (customerSearchField === 'name') {
+          query = query.ilike('name', term);
+        } else if (customerSearchField === 'phone') {
+          query = query.ilike('phone', term);
+        } else {
+          query = query.ilike('address', term);
+        }
+        const { data } = await query;
+        setCustomerResults(data || []);
+      } catch (e) {
+        console.error('Customer search error:', e);
+      }
+    };
+    searchCustomers();
+  }, [debouncedCustomerSearch, customerSearchField]);
+
   useEffect(() => {
     console.log('CreateQuoteForm useEffect triggered with initialData:', initialData);
     if (initialData) {
@@ -1052,23 +1084,115 @@ export function CreateQuoteForm({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField control={form.control} name="customerName" render={({
                   field
-                }) => <FormItem>
+                }) => <FormItem className="relative">
                         <FormLabel>
                           Tên khách hàng <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="Nhập tên khách hàng..." />
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input 
+                              {...field} 
+                              placeholder="Nhập tên khách hàng để tìm..." 
+                              className="pl-9"
+                              onChange={(e) => {
+                                field.onChange(e);
+                                setCustomerSearch(e.target.value);
+                                setCustomerSearchField('name');
+                                setShowCustomerDropdown(true);
+                              }}
+                              onFocus={() => {
+                                if (field.value && field.value.length >= 2) {
+                                  setCustomerSearch(field.value);
+                                  setCustomerSearchField('name');
+                                  setShowCustomerDropdown(true);
+                                }
+                              }}
+                              onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                            />
+                          </div>
                         </FormControl>
+                        {showCustomerDropdown && customerSearchField === 'name' && customerResults.length > 0 && (
+                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                            {customerResults.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  form.setValue('customerName', c.name || '');
+                                  form.setValue('phone', c.phone || '');
+                                  form.setValue('email', c.email || '');
+                                  form.setValue('address', c.address || '');
+                                  setShowCustomerDropdown(false);
+                                  setCustomerSearch('');
+                                }}
+                              >
+                                <span className="font-medium">{c.name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {[c.phone, c.address].filter(Boolean).join(' • ')}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <FormMessage />
                       </FormItem>} />
 
                   <FormField control={form.control} name="phone" render={({
                   field
-                }) => <FormItem>
+                }) => <FormItem className="relative">
                         <FormLabel>Số điện thoại</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="VD: 0123456789" />
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input 
+                              {...field} 
+                              placeholder="Nhập SĐT để tìm khách hàng..." 
+                              className="pl-9"
+                              onChange={(e) => {
+                                field.onChange(e);
+                                setCustomerSearch(e.target.value);
+                                setCustomerSearchField('phone');
+                                setShowCustomerDropdown(true);
+                              }}
+                              onFocus={() => {
+                                if (field.value && field.value.length >= 2) {
+                                  setCustomerSearch(field.value);
+                                  setCustomerSearchField('phone');
+                                  setShowCustomerDropdown(true);
+                                }
+                              }}
+                              onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                            />
+                          </div>
                         </FormControl>
+                        {showCustomerDropdown && customerSearchField === 'phone' && customerResults.length > 0 && (
+                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                            {customerResults.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  form.setValue('customerName', c.name || '');
+                                  form.setValue('phone', c.phone || '');
+                                  form.setValue('email', c.email || '');
+                                  form.setValue('address', c.address || '');
+                                  setShowCustomerDropdown(false);
+                                  setCustomerSearch('');
+                                }}
+                              >
+                                <span className="font-medium">{c.name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {[c.phone, c.address].filter(Boolean).join(' • ')}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <FormMessage />
                       </FormItem>} />
                 </div>
@@ -1086,11 +1210,57 @@ export function CreateQuoteForm({
 
                   <FormField control={form.control} name="address" render={({
                   field
-                }) => <FormItem>
+                }) => <FormItem className="relative">
                         <FormLabel>Địa chỉ</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="VD: 123 Đường ABC, TP.HCM" />
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input 
+                              {...field} 
+                              placeholder="Nhập địa chỉ để tìm khách hàng..." 
+                              className="pl-9"
+                              onChange={(e) => {
+                                field.onChange(e);
+                                setCustomerSearch(e.target.value);
+                                setCustomerSearchField('address');
+                                setShowCustomerDropdown(true);
+                              }}
+                              onFocus={() => {
+                                if (field.value && field.value.length >= 2) {
+                                  setCustomerSearch(field.value);
+                                  setCustomerSearchField('address');
+                                  setShowCustomerDropdown(true);
+                                }
+                              }}
+                              onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                            />
+                          </div>
                         </FormControl>
+                        {showCustomerDropdown && customerSearchField === 'address' && customerResults.length > 0 && (
+                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                            {customerResults.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  form.setValue('customerName', c.name || '');
+                                  form.setValue('phone', c.phone || '');
+                                  form.setValue('email', c.email || '');
+                                  form.setValue('address', c.address || '');
+                                  setShowCustomerDropdown(false);
+                                  setCustomerSearch('');
+                                }}
+                              >
+                                <span className="font-medium">{c.name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {[c.phone, c.address].filter(Boolean).join(' • ')}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <FormMessage />
                       </FormItem>} />
                 </div>
