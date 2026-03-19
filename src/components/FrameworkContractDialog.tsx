@@ -299,7 +299,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
             <h2 className="text-lg font-bold" style={{ color: "#1a56db" }}>HỢP ĐỒNG NGUYÊN TẮC</h2>
             <p className="text-sm">Số: <strong>{frameworkNumber}</strong></p>
             <p className="text-xs italic">Ngày {formatDate(frameworkDate)}</p>
-            <p className="text-xs italic">(Tham chiếu Hợp đồng số: {contract.contract_number} ngày {formatDate(contract.contract_date)})</p>
+            {!isStandaloneFramework && <p className="text-xs italic">(Tham chiếu Hợp đồng số: {contract.contract_number} ngày {formatDate(contract.contract_date)})</p>}
           </div>
 
           <PartyInfoBlock label="BÊN A (Bên cung cấp):" name={sellerName} rep={sellerRep} pos={sellerPos} addr={sellerAddr} phone={sellerPhone} tax={sellerTax} bank={sellerBank} />
