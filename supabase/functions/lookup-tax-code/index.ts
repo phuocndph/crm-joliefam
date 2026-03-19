@@ -74,6 +74,67 @@ async function callAI(messages: any[]) {
   }
 }
 
+// Helper: Convert Vietnamese text to URL slug
+function toSlug(text: string): string {
+  return text.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'd')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
+// Helper: Scrape masothue.com for representative info
+async function scrapeMasothue(taxCode: string, companyName: string): Promise<{ representative: string; phone: string; address: string }> {
+  const result = { representative: "", phone: "", address: "" };
+  try {
+    const slug = toSlug(companyName);
+    const url = `https://masothue.com/${taxCode}-${slug}`;
+    console.log("Trying masothue.com:", url);
+    
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
+      },
+    });
+    
+    if (!resp.ok) {
+      console.log("masothue.com returned status:", resp.status);
+      return result;
+    }
+    
+    const html = await resp.text();
+    console.log("masothue.com HTML length:", html.length);
+    
+    // Extract representative - pattern: row with fa-user icon, then itemprop="name"
+    const repMatch = html.match(/fa-user[\s\S]*?Người đại diện[\s\S]*?itemprop="name"[^>]*>([^<]+)</i) 
+      || html.match(/Người đại diện<\/td>\s*<td[^>]*>.*?itemprop="name"[^>]*>([^<]+)</is)
+      || html.match(/Người đại diện[\s\S]{0,200}?<a[^>]*>([^<]+)<\/a>/i);
+    if (repMatch?.[1]) {
+      result.representative = repMatch[1].trim();
+      console.log("masothue.com found representative:", result.representative);
+    }
+    
+    // Extract phone
+    const phoneMatch = html.match(/itemprop="telephone"[^>]*>\s*([^<]+)</i)
+      || html.match(/fa-phone[\s\S]{0,300}?<a[^>]*>([^<]+)<\/a>/i);
+    if (phoneMatch?.[1]) {
+      result.phone = phoneMatch[1].trim();
+    }
+    
+    // Extract address
+    const addrMatch = html.match(/itemprop="address"[^>]*>([^<]+)</i);
+    if (addrMatch?.[1]) {
+      result.address = addrMatch[1].trim();
+    }
+  } catch (e) {
+    console.log("masothue.com scrape failed:", e);
+  }
+  return result;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -85,9 +146,15 @@ serve(async (req) => {
       const taxCode = data.toString().trim();
       console.log("Looking up tax code:", taxCode);
 
-      // === Source 1: escodata.net (has rep/phone for some companies) ===
+      let company_name = "";
+      let representative = "";
+      let address = "";
+      let phone = "";
+      let foundTaxCode = taxCode;
+
+      // === Step 1: escodata.net ===
       try {
-        console.log("Trying escodata.net...");
+        console.log("Step 1: Trying escodata.net...");
         const escoResponse = await fetch(`https://escodata.net/api-mst/${taxCode}.htm`, {
           method: "GET",
           headers: { "Content-Type": "application/json" },
@@ -97,55 +164,69 @@ serve(async (req) => {
           const escoResult = await escoResponse.json();
           if (escoResult.error === 0 && escoResult.data) {
             const d = escoResult.data;
-            const company_name = d.ten || d.name || "";
-            const representative = d.daidien || "";
-            const address = d.dc || d.address || "";
-            const phone = d.dt || "";
-            const foundTaxCode = d.mst || d.id || taxCode;
-
-            if (company_name) {
-              console.log("escodata.net found:", company_name, "rep:", representative);
-              return new Response(JSON.stringify({
-                company_name,
-                representative,
-                position: representative ? "Giám đốc" : "",
-                address,
-                tax_code: foundTaxCode,
-                phone,
-                bank_name: "", bank_account: "", bank_holder: "",
-              }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-            }
+            company_name = d.ten || d.name || "";
+            representative = d.daidien || "";
+            address = d.dc || d.address || "";
+            phone = d.dt || "";
+            foundTaxCode = d.mst || d.id || taxCode;
+            console.log("escodata.net found:", company_name, "rep:", representative);
           }
         }
       } catch (e) {
-        console.log("escodata.net failed, falling back to VietQR:", e);
+        console.log("escodata.net failed:", e);
       }
 
-      // === Source 2: VietQR (fallback - name & address only) ===
-      console.log("Falling back to VietQR...");
-      let response: Response | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
-        response = await fetch(`https://api.vietqr.io/v2/business/${taxCode}`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        });
-        if (response.status !== 429) break;
+      // === Step 2: If missing representative and we have company name, try masothue.com ===
+      if (company_name && !representative) {
+        console.log("Step 2: Missing representative, trying masothue.com enrichment...");
+        const mstData = await scrapeMasothue(taxCode, company_name);
+        if (mstData.representative) representative = mstData.representative;
+        if (!phone && mstData.phone) phone = mstData.phone;
+        if (!address && mstData.address) address = mstData.address;
       }
 
-      if (!response || !response.ok) {
-        return new Response(JSON.stringify({ error: "Không thể tra cứu MST. Vui lòng thử lại sau." }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      // === Step 3: If Step 1 failed entirely, try VietQR then masothue.com ===
+      if (!company_name) {
+        console.log("Step 3: Falling back to VietQR...");
+        let vietqrResponse: Response | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
+          vietqrResponse = await fetch(`https://api.vietqr.io/v2/business/${taxCode}`, {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          });
+          if (vietqrResponse.status !== 429) break;
+        }
+
+        if (vietqrResponse?.ok) {
+          const result = await vietqrResponse.json();
+          if (result.code === "00" && result.data) {
+            company_name = result.data.name || "";
+            address = result.data.address || "";
+            foundTaxCode = result.data.id || taxCode;
+          }
+        }
+
+        // Try masothue.com enrichment with VietQR company name
+        if (company_name && !representative) {
+          console.log("Enriching VietQR data with masothue.com...");
+          const mstData = await scrapeMasothue(taxCode, company_name);
+          if (mstData.representative) representative = mstData.representative;
+          if (!phone && mstData.phone) phone = mstData.phone;
+          if (!address && mstData.address) address = mstData.address;
+        }
       }
 
-      const result = await response.json();
-      if (result.code === "00" && result.data) {
-        const d = result.data;
+      // Return result or error
+      if (company_name) {
         return new Response(JSON.stringify({
-          company_name: d.name || "", representative: "", position: "",
-          address: d.address || "", tax_code: d.id || taxCode,
-          phone: "", bank_name: "", bank_account: "", bank_holder: "",
+          company_name,
+          representative,
+          position: representative ? "Giám đốc" : "",
+          address,
+          tax_code: foundTaxCode,
+          phone,
+          bank_name: "", bank_account: "", bank_holder: "",
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } else {
         return new Response(JSON.stringify({ error: "Không tìm thấy doanh nghiệp với MST: " + taxCode }), {
