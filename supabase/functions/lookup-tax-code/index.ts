@@ -86,29 +86,60 @@ serve(async (req) => {
       console.log("Looking up tax code:", taxCode);
 
       try {
-        console.log("Trying escodata.net...");
-        const escoResponse = await fetch(`https://escodata.net/api-mst/${taxCode}.htm`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        });
+        console.log("Trying masothue.com...");
+        const mstResponse = await fetch(
+          `https://masothue.com/Search/?q=${taxCode}&type=tax_code`,
+          {
+            method: "GET",
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
+            },
+          }
+        );
 
-        if (escoResponse.ok) {
-          const escoResult = await escoResponse.json();
-          if (escoResult.error === 0 && escoResult.data) {
-            const d = escoResult.data;
-            return new Response(JSON.stringify({
-              company_name: d.ten || d.name || "",
-              representative: d.daidien || "",
-              position: d.daidien ? "Giám đốc" : "",
-              address: d.dc || d.address || "",
-              tax_code: d.mst || d.id || taxCode,
-              phone: d.dt || "",
-              bank_name: "", bank_account: "", bank_holder: "",
-            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (mstResponse.ok) {
+          const html = await mstResponse.text();
+          
+          // Check if the detail page was returned (has table-taxinfo)
+          if (html.includes('table-taxinfo')) {
+            // Extract company name from <th itemprop="name"><span class="copy">NAME</span>
+            const nameMatch = html.match(/itemprop="name"><span[^>]*>([^<]+)<\/span>/);
+            const company_name = nameMatch ? nameMatch[1].trim() : "";
+
+            // Extract tax code from itemprop="taxID"
+            const taxIdMatch = html.match(/itemprop="taxID"><span[^>]*>([^<]+)<\/span>/);
+            const foundTaxCode = taxIdMatch ? taxIdMatch[1].trim() : taxCode;
+
+            // Extract address from itemprop="address"
+            const addressMatch = html.match(/itemprop="address"><span[^>]*>([^<]+)<\/span>/);
+            const address = addressMatch ? addressMatch[1].trim() : "";
+
+            // Extract representative from itemprop="name" inside Person schema
+            const repMatch = html.match(/itemtype="http:\/\/schema\.org\/Person"[\s\S]*?itemprop="name"><a[^>]*>([^<]+)<\/a>/);
+            const representative = repMatch ? repMatch[1].trim() : "";
+
+            // Extract phone from itemprop="telephone"
+            const phoneMatch = html.match(/itemprop="telephone">\s*<span[^>]*>([^<]+)<\/span>/);
+            const phone = phoneMatch ? phoneMatch[1].trim() : "";
+
+            if (company_name) {
+              console.log("masothue.com found:", company_name);
+              return new Response(JSON.stringify({
+                company_name,
+                representative,
+                position: representative ? "Giám đốc" : "",
+                address,
+                tax_code: foundTaxCode,
+                phone,
+                bank_name: "", bank_account: "", bank_holder: "",
+              }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
           }
         }
       } catch (e) {
-        console.log("escodata.net failed, falling back to VietQR:", e);
+        console.log("masothue.com failed, falling back to VietQR:", e);
       }
 
       console.log("Falling back to VietQR...");
