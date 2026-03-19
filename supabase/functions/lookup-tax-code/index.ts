@@ -96,15 +96,25 @@ serve(async (req) => {
           const escoResult = await escoResponse.json();
           if (escoResult.error === 0 && escoResult.data) {
             const d = escoResult.data;
-            return new Response(JSON.stringify({
-              company_name: d.ten || d.name || "",
-              representative: d.daidien || "",
-              position: d.daidien ? "Giám đốc" : "",
-              address: d.dc || d.address || "",
-              tax_code: d.mst || d.id || taxCode,
-              phone: d.dt || "",
-              bank_name: "", bank_account: "", bank_holder: "",
-            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            // escodata returns two formats: full (ten/mst/dc/daidien/dt) or basic (name/address/id)
+            const company_name = d.ten || d.name || "";
+            const representative = d.daidien || "";
+            const address = d.dc || d.address || "";
+            const phone = d.dt || "";
+            const foundTaxCode = d.mst || d.id || taxCode;
+
+            if (company_name) {
+              console.log("escodata.net found:", company_name, "rep:", representative);
+              return new Response(JSON.stringify({
+                company_name,
+                representative,
+                position: representative ? "Giám đốc" : "",
+                address,
+                tax_code: foundTaxCode,
+                phone,
+                bank_name: "", bank_account: "", bank_holder: "",
+              }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
           }
         }
       } catch (e) {
