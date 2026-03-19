@@ -119,7 +119,13 @@ const TransactionManagement = () => {
           customers:customer_id (
             name,
             customer_code,
-            phone
+            phone,
+            email,
+            address,
+            company
+          ),
+          assignees:assignee_id (
+            name
           )
         `);
 
