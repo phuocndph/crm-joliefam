@@ -104,24 +104,24 @@ serve(async (req) => {
           
           // Check if the detail page was returned (has table-taxinfo)
           if (html.includes('table-taxinfo')) {
-            // Extract company name from <th itemprop="name"><span class="copy">NAME</span>
-            const nameMatch = html.match(/itemprop="name"><span[^>]*>([^<]+)<\/span>/);
+            // Extract company name from <th itemprop="name"><span>NAME</span>
+            const nameMatch = html.match(/<th[^>]*itemprop="name"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/);
             const company_name = nameMatch ? nameMatch[1].trim() : "";
 
             // Extract tax code from itemprop="taxID"
-            const taxIdMatch = html.match(/itemprop="taxID"><span[^>]*>([^<]+)<\/span>/);
+            const taxIdMatch = html.match(/itemprop="taxID"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/);
             const foundTaxCode = taxIdMatch ? taxIdMatch[1].trim() : taxCode;
 
-            // Extract address from itemprop="address"
-            const addressMatch = html.match(/itemprop="address"><span[^>]*>([^<]+)<\/span>/);
+            // Extract address from itemprop="address"  
+            const addressMatch = html.match(/itemprop="address"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/);
             const address = addressMatch ? addressMatch[1].trim() : "";
 
-            // Extract representative from itemprop="name" inside Person schema
-            const repMatch = html.match(/itemtype="http:\/\/schema\.org\/Person"[\s\S]*?itemprop="name"><a[^>]*>([^<]+)<\/a>/);
+            // Extract representative - look for Person schema section
+            const repMatch = html.match(/Người đại diện[\s\S]*?<a[^>]*>([^<]+)<\/a>/);
             const representative = repMatch ? repMatch[1].trim() : "";
 
-            // Extract phone from itemprop="telephone"
-            const phoneMatch = html.match(/itemprop="telephone">\s*<span[^>]*>([^<]+)<\/span>/);
+            // Extract phone from itemprop="telephone" or "Điện thoại" row
+            const phoneMatch = html.match(/itemprop="telephone"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/);
             const phone = phoneMatch ? phoneMatch[1].trim() : "";
 
             if (company_name) {
