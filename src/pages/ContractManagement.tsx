@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreateContractForm } from "@/components/CreateContractForm";
+import { CreateFrameworkContractForm } from "@/components/CreateFrameworkContractForm";
 import { EditContractDialog } from "@/components/EditContractDialog";
 import { DeleteContractDialog } from "@/components/DeleteContractDialog";
 import { ContractPreviewDialog } from "@/components/ContractPreviewDialog";
@@ -19,7 +20,7 @@ import { FrameworkContractDialog } from "@/components/FrameworkContractDialog";
 import { ContractTemplateManager } from "@/components/ContractTemplateManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings, ClipboardCheck, Receipt } from "lucide-react";
+import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings, ClipboardCheck, Receipt, ChevronDown, ScrollText } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   draft: { label: "Nháp", variant: "secondary" },
@@ -27,6 +28,8 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   completed: { label: "Hoàn thành", variant: "outline" },
   cancelled: { label: "Đã hủy", variant: "destructive" },
 };
+
+const isFrameworkContract = (c: any) => c.contract_number?.startsWith("HDNT-");
 
 const ContractManagement = () => {
   const [user, setUser] = useState<any>(null);
@@ -37,12 +40,13 @@ const ContractManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
+  const [showCreateFramework, setShowCreateFramework] = useState(false);
   const [editContract, setEditContract] = useState<any>(null);
   const [deleteContract, setDeleteContract] = useState<any>(null);
   const [previewContract, setPreviewContract] = useState<any>(null);
+  const [frameworkPreview, setFrameworkPreview] = useState<any>(null);
   const [handoverContract, setHandoverContract] = useState<any>(null);
   const [paymentRequestContract, setPaymentRequestContract] = useState<any>(null);
-  const [frameworkContract, setFrameworkContract] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("contracts");
 
   const prefillData = useMemo(() => {
@@ -89,6 +93,14 @@ const ContractManagement = () => {
     completed: (contracts || []).filter((c: any) => c.status === "completed").length,
   };
 
+  const handleRowClick = (c: any) => {
+    if (isFrameworkContract(c)) {
+      setFrameworkPreview(c);
+    } else {
+      setPreviewContract(c);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -99,9 +111,22 @@ const ContractManagement = () => {
           </h1>
           <p className="text-muted-foreground">Tạo và quản lý hợp đồng với khách hàng</p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4 mr-1" />Tạo hợp đồng
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4 mr-1" />Tạo hợp đồng
+              <ChevronDown className="h-4 w-4 ml-1" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setShowCreate(true)}>
+              <FileSignature className="h-4 w-4 mr-2" />HĐ Kinh tế
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowCreateFramework(true)}>
+              <ScrollText className="h-4 w-4 mr-2" />HĐ Nguyên tắc
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -150,10 +175,10 @@ const ContractManagement = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Mã HĐ</TableHead>
+                    <TableHead>Loại</TableHead>
                     <TableHead>Khách hàng</TableHead>
                     <TableHead>Tiêu đề</TableHead>
                     <TableHead>Giá trị</TableHead>
-                    <TableHead>Đặt cọc</TableHead>
                     <TableHead>Ngày ký</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead className="w-[60px]"></TableHead>
@@ -167,13 +192,18 @@ const ContractManagement = () => {
                   ) : (
                     filtered.map((c: any) => {
                       const st = statusConfig[c.status] || statusConfig.draft;
+                      const isFramework = isFrameworkContract(c);
                       return (
-                        <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setPreviewContract(c)}>
+                        <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleRowClick(c)}>
                           <TableCell className="font-medium text-primary">{c.contract_number}</TableCell>
+                          <TableCell>
+                            <Badge variant={isFramework ? "secondary" : "outline"} className="text-xs">
+                              {isFramework ? "Nguyên tắc" : "Kinh tế"}
+                            </Badge>
+                          </TableCell>
                           <TableCell>{c.customers?.name || c.buyer_info?.company_name || "—"}</TableCell>
                           <TableCell className="max-w-[200px] truncate">{c.title || "—"}</TableCell>
-                          <TableCell>{formatCurrency(c.total_amount)}</TableCell>
-                          <TableCell>{formatCurrency(c.deposit_amount)}</TableCell>
+                          <TableCell>{isFramework ? "—" : formatCurrency(c.total_amount)}</TableCell>
                           <TableCell>{formatDate(c.contract_date)}</TableCell>
                           <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
                           <TableCell onClick={e => e.stopPropagation()}>
@@ -182,11 +212,14 @@ const ContractManagement = () => {
                                 <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setPreviewContract(c)}><Eye className="h-4 w-4 mr-2" />Xem</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleRowClick(c)}><Eye className="h-4 w-4 mr-2" />Xem</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setEditContract(c)}><Edit className="h-4 w-4 mr-2" />Sửa</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setHandoverContract(c)}><ClipboardCheck className="h-4 w-4 mr-2" />Biên bản bàn giao</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setPaymentRequestContract(c)}><Receipt className="h-4 w-4 mr-2" />Đề nghị thanh toán</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setFrameworkContract(c)}><FileSignature className="h-4 w-4 mr-2" />HĐ Nguyên tắc</DropdownMenuItem>
+                                {!isFramework && (
+                                  <>
+                                    <DropdownMenuItem onClick={() => setHandoverContract(c)}><ClipboardCheck className="h-4 w-4 mr-2" />Biên bản bàn giao</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setPaymentRequestContract(c)}><Receipt className="h-4 w-4 mr-2" />Đề nghị thanh toán</DropdownMenuItem>
+                                  </>
+                                )}
                                 <DropdownMenuItem onClick={() => setDeleteContract(c)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Xóa</DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -209,8 +242,15 @@ const ContractManagement = () => {
       {/* Dialogs */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="max-w-3xl">
-          <DialogHeader><DialogTitle>Tạo hợp đồng mới</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Tạo hợp đồng kinh tế</DialogTitle></DialogHeader>
           <CreateContractForm onSuccess={() => setShowCreate(false)} prefillData={prefillData} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCreateFramework} onOpenChange={setShowCreateFramework}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader><DialogTitle>Tạo Hợp đồng Nguyên tắc</DialogTitle></DialogHeader>
+          <CreateFrameworkContractForm onSuccess={() => setShowCreateFramework(false)} />
         </DialogContent>
       </Dialog>
 
@@ -223,14 +263,14 @@ const ContractManagement = () => {
       {previewContract && (
         <ContractPreviewDialog open={!!previewContract} onOpenChange={o => !o && setPreviewContract(null)} contract={previewContract} />
       )}
+      {frameworkPreview && (
+        <FrameworkContractDialog open={!!frameworkPreview} onOpenChange={o => !o && setFrameworkPreview(null)} contract={frameworkPreview} />
+      )}
       {handoverContract && (
         <HandoverReportDialog open={!!handoverContract} onOpenChange={o => !o && setHandoverContract(null)} contract={handoverContract} />
       )}
       {paymentRequestContract && (
         <PaymentRequestDialog open={!!paymentRequestContract} onOpenChange={o => !o && setPaymentRequestContract(null)} contract={paymentRequestContract} />
-      )}
-      {frameworkContract && (
-        <FrameworkContractDialog open={!!frameworkContract} onOpenChange={o => !o && setFrameworkContract(null)} contract={frameworkContract} />
       )}
     </div>
   );
