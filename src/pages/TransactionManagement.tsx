@@ -536,71 +536,231 @@ const TransactionManagement = () => {
 
       {/* Payment Details Dialog */}
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Chi tiết Thanh toán - {selectedOrder && getOrderDisplayNumber(selectedOrder)}</DialogTitle>
+            <DialogTitle>Chi tiết Đơn hàng & Thanh toán - {selectedOrder && getOrderDisplayNumber(selectedOrder)}</DialogTitle>
             <DialogDescription>
-              Lịch sử thanh toán của đơn hàng
+              Thông tin đơn hàng và lịch sử thanh toán
             </DialogDescription>
           </DialogHeader>
           
           {selectedOrder && (
-            <div className="space-y-4">
-              {/* Order Summary */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
-                <div>
-                  <p className="text-sm text-muted-foreground">Tổng tiền</p>
-                  <p className="font-semibold">{formatCurrency(selectedOrder.total_amount)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Đã thanh toán</p>
-                  <p className="font-semibold text-green-600">{formatCurrency(calculatePaidAmount(selectedOrder.id))}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Còn lại</p>
-                  <p className="font-semibold text-red-600">{formatCurrency(calculateRemainingAmount(selectedOrder))}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Trạng thái</p>
-                  <Badge className={getPaymentStatusColor(selectedOrder.payment_status)}>
-                    {getPaymentStatusLabel(selectedOrder.payment_status)}
-                  </Badge>
-                </div>
-              </div>
+            <Tabs defaultValue="order" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="order" className="flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Thông tin đơn hàng
+                </TabsTrigger>
+                <TabsTrigger value="payment" className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Thanh toán
+                </TabsTrigger>
+              </TabsList>
 
-              {/* Payment History */}
-              <div>
-                <h4 className="font-medium mb-3">Lịch sử Thanh toán</h4>
-                {selectedOrderPayments.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">Chưa có thanh toán nào</p>
-                ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Ngày thanh toán</TableHead>
-                          <TableHead>Số tiền</TableHead>
-                          <TableHead>Loại</TableHead>
-                          <TableHead>Phương thức</TableHead>
-                          <TableHead>Ghi chú</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedOrderPayments.map((payment) => (
-                          <TableRow key={payment.id}>
-                            <TableCell>{formatDate(payment.payment_date)}</TableCell>
-                            <TableCell className="font-medium">{formatCurrency(payment.payment_amount)}</TableCell>
-                            <TableCell>{getPaymentTypeLabel(payment.payment_type)}</TableCell>
-                            <TableCell>{getPaymentMethodLabel(payment.payment_method)}</TableCell>
-                            <TableCell>{payment.notes || "-"}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+              {/* Tab 1: Order Info */}
+              <TabsContent value="order" className="space-y-4 mt-4">
+                {/* Customer & Order Info Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Customer Info */}
+                  <div className="space-y-3 p-4 bg-muted rounded-lg">
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Khách hàng
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{selectedOrder.customers?.name || "-"}</span>
+                        {selectedOrder.customers?.customer_code && (
+                          <Badge variant="outline" className="text-xs">{selectedOrder.customers.customer_code}</Badge>
+                        )}
+                      </div>
+                      {selectedOrder.customers?.company && (
+                        <p className="flex items-center gap-2 text-muted-foreground">
+                          <Building className="h-3 w-3" /> {selectedOrder.customers.company}
+                        </p>
+                      )}
+                      {selectedOrder.customers?.phone && (
+                        <p className="flex items-center gap-2 text-muted-foreground">
+                          <Phone className="h-3 w-3" /> {selectedOrder.customers.phone}
+                        </p>
+                      )}
+                      {selectedOrder.customers?.email && (
+                        <p className="flex items-center gap-2 text-muted-foreground">
+                          <Mail className="h-3 w-3" /> {selectedOrder.customers.email}
+                        </p>
+                      )}
+                      {selectedOrder.customers?.address && (
+                        <p className="flex items-center gap-2 text-muted-foreground">
+                          <MapPin className="h-3 w-3 shrink-0" /> {selectedOrder.customers.address}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Order Meta */}
+                  <div className="space-y-3 p-4 bg-muted rounded-lg">
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Đơn hàng
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Số đơn:</span>
+                        <span className="font-medium">{getOrderDisplayNumber(selectedOrder)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Trạng thái:</span>
+                        <Badge variant="outline">{
+                          selectedOrder.status === 'pending' ? 'Chờ xử lý' :
+                          selectedOrder.status === 'processing' ? 'Đang xử lý' :
+                          selectedOrder.status === 'completed' ? 'Hoàn thành' :
+                          selectedOrder.status === 'delivered' ? 'Đã giao' :
+                          selectedOrder.status === 'cancelled' ? 'Đã hủy' :
+                          selectedOrder.status
+                        }</Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Ngày tạo:</span>
+                        <span>{formatDate(selectedOrder.created_at)}</span>
+                      </div>
+                      {selectedOrder.delivery_date && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground flex items-center gap-1"><Truck className="h-3 w-3" /> Ngày giao:</span>
+                          <span>{formatDate(selectedOrder.delivery_date)}</span>
+                        </div>
+                      )}
+                      {selectedOrder.assignees?.name && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Người phụ trách:</span>
+                          <span>{selectedOrder.assignees.name}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tổng tiền:</span>
+                        <span className="font-semibold">{formatCurrency(selectedOrder.total_amount)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notes */}
+                {selectedOrder.notes && (
+                  <div className="p-3 bg-muted/50 rounded-lg text-sm">
+                    <span className="font-medium">Ghi chú: </span>
+                    <span className="text-muted-foreground">{selectedOrder.notes}</span>
                   </div>
                 )}
-              </div>
-            </div>
+
+                {/* Items Table */}
+                {(() => {
+                  let items: any[] = [];
+                  try {
+                    if (selectedOrder.items) {
+                      items = typeof selectedOrder.items === 'string' 
+                        ? JSON.parse(selectedOrder.items) 
+                        : selectedOrder.items;
+                    }
+                  } catch (e) { /* ignore */ }
+                  
+                  if (!Array.isArray(items) || items.length === 0) return null;
+
+                  return (
+                    <div>
+                      <h4 className="font-semibold mb-3 flex items-center gap-2">
+                        <Package className="h-4 w-4" />
+                        Danh sách sản phẩm ({items.length})
+                      </h4>
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[40px]">STT</TableHead>
+                              <TableHead>Sản phẩm</TableHead>
+                              <TableHead>Quy cách</TableHead>
+                              <TableHead>Chất liệu</TableHead>
+                              <TableHead className="text-right">SL</TableHead>
+                              <TableHead className="text-right">Đơn giá</TableHead>
+                              <TableHead className="text-right">Thành tiền</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {items.map((item: any, idx: number) => (
+                              <TableRow key={idx}>
+                                <TableCell>{idx + 1}</TableCell>
+                                <TableCell className="font-medium">{item.name || "-"}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">{item.specifications || "-"}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{item.description || "-"}</TableCell>
+                                <TableCell className="text-right">{item.quantity || 0}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(item.price)}</TableCell>
+                                <TableCell className="text-right font-medium">{formatCurrency(item.total || (item.price * item.quantity))}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </TabsContent>
+
+              {/* Tab 2: Payment */}
+              <TabsContent value="payment" className="space-y-4 mt-4">
+                {/* Payment Summary */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Tổng tiền</p>
+                    <p className="font-semibold">{formatCurrency(selectedOrder.total_amount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Đã thanh toán</p>
+                    <p className="font-semibold text-green-600">{formatCurrency(calculatePaidAmount(selectedOrder.id))}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Còn lại</p>
+                    <p className="font-semibold text-red-600">{formatCurrency(calculateRemainingAmount(selectedOrder))}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Trạng thái</p>
+                    <Badge className={getPaymentStatusColor(selectedOrder.payment_status)}>
+                      {getPaymentStatusLabel(selectedOrder.payment_status)}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Payment History */}
+                <div>
+                  <h4 className="font-medium mb-3">Lịch sử Thanh toán</h4>
+                  {selectedOrderPayments.length === 0 ? (
+                    <p className="text-muted-foreground text-center py-8">Chưa có thanh toán nào</p>
+                  ) : (
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Ngày thanh toán</TableHead>
+                            <TableHead>Số tiền</TableHead>
+                            <TableHead>Loại</TableHead>
+                            <TableHead>Phương thức</TableHead>
+                            <TableHead>Ghi chú</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedOrderPayments.map((payment) => (
+                            <TableRow key={payment.id}>
+                              <TableCell>{formatDate(payment.payment_date)}</TableCell>
+                              <TableCell className="font-medium">{formatCurrency(payment.payment_amount)}</TableCell>
+                              <TableCell>{getPaymentTypeLabel(payment.payment_type)}</TableCell>
+                              <TableCell>{getPaymentMethodLabel(payment.payment_method)}</TableCell>
+                              <TableCell>{payment.notes || "-"}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>
