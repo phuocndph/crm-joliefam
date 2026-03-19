@@ -98,8 +98,10 @@ serve(async (req) => {
           redirect: "follow",
         });
 
+        console.log("masothue.com response status:", mstResponse.status, "url:", mstResponse.url);
         if (mstResponse.ok) {
           const html = await mstResponse.text();
+          console.log("masothue.com HTML length:", html.length, "has table-taxinfo:", html.includes("table-taxinfo"));
           
           // Extract company name from <th itemprop="name"> or <title>
           const companyMatch = html.match(/itemprop="name"><span class='copy'>([^<]+)<\/span>/);
@@ -121,8 +123,10 @@ serve(async (req) => {
           const taxIdMatch = html.match(/itemprop='taxID'><span class='copy'>([^<]+)<\/span>/);
           const foundTaxCode = taxIdMatch?.[1]?.trim() || taxCode;
 
+          console.log("masothue.com parsed - company:", company_name, "taxID:", foundTaxCode, "rep:", representative);
+
           if (company_name && foundTaxCode.replace(/-/g, "").startsWith(taxCode.replace(/-/g, ""))) {
-            console.log("masothue.com found:", company_name, "rep:", representative, "phone:", phone);
+            console.log("masothue.com SUCCESS:", company_name, "rep:", representative, "phone:", phone);
             return new Response(JSON.stringify({
               company_name,
               representative,
@@ -132,7 +136,12 @@ serve(async (req) => {
               phone,
               bank_name: "", bank_account: "", bank_holder: "",
             }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          } else {
+            console.log("masothue.com: company not matched or empty, falling through");
           }
+        } else {
+          console.log("masothue.com returned non-OK status:", mstResponse.status);
+          await mstResponse.text(); // consume body
         }
       } catch (e) {
         console.log("masothue.com failed:", e);
