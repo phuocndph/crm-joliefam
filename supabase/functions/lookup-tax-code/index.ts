@@ -83,62 +83,70 @@ function toSlug(text: string): string {
     .replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
-// Helper: Scrape masothue.com for representative info
+// Helper: Scrape masothue.com using Firecrawl for representative info
 async function scrapeMasothue(taxCode: string, companyName: string): Promise<{ representative: string; phone: string; address: string }> {
   const result = { representative: "", phone: "", address: "" };
-  const headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
-    "Referer": "https://masothue.com/",
-  };
+  
+  const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
+  if (!FIRECRAWL_API_KEY) {
+    console.log("FIRECRAWL_API_KEY not configured, skipping masothue.com");
+    return result;
+  }
 
-  // Try multiple URL patterns
   const slug = toSlug(companyName);
-  const urls = [
-    `https://masothue.com/${taxCode}-${slug}`,
-    `https://masothue.com/Search/?q=${taxCode}&type=enterpriseTax&force-search=1`,
-  ];
+  const url = `https://masothue.com/${taxCode}-${slug}`;
+  console.log("Scraping masothue.com via Firecrawl:", url);
 
-  for (const url of urls) {
-    try {
-      console.log("Trying masothue.com:", url);
-      const resp = await fetch(url, { method: "GET", headers, redirect: "follow" });
-      
-      if (!resp.ok) {
-        console.log("masothue.com returned status:", resp.status);
-        continue;
-      }
-      
-      const html = await resp.text();
-      console.log("masothue.com HTML length:", html.length);
-      
-      // Extract representative
-      const repMatch = html.match(/fa-user[\s\S]*?Người đại diện[\s\S]*?itemprop="name"[^>]*>([^<]+)</i) 
-        || html.match(/Người đại diện<\/td>\s*<td[^>]*>[\s\S]*?itemprop="name"[^>]*>([^<]+)</i)
-        || html.match(/Người đại diện[\s\S]{0,300}?<a[^>]*>([^<]+)<\/a>/i);
-      if (repMatch?.[1]) {
-        result.representative = repMatch[1].trim();
-        console.log("masothue.com found representative:", result.representative);
-      }
-      
-      // Extract phone
-      const phoneMatch = html.match(/itemprop="telephone"[^>]*>\s*([^<]+)</i)
-        || html.match(/fa-phone[\s\S]{0,300}?<a[^>]*>([^<]+)<\/a>/i);
-      if (phoneMatch?.[1]) {
-        result.phone = phoneMatch[1].trim();
-      }
-      
-      // Extract address
-      const addrMatch = html.match(/itemprop="address"[^>]*>([^<]+)</i);
-      if (addrMatch?.[1]) {
-        result.address = addrMatch[1].trim();
-      }
+  try {
+    const resp = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${FIRECRAWL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url,
+        formats: ["html"],
+        onlyMainContent: false,
+        waitFor: 2000,
+      }),
+    });
 
-      if (result.representative) break; // Found what we need
-    } catch (e) {
-      console.log("masothue.com attempt failed:", e);
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.log("Firecrawl error:", resp.status, errText);
+      return result;
     }
+
+    const data = await resp.json();
+    const html = data?.data?.html || data?.html || "";
+    console.log("Firecrawl HTML length:", html.length);
+
+    if (!html) return result;
+
+    // Extract representative
+    const repMatch = html.match(/fa-user[\s\S]*?Người đại diện[\s\S]*?itemprop="name"[^>]*>([^<]+)</i) 
+      || html.match(/Người đại diện<\/td>\s*<td[^>]*>[\s\S]*?itemprop="name"[^>]*>([^<]+)</i)
+      || html.match(/Người đại diện[\s\S]{0,300}?<a[^>]*>([^<]+)<\/a>/i);
+    if (repMatch?.[1]) {
+      result.representative = repMatch[1].trim();
+      console.log("masothue.com found representative:", result.representative);
+    }
+    
+    // Extract phone
+    const phoneMatch = html.match(/itemprop="telephone"[^>]*>\s*([^<]+)</i)
+      || html.match(/fa-phone[\s\S]{0,300}?<a[^>]*>([^<]+)<\/a>/i);
+    if (phoneMatch?.[1]) {
+      result.phone = phoneMatch[1].trim();
+    }
+    
+    // Extract address from masothue
+    const addrMatch = html.match(/itemprop="address"[^>]*>([^<]+)</i);
+    if (addrMatch?.[1]) {
+      result.address = addrMatch[1].trim();
+    }
+  } catch (e) {
+    console.log("Firecrawl masothue.com scrape failed:", e);
   }
   return result;
 }
