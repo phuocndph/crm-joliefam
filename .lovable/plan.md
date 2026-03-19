@@ -1,35 +1,29 @@
 
 
-## Thêm thông tin chi tiết đơn hàng vào dialog Thanh toán
+# Hien thi chat lieu tu bao gia trong chi tiet don hang
 
-### Vấn đề
-Dialog "Chi tiết Thanh toán" hiện chỉ hiển thị thông tin thanh toán (tổng tiền, đã thanh toán, còn lại, lịch sử thanh toán). Người dùng phải chuyển sang tab Đơn hàng để xem chi tiết đơn hàng như khách hàng, sản phẩm, ngày giao, trạng thái, ghi chú.
+## Nguyen nhan
 
-### Giải pháp
-Mở rộng dialog thanh toán để hiển thị thêm thông tin đơn hàng ngay bên trong, chia thành 2 phần rõ ràng.
+Cot "Chat lieu" trong bang chi tiet don hang (dong 659 file `OrderManagement.tsx`) dang doc `item.material` - mot truong **khong ton tai** trong du lieu san pham. 
 
-### Thay đổi cụ thể
+Du lieu items luu trong don hang (tu bao gia) chi co cac truong: `name`, `specifications`, `description`, `price`, `quantity`, `sku`, `total`, `originalProductId`. Khong co truong `material`.
 
-**File:** `src/pages/TransactionManagement.tsx`
+Thong tin chat lieu nhu "Vai T250 trang soc 65% Cotton 35% Polyester..." duoc nhap trong truong `description` (mo ta) khi tao bao gia.
 
-1. **Mở rộng query** để lấy thêm dữ liệu: `customers` (thêm `email`, `address`, `company`), và `assignees` (tên người phụ trách)
-   - Cập nhật select query thêm: `assignees:assignee_id(name)`, customer fields: `email, address, company`
+## Giai phap
 
-2. **Cập nhật Order interface** thêm các fields: `items`, `notes`, `delivery_date`, `status`, `assignee_id`, và nested `assignees`
+### File: `src/pages/OrderManagement.tsx`
 
-3. **Thêm phần "Thông tin đơn hàng"** vào dialog trước phần thanh toán:
-   - Khách hàng: tên, SĐT, email, địa chỉ, công ty
-   - Đơn hàng: số đơn, trạng thái, ngày tạo, ngày giao
-   - Người phụ trách
-   - Ghi chú đơn hàng
-   - Bảng danh sách sản phẩm (từ `items` JSON): tên SP, quy cách, số lượng, đơn giá, thành tiền
+Thay doi dong 659: doc `item.description` thay vi `item.material`:
 
-4. **Layout dialog**: Dùng Tabs hoặc sections phân chia:
-   - Section 1: "Thông tin đơn hàng" - grid hiển thị thông tin khách + đơn hàng + bảng sản phẩm
-   - Section 2: "Thanh toán" - giữ nguyên phần summary + lịch sử thanh toán hiện tại
+```typescript
+// Truoc:
+{item.material || "-"}
 
-### Không thay đổi
-- Logic thanh toán, form thêm thanh toán
-- Các trang khác
-- Database schema
+// Sau:
+{item.description || "-"}
+```
 
+Truong `description` chinh la noi nguoi dung nhap thong tin chat lieu khi tao bao gia, vi du: "Vai T250 trang soc 65% Cotton 35% Polyester, mat do soi 250 soi / inch vuong".
+
+Chi thay doi 1 dong, khong anh huong logic nao khac.
