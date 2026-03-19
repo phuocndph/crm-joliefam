@@ -104,6 +104,11 @@ serve(async (req) => {
           
           // Check if the detail page was returned (has table-taxinfo)
           if (html.includes('table-taxinfo')) {
+            // Debug: log relevant HTML sections
+            const phoneSection = html.match(/Điện thoại[\s\S]{0,300}/);
+            const repSection = html.match(/Người đại diện[\s\S]{0,300}/);
+            console.log("Phone section:", phoneSection?.[0]?.substring(0, 200));
+            console.log("Rep section:", repSection?.[0]?.substring(0, 200));
             // Extract company name from <th itemprop="name"><span>NAME</span>
             const nameMatch = html.match(/<th[^>]*itemprop="name"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/);
             const company_name = nameMatch ? nameMatch[1].trim() : "";
