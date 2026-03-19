@@ -85,6 +85,7 @@ serve(async (req) => {
       const taxCode = data.toString().trim();
       console.log("Looking up tax code:", taxCode);
 
+      // === Source 1: escodata.net (has rep/phone for some companies) ===
       try {
         console.log("Trying escodata.net...");
         const escoResponse = await fetch(`https://escodata.net/api-mst/${taxCode}.htm`, {
@@ -96,7 +97,6 @@ serve(async (req) => {
           const escoResult = await escoResponse.json();
           if (escoResult.error === 0 && escoResult.data) {
             const d = escoResult.data;
-            // escodata returns two formats: full (ten/mst/dc/daidien/dt) or basic (name/address/id)
             const company_name = d.ten || d.name || "";
             const representative = d.daidien || "";
             const address = d.dc || d.address || "";
@@ -121,6 +121,7 @@ serve(async (req) => {
         console.log("escodata.net failed, falling back to VietQR:", e);
       }
 
+      // === Source 2: VietQR (fallback - name & address only) ===
       console.log("Falling back to VietQR...");
       let response: Response | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
