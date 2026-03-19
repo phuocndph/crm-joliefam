@@ -53,7 +53,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
   const [validityMonths, setValidityMonths] = useState("12");
   const [scope, setScope] = useState("");
   const [additionalTerms, setAdditionalTerms] = useState("");
-  const [articles, setArticles] = useState(defaultArticles);
+  const [articles, setArticles] = useState(contract.articles?.length ? contract.articles : defaultArticles);
 
   if (!contract) return null;
 
@@ -76,7 +76,8 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
   const buyerPhone = buyer.phone || "";
   const buyerTax = buyer.tax_code || "";
 
-  const frameworkNumber = `HDNT-${contract.contract_number}`;
+  const isStandaloneFramework = contract.contract_number?.startsWith("HDNT-");
+  const frameworkNumber = isStandaloneFramework ? contract.contract_number : `HDNT-${contract.contract_number}`;
 
   const handleArticleChange = (idx: number, field: "title" | "content", value: string) => {
     setArticles(prev => prev.map((a, i) => i === idx ? { ...a, [field]: value } : a));
@@ -146,7 +147,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
         new Paragraph({ children: [new TextRun({ text: "HỢP ĐỒNG NGUYÊN TẮC", bold: true, size: 32, font, color: "1a56db" })], alignment: AlignmentType.CENTER, spacing: { before: 200 } }),
         new Paragraph({ children: [new TextRun({ text: `Số: ${frameworkNumber}`, size: 22, font })], alignment: AlignmentType.CENTER }),
         new Paragraph({ children: [new TextRun({ text: `Ngày ${formatDate(frameworkDate)}`, italics: true, size: 20, font })], alignment: AlignmentType.CENTER, spacing: { after: 100 } }),
-        new Paragraph({ children: [new TextRun({ text: `(Tham chiếu Hợp đồng số: ${contract.contract_number} ngày ${formatDate(contract.contract_date)})`, italics: true, size: 20, font })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
+        ...(isStandaloneFramework ? [] : [new Paragraph({ children: [new TextRun({ text: `(Tham chiếu Hợp đồng số: ${contract.contract_number} ngày ${formatDate(contract.contract_date)})`, italics: true, size: 20, font })], alignment: AlignmentType.CENTER, spacing: { after: 200 } })]),
         ...makePartyParagraphs("BÊN A (Bên cung cấp):", sellerName, sellerRep, sellerPos, sellerAddr, sellerPhone, sellerTax, sellerBank),
         ...makePartyParagraphs("BÊN B (Bên sử dụng):", buyerName, buyerRep, buyerPos, buyerAddr, buyerPhone, buyerTax),
         new Paragraph({ children: [new TextRun({ text: "Hai bên cùng thỏa thuận ký kết Hợp đồng Nguyên tắc với các điều khoản sau:", bold: true, size: 22, font })], alignment: AlignmentType.CENTER, spacing: { before: 200, after: 200 } }),
@@ -298,7 +299,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
             <h2 className="text-lg font-bold" style={{ color: "#1a56db" }}>HỢP ĐỒNG NGUYÊN TẮC</h2>
             <p className="text-sm">Số: <strong>{frameworkNumber}</strong></p>
             <p className="text-xs italic">Ngày {formatDate(frameworkDate)}</p>
-            <p className="text-xs italic">(Tham chiếu Hợp đồng số: {contract.contract_number} ngày {formatDate(contract.contract_date)})</p>
+            {!isStandaloneFramework && <p className="text-xs italic">(Tham chiếu Hợp đồng số: {contract.contract_number} ngày {formatDate(contract.contract_date)})</p>}
           </div>
 
           <PartyInfoBlock label="BÊN A (Bên cung cấp):" name={sellerName} rep={sellerRep} pos={sellerPos} addr={sellerAddr} phone={sellerPhone} tax={sellerTax} bank={sellerBank} />
