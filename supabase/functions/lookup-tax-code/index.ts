@@ -85,6 +85,60 @@ serve(async (req) => {
       const taxCode = data.toString().trim();
       console.log("Looking up tax code:", taxCode);
 
+      // === Source 1: masothue.com (fullest data: name, representative, phone, address) ===
+      try {
+        console.log("Trying masothue.com...");
+        const mstSearchUrl = `https://masothue.com/Search/?q=${encodeURIComponent(taxCode)}&type=tax_code`;
+        const mstResponse = await fetch(mstSearchUrl, {
+          method: "GET",
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+          },
+          redirect: "follow",
+        });
+
+        if (mstResponse.ok) {
+          const html = await mstResponse.text();
+          
+          // Extract company name from <th itemprop="name"> or <title>
+          const companyMatch = html.match(/itemprop="name"><span class='copy'>([^<]+)<\/span>/);
+          const company_name = companyMatch?.[1]?.trim() || "";
+
+          // Extract representative from "Người đại diện" row
+          const repMatch = html.match(/Người đại diện<\/td>\s*<td><span itemprop='name'><a[^>]*>([^<]+)<\/a>/);
+          const representative = repMatch?.[1]?.trim() || "";
+
+          // Extract phone from "Điện thoại" row  
+          const phoneMatch = html.match(/Điện thoại<\/td><td itemprop='telephone'>\s*<span class='copy'>([^<]+)<\/span>/);
+          const phone = phoneMatch?.[1]?.trim() || "";
+
+          // Extract address from itemprop='address'
+          const addrMatch = html.match(/itemprop='address'><span class='copy'[^>]*>([^<]+)<\/span>/);
+          const address = addrMatch?.[1]?.trim() || "";
+
+          // Extract tax ID to verify it matches
+          const taxIdMatch = html.match(/itemprop='taxID'><span class='copy'>([^<]+)<\/span>/);
+          const foundTaxCode = taxIdMatch?.[1]?.trim() || taxCode;
+
+          if (company_name && foundTaxCode.replace(/-/g, "").startsWith(taxCode.replace(/-/g, ""))) {
+            console.log("masothue.com found:", company_name, "rep:", representative, "phone:", phone);
+            return new Response(JSON.stringify({
+              company_name,
+              representative,
+              position: representative ? "Giám đốc" : "",
+              address,
+              tax_code: foundTaxCode,
+              phone,
+              bank_name: "", bank_account: "", bank_holder: "",
+            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+        }
+      } catch (e) {
+        console.log("masothue.com failed:", e);
+      }
+
+      // === Source 2: escodata.net (fallback) ===
       try {
         console.log("Trying escodata.net...");
         const escoResponse = await fetch(`https://escodata.net/api-mst/${taxCode}.htm`, {
@@ -96,7 +150,6 @@ serve(async (req) => {
           const escoResult = await escoResponse.json();
           if (escoResult.error === 0 && escoResult.data) {
             const d = escoResult.data;
-            // escodata returns two formats: full (ten/mst/dc/daidien/dt) or basic (name/address/id)
             const company_name = d.ten || d.name || "";
             const representative = d.daidien || "";
             const address = d.dc || d.address || "";
@@ -121,6 +174,7 @@ serve(async (req) => {
         console.log("escodata.net failed, falling back to VietQR:", e);
       }
 
+      // === Source 3: VietQR (last fallback) ===
       console.log("Falling back to VietQR...");
       let response: Response | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
