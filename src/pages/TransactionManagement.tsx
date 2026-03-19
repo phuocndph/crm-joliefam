@@ -29,10 +29,19 @@ interface Order {
   status: string;
   delivery_date?: string;
   created_at: string;
+  notes?: string;
+  items?: any;
+  assignee_id?: string;
   customers?: {
     name: string;
     customer_code: string;
     phone: string;
+    email?: string;
+    address?: string;
+    company?: string;
+  };
+  assignees?: {
+    name: string;
   };
 }
 
