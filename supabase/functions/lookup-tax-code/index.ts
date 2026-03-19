@@ -121,7 +121,7 @@ serve(async (req) => {
         console.log("escodata.net failed, falling back to VietQR:", e);
       }
 
-      // === Source 3: VietQR (last fallback) ===
+      // === Source 2: VietQR (fallback - name & address only) ===
       console.log("Falling back to VietQR...");
       let response: Response | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
