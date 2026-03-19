@@ -85,69 +85,7 @@ serve(async (req) => {
       const taxCode = data.toString().trim();
       console.log("Looking up tax code:", taxCode);
 
-      // === Source 1: masothue.com (fullest data: name, representative, phone, address) ===
-      try {
-        console.log("Trying masothue.com...");
-        const mstSearchUrl = `https://masothue.com/Search/?q=${encodeURIComponent(taxCode)}&type=tax_code`;
-        const mstResponse = await fetch(mstSearchUrl, {
-          method: "GET",
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml",
-          },
-          redirect: "follow",
-        });
-
-        console.log("masothue.com response status:", mstResponse.status, "url:", mstResponse.url);
-        if (mstResponse.ok) {
-          const html = await mstResponse.text();
-          console.log("masothue.com HTML length:", html.length, "has table-taxinfo:", html.includes("table-taxinfo"));
-          
-          // Extract company name from <th itemprop="name"> or <title>
-          const companyMatch = html.match(/itemprop="name"><span class='copy'>([^<]+)<\/span>/);
-          const company_name = companyMatch?.[1]?.trim() || "";
-
-          // Extract representative from "Người đại diện" row
-          const repMatch = html.match(/Người đại diện<\/td>\s*<td><span itemprop='name'><a[^>]*>([^<]+)<\/a>/);
-          const representative = repMatch?.[1]?.trim() || "";
-
-          // Extract phone from "Điện thoại" row  
-          const phoneMatch = html.match(/Điện thoại<\/td><td itemprop='telephone'>\s*<span class='copy'>([^<]+)<\/span>/);
-          const phone = phoneMatch?.[1]?.trim() || "";
-
-          // Extract address from itemprop='address'
-          const addrMatch = html.match(/itemprop='address'><span class='copy'[^>]*>([^<]+)<\/span>/);
-          const address = addrMatch?.[1]?.trim() || "";
-
-          // Extract tax ID to verify it matches
-          const taxIdMatch = html.match(/itemprop='taxID'><span class='copy'>([^<]+)<\/span>/);
-          const foundTaxCode = taxIdMatch?.[1]?.trim() || taxCode;
-
-          console.log("masothue.com parsed - company:", company_name, "taxID:", foundTaxCode, "rep:", representative);
-
-          if (company_name && foundTaxCode.replace(/-/g, "").startsWith(taxCode.replace(/-/g, ""))) {
-            console.log("masothue.com SUCCESS:", company_name, "rep:", representative, "phone:", phone);
-            return new Response(JSON.stringify({
-              company_name,
-              representative,
-              position: representative ? "Giám đốc" : "",
-              address,
-              tax_code: foundTaxCode,
-              phone,
-              bank_name: "", bank_account: "", bank_holder: "",
-            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-          } else {
-            console.log("masothue.com: company not matched or empty, falling through");
-          }
-        } else {
-          console.log("masothue.com returned non-OK status:", mstResponse.status);
-          await mstResponse.text(); // consume body
-        }
-      } catch (e) {
-        console.log("masothue.com failed:", e);
-      }
-
-      // === Source 2: escodata.net (fallback) ===
+      // === Source 1: escodata.net (has rep/phone for some companies) ===
       try {
         console.log("Trying escodata.net...");
         const escoResponse = await fetch(`https://escodata.net/api-mst/${taxCode}.htm`, {
