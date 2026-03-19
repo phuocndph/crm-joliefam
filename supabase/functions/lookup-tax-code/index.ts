@@ -101,6 +101,9 @@ serve(async (req) => {
 
         if (mstResponse.ok) {
           const html = await mstResponse.text();
+          console.log("masothue HTML length:", html.length);
+          console.log("masothue HTML snippet:", html.substring(0, 500));
+          console.log("Has table-taxinfo:", html.includes('table-taxinfo'));
           
           // Check if the detail page was returned (has table-taxinfo)
           if (html.includes('table-taxinfo')) {
