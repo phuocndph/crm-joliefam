@@ -96,8 +96,10 @@ serve(async (req) => {
               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
               "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
             },
+            redirect: "follow",
           }
         );
+        console.log("masothue.com status:", mstResponse.status, "url:", mstResponse.url);
 
         if (mstResponse.ok) {
           const html = await mstResponse.text();
