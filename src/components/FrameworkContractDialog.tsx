@@ -53,7 +53,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
   const [validityMonths, setValidityMonths] = useState("12");
   const [scope, setScope] = useState("");
   const [additionalTerms, setAdditionalTerms] = useState("");
-  const [articles, setArticles] = useState(defaultArticles);
+  const [articles, setArticles] = useState(contract.articles?.length ? contract.articles : defaultArticles);
 
   if (!contract) return null;
 
