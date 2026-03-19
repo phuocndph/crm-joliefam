@@ -76,7 +76,8 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
   const buyerPhone = buyer.phone || "";
   const buyerTax = buyer.tax_code || "";
 
-  const frameworkNumber = `HDNT-${contract.contract_number}`;
+  const isStandaloneFramework = contract.contract_number?.startsWith("HDNT-");
+  const frameworkNumber = isStandaloneFramework ? contract.contract_number : `HDNT-${contract.contract_number}`;
 
   const handleArticleChange = (idx: number, field: "title" | "content", value: string) => {
     setArticles(prev => prev.map((a, i) => i === idx ? { ...a, [field]: value } : a));
