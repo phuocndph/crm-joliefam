@@ -86,56 +86,25 @@ serve(async (req) => {
       console.log("Looking up tax code:", taxCode);
 
       try {
-        console.log("Trying masothue.com...");
-        const mstResponse = await fetch(
-          `https://masothue.com/Search/?q=${taxCode}&type=tax_code`,
-          {
-            method: "GET",
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-              "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
-            },
-            redirect: "follow",
-          }
-        );
-        console.log("masothue.com status:", mstResponse.status, "url:", mstResponse.url);
+        console.log("Trying escodata.net...");
+        const escoResponse = await fetch(`https://escodata.net/api-mst/${taxCode}.htm`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
 
-        if (mstResponse.ok) {
-          const html = await mstResponse.text();
-          console.log("masothue HTML length:", html.length);
-          console.log("masothue HTML snippet:", html.substring(0, 500));
-          console.log("Has table-taxinfo:", html.includes('table-taxinfo'));
-          
-          // Check if the detail page was returned (has table-taxinfo)
-          if (html.includes('table-taxinfo')) {
-            // Debug: log relevant HTML sections
-            const phoneSection = html.match(/Điện thoại[\s\S]{0,300}/);
-            const repSection = html.match(/Người đại diện[\s\S]{0,300}/);
-            console.log("Phone section:", phoneSection?.[0]?.substring(0, 200));
-            console.log("Rep section:", repSection?.[0]?.substring(0, 200));
-            // Extract company name from <th itemprop="name"><span>NAME</span>
-            const nameMatch = html.match(/<th[^>]*itemprop="name"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/);
-            const company_name = nameMatch ? nameMatch[1].trim() : "";
-
-            // Extract tax code from itemprop="taxID"
-            const taxIdMatch = html.match(/itemprop="taxID"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/);
-            const foundTaxCode = taxIdMatch ? taxIdMatch[1].trim() : taxCode;
-
-            // Extract address from itemprop="address"  
-            const addressMatch = html.match(/itemprop="address"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/);
-            const address = addressMatch ? addressMatch[1].trim() : "";
-
-            // Extract representative - look for Person schema section
-            const repMatch = html.match(/Người đại diện[\s\S]*?<a[^>]*>([^<]+)<\/a>/);
-            const representative = repMatch ? repMatch[1].trim() : "";
-
-            // Extract phone from itemprop="telephone" or "Điện thoại" row
-            const phoneMatch = html.match(/itemprop="telephone"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/);
-            const phone = phoneMatch ? phoneMatch[1].trim() : "";
+        if (escoResponse.ok) {
+          const escoResult = await escoResponse.json();
+          if (escoResult.error === 0 && escoResult.data) {
+            const d = escoResult.data;
+            // escodata returns two formats: full (ten/mst/dc/daidien/dt) or basic (name/address/id)
+            const company_name = d.ten || d.name || "";
+            const representative = d.daidien || "";
+            const address = d.dc || d.address || "";
+            const phone = d.dt || "";
+            const foundTaxCode = d.mst || d.id || taxCode;
 
             if (company_name) {
-              console.log("masothue.com found:", company_name);
+              console.log("escodata.net found:", company_name, "rep:", representative);
               return new Response(JSON.stringify({
                 company_name,
                 representative,
@@ -149,7 +118,7 @@ serve(async (req) => {
           }
         }
       } catch (e) {
-        console.log("masothue.com failed, falling back to VietQR:", e);
+        console.log("escodata.net failed, falling back to VietQR:", e);
       }
 
       console.log("Falling back to VietQR...");
