@@ -292,10 +292,10 @@ Deno.serve(async (req: Request) => {
     if (action === "get_templates") {
       const token = await getVinvoiceToken();
       const apiUrl = Deno.env.get("VINVOICE_API_URL") || "https://api-vinvoice.viettel.vn";
-      const taxCode = Deno.env.get("VINVOICE_TAX_CODE");
+      const username = Deno.env.get("VINVOICE_USERNAME");
 
-      // Try with supplierTaxCode first (correct Viettel API field name)
-      const requestBody: any = { supplierTaxCode: taxCode };
+      // Use taxCode field with username value (per Viettel official library)
+      const requestBody: any = { taxCode: username };
       if (params.invoiceType) {
         requestBody.invoiceType = params.invoiceType;
       }
@@ -305,10 +305,7 @@ Deno.serve(async (req: Request) => {
 
       const res = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Cookie: `access_token=${token}`,
-        },
+        headers: getAuthHeaders(token),
         body: JSON.stringify(requestBody),
       });
 
@@ -320,13 +317,10 @@ Deno.serve(async (req: Request) => {
       // If no results, retry without invoiceType filter
       if (result?.totalRows === 0 && params.invoiceType) {
         console.log("get_templates: 0 results with invoiceType, retrying without filter...");
-        const retryBody = { supplierTaxCode: taxCode };
+        const retryBody = { taxCode: username };
         const retryRes = await fetch(url, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: `access_token=${token}`,
-          },
+          headers: getAuthHeaders(token),
           body: JSON.stringify(retryBody),
         });
         const retryText = await retryRes.text();
