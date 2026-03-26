@@ -1,55 +1,23 @@
 
 
-## Sửa lỗi kết nối API S-Invoice
+## Chuyển sang liên kết trực tiếp VinVoice
 
-### Phát hiện từ log và nghiên cứu
+Thay vì gọi API S-Invoice phức tạp, đơn giản hoá trang Hoá đơn điện tử bằng cách dẫn link trực tiếp đến `https://vinvoice.viettel.vn/`.
 
-API trả về lỗi:
-```
-{"code":400,"message":"TAX_CODE_REQUIRED","data":"Mã số thuế bắt buộc nhập"}
-```
-Dù đã gửi `supplierTaxCode` trong body.
+### Thay đổi
 
-Sau khi nghiên cứu source code thư viện Viettel S-Invoice chính thức (`dev10katec/viettel-s-invoice`), phát hiện **2 lỗi nghiêm trọng**:
+**File: `src/pages/EInvoiceManagement.tsx`**
 
-### Lỗi 1: Sai tên field trong `getInvoiceTemplates`
+1. Thêm nút **"Mở VinVoice"** nổi bật ở header, mở tab mới đến `https://vinvoice.viettel.vn/`
+2. Giữ nguyên bảng danh sách hoá đơn đã lưu local (nếu có dữ liệu)
+3. Thêm card hướng dẫn nhanh: "Đăng nhập VinVoice để tạo và quản lý hoá đơn điện tử"
 
-| Hiện tại (sai) | Thư viện Viettel (đúng) |
-|---|---|
-| `{ supplierTaxCode: taxCode }` | `{ taxCode: username }` |
+**File: `src/components/CreateEInvoiceDialog.tsx`**
 
-Endpoint `getInvoiceTemplates` yêu cầu field `taxCode`, **không phải** `supplierTaxCode`. Và giá trị phải là **username** đăng nhập Viettel (ví dụ: `0108652480-509`), không phải mã số thuế thuần.
+4. Giữ dialog nhưng thêm nút "Mở VinVoice" bên cạnh nút tạo hoá đơn, để user có thể chọn tạo trực tiếp trên web Viettel
+5. Giảm bớt logic gọi API `get_templates` — nếu không lấy được thì chỉ hiện link VinVoice thay vì báo lỗi
 
-### Lỗi 2: Sai phương thức xác thực
-
-| Hiện tại (sai) | Thư viện Viettel (đúng) |
-|---|---|
-| `Cookie: access_token=...` | `Authorization: Bearer ...` |
-
-Tất cả các API call đang dùng Cookie để gửi token. Thư viện Viettel chính thức dùng `Authorization: Bearer` header.
-
-### Kế hoạch sửa
-
-**File: `supabase/functions/vinvoice-api/index.ts`**
-
-1. **`getInvoiceTemplates`**: Đổi body từ `{ supplierTaxCode }` sang `{ taxCode: username }`, dùng `Authorization: Bearer` header
-2. **`createInvoice`**: Đổi từ `Cookie` sang `Authorization: Bearer` header
-3. **`getInvoiceFile`**: Đổi từ `Cookie` sang `Authorization: Bearer` header
-4. Thêm helper `getAuthHeaders(token)` trả về `{ "Content-Type": "application/json", Authorization: "Bearer " + token }` để dùng chung
-
-### Chi tiết kỹ thuật
-
-```text
-Trước:
-  headers: { Cookie: `access_token=${token}` }
-  body: { supplierTaxCode: VINVOICE_TAX_CODE }
-
-Sau:
-  headers: { Authorization: `Bearer ${token}` }
-  body: { taxCode: VINVOICE_USERNAME, invoiceType: "..." }
-```
-
-| File | Thay đổi |
-|------|----------|
-| `supabase/functions/vinvoice-api/index.ts` | Sửa auth header và field name cho tất cả API calls |
+### Không thay đổi
+- Edge function `vinvoice-api` vẫn giữ nguyên (có thể dùng sau)
+- Bảng `einvoices` vẫn giữ để lưu lịch sử
 
