@@ -115,12 +115,15 @@ function mapContractToInvoice(contract: any, options: any) {
       invoiceType: options.invoiceType || "01GTKT",
       templateCode: options.templateCode || "",
       invoiceSeries: options.invoiceSeries || "",
-      currencyCode: "VND",
+      currencyCode: options.currency || "VND",
+      exchangeRate: options.currency && options.currency !== "VND" ? (options.exchangeRate || 1) : undefined,
       adjustmentType: "1",
       paymentStatus: true,
-      cusGetInvoiceRight: true,
+      cusGetInvoiceRight: options.cusGetInvoiceRight !== false,
       invoiceNote: contract.title || "",
       paymentMethodName: options.paymentMethod || "TM/CK",
+      paymentMethodDetail: options.paymentDetail || undefined,
+      contractNumber: options.contractNumber || undefined,
     },
     sellerInfo: {
       sellerLegalName: sellerInfo.company_name || sellerInfo.name || "",
@@ -138,6 +141,10 @@ function mapContractToInvoice(contract: any, options: any) {
       buyerPhoneNumber: buyerInfo.phone || "",
       buyerEmail: buyerInfo.email || "",
       buyerName: buyerInfo.representative || buyerInfo.name || "",
+      buyerIdType: options.buyerIdType || undefined,
+      buyerIdNo: options.buyerIdNumber || undefined,
+      buyerBankName: options.buyerBankName || buyerInfo.bank_name || "",
+      buyerBankAccount: options.buyerBankAccount || buyerInfo.bank_account || "",
     },
     payments: [
       {
@@ -150,7 +157,7 @@ function mapContractToInvoice(contract: any, options: any) {
       totalAmountWithoutTax: subtotal,
       totalTaxAmount: vatAmount,
       totalAmountWithTax: totalWithVat,
-      totalAmountWithTaxInWords: "", // Could add number-to-words here
+      totalAmountWithTaxInWords: "",
       discountAmount: 0,
       taxPercentage: vatRate,
     },
