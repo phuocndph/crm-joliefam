@@ -384,12 +384,34 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
 
               <div>
                 <Label className="text-xs text-muted-foreground">Mẫu hoá đơn *</Label>
-                <Input placeholder="VD: 01GTKT0/001" value={templateCode} onChange={e => setTemplateCode(e.target.value)} className="h-8 text-sm" />
+                {loadingTemplates ? (
+                  <div className="h-8 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Đang tải...
+                  </div>
+                ) : (
+                  <Select value={templateCode} onValueChange={handleTemplateChange}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Chọn mẫu hoá đơn" /></SelectTrigger>
+                    <SelectContent>
+                      {templates.map((tpl) => (
+                        <SelectItem key={tpl.templateCode} value={tpl.templateCode}>
+                          {tpl.templateCode}{tpl.templateName ? ` - ${tpl.templateName}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div>
                 <Label className="text-xs text-muted-foreground">Ký hiệu hoá đơn *</Label>
-                <Input placeholder="VD: C24TAA" value={invoiceSeries} onChange={e => setInvoiceSeries(e.target.value)} className="h-8 text-sm" />
+                <Select value={invoiceSeries} onValueChange={setInvoiceSeries} disabled={!templateCode || seriesList.length === 0}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder={!templateCode ? "Chọn mẫu trước" : "Chọn ký hiệu"} /></SelectTrigger>
+                  <SelectContent>
+                    {seriesList.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
