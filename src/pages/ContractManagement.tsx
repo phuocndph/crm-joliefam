@@ -14,13 +14,15 @@ import { CreateFrameworkContractForm } from "@/components/CreateFrameworkContrac
 import { EditContractDialog } from "@/components/EditContractDialog";
 import { DeleteContractDialog } from "@/components/DeleteContractDialog";
 import { ContractPreviewDialog } from "@/components/ContractPreviewDialog";
+import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
+import { useEInvoices } from "@/hooks/useEInvoices";
 import { HandoverReportDialog } from "@/components/HandoverReportDialog";
 import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
 import { FrameworkContractDialog } from "@/components/FrameworkContractDialog";
 import { ContractTemplateManager } from "@/components/ContractTemplateManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings, ClipboardCheck, Receipt, ChevronDown, ScrollText } from "lucide-react";
+import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings, ClipboardCheck, Receipt, ChevronDown, ScrollText, FileText } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   draft: { label: "Nháp", variant: "secondary" },
@@ -47,8 +49,9 @@ const ContractManagement = () => {
   const [frameworkPreview, setFrameworkPreview] = useState<any>(null);
   const [handoverContract, setHandoverContract] = useState<any>(null);
   const [paymentRequestContract, setPaymentRequestContract] = useState<any>(null);
+  const [einvoiceContract, setEinvoiceContract] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("contracts");
-
+  const { data: einvoices } = useEInvoices();
   const prefillData = useMemo(() => {
     const fromQuote = searchParams.get('from_quote');
     if (!fromQuote) return undefined;
@@ -133,6 +136,7 @@ const ContractManagement = () => {
         <TabsList>
           <TabsTrigger value="contracts"><FileSignature className="h-4 w-4 mr-1" />Danh sách HĐ</TabsTrigger>
           <TabsTrigger value="templates"><Settings className="h-4 w-4 mr-1" />Mẫu hợp đồng</TabsTrigger>
+          <TabsTrigger value="einvoices"><FileText className="h-4 w-4 mr-1" />Hoá đơn ĐT</TabsTrigger>
         </TabsList>
 
         <TabsContent value="contracts" className="space-y-4 mt-4">
@@ -218,6 +222,7 @@ const ContractManagement = () => {
                                   <>
                                     <DropdownMenuItem onClick={() => setHandoverContract(c)}><ClipboardCheck className="h-4 w-4 mr-2" />Biên bản bàn giao</DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => setPaymentRequestContract(c)}><Receipt className="h-4 w-4 mr-2" />Đề nghị thanh toán</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setEinvoiceContract(c)}><FileText className="h-4 w-4 mr-2" />Xuất hoá đơn ĐT</DropdownMenuItem>
                                   </>
                                 )}
                                 <DropdownMenuItem onClick={() => setDeleteContract(c)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Xóa</DropdownMenuItem>
@@ -236,6 +241,45 @@ const ContractManagement = () => {
 
         <TabsContent value="templates" className="mt-4">
           <ContractTemplateManager />
+        </TabsContent>
+
+        <TabsContent value="einvoices" className="mt-4">
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Số HĐ</TableHead>
+                    <TableHead>Mẫu / Ký hiệu</TableHead>
+                    <TableHead>Khách hàng</TableHead>
+                    <TableHead>Tổng tiền</TableHead>
+                    <TableHead>Ngày phát hành</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!einvoices?.length ? (
+                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Chưa có hoá đơn điện tử nào</TableCell></TableRow>
+                  ) : (
+                    einvoices.map((inv: any) => (
+                      <TableRow key={inv.id}>
+                        <TableCell className="font-medium text-primary">{inv.invoice_number || "—"}</TableCell>
+                        <TableCell className="text-xs">{inv.template_code} / {inv.invoice_series}</TableCell>
+                        <TableCell>{inv.buyer_name || "—"}</TableCell>
+                        <TableCell>{(inv.total_with_vat || 0).toLocaleString("vi-VN")} ₫</TableCell>
+                        <TableCell>{inv.issued_date ? new Date(inv.issued_date).toLocaleDateString("vi-VN") : "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant={inv.status === "issued" ? "default" : inv.status === "error" ? "destructive" : "secondary"}>
+                            {inv.status === "issued" ? "Đã phát hành" : inv.status === "error" ? "Lỗi" : "Nháp"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
@@ -271,6 +315,9 @@ const ContractManagement = () => {
       )}
       {paymentRequestContract && (
         <PaymentRequestDialog open={!!paymentRequestContract} onOpenChange={o => !o && setPaymentRequestContract(null)} contract={paymentRequestContract} />
+      )}
+      {einvoiceContract && (
+        <CreateEInvoiceDialog open={!!einvoiceContract} onOpenChange={o => !o && setEinvoiceContract(null)} contract={einvoiceContract} />
       )}
     </div>
   );
