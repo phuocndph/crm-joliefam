@@ -72,6 +72,64 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
     setStandaloneItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   };
 
+  const handleLookupTaxCode = async () => {
+    if (!buyerTaxCode.trim()) {
+      toast.error("Vui lòng nhập mã số thuế");
+      return;
+    }
+    setLookingUp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
+        body: { type: "tax_code", data: buyerTaxCode.trim() },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast.error("Không tìm thấy", { description: data.error });
+        return;
+      }
+      if (data?.company_name) {
+        setBuyerCompany(data.company_name);
+        if (data.address) setBuyerAddress(data.address);
+        if (data.representative) setBuyerName(data.representative);
+        if (data.phone) setBuyerPhone(data.phone);
+        toast.success("Đã tìm thấy thông tin doanh nghiệp", { description: data.company_name });
+      } else {
+        toast.error("Không tìm thấy doanh nghiệp với MST này");
+      }
+    } catch (err: any) {
+      toast.error("Lỗi tra cứu MST", { description: err.message });
+    } finally {
+      setLookingUp(false);
+    }
+  };
+
+  const buildInvoicePayload = () => {
+    const invoiceContract = isStandalone
+      ? {
+          id: null,
+          title: "",
+          seller_info: sellerInfo,
+          buyer_info: {
+            name: buyerName,
+            company_name: buyerCompany,
+            tax_code: buyerTaxCode,
+            address: buyerAddress,
+            phone: buyerPhone,
+            email: buyerEmail,
+            representative: buyerName,
+          },
+          items: standaloneItems.map(i => ({
+            name: i.name, unit: i.unit, quantity: i.quantity, unit_price: i.unit_price,
+          })),
+          vat_rate: vatRate,
+          subtotal: computedSubtotal,
+          vat_amount: computedVatAmount,
+          total_amount: computedTotal,
+        }
+      : contract;
+    return invoiceContract;
+  };
+
   const handleCreateInvoice = async () => {
     if (!templateCode || !invoiceSeries) {
       toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn");
