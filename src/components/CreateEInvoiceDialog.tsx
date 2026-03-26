@@ -135,52 +135,16 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
       toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn");
       return;
     }
-
-    // Build contract-like payload for standalone mode
-    const invoiceContract = isStandalone
-      ? {
-          id: null,
-          title: "",
-          seller_info: sellerInfo,
-          buyer_info: {
-            name: buyerName,
-            company_name: buyerCompany,
-            tax_code: buyerTaxCode,
-            address: buyerAddress,
-            phone: buyerPhone,
-            email: buyerEmail,
-            representative: buyerName,
-          },
-          items: standaloneItems.map(i => ({
-            name: i.name,
-            unit: i.unit,
-            quantity: i.quantity,
-            unit_price: i.unit_price,
-          })),
-          vat_rate: vatRate,
-          subtotal: computedSubtotal,
-          vat_amount: computedVatAmount,
-          total_amount: computedTotal,
-        }
-      : contract;
-
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("vinvoice-api", {
         body: {
           action: "create_invoice",
-          contract: invoiceContract,
-          options: {
-            templateCode,
-            invoiceSeries,
-            paymentMethod,
-            invoiceType: "01GTKT",
-          },
+          contract: buildInvoicePayload(),
+          options: { templateCode, invoiceSeries, paymentMethod, invoiceType: "01GTKT" },
         },
       });
-
       if (error) throw error;
-
       if (data?.success) {
         toast.success("Phát hành hoá đơn thành công!", {
           description: `Số HĐ: ${data.invoice?.invoice_number || "Đang xử lý"}`,
@@ -195,6 +159,36 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
       toast.error("Lỗi kết nối", { description: err.message });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!templateCode || !invoiceSeries) {
+      toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn");
+      return;
+    }
+    setSavingDraft(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("vinvoice-api", {
+        body: {
+          action: "create_draft",
+          contract: buildInvoicePayload(),
+          options: { templateCode, invoiceSeries, paymentMethod, invoiceType: "01GTKT" },
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success("Đã lưu hoá đơn nháp");
+        queryClient.invalidateQueries({ queryKey: ["einvoices"] });
+        onOpenChange(false);
+      } else {
+        const errMsg = data?.error || "Lỗi không xác định";
+        toast.error("Lưu nháp thất bại", { description: errMsg });
+      }
+    } catch (err: any) {
+      toast.error("Lỗi kết nối", { description: err.message });
+    } finally {
+      setSavingDraft(false);
     }
   };
 
