@@ -25,11 +25,23 @@ interface InvoiceItem {
   unit_price: number;
 }
 
+interface InvoiceTemplate {
+  templateCode: string;
+  templateName?: string;
+  invoiceSeries?: string[];
+  [key: string]: any;
+}
+
 export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEInvoiceDialogProps) => {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  // Templates from API
+  const [templates, setTemplates] = useState<InvoiceTemplate[]>([]);
+  const [seriesList, setSeriesList] = useState<string[]>([]);
 
   // Invoice config
   const [templateCode, setTemplateCode] = useState("");
