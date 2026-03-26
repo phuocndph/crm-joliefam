@@ -49,8 +49,9 @@ const ContractManagement = () => {
   const [frameworkPreview, setFrameworkPreview] = useState<any>(null);
   const [handoverContract, setHandoverContract] = useState<any>(null);
   const [paymentRequestContract, setPaymentRequestContract] = useState<any>(null);
+  const [einvoiceContract, setEinvoiceContract] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("contracts");
-
+  const { data: einvoices } = useEInvoices();
   const prefillData = useMemo(() => {
     const fromQuote = searchParams.get('from_quote');
     if (!fromQuote) return undefined;
