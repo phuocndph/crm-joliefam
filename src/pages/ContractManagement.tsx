@@ -136,6 +136,7 @@ const ContractManagement = () => {
         <TabsList>
           <TabsTrigger value="contracts"><FileSignature className="h-4 w-4 mr-1" />Danh sách HĐ</TabsTrigger>
           <TabsTrigger value="templates"><Settings className="h-4 w-4 mr-1" />Mẫu hợp đồng</TabsTrigger>
+          <TabsTrigger value="einvoices"><FileText className="h-4 w-4 mr-1" />Hoá đơn ĐT</TabsTrigger>
         </TabsList>
 
         <TabsContent value="contracts" className="space-y-4 mt-4">
