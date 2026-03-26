@@ -1,75 +1,32 @@
 
 
-## Redesign form tạo hoá đơn theo giao diện VinVoice
+## Lấy danh sách mẫu hoá đơn & ký hiệu từ API S-Invoice
 
-Chuyển layout dialog từ dạng card xếp dọc sang **2 cột ngang** giống vinvoice.viettel.vn:
+### Cách hoạt động
 
-### Layout mới
+Khi mở dialog tạo hoá đơn, hệ thống tự động gọi API S-Invoice để lấy danh sách mẫu hoá đơn. Khi chọn mẫu, hệ thống tiếp tục gọi API để lấy danh sách ký hiệu tương ứng.
 
-```text
-┌─────────────────────────────┬──────────────────────────────┐
-│  THÔNG TIN KHÁCH HÀNG       │  THÔNG TIN HOÁ ĐƠN          │
-│                              │                              │
-│  ☐ Người mua không lấy HĐ   │  Mã cửa hàng | Tên cửa hàng │
-│  Tìm kiếm [MST]        [+]  │  Hình thức TT | Chi tiết HTTT│
-│  Tên người mua               │  Loại tiền    | Tỷ giá       │
-│  Địa chỉ                    │  Mẫu hoá đơn *               │
-│  Tên đơn vị                 │  Ký hiệu hoá đơn *           │
-│  MST        | Hợp đồng số   │  Số bảng kê                  │
-│  SĐT        | Email         │  Ngày bảng kê                │
-│  Loại giấy tờ | Số giấy tờ  │  Số lượng nhân bản           │
-│  Tên NH     | Số TK         │                              │
-└─────────────────────────────┴──────────────────────────────┘
-├── Bảng hàng hoá / dịch vụ (full width) ──────────────────────┤
-├── Tổng cộng ─────────────────────────────────────────────────┤
-├── [Quay lại] [Xoá dữ liệu] [Xem trước] [Lập HĐ nháp] ─────┤
-```
+### Thay đổi
 
-### Thay đổi trong `CreateEInvoiceDialog.tsx`
+#### 1. Edge Function `vinvoice-api/index.ts`
 
-**Phần trên - 2 cột:**
+Thêm action `get_templates`:
+- Gọi API: `POST /services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceTemplates`
+- Body: `{ taxCode: VINVOICE_TAX_CODE, invoiceType }` (mặc định `"01GTKT"`)
+- Trả về danh sách `templateCode` và `invoiceSeries` cho frontend
 
-1. **Cột trái - THÔNG TIN KHÁCH HÀNG**: Thêm các trường mới theo VinVoice:
-   - Checkbox "Người mua không lấy hoá đơn"
-   - Tìm kiếm MST (giữ nguyên logic lookup hiện tại)
-   - Tên người mua, Địa chỉ, Tên đơn vị (company)
-   - MST + Hợp đồng số (2 cột)
-   - SĐT + Email (2 cột)
-   - Loại giấy tờ (Select) + Số giấy tờ
-   - Tên ngân hàng + Số tài khoản
+#### 2. Frontend `CreateEInvoiceDialog.tsx`
 
-2. **Cột phải - THÔNG TIN HOÁ ĐƠN**: Gộp cấu hình hoá đơn vào đây:
-   - Hình thức thanh toán + Chi tiết hình thức
-   - Loại tiền (VND) + Tỷ giá
-   - Mẫu hoá đơn (templateCode) + Ký hiệu hoá đơn (invoiceSeries)
-   - Số lượng nhân bản
-
-**Phần dưới - full width:**
-- Bảng hàng hoá / dịch vụ (giữ nguyên)
-- Tổng cộng (giữ nguyên)
-
-**Nút actions:**
-- Thay đổi style nút: Quay lại, Xoá dữ liệu nhập, Xem trước, Lập hoá đơn nháp
-
-### State mới cần thêm
-- `noInvoiceBuyer` (boolean) - checkbox người mua không lấy HĐ
-- `paymentDetail` (string) - chi tiết hình thức TT
-- `currency` (string, default "VND")
-- `exchangeRate` (number, default 1)
-- `contractNumber` (string) - hợp đồng số
-- `buyerIdType` (string) - loại giấy tờ
-- `buyerIdNumber` (string) - số giấy tờ
-- `buyerBankName` (string) - tên ngân hàng
-- `buyerBankAccount` (string) - số tài khoản
-- `copyCount` (number) - số lượng nhân bản
+- Khi dialog mở → gọi `get_templates` để lấy danh sách mẫu hoá đơn
+- **Mẫu hoá đơn**: Select dropdown hiển thị các `templateCode` từ API
+- **Ký hiệu hoá đơn**: Select dropdown hiển thị các `invoiceSeries` tương ứng với mẫu đã chọn
+- Hiển thị loading state khi đang tải danh sách
+- Tự động chọn mẫu/ký hiệu đầu tiên nếu chỉ có 1 option
 
 ### File thay đổi
+
 | File | Thay đổi |
 |------|----------|
-| `src/components/CreateEInvoiceDialog.tsx` | Redesign layout 2 cột, thêm state & fields mới |
-
-### Không thay đổi
-- Logic API (buildInvoicePayload, handleCreateInvoice, handleSaveDraft)
-- Edge function
-- Database schema
+| `supabase/functions/vinvoice-api/index.ts` | Thêm action `get_templates` gọi API S-Invoice |
+| `src/components/CreateEInvoiceDialog.tsx` | Thay Input thành Select dropdown, load data từ API |
 
