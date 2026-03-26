@@ -257,31 +257,11 @@ Deno.serve(async (req: Request) => {
       const { contract, options } = params;
       if (!contract) throw new Error("Missing contract data");
 
-      const token = await getVinvoiceToken();
+      // Draft: only build payload and save locally, do NOT call S-Invoice API
       const invoicePayload = mapContractToInvoice(contract, options || {});
-      const apiUrl = Deno.env.get("VINVOICE_API_URL") || "https://api-vinvoice.viettel.vn";
-      const taxCode = Deno.env.get("VINVOICE_TAX_CODE");
 
-      const res = await fetch(
-        `${apiUrl}/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${taxCode}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: `access_token=${token}`,
-          },
-          body: JSON.stringify(invoicePayload),
-        }
-      );
-
-      const text = await res.text();
-      let result;
-      try { result = JSON.parse(text); } catch { result = { raw: text }; }
-
-      // Save as draft
       const einvoiceRecord: any = {
         contract_id: contract.id || null,
-        transaction_uuid: result?.result?.transactionUuid || result?.transactionUuid || null,
         invoice_type: options?.invoiceType || "01GTKT",
         template_code: options?.templateCode || "",
         invoice_series: options?.invoiceSeries || "",
@@ -291,7 +271,6 @@ Deno.serve(async (req: Request) => {
         total_with_vat: Number(contract.total_amount) || 0,
         buyer_name: contract.buyer_info?.company_name || contract.buyer_info?.name || "",
         buyer_tax_code: contract.buyer_info?.tax_code || "",
-        response_data: result,
         request_data: invoicePayload,
       };
 
@@ -304,7 +283,7 @@ Deno.serve(async (req: Request) => {
       if (saveError) console.error("Save draft error:", saveError);
 
       return new Response(
-        JSON.stringify({ success: true, draft: savedDraft, apiResponse: result }),
+        JSON.stringify({ success: true, draft: savedDraft }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

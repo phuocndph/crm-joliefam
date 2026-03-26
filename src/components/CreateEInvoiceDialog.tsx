@@ -227,7 +227,7 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
     setSavingDraft(true);
     try {
       const { data, error } = await supabase.functions.invoke("vinvoice-api", {
-        body: { action: "create_draft", contract: buildInvoicePayload(), options: { templateCode, invoiceSeries, paymentMethod, invoiceType: "01GTKT" } },
+        body: { action: "create_draft", contract: buildInvoicePayload(), options: buildOptions() },
       });
       if (error) throw error;
       if (data?.success) {
