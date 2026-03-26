@@ -242,6 +242,45 @@ const ContractManagement = () => {
         <TabsContent value="templates" className="mt-4">
           <ContractTemplateManager />
         </TabsContent>
+
+        <TabsContent value="einvoices" className="mt-4">
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Số HĐ</TableHead>
+                    <TableHead>Mẫu / Ký hiệu</TableHead>
+                    <TableHead>Khách hàng</TableHead>
+                    <TableHead>Tổng tiền</TableHead>
+                    <TableHead>Ngày phát hành</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!einvoices?.length ? (
+                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Chưa có hoá đơn điện tử nào</TableCell></TableRow>
+                  ) : (
+                    einvoices.map((inv: any) => (
+                      <TableRow key={inv.id}>
+                        <TableCell className="font-medium text-primary">{inv.invoice_number || "—"}</TableCell>
+                        <TableCell className="text-xs">{inv.template_code} / {inv.invoice_series}</TableCell>
+                        <TableCell>{inv.buyer_name || "—"}</TableCell>
+                        <TableCell>{(inv.total_with_vat || 0).toLocaleString("vi-VN")} ₫</TableCell>
+                        <TableCell>{inv.issued_date ? new Date(inv.issued_date).toLocaleDateString("vi-VN") : "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant={inv.status === "issued" ? "default" : inv.status === "error" ? "destructive" : "secondary"}>
+                            {inv.status === "issued" ? "Đã phát hành" : inv.status === "error" ? "Lỗi" : "Nháp"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* Dialogs */}
