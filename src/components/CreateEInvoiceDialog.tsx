@@ -1,21 +1,21 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
-import { FileText, Send, Loader2, Building2, User, Plus, Trash2, Search, Save } from "lucide-react";
+import { FileText, Send, Loader2, Plus, Trash2, Search, Save, RotateCcw, Eye, Eraser } from "lucide-react";
 
 interface CreateEInvoiceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  contract: any | null; // null = standalone mode
+  contract: any | null;
 }
 
 interface InvoiceItem {
@@ -28,28 +28,40 @@ interface InvoiceItem {
 export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEInvoiceDialogProps) => {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
+
+  // Invoice config
   const [templateCode, setTemplateCode] = useState("");
   const [invoiceSeries, setInvoiceSeries] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("TM/CK");
+  const [paymentDetail, setPaymentDetail] = useState("");
+  const [currency, setCurrency] = useState("VND");
+  const [exchangeRate, setExchangeRate] = useState(1);
+  const [copyCount, setCopyCount] = useState(1);
 
-  // Standalone mode state
+  // Buyer info
+  const [noInvoiceBuyer, setNoInvoiceBuyer] = useState(false);
   const [buyerName, setBuyerName] = useState("");
   const [buyerCompany, setBuyerCompany] = useState("");
   const [buyerTaxCode, setBuyerTaxCode] = useState("");
   const [buyerAddress, setBuyerAddress] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
+  const [contractNumber, setContractNumber] = useState("");
+  const [buyerIdType, setBuyerIdType] = useState("");
+  const [buyerIdNumber, setBuyerIdNumber] = useState("");
+  const [buyerBankName, setBuyerBankName] = useState("");
+  const [buyerBankAccount, setBuyerBankAccount] = useState("");
+
+  // Items & VAT
   const [vatRate, setVatRate] = useState(0);
   const [standaloneItems, setStandaloneItems] = useState<InvoiceItem[]>([
     { name: "", unit: "Cái", quantity: 1, unit_price: 0 },
   ]);
 
-  const [lookingUp, setLookingUp] = useState(false);
-  const [savingDraft, setSavingDraft] = useState(false);
-
   const isStandalone = !contract;
 
-  // Derived data
   const sellerInfo = contract?.seller_info || {};
   const contractBuyerInfo = contract?.buyer_info || {};
   const contractItems = (contract?.items || []) as any[];
@@ -72,21 +84,24 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
     setStandaloneItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   };
 
+  const handleClearForm = () => {
+    setBuyerName(""); setBuyerCompany(""); setBuyerTaxCode(""); setBuyerAddress("");
+    setBuyerPhone(""); setBuyerEmail(""); setContractNumber("");
+    setBuyerIdType(""); setBuyerIdNumber(""); setBuyerBankName(""); setBuyerBankAccount("");
+    setNoInvoiceBuyer(false);
+    setStandaloneItems([{ name: "", unit: "Cái", quantity: 1, unit_price: 0 }]);
+    setVatRate(0);
+  };
+
   const handleLookupTaxCode = async () => {
-    if (!buyerTaxCode.trim()) {
-      toast.error("Vui lòng nhập mã số thuế");
-      return;
-    }
+    if (!buyerTaxCode.trim()) { toast.error("Vui lòng nhập mã số thuế"); return; }
     setLookingUp(true);
     try {
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
         body: { type: "tax_code", data: buyerTaxCode.trim() },
       });
       if (error) throw error;
-      if (data?.error) {
-        toast.error("Không tìm thấy", { description: data.error });
-        return;
-      }
+      if (data?.error) { toast.error("Không tìm thấy", { description: data.error }); return; }
       if (data?.company_name) {
         setBuyerCompany(data.company_name);
         if (data.address) setBuyerAddress(data.address);
@@ -104,234 +119,263 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
   };
 
   const buildInvoicePayload = () => {
-    const invoiceContract = isStandalone
-      ? {
-          id: null,
-          title: "",
-          seller_info: sellerInfo,
-          buyer_info: {
-            name: buyerName,
-            company_name: buyerCompany,
-            tax_code: buyerTaxCode,
-            address: buyerAddress,
-            phone: buyerPhone,
-            email: buyerEmail,
-            representative: buyerName,
-          },
-          items: standaloneItems.map(i => ({
-            name: i.name, unit: i.unit, quantity: i.quantity, unit_price: i.unit_price,
-          })),
-          vat_rate: vatRate,
-          subtotal: computedSubtotal,
-          vat_amount: computedVatAmount,
-          total_amount: computedTotal,
-        }
-      : contract;
-    return invoiceContract;
+    if (isStandalone) {
+      return {
+        id: null, title: "", seller_info: sellerInfo,
+        buyer_info: {
+          name: buyerName, company_name: buyerCompany, tax_code: buyerTaxCode,
+          address: buyerAddress, phone: buyerPhone, email: buyerEmail,
+          representative: buyerName, bank_name: buyerBankName, bank_account: buyerBankAccount,
+          id_type: buyerIdType, id_number: buyerIdNumber,
+        },
+        items: standaloneItems.map(i => ({ name: i.name, unit: i.unit, quantity: i.quantity, unit_price: i.unit_price })),
+        vat_rate: vatRate, subtotal: computedSubtotal, vat_amount: computedVatAmount, total_amount: computedTotal,
+      };
+    }
+    return contract;
   };
 
   const handleCreateInvoice = async () => {
-    if (!templateCode || !invoiceSeries) {
-      toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn");
-      return;
-    }
+    if (!templateCode || !invoiceSeries) { toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn"); return; }
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("vinvoice-api", {
-        body: {
-          action: "create_invoice",
-          contract: buildInvoicePayload(),
-          options: { templateCode, invoiceSeries, paymentMethod, invoiceType: "01GTKT" },
-        },
+        body: { action: "create_invoice", contract: buildInvoicePayload(), options: { templateCode, invoiceSeries, paymentMethod, invoiceType: "01GTKT" } },
       });
       if (error) throw error;
       if (data?.success) {
-        toast.success("Phát hành hoá đơn thành công!", {
-          description: `Số HĐ: ${data.invoice?.invoice_number || "Đang xử lý"}`,
-        });
+        toast.success("Phát hành hoá đơn thành công!", { description: `Số HĐ: ${data.invoice?.invoice_number || "Đang xử lý"}` });
         queryClient.invalidateQueries({ queryKey: ["einvoices"] });
         onOpenChange(false);
       } else {
-        const errMsg = data?.error || data?.apiResponse?.errorCode || "Lỗi không xác định";
-        toast.error("Phát hành hoá đơn thất bại", { description: errMsg });
+        toast.error("Phát hành hoá đơn thất bại", { description: data?.error || data?.apiResponse?.errorCode || "Lỗi không xác định" });
       }
-    } catch (err: any) {
-      toast.error("Lỗi kết nối", { description: err.message });
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) { toast.error("Lỗi kết nối", { description: err.message }); }
+    finally { setLoading(false); }
   };
 
   const handleSaveDraft = async () => {
-    if (!templateCode || !invoiceSeries) {
-      toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn");
-      return;
-    }
+    if (!templateCode || !invoiceSeries) { toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn"); return; }
     setSavingDraft(true);
     try {
       const { data, error } = await supabase.functions.invoke("vinvoice-api", {
-        body: {
-          action: "create_draft",
-          contract: buildInvoicePayload(),
-          options: { templateCode, invoiceSeries, paymentMethod, invoiceType: "01GTKT" },
-        },
+        body: { action: "create_draft", contract: buildInvoicePayload(), options: { templateCode, invoiceSeries, paymentMethod, invoiceType: "01GTKT" } },
       });
       if (error) throw error;
       if (data?.success) {
         toast.success("Đã lưu hoá đơn nháp");
         queryClient.invalidateQueries({ queryKey: ["einvoices"] });
         onOpenChange(false);
-      } else {
-        const errMsg = data?.error || "Lỗi không xác định";
-        toast.error("Lưu nháp thất bại", { description: errMsg });
-      }
-    } catch (err: any) {
-      toast.error("Lỗi kết nối", { description: err.message });
-    } finally {
-      setSavingDraft(false);
-    }
+      } else { toast.error("Lưu nháp thất bại", { description: data?.error || "Lỗi không xác định" }); }
+    } catch (err: any) { toast.error("Lỗi kết nối", { description: err.message }); }
+    finally { setSavingDraft(false); }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogHeader className="px-6 pt-5 pb-3 border-b border-border">
+          <DialogTitle className="flex items-center gap-2 text-lg">
             <FileText className="h-5 w-5 text-primary" />
             {isStandalone ? "Tạo hoá đơn điện tử" : `Xuất hoá đơn - ${contract?.contract_number}`}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Template config */}
-          <Card>
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm">Cấu hình hoá đơn</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-3 gap-3">
-              <div>
-                <Label className="text-xs">Mã mẫu HĐ *</Label>
-                <Input placeholder="VD: 01GTKT0/001" value={templateCode} onChange={e => setTemplateCode(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Ký hiệu HĐ *</Label>
-                <Input placeholder="VD: C24TAA" value={invoiceSeries} onChange={e => setInvoiceSeries(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Hình thức thanh toán</Label>
-                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="TM/CK">Tiền mặt/Chuyển khoản</SelectItem>
-                    <SelectItem value="TM">Tiền mặt</SelectItem>
-                    <SelectItem value="CK">Chuyển khoản</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="px-6 py-4 space-y-4">
+          {/* Two-column layout */}
+          <div className="grid grid-cols-2 gap-6">
+            {/* LEFT: THÔNG TIN KHÁCH HÀNG */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide border-b border-border pb-2">
+                Thông tin khách hàng
+              </h3>
 
-          {/* Seller & Buyer info */}
-          <div className="grid grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="py-3">
-                <CardTitle className="text-sm flex items-center gap-1">
-                  <Building2 className="h-4 w-4" /> Bên bán
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm space-y-1">
-                <p><span className="text-muted-foreground">Công ty:</span> {sellerInfo.company_name || sellerInfo.name || "Theo cấu hình"}</p>
-                <p><span className="text-muted-foreground">MST:</span> Theo cấu hình hệ thống</p>
-                <p><span className="text-muted-foreground">Địa chỉ:</span> {sellerInfo.address || "—"}</p>
-              </CardContent>
-            </Card>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="noInvoiceBuyer"
+                  checked={noInvoiceBuyer}
+                  onCheckedChange={(v) => setNoInvoiceBuyer(!!v)}
+                />
+                <Label htmlFor="noInvoiceBuyer" className="text-xs cursor-pointer">
+                  Người mua không lấy hoá đơn
+                </Label>
+              </div>
 
-            <Card>
-              <CardHeader className="py-3">
-                <CardTitle className="text-sm flex items-center gap-1">
-                  <User className="h-4 w-4" /> Bên mua
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isStandalone ? (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-xs">Tên công ty</Label>
-                        <Input value={buyerCompany} onChange={e => setBuyerCompany(e.target.value)} placeholder="Công ty ABC" />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Mã số thuế</Label>
-                        <div className="flex gap-1">
-                          <Input value={buyerTaxCode} onChange={e => setBuyerTaxCode(e.target.value)} placeholder="0123456789" />
-                          <Button type="button" size="sm" variant="outline" onClick={handleLookupTaxCode} disabled={lookingUp} className="shrink-0">
-                            {lookingUp ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Người mua hàng</Label>
-                      <Input value={buyerName} onChange={e => setBuyerName(e.target.value)} placeholder="Họ tên" />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Địa chỉ</Label>
-                      <Input value={buyerAddress} onChange={e => setBuyerAddress(e.target.value)} placeholder="Địa chỉ" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-xs">SĐT</Label>
-                        <Input value={buyerPhone} onChange={e => setBuyerPhone(e.target.value)} />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Email</Label>
-                        <Input value={buyerEmail} onChange={e => setBuyerEmail(e.target.value)} />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm space-y-1">
-                    <p><span className="text-muted-foreground">Công ty:</span> {contractBuyerInfo.company_name || contractBuyerInfo.name || "—"}</p>
-                    <p><span className="text-muted-foreground">MST:</span> {contractBuyerInfo.tax_code || "—"}</p>
-                    <p><span className="text-muted-foreground">Địa chỉ:</span> {contractBuyerInfo.address || "—"}</p>
-                    <p><span className="text-muted-foreground">Người mua:</span> {contractBuyerInfo.representative || "—"}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Items table */}
-          <Card>
-            <CardHeader className="py-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm">Hàng hoá / Dịch vụ</CardTitle>
-              {isStandalone && (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    <Label className="text-xs text-muted-foreground">VAT %:</Label>
-                    <Input
-                      type="number"
-                      className="w-16 h-7 text-xs"
-                      value={vatRate}
-                      onChange={e => setVatRate(Number(e.target.value) || 0)}
-                    />
-                  </div>
-                  <Button size="sm" variant="outline" onClick={addItem}>
-                    <Plus className="h-3 w-3 mr-1" /> Thêm dòng
+              {/* Tax code lookup */}
+              <div>
+                <Label className="text-xs text-muted-foreground">Tìm kiếm (MST / Tên)</Label>
+                <div className="flex gap-1">
+                  <Input
+                    value={buyerTaxCode}
+                    onChange={e => setBuyerTaxCode(e.target.value)}
+                    placeholder="Nhập MST để tra cứu"
+                    className="h-8 text-sm"
+                    disabled={noInvoiceBuyer}
+                  />
+                  <Button type="button" size="sm" variant="outline" onClick={handleLookupTaxCode} disabled={lookingUp || noInvoiceBuyer} className="shrink-0 h-8">
+                    {lookingUp ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
                   </Button>
                 </div>
+              </div>
+
+              <div>
+                <Label className="text-xs text-muted-foreground">Tên người mua hàng</Label>
+                <Input value={buyerName} onChange={e => setBuyerName(e.target.value)} className="h-8 text-sm" disabled={noInvoiceBuyer} />
+              </div>
+
+              <div>
+                <Label className="text-xs text-muted-foreground">Địa chỉ</Label>
+                <Input value={buyerAddress} onChange={e => setBuyerAddress(e.target.value)} className="h-8 text-sm" disabled={noInvoiceBuyer} />
+              </div>
+
+              <div>
+                <Label className="text-xs text-muted-foreground">Tên đơn vị (công ty)</Label>
+                <Input value={buyerCompany} onChange={e => setBuyerCompany(e.target.value)} className="h-8 text-sm" disabled={noInvoiceBuyer} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Mã số thuế</Label>
+                  <Input value={buyerTaxCode} onChange={e => setBuyerTaxCode(e.target.value)} className="h-8 text-sm" disabled={noInvoiceBuyer} />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Hợp đồng số</Label>
+                  <Input value={contractNumber} onChange={e => setContractNumber(e.target.value)} className="h-8 text-sm" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Số điện thoại</Label>
+                  <Input value={buyerPhone} onChange={e => setBuyerPhone(e.target.value)} className="h-8 text-sm" disabled={noInvoiceBuyer} />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Email</Label>
+                  <Input value={buyerEmail} onChange={e => setBuyerEmail(e.target.value)} className="h-8 text-sm" disabled={noInvoiceBuyer} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Loại giấy tờ</Label>
+                  <Select value={buyerIdType} onValueChange={setBuyerIdType} disabled={noInvoiceBuyer}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Chọn..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CMND">CMND</SelectItem>
+                      <SelectItem value="CCCD">CCCD</SelectItem>
+                      <SelectItem value="HC">Hộ chiếu</SelectItem>
+                      <SelectItem value="KHAC">Khác</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Số giấy tờ</Label>
+                  <Input value={buyerIdNumber} onChange={e => setBuyerIdNumber(e.target.value)} className="h-8 text-sm" disabled={noInvoiceBuyer} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Tên ngân hàng</Label>
+                  <Input value={buyerBankName} onChange={e => setBuyerBankName(e.target.value)} className="h-8 text-sm" disabled={noInvoiceBuyer} />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Số tài khoản</Label>
+                  <Input value={buyerBankAccount} onChange={e => setBuyerBankAccount(e.target.value)} className="h-8 text-sm" disabled={noInvoiceBuyer} />
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: THÔNG TIN HOÁ ĐƠN */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide border-b border-border pb-2">
+                Thông tin hoá đơn
+              </h3>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Hình thức thanh toán</Label>
+                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TM/CK">Tiền mặt/Chuyển khoản</SelectItem>
+                      <SelectItem value="TM">Tiền mặt</SelectItem>
+                      <SelectItem value="CK">Chuyển khoản</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Chi tiết hình thức TT</Label>
+                  <Input value={paymentDetail} onChange={e => setPaymentDetail(e.target.value)} className="h-8 text-sm" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Loại tiền</Label>
+                  <Select value={currency} onValueChange={setCurrency}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="VND">VND</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                      <SelectItem value="EUR">EUR</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Tỷ giá</Label>
+                  <Input type="number" value={exchangeRate} onChange={e => setExchangeRate(Number(e.target.value) || 1)} className="h-8 text-sm" />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs text-muted-foreground">Mẫu hoá đơn *</Label>
+                <Input placeholder="VD: 01GTKT0/001" value={templateCode} onChange={e => setTemplateCode(e.target.value)} className="h-8 text-sm" />
+              </div>
+
+              <div>
+                <Label className="text-xs text-muted-foreground">Ký hiệu hoá đơn *</Label>
+                <Input placeholder="VD: C24TAA" value={invoiceSeries} onChange={e => setInvoiceSeries(e.target.value)} className="h-8 text-sm" />
+              </div>
+
+              <div>
+                <Label className="text-xs text-muted-foreground">Số lượng nhân bản</Label>
+                <Input type="number" value={copyCount} onChange={e => setCopyCount(Number(e.target.value) || 1)} className="h-8 text-sm" min={1} />
+              </div>
+
+              {isStandalone && (
+                <div>
+                  <Label className="text-xs text-muted-foreground">Thuế suất VAT (%)</Label>
+                  <Input type="number" value={vatRate} onChange={e => setVatRate(Number(e.target.value) || 0)} className="h-8 text-sm" />
+                </div>
               )}
-            </CardHeader>
-            <CardContent className="p-0">
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Items table - full width */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">
+                Hàng hoá / Dịch vụ
+              </h3>
+              {isStandalone && (
+                <Button size="sm" variant="outline" onClick={addItem} className="h-7 text-xs">
+                  <Plus className="h-3 w-3 mr-1" /> Thêm dòng
+                </Button>
+              )}
+            </div>
+            <div className="border border-border rounded-md overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">STT</TableHead>
-                    <TableHead>Tên hàng hoá</TableHead>
-                    <TableHead className="w-20">ĐVT</TableHead>
-                    <TableHead className="text-right w-20">SL</TableHead>
-                    <TableHead className="text-right w-32">Đơn giá</TableHead>
-                    <TableHead className="text-right w-32">Thành tiền</TableHead>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="w-10 text-xs">STT</TableHead>
+                    <TableHead className="text-xs">Tên hàng hoá / dịch vụ</TableHead>
+                    <TableHead className="w-20 text-xs">ĐVT</TableHead>
+                    <TableHead className="text-right w-20 text-xs">Số lượng</TableHead>
+                    <TableHead className="text-right w-32 text-xs">Đơn giá</TableHead>
+                    <TableHead className="text-right w-32 text-xs">Thành tiền</TableHead>
                     {isStandalone && <TableHead className="w-10"></TableHead>}
                   </TableRow>
                 </TableHeader>
@@ -339,23 +383,23 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
                   {isStandalone ? (
                     standaloneItems.map((item, idx) => (
                       <TableRow key={idx}>
-                        <TableCell>{idx + 1}</TableCell>
+                        <TableCell className="text-xs">{idx + 1}</TableCell>
                         <TableCell>
-                          <Input className="h-8 text-sm" value={item.name} onChange={e => updateItem(idx, "name", e.target.value)} placeholder="Tên SP" />
+                          <Input className="h-7 text-xs" value={item.name} onChange={e => updateItem(idx, "name", e.target.value)} placeholder="Tên SP/DV" />
                         </TableCell>
                         <TableCell>
-                          <Input className="h-8 text-sm w-16" value={item.unit} onChange={e => updateItem(idx, "unit", e.target.value)} />
+                          <Input className="h-7 text-xs w-16" value={item.unit} onChange={e => updateItem(idx, "unit", e.target.value)} />
                         </TableCell>
                         <TableCell>
-                          <Input className="h-8 text-sm text-right" type="number" value={item.quantity} onChange={e => updateItem(idx, "quantity", Number(e.target.value) || 0)} />
+                          <Input className="h-7 text-xs text-right" type="number" value={item.quantity} onChange={e => updateItem(idx, "quantity", Number(e.target.value) || 0)} />
                         </TableCell>
                         <TableCell>
-                          <Input className="h-8 text-sm text-right" type="number" value={item.unit_price} onChange={e => updateItem(idx, "unit_price", Number(e.target.value) || 0)} />
+                          <Input className="h-7 text-xs text-right" type="number" value={item.unit_price} onChange={e => updateItem(idx, "unit_price", Number(e.target.value) || 0)} />
                         </TableCell>
-                        <TableCell className="text-right text-sm">{formatCurrency(item.quantity * item.unit_price)}</TableCell>
+                        <TableCell className="text-right text-xs">{formatCurrency(item.quantity * item.unit_price)}</TableCell>
                         <TableCell>
                           {standaloneItems.length > 1 && (
-                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeItem(idx)}>
+                            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeItem(idx)}>
                               <Trash2 className="h-3 w-3 text-destructive" />
                             </Button>
                           )}
@@ -364,7 +408,7 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
                     ))
                   ) : displayItems.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">Không có sản phẩm</TableCell>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-6">Không có sản phẩm</TableCell>
                     </TableRow>
                   ) : (
                     displayItems.map((item: any, idx: number) => {
@@ -372,61 +416,60 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
                       const price = Number(item.unit_price || item.price) || 0;
                       return (
                         <TableRow key={idx}>
-                          <TableCell>{idx + 1}</TableCell>
-                          <TableCell>{item.name || item.product_name || "—"}</TableCell>
-                          <TableCell>{item.unit || "—"}</TableCell>
-                          <TableCell className="text-right">{qty}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(price)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(qty * price)}</TableCell>
+                          <TableCell className="text-xs">{idx + 1}</TableCell>
+                          <TableCell className="text-xs">{item.name || item.product_name || "—"}</TableCell>
+                          <TableCell className="text-xs">{item.unit || "—"}</TableCell>
+                          <TableCell className="text-right text-xs">{qty}</TableCell>
+                          <TableCell className="text-right text-xs">{formatCurrency(price)}</TableCell>
+                          <TableCell className="text-right text-xs">{formatCurrency(qty * price)}</TableCell>
                         </TableRow>
                       );
                     })
                   )}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Summary */}
-          <Card>
-            <CardContent className="py-3">
-              <div className="flex justify-end">
-                <div className="space-y-1 text-sm w-64">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Cộng tiền hàng:</span>
-                    <span>{formatCurrency(computedSubtotal)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Thuế GTGT ({activeVatRate}%):</span>
-                    <span>{formatCurrency(computedVatAmount)}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between font-semibold">
-                    <span>Tổng thanh toán:</span>
-                    <span className="text-primary">{formatCurrency(computedTotal)}</span>
-                  </div>
-                </div>
+          <div className="flex justify-end">
+            <div className="space-y-1 text-sm w-72 bg-muted/30 rounded-md p-3">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground text-xs">Cộng tiền hàng:</span>
+                <span className="text-xs">{formatCurrency(computedSubtotal)}</span>
               </div>
-            </CardContent>
-          </Card>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground text-xs">Thuế GTGT ({activeVatRate}%):</span>
+                <span className="text-xs">{formatCurrency(computedVatAmount)}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between font-semibold">
+                <span className="text-sm">Tổng thanh toán:</span>
+                <span className="text-sm text-primary">{formatCurrency(computedTotal)}</span>
+              </div>
+            </div>
+          </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading || savingDraft}>Huỷ</Button>
-            <Button variant="secondary" onClick={handleSaveDraft} disabled={loading || savingDraft}>
-              {savingDraft ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Đang lưu...</>
-              ) : (
-                <><Save className="h-4 w-4 mr-1" /> Lưu nháp</>
+          <div className="flex justify-between border-t border-border pt-4">
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading || savingDraft} className="text-xs h-9">
+                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Quay lại
+              </Button>
+              {isStandalone && (
+                <Button variant="ghost" onClick={handleClearForm} disabled={loading || savingDraft} className="text-xs h-9 text-destructive hover:text-destructive">
+                  <Eraser className="h-3.5 w-3.5 mr-1" /> Xoá dữ liệu nhập
+                </Button>
               )}
-            </Button>
-            <Button onClick={handleCreateInvoice} disabled={loading || savingDraft}>
-              {loading ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Đang xử lý...</>
-              ) : (
-                <><Send className="h-4 w-4 mr-1" /> Phát hành hoá đơn</>
-              )}
-            </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={handleSaveDraft} disabled={loading || savingDraft} className="text-xs h-9">
+                {savingDraft ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> Đang lưu...</> : <><Save className="h-3.5 w-3.5 mr-1" /> Lập HĐ nháp</>}
+              </Button>
+              <Button onClick={handleCreateInvoice} disabled={loading || savingDraft} className="text-xs h-9">
+                {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> Đang xử lý...</> : <><Send className="h-3.5 w-3.5 mr-1" /> Phát hành hoá đơn</>}
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>
