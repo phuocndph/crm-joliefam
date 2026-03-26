@@ -14,6 +14,8 @@ import { CreateFrameworkContractForm } from "@/components/CreateFrameworkContrac
 import { EditContractDialog } from "@/components/EditContractDialog";
 import { DeleteContractDialog } from "@/components/DeleteContractDialog";
 import { ContractPreviewDialog } from "@/components/ContractPreviewDialog";
+import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
+import { useEInvoices } from "@/hooks/useEInvoices";
 import { HandoverReportDialog } from "@/components/HandoverReportDialog";
 import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
 import { FrameworkContractDialog } from "@/components/FrameworkContractDialog";
