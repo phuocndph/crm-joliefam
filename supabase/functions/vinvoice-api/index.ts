@@ -292,23 +292,46 @@ Deno.serve(async (req: Request) => {
       const token = await getVinvoiceToken();
       const apiUrl = Deno.env.get("VINVOICE_API_URL") || "https://api-vinvoice.viettel.vn";
       const taxCode = Deno.env.get("VINVOICE_TAX_CODE");
-      const invoiceType = params.invoiceType || "01GTKT";
 
-      const res = await fetch(
-        `${apiUrl}/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceTemplates`,
-        {
+      // Try with supplierTaxCode first (correct Viettel API field name)
+      const requestBody: any = { supplierTaxCode: taxCode };
+      if (params.invoiceType) {
+        requestBody.invoiceType = params.invoiceType;
+      }
+
+      const url = `${apiUrl}/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceTemplates`;
+      console.log("get_templates request:", JSON.stringify({ url, body: requestBody }));
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `access_token=${token}`,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const text = await res.text();
+      console.log("get_templates raw response:", text.substring(0, 500));
+      let result;
+      try { result = JSON.parse(text); } catch { result = { raw: text }; }
+
+      // If no results, retry without invoiceType filter
+      if (result?.totalRows === 0 && params.invoiceType) {
+        console.log("get_templates: 0 results with invoiceType, retrying without filter...");
+        const retryBody = { supplierTaxCode: taxCode };
+        const retryRes = await fetch(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Cookie: `access_token=${token}`,
           },
-          body: JSON.stringify({ taxCode, invoiceType }),
-        }
-      );
-
-      const text = await res.text();
-      let result;
-      try { result = JSON.parse(text); } catch { result = { raw: text }; }
+          body: JSON.stringify(retryBody),
+        });
+        const retryText = await retryRes.text();
+        console.log("get_templates retry response:", retryText.substring(0, 500));
+        try { result = JSON.parse(retryText); } catch { result = { raw: retryText }; }
+      }
 
       return new Response(JSON.stringify({ success: true, data: result }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
