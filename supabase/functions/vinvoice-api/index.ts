@@ -6,6 +6,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function getAuthHeaders(token: string) {
+  return {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+  };
+}
+
 async function getVinvoiceToken(): Promise<string> {
   const apiUrl = Deno.env.get("VINVOICE_API_URL") || "https://api-vinvoice.viettel.vn";
   const username = Deno.env.get("VINVOICE_USERNAME");
@@ -37,10 +44,7 @@ async function createInvoice(token: string, invoiceData: any) {
     `${apiUrl}/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${taxCode}`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: `access_token=${token}`,
-      },
+      headers: getAuthHeaders(token),
       body: JSON.stringify(invoiceData),
     }
   );
@@ -59,10 +63,7 @@ async function getInvoiceFile(token: string, body: any) {
     `${apiUrl}/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceRepresentationFile`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: `access_token=${token}`,
-      },
+      headers: getAuthHeaders(token),
       body: JSON.stringify({ supplierTaxCode: taxCode, ...body }),
     }
   );
