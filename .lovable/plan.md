@@ -1,23 +1,39 @@
 
 
-## Chuyển sang liên kết trực tiếp VinVoice
+## Nhúng VinVoice trực tiếp trong CRM
 
-Thay vì gọi API S-Invoice phức tạp, đơn giản hoá trang Hoá đơn điện tử bằng cách dẫn link trực tiếp đến `https://vinvoice.viettel.vn/`.
+Thay vì mở tab mới, nhúng trang `https://vinvoice.viettel.vn/` bằng iframe ngay trong trang Hoá đơn điện tử, kết hợp với tab chuyển đổi giữa "VinVoice" và "Lịch sử nội bộ".
+
+**Lưu ý quan trọng:** Nhiều website chặn iframe bằng header `X-Frame-Options` hoặc `Content-Security-Policy`. Nếu VinVoice chặn, sẽ cần fallback mở trong tab mới. Plan này xử lý cả hai trường hợp.
 
 ### Thay đổi
 
 **File: `src/pages/EInvoiceManagement.tsx`**
 
-1. Thêm nút **"Mở VinVoice"** nổi bật ở header, mở tab mới đến `https://vinvoice.viettel.vn/`
-2. Giữ nguyên bảng danh sách hoá đơn đã lưu local (nếu có dữ liệu)
-3. Thêm card hướng dẫn nhanh: "Đăng nhập VinVoice để tạo và quản lý hoá đơn điện tử"
+1. Thêm state `activeTab` với 2 tab: **"VinVoice"** (mặc định) và **"Lịch sử"**
+2. Tab "VinVoice": hiển thị iframe full-width, chiều cao `calc(100vh - 200px)` để tận dụng không gian
+3. Tab "Lịch sử": giữ nguyên bảng danh sách hoá đơn, stats, search hiện tại
+4. Xử lý trường hợp iframe bị chặn: hiển thị thông báo kèm nút "Mở VinVoice trong tab mới"
+5. Header: giữ tiêu đề, bỏ nút "Mở VinVoice" riêng (vì đã nhúng), giữ nút "Tạo hoá đơn (nội bộ)"
+6. Bỏ card hướng dẫn nhanh (không cần nữa vì VinVoice đã ở ngay trong trang)
 
-**File: `src/components/CreateEInvoiceDialog.tsx`**
+### Giao diện
 
-4. Giữ dialog nhưng thêm nút "Mở VinVoice" bên cạnh nút tạo hoá đơn, để user có thể chọn tạo trực tiếp trên web Viettel
-5. Giảm bớt logic gọi API `get_templates` — nếu không lấy được thì chỉ hiện link VinVoice thay vì báo lỗi
+```text
+┌─────────────────────────────────────────┐
+│ 📄 Hoá đơn điện tử     [Tạo HĐ nội bộ]│
+│                                         │
+│  [VinVoice]  [Lịch sử]                 │
+│ ┌─────────────────────────────────────┐ │
+│ │                                     │ │
+│ │   iframe: vinvoice.viettel.vn       │ │
+│ │   (hoặc fallback nếu bị chặn)      │ │
+│ │                                     │ │
+│ └─────────────────────────────────────┘ │
+└─────────────────────────────────────────┘
+```
 
 ### Không thay đổi
-- Edge function `vinvoice-api` vẫn giữ nguyên (có thể dùng sau)
-- Bảng `einvoices` vẫn giữ để lưu lịch sử
+- Bảng `einvoices`, hooks, edge function giữ nguyên
+- `CreateEInvoiceDialog` giữ nguyên
 
