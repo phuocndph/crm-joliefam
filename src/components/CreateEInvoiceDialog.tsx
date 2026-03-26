@@ -134,15 +134,15 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
       const { data, error } = await supabase.functions.invoke("vinvoice-api", {
         body: { action: "get_templates", invoiceType: "01GTKT" },
       });
+      console.log("get_templates raw response:", JSON.stringify(data));
       if (error) throw error;
 
       const parsed = normalizeTemplateData(data);
+      console.log("Parsed templates:", JSON.stringify(parsed));
       setTemplates(parsed);
 
       if (parsed.length === 0) {
-        setTemplateCode("");
-        setSeriesList([]);
-        setInvoiceSeries("");
+        // No templates from API — keep manual input mode
         return;
       }
 
@@ -152,7 +152,7 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
       setInvoiceSeries(firstTemplate.invoiceSeries[0] || "");
     } catch (err: any) {
       console.error("Fetch templates error:", err);
-      toast.error("Không tải được danh sách mẫu hoá đơn", { description: err.message });
+      // Silently fail — user can type manually
     } finally {
       setLoadingTemplates(false);
     }
