@@ -28,9 +28,62 @@ interface InvoiceItem {
 interface InvoiceTemplate {
   templateCode: string;
   templateName?: string;
-  invoiceSeries?: string[];
-  [key: string]: any;
+  invoiceSeries: string[];
 }
+
+const toSeriesArray = (value: unknown): string[] => {
+  const arr = Array.isArray(value) ? value : value ? [value] : [];
+  return [...new Set(arr.map((item) => String(item).trim()).filter(Boolean))];
+};
+
+const normalizeTemplateData = (raw: any): InvoiceTemplate[] => {
+  const candidates = [
+    raw,
+    raw?.templates,
+    raw?.data,
+    raw?.result,
+    raw?.result?.data,
+    raw?.data?.result,
+    raw?.data?.data,
+    raw?.data?.templates,
+  ];
+
+  const rows = candidates.find(Array.isArray) as any[] | undefined;
+  if (!rows) return [];
+
+  const grouped = new Map<string, InvoiceTemplate>();
+
+  rows.forEach((row: any) => {
+    if (!row || typeof row !== "object") return;
+
+    const code = String(
+      row.templateCode ?? row.invTemplateNo ?? row.invoiceTemplateCode ?? row.invoiceTemplate ?? row.template ?? ""
+    ).trim();
+
+    if (!code) return;
+
+    const name = String(
+      row.templateName ?? row.invTemplateName ?? row.invoiceTemplateName ?? row.name ?? ""
+    ).trim();
+
+    const series = [
+      ...toSeriesArray(row.invoiceSeries),
+      ...toSeriesArray(row.series),
+      ...toSeriesArray(row.invoiceNoSeries),
+      ...toSeriesArray(row.symbol),
+      ...toSeriesArray(row.sign),
+      ...toSeriesArray(row.serial),
+      ...toSeriesArray(row.invoiceSeriesList),
+    ];
+
+    const current = grouped.get(code) ?? { templateCode: code, templateName: name, invoiceSeries: [] };
+    if (!current.templateName && name) current.templateName = name;
+    current.invoiceSeries = [...new Set([...current.invoiceSeries, ...series])];
+    grouped.set(code, current);
+  });
+
+  return Array.from(grouped.values());
+};
 
 export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEInvoiceDialogProps) => {
   const queryClient = useQueryClient();
@@ -82,18 +135,21 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
         body: { action: "get_templates", invoiceType: "01GTKT" },
       });
       if (error) throw error;
-      const list = data?.data || [];
-      // API may return array of objects or nested structure
-      const parsed: InvoiceTemplate[] = Array.isArray(list) ? list : (list?.result || list?.data || []);
+
+      const parsed = normalizeTemplateData(data);
       setTemplates(parsed);
-      if (parsed.length === 1) {
-        setTemplateCode(parsed[0].templateCode || "");
-        const series = parsed[0].invoiceSeries || [];
-        setSeriesList(Array.isArray(series) ? series : []);
-        if (Array.isArray(series) && series.length === 1) {
-          setInvoiceSeries(series[0]);
-        }
+
+      if (parsed.length === 0) {
+        setTemplateCode("");
+        setSeriesList([]);
+        setInvoiceSeries("");
+        return;
       }
+
+      const firstTemplate = parsed[0];
+      setTemplateCode(firstTemplate.templateCode);
+      setSeriesList(firstTemplate.invoiceSeries);
+      setInvoiceSeries(firstTemplate.invoiceSeries[0] || "");
     } catch (err: any) {
       console.error("Fetch templates error:", err);
       toast.error("Không tải được danh sách mẫu hoá đơn", { description: err.message });
@@ -108,12 +164,10 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
 
   const handleTemplateChange = (code: string) => {
     setTemplateCode(code);
-    setInvoiceSeries("");
-    const tpl = templates.find(t => t.templateCode === code);
-    const series = tpl?.invoiceSeries || [];
-    const seriesArr = Array.isArray(series) ? series : [];
+    const tpl = templates.find((t) => t.templateCode === code);
+    const seriesArr = tpl?.invoiceSeries ?? [];
     setSeriesList(seriesArr);
-    if (seriesArr.length === 1) setInvoiceSeries(seriesArr[0]);
+    setInvoiceSeries(seriesArr[0] ?? "");
   };
 
   const sellerInfo = contract?.seller_info || {};
