@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
-import { FileText, Send, Loader2, Building2, User, Plus, Trash2 } from "lucide-react";
+import { FileText, Send, Loader2, Building2, User, Plus, Trash2, Search, Save } from "lucide-react";
 
 interface CreateEInvoiceDialogProps {
   open: boolean;
@@ -44,6 +44,9 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
     { name: "", unit: "Cái", quantity: 1, unit_price: 0 },
   ]);
 
+  const [lookingUp, setLookingUp] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+
   const isStandalone = !contract;
 
   // Derived data
@@ -69,13 +72,38 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
     setStandaloneItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   };
 
-  const handleCreateInvoice = async () => {
-    if (!templateCode || !invoiceSeries) {
-      toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn");
+  const handleLookupTaxCode = async () => {
+    if (!buyerTaxCode.trim()) {
+      toast.error("Vui lòng nhập mã số thuế");
       return;
     }
+    setLookingUp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
+        body: { type: "tax_code", data: buyerTaxCode.trim() },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast.error("Không tìm thấy", { description: data.error });
+        return;
+      }
+      if (data?.company_name) {
+        setBuyerCompany(data.company_name);
+        if (data.address) setBuyerAddress(data.address);
+        if (data.representative) setBuyerName(data.representative);
+        if (data.phone) setBuyerPhone(data.phone);
+        toast.success("Đã tìm thấy thông tin doanh nghiệp", { description: data.company_name });
+      } else {
+        toast.error("Không tìm thấy doanh nghiệp với MST này");
+      }
+    } catch (err: any) {
+      toast.error("Lỗi tra cứu MST", { description: err.message });
+    } finally {
+      setLookingUp(false);
+    }
+  };
 
-    // Build contract-like payload for standalone mode
+  const buildInvoicePayload = () => {
     const invoiceContract = isStandalone
       ? {
           id: null,
@@ -91,10 +119,7 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
             representative: buyerName,
           },
           items: standaloneItems.map(i => ({
-            name: i.name,
-            unit: i.unit,
-            quantity: i.quantity,
-            unit_price: i.unit_price,
+            name: i.name, unit: i.unit, quantity: i.quantity, unit_price: i.unit_price,
           })),
           vat_rate: vatRate,
           subtotal: computedSubtotal,
@@ -102,24 +127,24 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
           total_amount: computedTotal,
         }
       : contract;
+    return invoiceContract;
+  };
 
+  const handleCreateInvoice = async () => {
+    if (!templateCode || !invoiceSeries) {
+      toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn");
+      return;
+    }
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("vinvoice-api", {
         body: {
           action: "create_invoice",
-          contract: invoiceContract,
-          options: {
-            templateCode,
-            invoiceSeries,
-            paymentMethod,
-            invoiceType: "01GTKT",
-          },
+          contract: buildInvoicePayload(),
+          options: { templateCode, invoiceSeries, paymentMethod, invoiceType: "01GTKT" },
         },
       });
-
       if (error) throw error;
-
       if (data?.success) {
         toast.success("Phát hành hoá đơn thành công!", {
           description: `Số HĐ: ${data.invoice?.invoice_number || "Đang xử lý"}`,
@@ -134,6 +159,36 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
       toast.error("Lỗi kết nối", { description: err.message });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!templateCode || !invoiceSeries) {
+      toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn");
+      return;
+    }
+    setSavingDraft(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("vinvoice-api", {
+        body: {
+          action: "create_draft",
+          contract: buildInvoicePayload(),
+          options: { templateCode, invoiceSeries, paymentMethod, invoiceType: "01GTKT" },
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success("Đã lưu hoá đơn nháp");
+        queryClient.invalidateQueries({ queryKey: ["einvoices"] });
+        onOpenChange(false);
+      } else {
+        const errMsg = data?.error || "Lỗi không xác định";
+        toast.error("Lưu nháp thất bại", { description: errMsg });
+      }
+    } catch (err: any) {
+      toast.error("Lỗi kết nối", { description: err.message });
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -207,7 +262,12 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
                       </div>
                       <div>
                         <Label className="text-xs">Mã số thuế</Label>
-                        <Input value={buyerTaxCode} onChange={e => setBuyerTaxCode(e.target.value)} placeholder="0123456789" />
+                        <div className="flex gap-1">
+                          <Input value={buyerTaxCode} onChange={e => setBuyerTaxCode(e.target.value)} placeholder="0123456789" />
+                          <Button type="button" size="sm" variant="outline" onClick={handleLookupTaxCode} disabled={lookingUp} className="shrink-0">
+                            {lookingUp ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                     <div>
@@ -352,8 +412,15 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
 
           {/* Actions */}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Huỷ</Button>
-            <Button onClick={handleCreateInvoice} disabled={loading}>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading || savingDraft}>Huỷ</Button>
+            <Button variant="secondary" onClick={handleSaveDraft} disabled={loading || savingDraft}>
+              {savingDraft ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Đang lưu...</>
+              ) : (
+                <><Save className="h-4 w-4 mr-1" /> Lưu nháp</>
+              )}
+            </Button>
+            <Button onClick={handleCreateInvoice} disabled={loading || savingDraft}>
               {loading ? (
                 <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Đang xử lý...</>
               ) : (
