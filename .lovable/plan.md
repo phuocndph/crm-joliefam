@@ -1,46 +1,55 @@
 
 
-## Kết quả kiểm tra kết nối S-Invoice
+## Sửa lỗi kết nối API S-Invoice
 
-### Phát hiện 2 vấn đề chính
+### Phát hiện từ log và nghiên cứu
 
-#### Vấn đề 1: API `get_templates` trả về rỗng
-
-Console log cho thấy:
+API trả về lỗi:
 ```
-get_templates raw response: {"success":true,"data":{"errorCode":null,"description":null,"totalRows":0,"template":null}}
+{"code":400,"message":"TAX_CODE_REQUIRED","data":"Mã số thuế bắt buộc nhập"}
+```
+Dù đã gửi `supplierTaxCode` trong body.
+
+Sau khi nghiên cứu source code thư viện Viettel S-Invoice chính thức (`dev10katec/viettel-s-invoice`), phát hiện **2 lỗi nghiêm trọng**:
+
+### Lỗi 1: Sai tên field trong `getInvoiceTemplates`
+
+| Hiện tại (sai) | Thư viện Viettel (đúng) |
+|---|---|
+| `{ supplierTaxCode: taxCode }` | `{ taxCode: username }` |
+
+Endpoint `getInvoiceTemplates` yêu cầu field `taxCode`, **không phải** `supplierTaxCode`. Và giá trị phải là **username** đăng nhập Viettel (ví dụ: `0108652480-509`), không phải mã số thuế thuần.
+
+### Lỗi 2: Sai phương thức xác thực
+
+| Hiện tại (sai) | Thư viện Viettel (đúng) |
+|---|---|
+| `Cookie: access_token=...` | `Authorization: Bearer ...` |
+
+Tất cả các API call đang dùng Cookie để gửi token. Thư viện Viettel chính thức dùng `Authorization: Bearer` header.
+
+### Kế hoạch sửa
+
+**File: `supabase/functions/vinvoice-api/index.ts`**
+
+1. **`getInvoiceTemplates`**: Đổi body từ `{ supplierTaxCode }` sang `{ taxCode: username }`, dùng `Authorization: Bearer` header
+2. **`createInvoice`**: Đổi từ `Cookie` sang `Authorization: Bearer` header
+3. **`getInvoiceFile`**: Đổi từ `Cookie` sang `Authorization: Bearer` header
+4. Thêm helper `getAuthHeaders(token)` trả về `{ "Content-Type": "application/json", Authorization: "Bearer " + token }` để dùng chung
+
+### Chi tiết kỹ thuật
+
+```text
+Trước:
+  headers: { Cookie: `access_token=${token}` }
+  body: { supplierTaxCode: VINVOICE_TAX_CODE }
+
+Sau:
+  headers: { Authorization: `Bearer ${token}` }
+  body: { taxCode: VINVOICE_USERNAME, invoiceType: "..." }
 ```
 
-**Nguyên nhân:** API đăng nhập thành công (không lỗi auth), nhưng endpoint `getInvoiceTemplates` trả về 0 kết quả. Có thể do:
-
-- Request body gửi `{ taxCode, invoiceType }` nhưng Viettel API có thể yêu cầu field `supplierTaxCode` thay vì `taxCode`
-- Hoặc `invoiceType` không đúng với loại hoá đơn đã đăng ký trên tài khoản S-Invoice
-
-**Sửa:**
-1. Thay đổi body request thành `{ supplierTaxCode: taxCode, invoiceType }` 
-2. Thêm log chi tiết URL, body, response để debug nếu vẫn lỗi
-3. Nếu vẫn rỗng, thử không truyền `invoiceType` để lấy tất cả mẫu
-
-#### Vấn đề 2: Lưu hoá đơn bị chặn bởi RLS
-
-Edge function logs:
-```
-Save draft error: new row violates row-level security policy for table "einvoices"
-```
-
-**Nguyên nhân:** Bảng `einvoices` có RLS yêu cầu `manager_id` khớp với user, nhưng **không có trigger `set_manager_id`** trên bảng này. Các bảng khác (orders, customers...) đều có trigger tự động gán `manager_id`, riêng `einvoices` thiếu.
-
-**Sửa:** Tạo migration thêm trigger `set_manager_id` cho bảng `einvoices` (giống các bảng khác).
-
-### Thay đổi
-
-| File / Resource | Thay đổi |
+| File | Thay đổi |
 |------|----------|
-| `supabase/functions/vinvoice-api/index.ts` | Sửa body `get_templates`: dùng `supplierTaxCode`, thêm debug log |
-| Migration SQL | Thêm trigger `set_manager_id` BEFORE INSERT trên `einvoices` |
-
-### Không thay đổi
-- Secrets đã cấu hình đầy đủ (VINVOICE_USERNAME, PASSWORD, TAX_CODE, API_URL)
-- Logic đăng nhập API hoạt động bình thường
-- Frontend CreateEInvoiceDialog
+| `supabase/functions/vinvoice-api/index.ts` | Sửa auth header và field name cho tất cả API calls |
 
