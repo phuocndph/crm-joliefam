@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
-import { FileText, Plus, Search } from "lucide-react";
+import { FileText, Plus, Search, ExternalLink } from "lucide-react";
+
+const VINVOICE_URL = "https://vinvoice.viettel.vn/";
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
   issued: { label: "Đã phát hành", variant: "default" },
