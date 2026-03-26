@@ -173,21 +173,35 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
   };
 
   const buildInvoicePayload = () => {
-    if (isStandalone) {
-      return {
-        id: null, title: "", seller_info: sellerInfo,
-        buyer_info: {
+    const buyerInfo = noInvoiceBuyer
+      ? { name: "", company_name: "", tax_code: "", address: "", phone: "", email: "", representative: "" }
+      : {
           name: buyerName, company_name: buyerCompany, tax_code: buyerTaxCode,
           address: buyerAddress, phone: buyerPhone, email: buyerEmail,
           representative: buyerName, bank_name: buyerBankName, bank_account: buyerBankAccount,
           id_type: buyerIdType, id_number: buyerIdNumber,
-        },
+        };
+    if (isStandalone) {
+      return {
+        id: null, title: "", seller_info: sellerInfo,
+        buyer_info: buyerInfo,
         items: standaloneItems.map(i => ({ name: i.name, unit: i.unit, quantity: i.quantity, unit_price: i.unit_price })),
         vat_rate: vatRate, subtotal: computedSubtotal, vat_amount: computedVatAmount, total_amount: computedTotal,
       };
     }
+    // For contract-based: override buyer_info if noInvoiceBuyer
+    if (noInvoiceBuyer) {
+      return { ...contract, buyer_info: buyerInfo };
+    }
     return contract;
   };
+
+  const buildOptions = () => ({
+    templateCode, invoiceSeries, paymentMethod, invoiceType: "01GTKT",
+    currency, exchangeRate, contractNumber, paymentDetail,
+    buyerBankName, buyerBankAccount, buyerIdType, buyerIdNumber,
+    copyCount, cusGetInvoiceRight: !noInvoiceBuyer,
+  });
 
   const handleCreateInvoice = async () => {
     if (!templateCode || !invoiceSeries) { toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn"); return; }
