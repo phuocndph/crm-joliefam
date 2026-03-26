@@ -412,8 +412,15 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
 
           {/* Actions */}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Huỷ</Button>
-            <Button onClick={handleCreateInvoice} disabled={loading}>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading || savingDraft}>Huỷ</Button>
+            <Button variant="secondary" onClick={handleSaveDraft} disabled={loading || savingDraft}>
+              {savingDraft ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Đang lưu...</>
+              ) : (
+                <><Save className="h-4 w-4 mr-1" /> Lưu nháp</>
+              )}
+            </Button>
+            <Button onClick={handleCreateInvoice} disabled={loading || savingDraft}>
               {loading ? (
                 <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Đang xử lý...</>
               ) : (
