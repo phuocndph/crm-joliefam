@@ -132,7 +132,7 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
               </CardHeader>
               <CardContent className="text-sm space-y-1">
                 <p><span className="text-muted-foreground">Công ty:</span> {sellerInfo.company_name || sellerInfo.name || "—"}</p>
-                <p><span className="text-muted-foreground">MST:</span> {Deno?.env?.get?.("VINVOICE_TAX_CODE") || "Theo cấu hình"}</p>
+                <p><span className="text-muted-foreground">MST:</span> Theo cấu hình hệ thống</p>
                 <p><span className="text-muted-foreground">Địa chỉ:</span> {sellerInfo.address || "—"}</p>
                 <p><span className="text-muted-foreground">SĐT:</span> {sellerInfo.phone || "—"}</p>
               </CardContent>
