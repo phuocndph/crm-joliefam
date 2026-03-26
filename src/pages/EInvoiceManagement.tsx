@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
-import { FileText, Plus, Search, ExternalLink } from "lucide-react";
+import { FileText, Plus, Search, ExternalLink, AlertTriangle } from "lucide-react";
 
 const VINVOICE_URL = "https://vinvoice.viettel.vn/";
 
@@ -21,6 +22,7 @@ const EInvoiceManagement = () => {
   const { data: einvoices, isLoading } = useEInvoices();
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [iframeBlocked, setIframeBlocked] = useState(false);
 
   const filtered = (einvoices || []).filter((inv: any) => {
     if (!search) return true;
@@ -43,7 +45,7 @@ const EInvoiceManagement = () => {
   const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -52,105 +54,116 @@ const EInvoiceManagement = () => {
           </h1>
           <p className="text-muted-foreground">Quản lý và phát hành hoá đơn điện tử qua Viettel S-Invoice</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="gradient" asChild>
-            <a href={VINVOICE_URL} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-4 w-4 mr-1" /> Mở VinVoice
-            </a>
-          </Button>
-          <Button variant="outline" onClick={() => setShowCreate(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Tạo hoá đơn (nội bộ)
-          </Button>
-        </div>
+        <Button variant="outline" onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4 mr-1" /> Tạo hoá đơn (nội bộ)
+        </Button>
       </div>
 
-      {/* Quick Guide Card */}
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="p-4 flex items-center gap-4">
-          <FileText className="h-8 w-8 text-primary shrink-0" />
-          <div className="flex-1">
-            <p className="font-medium text-foreground">Truy cập nhanh VinVoice</p>
-            <p className="text-sm text-muted-foreground">
-              Đăng nhập tại{" "}
-              <a href={VINVOICE_URL} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline">
-                vinvoice.viettel.vn
-              </a>{" "}
-              để tạo, quản lý và phát hành hoá đơn điện tử trực tiếp trên hệ thống Viettel S-Invoice.
-            </p>
-          </div>
-          <Button variant="outline" size="sm" asChild>
-            <a href={VINVOICE_URL} target="_blank" rel="noopener noreferrer">
-              Mở trang <ExternalLink className="h-3 w-3 ml-1" />
-            </a>
-          </Button>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="vinvoice" className="w-full">
+        <TabsList>
+          <TabsTrigger value="vinvoice">VinVoice</TabsTrigger>
+          <TabsTrigger value="history">Lịch sử nội bộ</TabsTrigger>
+        </TabsList>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: "Tổng hoá đơn", value: stats.total, color: "text-foreground" },
-          { label: "Đã phát hành", value: stats.issued, color: "text-blue-600" },
-          { label: "Nháp", value: stats.draft, color: "text-muted-foreground" },
-          { label: "Lỗi", value: stats.error, color: "text-destructive" },
-        ].map((s, i) => (
-          <Card key={i}>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">{s.label}</p>
-              <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+        <TabsContent value="vinvoice">
+          {iframeBlocked ? (
+            <Card className="border-destructive/30">
+              <CardContent className="p-8 flex flex-col items-center gap-4 text-center">
+                <AlertTriangle className="h-12 w-12 text-yellow-500" />
+                <div>
+                  <p className="font-medium text-foreground text-lg">Không thể nhúng VinVoice</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Trang VinVoice không cho phép hiển thị trong iframe. Vui lòng mở trong tab mới.
+                  </p>
+                </div>
+                <Button variant="gradient" asChild>
+                  <a href={VINVOICE_URL} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-1" /> Mở VinVoice trong tab mới
+                  </a>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <iframe
+                src={VINVOICE_URL}
+                className="w-full border-0"
+                style={{ height: "calc(100vh - 200px)" }}
+                title="Viettel S-Invoice"
+                onError={() => setIframeBlocked(true)}
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation"
+              />
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-4">
+          {/* Stats */}
+          <div className="grid grid-cols-4 gap-4">
+            {[
+              { label: "Tổng hoá đơn", value: stats.total, color: "text-foreground" },
+              { label: "Đã phát hành", value: stats.issued, color: "text-blue-600" },
+              { label: "Nháp", value: stats.draft, color: "text-muted-foreground" },
+              { label: "Lỗi", value: stats.error, color: "text-destructive" },
+            ].map((s, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <p className="text-sm text-muted-foreground">{s.label}</p>
+                  <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Tìm theo số HĐ, khách hàng, MST..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+          </div>
+
+          {/* Table */}
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Số hoá đơn</TableHead>
+                    <TableHead>Mẫu / Ký hiệu</TableHead>
+                    <TableHead>Khách hàng</TableHead>
+                    <TableHead>MST khách</TableHead>
+                    <TableHead className="text-right">Tổng tiền</TableHead>
+                    <TableHead>Ngày phát hành</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
+                  ) : filtered.length === 0 ? (
+                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Chưa có hoá đơn nào</TableCell></TableRow>
+                  ) : (
+                    filtered.map((inv: any) => {
+                      const st = statusMap[inv.status] || statusMap.draft;
+                      return (
+                        <TableRow key={inv.id}>
+                          <TableCell className="font-medium text-primary">{inv.invoice_number || "—"}</TableCell>
+                          <TableCell className="text-xs">{inv.template_code || "—"} / {inv.invoice_series || "—"}</TableCell>
+                          <TableCell>{inv.buyer_name || "—"}</TableCell>
+                          <TableCell className="text-xs">{inv.buyer_tax_code || "—"}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
+                          <TableCell>{inv.issued_date ? new Date(inv.issued_date).toLocaleDateString("vi-VN") : "—"}</TableCell>
+                          <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
-        ))}
-      </div>
+        </TabsContent>
+      </Tabs>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Tìm theo số HĐ, khách hàng, MST..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-      </div>
-
-      {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Số hoá đơn</TableHead>
-                <TableHead>Mẫu / Ký hiệu</TableHead>
-                <TableHead>Khách hàng</TableHead>
-                <TableHead>MST khách</TableHead>
-                <TableHead className="text-right">Tổng tiền</TableHead>
-                <TableHead>Ngày phát hành</TableHead>
-                <TableHead>Trạng thái</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Chưa có hoá đơn nào</TableCell></TableRow>
-              ) : (
-                filtered.map((inv: any) => {
-                  const st = statusMap[inv.status] || statusMap.draft;
-                  return (
-                    <TableRow key={inv.id}>
-                      <TableCell className="font-medium text-primary">{inv.invoice_number || "—"}</TableCell>
-                      <TableCell className="text-xs">{inv.template_code || "—"} / {inv.invoice_series || "—"}</TableCell>
-                      <TableCell>{inv.buyer_name || "—"}</TableCell>
-                      <TableCell className="text-xs">{inv.buyer_tax_code || "—"}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
-                      <TableCell>{inv.issued_date ? new Date(inv.issued_date).toLocaleDateString("vi-VN") : "—"}</TableCell>
-                      <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Create Dialog - standalone mode (no contract) */}
       {showCreate && (
         <CreateEInvoiceDialog open={showCreate} onOpenChange={setShowCreate} contract={null} />
       )}
