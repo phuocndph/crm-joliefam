@@ -44,6 +44,9 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
     { name: "", unit: "Cái", quantity: 1, unit_price: 0 },
   ]);
 
+  const [lookingUp, setLookingUp] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+
   const isStandalone = !contract;
 
   // Derived data
