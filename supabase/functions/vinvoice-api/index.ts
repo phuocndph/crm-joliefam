@@ -115,12 +115,15 @@ function mapContractToInvoice(contract: any, options: any) {
       invoiceType: options.invoiceType || "01GTKT",
       templateCode: options.templateCode || "",
       invoiceSeries: options.invoiceSeries || "",
-      currencyCode: "VND",
+      currencyCode: options.currency || "VND",
+      exchangeRate: options.currency && options.currency !== "VND" ? (options.exchangeRate || 1) : undefined,
       adjustmentType: "1",
       paymentStatus: true,
-      cusGetInvoiceRight: true,
+      cusGetInvoiceRight: options.cusGetInvoiceRight !== false,
       invoiceNote: contract.title || "",
       paymentMethodName: options.paymentMethod || "TM/CK",
+      paymentMethodDetail: options.paymentDetail || undefined,
+      contractNumber: options.contractNumber || undefined,
     },
     sellerInfo: {
       sellerLegalName: sellerInfo.company_name || sellerInfo.name || "",
@@ -138,6 +141,10 @@ function mapContractToInvoice(contract: any, options: any) {
       buyerPhoneNumber: buyerInfo.phone || "",
       buyerEmail: buyerInfo.email || "",
       buyerName: buyerInfo.representative || buyerInfo.name || "",
+      buyerIdType: options.buyerIdType || undefined,
+      buyerIdNo: options.buyerIdNumber || undefined,
+      buyerBankName: options.buyerBankName || buyerInfo.bank_name || "",
+      buyerBankAccount: options.buyerBankAccount || buyerInfo.bank_account || "",
     },
     payments: [
       {
@@ -150,7 +157,7 @@ function mapContractToInvoice(contract: any, options: any) {
       totalAmountWithoutTax: subtotal,
       totalTaxAmount: vatAmount,
       totalAmountWithTax: totalWithVat,
-      totalAmountWithTaxInWords: "", // Could add number-to-words here
+      totalAmountWithTaxInWords: "",
       discountAmount: 0,
       taxPercentage: vatRate,
     },
@@ -250,31 +257,11 @@ Deno.serve(async (req: Request) => {
       const { contract, options } = params;
       if (!contract) throw new Error("Missing contract data");
 
-      const token = await getVinvoiceToken();
+      // Draft: only build payload and save locally, do NOT call S-Invoice API
       const invoicePayload = mapContractToInvoice(contract, options || {});
-      const apiUrl = Deno.env.get("VINVOICE_API_URL") || "https://api-vinvoice.viettel.vn";
-      const taxCode = Deno.env.get("VINVOICE_TAX_CODE");
 
-      const res = await fetch(
-        `${apiUrl}/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${taxCode}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: `access_token=${token}`,
-          },
-          body: JSON.stringify(invoicePayload),
-        }
-      );
-
-      const text = await res.text();
-      let result;
-      try { result = JSON.parse(text); } catch { result = { raw: text }; }
-
-      // Save as draft
       const einvoiceRecord: any = {
         contract_id: contract.id || null,
-        transaction_uuid: result?.result?.transactionUuid || result?.transactionUuid || null,
         invoice_type: options?.invoiceType || "01GTKT",
         template_code: options?.templateCode || "",
         invoice_series: options?.invoiceSeries || "",
@@ -284,7 +271,6 @@ Deno.serve(async (req: Request) => {
         total_with_vat: Number(contract.total_amount) || 0,
         buyer_name: contract.buyer_info?.company_name || contract.buyer_info?.name || "",
         buyer_tax_code: contract.buyer_info?.tax_code || "",
-        response_data: result,
         request_data: invoicePayload,
       };
 
@@ -297,7 +283,7 @@ Deno.serve(async (req: Request) => {
       if (saveError) console.error("Save draft error:", saveError);
 
       return new Response(
-        JSON.stringify({ success: true, draft: savedDraft, apiResponse: result }),
+        JSON.stringify({ success: true, draft: savedDraft }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
