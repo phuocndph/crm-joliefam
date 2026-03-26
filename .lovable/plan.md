@@ -1,54 +1,46 @@
 
 
-## Các lỗi phát hiện và kế hoạch sửa
+## Kết quả kiểm tra kết nối S-Invoice
 
-### Lỗi 1: Dữ liệu form mới không được truyền vào API
+### Phát hiện 2 vấn đề chính
 
-**Vấn đề:** Frontend thu thập `currency`, `exchangeRate`, `contractNumber`, `paymentDetail`, `buyerBankName`, `buyerBankAccount`, `buyerIdType`, `buyerIdNumber`, `copyCount` nhưng **không truyền** vào `options` khi gọi API. Chúng bị bỏ qua hoàn toàn.
+#### Vấn đề 1: API `get_templates` trả về rỗng
 
-**Sửa:** Cập nhật `handleCreateInvoice` và `handleSaveDraft` để truyền tất cả fields mới vào `options`.
+Console log cho thấy:
+```
+get_templates raw response: {"success":true,"data":{"errorCode":null,"description":null,"totalRows":0,"template":null}}
+```
 
----
+**Nguyên nhân:** API đăng nhập thành công (không lỗi auth), nhưng endpoint `getInvoiceTemplates` trả về 0 kết quả. Có thể do:
 
-### Lỗi 2: `mapContractToInvoice` (Edge Function) không dùng các trường mới
+- Request body gửi `{ taxCode, invoiceType }` nhưng Viettel API có thể yêu cầu field `supplierTaxCode` thay vì `taxCode`
+- Hoặc `invoiceType` không đúng với loại hoá đơn đã đăng ký trên tài khoản S-Invoice
 
-**Vấn đề:**
-- `currencyCode` hardcode `"VND"` thay vì dùng `options.currency`
-- Không map `buyerBankName`, `buyerBankAccount` từ `buyerInfo`
-- Không gửi `contractNumber`, `buyerIdType`, `buyerIdNumber` vào payload S-Invoice
-- Không truyền `paymentDetail` vào `generalInvoiceInfo`
+**Sửa:**
+1. Thay đổi body request thành `{ supplierTaxCode: taxCode, invoiceType }` 
+2. Thêm log chi tiết URL, body, response để debug nếu vẫn lỗi
+3. Nếu vẫn rỗng, thử không truyền `invoiceType` để lấy tất cả mẫu
 
-**Sửa:** Cập nhật `mapContractToInvoice` để đọc từ `options` và `buyerInfo`:
-- `currencyCode: options.currency || "VND"`
-- `buyerBankName`, `buyerBankAccount` trong `buyerInfo`
-- `contractNumber` → field `contractNo` trong `generalInvoiceInfo`
-- `exchangeRate` → field `exchangeRate`
+#### Vấn đề 2: Lưu hoá đơn bị chặn bởi RLS
 
----
+Edge function logs:
+```
+Save draft error: new row violates row-level security policy for table "einvoices"
+```
 
-### Lỗi 3: `create_draft` gọi sai endpoint
+**Nguyên nhân:** Bảng `einvoices` có RLS yêu cầu `manager_id` khớp với user, nhưng **không có trigger `set_manager_id`** trên bảng này. Các bảng khác (orders, customers...) đều có trigger tự động gán `manager_id`, riêng `einvoices` thiếu.
 
-**Vấn đề:** Action `create_draft` gọi endpoint `createInvoice/{taxCode}` (phát hành thật) thay vì endpoint xem trước/nháp. Hoá đơn nháp nên chỉ lưu local vào DB, không gọi API S-Invoice tạo thật.
+**Sửa:** Tạo migration thêm trigger `set_manager_id` cho bảng `einvoices` (giống các bảng khác).
 
-**Sửa:** Bỏ gọi API S-Invoice trong `create_draft`, chỉ build payload và lưu vào bảng `einvoices` với `status: "draft"`. Khi phát hành sau thì mới gọi API.
+### Thay đổi
 
----
-
-### Lỗi 4: Checkbox "Người mua không lấy HĐ" không có logic
-
-**Vấn đề:** Khi check `noInvoiceBuyer`, các input bị disable nhưng `buildInvoicePayload` vẫn gửi thông tin buyer cũ. API S-Invoice cần field `cusGetInvoiceRight: false`.
-
-**Sửa:** Khi `noInvoiceBuyer = true`:
-- `buildInvoicePayload` trả buyer_info rỗng
-- Truyền `cusGetInvoiceRight: false` vào options
-- Edge function set `cusGetInvoiceRight: false` trong `generalInvoiceInfo`
-
----
-
-### File thay đổi
-
-| File | Thay đổi |
+| File / Resource | Thay đổi |
 |------|----------|
-| `src/components/CreateEInvoiceDialog.tsx` | Truyền đầy đủ fields vào options, xử lý noInvoiceBuyer |
-| `supabase/functions/vinvoice-api/index.ts` | Cập nhật mapContractToInvoice, sửa create_draft |
+| `supabase/functions/vinvoice-api/index.ts` | Sửa body `get_templates`: dùng `supplierTaxCode`, thêm debug log |
+| Migration SQL | Thêm trigger `set_manager_id` BEFORE INSERT trên `einvoices` |
+
+### Không thay đổi
+- Secrets đã cấu hình đầy đủ (VINVOICE_USERNAME, PASSWORD, TAX_CODE, API_URL)
+- Logic đăng nhập API hoạt động bình thường
+- Frontend CreateEInvoiceDialog
 
