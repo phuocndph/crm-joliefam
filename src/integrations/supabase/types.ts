@@ -433,6 +433,83 @@ export type Database = {
           },
         ]
       }
+      einvoices: {
+        Row: {
+          buyer_name: string | null
+          buyer_tax_code: string | null
+          contract_id: string | null
+          created_at: string
+          id: string
+          invoice_number: string | null
+          invoice_series: string | null
+          invoice_type: string | null
+          issued_date: string | null
+          manager_id: string | null
+          request_data: Json | null
+          response_data: Json | null
+          status: string
+          template_code: string | null
+          tenant_id: string
+          total_amount: number | null
+          total_with_vat: number | null
+          transaction_uuid: string | null
+          updated_at: string
+          vat_amount: number | null
+        }
+        Insert: {
+          buyer_name?: string | null
+          buyer_tax_code?: string | null
+          contract_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_number?: string | null
+          invoice_series?: string | null
+          invoice_type?: string | null
+          issued_date?: string | null
+          manager_id?: string | null
+          request_data?: Json | null
+          response_data?: Json | null
+          status?: string
+          template_code?: string | null
+          tenant_id?: string
+          total_amount?: number | null
+          total_with_vat?: number | null
+          transaction_uuid?: string | null
+          updated_at?: string
+          vat_amount?: number | null
+        }
+        Update: {
+          buyer_name?: string | null
+          buyer_tax_code?: string | null
+          contract_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_number?: string | null
+          invoice_series?: string | null
+          invoice_type?: string | null
+          issued_date?: string | null
+          manager_id?: string | null
+          request_data?: Json | null
+          response_data?: Json | null
+          status?: string
+          template_code?: string | null
+          tenant_id?: string
+          total_amount?: number | null
+          total_with_vat?: number | null
+          transaction_uuid?: string | null
+          updated_at?: string
+          vat_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "einvoices_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_permissions: {
         Row: {
           created_at: string
