@@ -456,7 +456,7 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
                   <div className="h-8 flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" /> Đang tải...
                   </div>
-                ) : (
+                ) : templates.length > 0 ? (
                   <Select value={templateCode} onValueChange={handleTemplateChange}>
                     <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Chọn mẫu hoá đơn" /></SelectTrigger>
                     <SelectContent>
@@ -467,19 +467,39 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
                       ))}
                     </SelectContent>
                   </Select>
+                ) : (
+                  <Input
+                    value={templateCode}
+                    onChange={e => {
+                      setTemplateCode(e.target.value);
+                      setSeriesList([]);
+                      setInvoiceSeries("");
+                    }}
+                    placeholder="Nhập mã mẫu (VD: 1/001)"
+                    className="h-8 text-sm"
+                  />
                 )}
               </div>
 
               <div>
                 <Label className="text-xs text-muted-foreground">Ký hiệu hoá đơn *</Label>
-                <Select value={invoiceSeries} onValueChange={setInvoiceSeries} disabled={!templateCode || seriesList.length === 0}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder={!templateCode ? "Chọn mẫu trước" : "Chọn ký hiệu"} /></SelectTrigger>
-                  <SelectContent>
-                    {seriesList.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {templates.length > 0 && seriesList.length > 0 ? (
+                  <Select value={invoiceSeries} onValueChange={setInvoiceSeries}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Chọn ký hiệu" /></SelectTrigger>
+                    <SelectContent>
+                      {seriesList.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={invoiceSeries}
+                    onChange={e => setInvoiceSeries(e.target.value)}
+                    placeholder="Nhập ký hiệu (VD: C21TAA)"
+                    className="h-8 text-sm"
+                  />
+                )}
               </div>
 
               <div>
