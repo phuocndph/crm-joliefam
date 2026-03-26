@@ -302,6 +302,33 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (action === "get_templates") {
+      const token = await getVinvoiceToken();
+      const apiUrl = Deno.env.get("VINVOICE_API_URL") || "https://api-vinvoice.viettel.vn";
+      const taxCode = Deno.env.get("VINVOICE_TAX_CODE");
+      const invoiceType = params.invoiceType || "01GTKT";
+
+      const res = await fetch(
+        `${apiUrl}/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceTemplates`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: `access_token=${token}`,
+          },
+          body: JSON.stringify({ taxCode, invoiceType }),
+        }
+      );
+
+      const text = await res.text();
+      let result;
+      try { result = JSON.parse(text); } catch { result = { raw: text }; }
+
+      return new Response(JSON.stringify({ success: true, data: result }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "get_invoices") {
       const { contract_id } = params;
       let query = supabase
