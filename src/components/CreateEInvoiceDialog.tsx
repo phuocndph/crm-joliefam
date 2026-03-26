@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,11 +25,23 @@ interface InvoiceItem {
   unit_price: number;
 }
 
+interface InvoiceTemplate {
+  templateCode: string;
+  templateName?: string;
+  invoiceSeries?: string[];
+  [key: string]: any;
+}
+
 export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEInvoiceDialogProps) => {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  // Templates from API
+  const [templates, setTemplates] = useState<InvoiceTemplate[]>([]);
+  const [seriesList, setSeriesList] = useState<string[]>([]);
 
   // Invoice config
   const [templateCode, setTemplateCode] = useState("");
@@ -61,6 +73,48 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
   ]);
 
   const isStandalone = !contract;
+
+  // Fetch templates when dialog opens
+  const fetchTemplates = useCallback(async () => {
+    setLoadingTemplates(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("vinvoice-api", {
+        body: { action: "get_templates", invoiceType: "01GTKT" },
+      });
+      if (error) throw error;
+      const list = data?.data || [];
+      // API may return array of objects or nested structure
+      const parsed: InvoiceTemplate[] = Array.isArray(list) ? list : (list?.result || list?.data || []);
+      setTemplates(parsed);
+      if (parsed.length === 1) {
+        setTemplateCode(parsed[0].templateCode || "");
+        const series = parsed[0].invoiceSeries || [];
+        setSeriesList(Array.isArray(series) ? series : []);
+        if (Array.isArray(series) && series.length === 1) {
+          setInvoiceSeries(series[0]);
+        }
+      }
+    } catch (err: any) {
+      console.error("Fetch templates error:", err);
+      toast.error("Không tải được danh sách mẫu hoá đơn", { description: err.message });
+    } finally {
+      setLoadingTemplates(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) fetchTemplates();
+  }, [open, fetchTemplates]);
+
+  const handleTemplateChange = (code: string) => {
+    setTemplateCode(code);
+    setInvoiceSeries("");
+    const tpl = templates.find(t => t.templateCode === code);
+    const series = tpl?.invoiceSeries || [];
+    const seriesArr = Array.isArray(series) ? series : [];
+    setSeriesList(seriesArr);
+    if (seriesArr.length === 1) setInvoiceSeries(seriesArr[0]);
+  };
 
   const sellerInfo = contract?.seller_info || {};
   const contractBuyerInfo = contract?.buyer_info || {};
@@ -330,12 +384,34 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
 
               <div>
                 <Label className="text-xs text-muted-foreground">Mẫu hoá đơn *</Label>
-                <Input placeholder="VD: 01GTKT0/001" value={templateCode} onChange={e => setTemplateCode(e.target.value)} className="h-8 text-sm" />
+                {loadingTemplates ? (
+                  <div className="h-8 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Đang tải...
+                  </div>
+                ) : (
+                  <Select value={templateCode} onValueChange={handleTemplateChange}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Chọn mẫu hoá đơn" /></SelectTrigger>
+                    <SelectContent>
+                      {templates.map((tpl) => (
+                        <SelectItem key={tpl.templateCode} value={tpl.templateCode}>
+                          {tpl.templateCode}{tpl.templateName ? ` - ${tpl.templateName}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div>
                 <Label className="text-xs text-muted-foreground">Ký hiệu hoá đơn *</Label>
-                <Input placeholder="VD: C24TAA" value={invoiceSeries} onChange={e => setInvoiceSeries(e.target.value)} className="h-8 text-sm" />
+                <Select value={invoiceSeries} onValueChange={setInvoiceSeries} disabled={!templateCode || seriesList.length === 0}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder={!templateCode ? "Chọn mẫu trước" : "Chọn ký hiệu"} /></SelectTrigger>
+                  <SelectContent>
+                    {seriesList.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
