@@ -18,6 +18,7 @@ import FabricManagement from "./pages/FabricManagement";
 import QuotesPage from "./pages/QuotesPage";
 import OrderManagement from "./pages/OrderManagement";
 import ContractManagement from "./pages/ContractManagement";
+import EInvoiceManagement from "./pages/EInvoiceManagement";
 import CashFlowManagement from "./pages/CashFlowManagement";
 import TransactionManagement from "./pages/TransactionManagement";
 import ReportsPage from "./pages/ReportsPage";
