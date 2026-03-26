@@ -6,6 +6,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function getAuthHeaders(token: string) {
+  return {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+  };
+}
+
 async function getVinvoiceToken(): Promise<string> {
   const apiUrl = Deno.env.get("VINVOICE_API_URL") || "https://api-vinvoice.viettel.vn";
   const username = Deno.env.get("VINVOICE_USERNAME");
@@ -37,10 +44,7 @@ async function createInvoice(token: string, invoiceData: any) {
     `${apiUrl}/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${taxCode}`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: `access_token=${token}`,
-      },
+      headers: getAuthHeaders(token),
       body: JSON.stringify(invoiceData),
     }
   );
@@ -59,10 +63,7 @@ async function getInvoiceFile(token: string, body: any) {
     `${apiUrl}/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceRepresentationFile`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: `access_token=${token}`,
-      },
+      headers: getAuthHeaders(token),
       body: JSON.stringify({ supplierTaxCode: taxCode, ...body }),
     }
   );
@@ -291,10 +292,10 @@ Deno.serve(async (req: Request) => {
     if (action === "get_templates") {
       const token = await getVinvoiceToken();
       const apiUrl = Deno.env.get("VINVOICE_API_URL") || "https://api-vinvoice.viettel.vn";
-      const taxCode = Deno.env.get("VINVOICE_TAX_CODE");
+      const username = Deno.env.get("VINVOICE_USERNAME");
 
-      // Try with supplierTaxCode first (correct Viettel API field name)
-      const requestBody: any = { supplierTaxCode: taxCode };
+      // Use taxCode field with username value (per Viettel official library)
+      const requestBody: any = { taxCode: username };
       if (params.invoiceType) {
         requestBody.invoiceType = params.invoiceType;
       }
@@ -304,10 +305,7 @@ Deno.serve(async (req: Request) => {
 
       const res = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Cookie: `access_token=${token}`,
-        },
+        headers: getAuthHeaders(token),
         body: JSON.stringify(requestBody),
       });
 
@@ -319,13 +317,10 @@ Deno.serve(async (req: Request) => {
       // If no results, retry without invoiceType filter
       if (result?.totalRows === 0 && params.invoiceType) {
         console.log("get_templates: 0 results with invoiceType, retrying without filter...");
-        const retryBody = { supplierTaxCode: taxCode };
+        const retryBody = { taxCode: username };
         const retryRes = await fetch(url, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: `access_token=${token}`,
-          },
+          headers: getAuthHeaders(token),
           body: JSON.stringify(retryBody),
         });
         const retryText = await retryRes.text();
