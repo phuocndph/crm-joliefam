@@ -52,10 +52,39 @@ const EInvoiceManagement = () => {
           </h1>
           <p className="text-muted-foreground">Quản lý và phát hành hoá đơn điện tử qua Viettel S-Invoice</p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4 mr-1" /> Tạo hoá đơn
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="gradient" asChild>
+            <a href={VINVOICE_URL} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-1" /> Mở VinVoice
+            </a>
+          </Button>
+          <Button variant="outline" onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Tạo hoá đơn (nội bộ)
+          </Button>
+        </div>
       </div>
+
+      {/* Quick Guide Card */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="p-4 flex items-center gap-4">
+          <FileText className="h-8 w-8 text-primary shrink-0" />
+          <div className="flex-1">
+            <p className="font-medium text-foreground">Truy cập nhanh VinVoice</p>
+            <p className="text-sm text-muted-foreground">
+              Đăng nhập tại{" "}
+              <a href={VINVOICE_URL} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline">
+                vinvoice.viettel.vn
+              </a>{" "}
+              để tạo, quản lý và phát hành hoá đơn điện tử trực tiếp trên hệ thống Viettel S-Invoice.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" asChild>
+            <a href={VINVOICE_URL} target="_blank" rel="noopener noreferrer">
+              Mở trang <ExternalLink className="h-3 w-3 ml-1" />
+            </a>
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
