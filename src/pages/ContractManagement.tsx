@@ -316,6 +316,9 @@ const ContractManagement = () => {
       {paymentRequestContract && (
         <PaymentRequestDialog open={!!paymentRequestContract} onOpenChange={o => !o && setPaymentRequestContract(null)} contract={paymentRequestContract} />
       )}
+      {einvoiceContract && (
+        <CreateEInvoiceDialog open={!!einvoiceContract} onOpenChange={o => !o && setEinvoiceContract(null)} contract={einvoiceContract} />
+      )}
     </div>
   );
 };
