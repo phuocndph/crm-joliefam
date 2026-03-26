@@ -74,6 +74,48 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
 
   const isStandalone = !contract;
 
+  // Fetch templates when dialog opens
+  const fetchTemplates = useCallback(async () => {
+    setLoadingTemplates(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("vinvoice-api", {
+        body: { action: "get_templates", invoiceType: "01GTKT" },
+      });
+      if (error) throw error;
+      const list = data?.data || [];
+      // API may return array of objects or nested structure
+      const parsed: InvoiceTemplate[] = Array.isArray(list) ? list : (list?.result || list?.data || []);
+      setTemplates(parsed);
+      if (parsed.length === 1) {
+        setTemplateCode(parsed[0].templateCode || "");
+        const series = parsed[0].invoiceSeries || [];
+        setSeriesList(Array.isArray(series) ? series : []);
+        if (Array.isArray(series) && series.length === 1) {
+          setInvoiceSeries(series[0]);
+        }
+      }
+    } catch (err: any) {
+      console.error("Fetch templates error:", err);
+      toast.error("Không tải được danh sách mẫu hoá đơn", { description: err.message });
+    } finally {
+      setLoadingTemplates(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) fetchTemplates();
+  }, [open, fetchTemplates]);
+
+  const handleTemplateChange = (code: string) => {
+    setTemplateCode(code);
+    setInvoiceSeries("");
+    const tpl = templates.find(t => t.templateCode === code);
+    const series = tpl?.invoiceSeries || [];
+    const seriesArr = Array.isArray(series) ? series : [];
+    setSeriesList(seriesArr);
+    if (seriesArr.length === 1) setInvoiceSeries(seriesArr[0]);
+  };
+
   const sellerInfo = contract?.seller_info || {};
   const contractBuyerInfo = contract?.buyer_info || {};
   const contractItems = (contract?.items || []) as any[];
