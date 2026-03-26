@@ -246,6 +246,62 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (action === "create_draft") {
+      const { contract, options } = params;
+      if (!contract) throw new Error("Missing contract data");
+
+      const token = await getVinvoiceToken();
+      const invoicePayload = mapContractToInvoice(contract, options || {});
+      const apiUrl = Deno.env.get("VINVOICE_API_URL") || "https://api-vinvoice.viettel.vn";
+      const taxCode = Deno.env.get("VINVOICE_TAX_CODE");
+
+      const res = await fetch(
+        `${apiUrl}/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${taxCode}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: `access_token=${token}`,
+          },
+          body: JSON.stringify(invoicePayload),
+        }
+      );
+
+      const text = await res.text();
+      let result;
+      try { result = JSON.parse(text); } catch { result = { raw: text }; }
+
+      // Save as draft
+      const einvoiceRecord: any = {
+        contract_id: contract.id || null,
+        transaction_uuid: result?.result?.transactionUuid || result?.transactionUuid || null,
+        invoice_type: options?.invoiceType || "01GTKT",
+        template_code: options?.templateCode || "",
+        invoice_series: options?.invoiceSeries || "",
+        status: "draft",
+        total_amount: Number(contract.subtotal) || 0,
+        vat_amount: Number(contract.vat_amount) || 0,
+        total_with_vat: Number(contract.total_amount) || 0,
+        buyer_name: contract.buyer_info?.company_name || contract.buyer_info?.name || "",
+        buyer_tax_code: contract.buyer_info?.tax_code || "",
+        response_data: result,
+        request_data: invoicePayload,
+      };
+
+      const { data: savedDraft, error: saveError } = await supabase
+        .from("einvoices")
+        .insert(einvoiceRecord)
+        .select()
+        .single();
+
+      if (saveError) console.error("Save draft error:", saveError);
+
+      return new Response(
+        JSON.stringify({ success: true, draft: savedDraft, apiResponse: result }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (action === "get_invoices") {
       const { contract_id } = params;
       let query = supabase
