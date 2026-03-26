@@ -262,7 +262,12 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
                       </div>
                       <div>
                         <Label className="text-xs">Mã số thuế</Label>
-                        <Input value={buyerTaxCode} onChange={e => setBuyerTaxCode(e.target.value)} placeholder="0123456789" />
+                        <div className="flex gap-1">
+                          <Input value={buyerTaxCode} onChange={e => setBuyerTaxCode(e.target.value)} placeholder="0123456789" />
+                          <Button type="button" size="sm" variant="outline" onClick={handleLookupTaxCode} disabled={lookingUp} className="shrink-0">
+                            {lookingUp ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                     <div>
