@@ -12,7 +12,8 @@ import {
   Truck,
   Scissors,
   BookOpen,
-  FileSignature
+  FileSignature,
+  Receipt
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -90,6 +91,13 @@ const menuItems = [
     permission: "contracts" as const
   },
   { 
+    title: "Hoá đơn ĐT", 
+    url: "/einvoices", 
+    icon: Receipt,
+    description: "Quản lý hoá đơn điện tử",
+    permission: "contracts" as const
+  },
+  {
     title: "Theo dõi GHN", 
     url: "/ghn-tracking", 
     icon: Truck,

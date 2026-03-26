@@ -18,6 +18,7 @@ import FabricManagement from "./pages/FabricManagement";
 import QuotesPage from "./pages/QuotesPage";
 import OrderManagement from "./pages/OrderManagement";
 import ContractManagement from "./pages/ContractManagement";
+import EInvoiceManagement from "./pages/EInvoiceManagement";
 import CashFlowManagement from "./pages/CashFlowManagement";
 import TransactionManagement from "./pages/TransactionManagement";
 import ReportsPage from "./pages/ReportsPage";
@@ -112,6 +113,7 @@ const AppRoutes = () => {
         <Route path="quotes" element={<QuotesPage />} />
         <Route path="orders" element={<OrderManagement />} />
         <Route path="contracts" element={<ContractManagement />} />
+        <Route path="einvoices" element={<EInvoiceManagement />} />
         <Route path="cash-flow" element={<CashFlowManagement />} />
         <Route path="transactions" element={<TransactionManagement />} />
         <Route path="reports" element={<ReportsPage />} />
