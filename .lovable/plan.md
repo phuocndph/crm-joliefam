@@ -1,32 +1,54 @@
 
 
-## Lấy danh sách mẫu hoá đơn & ký hiệu từ API S-Invoice
+## Các lỗi phát hiện và kế hoạch sửa
 
-### Cách hoạt động
+### Lỗi 1: Dữ liệu form mới không được truyền vào API
 
-Khi mở dialog tạo hoá đơn, hệ thống tự động gọi API S-Invoice để lấy danh sách mẫu hoá đơn. Khi chọn mẫu, hệ thống tiếp tục gọi API để lấy danh sách ký hiệu tương ứng.
+**Vấn đề:** Frontend thu thập `currency`, `exchangeRate`, `contractNumber`, `paymentDetail`, `buyerBankName`, `buyerBankAccount`, `buyerIdType`, `buyerIdNumber`, `copyCount` nhưng **không truyền** vào `options` khi gọi API. Chúng bị bỏ qua hoàn toàn.
 
-### Thay đổi
+**Sửa:** Cập nhật `handleCreateInvoice` và `handleSaveDraft` để truyền tất cả fields mới vào `options`.
 
-#### 1. Edge Function `vinvoice-api/index.ts`
+---
 
-Thêm action `get_templates`:
-- Gọi API: `POST /services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceTemplates`
-- Body: `{ taxCode: VINVOICE_TAX_CODE, invoiceType }` (mặc định `"01GTKT"`)
-- Trả về danh sách `templateCode` và `invoiceSeries` cho frontend
+### Lỗi 2: `mapContractToInvoice` (Edge Function) không dùng các trường mới
 
-#### 2. Frontend `CreateEInvoiceDialog.tsx`
+**Vấn đề:**
+- `currencyCode` hardcode `"VND"` thay vì dùng `options.currency`
+- Không map `buyerBankName`, `buyerBankAccount` từ `buyerInfo`
+- Không gửi `contractNumber`, `buyerIdType`, `buyerIdNumber` vào payload S-Invoice
+- Không truyền `paymentDetail` vào `generalInvoiceInfo`
 
-- Khi dialog mở → gọi `get_templates` để lấy danh sách mẫu hoá đơn
-- **Mẫu hoá đơn**: Select dropdown hiển thị các `templateCode` từ API
-- **Ký hiệu hoá đơn**: Select dropdown hiển thị các `invoiceSeries` tương ứng với mẫu đã chọn
-- Hiển thị loading state khi đang tải danh sách
-- Tự động chọn mẫu/ký hiệu đầu tiên nếu chỉ có 1 option
+**Sửa:** Cập nhật `mapContractToInvoice` để đọc từ `options` và `buyerInfo`:
+- `currencyCode: options.currency || "VND"`
+- `buyerBankName`, `buyerBankAccount` trong `buyerInfo`
+- `contractNumber` → field `contractNo` trong `generalInvoiceInfo`
+- `exchangeRate` → field `exchangeRate`
+
+---
+
+### Lỗi 3: `create_draft` gọi sai endpoint
+
+**Vấn đề:** Action `create_draft` gọi endpoint `createInvoice/{taxCode}` (phát hành thật) thay vì endpoint xem trước/nháp. Hoá đơn nháp nên chỉ lưu local vào DB, không gọi API S-Invoice tạo thật.
+
+**Sửa:** Bỏ gọi API S-Invoice trong `create_draft`, chỉ build payload và lưu vào bảng `einvoices` với `status: "draft"`. Khi phát hành sau thì mới gọi API.
+
+---
+
+### Lỗi 4: Checkbox "Người mua không lấy HĐ" không có logic
+
+**Vấn đề:** Khi check `noInvoiceBuyer`, các input bị disable nhưng `buildInvoicePayload` vẫn gửi thông tin buyer cũ. API S-Invoice cần field `cusGetInvoiceRight: false`.
+
+**Sửa:** Khi `noInvoiceBuyer = true`:
+- `buildInvoicePayload` trả buyer_info rỗng
+- Truyền `cusGetInvoiceRight: false` vào options
+- Edge function set `cusGetInvoiceRight: false` trong `generalInvoiceInfo`
+
+---
 
 ### File thay đổi
 
 | File | Thay đổi |
 |------|----------|
-| `supabase/functions/vinvoice-api/index.ts` | Thêm action `get_templates` gọi API S-Invoice |
-| `src/components/CreateEInvoiceDialog.tsx` | Thay Input thành Select dropdown, load data từ API |
+| `src/components/CreateEInvoiceDialog.tsx` | Truyền đầy đủ fields vào options, xử lý noInvoiceBuyer |
+| `supabase/functions/vinvoice-api/index.ts` | Cập nhật mapContractToInvoice, sửa create_draft |
 
