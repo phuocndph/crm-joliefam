@@ -515,20 +515,20 @@ export default function CashFlowManagement() {
     });
   }, [orders, expenses, calculateOrderCostPrice, filterPeriod, selectedYear, selectedMonth]);
 
+  // Derive orders directly from ordersData via useMemo (no local state delay)
+  const orders = useMemo(() => {
+    return [...ordersData].sort((a, b) => {
+      const aOrderNum = parseInt(getOrderDisplayNumber(a)) || 0;
+      const bOrderNum = parseInt(getOrderDisplayNumber(b)) || 0;
+      return bOrderNum - aOrderNum;
+    });
+  }, [ordersData]);
+
   // Update local state when data changes
   useEffect(() => {
     setExpenses(expensesData);
-    
-    // Sort orders by display order number (largest to smallest)
-    const sortedOrders = [...ordersData].sort((a, b) => {
-      const aOrderNum = parseInt(getOrderDisplayNumber(a)) || 0;
-      const bOrderNum = parseInt(getOrderDisplayNumber(b)) || 0;
-      return bOrderNum - aOrderNum; // Descending order (largest first)
-    });
-    
-    setOrders(sortedOrders);
     setLoading(expensesLoading || ordersLoading || productsLoading);
-  }, [expensesData, ordersData, expensesLoading, ordersLoading, productsLoading]);
+  }, [expensesData, expensesLoading, ordersLoading, productsLoading]);
 
   // Event handlers
   const handleCreateExpense = async () => {
