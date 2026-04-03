@@ -122,42 +122,13 @@ export default function CashFlowManagement() {
   
   // Data states
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [orders, setOrders] = useState<OrderDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const { toast } = useToast();
   const { role, loading: roleLoading } = useUserRole(user);
   const queryClient = useQueryClient();
   
-  const handleOrderClick = useCallback(async (orderId: string) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order?.quote_id) {
-      toast({ title: "Đơn hàng này chưa có báo giá liên kết", variant: "destructive" });
-      return;
-    }
-    
-    const { data, error } = await supabase
-      .from('quotes')
-      .select(`*, customers(name, email, phone, address, company), assignees(name)`)
-      .eq('id', order.quote_id)
-      .single();
-    
-    if (error || !data) {
-      toast({ title: "Không tìm thấy báo giá", variant: "destructive" });
-      return;
-    }
-    
-    setSupplementQuote({
-      ...data,
-      customerName: data.customers?.name || 'Không có tên',
-      customerEmail: data.customers?.email || '',
-      customerPhone: data.customers?.phone || '',
-      customerAddress: data.customers?.address || '',
-      customerCompany: data.customers?.company || '',
-      responsible: data.assignees?.name || 'Chưa phân công',
-      totalAmount: data.total_amount || 0,
-    });
-  }, [orders, toast]);
+  
   // Get current user
   useEffect(() => {
     const getUser = async () => {
@@ -332,6 +303,45 @@ export default function CashFlowManagement() {
     };
   }, [refetchOrders]);
 
+  // Derive orders directly from ordersData via useMemo (no local state delay)
+  const orders = useMemo(() => {
+    return [...ordersData].sort((a, b) => {
+      const aOrderNum = parseInt(getOrderDisplayNumber(a)) || 0;
+      const bOrderNum = parseInt(getOrderDisplayNumber(b)) || 0;
+      return bOrderNum - aOrderNum;
+    });
+  }, [ordersData]);
+
+  const handleOrderClick = useCallback(async (orderId: string) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order?.quote_id) {
+      toast({ title: "Đơn hàng này chưa có báo giá liên kết", variant: "destructive" });
+      return;
+    }
+    
+    const { data, error } = await supabase
+      .from('quotes')
+      .select(`*, customers(name, email, phone, address, company), assignees(name)`)
+      .eq('id', order.quote_id)
+      .single();
+    
+    if (error || !data) {
+      toast({ title: "Không tìm thấy báo giá", variant: "destructive" });
+      return;
+    }
+    
+    setSupplementQuote({
+      ...data,
+      customerName: data.customers?.name || 'Không có tên',
+      customerEmail: data.customers?.email || '',
+      customerPhone: data.customers?.phone || '',
+      customerAddress: data.customers?.address || '',
+      customerCompany: data.customers?.company || '',
+      responsible: data.assignees?.name || 'Chưa phân công',
+      totalAmount: data.total_amount || 0,
+    });
+  }, [orders, toast]);
+
   // Get all unique product IDs and SKUs from all orders
   const getAllProductIdentifiers = useCallback(() => {
     const productIds = new Set<string>();
@@ -397,8 +407,8 @@ export default function CashFlowManagement() {
 
       return allProducts;
     },
-    enabled: orders.length > 0,
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    enabled: ordersData.length > 0,
+    staleTime: 0,
   });
 
   // Create products lookup map
@@ -476,6 +486,7 @@ export default function CashFlowManagement() {
 
   // Optimized order profits calculation with proportional expense allocation
   const orderProfits = useMemo(() => {
+    if (productsLoading) return [];
     const deliveredOrders = orders.filter(order => order.total_amount > 0);
     const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
     
@@ -516,20 +527,12 @@ export default function CashFlowManagement() {
     });
   }, [orders, expenses, calculateOrderCostPrice, filterPeriod, selectedYear, selectedMonth]);
 
+
   // Update local state when data changes
   useEffect(() => {
     setExpenses(expensesData);
-    
-    // Sort orders by display order number (largest to smallest)
-    const sortedOrders = [...ordersData].sort((a, b) => {
-      const aOrderNum = parseInt(getOrderDisplayNumber(a)) || 0;
-      const bOrderNum = parseInt(getOrderDisplayNumber(b)) || 0;
-      return bOrderNum - aOrderNum; // Descending order (largest first)
-    });
-    
-    setOrders(sortedOrders);
     setLoading(expensesLoading || ordersLoading || productsLoading);
-  }, [expensesData, ordersData, expensesLoading, ordersLoading, productsLoading]);
+  }, [expensesData, expensesLoading, ordersLoading, productsLoading]);
 
   // Event handlers
   const handleCreateExpense = async () => {
