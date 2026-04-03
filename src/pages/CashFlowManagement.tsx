@@ -260,6 +260,7 @@ export default function CashFlowManagement() {
           status,
           created_at,
           items,
+          quote_id,
           customers(name),
           manager_id
         `);
