@@ -78,6 +78,7 @@ interface OrderDetail {
   created_at: string;
   items?: any;
   customers: { name: string } | null;
+  quote_id?: string | null;
 }
 
 interface CashFlowStats {
