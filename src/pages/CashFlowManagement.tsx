@@ -331,6 +331,15 @@ export default function CashFlowManagement() {
     };
   }, [refetchOrders]);
 
+  // Derive orders directly from ordersData via useMemo (no local state delay)
+  const orders = useMemo(() => {
+    return [...ordersData].sort((a, b) => {
+      const aOrderNum = parseInt(getOrderDisplayNumber(a)) || 0;
+      const bOrderNum = parseInt(getOrderDisplayNumber(b)) || 0;
+      return bOrderNum - aOrderNum;
+    });
+  }, [ordersData]);
+
   // Get all unique product IDs and SKUs from all orders
   const getAllProductIdentifiers = useCallback(() => {
     const productIds = new Set<string>();
