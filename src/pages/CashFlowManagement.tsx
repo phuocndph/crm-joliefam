@@ -1168,6 +1168,14 @@ export default function CashFlowManagement() {
           </DialogContent>
         </Dialog>
       )}
+
+      {supplementQuote && (
+        <QuoteSupplementDialog
+          open={!!supplementQuote}
+          onOpenChange={(open) => !open && setSupplementQuote(null)}
+          quote={supplementQuote}
+        />
+      )}
     </main>
   );
 }
