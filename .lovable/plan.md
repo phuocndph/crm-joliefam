@@ -1,39 +1,30 @@
+## Mở báo giá phụ khi click đơn hàng trong bảng lợi nhuận
 
-
-## Nhúng VinVoice trực tiếp trong CRM
-
-Thay vì mở tab mới, nhúng trang `https://vinvoice.viettel.vn/` bằng iframe ngay trong trang Hoá đơn điện tử, kết hợp với tab chuyển đổi giữa "VinVoice" và "Lịch sử nội bộ".
-
-**Lưu ý quan trọng:** Nhiều website chặn iframe bằng header `X-Frame-Options` hoặc `Content-Security-Policy`. Nếu VinVoice chặn, sẽ cần fallback mở trong tab mới. Plan này xử lý cả hai trường hợp.
+### Mô tả
+Khi click vào một dòng đơn hàng trong tab "Lợi nhuận" của trang Quản lý dòng tiền, hệ thống sẽ tìm báo giá (quote) liên kết với đơn hàng đó (qua field `quote_id` trên bảng orders) và mở `QuoteSupplementDialog` để xem chi tiết báo giá phụ.
 
 ### Thay đổi
 
-**File: `src/pages/EInvoiceManagement.tsx`**
+**File: `src/pages/CashFlowManagement.tsx`**
 
-1. Thêm state `activeTab` với 2 tab: **"VinVoice"** (mặc định) và **"Lịch sử"**
-2. Tab "VinVoice": hiển thị iframe full-width, chiều cao `calc(100vh - 200px)` để tận dụng không gian
-3. Tab "Lịch sử": giữ nguyên bảng danh sách hoá đơn, stats, search hiện tại
-4. Xử lý trường hợp iframe bị chặn: hiển thị thông báo kèm nút "Mở VinVoice trong tab mới"
-5. Header: giữ tiêu đề, bỏ nút "Mở VinVoice" riêng (vì đã nhúng), giữ nút "Tạo hoá đơn (nội bộ)"
-6. Bỏ card hướng dẫn nhanh (không cần nữa vì VinVoice đã ở ngay trong trang)
+1. Import `QuoteSupplementDialog` từ `@/components/QuoteSupplementDialog`
+2. Thêm state `selectedProfitOrder` để lưu quote data khi click
+3. Thêm hàm `handleOrderClick(orderId)`:
+   - Tìm order trong danh sách `orders` để lấy `quote_id`
+   - Nếu có `quote_id`: fetch quote từ Supabase (kèm customers, assignees) → mở `QuoteSupplementDialog`
+   - Nếu không có `quote_id`: hiện toast thông báo "Đơn hàng này chưa có báo giá liên kết"
+4. Thêm `onClick` handler vào `TableRow` trong bảng `orderProfits` để gọi `handleOrderClick`
+5. Render `QuoteSupplementDialog` ở cuối component
 
-### Giao diện
+### Luồng xử lý
 
 ```text
-┌─────────────────────────────────────────┐
-│ 📄 Hoá đơn điện tử     [Tạo HĐ nội bộ]│
-│                                         │
-│  [VinVoice]  [Lịch sử]                 │
-│ ┌─────────────────────────────────────┐ │
-│ │                                     │ │
-│ │   iframe: vinvoice.viettel.vn       │ │
-│ │   (hoặc fallback nếu bị chặn)      │ │
-│ │                                     │ │
-│ └─────────────────────────────────────┘ │
-└─────────────────────────────────────────┘
+Click dòng đơn hàng → Lấy order.quote_id
+  ├─ Có quote_id → Fetch quote data → Mở QuoteSupplementDialog
+  └─ Không có quote_id → Toast "Chưa có báo giá liên kết"
 ```
 
 ### Không thay đổi
-- Bảng `einvoices`, hooks, edge function giữ nguyên
-- `CreateEInvoiceDialog` giữ nguyên
-
+- `QuoteSupplementDialog` giữ nguyên
+- Logic tính lợi nhuận giữ nguyên
+- Các tab khác không ảnh hưởng
