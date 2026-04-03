@@ -1,33 +1,45 @@
 
+## Sửa lỗi chi phí hiển thị 0đ trong bảng lợi nhuận
 
-## Mở báo giá phụ khi click đơn hàng trong bảng lợi nhuận
+### Nguyên nhân
 
-### Thay đổi
+Đơn hàng 2533: sản phẩm "Váy giường 1m6" (`cost_price: 240,000đ`) x 2 = **480,000đ**, nhưng hiển thị **0đ**.
+
+1. Trường `cost_price` trong bảng `orders` được lưu là `0` khi tạo đơn
+2. Logic fallback tính từ `productsMap` bị ảnh hưởng bởi **race condition**: `orderProfits` useMemo chạy khi `productsData` chưa load xong
+3. `productsData` query có `staleTime: 10 phút` — nếu lần đầu trả về empty (do `orders` state chưa sẵn), kết quả cũ được cache
+
+### Giải pháp
 
 **File: `src/pages/CashFlowManagement.tsx`**
 
-1. **Import** `QuoteSupplementDialog` từ `@/components/QuoteSupplementDialog`
-2. **Thêm `quote_id`** vào query select orders (dòng 250-263), thêm field `quote_id`
-3. **Thêm state**: `const [supplementQuote, setSupplementQuote] = useState<any>(null);`
-4. **Thêm hàm `handleOrderClick`**:
-   - Tìm order trong `orders` state theo `profit.id` để lấy `quote_id`
-   - Nếu có `quote_id`: fetch quote từ Supabase (`quotes` table kèm `customers`, `assignees`) → `setSupplementQuote(quoteData)`
-   - Nếu không có: toast "Đơn hàng này chưa có báo giá liên kết"
-5. **Thêm `onClick`** vào `TableRow` trong bảng orderProfits (dòng 1028): `onClick={() => handleOrderClick(profit.id)}`
-6. **Render `QuoteSupplementDialog`** ở cuối component (trước `</main>`), dạng sibling (không lồng trong dialog khác):
-   ```tsx
-   <QuoteSupplementDialog
-     open={!!supplementQuote}
-     onOpenChange={(open) => !open && setSupplementQuote(null)}
-     quote={supplementQuote}
-   />
-   ```
+1. **Bỏ local state `orders`** — dùng trực tiếp `ordersData` từ React Query thay vì copy qua `useEffect` → `useState`. Điều này loại bỏ delay giữa data fetch và render
 
-### Cập nhật interface OrderDetail
-- Thêm `quote_id?: string | null` vào interface `OrderDetail` (dòng 69-80)
+2. **Giảm `staleTime` của `productsData`** từ 10 phút xuống 0 — đảm bảo luôn re-fetch khi query key thay đổi
 
-### Không thay đổi
-- `QuoteSupplementDialog` giữ nguyên
-- Logic tính lợi nhuận giữ nguyên
-- Các tab khác không ảnh hưởng
+3. **Thêm `productsLoading` vào dependency** của `orderProfits` — chỉ tính toán khi products đã load xong, nếu đang loading thì return mảng rỗng hoặc giá trị tạm
 
+4. **Cập nhật `cost_price` vào DB khi tính được** — sau khi tính cost từ products, gọi update order để lưu lại, tránh phải tính lại mỗi lần
+
+### Thay đổi chi tiết
+
+```text
+Trước:
+  const [orders, setOrders] = useState<OrderDetail[]>([]);
+  useEffect(() => { setOrders(ordersData); }, [ordersData]);
+  // productsData staleTime: 10 minutes
+
+Sau:
+  // Dùng ordersData trực tiếp, sorted bằng useMemo
+  const orders = useMemo(() => {
+    return [...ordersData].sort((a, b) => ...);
+  }, [ordersData]);
+  // productsData staleTime: 0
+  // orderProfits chỉ tính khi !productsLoading
+```
+
+| Vấn đề | Sửa |
+|--------|-----|
+| Race condition orders state delay | Dùng ordersData trực tiếp qua useMemo |
+| Products cache 10 phút | Giảm staleTime về 0 |
+| Tính toán khi products chưa load | Thêm guard `productsLoading` |
