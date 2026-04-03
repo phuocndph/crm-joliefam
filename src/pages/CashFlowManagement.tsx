@@ -39,6 +39,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subYears, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
+import { QuoteSupplementDialog } from "@/components/QuoteSupplementDialog";
 
 const formatSafeDate = (dateValue: string | null | undefined, formatStr: string = "dd/MM/yyyy") => {
   if (!dateValue) {
