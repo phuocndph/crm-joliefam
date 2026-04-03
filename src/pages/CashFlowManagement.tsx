@@ -396,8 +396,8 @@ export default function CashFlowManagement() {
 
       return allProducts;
     },
-    enabled: orders.length > 0,
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    enabled: ordersData.length > 0,
+    staleTime: 0,
   });
 
   // Create products lookup map
