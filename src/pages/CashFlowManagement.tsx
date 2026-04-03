@@ -475,6 +475,7 @@ export default function CashFlowManagement() {
 
   // Optimized order profits calculation with proportional expense allocation
   const orderProfits = useMemo(() => {
+    if (productsLoading) return [];
     const deliveredOrders = orders.filter(order => order.total_amount > 0);
     const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
     
