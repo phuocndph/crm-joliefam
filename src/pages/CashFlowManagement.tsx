@@ -312,6 +312,36 @@ export default function CashFlowManagement() {
     });
   }, [ordersData]);
 
+  const handleOrderClick = useCallback(async (orderId: string) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order?.quote_id) {
+      toast({ title: "Đơn hàng này chưa có báo giá liên kết", variant: "destructive" });
+      return;
+    }
+    
+    const { data, error } = await supabase
+      .from('quotes')
+      .select(`*, customers(name, email, phone, address, company), assignees(name)`)
+      .eq('id', order.quote_id)
+      .single();
+    
+    if (error || !data) {
+      toast({ title: "Không tìm thấy báo giá", variant: "destructive" });
+      return;
+    }
+    
+    setSupplementQuote({
+      ...data,
+      customerName: data.customers?.name || 'Không có tên',
+      customerEmail: data.customers?.email || '',
+      customerPhone: data.customers?.phone || '',
+      customerAddress: data.customers?.address || '',
+      customerCompany: data.customers?.company || '',
+      responsible: data.assignees?.name || 'Chưa phân công',
+      totalAmount: data.total_amount || 0,
+    });
+  }, [orders, toast]);
+
   // Get all unique product IDs and SKUs from all orders
   const getAllProductIdentifiers = useCallback(() => {
     const productIds = new Set<string>();
