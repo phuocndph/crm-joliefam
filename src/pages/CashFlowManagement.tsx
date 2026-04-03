@@ -128,35 +128,7 @@ export default function CashFlowManagement() {
   const { role, loading: roleLoading } = useUserRole(user);
   const queryClient = useQueryClient();
   
-  const handleOrderClick = useCallback(async (orderId: string) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order?.quote_id) {
-      toast({ title: "Đơn hàng này chưa có báo giá liên kết", variant: "destructive" });
-      return;
-    }
-    
-    const { data, error } = await supabase
-      .from('quotes')
-      .select(`*, customers(name, email, phone, address, company), assignees(name)`)
-      .eq('id', order.quote_id)
-      .single();
-    
-    if (error || !data) {
-      toast({ title: "Không tìm thấy báo giá", variant: "destructive" });
-      return;
-    }
-    
-    setSupplementQuote({
-      ...data,
-      customerName: data.customers?.name || 'Không có tên',
-      customerEmail: data.customers?.email || '',
-      customerPhone: data.customers?.phone || '',
-      customerAddress: data.customers?.address || '',
-      customerCompany: data.customers?.company || '',
-      responsible: data.assignees?.name || 'Chưa phân công',
-      totalAmount: data.total_amount || 0,
-    });
-  }, [orders, toast]);
+  
   // Get current user
   useEffect(() => {
     const getUser = async () => {
