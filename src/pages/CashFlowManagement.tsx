@@ -1028,9 +1028,10 @@ export default function CashFlowManagement() {
                          </TableHeader>
                         <TableBody>
                           {orderProfits.map((profit) => (
-                            <TableRow 
+                             <TableRow 
                               key={profit.id} 
                               className="cursor-pointer hover:bg-muted/60 transition-colors"
+                              onClick={() => handleOrderClick(profit.id)}
                             >
                                <TableCell className="font-medium">{getOrderDisplayNumber(profit)}</TableCell>
                                <TableCell>{profit.customer_name}</TableCell>
