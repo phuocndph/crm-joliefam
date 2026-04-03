@@ -39,6 +39,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subYears, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
+import { QuoteSupplementDialog } from "@/components/QuoteSupplementDialog";
 
 const formatSafeDate = (dateValue: string | null | undefined, formatStr: string = "dd/MM/yyyy") => {
   if (!dateValue) {
@@ -77,6 +78,7 @@ interface OrderDetail {
   created_at: string;
   items?: any;
   customers: { name: string } | null;
+  quote_id?: string | null;
 }
 
 interface CashFlowStats {
@@ -116,6 +118,7 @@ export default function CashFlowManagement() {
   const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
   const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
+  const [supplementQuote, setSupplementQuote] = useState<any>(null);
   
   // Data states
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -126,6 +129,35 @@ export default function CashFlowManagement() {
   const { role, loading: roleLoading } = useUserRole(user);
   const queryClient = useQueryClient();
   
+  const handleOrderClick = useCallback(async (orderId: string) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order?.quote_id) {
+      toast({ title: "Đơn hàng này chưa có báo giá liên kết", variant: "destructive" });
+      return;
+    }
+    
+    const { data, error } = await supabase
+      .from('quotes')
+      .select(`*, customers(name, email, phone, address, company), assignees(name)`)
+      .eq('id', order.quote_id)
+      .single();
+    
+    if (error || !data) {
+      toast({ title: "Không tìm thấy báo giá", variant: "destructive" });
+      return;
+    }
+    
+    setSupplementQuote({
+      ...data,
+      customerName: data.customers?.name || 'Không có tên',
+      customerEmail: data.customers?.email || '',
+      customerPhone: data.customers?.phone || '',
+      customerAddress: data.customers?.address || '',
+      customerCompany: data.customers?.company || '',
+      responsible: data.assignees?.name || 'Chưa phân công',
+      totalAmount: data.total_amount || 0,
+    });
+  }, [orders, toast]);
   // Get current user
   useEffect(() => {
     const getUser = async () => {
@@ -258,6 +290,7 @@ export default function CashFlowManagement() {
           status,
           created_at,
           items,
+          quote_id,
           customers(name),
           manager_id
         `);
@@ -1025,9 +1058,10 @@ export default function CashFlowManagement() {
                          </TableHeader>
                         <TableBody>
                           {orderProfits.map((profit) => (
-                            <TableRow 
+                             <TableRow 
                               key={profit.id} 
                               className="cursor-pointer hover:bg-muted/60 transition-colors"
+                              onClick={() => handleOrderClick(profit.id)}
                             >
                                <TableCell className="font-medium">{getOrderDisplayNumber(profit)}</TableCell>
                                <TableCell>{profit.customer_name}</TableCell>
@@ -1163,6 +1197,14 @@ export default function CashFlowManagement() {
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {supplementQuote && (
+        <QuoteSupplementDialog
+          open={!!supplementQuote}
+          onOpenChange={(open) => !open && setSupplementQuote(null)}
+          quote={supplementQuote}
+        />
       )}
     </main>
   );
