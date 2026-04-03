@@ -122,7 +122,6 @@ export default function CashFlowManagement() {
   
   // Data states
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [orders, setOrders] = useState<OrderDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const { toast } = useToast();
