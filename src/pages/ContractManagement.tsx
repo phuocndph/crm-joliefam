@@ -18,11 +18,12 @@ import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
 import { useEInvoices } from "@/hooks/useEInvoices";
 import { HandoverReportDialog } from "@/components/HandoverReportDialog";
 import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
+import { AdvanceRequestDialog } from "@/components/AdvanceRequestDialog";
 import { FrameworkContractDialog } from "@/components/FrameworkContractDialog";
 import { ContractTemplateManager } from "@/components/ContractTemplateManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings, ClipboardCheck, Receipt, ChevronDown, ScrollText, FileText } from "lucide-react";
+import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings, ClipboardCheck, Receipt, ChevronDown, ScrollText, FileText, Banknote } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   draft: { label: "Nháp", variant: "secondary" },
@@ -49,6 +50,7 @@ const ContractManagement = () => {
   const [frameworkPreview, setFrameworkPreview] = useState<any>(null);
   const [handoverContract, setHandoverContract] = useState<any>(null);
   const [paymentRequestContract, setPaymentRequestContract] = useState<any>(null);
+  const [advanceRequestContract, setAdvanceRequestContract] = useState<any>(null);
   const [einvoiceContract, setEinvoiceContract] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("contracts");
   const { data: einvoices } = useEInvoices();
@@ -222,6 +224,7 @@ const ContractManagement = () => {
                                   <>
                                     <DropdownMenuItem onClick={() => setHandoverContract(c)}><ClipboardCheck className="h-4 w-4 mr-2" />Biên bản bàn giao</DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => setPaymentRequestContract(c)}><Receipt className="h-4 w-4 mr-2" />Đề nghị thanh toán</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setAdvanceRequestContract(c)}><Banknote className="h-4 w-4 mr-2" />Đề nghị tạm ứng</DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => setEinvoiceContract(c)}><FileText className="h-4 w-4 mr-2" />Xuất hoá đơn ĐT</DropdownMenuItem>
                                   </>
                                 )}
@@ -318,6 +321,9 @@ const ContractManagement = () => {
       )}
       {einvoiceContract && (
         <CreateEInvoiceDialog open={!!einvoiceContract} onOpenChange={o => !o && setEinvoiceContract(null)} contract={einvoiceContract} />
+      )}
+      {advanceRequestContract && (
+        <AdvanceRequestDialog open={!!advanceRequestContract} onOpenChange={o => !o && setAdvanceRequestContract(null)} contract={advanceRequestContract} />
       )}
     </div>
   );
