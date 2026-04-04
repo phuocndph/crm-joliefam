@@ -407,7 +407,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
         <PaymentRequestDialog open={showPaymentRequest} onOpenChange={setShowPaymentRequest} contract={contract} />
         <FrameworkContractDialog open={showFramework} onOpenChange={setShowFramework} contract={contract} />
 
-        <div ref={printRef} className="bg-white p-8 rounded-lg border space-y-5 text-sm" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000", lineHeight: 1.7 }}>
+        <div ref={printRef} className="bg-white p-6 rounded-lg border space-y-5" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000", lineHeight: 1.6, fontSize: "13px" }}>
           {/* Header */}
           <div className="text-center space-y-1">
             <p className="font-bold text-sm">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
