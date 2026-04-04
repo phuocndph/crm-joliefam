@@ -8,7 +8,7 @@ import { Printer, Download, FileText, FileDown, ClipboardCheck, Receipt, FileSig
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
 import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import { exportElementToPDF } from "@/lib/pdfUtils";
 import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, AlignmentType, BorderStyle, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
 import { HandoverReportDialog } from "@/components/HandoverReportDialog";
@@ -141,22 +141,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
     if (!printRef.current) return;
     try {
       toast({ title: "Đang tạo PDF..." });
-      const canvas = await html2canvas(printRef.current, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-
-      const margin = 10;
-      // Fit everything on a single page: calculate page height based on content aspect ratio
-      const pdfWidth = 210; // A4 width in mm
-      const contentWidth = pdfWidth - margin * 2;
-      const contentHeight = (imgHeight * contentWidth) / imgWidth;
-      const pdfHeight = contentHeight + margin * 2;
-
-      const pdf = new jsPDF("p", "mm", [pdfWidth, pdfHeight]);
-      pdf.addImage(imgData, "JPEG", margin, margin, contentWidth, contentHeight);
-
-      pdf.save(`${contract.contract_number}.pdf`);
+      await exportElementToPDF(printRef.current, `${contract.contract_number}.pdf`);
       toast({ title: "Đã tải PDF thành công!" });
     } catch (err) {
       console.error("PDF export error:", err);
@@ -423,7 +408,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
         <PaymentRequestDialog open={showPaymentRequest} onOpenChange={setShowPaymentRequest} contract={contract} />
         <FrameworkContractDialog open={showFramework} onOpenChange={setShowFramework} contract={contract} />
 
-        <div ref={printRef} className="bg-white p-8 rounded-lg border space-y-5 text-sm" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000", lineHeight: 1.7 }}>
+        <div ref={printRef} className="bg-white p-6 rounded-lg border space-y-5" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000", lineHeight: 1.6, fontSize: "13px" }}>
           {/* Header */}
           <div className="text-center space-y-1">
             <p className="font-bold text-sm">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>

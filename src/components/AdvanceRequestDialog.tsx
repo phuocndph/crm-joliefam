@@ -10,8 +10,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { Printer, FileDown, FileText } from "lucide-react";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import { exportElementToPDF } from "@/lib/pdfUtils";
 import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, AlignmentType, BorderStyle } from "docx";
 import { saveAs } from "file-saver";
 import { numberToVietnameseCurrency } from "@/lib/numberToText";
@@ -75,16 +74,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
     if (!printRef.current) return;
     try {
       toast({ title: "Đang tạo PDF..." });
-      const canvas = await html2canvas(printRef.current, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
-      const pdfWidth = 210;
-      const margin = 10;
-      const contentWidth = pdfWidth - margin * 2;
-      const contentHeight = (canvas.height * contentWidth) / canvas.width;
-      const pdfHeight = contentHeight + margin * 2;
-      const pdf = new jsPDF("p", "mm", [pdfWidth, pdfHeight]);
-      pdf.addImage(imgData, "JPEG", margin, margin, contentWidth, contentHeight);
-      pdf.save(`DNTU-${contract.contract_number}.pdf`);
+      await exportElementToPDF(printRef.current, `DNTU-${contract.contract_number}.pdf`);
       toast({ title: "Đã tải PDF thành công!" });
     } catch {
       toast({ title: "Lỗi tạo PDF", variant: "destructive" });
@@ -238,7 +228,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
         </div>
 
         {/* Preview */}
-        <div ref={printRef} className="bg-white p-8 rounded-lg border space-y-4 text-sm" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000", lineHeight: 1.7 }}>
+        <div ref={printRef} className="bg-white p-6 rounded-lg border space-y-4" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000", lineHeight: 1.6, fontSize: "13px" }}>
           <div className="text-center space-y-1">
             <p className="font-bold" style={{ fontSize: "14px" }}>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
             <p className="font-bold" style={{ fontSize: "14px", textDecoration: "underline" }}>Độc lập – Tự do – Hạnh phúc</p>
