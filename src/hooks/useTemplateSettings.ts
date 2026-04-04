@@ -35,7 +35,9 @@ const defaultSettings: TemplateSettings = {
     "Thanh toán 30% còn lại khi hoàn thành lắp đặt.",
     "Bảo hành sản phẩm 24 tháng."
   ],
-  footerNote: "Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của chúng tôi!"
+  footerNote: "Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của chúng tôi!",
+  signatureUrl: "",
+  stampUrl: "",
 };
 
 export function useTemplateSettings() {
