@@ -23,7 +23,6 @@ const DEFAULT_SIG: StampSignaturePosition = { x: 30, y: 45, width: 140, height: 
 
 export const OnlineStampSignature = ({ show, sellerRep, sellerPos, editable = false }: Props) => {
   const { settings, saveSettings } = useTemplateSettings();
-
   const [stampPos, setStampPos] = useState<StampSignaturePosition>(DEFAULT_STAMP);
   const [sigPos, setSigPos] = useState<StampSignaturePosition>(DEFAULT_SIG);
   const [dragging, setDragging] = useState<"stamp" | "sig" | null>(null);
@@ -37,30 +36,12 @@ export const OnlineStampSignature = ({ show, sellerRep, sellerPos, editable = fa
     if (settings.signaturePosition) setSigPos(settings.signaturePosition);
   }, [settings.stampPosition, settings.signaturePosition]);
 
-  if (!show) return null;
-
-  const hasStamp = !!settings.stampUrl;
-  const hasSignature = !!settings.signatureUrl;
-
-  if (!hasStamp && !hasSignature) {
-    return <div style={{ height: 80 }} />;
-  }
-
-  const handleMouseDown = (type: "stamp" | "sig", mode: "drag" | "resize", e: React.MouseEvent) => {
-    if (!editable) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (mode === "drag") setDragging(type);
-    else setResizing(type);
-    setDragStart({ x: e.clientX, y: e.clientY });
-  };
-
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
 
     if (dragging) {
       const dxPct = (dx / rect.width) * 100;
@@ -100,6 +81,24 @@ export const OnlineStampSignature = ({ show, sellerRep, sellerPos, editable = fa
       };
     }
   }, [dragging, resizing, handleMouseMove, handleMouseUp]);
+
+  if (!show) return null;
+
+  const hasStamp = !!settings.stampUrl;
+  const hasSignature = !!settings.signatureUrl;
+
+  if (!hasStamp && !hasSignature) {
+    return <div style={{ height: 80 }} />;
+  }
+
+  const handleMouseDown = (type: "stamp" | "sig", mode: "drag" | "resize", e: React.MouseEvent) => {
+    if (!editable) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (mode === "drag") setDragging(type);
+    else setResizing(type);
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
 
   const handleSave = async () => {
     setSaving(true);
