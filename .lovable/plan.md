@@ -1,23 +1,47 @@
 
 
-## Căn chỉnh con dấu & chữ ký online
+## Thêm chức năng kéo thả & phóng to/thu nhỏ con dấu và chữ ký
 
-### Vấn đề
-- **Opacity quá thấp**: Con dấu 0.85, chữ ký 0.9 → nhợt nhạt, không giống ảnh gốc
-- **Chữ ký quá bé**: Chỉ 100x70px, cần tăng lên
-- **Con dấu nhỏ**: 120x120px, cần tăng để rõ ràng hơn
+### Ý tưởng
+Cho phép người dùng **kéo thả** (drag) và **phóng to/thu nhỏ** (resize) con dấu + chữ ký trực tiếp trên preview tài liệu, sau đó **lưu vị trí & kích thước** vào DB để áp dụng cho tất cả tài liệu.
 
-### Thay đổi (1 file: `OnlineStampSignature.tsx`)
+### Thay đổi
 
-| Thuộc tính | Hiện tại | Sửa thành |
-|-----------|----------|-----------|
-| Chiều cao vùng ký | 120px | 160px |
-| Con dấu size | 120x120 | 160x160 |
-| Con dấu opacity | 0.85 | 1.0 |
-| Chữ ký size | 100x70 | 140x100 |
-| Chữ ký opacity | 0.9 | 1.0 |
-| Vị trí con dấu | left 15% | left 5% |
-| Vị trí chữ ký | left 35% | left 30% |
+#### 1. Migration — Thêm cột lưu vị trí & kích thước
 
-Bỏ hoàn toàn opacity để giữ nguyên màu sắc như ảnh gốc đã upload.
+Thêm 4 cột vào `quote_template_settings`:
+- `stamp_position` (jsonb) — `{ x, y, width, height }`  
+- `signature_position` (jsonb) — `{ x, y, width, height }`
+
+Giá trị mặc định:
+- Stamp: `{ x: 5, y: 50, width: 160, height: 160 }`
+- Signature: `{ x: 30, y: 45, width: 140, height: 100 }`
+
+#### 2. Hook `useTemplateSettings.ts`
+- Thêm `stampPosition` và `signaturePosition` vào interface
+- Fetch/save từ DB
+
+#### 3. Component `OnlineStampSignature.tsx` — Thêm interactive mode
+
+Khi ở **chế độ chỉnh sửa** (prop `editable={true}`):
+- Mỗi ảnh có viền nét đứt + handle resize ở góc
+- Kéo thả bằng mouse/touch events (`onMouseDown/Move/Up`)
+- Resize bằng handle góc dưới-phải
+- Hiển thị nút **"Lưu vị trí"** để save vào DB
+
+Khi ở **chế độ xem** (mặc định): hiển thị bình thường theo vị trí đã lưu.
+
+#### 4. Trang Cài đặt (`QuoteTemplateSettings.tsx`)
+- Thêm section preview con dấu + chữ ký với `editable={true}`
+- Người dùng kéo thả và resize tại đây, bấm Lưu
+
+#### 5. Files thay đổi
+
+| File | Thay đổi |
+|------|----------|
+| Migration SQL | Thêm 2 cột jsonb |
+| `useTemplateSettings.ts` | Thêm stampPosition, signaturePosition |
+| `OnlineStampSignature.tsx` | Drag & resize logic + editable mode |
+| `QuoteTemplateSettings.tsx` | Preview editable cho kéo thả |
+| `types.ts` | Cập nhật DB types |
 
