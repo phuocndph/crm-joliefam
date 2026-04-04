@@ -164,13 +164,12 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
                 </div>
 
                 <div>
-                  <Label htmlFor="headquarters">Trụ sở</Label>
-                  <Textarea
-                    id="headquarters"
-                    value={settings.headquarters}
-                    onChange={(e) => setSettings(prev => ({ ...prev, headquarters: e.target.value }))}
-                    placeholder="Địa chỉ trụ sở"
-                    rows={2}
+                  <Label htmlFor="directorName">Người đại diện</Label>
+                  <Input
+                    id="directorName"
+                    value={(settings as any).directorName || "TRẦN THỊ THANH HOAN"}
+                    onChange={(e) => setSettings(prev => ({ ...prev, directorName: e.target.value } as any))}
+                    placeholder="Họ tên giám đốc"
                   />
                 </div>
 
