@@ -39,10 +39,10 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const depositAmount = contract.deposit_amount || 0;
   const currentAmount = amount || depositAmount;
 
-  const sellerName = seller.company_name || companySettings.companyName || "";
-  const sellerBank = seller.bank_info || companySettings.bankInfo || "";
-  const sellerTaxCode = seller.tax_code || companySettings.taxCode || "";
-  const sellerAddress = seller.address || companySettings.address || "";
+  const sellerName = companySettings.companyName || seller.company_name || "";
+  const sellerBank = companySettings.bankInfo || seller.bank_info || "";
+  const sellerTaxCode = companySettings.taxCode || seller.tax_code || "";
+  const sellerAddress = companySettings.address || seller.address || "";
   const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
 
   const amountText = currentAmount > 0 ? numberToVietnameseCurrency(currentAmount) : "";

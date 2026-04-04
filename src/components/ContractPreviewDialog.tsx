@@ -165,12 +165,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
     try {
       toast({ title: "Đang tạo file Word..." });
 
-      const sellerName = seller.company_name || companySettings.companyName;
-      const sellerAddress = seller.address || companySettings.address;
-      const sellerPhone = seller.phone || companySettings.phone;
-      const sellerTaxCode = seller.tax_code || companySettings.taxCode;
-      const sellerBank = seller.bank_info || companySettings.bankInfo;
-      const sellerHQ = seller.headquarters || companySettings.headquarters;
+      const sellerName = companySettings.companyName || seller.company_name;
+      const sellerAddress = companySettings.address || seller.address;
+      const sellerPhone = companySettings.phone || seller.phone;
+      const sellerTaxCode = companySettings.taxCode || seller.tax_code;
+      const sellerBank = companySettings.bankInfo || seller.bank_info;
+      const sellerHQ = companySettings.headquarters || seller.headquarters;
 
       const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
       const buyerAddress = buyer.address || contract.customers?.address || "—";
@@ -443,12 +443,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           {/* Party A - Seller */}
           <div className="p-3 border rounded">
             <p className="font-bold mb-1">BÊN A (Bên bán):</p>
-            <p><strong>Công ty:</strong> {seller.company_name || companySettings.companyName}</p>
+            <p><strong>Công ty:</strong> {companySettings.companyName || seller.company_name}</p>
             {(seller.representative) && <p><strong>Người đại diện:</strong> {seller.representative}{seller.position ? ` - Chức vụ: ${seller.position}` : ""}</p>}
-            <p><strong>Địa chỉ:</strong> {seller.address || companySettings.address}</p>
-            <p><strong>Điện thoại:</strong> {seller.phone || companySettings.phone}</p>
-            {(seller.tax_code || companySettings.taxCode) && <p><strong>Mã số thuế:</strong> {seller.tax_code || companySettings.taxCode}</p>}
-            {(seller.bank_info || companySettings.bankInfo) && <p><strong>Ngân hàng:</strong> {seller.bank_info || companySettings.bankInfo}</p>}
+            <p><strong>Địa chỉ:</strong> {companySettings.address || seller.address}</p>
+            <p><strong>Điện thoại:</strong> {companySettings.phone || seller.phone}</p>
+            {(companySettings.taxCode || seller.tax_code) && <p><strong>Mã số thuế:</strong> {companySettings.taxCode || seller.tax_code}</p>}
+            {(companySettings.bankInfo || seller.bank_info) && <p><strong>Ngân hàng:</strong> {companySettings.bankInfo || seller.bank_info}</p>}
           </div>
 
           {/* Party B - Buyer */}
