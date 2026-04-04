@@ -27,6 +27,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const [requestDate, setRequestDate] = useState(new Date().toISOString().split("T")[0]);
   const [paymentPhase, setPaymentPhase] = useState("remaining");
   const [additionalNotes, setAdditionalNotes] = useState("");
+  const [showOnlineStamp, setShowOnlineStamp] = useState(false);
 
   if (!contract) return null;
 
