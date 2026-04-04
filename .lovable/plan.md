@@ -1,47 +1,28 @@
 
 
-## Thêm chức năng kéo thả & phóng to/thu nhỏ con dấu và chữ ký
+## Sửa lỗi con dấu & chữ ký bị méo khi xuất PDF
 
-### Ý tưởng
-Cho phép người dùng **kéo thả** (drag) và **phóng to/thu nhỏ** (resize) con dấu + chữ ký trực tiếp trên preview tài liệu, sau đó **lưu vị trí & kích thước** vào DB để áp dụng cho tất cả tài liệu.
+### Nguyên nhân
+`html2canvas` không render chính xác CSS `object-fit: contain` trên thẻ `<img>`. Khi chuyển sang canvas, ảnh bị kéo giãn theo kích thước container thay vì giữ tỷ lệ gốc → méo hình.
 
-### Thay đổi
+### Giải pháp
 
-#### 1. Migration — Thêm cột lưu vị trí & kích thước
+**File: `OnlineStampSignature.tsx`**
 
-Thêm 4 cột vào `quote_template_settings`:
-- `stamp_position` (jsonb) — `{ x, y, width, height }`  
-- `signature_position` (jsonb) — `{ x, y, width, height }`
+Thay `className="w-full h-full object-contain"` bằng inline style trực tiếp:
+- Đặt `width` và `height` bằng pixel cụ thể trên thẻ `<img>` 
+- Dùng `object-fit: "contain"` dạng inline style (html2canvas xử lý inline style tốt hơn class)
+- Thêm `crossOrigin="anonymous"` để html2canvas load ảnh cross-origin không bị lỗi
 
-Giá trị mặc định:
-- Stamp: `{ x: 5, y: 50, width: 160, height: 160 }`
-- Signature: `{ x: 30, y: 45, width: 140, height: 100 }`
+Thay đổi cụ thể cho cả 2 ảnh (stamp + signature):
+```
+// Trước
+<img className="w-full h-full object-contain pointer-events-none" />
 
-#### 2. Hook `useTemplateSettings.ts`
-- Thêm `stampPosition` và `signaturePosition` vào interface
-- Fetch/save từ DB
+// Sau  
+<img style={{ width: "100%", height: "100%", objectFit: "contain" }} 
+     crossOrigin="anonymous" />
+```
 
-#### 3. Component `OnlineStampSignature.tsx` — Thêm interactive mode
-
-Khi ở **chế độ chỉnh sửa** (prop `editable={true}`):
-- Mỗi ảnh có viền nét đứt + handle resize ở góc
-- Kéo thả bằng mouse/touch events (`onMouseDown/Move/Up`)
-- Resize bằng handle góc dưới-phải
-- Hiển thị nút **"Lưu vị trí"** để save vào DB
-
-Khi ở **chế độ xem** (mặc định): hiển thị bình thường theo vị trí đã lưu.
-
-#### 4. Trang Cài đặt (`QuoteTemplateSettings.tsx`)
-- Thêm section preview con dấu + chữ ký với `editable={true}`
-- Người dùng kéo thả và resize tại đây, bấm Lưu
-
-#### 5. Files thay đổi
-
-| File | Thay đổi |
-|------|----------|
-| Migration SQL | Thêm 2 cột jsonb |
-| `useTemplateSettings.ts` | Thêm stampPosition, signaturePosition |
-| `OnlineStampSignature.tsx` | Drag & resize logic + editable mode |
-| `QuoteTemplateSettings.tsx` | Preview editable cho kéo thả |
-| `types.ts` | Cập nhật DB types |
+Chỉ sửa 1 file `OnlineStampSignature.tsx`, ảnh hưởng tất cả các dialog dùng component này.
 
