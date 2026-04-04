@@ -312,6 +312,14 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
                     </div>
                   </div>
                 </div>
+
+                {/* Interactive position preview */}
+                {(settings.stampUrl || settings.signatureUrl) && (
+                  <div className="mt-4 pt-4 border-t">
+                    <Label className="mb-2 block">Căn chỉnh vị trí con dấu & chữ ký (kéo thả + resize)</Label>
+                    <OnlineStampSignature show={true} editable={true} sellerRep="Người đại diện" />
+                  </div>
+                )}
               </CardContent>
             </Card>
 
