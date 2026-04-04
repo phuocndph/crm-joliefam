@@ -1,42 +1,73 @@
 
 
-## Vấn đề
+## Thêm chức năng Ký & Đóng dấu Online
 
-**MST sai trên hợp đồng cũ**: Cài đặt DB hiện tại có MST đúng = `0108652480`, nhưng tất cả hợp đồng đã tạo đều lưu `seller_info.tax_code = 0134345789` (giá trị cũ). Khi hiển thị, hệ thống ưu tiên lấy từ `seller_info` trong hợp đồng → hiển thị MST sai.
+### Vấn đề
+Khi giám đốc đi vắng, cần gửi bản mềm hợp đồng/đề nghị thanh toán/tạm ứng cho khách hàng có chữ ký và con dấu sẵn. Hiện tại phần chữ ký chỉ là khoảng trống.
 
-**Nguyên nhân gốc**: Khi tạo hợp đồng, `seller_info` được snapshot từ cài đặt tại thời điểm tạo (đúng logic). Nhưng nếu cài đặt thay đổi sau đó, các hợp đồng cũ vẫn giữ giá trị cũ.
+### Giải pháp
 
-## Giải pháp
+#### 1. Thêm cột DB lưu ảnh chữ ký + con dấu
 
-Thay đổi logic hiển thị ở **4 file** để luôn ưu tiên dữ liệu từ cài đặt công ty (settings) thay vì từ `seller_info` đã lưu trong hợp đồng. Đồng thời cập nhật MST sai trong các hợp đồng cũ.
+Thêm 2 cột mới vào bảng `quote_template_settings`:
+- `signature_url` — ảnh chữ ký giám đốc (PNG trong suốt)
+- `stamp_url` — ảnh con dấu công ty (PNG trong suốt)
 
-### 1. Đảo ưu tiên fallback (4 files)
-
-Hiện tại: `seller.tax_code || companySettings.taxCode` (ưu tiên dữ liệu cũ)
-Sửa thành: `companySettings.taxCode || seller.tax_code` (ưu tiên cài đặt mới nhất)
-
-Áp dụng cho **tất cả trường** (company_name, tax_code, bank_info, address, phone) ở 4 file:
-
-| File | Mô tả |
-|------|--------|
-| `ContractPreviewDialog.tsx` | Hợp đồng kinh tế |
-| `FrameworkContractDialog.tsx` | Hợp đồng nguyên tắc |
-| `PaymentRequestDialog.tsx` | Đề nghị thanh toán |
-| `AdvanceRequestDialog.tsx` | Đề nghị tạm ứng |
-
-### 2. Cập nhật hợp đồng cũ trong DB
-
-Chạy migration SQL để cập nhật `seller_info.tax_code` từ `0134345789` → `0108652480` cho tất cả hợp đồng hiện có, đảm bảo dữ liệu nhất quán.
-
+Migration SQL:
 ```sql
-UPDATE contracts 
-SET seller_info = jsonb_set(seller_info::jsonb, '{tax_code}', '"0108652480"')
-WHERE seller_info->>'tax_code' = '0134345789';
+ALTER TABLE quote_template_settings 
+  ADD COLUMN IF NOT EXISTS signature_url text,
+  ADD COLUMN IF NOT EXISTS stamp_url text;
 ```
 
-### Tóm tắt
+#### 2. Cập nhật hook `useTemplateSettings`
 
-- **Hiệu ứng**: Tất cả tài liệu (HĐ, ĐNTT, ĐNTU, HĐNT) sẽ luôn hiển thị thông tin công ty mới nhất từ cài đặt
-- **Fallback**: Nếu cài đặt chưa load xong, vẫn hiển thị từ `seller_info` đã lưu
-- **DB fix**: Sửa MST sai trong hợp đồng cũ
+Thêm 2 field `signatureUrl` và `stampUrl` vào interface `TemplateSettings`, fetch/save từ DB.
+
+#### 3. Cập nhật trang Cài đặt (`QuoteTemplateSettings.tsx`)
+
+Thêm section "Chữ ký & Con dấu" cho phép upload:
+- Ảnh chữ ký giám đốc
+- Ảnh con dấu công ty
+- Preview ảnh đã upload
+- Sử dụng Supabase Storage bucket `logos` (đã có sẵn)
+
+#### 4. Thêm toggle "Ký & đóng dấu" trên các tài liệu
+
+Trên mỗi dialog (HĐ, ĐNTT, ĐNTU, HĐNT, Biên bản bàn giao), thêm checkbox/switch **"Đóng dấu & ký online"**. Khi bật:
+- Hiển thị ảnh con dấu + chữ ký chồng lên vùng ký tên Bên A
+- Hiển thị tên giám đốc (từ `seller_info.representative` hoặc mặc định "Trần Thị Thanh Hoan")
+- Khi xuất PDF/Word, ảnh được nhúng vào file
+
+Khi tắt: giữ nguyên khoảng trống như hiện tại (để in ra ký tay).
+
+#### 5. Files thay đổi
+
+| File | Thay đổi |
+|------|----------|
+| Migration SQL | Thêm 2 cột `signature_url`, `stamp_url` |
+| `src/hooks/useTemplateSettings.ts` | Thêm `signatureUrl`, `stampUrl` |
+| `src/components/QuoteTemplateSettings.tsx` | Thêm UI upload chữ ký + con dấu |
+| `src/components/ContractPreviewDialog.tsx` | Toggle ký online + hiển thị ảnh |
+| `src/components/PaymentRequestDialog.tsx` | Toggle ký online + hiển thị ảnh |
+| `src/components/AdvanceRequestDialog.tsx` | Toggle ký online + hiển thị ảnh |
+| `src/components/FrameworkContractDialog.tsx` | Toggle ký online + hiển thị ảnh |
+| `src/components/HandoverReportDialog.tsx` | Toggle ký online + hiển thị ảnh |
+
+#### 6. UI ký online (trong vùng chữ ký Bên A)
+
+```text
+┌──────────────────────┐
+│  ĐẠI DIỆN BÊN A     │
+│  (Ký, đóng dấu)     │
+│                      │
+│   [con dấu PNG]      │
+│   [chữ ký PNG]       │
+│                      │
+│  Trần Thị Thanh Hoan │
+│     Giám đốc         │
+└──────────────────────┘
+```
+
+Ảnh con dấu và chữ ký sẽ được đặt chồng lên nhau bằng CSS `position: absolute` để trông tự nhiên giống ký thật.
 
