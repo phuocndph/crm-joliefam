@@ -1,52 +1,23 @@
 
 
-## Căn chỉnh Ký & Đóng dấu online theo đúng quy chuẩn
+## Căn chỉnh con dấu & chữ ký online
 
-### Vấn đề hiện tại
-Từ ảnh mẫu, bố cục chuẩn là:
-- **Tên công ty** (bold, căn giữa)
-- *(Ký, đóng dấu)* (italic)
-- Con dấu bên **trái**, chữ ký **chồng lên bên phải** con dấu
-- **Tên người đại diện** (bold, gạch chân) ở dưới cùng
+### Vấn đề
+- **Opacity quá thấp**: Con dấu 0.85, chữ ký 0.9 → nhợt nhạt, không giống ảnh gốc
+- **Chữ ký quá bé**: Chỉ 100x70px, cần tăng lên
+- **Con dấu nhỏ**: 120x120px, cần tăng để rõ ràng hơn
 
-### Thay đổi
+### Thay đổi (1 file: `OnlineStampSignature.tsx`)
 
-**1. Component `OnlineStampSignature.tsx`** — Căn chỉnh lại:
-- Tăng chiều cao vùng ký từ 100px → 120px
-- Con dấu: dịch sang trái nhiều hơn, kích thước 120x120
-- Chữ ký: đặt chồng lên phần phải con dấu, kích thước 100x70
-- Hiển thị tên người đại diện + chức vụ (bold, gạch chân)
+| Thuộc tính | Hiện tại | Sửa thành |
+|-----------|----------|-----------|
+| Chiều cao vùng ký | 120px | 160px |
+| Con dấu size | 120x120 | 160x160 |
+| Con dấu opacity | 0.85 | 1.0 |
+| Chữ ký size | 100x70 | 140x100 |
+| Chữ ký opacity | 0.9 | 1.0 |
+| Vị trí con dấu | left 15% | left 5% |
+| Vị trí chữ ký | left 35% | left 30% |
 
-**2. Áp dụng đồng bộ 5 dialog** — Cập nhật inline styles tại:
-- `ContractPreviewDialog.tsx`
-- `FrameworkContractDialog.tsx`
-- `PaymentRequestDialog.tsx`
-- `AdvanceRequestDialog.tsx`
-- `HandoverReportDialog.tsx`
-
-Thay thế inline stamp/signature code bằng component `OnlineStampSignature` (đã có nhưng chưa dùng ở một số file), đảm bảo tất cả dùng chung 1 layout chuẩn.
-
-**3. Layout chuẩn (theo ảnh mẫu):**
-
-```text
-    CÔNG TY TNHH GIA LỘC HƯNG PHÁT
-           (Ký, đóng dấu)
-
-      [CON DẤU]  [CHỮ KÝ]
-       (trái)    (chồng phải)
-
-       Trần Thị Thanh Hoan
-            (gạch chân)
-```
-
-### Files thay đổi
-
-| File | Thay đổi |
-|------|----------|
-| `OnlineStampSignature.tsx` | Căn chỉnh vị trí, thêm tên + gạch chân |
-| `ContractPreviewDialog.tsx` | Dùng `OnlineStampSignature` thay inline |
-| `FrameworkContractDialog.tsx` | Dùng `OnlineStampSignature` thay inline |
-| `PaymentRequestDialog.tsx` | Dùng `OnlineStampSignature` thay inline |
-| `AdvanceRequestDialog.tsx` | Dùng `OnlineStampSignature` thay inline |
-| `HandoverReportDialog.tsx` | Dùng `OnlineStampSignature` thay inline |
+Bỏ hoàn toàn opacity để giữ nguyên màu sắc như ảnh gốc đã upload.
 
