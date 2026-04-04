@@ -1530,7 +1530,9 @@ export type Database = {
           logo_url: string | null
           phone: string | null
           quote_title_color: string | null
+          signature_position: Json | null
           signature_url: string | null
+          stamp_position: Json | null
           stamp_url: string | null
           tax_code: string | null
           tenant_id: string | null
@@ -1550,7 +1552,9 @@ export type Database = {
           logo_url?: string | null
           phone?: string | null
           quote_title_color?: string | null
+          signature_position?: Json | null
           signature_url?: string | null
+          stamp_position?: Json | null
           stamp_url?: string | null
           tax_code?: string | null
           tenant_id?: string | null
@@ -1570,7 +1574,9 @@ export type Database = {
           logo_url?: string | null
           phone?: string | null
           quote_title_color?: string | null
+          signature_position?: Json | null
           signature_url?: string | null
+          stamp_position?: Json | null
           stamp_url?: string | null
           tax_code?: string | null
           tenant_id?: string | null
