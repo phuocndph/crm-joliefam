@@ -47,6 +47,8 @@ const defaultSettings: TemplateSettings = {
   footerNote: "Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của chúng tôi!",
   signatureUrl: "",
   stampUrl: "",
+  stampPosition: { x: 5, y: 50, width: 160, height: 160 },
+  signaturePosition: { x: 30, y: 45, width: 140, height: 100 },
 };
 
 export function useTemplateSettings() {
