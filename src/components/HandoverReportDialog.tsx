@@ -36,12 +36,12 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
   const items = Array.isArray(contract.items) ? contract.items : [];
   const seller = contract.seller_info || {};
   const buyer = contract.buyer_info || {};
-  const sellerName = seller.company_name || companySettings.companyName || "";
+  const sellerName = companySettings.companyName || seller.company_name || "";
   const sellerRep = seller.representative || "...";
   const sellerPos = seller.position || "Giám đốc";
-  const sellerAddr = seller.address || companySettings.address || "...";
-  const sellerPhone = seller.phone || companySettings.phone || "";
-  const sellerTax = seller.tax_code || companySettings.taxCode || "";
+  const sellerAddr = companySettings.address || seller.address || "...";
+  const sellerPhone = companySettings.phone || seller.phone || "";
+  const sellerTax = companySettings.taxCode || seller.tax_code || "";
   const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
   const buyerRep = buyer.representative || "...";
   const buyerPos = buyer.position || "";
