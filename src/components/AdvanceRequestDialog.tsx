@@ -26,6 +26,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const { toast } = useToast();
   const [requestDate, setRequestDate] = useState(new Date().toISOString().split("T")[0]);
   const [additionalNotes, setAdditionalNotes] = useState("");
+  const [amount, setAmount] = useState(0);
 
   if (!contract) return null;
 
@@ -36,8 +37,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const buyer = contract.buyer_info || {};
   const totalAmount = contract.total_amount || 0;
   const depositAmount = contract.deposit_amount || 0;
-
-  const [amount, setAmount] = useState(depositAmount);
+  const currentAmount = amount || depositAmount;
 
   const sellerName = seller.company_name || companySettings.companyName || "";
   const sellerBank = seller.bank_info || companySettings.bankInfo || "";
