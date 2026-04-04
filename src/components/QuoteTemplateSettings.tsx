@@ -232,6 +232,88 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
               </CardContent>
             </Card>
 
+            {/* Signature & Stamp Upload */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Chữ ký & Con dấu (Ký online)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">Upload ảnh PNG trong suốt để sử dụng khi ký & đóng dấu online trên hợp đồng, đề nghị thanh toán, tạm ứng.</p>
+                <div className="grid grid-cols-2 gap-6">
+                  {/* Signature */}
+                  <div>
+                    <Label>Chữ ký Giám đốc</Label>
+                    <div className="mt-2 border rounded p-3 bg-gray-50 min-h-[100px] flex items-center justify-center">
+                      {settings.signatureUrl ? (
+                        <img src={settings.signatureUrl} alt="Chữ ký" className="max-h-20 object-contain" />
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Chưa có chữ ký</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Input
+                        id="signature-upload"
+                        type="file"
+                        accept="image/png,image/webp"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setUploading(true);
+                          const url = await uploadLogo(file);
+                          if (url) setSettings(prev => ({ ...prev, signatureUrl: url }));
+                          setUploading(false);
+                        }}
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById('signature-upload')?.click()} disabled={uploading}>
+                        <Upload className="w-4 h-4 mr-1" />Upload
+                      </Button>
+                      {settings.signatureUrl && (
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setSettings(prev => ({ ...prev, signatureUrl: "" }))} className="text-red-600">
+                          Xóa
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {/* Stamp */}
+                  <div>
+                    <Label>Con dấu công ty</Label>
+                    <div className="mt-2 border rounded p-3 bg-gray-50 min-h-[100px] flex items-center justify-center">
+                      {settings.stampUrl ? (
+                        <img src={settings.stampUrl} alt="Con dấu" className="max-h-20 object-contain" />
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Chưa có con dấu</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Input
+                        id="stamp-upload"
+                        type="file"
+                        accept="image/png,image/webp"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setUploading(true);
+                          const url = await uploadLogo(file);
+                          if (url) setSettings(prev => ({ ...prev, stampUrl: url }));
+                          setUploading(false);
+                        }}
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById('stamp-upload')?.click()} disabled={uploading}>
+                        <Upload className="w-4 h-4 mr-1" />Upload
+                      </Button>
+                      {settings.stampUrl && (
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setSettings(prev => ({ ...prev, stampUrl: "" }))} className="text-red-600">
+                          Xóa
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Color Settings */}
             <Card>
               <CardHeader>
