@@ -269,10 +269,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
       children.push(
         new Paragraph({ children: [new TextRun({ text: "BÊN A (Bên bán):", bold: true, size: 22, font: "Times New Roman" })], spacing: { before: 200 } }),
         new Paragraph({ children: [new TextRun({ text: "Công ty: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerName, size: 20, font: "Times New Roman" })] }),
-        new Paragraph({ children: [new TextRun({ text: "Địa chỉ: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerAddress, size: 20, font: "Times New Roman" })] }),
       );
-      if (sellerHQ) children.push(new Paragraph({ children: [new TextRun({ text: "Trụ sở: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerHQ, size: 20, font: "Times New Roman" })] }));
-      children.push(new Paragraph({ children: [new TextRun({ text: "Điện thoại: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerPhone, size: 20, font: "Times New Roman" })] }));
+      if (seller.representative) children.push(new Paragraph({ children: [new TextRun({ text: "Người đại diện: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: `${seller.representative}${seller.position ? ` - Chức vụ: ${seller.position}` : ""}`, size: 20, font: "Times New Roman" })] }));
+      children.push(
+        new Paragraph({ children: [new TextRun({ text: "Địa chỉ: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerAddress, size: 20, font: "Times New Roman" })] }),
+        new Paragraph({ children: [new TextRun({ text: "Điện thoại: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerPhone, size: 20, font: "Times New Roman" })] }),
+      );
       if (sellerTaxCode) children.push(new Paragraph({ children: [new TextRun({ text: "Mã số thuế: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerTaxCode, size: 20, font: "Times New Roman" })] }));
       if (sellerBank) children.push(new Paragraph({ children: [new TextRun({ text: "Ngân hàng: ", bold: true, size: 20, font: "Times New Roman" }), new TextRun({ text: sellerBank, size: 20, font: "Times New Roman" })] }));
 
