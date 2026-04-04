@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +55,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
   const [scope, setScope] = useState("");
   const [additionalTerms, setAdditionalTerms] = useState("");
   const [articles, setArticles] = useState(contract.articles?.length ? contract.articles : defaultArticles);
+  const [showOnlineStamp, setShowOnlineStamp] = useState(false);
 
   if (!contract) return null;
 
@@ -281,10 +283,15 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
           </div>
         </details>
 
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4 items-center">
           <Button size="sm" variant="outline" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />In</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadPDF}><FileDown className="h-4 w-4 mr-1" />Xuất PDF</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadWord}><FileText className="h-4 w-4 mr-1" />Xuất Word</Button>
+          <div className="border-l mx-1 h-6" />
+          <div className="flex items-center gap-2">
+            <Switch checked={showOnlineStamp} onCheckedChange={setShowOnlineStamp} />
+            <span className="text-xs font-medium">Ký & đóng dấu online</span>
+          </div>
         </div>
 
         {/* Preview */}
@@ -332,8 +339,15 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
           <div className="grid grid-cols-2 gap-8 pt-8 mt-8 text-center" style={{ borderTop: "1px solid #e5e7eb" }}>
             <div>
               <p className="font-bold">ĐẠI DIỆN BÊN A</p>
-              <p className="text-xs italic" style={{ color: "#6b7280" }}>(Ký, ghi rõ họ tên)</p>
-              <div style={{ height: 80 }}></div>
+              <p className="text-xs italic" style={{ color: "#6b7280" }}>(Ký, đóng dấu)</p>
+              {showOnlineStamp && (companySettings.stampUrl || companySettings.signatureUrl) ? (
+                <div className="relative" style={{ height: 100 }}>
+                  {companySettings.stampUrl && <img src={companySettings.stampUrl} alt="Dấu" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-60%, -50%)", width: 110, height: 110, opacity: 0.85, objectFit: "contain" }} />}
+                  {companySettings.signatureUrl && <img src={companySettings.signatureUrl} alt="Ký" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-40%, -45%)", width: 90, height: 60, opacity: 0.9, objectFit: "contain" }} />}
+                </div>
+              ) : (
+                <div style={{ height: 80 }}></div>
+              )}
               <p className="font-bold">{sellerRep !== "..." ? sellerRep : ""}</p>
             </div>
             <div>

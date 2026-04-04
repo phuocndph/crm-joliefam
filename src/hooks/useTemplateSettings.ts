@@ -14,6 +14,8 @@ export interface TemplateSettings {
   logoUrl: string;
   terms: string[];
   footerNote: string;
+  signatureUrl: string;
+  stampUrl: string;
 }
 
 const defaultSettings: TemplateSettings = {
@@ -33,7 +35,9 @@ const defaultSettings: TemplateSettings = {
     "Thanh toán 30% còn lại khi hoàn thành lắp đặt.",
     "Bảo hành sản phẩm 24 tháng."
   ],
-  footerNote: "Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của chúng tôi!"
+  footerNote: "Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của chúng tôi!",
+  signatureUrl: "",
+  stampUrl: "",
 };
 
 export function useTemplateSettings() {
@@ -77,6 +81,8 @@ export function useTemplateSettings() {
           logoUrl: data.logo_url || defaultSettings.logoUrl,
           terms,
           footerNote: data.footer_note || defaultSettings.footerNote,
+          signatureUrl: (data as any).signature_url || defaultSettings.signatureUrl,
+          stampUrl: (data as any).stamp_url || defaultSettings.stampUrl,
         });
       }
     } catch (err) {
@@ -136,8 +142,10 @@ export function useTemplateSettings() {
           logo_url: newSettings.logoUrl,
           terms: newSettings.terms,
           footer_note: newSettings.footerNote,
+          signature_url: newSettings.signatureUrl,
+          stamp_url: newSettings.stampUrl,
           updated_at: new Date().toISOString(),
-        }, {
+        } as any, {
           onConflict: 'tenant_id'
         });
 
