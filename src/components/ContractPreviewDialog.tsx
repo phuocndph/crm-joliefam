@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Printer, Download, FileText, FileDown, ClipboardCheck, Receipt, FileSignature } from "lucide-react";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
+import html2canvas from "html2canvas";
 import { exportElementToPDF } from "@/lib/pdfUtils";
 import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, AlignmentType, BorderStyle, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
