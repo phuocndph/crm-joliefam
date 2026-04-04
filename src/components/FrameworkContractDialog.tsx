@@ -55,6 +55,7 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
   const [scope, setScope] = useState("");
   const [additionalTerms, setAdditionalTerms] = useState("");
   const [articles, setArticles] = useState(contract.articles?.length ? contract.articles : defaultArticles);
+  const [showOnlineStamp, setShowOnlineStamp] = useState(false);
 
   if (!contract) return null;
 
