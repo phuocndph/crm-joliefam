@@ -18,6 +18,7 @@ import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
 import { useEInvoices } from "@/hooks/useEInvoices";
 import { HandoverReportDialog } from "@/components/HandoverReportDialog";
 import { PaymentRequestDialog } from "@/components/PaymentRequestDialog";
+import { AdvanceRequestDialog } from "@/components/AdvanceRequestDialog";
 import { FrameworkContractDialog } from "@/components/FrameworkContractDialog";
 import { ContractTemplateManager } from "@/components/ContractTemplateManager";
 import { supabase } from "@/integrations/supabase/client";
