@@ -28,6 +28,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const [requestDate, setRequestDate] = useState(new Date().toISOString().split("T")[0]);
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [amount, setAmount] = useState(0);
+  const [showOnlineStamp, setShowOnlineStamp] = useState(false);
 
   if (!contract) return null;
 
