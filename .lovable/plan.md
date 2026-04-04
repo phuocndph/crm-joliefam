@@ -1,45 +1,52 @@
 
-## Sửa lỗi chi phí hiển thị 0đ trong bảng lợi nhuận
 
-### Nguyên nhân
+## Thêm chức năng "Đề nghị tạm ứng" + Kiểm tra lỗi dữ liệu công ty
 
-Đơn hàng 2533: sản phẩm "Váy giường 1m6" (`cost_price: 240,000đ`) x 2 = **480,000đ**, nhưng hiển thị **0đ**.
+### 1. Kiểm tra dữ liệu công ty
 
-1. Trường `cost_price` trong bảng `orders` được lưu là `0` khi tạo đơn
-2. Logic fallback tính từ `productsMap` bị ảnh hưởng bởi **race condition**: `orderProfits` useMemo chạy khi `productsData` chưa load xong
-3. `productsData` query có `staleTime: 10 phút` — nếu lần đầu trả về empty (do `orders` state chưa sẵn), kết quả cũ được cache
+Dữ liệu công ty trong DB (`quote_template_settings`) và trong `seller_info` của hợp đồng đều chính xác (CÔNG TY TNHH GIA LỘC HƯNG PHÁT). Tuy nhiên, file `useTemplateSettings.ts` có `defaultSettings` hardcode dữ liệu cũ (REMY). Nếu DB fetch chậm hoặc lỗi, sẽ hiển thị sai. Cần xác nhận: bạn đang gặp lỗi cụ thể gì khi lấy dữ liệu công ty? (Hiển thị sai tên? Trống? Hay dữ liệu REMY cũ?)
 
-### Giải pháp
+**Sửa ngay**: Cập nhật `defaultSettings` trong `useTemplateSettings.ts` cho khớp với dữ liệu thực tế để tránh flash dữ liệu cũ khi loading.
 
-**File: `src/pages/CashFlowManagement.tsx`**
+### 2. Tạo component "Đề nghị tạm ứng" (AdvanceRequestDialog)
 
-1. **Bỏ local state `orders`** — dùng trực tiếp `ordersData` từ React Query thay vì copy qua `useEffect` → `useState`. Điều này loại bỏ delay giữa data fetch và render
+Tài liệu "Đề nghị tạm ứng" khác với "Đề nghị thanh toán":
+- Mục đích: Yêu cầu tạm ứng tiền trước khi thực hiện hợp đồng (mua vật tư, nhân công...)
+- Người nhận: Nội bộ công ty (Giám đốc duyệt cho nhân viên/phòng ban)
 
-2. **Giảm `staleTime` của `productsData`** từ 10 phút xuống 0 — đảm bảo luôn re-fetch khi query key thay đổi
+**File mới: `src/components/AdvanceRequestDialog.tsx`**
+- Cấu trúc tương tự `PaymentRequestDialog` (cùng pattern: Dialog + preview + Print/PDF/Word)
+- Các trường nhập:
+  - Ngày đề nghị
+  - Người đề nghị (tên, chức vụ)
+  - Lý do tạm ứng (textarea)
+  - Số tiền tạm ứng (input number)
+  - Thời hạn hoàn ứng
+- Bản xem trước theo mẫu chuẩn:
+  - Tiêu đề: "GIẤY ĐỀ NGHỊ TẠM ỨNG"
+  - Thông tin công ty (từ `seller_info` hoặc `companySettings`)
+  - Bảng chi tiết khoản tạm ứng
+  - Phần ký: "Người đề nghị" / "Kế toán trưởng" / "Giám đốc"
+- Xuất PDF và Word (pattern giống PaymentRequestDialog)
 
-3. **Thêm `productsLoading` vào dependency** của `orderProfits` — chỉ tính toán khi products đã load xong, nếu đang loading thì return mảng rỗng hoặc giá trị tạm
+### 3. Tích hợp vào ContractManagement
 
-4. **Cập nhật `cost_price` vào DB khi tính được** — sau khi tính cost từ products, gọi update order để lưu lại, tránh phải tính lại mỗi lần
+**File: `src/pages/ContractManagement.tsx`**
+- Import `AdvanceRequestDialog`
+- Thêm state: `const [advanceRequestContract, setAdvanceRequestContract] = useState<any>(null)`
+- Thêm menu item trong dropdown (sau "Đề nghị thanh toán"):
+  ```
+  <DropdownMenuItem onClick={() => setAdvanceRequestContract(c)}>
+    <Banknote className="h-4 w-4 mr-2" />Đề nghị tạm ứng
+  </DropdownMenuItem>
+  ```
+- Render `AdvanceRequestDialog` ở cuối component
 
-### Thay đổi chi tiết
+### Tổng kết thay đổi
 
-```text
-Trước:
-  const [orders, setOrders] = useState<OrderDetail[]>([]);
-  useEffect(() => { setOrders(ordersData); }, [ordersData]);
-  // productsData staleTime: 10 minutes
+| File | Hành động |
+|------|-----------|
+| `src/components/AdvanceRequestDialog.tsx` | Tạo mới |
+| `src/pages/ContractManagement.tsx` | Thêm menu + state + render dialog |
+| `src/hooks/useTemplateSettings.ts` | Cập nhật defaultSettings |
 
-Sau:
-  // Dùng ordersData trực tiếp, sorted bằng useMemo
-  const orders = useMemo(() => {
-    return [...ordersData].sort((a, b) => ...);
-  }, [ordersData]);
-  // productsData staleTime: 0
-  // orderProfits chỉ tính khi !productsLoading
-```
-
-| Vấn đề | Sửa |
-|--------|-----|
-| Race condition orders state delay | Dùng ordersData trực tiếp qua useMemo |
-| Products cache 10 phút | Giảm staleTime về 0 |
-| Tính toán khi products chưa load | Thêm guard `productsLoading` |
