@@ -9,13 +9,28 @@ export const exportElementToPDF = async (
   element: HTMLElement,
   filename: string
 ): Promise<void> => {
-  const canvas = await html2canvas(element, {
+  // Clone element and force A4 width (794px = 210mm at 96dpi) for consistent layout
+  const clone = element.cloneNode(true) as HTMLElement;
+  Object.assign(clone.style, {
+    position: "absolute",
+    left: "-9999px",
+    top: "0",
+    width: "794px",
+    maxWidth: "794px",
+    minWidth: "794px",
+    backgroundColor: "#ffffff",
+  });
+  document.body.appendChild(clone);
+
+  const canvas = await html2canvas(clone, {
     scale: 3,
     useCORS: true,
     allowTaint: false,
     backgroundColor: "#ffffff",
     logging: false,
   });
+
+  document.body.removeChild(clone);
 
   const imgData = canvas.toDataURL("image/png");
 
