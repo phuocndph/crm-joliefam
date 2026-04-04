@@ -177,7 +177,9 @@ export const OnlineStampSignature = ({ show, sellerRep, sellerPos, editable = fa
             <img
               src={settings.signatureUrl}
               alt="Chữ ký"
-              className="w-full h-full object-contain pointer-events-none"
+              style={{ width: "100%", height: "100%", objectFit: "contain" }}
+              crossOrigin="anonymous"
+              className="pointer-events-none"
               draggable={false}
             />
             {editable && (
