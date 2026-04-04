@@ -26,6 +26,7 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
   const [handoverDate, setHandoverDate] = useState(new Date().toISOString().split("T")[0]);
   const [conclusion, setConclusion] = useState("Hàng hóa đạt yêu cầu chất lượng theo hợp đồng. Hai bên thống nhất nghiệm thu đạt.");
   const [notes, setNotes] = useState("");
+  const [showOnlineStamp, setShowOnlineStamp] = useState(false);
 
   if (!contract) return null;
 
