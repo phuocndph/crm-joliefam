@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
+export interface PositionSize {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface TemplateSettings {
   companyName: string;
   companyTitle: string;
@@ -16,6 +23,8 @@ export interface TemplateSettings {
   footerNote: string;
   signatureUrl: string;
   stampUrl: string;
+  stampPosition: PositionSize;
+  signaturePosition: PositionSize;
 }
 
 const defaultSettings: TemplateSettings = {
