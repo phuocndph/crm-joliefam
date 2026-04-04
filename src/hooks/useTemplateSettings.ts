@@ -94,6 +94,8 @@ export function useTemplateSettings() {
           footerNote: data.footer_note || defaultSettings.footerNote,
           signatureUrl: (data as any).signature_url || defaultSettings.signatureUrl,
           stampUrl: (data as any).stamp_url || defaultSettings.stampUrl,
+          stampPosition: (data as any).stamp_position || defaultSettings.stampPosition,
+          signaturePosition: (data as any).signature_position || defaultSettings.signaturePosition,
         });
       }
     } catch (err) {
