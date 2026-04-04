@@ -140,22 +140,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
     if (!printRef.current) return;
     try {
       toast({ title: "Đang tạo PDF..." });
-      const canvas = await html2canvas(printRef.current, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-
-      const margin = 10;
-      // Fit everything on a single page: calculate page height based on content aspect ratio
-      const pdfWidth = 210; // A4 width in mm
-      const contentWidth = pdfWidth - margin * 2;
-      const contentHeight = (imgHeight * contentWidth) / imgWidth;
-      const pdfHeight = contentHeight + margin * 2;
-
-      const pdf = new jsPDF("p", "mm", [pdfWidth, pdfHeight]);
-      pdf.addImage(imgData, "JPEG", margin, margin, contentWidth, contentHeight);
-
-      pdf.save(`${contract.contract_number}.pdf`);
+      await exportElementToPDF(printRef.current, `${contract.contract_number}.pdf`);
       toast({ title: "Đã tải PDF thành công!" });
     } catch (err) {
       console.error("PDF export error:", err);
