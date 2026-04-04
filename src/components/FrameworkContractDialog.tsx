@@ -9,8 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Printer, FileDown, FileText } from "lucide-react";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import { exportElementToPDF } from "@/lib/pdfUtils";
 import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, AlignmentType, BorderStyle } from "docx";
 import { saveAs } from "file-saver";
 
