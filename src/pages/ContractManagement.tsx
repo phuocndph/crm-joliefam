@@ -224,6 +224,7 @@ const ContractManagement = () => {
                                   <>
                                     <DropdownMenuItem onClick={() => setHandoverContract(c)}><ClipboardCheck className="h-4 w-4 mr-2" />Biên bản bàn giao</DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => setPaymentRequestContract(c)}><Receipt className="h-4 w-4 mr-2" />Đề nghị thanh toán</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setAdvanceRequestContract(c)}><Banknote className="h-4 w-4 mr-2" />Đề nghị tạm ứng</DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => setEinvoiceContract(c)}><FileText className="h-4 w-4 mr-2" />Xuất hoá đơn ĐT</DropdownMenuItem>
                                   </>
                                 )}
