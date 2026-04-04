@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Save, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTemplateSettings, TemplateSettings } from "@/hooks/useTemplateSettings";
+import { OnlineStampSignature } from "@/components/OnlineStampSignature";
 
 interface QuoteTemplateSettingsProps {
   open: boolean;
