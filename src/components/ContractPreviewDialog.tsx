@@ -35,6 +35,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
   const [showHandover, setShowHandover] = useState(false);
   const [showPaymentRequest, setShowPaymentRequest] = useState(false);
   const [showFramework, setShowFramework] = useState(false);
+  const [showOnlineStamp, setShowOnlineStamp] = useState(false);
 
   if (!contract) return null;
 
