@@ -81,6 +81,8 @@ export function useTemplateSettings() {
           logoUrl: data.logo_url || defaultSettings.logoUrl,
           terms,
           footerNote: data.footer_note || defaultSettings.footerNote,
+          signatureUrl: (data as any).signature_url || defaultSettings.signatureUrl,
+          stampUrl: (data as any).stamp_url || defaultSettings.stampUrl,
         });
       }
     } catch (err) {
