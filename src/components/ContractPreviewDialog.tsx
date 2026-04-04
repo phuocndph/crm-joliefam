@@ -442,8 +442,8 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           <div className="p-3 border rounded">
             <p className="font-bold mb-1">BÊN A (Bên bán):</p>
             <p><strong>Công ty:</strong> {seller.company_name || companySettings.companyName}</p>
+            {(seller.representative) && <p><strong>Người đại diện:</strong> {seller.representative}{seller.position ? ` - Chức vụ: ${seller.position}` : ""}</p>}
             <p><strong>Địa chỉ:</strong> {seller.address || companySettings.address}</p>
-            
             <p><strong>Điện thoại:</strong> {seller.phone || companySettings.phone}</p>
             {(seller.tax_code || companySettings.taxCode) && <p><strong>Mã số thuế:</strong> {seller.tax_code || companySettings.taxCode}</p>}
             {(seller.bank_info || companySettings.bankInfo) && <p><strong>Ngân hàng:</strong> {seller.bank_info || companySettings.bankInfo}</p>}
