@@ -12,7 +12,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, AlignmentType, BorderStyle } from "docx";
 import { saveAs } from "file-saver";
-import { numberToText } from "@/lib/numberToText";
+import { numberToVietnameseCurrency } from "@/lib/numberToText";
 
 interface Props {
   open: boolean;
