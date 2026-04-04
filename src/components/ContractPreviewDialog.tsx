@@ -402,7 +402,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4 items-center">
           <Button size="sm" variant="outline" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />In</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadImage}><Download className="h-4 w-4 mr-1" />Tải ảnh</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadPDF}><FileDown className="h-4 w-4 mr-1" />Xuất PDF</Button>
@@ -411,6 +411,11 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           <Button size="sm" variant="outline" onClick={() => setShowHandover(true)}><ClipboardCheck className="h-4 w-4 mr-1" />BB Bàn giao</Button>
           <Button size="sm" variant="outline" onClick={() => setShowPaymentRequest(true)}><Receipt className="h-4 w-4 mr-1" />Đề nghị TT</Button>
           <Button size="sm" variant="outline" onClick={() => setShowFramework(true)}><FileSignature className="h-4 w-4 mr-1" />HĐ Nguyên tắc</Button>
+          <div className="border-l mx-1 h-6" />
+          <div className="flex items-center gap-2">
+            <Switch checked={showOnlineStamp} onCheckedChange={setShowOnlineStamp} />
+            <span className="text-xs font-medium">Ký & đóng dấu online</span>
+          </div>
         </div>
 
         <HandoverReportDialog open={showHandover} onOpenChange={setShowHandover} contract={contract} />
