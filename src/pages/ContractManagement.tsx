@@ -322,6 +322,9 @@ const ContractManagement = () => {
       {einvoiceContract && (
         <CreateEInvoiceDialog open={!!einvoiceContract} onOpenChange={o => !o && setEinvoiceContract(null)} contract={einvoiceContract} />
       )}
+      {advanceRequestContract && (
+        <AdvanceRequestDialog open={!!advanceRequestContract} onOpenChange={o => !o && setAdvanceRequestContract(null)} contract={advanceRequestContract} />
+      )}
     </div>
   );
 };

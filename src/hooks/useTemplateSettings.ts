@@ -17,8 +17,8 @@ export interface TemplateSettings {
 }
 
 const defaultSettings: TemplateSettings = {
-  companyName: "CÔNG TY TNHH NỘI THẤT REMY",
-  companyTitle: "Showroom Rèm Cao Cấp Remy - Uy Tín & Chất Lượng",
+  companyName: "CÔNG TY TNHH GIA LỘC HƯNG PHÁT",
+  companyTitle: "Showroom Rèm Cao Cấp - Uy Tín & Chất Lượng",
   address: "BT06-22 Khu đô thị An Vượng Villa, Dương Nội, Hà Đông, Hà Nội",
   phone: "096.866.06.06",
   taxCode: "0110184566",
