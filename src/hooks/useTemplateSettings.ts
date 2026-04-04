@@ -142,8 +142,10 @@ export function useTemplateSettings() {
           logo_url: newSettings.logoUrl,
           terms: newSettings.terms,
           footer_note: newSettings.footerNote,
+          signature_url: newSettings.signatureUrl,
+          stamp_url: newSettings.stampUrl,
           updated_at: new Date().toISOString(),
-        }, {
+        } as any, {
           onConflict: 'tenant_id'
         });
 
