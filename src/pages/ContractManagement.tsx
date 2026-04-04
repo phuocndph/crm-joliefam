@@ -50,6 +50,7 @@ const ContractManagement = () => {
   const [frameworkPreview, setFrameworkPreview] = useState<any>(null);
   const [handoverContract, setHandoverContract] = useState<any>(null);
   const [paymentRequestContract, setPaymentRequestContract] = useState<any>(null);
+  const [advanceRequestContract, setAdvanceRequestContract] = useState<any>(null);
   const [einvoiceContract, setEinvoiceContract] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("contracts");
   const { data: einvoices } = useEInvoices();
