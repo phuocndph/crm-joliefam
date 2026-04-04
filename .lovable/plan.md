@@ -1,52 +1,45 @@
 
 
-## Thêm chức năng "Đề nghị tạm ứng" + Kiểm tra lỗi dữ liệu công ty
+## Cập nhật "Đề nghị tạm ứng" theo mẫu file DOCX
 
-### 1. Kiểm tra dữ liệu công ty
+### Vấn đề hiện tại
+Đề nghị tạm ứng hiện tại là mẫu **nội bộ** (gửi Ban Giám đốc, nhân viên tự nhập số tiền). Nhưng theo file mẫu thực tế, đây là tài liệu **gửi khách hàng** để yêu cầu tạm ứng tiền trước khi thực hiện hợp đồng — giống với "Đề nghị thanh toán" nhưng cho đợt tạm ứng.
 
-Dữ liệu công ty trong DB (`quote_template_settings`) và trong `seller_info` của hợp đồng đều chính xác (CÔNG TY TNHH GIA LỘC HƯNG PHÁT). Tuy nhiên, file `useTemplateSettings.ts` có `defaultSettings` hardcode dữ liệu cũ (REMY). Nếu DB fetch chậm hoặc lỗi, sẽ hiển thị sai. Cần xác nhận: bạn đang gặp lỗi cụ thể gì khi lấy dữ liệu công ty? (Hiển thị sai tên? Trống? Hay dữ liệu REMY cũ?)
+### Thay đổi chính
 
-**Sửa ngay**: Cập nhật `defaultSettings` trong `useTemplateSettings.ts` cho khớp với dữ liệu thực tế để tránh flash dữ liệu cũ khi loading.
+**File: `src/components/AdvanceRequestDialog.tsx`** — Viết lại hoàn toàn theo mẫu file DOCX
 
-### 2. Tạo component "Đề nghị tạm ứng" (AdvanceRequestDialog)
+1. **Dữ liệu tự động từ hợp đồng** (không nhập tay):
+   - Tổng giá trị hợp đồng: `contract.total_amount`
+   - Số tiền tạm ứng: `contract.deposit_amount` (tiền đặt cọc theo hợp đồng)
+   - Tên khách hàng (Kính gửi): `buyer_info.company_name`
+   - Ngày ký HĐ: `contract.contract_date`
+   - Thông tin chuyển khoản: `seller_info` (tên công ty, MST, ngân hàng)
 
-Tài liệu "Đề nghị tạm ứng" khác với "Đề nghị thanh toán":
-- Mục đích: Yêu cầu tạm ứng tiền trước khi thực hiện hợp đồng (mua vật tư, nhân công...)
-- Người nhận: Nội bộ công ty (Giám đốc duyệt cho nhân viên/phòng ban)
+2. **Bố cục mẫu mới** (theo file DOCX):
+   - Header: "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM" (không có tên công ty ở trên)
+   - Tiêu đề: **"ĐỀ NGHỊ TẠM ỨNG"**
+   - Kính gửi: **Tên khách hàng** (không phải Ban Giám đốc)
+   - Căn cứ: "Căn cứ Hợp đồng số ... ngày ... giữa [Bên A] và [Bên B]..."
+   - Bảng tổng hợp: Tổng giá trị HĐ + Số tiền đề nghị tạm ứng
+   - Thông tin chuyển khoản: Tên, MST, STK ngân hàng
+   - Ký: Chỉ 1 cột bên phải — **CÔNG TY TNHH GIA LỘC HƯNG PHÁT**
 
-**File mới: `src/components/AdvanceRequestDialog.tsx`**
-- Cấu trúc tương tự `PaymentRequestDialog` (cùng pattern: Dialog + preview + Print/PDF/Word)
-- Các trường nhập:
-  - Ngày đề nghị
-  - Người đề nghị (tên, chức vụ)
-  - Lý do tạm ứng (textarea)
-  - Số tiền tạm ứng (input number)
-  - Thời hạn hoàn ứng
-- Bản xem trước theo mẫu chuẩn:
-  - Tiêu đề: "GIẤY ĐỀ NGHỊ TẠM ỨNG"
-  - Thông tin công ty (từ `seller_info` hoặc `companySettings`)
-  - Bảng chi tiết khoản tạm ứng
-  - Phần ký: "Người đề nghị" / "Kế toán trưởng" / "Giám đốc"
-- Xuất PDF và Word (pattern giống PaymentRequestDialog)
+3. **Form nhập liệu đơn giản hóa**:
+   - Ngày đề nghị (mặc định hôm nay)
+   - Số tiền tạm ứng (mặc định = deposit_amount, cho phép chỉnh)
+   - Ghi chú thêm (tùy chọn)
+   - Bỏ: requesterName, requesterTitle, reason, repayDeadline
 
-### 3. Tích hợp vào ContractManagement
+4. **Xuất PDF/Word**: Cập nhật theo layout mới
 
-**File: `src/pages/ContractManagement.tsx`**
-- Import `AdvanceRequestDialog`
-- Thêm state: `const [advanceRequestContract, setAdvanceRequestContract] = useState<any>(null)`
-- Thêm menu item trong dropdown (sau "Đề nghị thanh toán"):
-  ```
-  <DropdownMenuItem onClick={() => setAdvanceRequestContract(c)}>
-    <Banknote className="h-4 w-4 mr-2" />Đề nghị tạm ứng
-  </DropdownMenuItem>
-  ```
-- Render `AdvanceRequestDialog` ở cuối component
+### Tóm tắt
 
-### Tổng kết thay đổi
-
-| File | Hành động |
-|------|-----------|
-| `src/components/AdvanceRequestDialog.tsx` | Tạo mới |
-| `src/pages/ContractManagement.tsx` | Thêm menu + state + render dialog |
-| `src/hooks/useTemplateSettings.ts` | Cập nhật defaultSettings |
+| Thay đổi | Chi tiết |
+|----------|----------|
+| Đối tượng gửi | Ban Giám đốc → Khách hàng |
+| Số tiền | Nhập tay → Tự động từ deposit_amount |
+| Bảng | STT/Nội dung/Số tiền → Tổng HĐ + Số tiền tạm ứng |
+| Thông tin CK | Không có → Thêm đầy đủ |
+| Chữ ký | 3 cột nội bộ → 1 cột bên phải (công ty) |
 
