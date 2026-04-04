@@ -14,26 +14,36 @@ export const OnlineStampSignature = ({ show, sellerRep, sellerPos }: Props) => {
   const hasStamp = !!settings.stampUrl;
   const hasSignature = !!settings.signatureUrl;
 
-  if (!hasStamp && !hasSignature) return null;
+  if (!hasStamp && !hasSignature) {
+    return <div style={{ height: 80 }}></div>;
+  }
 
   return (
-    <div className="relative" style={{ height: 100, width: "100%" }}>
-      {hasStamp && (
-        <img
-          src={settings.stampUrl}
-          alt="Con dấu"
-          className="absolute"
-          style={{ left: "50%", top: "50%", transform: "translate(-60%, -50%)", width: 110, height: 110, opacity: 0.85, objectFit: "contain" }}
-        />
+    <>
+      <div className="relative" style={{ height: 120, width: "100%" }}>
+        {hasStamp && (
+          <img
+            src={settings.stampUrl}
+            alt="Con dấu"
+            className="absolute"
+            style={{ left: "15%", top: "50%", transform: "translateY(-50%)", width: 120, height: 120, opacity: 0.85, objectFit: "contain" }}
+          />
+        )}
+        {hasSignature && (
+          <img
+            src={settings.signatureUrl}
+            alt="Chữ ký"
+            className="absolute"
+            style={{ left: "35%", top: "45%", transform: "translateY(-50%)", width: 100, height: 70, opacity: 0.9, objectFit: "contain" }}
+          />
+        )}
+      </div>
+      {sellerRep && (
+        <p className="font-bold" style={{ textDecoration: "underline" }}>{sellerRep}</p>
       )}
-      {hasSignature && (
-        <img
-          src={settings.signatureUrl}
-          alt="Chữ ký"
-          className="absolute"
-          style={{ left: "50%", top: "50%", transform: "translate(-40%, -45%)", width: 90, height: 60, opacity: 0.9, objectFit: "contain" }}
-        />
+      {sellerPos && (
+        <p className="text-xs italic">{sellerPos}</p>
       )}
-    </div>
+    </>
   );
 };
