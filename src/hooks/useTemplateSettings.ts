@@ -14,6 +14,8 @@ export interface TemplateSettings {
   logoUrl: string;
   terms: string[];
   footerNote: string;
+  signatureUrl: string;
+  stampUrl: string;
 }
 
 const defaultSettings: TemplateSettings = {
