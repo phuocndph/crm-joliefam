@@ -157,6 +157,8 @@ export function useTemplateSettings() {
           footer_note: newSettings.footerNote,
           signature_url: newSettings.signatureUrl,
           stamp_url: newSettings.stampUrl,
+          stamp_position: newSettings.stampPosition,
+          signature_position: newSettings.signaturePosition,
           updated_at: new Date().toISOString(),
         } as any, {
           onConflict: 'tenant_id'
