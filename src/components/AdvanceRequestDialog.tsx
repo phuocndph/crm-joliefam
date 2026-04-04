@@ -45,7 +45,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const sellerAddress = seller.address || companySettings.address || "";
   const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
 
-  const amountText = amount > 0 ? numberToVietnameseCurrency(amount) : "";
+  const amountText = currentAmount > 0 ? numberToVietnameseCurrency(currentAmount) : "";
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -121,7 +121,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
           children: [
             new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: "2", size: 22, font })], alignment: AlignmentType.CENTER })], borders: borderStyle }),
             new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Số tiền đề nghị tạm ứng", bold: true, size: 22, font })] })], borders: borderStyle }),
-            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: formatCurrency(amount), bold: true, size: 22, font, color: "1a56db" })], alignment: AlignmentType.RIGHT })], borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: formatCurrency(currentAmount), bold: true, size: 22, font, color: "1a56db" })], alignment: AlignmentType.RIGHT })], borders: borderStyle }),
           ],
         }),
       ];
@@ -267,7 +267,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
               <tr>
                 <td className="border border-gray-400 p-2 text-center">2</td>
                 <td className="border border-gray-400 p-2 font-bold">Số tiền đề nghị tạm ứng</td>
-                <td className="border border-gray-400 p-2 text-right font-bold" style={{ color: "#1a56db" }}>{formatCurrency(amount)}</td>
+                <td className="border border-gray-400 p-2 text-right font-bold" style={{ color: "#1a56db" }}>{formatCurrency(currentAmount)}</td>
               </tr>
             </tbody>
           </table>
