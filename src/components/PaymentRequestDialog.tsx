@@ -237,10 +237,15 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4 items-center">
           <Button size="sm" variant="outline" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />In</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadPDF}><FileDown className="h-4 w-4 mr-1" />Xuất PDF</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadWord}><FileText className="h-4 w-4 mr-1" />Xuất Word</Button>
+          <div className="border-l mx-1 h-6" />
+          <div className="flex items-center gap-2">
+            <Switch checked={showOnlineStamp} onCheckedChange={setShowOnlineStamp} />
+            <span className="text-xs font-medium">Ký & đóng dấu online</span>
+          </div>
         </div>
 
         {/* Preview */}
