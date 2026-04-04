@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
+export interface PositionSize {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface TemplateSettings {
   companyName: string;
   companyTitle: string;
@@ -16,6 +23,8 @@ export interface TemplateSettings {
   footerNote: string;
   signatureUrl: string;
   stampUrl: string;
+  stampPosition: PositionSize;
+  signaturePosition: PositionSize;
 }
 
 const defaultSettings: TemplateSettings = {
@@ -38,6 +47,8 @@ const defaultSettings: TemplateSettings = {
   footerNote: "Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của chúng tôi!",
   signatureUrl: "",
   stampUrl: "",
+  stampPosition: { x: 5, y: 50, width: 160, height: 160 },
+  signaturePosition: { x: 30, y: 45, width: 140, height: 100 },
 };
 
 export function useTemplateSettings() {
@@ -83,6 +94,8 @@ export function useTemplateSettings() {
           footerNote: data.footer_note || defaultSettings.footerNote,
           signatureUrl: (data as any).signature_url || defaultSettings.signatureUrl,
           stampUrl: (data as any).stamp_url || defaultSettings.stampUrl,
+          stampPosition: (data as any).stamp_position || defaultSettings.stampPosition,
+          signaturePosition: (data as any).signature_position || defaultSettings.signaturePosition,
         });
       }
     } catch (err) {
@@ -144,6 +157,8 @@ export function useTemplateSettings() {
           footer_note: newSettings.footerNote,
           signature_url: newSettings.signatureUrl,
           stamp_url: newSettings.stampUrl,
+          stamp_position: newSettings.stampPosition,
+          signature_position: newSettings.signaturePosition,
           updated_at: new Date().toISOString(),
         } as any, {
           onConflict: 'tenant_id'
