@@ -1,28 +1,49 @@
 
 
-## Sửa lỗi con dấu & chữ ký bị méo khi xuất PDF
+## Sửa lỗi PDF xuất bị méo dấu/chữ ký và sai khoảng cách dòng
 
-### Nguyên nhân
-`html2canvas` không render chính xác CSS `object-fit: contain` trên thẻ `<img>`. Khi chuyển sang canvas, ảnh bị kéo giãn theo kích thước container thay vì giữ tỷ lệ gốc → méo hình.
+### Nguyên nhân gốc
+
+1. **PDF tạo ra 1 trang dài thay vì A4 chuẩn** — code hiện tại tính `pdfHeight` theo tỉ lệ ảnh, tạo ra trang PDF có chiều cao tùy ý (không phải A4 297mm). Điều này làm nội dung bị co/giãn khi xem trên các trình đọc PDF.
+
+2. **html2canvas scale + JPEG compression** — `scale: 2` tạo canvas lớn, nhưng khi ép vào 1 trang duy nhất với kích thước tùy ý, ảnh con dấu/chữ ký bị biến dạng.
+
+3. **Khoảng cách dòng** — Container HTML dùng `line-height: 1.7` nhưng padding `p-8` (32px) quá lớn, khi html2canvas chụp toàn bộ và scale xuống PDF thì khoảng cách bị thay đổi.
 
 ### Giải pháp
 
-**File: `OnlineStampSignature.tsx`**
+#### 1. PDF xuất đúng khổ A4 với phân trang tự động
 
-Thay `className="w-full h-full object-contain"` bằng inline style trực tiếp:
-- Đặt `width` và `height` bằng pixel cụ thể trên thẻ `<img>` 
-- Dùng `object-fit: "contain"` dạng inline style (html2canvas xử lý inline style tốt hơn class)
-- Thêm `crossOrigin="anonymous"` để html2canvas load ảnh cross-origin không bị lỗi
+Thay vì tạo 1 trang dài, chia canvas thành nhiều trang A4 (210x297mm):
 
-Thay đổi cụ thể cho cả 2 ảnh (stamp + signature):
 ```
-// Trước
-<img className="w-full h-full object-contain pointer-events-none" />
-
-// Sau  
-<img style={{ width: "100%", height: "100%", objectFit: "contain" }} 
-     crossOrigin="anonymous" />
+A4: width=210mm, height=297mm, margin=15mm
+→ contentWidth = 180mm, contentHeight = 267mm
+→ Tính số trang = ceil(totalImageHeight / pageContentHeight)
+→ Mỗi trang crop đúng phần canvas tương ứng
 ```
 
-Chỉ sửa 1 file `OnlineStampSignature.tsx`, ảnh hưởng tất cả các dialog dùng component này.
+#### 2. Cải thiện html2canvas options
+
+- Dùng `scale: 3` để tăng độ nét
+- Dùng `image/png` thay `image/jpeg` để giữ chất lượng ảnh con dấu/chữ ký (không bị artifact JPEG)
+- Thêm `allowTaint: false`, `logging: false`
+
+#### 3. Chuẩn hóa khoảng cách trong preview HTML
+
+- Giảm padding container từ `p-8` xuống `p-6` cho vừa khổ A4
+- Đảm bảo `line-height: 1.6` đồng nhất
+- Thêm `font-size: 13px` cố định cho toàn bộ nội dung
+
+### Files thay đổi
+
+| File | Thay đổi |
+|------|----------|
+| `ContractPreviewDialog.tsx` | Sửa `handleDownloadPDF` — phân trang A4, PNG, scale 3 |
+| `AdvanceRequestDialog.tsx` | Sửa `handleDownloadPDF` — cùng logic phân trang A4 |
+| `HandoverReportDialog.tsx` | Sửa `handleDownloadPDF` — cùng logic |
+| `PaymentRequestDialog.tsx` | Sửa `handleDownloadPDF` — cùng logic |
+| `FrameworkContractDialog.tsx` | Sửa `handleDownloadPDF` — cùng logic |
+
+Logic phân trang A4 sẽ được tách thành hàm helper dùng chung cho tất cả dialog.
 
