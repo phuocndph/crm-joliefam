@@ -38,9 +38,9 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const depositAmount = contract.deposit_amount || 0;
   const remainingAmount = totalAmount - depositAmount;
 
-  const sellerName = seller.company_name || companySettings.companyName || "";
-  const sellerBank = seller.bank_info || companySettings.bankInfo || "";
-  const sellerTaxCode = seller.tax_code || companySettings.taxCode || "";
+  const sellerName = companySettings.companyName || seller.company_name || "";
+  const sellerBank = companySettings.bankInfo || seller.bank_info || "";
+  const sellerTaxCode = companySettings.taxCode || seller.tax_code || "";
   const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
 
   const phases = [

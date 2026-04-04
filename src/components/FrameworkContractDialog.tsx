@@ -61,13 +61,13 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
 
   const seller = contract.seller_info || {};
   const buyer = contract.buyer_info || {};
-  const sellerName = seller.company_name || companySettings.companyName || "";
+  const sellerName = companySettings.companyName || seller.company_name || "";
   const sellerRep = seller.representative || "...";
   const sellerPos = seller.position || "Giám đốc";
-  const sellerAddr = seller.address || companySettings.address || "...";
-  const sellerPhone = seller.phone || companySettings.phone || "";
-  const sellerTax = seller.tax_code || companySettings.taxCode || "";
-  const sellerBank = seller.bank_info || companySettings.bankInfo || "";
+  const sellerAddr = companySettings.address || seller.address || "...";
+  const sellerPhone = companySettings.phone || seller.phone || "";
+  const sellerTax = companySettings.taxCode || seller.tax_code || "";
+  const sellerBank = companySettings.bankInfo || seller.bank_info || "";
   
   const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
   const buyerRep = buyer.representative || "...";

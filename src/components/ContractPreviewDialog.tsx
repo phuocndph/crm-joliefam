@@ -165,12 +165,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
     try {
       toast({ title: "Đang tạo file Word..." });
 
-      const sellerName = seller.company_name || companySettings.companyName;
-      const sellerAddress = seller.address || companySettings.address;
-      const sellerPhone = seller.phone || companySettings.phone;
-      const sellerTaxCode = seller.tax_code || companySettings.taxCode;
-      const sellerBank = seller.bank_info || companySettings.bankInfo;
-      const sellerHQ = seller.headquarters || companySettings.headquarters;
+      const sellerName = companySettings.companyName || seller.company_name;
+      const sellerAddress = companySettings.address || seller.address;
+      const sellerPhone = companySettings.phone || seller.phone;
+      const sellerTaxCode = companySettings.taxCode || seller.tax_code;
+      const sellerBank = companySettings.bankInfo || seller.bank_info;
+      const sellerHQ = companySettings.headquarters || seller.headquarters;
 
       const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
       const buyerAddress = buyer.address || contract.customers?.address || "—";
