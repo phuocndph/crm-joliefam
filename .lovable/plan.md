@@ -1,49 +1,38 @@
 
 
-## Sửa lỗi PDF xuất bị méo dấu/chữ ký và sai khoảng cách dòng
+## Sửa PDF xuất bị sai khoảng cách dòng và méo dấu/chữ ký
 
 ### Nguyên nhân gốc
 
-1. **PDF tạo ra 1 trang dài thay vì A4 chuẩn** — code hiện tại tính `pdfHeight` theo tỉ lệ ảnh, tạo ra trang PDF có chiều cao tùy ý (không phải A4 297mm). Điều này làm nội dung bị co/giãn khi xem trên các trình đọc PDF.
-
-2. **html2canvas scale + JPEG compression** — `scale: 2` tạo canvas lớn, nhưng khi ép vào 1 trang duy nhất với kích thước tùy ý, ảnh con dấu/chữ ký bị biến dạng.
-
-3. **Khoảng cách dòng** — Container HTML dùng `line-height: 1.7` nhưng padding `p-8` (32px) quá lớn, khi html2canvas chụp toàn bộ và scale xuống PDF thì khoảng cách bị thay đổi.
+Container preview có chiều rộng thay đổi theo cửa sổ trình duyệt (fluid width). Khi `html2canvas` chụp element này rồi scale vào khổ A4, tỉ lệ width/height không khớp → nội dung bị co/giãn, khoảng cách dòng sai, con dấu méo.
 
 ### Giải pháp
 
-#### 1. PDF xuất đúng khổ A4 với phân trang tự động
+**File: `src/lib/pdfUtils.ts`**
 
-Thay vì tạo 1 trang dài, chia canvas thành nhiều trang A4 (210x297mm):
+Trước khi chụp `html2canvas`, tạm thời:
+1. **Clone element** ra ngoài viewport (để không ảnh hưởng UI người dùng đang thấy)
+2. **Đặt width cố định = 794px** (tương đương A4 ở 96dpi) cho clone
+3. Chụp `html2canvas` trên clone → canvas có tỉ lệ đúng A4
+4. Xóa clone sau khi chụp xong
 
+Điều này đảm bảo text wrap, line-height, và kích thước ảnh con dấu/chữ ký đều đúng tỉ lệ khi đưa vào PDF.
+
+```text
+Luồng hiện tại:
+  Element (width tùy ý) → html2canvas → scale vào A4 → méo
+
+Luồng mới:
+  Element → Clone (width=794px, off-screen) → html2canvas → scale vào A4 → đúng tỉ lệ
 ```
-A4: width=210mm, height=297mm, margin=15mm
-→ contentWidth = 180mm, contentHeight = 267mm
-→ Tính số trang = ceil(totalImageHeight / pageContentHeight)
-→ Mỗi trang crop đúng phần canvas tương ứng
-```
 
-#### 2. Cải thiện html2canvas options
+### Chi tiết kỹ thuật
 
-- Dùng `scale: 3` để tăng độ nét
-- Dùng `image/png` thay `image/jpeg` để giữ chất lượng ảnh con dấu/chữ ký (không bị artifact JPEG)
-- Thêm `allowTaint: false`, `logging: false`
+Chỉ sửa 1 file `src/lib/pdfUtils.ts`:
 
-#### 3. Chuẩn hóa khoảng cách trong preview HTML
-
-- Giảm padding container từ `p-8` xuống `p-6` cho vừa khổ A4
-- Đảm bảo `line-height: 1.6` đồng nhất
-- Thêm `font-size: 13px` cố định cho toàn bộ nội dung
-
-### Files thay đổi
-
-| File | Thay đổi |
-|------|----------|
-| `ContractPreviewDialog.tsx` | Sửa `handleDownloadPDF` — phân trang A4, PNG, scale 3 |
-| `AdvanceRequestDialog.tsx` | Sửa `handleDownloadPDF` — cùng logic phân trang A4 |
-| `HandoverReportDialog.tsx` | Sửa `handleDownloadPDF` — cùng logic |
-| `PaymentRequestDialog.tsx` | Sửa `handleDownloadPDF` — cùng logic |
-| `FrameworkContractDialog.tsx` | Sửa `handleDownloadPDF` — cùng logic |
-
-Logic phân trang A4 sẽ được tách thành hàm helper dùng chung cho tất cả dialog.
+- Clone element với `element.cloneNode(true)`
+- Đặt `position: absolute, left: -9999px, width: 794px` 
+- Append vào `document.body`, chụp canvas, rồi remove
+- Giữ nguyên logic phân trang A4 đã có (crop canvas thành từng trang)
+- Không cần sửa bất kỳ dialog nào khác vì tất cả đều gọi `exportElementToPDF`
 
