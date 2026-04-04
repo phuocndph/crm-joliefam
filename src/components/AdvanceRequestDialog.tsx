@@ -92,7 +92,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
       const noBorder = { top: { style: BorderStyle.NONE, size: 0 }, bottom: { style: BorderStyle.NONE, size: 0 }, left: { style: BorderStyle.NONE, size: 0 }, right: { style: BorderStyle.NONE, size: 0 } };
       const font = "Times New Roman";
 
-      const amountText = amount > 0 ? numberToText(amount) : "";
+      const amountText = amount > 0 ? numberToVietnameseCurrency(amount) : "";
 
       const tableRows = [
         new DocxTableRow({
@@ -198,7 +198,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
     }
   };
 
-  const amountText = amount > 0 ? numberToText(amount) : "";
+  const amountText = amount > 0 ? numberToVietnameseCurrency(amount) : "";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
