@@ -8,6 +8,7 @@ import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical, S
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
+import { AIQuoteFill } from './AIQuoteFill';
 import { AssigneeManagement } from './AssigneeManagement';
 import { AuthStatusBadge } from './AuthStatusBadge';
 import { supabase } from "@/integrations/supabase/client";
@@ -1277,7 +1278,25 @@ export function CreateQuoteForm({
                       Bảng giá: {priceLists.find(p => p.id === watchedValues.priceList)?.name || "Chưa chọn"} ({products.length} sản phẩm có sẵn)
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                   <div className="flex gap-2 flex-wrap">
+                    {products.length > 0 && (
+                      <AIQuoteFill
+                        products={products}
+                        onProductsSelected={(items) => {
+                          const newItems = items.map((item) => ({
+                            id: `${item.matchedProductId}-${Date.now()}-${Math.random()}`,
+                            name: item.customName,
+                            sku: '',
+                            price: item.price,
+                            quantity: item.quantity,
+                            total: item.price * item.quantity,
+                            specifications: item.specifications,
+                            originalProductId: item.matchedProductId,
+                          }));
+                          setSelectedProducts(prev => [...prev, ...newItems]);
+                        }}
+                      />
+                    )}
                     <Button type="button" className="bg-green-600 hover:bg-green-700" onClick={() => {
                     const newItem: QuoteItem = {
                       id: `temp-${Date.now()}`,
