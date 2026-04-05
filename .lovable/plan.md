@@ -1,38 +1,63 @@
 
 
-## Sửa PDF xuất bị sai khoảng cách dòng và méo dấu/chữ ký
+## Thêm chức năng tạo báo giá bằng AI (với logic so khớp thông minh)
 
-### Nguyên nhân gốc
+### Yêu cầu đặc biệt
+Khi sản phẩm không khớp 100%, AI phải:
+- **Tìm sản phẩm gần nhất có kích thước lớn hơn** (ví dụ: khách yêu cầu 12cm → bảng giá có 10cm và 15cm → lấy giá 15cm)
+- **Tự sửa tên sản phẩm** theo đúng yêu cầu khách (hiển thị 12cm thay vì 15cm)
+- Giá lấy từ sản phẩm cao hơn, tên hiển thị theo yêu cầu thực tế
 
-Container preview có chiều rộng thay đổi theo cửa sổ trình duyệt (fluid width). Khi `html2canvas` chụp element này rồi scale vào khổ A4, tỉ lệ width/height không khớp → nội dung bị co/giãn, khoảng cách dòng sai, con dấu méo.
+### Thay đổi
 
-### Giải pháp
+#### 1. Edge Function `lookup-tax-code` — Thêm type `ai_quote_fill`
 
-**File: `src/lib/pdfUtils.ts`**
+Nhận:
+- `products`: danh sách sản phẩm từ bảng giá (id, name, price, specifications)
+- `request`: mô tả yêu cầu khách hàng
 
-Trước khi chụp `html2canvas`, tạm thời:
-1. **Clone element** ra ngoài viewport (để không ảnh hưởng UI người dùng đang thấy)
-2. **Đặt width cố định = 794px** (tương đương A4 ở 96dpi) cho clone
-3. Chụp `html2canvas` trên clone → canvas có tỉ lệ đúng A4
-4. Xóa clone sau khi chụp xong
-
-Điều này đảm bảo text wrap, line-height, và kích thước ảnh con dấu/chữ ký đều đúng tỉ lệ khi đưa vào PDF.
-
-```text
-Luồng hiện tại:
-  Element (width tùy ý) → html2canvas → scale vào A4 → méo
-
-Luồng mới:
-  Element → Clone (width=794px, off-screen) → html2canvas → scale vào A4 → đúng tỉ lệ
+AI prompt sẽ bao gồm quy tắc so khớp thông minh:
+```
+QUY TẮC SO KHỚP:
+1. Nếu sản phẩm khớp chính xác → lấy trực tiếp
+2. Nếu kích thước không khớp → lấy sản phẩm có kích thước LỚN HƠN gần nhất
+3. Trường "customName" = tên sản phẩm đã sửa theo yêu cầu thực tế của khách
+4. Trường "matchedProductId" = ID sản phẩm gốc trong bảng giá (để lấy giá)
+5. Trường "note" = ghi chú lý do chọn (ví dụ: "Khách yêu cầu 12cm, lấy giá 15cm")
 ```
 
-### Chi tiết kỹ thuật
+Trả về:
+```json
+{"items": [
+  {
+    "matchedProductId": "uuid-of-15cm-product",
+    "customName": "Ga giường 160x200x12cm",
+    "quantity": 1,
+    "price": 500000,
+    "specifications": "160x200x12cm",
+    "note": "Khách yêu cầu 12cm, lấy giá sản phẩm 15cm"
+  }
+]}
+```
 
-Chỉ sửa 1 file `src/lib/pdfUtils.ts`:
+#### 2. Component `AIQuoteFill.tsx` — Giao diện AI điền báo giá
 
-- Clone element với `element.cloneNode(true)`
-- Đặt `position: absolute, left: -9999px, width: 794px` 
-- Append vào `document.body`, chụp canvas, rồi remove
-- Giữ nguyên logic phân trang A4 đã có (crop canvas thành từng trang)
-- Không cần sửa bất kỳ dialog nào khác vì tất cả đều gọi `exportElementToPDF`
+- Textarea nhập yêu cầu khách hàng
+- Nút "AI tự chọn sản phẩm" với loading state
+- Hiển thị kết quả trước khi áp dụng: bảng preview với cột ghi chú (cho trường hợp không khớp 100%)
+- Nút "Áp dụng" để điền vào bảng báo giá, nút "Hủy" để bỏ qua
+
+#### 3. `CreateQuoteForm.tsx` — Tích hợp
+
+- Thêm `AIQuoteFill` phía trên bảng sản phẩm (chỉ hiện khi đã chọn bảng giá)
+- Truyền `products` và callback `onProductsSelected`
+- Callback nhận kết quả AI → tạo `QuoteItem[]` với tên đã sửa + giá từ sản phẩm gốc → set vào `selectedProducts`
+
+### Files thay đổi
+
+| File | Thay đổi |
+|------|----------|
+| `supabase/functions/lookup-tax-code/index.ts` | Thêm case `ai_quote_fill` với prompt so khớp thông minh |
+| `src/components/AIQuoteFill.tsx` | Tạo mới — UI + preview kết quả AI |
+| `src/components/CreateQuoteForm.tsx` | Tích hợp `AIQuoteFill` vào form |
 
