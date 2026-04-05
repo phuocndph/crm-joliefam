@@ -1283,16 +1283,20 @@ export function CreateQuoteForm({
                       <AIQuoteFill
                         products={products}
                         onProductsSelected={(items) => {
-                          const newItems = items.map((item) => ({
-                            id: `${item.matchedProductId}-${Date.now()}-${Math.random()}`,
-                            name: item.customName,
-                            sku: '',
-                            price: item.price,
-                            quantity: item.quantity,
-                            total: item.price * item.quantity,
-                            specifications: item.specifications,
-                            originalProductId: item.matchedProductId,
-                          }));
+                          const newItems = items.map((item) => {
+                            const originalProduct = products.find(p => p.id === item.matchedProductId);
+                            return {
+                              id: `${item.matchedProductId}-${Date.now()}-${Math.random()}`,
+                              name: item.customName,
+                              sku: originalProduct?.sku || '',
+                              price: item.price,
+                              quantity: item.quantity,
+                              total: item.price * item.quantity,
+                              description: originalProduct?.description || '',
+                              specifications: item.specifications,
+                              originalProductId: item.matchedProductId,
+                            };
+                          });
                           setSelectedProducts(prev => [...prev, ...newItems]);
                         }}
                       />

@@ -412,7 +412,7 @@ serve(async (req) => {
       }
 
       const productListText = products.map((p: any, i: number) => 
-        `[${i+1}] ID: ${p.id} | Tên: ${p.name} | Giá: ${p.price} | Quy cách: ${p.specifications || "không có"}`
+        `[${i+1}] ID: ${p.id} | Tên: ${p.name} | Giá: ${p.price} | Quy cách: ${p.specifications || "không có"} | Mô tả: ${p.description || "không có"}`
       ).join("\n");
 
       const aiQuoteFillPrompt = `Bạn là trợ lý chọn sản phẩm cho báo giá. Dựa trên yêu cầu khách hàng, hãy chọn sản phẩm phù hợp nhất từ danh sách bảng giá.
@@ -427,6 +427,7 @@ QUY TẮC SO KHỚP THÔNG MINH:
 4. "matchedProductId" = ID sản phẩm GỐC trong bảng giá (để lấy giá chính xác)
 5. "price" = đơn giá từ sản phẩm gốc đã chọn (KHÔNG tự nghĩ ra giá)
 6. "quantity" = số lượng theo yêu cầu khách
+7. "specifications" = quy cách ĐÃ SỬA theo yêu cầu thực tế của khách (VD: khách yêu cầu 160x200x12cm thì ghi "160x200x12cm", KHÔNG ghi specs gốc "160x200x15cm")
 
 DANH SÁCH SẢN PHẨM BẢNG GIÁ:
 ${productListText}

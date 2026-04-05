@@ -14,6 +14,7 @@ interface Product {
   name: string;
   price: number | null;
   specifications: string | null;
+  description: string | null;
 }
 
 interface AIMatchedItem {
@@ -56,6 +57,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         name: p.name,
         price: p.price || 0,
         specifications: p.specifications || "",
+        description: p.description || "",
       }));
 
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
