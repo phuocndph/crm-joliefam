@@ -1,87 +1,52 @@
 
 
-## Sửa lỗi AI điền báo giá thiếu mô tả, hình ảnh và quy cách sai
+## Sửa lỗi AI điền báo giá: thiếu mô tả, quy cách sai, thiếu hình ảnh, giá không theo yêu cầu
 
-### Vấn đề hiện tại
+### Vấn đề
 
-1. **Thiếu mô tả (description)**: Khi AI chọn sản phẩm, callback không lấy `description` từ sản phẩm gốc → ô mô tả trong bảng báo giá bị trống
-2. **Thiếu hình ảnh**: Không tìm hình ảnh sản phẩm gốc để gán vào `selectedImage`
-3. **Quy cách không sửa**: AI trả về `specifications` nhưng callback không dùng nó — hoặc AI trả specifications gốc thay vì specs đã sửa theo yêu cầu khách
+1. **Mô tả bị trống**: Callback đã lấy `description` từ `originalProduct` nhưng có thể product không match đúng ID
+2. **Quy cách không sửa**: AI prompt đã có rule nhưng AI vẫn trả specs gốc — cần làm prompt mạnh hơn
+3. **Hình ảnh chưa tự lấy**: Không có logic tìm ảnh từ thư viện `product-images` bucket
+4. **Giá trong yêu cầu bị bỏ qua**: Prompt yêu cầu AI luôn lấy giá gốc, nhưng khách có thể đã ghi giá riêng
 
 ### Giải pháp
 
-#### 1. `AIQuoteFill.tsx` — Mở rộng Product interface
+#### 1. Edge Function — Cải thiện prompt (`lookup-tax-code/index.ts`)
 
-Thêm `description` vào interface Product để truyền xuống edge function và dùng khi áp dụng:
+- Thêm rule: Nếu khách ghi rõ giá trong yêu cầu → dùng giá khách ghi, KHÔNG dùng giá bảng giá
+- Nhấn mạnh hơn: `specifications` PHẢI là quy cách theo yêu cầu khách, KHÔNG ĐƯỢC copy specs gốc
+- Sửa rule 5 từ "đơn giá từ sản phẩm gốc" → "ưu tiên giá khách yêu cầu, nếu không có thì lấy giá sản phẩm gốc"
 
-```typescript
-interface Product {
-  id: string;
-  name: string;
-  price: number | null;
-  specifications: string | null;
-  description: string | null;  // THÊM
-}
-```
+#### 2. `CreateQuoteForm.tsx` — Tự động tìm ảnh từ thư viện
 
-Khi gửi lên AI, thêm `description` vào product list để AI có thể tham khảo.
+Sau khi nhận kết quả AI, với mỗi item:
+- Lấy `customName` hoặc `originalProduct.name`
+- Gọi `supabase.storage.from('product-images').list()` để tìm ảnh có tên gần giống tên sản phẩm
+- Nếu tìm thấy → gán `selectedImage` = public URL của ảnh đó
+- Logic tìm kiếm: normalize tên (bỏ dấu, lowercase) → so sánh với tên file ảnh
 
-#### 2. `AIQuoteFill.tsx` — Mở rộng AIMatchedItem
+#### 3. `AIQuoteFill.tsx` — Truyền thêm callback với image lookup
 
-Thêm `description` vào interface trả về:
-
-```typescript
-interface AIMatchedItem {
-  matchedProductId: string;
-  customName: string;
-  quantity: number;
-  price: number;
-  specifications: string;  // Đã sửa theo yêu cầu khách
-  description: string;     // THÊM - từ sản phẩm gốc
-  note: string;
-}
-```
-
-#### 3. `CreateQuoteForm.tsx` — Sửa callback onProductsSelected
-
-Khi nhận kết quả AI, tìm sản phẩm gốc để lấy `description` và tìm hình ảnh từ product_images:
-
-```typescript
-onProductsSelected={(items) => {
-  const newItems = items.map((item) => {
-    const originalProduct = products.find(p => p.id === item.matchedProductId);
-    return {
-      id: `${item.matchedProductId}-${Date.now()}-${Math.random()}`,
-      name: item.customName,
-      sku: originalProduct?.sku || '',
-      price: item.price,
-      quantity: item.quantity,
-      total: item.price * item.quantity,
-      description: originalProduct?.description || '',  // LẤY TỪ SẢN PHẨM GỐC
-      specifications: item.specifications,               // DÙNG SPECS ĐÃ SỬA TỪ AI
-      originalProductId: item.matchedProductId,
-    };
-  });
-  setSelectedProducts(prev => [...prev, ...newItems]);
-}}
-```
-
-#### 4. Edge Function — Cải thiện prompt về specifications
-
-Cập nhật prompt trong `lookup-tax-code/index.ts` để AI rõ ràng sửa specifications theo yêu cầu khách (không giữ specs gốc):
-
-```
-5. "specifications" = quy cách ĐÃ SỬA theo yêu cầu thực tế của khách 
-   (VD: khách yêu cầu 160x200x12cm thì ghi "160x200x12cm", KHÔNG ghi "160x200x15cm")
-```
-
-Thêm `description` vào product list gửi cho AI để AI tham khảo.
+Mở rộng `AIMatchedItem` interface không cần thay đổi vì image sẽ được tìm ở tầng `CreateQuoteForm`.
 
 ### Files thay đổi
 
 | File | Thay đổi |
 |------|----------|
-| `src/components/AIQuoteFill.tsx` | Thêm `description` vào Product + AIMatchedItem interfaces, gửi description lên AI |
-| `src/components/CreateQuoteForm.tsx` | Sửa callback lấy description + sku từ sản phẩm gốc |
-| `supabase/functions/lookup-tax-code/index.ts` | Cập nhật prompt: specifications phải sửa theo yêu cầu khách, thêm description vào product list |
+| `supabase/functions/lookup-tax-code/index.ts` | Sửa prompt: ưu tiên giá khách ghi, nhấn mạnh specs phải sửa theo yêu cầu |
+| `src/components/CreateQuoteForm.tsx` | Thêm logic tìm ảnh từ `product-images` bucket theo tên sản phẩm khi AI điền, gán `selectedImage` |
+
+### Chi tiết kỹ thuật
+
+**Tìm ảnh tự động**: Khi callback `onProductsSelected` được gọi:
+1. Fetch danh sách tất cả ảnh từ bucket `product-images` (tất cả thư mục)
+2. Với mỗi item AI trả về, normalize tên sản phẩm gốc (bỏ dấu tiếng Việt, lowercase)
+3. So sánh với tên file ảnh (cũng normalize) — dùng `includes` hoặc fuzzy match
+4. Nếu match → lấy public URL gán vào `selectedImage`
+
+**Prompt sửa giá**:
+```
+5. "price" = nếu khách ghi rõ giá trong yêu cầu thì dùng giá đó. 
+   Nếu KHÔNG ghi giá → lấy đơn giá từ sản phẩm gốc đã chọn.
+```
 
