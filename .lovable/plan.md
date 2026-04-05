@@ -1,52 +1,53 @@
 
 
-## Sửa lỗi AI điền báo giá: thiếu mô tả, quy cách sai, thiếu hình ảnh, giá không theo yêu cầu
+## Sửa lỗi không tìm được hình ảnh tự động khi AI điền báo giá
 
-### Vấn đề
+### Nguyên nhân
 
-1. **Mô tả bị trống**: Callback đã lấy `description` từ `originalProduct` nhưng có thể product không match đúng ID
-2. **Quy cách không sửa**: AI prompt đã có rule nhưng AI vẫn trả specs gốc — cần làm prompt mạnh hơn
-3. **Hình ảnh chưa tự lấy**: Không có logic tìm ảnh từ thư viện `product-images` bucket
-4. **Giá trong yêu cầu bị bỏ qua**: Prompt yêu cầu AI luôn lấy giá gốc, nhưng khách có thể đã ghi giá riêng
+Trong `CreateQuoteForm.tsx`, logic phát hiện thư mục sai:
+- **Hiện tại**: dùng `folder.id === null` để phân biệt thư mục vs file
+- **ProductImageLibrary.tsx** (đang hoạt động đúng): dùng `!item.name.includes('.')` 
+
+Kết quả: không có file nào được thêm vào `allImageFiles` → mảng trống → không match được ảnh nào.
 
 ### Giải pháp
 
-#### 1. Edge Function — Cải thiện prompt (`lookup-tax-code/index.ts`)
+Sửa logic fetch ảnh trong `CreateQuoteForm.tsx` để giống cách `ProductImageLibrary.tsx` đang làm:
 
-- Thêm rule: Nếu khách ghi rõ giá trong yêu cầu → dùng giá khách ghi, KHÔNG dùng giá bảng giá
-- Nhấn mạnh hơn: `specifications` PHẢI là quy cách theo yêu cầu khách, KHÔNG ĐƯỢC copy specs gốc
-- Sửa rule 5 từ "đơn giá từ sản phẩm gốc" → "ưu tiên giá khách yêu cầu, nếu không có thì lấy giá sản phẩm gốc"
+1. Top-level files: lọc bằng regex ảnh (có extension `.jpg|png|...`)
+2. Directories: lọc bằng `!item.name.includes('.')` 
+3. Với mỗi directory, gọi `.list(dirName)` để lấy files bên trong
+4. Thêm console.log debug để theo dõi số lượng ảnh tìm được và kết quả matching
 
-#### 2. `CreateQuoteForm.tsx` — Tự động tìm ảnh từ thư viện
-
-Sau khi nhận kết quả AI, với mỗi item:
-- Lấy `customName` hoặc `originalProduct.name`
-- Gọi `supabase.storage.from('product-images').list()` để tìm ảnh có tên gần giống tên sản phẩm
-- Nếu tìm thấy → gán `selectedImage` = public URL của ảnh đó
-- Logic tìm kiếm: normalize tên (bỏ dấu, lowercase) → so sánh với tên file ảnh
-
-#### 3. `AIQuoteFill.tsx` — Truyền thêm callback với image lookup
-
-Mở rộng `AIMatchedItem` interface không cần thay đổi vì image sẽ được tìm ở tầng `CreateQuoteForm`.
-
-### Files thay đổi
+### File thay đổi
 
 | File | Thay đổi |
 |------|----------|
-| `supabase/functions/lookup-tax-code/index.ts` | Sửa prompt: ưu tiên giá khách ghi, nhấn mạnh specs phải sửa theo yêu cầu |
-| `src/components/CreateQuoteForm.tsx` | Thêm logic tìm ảnh từ `product-images` bucket theo tên sản phẩm khi AI điền, gán `selectedImage` |
+| `src/components/CreateQuoteForm.tsx` | Sửa logic fetch ảnh từ bucket: dùng `!item.name.includes('.')` thay vì `folder.id === null`, copy pattern từ ProductImageLibrary |
 
 ### Chi tiết kỹ thuật
 
-**Tìm ảnh tự động**: Khi callback `onProductsSelected` được gọi:
-1. Fetch danh sách tất cả ảnh từ bucket `product-images` (tất cả thư mục)
-2. Với mỗi item AI trả về, normalize tên sản phẩm gốc (bỏ dấu tiếng Việt, lowercase)
-3. So sánh với tên file ảnh (cũng normalize) — dùng `includes` hoặc fuzzy match
-4. Nếu match → lấy public URL gán vào `selectedImage`
+```typescript
+// Sửa từ:
+if (folder.id === null) { // SAI - không phải cách phát hiện thư mục
 
-**Prompt sửa giá**:
-```
-5. "price" = nếu khách ghi rõ giá trong yêu cầu thì dùng giá đó. 
-   Nếu KHÔNG ghi giá → lấy đơn giá từ sản phẩm gốc đã chọn.
+// Thành:
+const topLevelFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
+const directories = folders.filter(f => !f.name.includes('.'));
+
+for (const file of topLevelFiles) {
+  allImageFiles.push({ name: file.name, folder: '' });
+}
+for (const dir of directories) {
+  const { data: files } = await supabase.storage.from('product-images').list(dir.name, { limit: 200 });
+  if (files) {
+    for (const file of files) {
+      if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
+        allImageFiles.push({ name: file.name, folder: dir.name });
+      }
+    }
+  }
+}
+console.log('Found images for matching:', allImageFiles.length);
 ```
 
