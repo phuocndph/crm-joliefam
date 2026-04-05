@@ -1282,9 +1282,71 @@ export function CreateQuoteForm({
                     {products.length > 0 && (
                       <AIQuoteFill
                         products={products}
-                        onProductsSelected={(items) => {
+                        onProductsSelected={async (items) => {
+                          // Fetch all images from product-images bucket for auto-matching
+                          let allImageFiles: { name: string; folder: string }[] = [];
+                          try {
+                            const { data: folders } = await supabase.storage.from('product-images').list('', { limit: 200 });
+                            if (folders) {
+                              for (const folder of folders) {
+                                if (folder.id === null) {
+                                  const { data: files } = await supabase.storage.from('product-images').list(folder.name, { limit: 200 });
+                                  if (files) {
+                                    for (const file of files) {
+                                      if (file.id && /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
+                                        allImageFiles.push({ name: file.name, folder: folder.name });
+                                      }
+                                    }
+                                  }
+                                } else if (/\.(jpg|jpeg|png|gif|webp)$/i.test(folder.name)) {
+                                  allImageFiles.push({ name: folder.name, folder: '' });
+                                }
+                              }
+                            }
+                          } catch (e) {
+                            console.error('Error listing product images:', e);
+                          }
+
+                          const normalize = (text: string) => text.toLowerCase()
+                            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                            .replace(/đ/g, 'd').replace(/Đ/g, 'd')
+                            .replace(/[^a-z0-9]/g, '');
+
                           const newItems = items.map((item) => {
                             const originalProduct = products.find(p => p.id === item.matchedProductId);
+                            
+                            let selectedImage = '';
+                            const productName = originalProduct?.name || item.customName;
+                            const normalizedProductName = normalize(productName);
+                            
+                            if (allImageFiles.length > 0 && normalizedProductName) {
+                              let bestMatch: { name: string; folder: string; score: number } | null = null;
+                              for (const img of allImageFiles) {
+                                const normalizedFileName = normalize(img.name.replace(/\.[^.]+$/, ''));
+                                let score = 0;
+                                if (normalizedFileName === normalizedProductName) {
+                                  score = 100;
+                                } else if (normalizedFileName.includes(normalizedProductName)) {
+                                  score = 80;
+                                } else if (normalizedProductName.includes(normalizedFileName) && normalizedFileName.length > 3) {
+                                  score = 60;
+                                } else {
+                                  const fileWords = normalizedFileName.match(/.{3,}/g) || [];
+                                  const overlap = fileWords.filter(w => normalizedProductName.includes(w)).length;
+                                  if (overlap > 0) score = overlap * 15;
+                                }
+                                if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+                                  bestMatch = { ...img, score };
+                                }
+                              }
+                              
+                              if (bestMatch) {
+                                const path = bestMatch.folder ? `${bestMatch.folder}/${bestMatch.name}` : bestMatch.name;
+                                const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path);
+                                selectedImage = urlData.publicUrl;
+                              }
+                            }
+
                             return {
                               id: `${item.matchedProductId}-${Date.now()}-${Math.random()}`,
                               name: item.customName,
@@ -1294,11 +1356,12 @@ export function CreateQuoteForm({
                               total: item.price * item.quantity,
                               description: originalProduct?.description || '',
                               specifications: item.specifications,
+                              selectedImage,
                               originalProductId: item.matchedProductId,
                             };
                           });
                           setSelectedProducts(prev => [...prev, ...newItems]);
-                        }}
+                        }
                       />
                     )}
                     <Button type="button" className="bg-green-600 hover:bg-green-700" onClick={() => {
