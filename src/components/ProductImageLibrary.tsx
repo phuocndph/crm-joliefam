@@ -468,6 +468,75 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
     setShowImageViewer(true);
   };
 
+  const openRenameImageDialog = (image: ProductImage) => {
+    setImageToRename(image);
+    const fileName = image.name.split('/').pop() || image.name;
+    const nameWithoutExt = fileName.replace(/\.[^/.]+$/, '');
+    setNewImageName(nameWithoutExt);
+    setShowRenameImageDialog(true);
+  };
+
+  const handleRenameImage = async () => {
+    if (!imageToRename || !newImageName.trim()) return;
+
+    setRenamingImage(true);
+    try {
+      const oldPath = imageToRename.fullPath;
+      const ext = oldPath.split('.').pop();
+      const folder = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
+      const sanitizedName = newImageName.trim().replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1E00-\u1EFF\s]/g, '').replace(/\s+/g, '-');
+      const newPath = folder ? `${folder}/${sanitizedName}.${ext}` : `${sanitizedName}.${ext}`;
+
+      if (oldPath === newPath) {
+        setShowRenameImageDialog(false);
+        return;
+      }
+
+      // Download the file
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('product-images')
+        .download(oldPath);
+
+      if (downloadError) throw downloadError;
+
+      // Upload with new name
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(newPath, fileData, { upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      // Delete old file
+      const { error: deleteError } = await supabase.storage
+        .from('product-images')
+        .remove([oldPath]);
+
+      if (deleteError) {
+        console.error('Error deleting old file:', deleteError);
+      }
+
+      toast({
+        title: "Thành công",
+        description: `Đã đổi tên hình ảnh thành "${sanitizedName}.${ext}"`,
+      });
+
+      setShowRenameImageDialog(false);
+      setImageToRename(null);
+      setNewImageName('');
+      clearCache();
+      fetchImages();
+    } catch (error: any) {
+      console.error('Error renaming image:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể đổi tên hình ảnh",
+        variant: "destructive",
+      });
+    } finally {
+      setRenamingImage(false);
+    }
+  };
+
   const handleRenameCategory = async () => {
     if (!categoryToRename || !newCategoryName) return;
 
