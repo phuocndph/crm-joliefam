@@ -1361,7 +1361,7 @@ export function CreateQuoteForm({
                             };
                           });
                           setSelectedProducts(prev => [...prev, ...newItems]);
-                        }
+                        }}
                       />
                     )}
                     <Button type="button" className="bg-green-600 hover:bg-green-700" onClick={() => {
