@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Sparkles, Loader2, Check, X, AlertTriangle } from "lucide-react";
+import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,6 +24,7 @@ interface AIMatchedItem {
   price: number;
   specifications: string;
   note: string;
+  previewImageUrl?: string;
 }
 
 interface AIQuoteFillProps {
@@ -37,6 +38,81 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   const [isLoading, setIsLoading] = useState(false);
   const [previewItems, setPreviewItems] = useState<AIMatchedItem[] | null>(null);
   const { toast } = useToast();
+
+  const normalize = (text: string) => text.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'd')
+    .replace(/[^a-z0-9]/g, '');
+
+  const extractKeywords = (text: string) => {
+    const norm = normalize(text);
+    return norm.match(/[a-z0-9]{3,}/g) || [];
+  };
+
+  const findPreviewImage = async (items: AIMatchedItem[]) => {
+    try {
+      let allImageFiles: { name: string; folder: string }[] = [];
+      const { data: folders } = await supabase.storage.from('product-images').list('', { limit: 200 });
+      if (folders) {
+        const topLevelFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
+        const directories = folders.filter(f => !f.name.includes('.'));
+        for (const file of topLevelFiles) {
+          allImageFiles.push({ name: file.name, folder: '' });
+        }
+        for (const dir of directories) {
+          const { data: files } = await supabase.storage.from('product-images').list(dir.name, { limit: 200 });
+          if (files) {
+            for (const file of files) {
+              if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
+                allImageFiles.push({ name: file.name, folder: dir.name });
+              }
+            }
+          }
+        }
+      }
+
+      return items.map(item => {
+        const originalProduct = products.find(p => p.id === item.matchedProductId);
+        const productName = originalProduct?.name || item.customName;
+        const normalizedProductName = normalize(productName);
+        const allSearchKeywords = [...new Set([...extractKeywords(productName), ...extractKeywords(item.customName)])];
+
+        let bestMatch: { name: string; folder: string; score: number } | null = null;
+        for (const img of allImageFiles) {
+          const normalizedFileName = normalize(img.name.replace(/\.[^.]+$/, ''));
+          const normalizedFullPath = normalize(img.folder ? `${img.folder}/${img.name}` : img.name);
+          let score = 0;
+          if (normalizedFileName === normalizedProductName) score = 100;
+          else if (normalizedFullPath.includes(normalizedProductName) && normalizedProductName.length > 5) score = 85;
+          else if (normalizedFileName.includes(normalizedProductName) && normalizedProductName.length > 5) score = 80;
+          else if (normalizedProductName.includes(normalizedFileName) && normalizedFileName.length > 8) score = 65;
+          else {
+            const fileKeywords = extractKeywords(img.name.replace(/\.[^.]+$/, ''));
+            const folderKeywords = extractKeywords(img.folder || '');
+            const allFileKeywords = [...fileKeywords, ...folderKeywords];
+            let overlap = 0;
+            for (const kw of allSearchKeywords) {
+              if (allFileKeywords.some(fk => fk.includes(kw) || kw.includes(fk))) overlap++;
+            }
+            if (overlap >= 2) score = Math.min(overlap * 20, 60);
+          }
+          if (score >= 15 && (!bestMatch || score > bestMatch.score)) {
+            bestMatch = { ...img, score };
+          }
+        }
+
+        if (bestMatch) {
+          const path = bestMatch.folder ? `${bestMatch.folder}/${bestMatch.name}` : bestMatch.name;
+          const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path);
+          return { ...item, previewImageUrl: urlData.publicUrl };
+        }
+        return item;
+      });
+    } catch (e) {
+      console.error('Error finding preview images:', e);
+      return items;
+    }
+  };
 
   const handleAIFill = async () => {
     if (!request.trim()) {
@@ -71,12 +147,14 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         return;
       }
 
-      const items: AIMatchedItem[] = data?.items || [];
+      let items: AIMatchedItem[] = data?.items || [];
       if (items.length === 0) {
         toast({ title: "Không tìm thấy sản phẩm phù hợp", description: "AI không thể so khớp yêu cầu với bảng giá hiện tại" });
         return;
       }
 
+      // Find preview images for display
+      items = await findPreviewImage(items);
       setPreviewItems(items);
     } catch (err) {
       console.error("AI quote fill error:", err);
@@ -139,6 +217,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[40px]">#</TableHead>
+                        <TableHead className="w-[60px]">Ảnh</TableHead>
                         <TableHead>Tên sản phẩm</TableHead>
                         <TableHead>Quy cách</TableHead>
                         <TableHead className="text-right">SL</TableHead>
@@ -151,6 +230,15 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                       {previewItems.map((item, idx) => (
                         <TableRow key={idx}>
                           <TableCell>{idx + 1}</TableCell>
+                          <TableCell>
+                            {item.previewImageUrl ? (
+                              <img src={item.previewImageUrl} alt="" className="w-10 h-10 object-cover rounded border" />
+                            ) : (
+                              <div className="w-10 h-10 bg-muted rounded border flex items-center justify-center">
+                                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="font-medium">{item.customName}</TableCell>
                           <TableCell>{item.specifications}</TableCell>
                           <TableCell className="text-right">{item.quantity}</TableCell>

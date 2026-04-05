@@ -315,7 +315,13 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
     try {
       const uploadPromises = Array.from(files).map(async (file) => {
         const fileExt = file.name.split('.').pop();
-        const fileName = `${folderName}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const sanitizedOriginal = file.name.replace(/\.[^/.]+$/, '')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+          .replace(/[^a-zA-Z0-9\-_]/g, '-')
+          .replace(/-+/g, '-').replace(/^-|-$/g, '')
+          .toLowerCase();
+        const fileName = `${folderName}/${sanitizedOriginal}-${Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from('product-images')
@@ -372,7 +378,13 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
     try {
       const uploadPromises = files.map(async (file) => {
         const fileExt = file.name.split('.').pop();
-        const fileName = `${folderName}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const sanitizedOriginal = file.name.replace(/\.[^/.]+$/, '')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+          .replace(/[^a-zA-Z0-9\-_]/g, '-')
+          .replace(/-+/g, '-').replace(/^-|-$/g, '')
+          .toLowerCase();
+        const fileName = `${folderName}/${sanitizedOriginal}-${Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from('product-images')
