@@ -55,6 +55,10 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
   const [imageToDelete, setImageToDelete] = useState<string>('');
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [selectedImageUrl, setSelectedImageUrl] = useState('');
+  const [showRenameImageDialog, setShowRenameImageDialog] = useState(false);
+  const [imageToRename, setImageToRename] = useState<ProductImage | null>(null);
+  const [newImageName, setNewImageName] = useState('');
+  const [renamingImage, setRenamingImage] = useState(false);
   const { toast } = useToast();
 
   // Check if cache is valid
