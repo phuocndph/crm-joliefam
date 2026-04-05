@@ -1288,20 +1288,23 @@ export function CreateQuoteForm({
                           try {
                             const { data: folders } = await supabase.storage.from('product-images').list('', { limit: 200 });
                             if (folders) {
-                              for (const folder of folders) {
-                                if (folder.id === null) {
-                                  const { data: files } = await supabase.storage.from('product-images').list(folder.name, { limit: 200 });
-                                  if (files) {
-                                    for (const file of files) {
-                                      if (file.id && /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
-                                        allImageFiles.push({ name: file.name, folder: folder.name });
-                                      }
+                              const topLevelFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
+                              const directories = folders.filter(f => !f.name.includes('.'));
+
+                              for (const file of topLevelFiles) {
+                                allImageFiles.push({ name: file.name, folder: '' });
+                              }
+                              for (const dir of directories) {
+                                const { data: files } = await supabase.storage.from('product-images').list(dir.name, { limit: 200 });
+                                if (files) {
+                                  for (const file of files) {
+                                    if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
+                                      allImageFiles.push({ name: file.name, folder: dir.name });
                                     }
                                   }
-                                } else if (/\.(jpg|jpeg|png|gif|webp)$/i.test(folder.name)) {
-                                  allImageFiles.push({ name: folder.name, folder: '' });
                                 }
                               }
+                              console.log('Found images for matching:', allImageFiles.length);
                             }
                           } catch (e) {
                             console.error('Error listing product images:', e);
