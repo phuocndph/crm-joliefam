@@ -447,6 +447,12 @@ QUY TẮC SO KHỚP THÔNG MINH:
     KHÔNG đoán. Trả về: {"items": [], "clarification": "Mô tả chi tiết những gì cần khách bổ sung thông tin"}
     VD: Khách nói "2 bộ ga 1m8, 4 gối" mà không nói loại vải → clarification: "Vui lòng cho biết loại vải (T225, T250, KS, Tencel...) cho đơn hàng này"
 
+11. MAPPING TÊN VẢI TƯƠNG ĐƯƠNG:
+    - "LTH" = "T225" — đây là CÙNG MỘT loại vải, tên gọi khác nhau
+    - Khi khách nói "LTH" → tìm sản phẩm có tên chứa "T225" trong bảng giá
+    - Khi khách nói "T225" → cũng có thể match sản phẩm tên "LTH" nếu có
+    - VD: "Ga chun LTH trắng sọc 160x200x20cm" → tìm "Ga chun ks T225 trắng sọc 160x200x20cm"
+
 DANH SÁCH SẢN PHẨM BẢNG GIÁ:
 ${productListText}
 
