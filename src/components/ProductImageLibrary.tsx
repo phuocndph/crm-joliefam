@@ -55,6 +55,10 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
   const [imageToDelete, setImageToDelete] = useState<string>('');
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [selectedImageUrl, setSelectedImageUrl] = useState('');
+  const [showRenameImageDialog, setShowRenameImageDialog] = useState(false);
+  const [imageToRename, setImageToRename] = useState<ProductImage | null>(null);
+  const [newImageName, setNewImageName] = useState('');
+  const [renamingImage, setRenamingImage] = useState(false);
   const { toast } = useToast();
 
   // Check if cache is valid
@@ -464,6 +468,75 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
     setShowImageViewer(true);
   };
 
+  const openRenameImageDialog = (image: ProductImage) => {
+    setImageToRename(image);
+    const fileName = image.name.split('/').pop() || image.name;
+    const nameWithoutExt = fileName.replace(/\.[^/.]+$/, '');
+    setNewImageName(nameWithoutExt);
+    setShowRenameImageDialog(true);
+  };
+
+  const handleRenameImage = async () => {
+    if (!imageToRename || !newImageName.trim()) return;
+
+    setRenamingImage(true);
+    try {
+      const oldPath = imageToRename.fullPath;
+      const ext = oldPath.split('.').pop();
+      const folder = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
+      const sanitizedName = newImageName.trim().replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1E00-\u1EFF\s]/g, '').replace(/\s+/g, '-');
+      const newPath = folder ? `${folder}/${sanitizedName}.${ext}` : `${sanitizedName}.${ext}`;
+
+      if (oldPath === newPath) {
+        setShowRenameImageDialog(false);
+        return;
+      }
+
+      // Download the file
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('product-images')
+        .download(oldPath);
+
+      if (downloadError) throw downloadError;
+
+      // Upload with new name
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(newPath, fileData, { upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      // Delete old file
+      const { error: deleteError } = await supabase.storage
+        .from('product-images')
+        .remove([oldPath]);
+
+      if (deleteError) {
+        console.error('Error deleting old file:', deleteError);
+      }
+
+      toast({
+        title: "Thành công",
+        description: `Đã đổi tên hình ảnh thành "${sanitizedName}.${ext}"`,
+      });
+
+      setShowRenameImageDialog(false);
+      setImageToRename(null);
+      setNewImageName('');
+      clearCache();
+      fetchImages();
+    } catch (error: any) {
+      console.error('Error renaming image:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể đổi tên hình ảnh",
+        variant: "destructive",
+      });
+    } finally {
+      setRenamingImage(false);
+    }
+  };
+
   const handleRenameCategory = async () => {
     if (!categoryToRename || !newCategoryName) return;
 
@@ -678,6 +751,17 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
                     }}
                   >
                     <Eye className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openRenameImageDialog(image);
+                    }}
+                  >
+                    <Edit2 className="h-3 w-3" />
                   </Button>
                   {!hideDeleteButton && (
                     <Button
@@ -929,6 +1013,56 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
               <X className="h-4 w-4" />
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Image Dialog */}
+      <Dialog open={showRenameImageDialog} onOpenChange={setShowRenameImageDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Đổi tên hình ảnh</DialogTitle>
+            <DialogDescription>
+              Nhập tên mới cho hình ảnh
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {imageToRename && (
+              <div className="flex items-center gap-3">
+                <img
+                  src={imageToRename.url}
+                  alt={imageToRename.name}
+                  className="w-16 h-16 object-contain bg-muted rounded"
+                />
+                <p className="text-sm text-muted-foreground truncate flex-1">
+                  {imageToRename.name.split('/').pop()}
+                </p>
+              </div>
+            )}
+            <div>
+              <Label>Tên mới</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <Input
+                  value={newImageName}
+                  onChange={(e) => setNewImageName(e.target.value)}
+                  placeholder="Nhập tên hình ảnh mới"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRenameImage();
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">
+                  .{imageToRename?.fullPath.split('.').pop()}
+                </span>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRenameImageDialog(false)}>
+              Hủy
+            </Button>
+            <Button onClick={handleRenameImage} disabled={renamingImage || !newImageName.trim()}>
+              {renamingImage ? 'Đang đổi tên...' : 'Đổi tên'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
