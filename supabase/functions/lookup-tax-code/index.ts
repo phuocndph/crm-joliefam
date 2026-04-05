@@ -402,6 +402,52 @@ serve(async (req) => {
       }
       return new Response(JSON.stringify(parsed), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    // ==================== AI QUOTE FILL ====================
+    } else if (type === "ai_quote_fill") {
+      const { products, request } = data;
+      if (!products || !request) {
+        return new Response(JSON.stringify({ error: "Missing products or request" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const productListText = products.map((p: any, i: number) => 
+        `[${i+1}] ID: ${p.id} | Tên: ${p.name} | Giá: ${p.price} | Quy cách: ${p.specifications || "không có"}`
+      ).join("\n");
+
+      const aiQuoteFillPrompt = `Bạn là trợ lý chọn sản phẩm cho báo giá. Dựa trên yêu cầu khách hàng, hãy chọn sản phẩm phù hợp nhất từ danh sách bảng giá.
+
+QUY TẮC SO KHỚP THÔNG MINH:
+1. Nếu sản phẩm khớp chính xác tên + kích thước → lấy trực tiếp, "note" để trống ""
+2. Nếu kích thước KHÔNG KHỚP chính xác (ví dụ: khách yêu cầu 12cm nhưng bảng giá chỉ có 10cm và 15cm):
+   - Lấy sản phẩm có kích thước LỚN HƠN gần nhất (15cm) để tính giá
+   - "customName" = tên sản phẩm đã SỬA theo yêu cầu thực tế của khách (ghi 12cm thay vì 15cm)
+   - "note" = giải thích lý do (VD: "Khách yêu cầu 12cm, lấy giá sản phẩm 15cm")
+3. Nếu không tìm thấy sản phẩm nào phù hợp → bỏ qua, KHÔNG đoán
+4. "matchedProductId" = ID sản phẩm GỐC trong bảng giá (để lấy giá chính xác)
+5. "price" = đơn giá từ sản phẩm gốc đã chọn (KHÔNG tự nghĩ ra giá)
+6. "quantity" = số lượng theo yêu cầu khách
+
+DANH SÁCH SẢN PHẨM BẢNG GIÁ:
+${productListText}
+
+Trả về JSON thuần (không markdown, không giải thích):
+{"items": [{"matchedProductId":"id-sản-phẩm-gốc","customName":"tên đã sửa theo yêu cầu","quantity":1,"price":0,"specifications":"quy cách","note":"ghi chú nếu không khớp 100%"}]}
+
+Nếu không tìm thấy sản phẩm nào phù hợp: {"items": []}`;
+
+      const parsed = await callAI([
+        { role: "system", content: aiQuoteFillPrompt },
+        { role: "user", content: `Yêu cầu khách hàng:\n"""\n${request}\n"""` },
+      ]);
+      
+      if (parsed.status === 429) {
+        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify(parsed), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     } else {
       return new Response(JSON.stringify({ error: "Invalid type" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
