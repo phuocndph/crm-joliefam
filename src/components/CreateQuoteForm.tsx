@@ -1315,30 +1315,72 @@ export function CreateQuoteForm({
                             .replace(/đ/g, 'd').replace(/Đ/g, 'd')
                             .replace(/[^a-z0-9]/g, '');
 
+                          const extractKeywords = (text: string) => {
+                            const norm = normalize(text);
+                            // Split by common separators and filter meaningful words (3+ chars)
+                            return norm.match(/[a-z0-9]{3,}/g) || [];
+                          };
+
                           const newItems = items.map((item) => {
                             const originalProduct = products.find(p => p.id === item.matchedProductId);
                             
                             let selectedImage = '';
                             const productName = originalProduct?.name || item.customName;
                             const normalizedProductName = normalize(productName);
+                            const normalizedCustomName = normalize(item.customName);
+                            const normalizedSpecs = normalize(item.specifications || '');
+                            const productKeywords = extractKeywords(productName);
+                            const customKeywords = extractKeywords(item.customName);
+                            const allSearchKeywords = [...new Set([...productKeywords, ...customKeywords])];
                             
                             if (allImageFiles.length > 0 && normalizedProductName) {
                               let bestMatch: { name: string; folder: string; score: number } | null = null;
                               for (const img of allImageFiles) {
                                 const normalizedFileName = normalize(img.name.replace(/\.[^.]+$/, ''));
+                                const normalizedFullPath = normalize(img.folder ? `${img.folder}/${img.name}` : img.name);
+                                const normalizedFolder = normalize(img.folder || '');
                                 let score = 0;
-                                if (normalizedFileName === normalizedProductName) {
+                                
+                                // Exact match on file name
+                                if (normalizedFileName === normalizedProductName || normalizedFileName === normalizedCustomName) {
                                   score = 100;
-                                } else if (normalizedFileName.includes(normalizedProductName)) {
-                                  score = 80;
-                                } else if (normalizedProductName.includes(normalizedFileName) && normalizedFileName.length > 3) {
-                                  score = 60;
-                                } else {
-                                  const fileWords = normalizedFileName.match(/.{3,}/g) || [];
-                                  const overlap = fileWords.filter(w => normalizedProductName.includes(w)).length;
-                                  if (overlap > 0) score = overlap * 15;
                                 }
-                                if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+                                // Full path contains product name
+                                else if (normalizedFullPath.includes(normalizedProductName) && normalizedProductName.length > 5) {
+                                  score = 85;
+                                }
+                                // File name contains product name
+                                else if (normalizedFileName.includes(normalizedProductName) && normalizedProductName.length > 5) {
+                                  score = 80;
+                                }
+                                // Product name contains file name (file is meaningful, not random)
+                                else if (normalizedProductName.includes(normalizedFileName) && normalizedFileName.length > 8) {
+                                  score = 65;
+                                }
+                                // Keyword overlap scoring
+                                else {
+                                  const fileKeywords = extractKeywords(img.name.replace(/\.[^.]+$/, ''));
+                                  const folderKeywords = extractKeywords(img.folder || '');
+                                  const allFileKeywords = [...fileKeywords, ...folderKeywords];
+                                  
+                                  let overlap = 0;
+                                  for (const kw of allSearchKeywords) {
+                                    if (allFileKeywords.some(fk => fk.includes(kw) || kw.includes(fk))) {
+                                      overlap++;
+                                    }
+                                  }
+                                  if (overlap >= 2) score = Math.min(overlap * 20, 60);
+                                  else if (overlap === 1 && allSearchKeywords.length <= 3) score = 15;
+                                }
+                                
+                                // Folder name matches product category - bonus
+                                if (normalizedFolder && score > 0) {
+                                  if (normalizedProductName.includes(normalizedFolder) || normalizedFolder.includes(normalize(originalProduct?.category || ''))) {
+                                    score += 5;
+                                  }
+                                }
+                                
+                                if (score >= 15 && (!bestMatch || score > bestMatch.score)) {
                                   bestMatch = { ...img, score };
                                 }
                               }
@@ -1347,6 +1389,9 @@ export function CreateQuoteForm({
                                 const path = bestMatch.folder ? `${bestMatch.folder}/${bestMatch.name}` : bestMatch.name;
                                 const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path);
                                 selectedImage = urlData.publicUrl;
+                                console.log(`Image matched for "${productName}": ${path} (score: ${bestMatch.score})`);
+                              } else {
+                                console.log(`No image match for "${productName}"`);
                               }
                             }
 
