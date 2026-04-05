@@ -1,42 +1,37 @@
-## Cải thiện AI chọn sản phẩm báo giá: suy luận loại vải & hỏi lại khi thiếu thông tin
+
+
+## Cải thiện AI chọn sản phẩm: suy luận loại vải, phân biệt vỏ/ruột gối, hỏi lại khi thiếu info
 
 ### Vấn đề
+- AI nhầm "vỏ gối" với "ruột gối"
+- Khi ga là T225 thì gối cũng phải T225, nhưng AI không suy luận được
+- Khi thiếu thông tin, AI đoán bừa thay vì hỏi lại
 
-1. **Nhầm vỏ gối / ruột gối**: AI không phân biệt đúng giữa "vỏ gối" và "ruột gối" — đây là 2 sản phẩm hoàn toàn khác nhau
-2. **Không suy luận loại vải**: Khi khách ghi "ga T225" thì gối, vỏ gối cùng đơn cũng phải theo loại vải T225, trừ khi ghi rõ loại vải khác
-3. **Không hỏi lại khi thiếu thông tin**: Nếu không xác định được loại vải hoặc sản phẩm cụ thể, AI nên trả về thông báo yêu cầu bổ sung thay vì đoán sai
+### Thay đổi
 
-### Giải pháp
+#### 1. Edge Function prompt (`supabase/functions/lookup-tax-code/index.ts`)
 
-Cập nhật prompt AI trong edge function `lookup-tax-code/index.ts`, thêm 3 quy tắc mới:
+Thêm 3 quy tắc mới sau rule 7:
 
-#### Quy tắc suy luận loại vải
-```
-8. SUY LUẬN LOẠI VẢI: Nếu đơn hàng có GA loại vải cụ thể (VD: T225, T250, Lụa, Tencel...), 
-   thì TẤT CẢ sản phẩm khác (vỏ gối, gối ôm, ga trải...) trong cùng đơn PHẢI theo cùng loại vải đó,
-   TRỪ KHI khách ghi rõ loại vải riêng cho từng sản phẩm.
-```
+**Rule 8 - Suy luận loại vải**: Nếu đơn có GA loại vải cụ thể (T225, T250, KS, Tencel...), tất cả phụ kiện (vỏ gối, gối ôm) PHẢI theo cùng loại vải đó, trừ khi khách ghi rõ loại vải riêng.
 
-#### Quy tắc phân biệt sản phẩm
-```
-9. PHÂN BIỆT SẢN PHẨM CHÍNH XÁC:
-   - "Vỏ gối" ≠ "Ruột gối" — vỏ gối là bao bọc bên ngoài (theo loại vải), ruột gối là phần lõi bên trong
-   - "Ga giường" ≠ "Ga trải" — chú ý tên chính xác trong bảng giá
-   - Nếu khách chỉ nói "gối" mà không rõ vỏ hay ruột → mặc định là "vỏ gối" (phổ biến hơn trong báo giá)
-```
+**Rule 9 - Phân biệt sản phẩm**: 
+- "Vỏ gối" ≠ "Ruột gối" — vỏ theo loại vải, ruột là lõi bông bên trong
+- Nếu khách chỉ nói "gối" không rõ vỏ/ruột → mặc định "vỏ gối"
+- Chỉ chọn "ruột gối" khi khách ghi rõ "ruột gối", "lõi gối", "gối bông"
 
-#### Quy tắc hỏi lại
-```
-10. NẾU KHÔNG XÁC ĐỊNH ĐƯỢC loại vải, loại sản phẩm, hoặc kích thước cụ thể → 
-    KHÔNG đoán. Trả về: {"items": [], "clarification": "Mô tả chi tiết những gì cần bổ sung"}
-```
+**Rule 10 - Hỏi lại**: Nếu thiếu thông tin quan trọng và không thể suy luận → trả `{"items": [], "clarification": "câu hỏi cần bổ sung"}` thay vì đoán sai.
 
-#### Xử lý clarification ở frontend (`AIQuoteFill.tsx`)
-Khi nhận `clarification` từ AI, hiển thị thông báo yêu cầu người dùng bổ sung thông tin thay vì báo "không tìm thấy sản phẩm".
+#### 2. Frontend (`src/components/AIQuoteFill.tsx`)
+
+Trong `handleAIFill`, sau khi nhận response từ AI:
+- Kiểm tra `data?.clarification` — nếu có, hiển thị toast với nội dung câu hỏi bổ sung thay vì báo "không tìm thấy sản phẩm"
+- Giữ nguyên textarea để user bổ sung thông tin và thử lại
 
 ### Files thay đổi
 
 | File | Thay đổi |
 |------|----------|
-| `supabase/functions/lookup-tax-code/index.ts` | Thêm 3 quy tắc mới vào prompt AI quote fill |
-| `src/components/AIQuoteFill.tsx` | Xử lý response `clarification` — hiển thị câu hỏi bổ sung cho user |
+| `supabase/functions/lookup-tax-code/index.ts` | Thêm rule 8 (suy luận loại vải), rule 9 (phân biệt vỏ/ruột), rule 10 (hỏi lại) vào prompt |
+| `src/components/AIQuoteFill.tsx` | Xử lý response `clarification` — hiển thị câu hỏi bổ sung |
+
