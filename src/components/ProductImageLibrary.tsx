@@ -1015,6 +1015,56 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Rename Image Dialog */}
+      <Dialog open={showRenameImageDialog} onOpenChange={setShowRenameImageDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Đổi tên hình ảnh</DialogTitle>
+            <DialogDescription>
+              Nhập tên mới cho hình ảnh
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {imageToRename && (
+              <div className="flex items-center gap-3">
+                <img
+                  src={imageToRename.url}
+                  alt={imageToRename.name}
+                  className="w-16 h-16 object-contain bg-muted rounded"
+                />
+                <p className="text-sm text-muted-foreground truncate flex-1">
+                  {imageToRename.name.split('/').pop()}
+                </p>
+              </div>
+            )}
+            <div>
+              <Label>Tên mới</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <Input
+                  value={newImageName}
+                  onChange={(e) => setNewImageName(e.target.value)}
+                  placeholder="Nhập tên hình ảnh mới"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRenameImage();
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">
+                  .{imageToRename?.fullPath.split('.').pop()}
+                </span>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRenameImageDialog(false)}>
+              Hủy
+            </Button>
+            <Button onClick={handleRenameImage} disabled={renamingImage || !newImageName.trim()}>
+              {renamingImage ? 'Đang đổi tên...' : 'Đổi tên'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
