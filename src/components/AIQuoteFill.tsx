@@ -77,7 +77,7 @@ function extractSearchTerms(request: string): string[] {
   }
 
   // Extract fabric types (e.g., LTH, T225, cotton, tencel, satin)
-  const fabricPattern = /\b(lth|t225|t300|t400|t500|cotton|tencel|satin|lua|poly|bamboo|modal)\b/gi;
+  const fabricPattern = /\b(lth|t225|t300|t400|t500|cotton|tencel|satin|lua|poly|bamboo|modal|microfiber|micro)\b/gi;
   const fabricMatches = lower.match(fabricPattern);
   if (fabricMatches) {
     for (const f of fabricMatches) {
