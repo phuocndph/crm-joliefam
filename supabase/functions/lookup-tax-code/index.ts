@@ -425,18 +425,20 @@ QUY TẮC SO KHỚP THÔNG MINH:
    - "note" = giải thích lý do (VD: "Khách yêu cầu 12cm, lấy giá sản phẩm 15cm")
 3. Nếu không tìm thấy sản phẩm nào phù hợp → bỏ qua, KHÔNG đoán
 4. "matchedProductId" = ID sản phẩm GỐC trong bảng giá (để lấy giá chính xác)
-5. "price" = đơn giá từ sản phẩm gốc đã chọn (KHÔNG tự nghĩ ra giá)
+5. "price" = NẾU khách ghi rõ giá trong yêu cầu (VD: "giá 500k", "đơn giá 1.200.000") → dùng giá khách ghi.
+   NẾU khách KHÔNG ghi giá → lấy đơn giá từ sản phẩm gốc đã chọn. KHÔNG TỰ NGHĨ RA GIÁ.
 6. "quantity" = số lượng theo yêu cầu khách
-7. "specifications" = quy cách ĐÃ SỬA theo yêu cầu thực tế của khách (VD: khách yêu cầu 160x200x12cm thì ghi "160x200x12cm", KHÔNG ghi specs gốc "160x200x15cm")
+7. BẮT BUỘC: "specifications" PHẢI là quy cách THEO YÊU CẦU THỰC TẾ CỦA KHÁCH, KHÔNG ĐƯỢC copy quy cách gốc từ bảng giá.
+   VD: Khách yêu cầu "160x200x12cm" → specifications = "160x200x12cm" (DÙ sản phẩm gốc ghi "160x200x15cm")
+   VD: Khách yêu cầu "1m8" → specifications phải ghi kích thước tương ứng "180x200x..." theo yêu cầu
 
 DANH SÁCH SẢN PHẨM BẢNG GIÁ:
 ${productListText}
 
 Trả về JSON thuần (không markdown, không giải thích):
-{"items": [{"matchedProductId":"id-sản-phẩm-gốc","customName":"tên đã sửa theo yêu cầu","quantity":1,"price":0,"specifications":"quy cách","note":"ghi chú nếu không khớp 100%"}]}
+{"items": [{"matchedProductId":"id-sản-phẩm-gốc","customName":"tên đã sửa theo yêu cầu","quantity":1,"price":0,"specifications":"quy cách THEO YÊU CẦU KHÁCH","note":"ghi chú nếu không khớp 100%"}]}
 
 Nếu không tìm thấy sản phẩm nào phù hợp: {"items": []}`;
-
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
         { role: "user", content: `Yêu cầu khách hàng:\n"""\n${request}\n"""` },
