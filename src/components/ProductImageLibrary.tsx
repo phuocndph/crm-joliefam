@@ -484,7 +484,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
       const oldPath = imageToRename.fullPath;
       const ext = oldPath.split('.').pop();
       const folder = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
-      const sanitizedName = newImageName.trim().replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1E00-\u1EFF\s]/g, '').replace(/\s+/g, '-');
+      const sanitizedName = newImageName.trim().replace(/[^a-zA-Z0-9_\-.\s]/g, '').replace(/\s+/g, '-');
       const newPath = folder ? `${folder}/${sanitizedName}.${ext}` : `${sanitizedName}.${ext}`;
 
       if (oldPath === newPath) {
