@@ -752,6 +752,17 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
                   >
                     <Eye className="h-3 w-3" />
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openRenameImageDialog(image);
+                    }}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
                   {!hideDeleteButton && (
                     <Button
                       size="sm"
