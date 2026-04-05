@@ -1,63 +1,87 @@
 
 
-## Thêm chức năng tạo báo giá bằng AI (với logic so khớp thông minh)
+## Sửa lỗi AI điền báo giá thiếu mô tả, hình ảnh và quy cách sai
 
-### Yêu cầu đặc biệt
-Khi sản phẩm không khớp 100%, AI phải:
-- **Tìm sản phẩm gần nhất có kích thước lớn hơn** (ví dụ: khách yêu cầu 12cm → bảng giá có 10cm và 15cm → lấy giá 15cm)
-- **Tự sửa tên sản phẩm** theo đúng yêu cầu khách (hiển thị 12cm thay vì 15cm)
-- Giá lấy từ sản phẩm cao hơn, tên hiển thị theo yêu cầu thực tế
+### Vấn đề hiện tại
 
-### Thay đổi
+1. **Thiếu mô tả (description)**: Khi AI chọn sản phẩm, callback không lấy `description` từ sản phẩm gốc → ô mô tả trong bảng báo giá bị trống
+2. **Thiếu hình ảnh**: Không tìm hình ảnh sản phẩm gốc để gán vào `selectedImage`
+3. **Quy cách không sửa**: AI trả về `specifications` nhưng callback không dùng nó — hoặc AI trả specifications gốc thay vì specs đã sửa theo yêu cầu khách
 
-#### 1. Edge Function `lookup-tax-code` — Thêm type `ai_quote_fill`
+### Giải pháp
 
-Nhận:
-- `products`: danh sách sản phẩm từ bảng giá (id, name, price, specifications)
-- `request`: mô tả yêu cầu khách hàng
+#### 1. `AIQuoteFill.tsx` — Mở rộng Product interface
 
-AI prompt sẽ bao gồm quy tắc so khớp thông minh:
-```
-QUY TẮC SO KHỚP:
-1. Nếu sản phẩm khớp chính xác → lấy trực tiếp
-2. Nếu kích thước không khớp → lấy sản phẩm có kích thước LỚN HƠN gần nhất
-3. Trường "customName" = tên sản phẩm đã sửa theo yêu cầu thực tế của khách
-4. Trường "matchedProductId" = ID sản phẩm gốc trong bảng giá (để lấy giá)
-5. Trường "note" = ghi chú lý do chọn (ví dụ: "Khách yêu cầu 12cm, lấy giá 15cm")
+Thêm `description` vào interface Product để truyền xuống edge function và dùng khi áp dụng:
+
+```typescript
+interface Product {
+  id: string;
+  name: string;
+  price: number | null;
+  specifications: string | null;
+  description: string | null;  // THÊM
+}
 ```
 
-Trả về:
-```json
-{"items": [
-  {
-    "matchedProductId": "uuid-of-15cm-product",
-    "customName": "Ga giường 160x200x12cm",
-    "quantity": 1,
-    "price": 500000,
-    "specifications": "160x200x12cm",
-    "note": "Khách yêu cầu 12cm, lấy giá sản phẩm 15cm"
-  }
-]}
+Khi gửi lên AI, thêm `description` vào product list để AI có thể tham khảo.
+
+#### 2. `AIQuoteFill.tsx` — Mở rộng AIMatchedItem
+
+Thêm `description` vào interface trả về:
+
+```typescript
+interface AIMatchedItem {
+  matchedProductId: string;
+  customName: string;
+  quantity: number;
+  price: number;
+  specifications: string;  // Đã sửa theo yêu cầu khách
+  description: string;     // THÊM - từ sản phẩm gốc
+  note: string;
+}
 ```
 
-#### 2. Component `AIQuoteFill.tsx` — Giao diện AI điền báo giá
+#### 3. `CreateQuoteForm.tsx` — Sửa callback onProductsSelected
 
-- Textarea nhập yêu cầu khách hàng
-- Nút "AI tự chọn sản phẩm" với loading state
-- Hiển thị kết quả trước khi áp dụng: bảng preview với cột ghi chú (cho trường hợp không khớp 100%)
-- Nút "Áp dụng" để điền vào bảng báo giá, nút "Hủy" để bỏ qua
+Khi nhận kết quả AI, tìm sản phẩm gốc để lấy `description` và tìm hình ảnh từ product_images:
 
-#### 3. `CreateQuoteForm.tsx` — Tích hợp
+```typescript
+onProductsSelected={(items) => {
+  const newItems = items.map((item) => {
+    const originalProduct = products.find(p => p.id === item.matchedProductId);
+    return {
+      id: `${item.matchedProductId}-${Date.now()}-${Math.random()}`,
+      name: item.customName,
+      sku: originalProduct?.sku || '',
+      price: item.price,
+      quantity: item.quantity,
+      total: item.price * item.quantity,
+      description: originalProduct?.description || '',  // LẤY TỪ SẢN PHẨM GỐC
+      specifications: item.specifications,               // DÙNG SPECS ĐÃ SỬA TỪ AI
+      originalProductId: item.matchedProductId,
+    };
+  });
+  setSelectedProducts(prev => [...prev, ...newItems]);
+}}
+```
 
-- Thêm `AIQuoteFill` phía trên bảng sản phẩm (chỉ hiện khi đã chọn bảng giá)
-- Truyền `products` và callback `onProductsSelected`
-- Callback nhận kết quả AI → tạo `QuoteItem[]` với tên đã sửa + giá từ sản phẩm gốc → set vào `selectedProducts`
+#### 4. Edge Function — Cải thiện prompt về specifications
+
+Cập nhật prompt trong `lookup-tax-code/index.ts` để AI rõ ràng sửa specifications theo yêu cầu khách (không giữ specs gốc):
+
+```
+5. "specifications" = quy cách ĐÃ SỬA theo yêu cầu thực tế của khách 
+   (VD: khách yêu cầu 160x200x12cm thì ghi "160x200x12cm", KHÔNG ghi "160x200x15cm")
+```
+
+Thêm `description` vào product list gửi cho AI để AI tham khảo.
 
 ### Files thay đổi
 
 | File | Thay đổi |
 |------|----------|
-| `supabase/functions/lookup-tax-code/index.ts` | Thêm case `ai_quote_fill` với prompt so khớp thông minh |
-| `src/components/AIQuoteFill.tsx` | Tạo mới — UI + preview kết quả AI |
-| `src/components/CreateQuoteForm.tsx` | Tích hợp `AIQuoteFill` vào form |
+| `src/components/AIQuoteFill.tsx` | Thêm `description` vào Product + AIMatchedItem interfaces, gửi description lên AI |
+| `src/components/CreateQuoteForm.tsx` | Sửa callback lấy description + sku từ sản phẩm gốc |
+| `supabase/functions/lookup-tax-code/index.ts` | Cập nhật prompt: specifications phải sửa theo yêu cầu khách, thêm description vào product list |
 
