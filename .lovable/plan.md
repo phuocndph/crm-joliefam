@@ -1,42 +1,37 @@
 
 
-## Fix: AI không nhận diện "microfiber" = "micro" và khăn kích thước gần đúng
+## Sửa logic Pre-filter: Lọc theo nhóm vải/loại SP thay vì lọc quá sát
 
-### Nguyên nhân gốc
+### Vấn đề hiện tại
 
-Kiểm tra database thực tế cho thấy:
+Pre-filter hiện tại match từng keyword riêng lẻ (màu, kích thước, tên SP) → lọc quá sát, bỏ sót sản phẩm cùng nhóm vải. Ví dụ: yêu cầu "ga chun T250 trắng 160x200" chỉ giữ đúng SP match cả "T250" + "trang" + "160x200", loại bỏ các SP T250 khác kích thước mà AI cần để so sánh giá.
 
-| User yêu cầu | Tên trong DB | Vấn đề |
-|---|---|---|
-| Ruột gối **microfiber** 50x70 | Ruột gối bông **micro** 50x70 | AI không biết "microfiber" = "micro" |
-| Khăn **34x70**x120g | Khăn mặt **30x70**x120g | Kích thước khác nhau, AI không match |
-| Khăn 34x34x60g | Khăn mặt 34x34x60g dệt logo | Tên gần giống nhưng có thêm "dệt logo" |
+### Giải pháp
 
-AI thấy tên không khớp chính xác → báo "không có trong bảng giá" thay vì match sản phẩm gần nhất.
+Thay đổi chiến lược lọc: **chỉ dùng loại vải (fabric) và loại sản phẩm (category) để lọc**, KHÔNG dùng màu sắc hay kích thước để loại bỏ. Kích thước và màu sắc vẫn trích xuất nhưng chỉ để gửi cho AI tham khảo, không dùng để filter.
 
-### Thay đổi
-
-#### 1. Edge Function prompt — thêm Rule 12 (`supabase/functions/lookup-tax-code/index.ts`)
-
-Thêm rule mapping tên viết tắt/đầy đủ:
-
+Luồng mới:
 ```text
-12. MAPPING TÊN VIẾT TẮT / TÊN ĐẦY ĐỦ:
-    - "microfiber" = "micro" — cùng một chất liệu
-    - "Ruột gối microfiber" → tìm "Ruột gối bông micro" trong bảng giá
-    - Khăn: nếu kích thước không khớp chính xác, chọn sản phẩm có kích thước GẦN NHẤT
-    - Nếu tên SP trong bảng giá có thêm "dệt logo" → vẫn match nếu tên cơ bản giống nhau
-    - KHÔNG báo "không có trong bảng giá" nếu có sản phẩm CÙNG LOẠI với kích thước/tên gần giống
+User: "100 ga chun T250 trắng sọc 160x200, 50 vỏ gối T250 60x80"
+                    ↓
+Trích xuất: fabric = [t250], category = [gachun, vogoi]
+                    ↓
+Lọc: GIỮ TẤT CẢ sản phẩm có tên chứa "t250" HOẶC chứa "gachun"/"vogoi"
+     → Toàn bộ dòng T250 + toàn bộ ga chun/vỏ gối các loại vải
+                    ↓
+Gửi cho AI (có thể 50-100 SP thay vì 300, nhưng đủ đầy đủ theo nhóm)
 ```
 
-#### 2. Frontend pre-filter — thêm "microfiber" vào fabric pattern (`src/components/AIQuoteFill.tsx`)
+### Thay đổi cụ thể
 
-Thêm `microfiber|micro` vào `fabricPattern` để pre-filter không loại bỏ sản phẩm micro/microfiber.
+**File: `src/components/AIQuoteFill.tsx`**
 
-### Files thay đổi
+1. Tách `extractSearchTerms` thành 2 nhóm riêng:
+   - `fabricTerms`: loại vải (t250, lth, cotton...) — dùng để filter
+   - `categoryTerms`: loại SP (ga chun, vỏ gối...) — dùng để filter
+   - Màu sắc + kích thước: KHÔNG dùng để filter
 
-| File | Thay đổi |
-|------|----------|
-| `supabase/functions/lookup-tax-code/index.ts` | Thêm Rule 12 vào prompt |
-| `src/components/AIQuoteFill.tsx` | Thêm `microfiber|micro` vào fabricPattern |
+2. Sửa `preFilterProducts`: Giữ sản phẩm match **fabric HOẶC category**, không yêu cầu match cả 2. Nâng giới hạn từ 60 lên 150 SP.
+
+3. Nếu sau filter vẫn < 10 SP → gửi toàn bộ (fallback an toàn).
 
