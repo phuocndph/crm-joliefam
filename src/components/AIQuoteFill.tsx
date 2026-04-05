@@ -335,11 +335,11 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setPreviewItems(null);
 
     try {
-      // Pre-filter products based on request keywords
-      const searchTerms = extractSearchTerms(request);
-      const filteredProducts = preFilterProducts(products, searchTerms);
+      // Pre-filter products by fabric group and category (not color/size)
+      const filterTerms = extractFilterTerms(request);
+      const filteredProducts = preFilterProducts(products, filterTerms);
 
-      console.log(`[AIQuoteFill] Pre-filter: ${products.length} → ${filteredProducts.length} products (terms: ${searchTerms.join(', ')})`);
+      console.log(`[AIQuoteFill] Pre-filter: ${products.length} → ${filteredProducts.length} products (fabric: ${filterTerms.fabricTerms.join(', ')}, category: ${filterTerms.categoryTerms.join(', ')})`);
 
       const productList = filteredProducts.map(p => ({
         id: p.id,
