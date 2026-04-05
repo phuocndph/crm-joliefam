@@ -147,6 +147,16 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         return;
       }
 
+      // Handle clarification request from AI
+      if (data?.clarification) {
+        toast({ 
+          title: "⚠️ Cần bổ sung thông tin", 
+          description: data.clarification,
+          duration: 10000,
+        });
+        return;
+      }
+
       let items: AIMatchedItem[] = data?.items || [];
       if (items.length === 0) {
         toast({ title: "Không tìm thấy sản phẩm phù hợp", description: "AI không thể so khớp yêu cầu với bảng giá hiện tại" });
