@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,6 +32,122 @@ interface AIQuoteFillProps {
   onProductsSelected: (items: AIMatchedItem[]) => void;
 }
 
+// Fabric name mappings - equivalent names
+const FABRIC_MAPPINGS: Record<string, string[]> = {
+  'lth': ['t225'],
+  't225': ['lth'],
+};
+
+const normalize = (text: string) => text.toLowerCase()
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd').replace(/Đ/g, 'd')
+  .replace(/[^a-z0-9]/g, '');
+
+const extractKeywords = (text: string): string[] => {
+  const norm = normalize(text);
+  return norm.match(/[a-z0-9]{2,}/g) || [];
+};
+
+/**
+ * Extract meaningful search terms from user request text.
+ * Returns keywords + mapped fabric equivalents.
+ */
+function extractSearchTerms(request: string): string[] {
+  const lower = request.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'd');
+
+  // Extract product category keywords (Vietnamese)
+  const categoryPatterns = [
+    /ga\s*chun/g, /ga\s*goi/g, /ga\s*giuong/g,
+    /vo\s*goi/g, /ruot\s*goi/g, /goi\s*om/g,
+    /drap/g, /chan/g, /rem/g, /man/g,
+    /tui\s*ngu/g, /nem/g, /topper/g,
+    /khan/g, /ao/g, /khac/g,
+  ];
+
+  const terms: Set<string> = new Set();
+
+  // Extract category matches
+  for (const pattern of categoryPatterns) {
+    const matches = lower.match(pattern);
+    if (matches) {
+      for (const m of matches) terms.add(m.replace(/\s+/g, ''));
+    }
+  }
+
+  // Extract fabric types (e.g., LTH, T225, cotton, tencel, satin)
+  const fabricPattern = /\b(lth|t225|t300|t400|t500|cotton|tencel|satin|lua|poly|bamboo|modal)\b/gi;
+  const fabricMatches = lower.match(fabricPattern);
+  if (fabricMatches) {
+    for (const f of fabricMatches) {
+      const fn = f.toLowerCase();
+      terms.add(fn);
+      // Add mapped equivalents
+      if (FABRIC_MAPPINGS[fn]) {
+        for (const eq of FABRIC_MAPPINGS[fn]) terms.add(eq);
+      }
+    }
+  }
+
+  // Extract color keywords
+  const colorPattern = /\b(trang|den|xam|xanh|do|vang|hong|tim|nau|be|kem|soc|hoa|ke)\b/g;
+  const colorMatches = lower.match(colorPattern);
+  if (colorMatches) {
+    for (const c of colorMatches) terms.add(c);
+  }
+
+  // Extract size patterns (e.g., 160x200, 60x80, 1m8)
+  const sizePattern = /\d+x\d+(?:x\d+)?|\d+m\d*/g;
+  const sizeMatches = lower.match(sizePattern);
+  if (sizeMatches) {
+    for (const s of sizeMatches) terms.add(s.replace(/\s/g, ''));
+  }
+
+  return Array.from(terms);
+}
+
+/**
+ * Pre-filter products based on extracted search terms.
+ * Returns only products that match at least one search term.
+ */
+function preFilterProducts(products: Product[], searchTerms: string[]): Product[] {
+  if (searchTerms.length === 0) return products;
+
+  const scored = products.map(p => {
+    const normalizedName = normalize(p.name);
+    const normalizedSpec = normalize(p.specifications || '');
+    const normalizedDesc = normalize(p.description || '');
+    const combined = `${normalizedName} ${normalizedSpec} ${normalizedDesc}`;
+
+    let score = 0;
+    for (const term of searchTerms) {
+      const normTerm = normalize(term);
+      if (combined.includes(normTerm)) score++;
+    }
+    return { product: p, score };
+  });
+
+  // Keep products with score >= 1
+  const matched = scored.filter(s => s.score >= 1);
+
+  // If too few results, return all (let AI handle it)
+  if (matched.length < 3) return products;
+
+  // If still too many (>60), take top scored ones
+  if (matched.length > 60) {
+    matched.sort((a, b) => b.score - a.score);
+    return matched.slice(0, 60).map(s => s.product);
+  }
+
+  return matched.map(s => s.product);
+}
+
+interface CachedImage {
+  name: string;
+  folder: string;
+}
+
 export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [request, setRequest] = useState("");
@@ -39,79 +155,86 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   const [previewItems, setPreviewItems] = useState<AIMatchedItem[] | null>(null);
   const { toast } = useToast();
 
-  const normalize = (text: string) => text.toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd').replace(/Đ/g, 'd')
-    .replace(/[^a-z0-9]/g, '');
+  // Image cache - loaded once
+  const imageCache = useRef<CachedImage[] | null>(null);
+  const imageCacheLoading = useRef(false);
 
-  const extractKeywords = (text: string) => {
-    const norm = normalize(text);
-    return norm.match(/[a-z0-9]{3,}/g) || [];
-  };
+  // Load image list once when component opens
+  useEffect(() => {
+    if (isOpen && !imageCache.current && !imageCacheLoading.current) {
+      loadImageCache();
+    }
+  }, [isOpen]);
 
-  const findPreviewImage = async (items: AIMatchedItem[]) => {
+  const loadImageCache = async () => {
+    imageCacheLoading.current = true;
     try {
-      let allImageFiles: { name: string; folder: string }[] = [];
+      const allFiles: CachedImage[] = [];
       const { data: folders } = await supabase.storage.from('product-images').list('', { limit: 200 });
       if (folders) {
-        const topLevelFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
-        const directories = folders.filter(f => !f.name.includes('.'));
-        for (const file of topLevelFiles) {
-          allImageFiles.push({ name: file.name, folder: '' });
-        }
-        for (const dir of directories) {
+        const topFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
+        const dirs = folders.filter(f => !f.name.includes('.'));
+        for (const file of topFiles) allFiles.push({ name: file.name, folder: '' });
+        for (const dir of dirs) {
           const { data: files } = await supabase.storage.from('product-images').list(dir.name, { limit: 200 });
           if (files) {
             for (const file of files) {
               if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
-                allImageFiles.push({ name: file.name, folder: dir.name });
+                allFiles.push({ name: file.name, folder: dir.name });
               }
             }
           }
         }
       }
-
-      return items.map(item => {
-        const originalProduct = products.find(p => p.id === item.matchedProductId);
-        const productName = originalProduct?.name || item.customName;
-        const normalizedProductName = normalize(productName);
-        const allSearchKeywords = [...new Set([...extractKeywords(productName), ...extractKeywords(item.customName)])];
-
-        let bestMatch: { name: string; folder: string; score: number } | null = null;
-        for (const img of allImageFiles) {
-          const normalizedFileName = normalize(img.name.replace(/\.[^.]+$/, ''));
-          const normalizedFullPath = normalize(img.folder ? `${img.folder}/${img.name}` : img.name);
-          let score = 0;
-          if (normalizedFileName === normalizedProductName) score = 100;
-          else if (normalizedFullPath.includes(normalizedProductName) && normalizedProductName.length > 5) score = 85;
-          else if (normalizedFileName.includes(normalizedProductName) && normalizedProductName.length > 5) score = 80;
-          else if (normalizedProductName.includes(normalizedFileName) && normalizedFileName.length > 8) score = 65;
-          else {
-            const fileKeywords = extractKeywords(img.name.replace(/\.[^.]+$/, ''));
-            const folderKeywords = extractKeywords(img.folder || '');
-            const allFileKeywords = [...fileKeywords, ...folderKeywords];
-            let overlap = 0;
-            for (const kw of allSearchKeywords) {
-              if (allFileKeywords.some(fk => fk.includes(kw) || kw.includes(fk))) overlap++;
-            }
-            if (overlap >= 2) score = Math.min(overlap * 20, 60);
-          }
-          if (score >= 15 && (!bestMatch || score > bestMatch.score)) {
-            bestMatch = { ...img, score };
-          }
-        }
-
-        if (bestMatch) {
-          const path = bestMatch.folder ? `${bestMatch.folder}/${bestMatch.name}` : bestMatch.name;
-          const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path);
-          return { ...item, previewImageUrl: urlData.publicUrl };
-        }
-        return item;
-      });
+      imageCache.current = allFiles;
     } catch (e) {
-      console.error('Error finding preview images:', e);
-      return items;
+      console.error('Error loading image cache:', e);
+    } finally {
+      imageCacheLoading.current = false;
     }
+  };
+
+  const findPreviewImages = (items: AIMatchedItem[]): AIMatchedItem[] => {
+    const allImageFiles = imageCache.current;
+    if (!allImageFiles || allImageFiles.length === 0) return items;
+
+    return items.map(item => {
+      const originalProduct = products.find(p => p.id === item.matchedProductId);
+      const productName = originalProduct?.name || item.customName;
+      const normalizedProductName = normalize(productName);
+      const allSearchKeywords = [...new Set([...extractKeywords(productName), ...extractKeywords(item.customName)])];
+
+      let bestMatch: { name: string; folder: string; score: number } | null = null;
+      for (const img of allImageFiles) {
+        const normalizedFileName = normalize(img.name.replace(/\.[^.]+$/, ''));
+        const normalizedFullPath = normalize(img.folder ? `${img.folder}/${img.name}` : img.name);
+        let score = 0;
+        if (normalizedFileName === normalizedProductName) score = 100;
+        else if (normalizedFullPath.includes(normalizedProductName) && normalizedProductName.length > 5) score = 85;
+        else if (normalizedFileName.includes(normalizedProductName) && normalizedProductName.length > 5) score = 80;
+        else if (normalizedProductName.includes(normalizedFileName) && normalizedFileName.length > 8) score = 65;
+        else {
+          const fileKeywords = extractKeywords(img.name.replace(/\.[^.]+$/, ''));
+          const folderKeywords = extractKeywords(img.folder || '');
+          const allFileKeywords = [...fileKeywords, ...folderKeywords];
+          let overlap = 0;
+          for (const kw of allSearchKeywords) {
+            if (allFileKeywords.some(fk => fk.includes(kw) || kw.includes(fk))) overlap++;
+          }
+          if (overlap >= 2) score = Math.min(overlap * 20, 60);
+        }
+        if (score >= 15 && (!bestMatch || score > bestMatch.score)) {
+          bestMatch = { ...img, score };
+        }
+      }
+
+      if (bestMatch) {
+        const path = bestMatch.folder ? `${bestMatch.folder}/${bestMatch.name}` : bestMatch.name;
+        const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path);
+        return { ...item, previewImageUrl: urlData.publicUrl };
+      }
+      return item;
+    });
   };
 
   const handleAIFill = async () => {
@@ -128,7 +251,13 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setPreviewItems(null);
 
     try {
-      const productList = products.map(p => ({
+      // Pre-filter products based on request keywords
+      const searchTerms = extractSearchTerms(request);
+      const filteredProducts = preFilterProducts(products, searchTerms);
+
+      console.log(`[AIQuoteFill] Pre-filter: ${products.length} → ${filteredProducts.length} products (terms: ${searchTerms.join(', ')})`);
+
+      const productList = filteredProducts.map(p => ({
         id: p.id,
         name: p.name,
         price: p.price || 0,
@@ -147,7 +276,6 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         return;
       }
 
-      // Handle clarification request from AI
       if (data?.clarification) {
         toast({ 
           title: "⚠️ Cần bổ sung thông tin", 
@@ -163,8 +291,8 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         return;
       }
 
-      // Find preview images for display
-      items = await findPreviewImage(items);
+      // Find preview images from cache (sync, no API call)
+      items = findPreviewImages(items);
       setPreviewItems(items);
     } catch (err) {
       console.error("AI quote fill error:", err);
