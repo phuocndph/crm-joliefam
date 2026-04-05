@@ -432,13 +432,29 @@ QUY TẮC SO KHỚP THÔNG MINH:
    VD: Khách yêu cầu "160x200x12cm" → specifications = "160x200x12cm" (DÙ sản phẩm gốc ghi "160x200x15cm")
    VD: Khách yêu cầu "1m8" → specifications phải ghi kích thước tương ứng "180x200x..." theo yêu cầu
 
+8. SUY LUẬN LOẠI VẢI: Nếu đơn hàng có GA/DRAP loại vải cụ thể (VD: T225, T250, KS, Lụa, Tencel...),
+   thì TẤT CẢ sản phẩm phụ kiện khác (vỏ gối, gối ôm, ga trải...) trong cùng đơn PHẢI theo CÙNG loại vải đó,
+   TRỪ KHI khách ghi rõ loại vải riêng cho từng sản phẩm.
+   VD: "2 bộ ga T225 1m8, 4 vỏ gối" → vỏ gối PHẢI là vỏ gối T225 (không phải T250 hay KS).
+
+9. PHÂN BIỆT SẢN PHẨM CHÍNH XÁC:
+   - "Vỏ gối" ≠ "Ruột gối" — vỏ gối là bao bọc bên ngoài (theo loại vải), ruột gối là phần lõi bông bên trong
+   - "Ga giường" ≠ "Ga trải" — chú ý tên chính xác trong bảng giá
+   - Nếu khách chỉ nói "gối" mà không rõ vỏ hay ruột → mặc định là "VỎ GỐI" (phổ biến hơn trong báo giá)
+   - Chỉ chọn "ruột gối" khi khách ghi RÕ RÀNG: "ruột gối", "lõi gối", "gối bông", "gối ruột"
+
+10. NẾU KHÔNG XÁC ĐỊNH ĐƯỢC loại vải, loại sản phẩm cụ thể, hoặc kích thước mà không thể suy luận từ ngữ cảnh →
+    KHÔNG đoán. Trả về: {"items": [], "clarification": "Mô tả chi tiết những gì cần khách bổ sung thông tin"}
+    VD: Khách nói "2 bộ ga 1m8, 4 gối" mà không nói loại vải → clarification: "Vui lòng cho biết loại vải (T225, T250, KS, Tencel...) cho đơn hàng này"
+
 DANH SÁCH SẢN PHẨM BẢNG GIÁ:
 ${productListText}
 
 Trả về JSON thuần (không markdown, không giải thích):
 {"items": [{"matchedProductId":"id-sản-phẩm-gốc","customName":"tên đã sửa theo yêu cầu","quantity":1,"price":0,"specifications":"quy cách THEO YÊU CẦU KHÁCH","note":"ghi chú nếu không khớp 100%"}]}
 
-Nếu không tìm thấy sản phẩm nào phù hợp: {"items": []}`;
+Nếu không tìm thấy sản phẩm nào phù hợp: {"items": []}
+Nếu thiếu thông tin quan trọng: {"items": [], "clarification": "câu hỏi cần bổ sung"}`;
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
         { role: "user", content: `Yêu cầu khách hàng:\n"""\n${request}\n"""` },
