@@ -48,99 +48,94 @@ const extractKeywords = (text: string): string[] => {
   return norm.match(/[a-z0-9]{2,}/g) || [];
 };
 
+interface FilterTerms {
+  fabricTerms: string[];
+  categoryTerms: string[];
+}
+
 /**
- * Extract meaningful search terms from user request text.
- * Returns keywords + mapped fabric equivalents.
+ * Extract fabric and category terms for pre-filtering.
+ * Colors and sizes are NOT used for filtering — only sent to AI.
  */
-function extractSearchTerms(request: string): string[] {
+function extractFilterTerms(request: string): FilterTerms {
   const lower = request.toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd').replace(/Đ/g, 'd');
 
-  // Extract product category keywords (Vietnamese)
-  const categoryPatterns = [
-    /ga\s*chun/g, /ga\s*goi/g, /ga\s*giuong/g,
-    /vo\s*goi/g, /ruot\s*goi/g, /goi\s*om/g,
-    /drap/g, /chan/g, /rem/g, /man/g,
-    /tui\s*ngu/g, /nem/g, /topper/g,
-    /khan/g, /ao/g, /khac/g,
-  ];
+  const fabricTerms: Set<string> = new Set();
+  const categoryTerms: Set<string> = new Set();
 
-  const terms: Set<string> = new Set();
-
-  // Extract category matches
-  for (const pattern of categoryPatterns) {
-    const matches = lower.match(pattern);
-    if (matches) {
-      for (const m of matches) terms.add(m.replace(/\s+/g, ''));
-    }
-  }
-
-  // Extract fabric types (e.g., LTH, T225, cotton, tencel, satin)
-  const fabricPattern = /\b(lth|t225|t300|t400|t500|cotton|tencel|satin|lua|poly|bamboo|modal|microfiber|micro)\b/gi;
+  // Extract fabric types
+  const fabricPattern = /\b(lth|t225|t250|t300|t400|t500|cotton|tencel|satin|lua|poly|bamboo|modal|microfiber|micro|ks|kate|tham)\b/gi;
   const fabricMatches = lower.match(fabricPattern);
   if (fabricMatches) {
     for (const f of fabricMatches) {
       const fn = f.toLowerCase();
-      terms.add(fn);
-      // Add mapped equivalents
+      fabricTerms.add(fn);
       if (FABRIC_MAPPINGS[fn]) {
-        for (const eq of FABRIC_MAPPINGS[fn]) terms.add(eq);
+        for (const eq of FABRIC_MAPPINGS[fn]) fabricTerms.add(eq);
       }
     }
   }
 
-  // Extract color keywords
-  const colorPattern = /\b(trang|den|xam|xanh|do|vang|hong|tim|nau|be|kem|soc|hoa|ke)\b/g;
-  const colorMatches = lower.match(colorPattern);
-  if (colorMatches) {
-    for (const c of colorMatches) terms.add(c);
+  // Extract product categories (Vietnamese, normalized)
+  const categoryPatterns: { pattern: RegExp; term: string }[] = [
+    { pattern: /ga\s*chun/g, term: 'gachun' },
+    { pattern: /ga\s*goi/g, term: 'gagoi' },
+    { pattern: /ga\s*giuong/g, term: 'gagiuong' },
+    { pattern: /vo\s*goi/g, term: 'vogoi' },
+    { pattern: /ruot\s*goi/g, term: 'ruotgoi' },
+    { pattern: /goi\s*om/g, term: 'goiom' },
+    { pattern: /drap/g, term: 'drap' },
+    { pattern: /chan\b/g, term: 'chan' },
+    { pattern: /rem/g, term: 'rem' },
+    { pattern: /man\b/g, term: 'man' },
+    { pattern: /tui\s*ngu/g, term: 'tuingu' },
+    { pattern: /nem/g, term: 'nem' },
+    { pattern: /topper/g, term: 'topper' },
+    { pattern: /khan/g, term: 'khan' },
+    { pattern: /ao\b/g, term: 'ao' },
+  ];
+
+  for (const { pattern, term } of categoryPatterns) {
+    if (pattern.test(lower)) categoryTerms.add(term);
   }
 
-  // Extract size patterns (e.g., 160x200, 60x80, 1m8)
-  const sizePattern = /\d+x\d+(?:x\d+)?|\d+m\d*/g;
-  const sizeMatches = lower.match(sizePattern);
-  if (sizeMatches) {
-    for (const s of sizeMatches) terms.add(s.replace(/\s/g, ''));
-  }
-
-  return Array.from(terms);
+  return {
+    fabricTerms: Array.from(fabricTerms),
+    categoryTerms: Array.from(categoryTerms),
+  };
 }
 
 /**
- * Pre-filter products based on extracted search terms.
- * Returns only products that match at least one search term.
+ * Pre-filter products by fabric group OR category.
+ * Does NOT filter by color or size — AI handles that.
  */
-function preFilterProducts(products: Product[], searchTerms: string[]): Product[] {
-  if (searchTerms.length === 0) return products;
+function preFilterProducts(products: Product[], terms: FilterTerms): Product[] {
+  const { fabricTerms, categoryTerms } = terms;
+  if (fabricTerms.length === 0 && categoryTerms.length === 0) return products;
 
-  const scored = products.map(p => {
+  const filtered = products.filter(p => {
     const normalizedName = normalize(p.name);
     const normalizedSpec = normalize(p.specifications || '');
-    const normalizedDesc = normalize(p.description || '');
-    const combined = `${normalizedName} ${normalizedSpec} ${normalizedDesc}`;
+    const combined = `${normalizedName} ${normalizedSpec}`;
 
-    let score = 0;
-    for (const term of searchTerms) {
-      const normTerm = normalize(term);
-      if (combined.includes(normTerm)) score++;
+    for (const term of fabricTerms) {
+      if (combined.includes(normalize(term))) return true;
     }
-    return { product: p, score };
+    for (const term of categoryTerms) {
+      if (combined.includes(term)) return true;
+    }
+    return false;
   });
 
-  // Keep products with score >= 1
-  const matched = scored.filter(s => s.score >= 1);
+  // Fallback: if too few results, send all
+  if (filtered.length < 10) return products;
 
-  // If too few results, return all (let AI handle it)
-  if (matched.length < 3) return products;
+  // Cap at 150 to keep costs reasonable
+  if (filtered.length > 150) return filtered.slice(0, 150);
 
-  // If still too many (>60), take top scored ones
-  if (matched.length > 60) {
-    matched.sort((a, b) => b.score - a.score);
-    return matched.slice(0, 60).map(s => s.product);
-  }
-
-  return matched.map(s => s.product);
+  return filtered;
 }
 
 interface CachedImage {
@@ -251,11 +246,11 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setPreviewItems(null);
 
     try {
-      // Pre-filter products based on request keywords
-      const searchTerms = extractSearchTerms(request);
-      const filteredProducts = preFilterProducts(products, searchTerms);
+      // Pre-filter products by fabric group and category (not color/size)
+      const filterTerms = extractFilterTerms(request);
+      const filteredProducts = preFilterProducts(products, filterTerms);
 
-      console.log(`[AIQuoteFill] Pre-filter: ${products.length} → ${filteredProducts.length} products (terms: ${searchTerms.join(', ')})`);
+      console.log(`[AIQuoteFill] Pre-filter: ${products.length} → ${filteredProducts.length} products (fabric: ${filterTerms.fabricTerms.join(', ')}, category: ${filterTerms.categoryTerms.join(', ')})`);
 
       const productList = filteredProducts.map(p => ({
         id: p.id,
