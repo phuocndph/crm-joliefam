@@ -137,12 +137,6 @@ function preFilterProducts(products: Product[], terms: FilterTerms): Product[] {
 
   return filtered;
 }
-  const lower = request.toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd').replace(/Đ/g, 'd');
-
-  // Extract product category keywords (Vietnamese)
-  const categoryPatterns = [
     /ga\s*chun/g, /ga\s*goi/g, /ga\s*giuong/g,
     /vo\s*goi/g, /ruot\s*goi/g, /goi\s*om/g,
     /drap/g, /chan/g, /rem/g, /man/g,
