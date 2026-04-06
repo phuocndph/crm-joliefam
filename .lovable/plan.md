@@ -1,37 +1,23 @@
 
 
-## Sửa logic Pre-filter: Lọc theo nhóm vải/loại SP thay vì lọc quá sát
+## Thêm mapping tên vải: LTH = T225
 
-### Vấn đề hiện tại
+### Vấn đề
+AI không biết "LTH" chính là "T225", nên khi khách nói "vải LTH trắng sọc" thì AI không tìm được sản phẩm T225 tương ứng trong bảng giá.
 
-Pre-filter hiện tại match từng keyword riêng lẻ (màu, kích thước, tên SP) → lọc quá sát, bỏ sót sản phẩm cùng nhóm vải. Ví dụ: yêu cầu "ga chun T250 trắng 160x200" chỉ giữ đúng SP match cả "T250" + "trang" + "160x200", loại bỏ các SP T250 khác kích thước mà AI cần để so sánh giá.
+### Thay đổi
 
-### Giải pháp
+**File: `supabase/functions/lookup-tax-code/index.ts`**
 
-Thay đổi chiến lược lọc: **chỉ dùng loại vải (fabric) và loại sản phẩm (category) để lọc**, KHÔNG dùng màu sắc hay kích thước để loại bỏ. Kích thước và màu sắc vẫn trích xuất nhưng chỉ để gửi cho AI tham khảo, không dùng để filter.
+Thêm Rule 11 vào prompt (sau rule 10):
 
-Luồng mới:
 ```text
-User: "100 ga chun T250 trắng sọc 160x200, 50 vỏ gối T250 60x80"
-                    ↓
-Trích xuất: fabric = [t250], category = [gachun, vogoi]
-                    ↓
-Lọc: GIỮ TẤT CẢ sản phẩm có tên chứa "t250" HOẶC chứa "gachun"/"vogoi"
-     → Toàn bộ dòng T250 + toàn bộ ga chun/vỏ gối các loại vải
-                    ↓
-Gửi cho AI (có thể 50-100 SP thay vì 300, nhưng đủ đầy đủ theo nhóm)
+11. MAPPING TÊN VẢI TƯƠNG ĐƯƠNG:
+    - "LTH" = "T225" — đây là CÙNG MỘT loại vải, tên gọi khác nhau
+    - Khi khách nói "LTH" → tìm sản phẩm có tên chứa "T225" trong bảng giá
+    - Khi khách nói "T225" → cũng có thể match sản phẩm tên "LTH" nếu có
+    - VD: "Ga chun LTH trắng sọc 160x200x20cm" → tìm "Ga chun ks T225 trắng sọc 160x200x20cm"
 ```
 
-### Thay đổi cụ thể
-
-**File: `src/components/AIQuoteFill.tsx`**
-
-1. Tách `extractSearchTerms` thành 2 nhóm riêng:
-   - `fabricTerms`: loại vải (t250, lth, cotton...) — dùng để filter
-   - `categoryTerms`: loại SP (ga chun, vỏ gối...) — dùng để filter
-   - Màu sắc + kích thước: KHÔNG dùng để filter
-
-2. Sửa `preFilterProducts`: Giữ sản phẩm match **fabric HOẶC category**, không yêu cầu match cả 2. Nâng giới hạn từ 60 lên 150 SP.
-
-3. Nếu sau filter vẫn < 10 SP → gửi toàn bộ (fallback an toàn).
+Chỉ sửa 1 file duy nhất, thêm vài dòng vào prompt.
 

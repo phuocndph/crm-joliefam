@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,117 +32,6 @@ interface AIQuoteFillProps {
   onProductsSelected: (items: AIMatchedItem[]) => void;
 }
 
-// Fabric name mappings - equivalent names
-const FABRIC_MAPPINGS: Record<string, string[]> = {
-  'lth': ['t225'],
-  't225': ['lth'],
-};
-
-const normalize = (text: string) => text.toLowerCase()
-  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  .replace(/đ/g, 'd').replace(/Đ/g, 'd')
-  .replace(/[^a-z0-9]/g, '');
-
-const extractKeywords = (text: string): string[] => {
-  const norm = normalize(text);
-  return norm.match(/[a-z0-9]{2,}/g) || [];
-};
-
-interface FilterTerms {
-  fabricTerms: string[];
-  categoryTerms: string[];
-}
-
-/**
- * Extract fabric and category terms for pre-filtering.
- * Colors and sizes are NOT used for filtering — only sent to AI.
- */
-function extractFilterTerms(request: string): FilterTerms {
-  const lower = request.toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd').replace(/Đ/g, 'd');
-
-  const fabricTerms: Set<string> = new Set();
-  const categoryTerms: Set<string> = new Set();
-
-  // Extract fabric types
-  const fabricPattern = /\b(lth|t225|t250|t300|t400|t500|cotton|tencel|satin|lua|poly|bamboo|modal|microfiber|micro|ks|kate|tham)\b/gi;
-  const fabricMatches = lower.match(fabricPattern);
-  if (fabricMatches) {
-    for (const f of fabricMatches) {
-      const fn = f.toLowerCase();
-      fabricTerms.add(fn);
-      if (FABRIC_MAPPINGS[fn]) {
-        for (const eq of FABRIC_MAPPINGS[fn]) fabricTerms.add(eq);
-      }
-    }
-  }
-
-  // Extract product categories (Vietnamese, normalized)
-  const categoryPatterns: { pattern: RegExp; term: string }[] = [
-    { pattern: /ga\s*chun/g, term: 'gachun' },
-    { pattern: /ga\s*goi/g, term: 'gagoi' },
-    { pattern: /ga\s*giuong/g, term: 'gagiuong' },
-    { pattern: /vo\s*goi/g, term: 'vogoi' },
-    { pattern: /ruot\s*goi/g, term: 'ruotgoi' },
-    { pattern: /goi\s*om/g, term: 'goiom' },
-    { pattern: /drap/g, term: 'drap' },
-    { pattern: /chan\b/g, term: 'chan' },
-    { pattern: /rem/g, term: 'rem' },
-    { pattern: /man\b/g, term: 'man' },
-    { pattern: /tui\s*ngu/g, term: 'tuingu' },
-    { pattern: /nem/g, term: 'nem' },
-    { pattern: /topper/g, term: 'topper' },
-    { pattern: /khan/g, term: 'khan' },
-    { pattern: /ao\b/g, term: 'ao' },
-  ];
-
-  for (const { pattern, term } of categoryPatterns) {
-    if (pattern.test(lower)) categoryTerms.add(term);
-  }
-
-  return {
-    fabricTerms: Array.from(fabricTerms),
-    categoryTerms: Array.from(categoryTerms),
-  };
-}
-
-/**
- * Pre-filter products by fabric group OR category.
- * Does NOT filter by color or size — AI handles that.
- */
-function preFilterProducts(products: Product[], terms: FilterTerms): Product[] {
-  const { fabricTerms, categoryTerms } = terms;
-  if (fabricTerms.length === 0 && categoryTerms.length === 0) return products;
-
-  const filtered = products.filter(p => {
-    const normalizedName = normalize(p.name);
-    const normalizedSpec = normalize(p.specifications || '');
-    const combined = `${normalizedName} ${normalizedSpec}`;
-
-    for (const term of fabricTerms) {
-      if (combined.includes(normalize(term))) return true;
-    }
-    for (const term of categoryTerms) {
-      if (combined.includes(term)) return true;
-    }
-    return false;
-  });
-
-  // Fallback: if too few results, send all
-  if (filtered.length < 10) return products;
-
-  // Cap at 150 to keep costs reasonable
-  if (filtered.length > 150) return filtered.slice(0, 150);
-
-  return filtered;
-}
-
-interface CachedImage {
-  name: string;
-  folder: string;
-}
-
 export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [request, setRequest] = useState("");
@@ -150,86 +39,79 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   const [previewItems, setPreviewItems] = useState<AIMatchedItem[] | null>(null);
   const { toast } = useToast();
 
-  // Image cache - loaded once
-  const imageCache = useRef<CachedImage[] | null>(null);
-  const imageCacheLoading = useRef(false);
+  const normalize = (text: string) => text.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'd')
+    .replace(/[^a-z0-9]/g, '');
 
-  // Load image list once when component opens
-  useEffect(() => {
-    if (isOpen && !imageCache.current && !imageCacheLoading.current) {
-      loadImageCache();
-    }
-  }, [isOpen]);
+  const extractKeywords = (text: string) => {
+    const norm = normalize(text);
+    return norm.match(/[a-z0-9]{3,}/g) || [];
+  };
 
-  const loadImageCache = async () => {
-    imageCacheLoading.current = true;
+  const findPreviewImage = async (items: AIMatchedItem[]) => {
     try {
-      const allFiles: CachedImage[] = [];
+      let allImageFiles: { name: string; folder: string }[] = [];
       const { data: folders } = await supabase.storage.from('product-images').list('', { limit: 200 });
       if (folders) {
-        const topFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
-        const dirs = folders.filter(f => !f.name.includes('.'));
-        for (const file of topFiles) allFiles.push({ name: file.name, folder: '' });
-        for (const dir of dirs) {
+        const topLevelFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
+        const directories = folders.filter(f => !f.name.includes('.'));
+        for (const file of topLevelFiles) {
+          allImageFiles.push({ name: file.name, folder: '' });
+        }
+        for (const dir of directories) {
           const { data: files } = await supabase.storage.from('product-images').list(dir.name, { limit: 200 });
           if (files) {
             for (const file of files) {
               if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
-                allFiles.push({ name: file.name, folder: dir.name });
+                allImageFiles.push({ name: file.name, folder: dir.name });
               }
             }
           }
         }
       }
-      imageCache.current = allFiles;
-    } catch (e) {
-      console.error('Error loading image cache:', e);
-    } finally {
-      imageCacheLoading.current = false;
-    }
-  };
 
-  const findPreviewImages = (items: AIMatchedItem[]): AIMatchedItem[] => {
-    const allImageFiles = imageCache.current;
-    if (!allImageFiles || allImageFiles.length === 0) return items;
+      return items.map(item => {
+        const originalProduct = products.find(p => p.id === item.matchedProductId);
+        const productName = originalProduct?.name || item.customName;
+        const normalizedProductName = normalize(productName);
+        const allSearchKeywords = [...new Set([...extractKeywords(productName), ...extractKeywords(item.customName)])];
 
-    return items.map(item => {
-      const originalProduct = products.find(p => p.id === item.matchedProductId);
-      const productName = originalProduct?.name || item.customName;
-      const normalizedProductName = normalize(productName);
-      const allSearchKeywords = [...new Set([...extractKeywords(productName), ...extractKeywords(item.customName)])];
-
-      let bestMatch: { name: string; folder: string; score: number } | null = null;
-      for (const img of allImageFiles) {
-        const normalizedFileName = normalize(img.name.replace(/\.[^.]+$/, ''));
-        const normalizedFullPath = normalize(img.folder ? `${img.folder}/${img.name}` : img.name);
-        let score = 0;
-        if (normalizedFileName === normalizedProductName) score = 100;
-        else if (normalizedFullPath.includes(normalizedProductName) && normalizedProductName.length > 5) score = 85;
-        else if (normalizedFileName.includes(normalizedProductName) && normalizedProductName.length > 5) score = 80;
-        else if (normalizedProductName.includes(normalizedFileName) && normalizedFileName.length > 8) score = 65;
-        else {
-          const fileKeywords = extractKeywords(img.name.replace(/\.[^.]+$/, ''));
-          const folderKeywords = extractKeywords(img.folder || '');
-          const allFileKeywords = [...fileKeywords, ...folderKeywords];
-          let overlap = 0;
-          for (const kw of allSearchKeywords) {
-            if (allFileKeywords.some(fk => fk.includes(kw) || kw.includes(fk))) overlap++;
+        let bestMatch: { name: string; folder: string; score: number } | null = null;
+        for (const img of allImageFiles) {
+          const normalizedFileName = normalize(img.name.replace(/\.[^.]+$/, ''));
+          const normalizedFullPath = normalize(img.folder ? `${img.folder}/${img.name}` : img.name);
+          let score = 0;
+          if (normalizedFileName === normalizedProductName) score = 100;
+          else if (normalizedFullPath.includes(normalizedProductName) && normalizedProductName.length > 5) score = 85;
+          else if (normalizedFileName.includes(normalizedProductName) && normalizedProductName.length > 5) score = 80;
+          else if (normalizedProductName.includes(normalizedFileName) && normalizedFileName.length > 8) score = 65;
+          else {
+            const fileKeywords = extractKeywords(img.name.replace(/\.[^.]+$/, ''));
+            const folderKeywords = extractKeywords(img.folder || '');
+            const allFileKeywords = [...fileKeywords, ...folderKeywords];
+            let overlap = 0;
+            for (const kw of allSearchKeywords) {
+              if (allFileKeywords.some(fk => fk.includes(kw) || kw.includes(fk))) overlap++;
+            }
+            if (overlap >= 2) score = Math.min(overlap * 20, 60);
           }
-          if (overlap >= 2) score = Math.min(overlap * 20, 60);
+          if (score >= 15 && (!bestMatch || score > bestMatch.score)) {
+            bestMatch = { ...img, score };
+          }
         }
-        if (score >= 15 && (!bestMatch || score > bestMatch.score)) {
-          bestMatch = { ...img, score };
-        }
-      }
 
-      if (bestMatch) {
-        const path = bestMatch.folder ? `${bestMatch.folder}/${bestMatch.name}` : bestMatch.name;
-        const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path);
-        return { ...item, previewImageUrl: urlData.publicUrl };
-      }
-      return item;
-    });
+        if (bestMatch) {
+          const path = bestMatch.folder ? `${bestMatch.folder}/${bestMatch.name}` : bestMatch.name;
+          const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path);
+          return { ...item, previewImageUrl: urlData.publicUrl };
+        }
+        return item;
+      });
+    } catch (e) {
+      console.error('Error finding preview images:', e);
+      return items;
+    }
   };
 
   const handleAIFill = async () => {
@@ -246,13 +128,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setPreviewItems(null);
 
     try {
-      // Pre-filter products by fabric group and category (not color/size)
-      const filterTerms = extractFilterTerms(request);
-      const filteredProducts = preFilterProducts(products, filterTerms);
-
-      console.log(`[AIQuoteFill] Pre-filter: ${products.length} → ${filteredProducts.length} products (fabric: ${filterTerms.fabricTerms.join(', ')}, category: ${filterTerms.categoryTerms.join(', ')})`);
-
-      const productList = filteredProducts.map(p => ({
+      const productList = products.map(p => ({
         id: p.id,
         name: p.name,
         price: p.price || 0,
@@ -271,6 +147,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         return;
       }
 
+      // Handle clarification request from AI
       if (data?.clarification) {
         toast({ 
           title: "⚠️ Cần bổ sung thông tin", 
@@ -286,8 +163,8 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         return;
       }
 
-      // Find preview images from cache (sync, no API call)
-      items = findPreviewImages(items);
+      // Find preview images for display
+      items = await findPreviewImage(items);
       setPreviewItems(items);
     } catch (err) {
       console.error("AI quote fill error:", err);

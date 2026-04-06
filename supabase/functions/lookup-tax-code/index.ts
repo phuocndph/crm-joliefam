@@ -453,14 +453,6 @@ QUY TẮC SO KHỚP THÔNG MINH:
     - Khi khách nói "T225" → cũng có thể match sản phẩm tên "LTH" nếu có
     - VD: "Ga chun LTH trắng sọc 160x200x20cm" → tìm "Ga chun ks T225 trắng sọc 160x200x20cm"
 
-12. MAPPING TÊN VIẾT TẮT / TÊN ĐẦY ĐỦ:
-    - "microfiber" = "micro" = "bông micro" — cùng một chất liệu
-    - "Ruột gối microfiber" → tìm "Ruột gối bông micro" trong bảng giá
-    - Khăn: nếu kích thước không khớp chính xác (VD: 34x70 vs 30x70), chọn sản phẩm có kích thước GẦN NHẤT
-    - Nếu tên SP trong bảng giá có thêm "dệt logo", "in logo" → vẫn match nếu tên cơ bản giống nhau
-    - KHÔNG báo "không có trong bảng giá" nếu có sản phẩm CÙNG LOẠI với kích thước/tên gần giống
-    - Luôn ưu tiên match sản phẩm gần nhất thay vì từ chối
-
 DANH SÁCH SẢN PHẨM BẢNG GIÁ:
 ${productListText}
 
