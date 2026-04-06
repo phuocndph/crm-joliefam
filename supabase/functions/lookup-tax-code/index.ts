@@ -78,7 +78,7 @@ async function callAI(messages: any[]) {
     const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, model: "gemini-2.5-flash" }),
+      body: JSON.stringify({ ...payload, model: "glm-4.7-flash" }),
     });
 
     if (!response.ok) {
