@@ -342,24 +342,41 @@ serve(async (req) => {
 async function callAI(apiKey: string, messages: any[], sources: any[], useStream: boolean, cors: Record<string, string>, isDataQuery = false) {
   const t0 = Date.now();
   console.log(`callAI: stream=${useStream} msgs=${messages.length} data=${isDataQuery}`);
+  const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
 
-  const response = await fetch(AI_URL, {
+  const aiPayload = {
+    model: MODEL,
+    messages,
+    stream: !!useStream,
+    max_tokens: isDataQuery ? 800 : 1000,
+    temperature: 0.3,
+  };
+
+  // Try Lovable AI first
+  let response = await fetch(AI_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      stream: !!useStream,
-      max_tokens: isDataQuery ? 800 : 1000,
-      temperature: 0.3,
-    }),
+    body: JSON.stringify(aiPayload),
   });
 
-  console.log(`AI response: ${response.status} in ${Date.now() - t0}ms`);
+  console.log(`Lovable AI response: ${response.status} in ${Date.now() - t0}ms`);
+
+  // Fallback to Beeknoee if Lovable fails
+  if (!response.ok && BEEKNOEE_API_KEY) {
+    const errText = await response.text();
+    console.warn(`Lovable AI failed (${response.status}), falling back to Beeknoee: ${errText.substring(0, 200)}`);
+
+    response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...aiPayload, model: "gpt-4o-mini" }),
+    });
+    console.log(`Beeknoee AI response: ${response.status} in ${Date.now() - t0}ms`);
+  }
 
   if (!response.ok) {
     const t = await response.text();
-    console.error("AI error:", response.status, t);
+    console.error("All AI providers failed:", response.status, t);
     if (response.status === 429) {
       return new Response(JSON.stringify({ error: "Hệ thống đang bận, vui lòng thử lại sau." }), {
         status: 429, headers: { ...cors, "Content-Type": "application/json" },
@@ -381,7 +398,7 @@ async function callAI(apiKey: string, messages: any[], sources: any[], useStream
     );
   }
 
-  // Streaming: Use manual ReadableStream with reader.read() flush loop
+  // Streaming
   if (!response.body) {
     console.error("AI streaming: no response body");
     return new Response(JSON.stringify({ error: "AI không phản hồi" }), {
@@ -395,9 +412,7 @@ async function callAI(apiKey: string, messages: any[], sources: any[], useStream
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Send sources first
       controller.enqueue(sourcesEvent);
-
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -410,7 +425,6 @@ async function callAI(apiKey: string, messages: any[], sources: any[], useStream
         }
       } catch (e) {
         console.error("Stream read error:", e);
-        // Send error event to client before closing
         try {
           const errEvent = encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "\n\n⚠️ Lỗi kết nối. Vui lòng thử lại." } }] })}\n\ndata: [DONE]\n\n`);
           controller.enqueue(errEvent);
