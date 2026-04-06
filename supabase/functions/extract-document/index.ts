@@ -226,7 +226,7 @@ async function extractPDFWithAI(data: Uint8Array): Promise<string> {
       const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "gpt-4o-mini", messages: pdfMessages }),
+        body: JSON.stringify({ model: "gemini-2.5-flash", messages: pdfMessages }),
       });
 
       if (response.ok) {
@@ -307,7 +307,7 @@ async function cleanWithAI(rawText: string, fileName: string): Promise<string> {
       const aiResponse = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "gpt-4o-mini", messages: cleanMessages }),
+        body: JSON.stringify({ model: "gemini-2.5-flash", messages: cleanMessages }),
       });
       if (aiResponse.ok) {
         const aiData = await aiResponse.json();
