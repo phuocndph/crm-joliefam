@@ -72,23 +72,36 @@ async function callAI(messages: any[]) {
     }
   }
 
-  // Fallback to Beeknoee
+  // Fallback to Beeknoee with model chain
   if (BEEKNOEE_API_KEY) {
-    console.log("Falling back to Beeknoee API...");
-    const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, model: "glm-4.7-flash" }),
-    });
+    console.log("Falling back to Beeknoee API with model chain...");
+    const models = ["glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"];
+    for (const model of models) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, model }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      const t = await response.text();
-      console.error("Beeknoee AI error:", response.status, t);
-      throw new Error("All AI providers failed");
+        if (response.ok) {
+          console.log(`AI response from: Beeknoee (${model})`);
+          return parseAIResponse(await response.json());
+        }
+
+        const errText = await response.text();
+        console.warn(`Beeknoee ${model} failed (${response.status}): ${errText.substring(0, 150)}`);
+        if (response.status === 429) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch (e) {
+        console.warn(`Beeknoee ${model} error:`, e instanceof Error ? e.message : e);
+      }
     }
-
-    console.log("AI response from: Beeknoee");
-    return parseAIResponse(await response.json());
   }
 
   throw new Error("All AI providers failed");

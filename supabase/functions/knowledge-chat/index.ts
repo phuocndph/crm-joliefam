@@ -361,17 +361,32 @@ async function callAI(apiKey: string, messages: any[], sources: any[], useStream
 
   console.log(`Lovable AI response: ${response.status} in ${Date.now() - t0}ms`);
 
-  // Fallback to Beeknoee if Lovable fails
+  // Fallback to Beeknoee with model chain if Lovable fails
   if (!response.ok && BEEKNOEE_API_KEY) {
     const errText = await response.text();
     console.warn(`Lovable AI failed (${response.status}), falling back to Beeknoee: ${errText.substring(0, 200)}`);
 
-    response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...aiPayload, model: "glm-4.7-flash" }),
-    });
-    console.log(`Beeknoee AI response: ${response.status} in ${Date.now() - t0}ms`);
+    const models = ["glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"];
+    for (const model of models) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ...aiPayload, model }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        console.log(`Beeknoee ${model} response: ${response.status} in ${Date.now() - t0}ms`);
+        if (response.ok) break;
+        const beeErr = await response.text();
+        console.warn(`Beeknoee ${model} failed (${response.status}): ${beeErr.substring(0, 150)}`);
+        if (response.status === 429) await new Promise(r => setTimeout(r, 2000));
+      } catch (e) {
+        console.warn(`Beeknoee ${model} error:`, e instanceof Error ? e.message : e);
+      }
+    }
   }
 
   if (!response.ok) {
