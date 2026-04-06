@@ -1,22 +1,22 @@
 
 
-## Sửa lỗi Beeknoee fallback: Model không tồn tại
+## Chuyển sang model miễn phí trên Beeknoee
 
-### Nguyên nhân
-Fallback đang hoạt động đúng (Lovable AI trả 402 "Not enough credits" → chuyển sang Beeknoee), nhưng Beeknoee trả lỗi 400 vì model `gpt-4o-mini` **không tồn tại** trên nền tảng của họ.
+### Vấn đề
+Tài khoản Beeknoee hết số dư, model `gemini-2.5-flash` tính phí nên không dùng được.
 
 ### Giải pháp
-Đổi model Beeknoee từ `gpt-4o-mini` sang `gemini-2.5-flash` (có sẵn trên Beeknoee, rẻ, nhanh, cùng loại model đang dùng ở Lovable AI).
+Đổi model Beeknoee sang `glm-4.7-flash` — model miễn phí, tốc độ 26 tok/s, unlimited tokens. Đây là model mạnh nhất trong 3 model miễn phí (GLM-4.7 > GLM-4.5, và nhanh hơn GPT-OSS-120B).
 
-### Thay đổi cụ thể
+### Thay đổi
 
-Thay tất cả `model: "gpt-4o-mini"` thành `model: "gemini-2.5-flash"` trong 3 file:
+Thay `model: "gemini-2.5-flash"` → `model: "glm-4.7-flash"` tại 4 vị trí trong 3 file:
 
-| File | Dòng cần sửa |
-|------|-------------|
-| `supabase/functions/lookup-tax-code/index.ts` | Dòng 81 |
-| `supabase/functions/knowledge-chat/index.ts` | Dòng 372 |
-| `supabase/functions/extract-document/index.ts` | Dòng 229, 310 |
+| File | Dòng |
+|------|------|
+| `supabase/functions/lookup-tax-code/index.ts` | 81 |
+| `supabase/functions/knowledge-chat/index.ts` | 372 |
+| `supabase/functions/extract-document/index.ts` | 229, 310 |
 
 Sau đó redeploy cả 3 Edge Functions.
 
