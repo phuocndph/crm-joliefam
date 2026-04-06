@@ -172,13 +172,14 @@ function uint8ArrayToBase64(data: Uint8Array): string {
 
 async function extractPDFWithAI(data: Uint8Array): Promise<string> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    console.error("LOVABLE_API_KEY not available for PDF AI extraction");
+  const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
+
+  if (!LOVABLE_API_KEY && !BEEKNOEE_API_KEY) {
+    console.error("No AI API key available for PDF extraction");
     return "[Không có API key để đọc PDF]";
   }
 
   try {
-    // Check file size - if > 5MB, warn
     if (data.length > 5 * 1024 * 1024) {
       console.log(`Large PDF: ${(data.length / 1024 / 1024).toFixed(1)}MB, may take longer...`);
     }
@@ -186,51 +187,60 @@ async function extractPDFWithAI(data: Uint8Array): Promise<string> {
     const base64 = uint8ArrayToBase64(data);
     console.log(`Base64 encoded: ${base64.length} chars`);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
+    const pdfMessages = [
+      {
+        role: "system",
+        content: "Bạn là công cụ trích xuất văn bản từ PDF. Hãy đọc file PDF được gửi và trả về TOÀN BỘ nội dung text trong file. Giữ nguyên cấu trúc, tiêu đề, đoạn văn. Chỉ trả về nội dung thuần túy, KHÔNG thêm giải thích hay bình luận.",
       },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: "Bạn là công cụ trích xuất văn bản từ PDF. Hãy đọc file PDF được gửi và trả về TOÀN BỘ nội dung text trong file. Giữ nguyên cấu trúc, tiêu đề, đoạn văn. Chỉ trả về nội dung thuần túy, KHÔNG thêm giải thích hay bình luận.",
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "file",
-                file: {
-                  filename: "document.pdf",
-                  file_data: `data:application/pdf;base64,${base64}`,
-                },
-              },
-              {
-                type: "text",
-                text: "Hãy trích xuất toàn bộ nội dung text từ file PDF này. Trả về nội dung thuần túy.",
-              },
-            ],
-          },
+      {
+        role: "user",
+        content: [
+          { type: "file", file: { filename: "document.pdf", file_data: `data:application/pdf;base64,${base64}` } },
+          { type: "text", text: "Hãy trích xuất toàn bộ nội dung text từ file PDF này. Trả về nội dung thuần túy." },
         ],
-      }),
-    });
+      },
+    ];
 
-    if (!response.ok) {
+    // Try Lovable AI first
+    if (LOVABLE_API_KEY) {
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: pdfMessages }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const content = result.choices?.[0]?.message?.content || "";
+        console.log(`Lovable AI PDF extraction got ${content.length} chars`);
+        return content;
+      }
+
       const errText = await response.text();
-      console.error("AI PDF extraction error:", response.status, errText);
-      if (response.status === 429) return "[Hệ thống đang bận, vui lòng thử lại sau]";
-      if (response.status === 402) return "[Đã hết quota AI, vui lòng liên hệ quản trị viên]";
-      return "[Không thể đọc PDF qua AI]";
+      console.warn(`Lovable AI PDF extraction failed (${response.status}): ${errText.substring(0, 200)}`);
     }
 
-    const result = await response.json();
-    const content = result.choices?.[0]?.message?.content || "";
-    console.log(`AI PDF extraction got ${content.length} chars`);
-    return content;
+    // Fallback to Beeknoee
+    if (BEEKNOEE_API_KEY) {
+      console.log("Falling back to Beeknoee for PDF extraction...");
+      const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: pdfMessages }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const content = result.choices?.[0]?.message?.content || "";
+        console.log(`Beeknoee PDF extraction got ${content.length} chars`);
+        return content;
+      }
+
+      const errText = await response.text();
+      console.error("Beeknoee PDF extraction failed:", response.status, errText);
+    }
+
+    return "[Không thể đọc PDF qua AI]";
   } catch (err) {
     console.error("AI PDF extraction failed:", err);
     return "[Lỗi khi đọc PDF qua AI]";
@@ -267,34 +277,44 @@ function extractTextFromPDFRegex(data: Uint8Array): string {
 async function cleanWithAI(rawText: string, fileName: string): Promise<string> {
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) return rawText;
+    const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
+    if (!LOVABLE_API_KEY && !BEEKNOEE_API_KEY) return rawText;
 
     const fileType = fileName.endsWith(".pdf") ? "PDF" : "DOCX";
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content: "Bạn là công cụ xử lý văn bản. Nhiệm vụ: nhận đoạn text thô được trích xuất từ file, làm sạch và trả về nội dung có cấu trúc. Giữ nguyên toàn bộ nội dung, chỉ sửa lỗi format. Trả về nội dung thuần túy, KHÔNG thêm giải thích.",
-          },
-          {
-            role: "user",
-            content: `Làm sạch đoạn text sau được trích xuất từ file ${fileType}:\n\n${rawText.substring(0, 25000)}`,
-          },
-        ],
-      }),
-    });
+    const cleanMessages = [
+      { role: "system", content: "Bạn là công cụ xử lý văn bản. Nhiệm vụ: nhận đoạn text thô được trích xuất từ file, làm sạch và trả về nội dung có cấu trúc. Giữ nguyên toàn bộ nội dung, chỉ sửa lỗi format. Trả về nội dung thuần túy, KHÔNG thêm giải thích." },
+      { role: "user", content: `Làm sạch đoạn text sau được trích xuất từ file ${fileType}:\n\n${rawText.substring(0, 25000)}` },
+    ];
 
-    if (aiResponse.ok) {
-      const aiData = await aiResponse.json();
-      return aiData.choices?.[0]?.message?.content || rawText;
+    // Try Lovable AI first
+    if (LOVABLE_API_KEY) {
+      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages: cleanMessages }),
+      });
+      if (aiResponse.ok) {
+        const aiData = await aiResponse.json();
+        return aiData.choices?.[0]?.message?.content || rawText;
+      }
+      console.warn(`Lovable cleanWithAI failed (${aiResponse.status})`);
+      await aiResponse.text();
     }
+
+    // Fallback to Beeknoee
+    if (BEEKNOEE_API_KEY) {
+      console.log("Falling back to Beeknoee for text cleaning...");
+      const aiResponse = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: cleanMessages }),
+      });
+      if (aiResponse.ok) {
+        const aiData = await aiResponse.json();
+        return aiData.choices?.[0]?.message?.content || rawText;
+      }
+    }
+
     return rawText;
   } catch {
     return rawText;

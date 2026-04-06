@@ -39,33 +39,64 @@ Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ tr�
 
 async function callAI(messages: any[]) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+  const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
 
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages,
-    }),
-  });
-
-  if (!response.ok) {
-    if (response.status === 429) {
-      return { error: "Rate limit exceeded", status: 429 };
-    }
-    const t = await response.text();
-    console.error("AI gateway error:", response.status, t);
-    throw new Error("AI gateway error");
+  if (!LOVABLE_API_KEY && !BEEKNOEE_API_KEY) {
+    throw new Error("No AI API key configured");
   }
 
-  const result = await response.json();
+  const payload = { model: "google/gemini-3-flash-preview", messages };
+
+  // Try Lovable AI first
+  if (LOVABLE_API_KEY) {
+    try {
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        console.log("AI response from: Lovable");
+        return parseAIResponse(await response.json());
+      }
+
+      const errText = await response.text();
+      console.warn(`Lovable AI failed (${response.status}): ${errText.substring(0, 200)}`);
+
+      if (response.status === 429 && !BEEKNOEE_API_KEY) {
+        return { error: "Rate limit exceeded", status: 429 };
+      }
+    } catch (e) {
+      console.warn("Lovable AI error:", e);
+    }
+  }
+
+  // Fallback to Beeknoee
+  if (BEEKNOEE_API_KEY) {
+    console.log("Falling back to Beeknoee API...");
+    const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, model: "gpt-4o-mini" }),
+    });
+
+    if (!response.ok) {
+      const t = await response.text();
+      console.error("Beeknoee AI error:", response.status, t);
+      throw new Error("All AI providers failed");
+    }
+
+    console.log("AI response from: Beeknoee");
+    return parseAIResponse(await response.json());
+  }
+
+  throw new Error("All AI providers failed");
+}
+
+function parseAIResponse(result: any) {
   const content = result.choices?.[0]?.message?.content || "";
   const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-  
   try {
     return JSON.parse(cleaned);
   } catch {
