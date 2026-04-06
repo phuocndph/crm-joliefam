@@ -277,34 +277,44 @@ function extractTextFromPDFRegex(data: Uint8Array): string {
 async function cleanWithAI(rawText: string, fileName: string): Promise<string> {
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) return rawText;
+    const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
+    if (!LOVABLE_API_KEY && !BEEKNOEE_API_KEY) return rawText;
 
     const fileType = fileName.endsWith(".pdf") ? "PDF" : "DOCX";
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content: "Bạn là công cụ xử lý văn bản. Nhiệm vụ: nhận đoạn text thô được trích xuất từ file, làm sạch và trả về nội dung có cấu trúc. Giữ nguyên toàn bộ nội dung, chỉ sửa lỗi format. Trả về nội dung thuần túy, KHÔNG thêm giải thích.",
-          },
-          {
-            role: "user",
-            content: `Làm sạch đoạn text sau được trích xuất từ file ${fileType}:\n\n${rawText.substring(0, 25000)}`,
-          },
-        ],
-      }),
-    });
+    const cleanMessages = [
+      { role: "system", content: "Bạn là công cụ xử lý văn bản. Nhiệm vụ: nhận đoạn text thô được trích xuất từ file, làm sạch và trả về nội dung có cấu trúc. Giữ nguyên toàn bộ nội dung, chỉ sửa lỗi format. Trả về nội dung thuần túy, KHÔNG thêm giải thích." },
+      { role: "user", content: `Làm sạch đoạn text sau được trích xuất từ file ${fileType}:\n\n${rawText.substring(0, 25000)}` },
+    ];
 
-    if (aiResponse.ok) {
-      const aiData = await aiResponse.json();
-      return aiData.choices?.[0]?.message?.content || rawText;
+    // Try Lovable AI first
+    if (LOVABLE_API_KEY) {
+      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages: cleanMessages }),
+      });
+      if (aiResponse.ok) {
+        const aiData = await aiResponse.json();
+        return aiData.choices?.[0]?.message?.content || rawText;
+      }
+      console.warn(`Lovable cleanWithAI failed (${aiResponse.status})`);
+      await aiResponse.text();
     }
+
+    // Fallback to Beeknoee
+    if (BEEKNOEE_API_KEY) {
+      console.log("Falling back to Beeknoee for text cleaning...");
+      const aiResponse = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: cleanMessages }),
+      });
+      if (aiResponse.ok) {
+        const aiData = await aiResponse.json();
+        return aiData.choices?.[0]?.message?.content || rawText;
+      }
+    }
+
     return rawText;
   } catch {
     return rawText;
