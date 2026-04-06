@@ -220,24 +220,36 @@ async function extractPDFWithAI(data: Uint8Array): Promise<string> {
       console.warn(`Lovable AI PDF extraction failed (${response.status}): ${errText.substring(0, 200)}`);
     }
 
-    // Fallback to Beeknoee
+    // Fallback to Beeknoee with model chain
     if (BEEKNOEE_API_KEY) {
-      console.log("Falling back to Beeknoee for PDF extraction...");
-      const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "glm-4.7-flash", messages: pdfMessages }),
-      });
+      const models = ["glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"];
+      for (const model of models) {
+        try {
+          console.log(`Trying Beeknoee ${model} for PDF extraction...`);
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 25000);
+          const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model, messages: pdfMessages }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
 
-      if (response.ok) {
-        const result = await response.json();
-        const content = result.choices?.[0]?.message?.content || "";
-        console.log(`Beeknoee PDF extraction got ${content.length} chars`);
-        return content;
+          if (response.ok) {
+            const result = await response.json();
+            const content = result.choices?.[0]?.message?.content || "";
+            console.log(`Beeknoee ${model} PDF extraction got ${content.length} chars`);
+            return content;
+          }
+
+          const errText = await response.text();
+          console.warn(`Beeknoee ${model} PDF failed (${response.status}): ${errText.substring(0, 150)}`);
+          if (response.status === 429) await new Promise(r => setTimeout(r, 2000));
+        } catch (e) {
+          console.warn(`Beeknoee ${model} PDF error:`, e instanceof Error ? e.message : e);
+        }
       }
-
-      const errText = await response.text();
-      console.error("Beeknoee PDF extraction failed:", response.status, errText);
     }
 
     return "[Không thể đọc PDF qua AI]";
@@ -301,17 +313,30 @@ async function cleanWithAI(rawText: string, fileName: string): Promise<string> {
       await aiResponse.text();
     }
 
-    // Fallback to Beeknoee
+    // Fallback to Beeknoee with model chain
     if (BEEKNOEE_API_KEY) {
-      console.log("Falling back to Beeknoee for text cleaning...");
-      const aiResponse = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "glm-4.7-flash", messages: cleanMessages }),
-      });
-      if (aiResponse.ok) {
-        const aiData = await aiResponse.json();
-        return aiData.choices?.[0]?.message?.content || rawText;
+      const models = ["glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"];
+      for (const model of models) {
+        try {
+          console.log(`Trying Beeknoee ${model} for text cleaning...`);
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 25000);
+          const aiResponse = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model, messages: cleanMessages }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          if (aiResponse.ok) {
+            const aiData = await aiResponse.json();
+            return aiData.choices?.[0]?.message?.content || rawText;
+          }
+          console.warn(`Beeknoee ${model} clean failed (${aiResponse.status})`);
+          if (aiResponse.status === 429) await new Promise(r => setTimeout(r, 2000));
+        } catch (e) {
+          console.warn(`Beeknoee ${model} clean error:`, e instanceof Error ? e.message : e);
+        }
       }
     }
 
