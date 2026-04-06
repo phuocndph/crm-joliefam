@@ -369,7 +369,7 @@ async function callAI(apiKey: string, messages: any[], sources: any[], useStream
     response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...aiPayload, model: "gemini-2.5-flash" }),
+      body: JSON.stringify({ ...aiPayload, model: "glm-4.7-flash" }),
     });
     console.log(`Beeknoee AI response: ${response.status} in ${Date.now() - t0}ms`);
   }
