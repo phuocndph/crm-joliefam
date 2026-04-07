@@ -70,6 +70,87 @@ function parseDateRange(question: string): { start: string; end: string } | null
   return null;
 }
 
+function extractMaterial(description: string): string {
+  if (!description) return "";
+  const parts: string[] = [];
+  const t = description.match(/T(\d{3})/);
+  if (t) parts.push("T" + t[1]);
+  const pcts = description.match(/\d+%\s*Cotton|\d+%\s*Polyester|\d+%\s*Lụa/g);
+  if (pcts) parts.push(...pcts.slice(0, 2));
+  if (/chống thấm/i.test(description)) parts.push("chống thấm");
+  if (/cao su/i.test(description)) parts.push("cao su non");
+  if (/microfiber/i.test(description)) parts.push("Microfiber");
+  if (/lụa/i.test(description)) parts.push("lụa");
+  if (/sọc/i.test(description)) parts.push("sọc");
+  else if (/trơn/i.test(description)) parts.push("trơn");
+  return parts.join(" ");
+}
+
+function buildQuotationPrompt(catalog: string): string {
+  return `Bạn là chuyên gia báo giá ga gối đệm khách sạn Việt Nam.
+Nhân viên gõ nhanh, không dấu, viết tắt — bạn hiểu đúng ý họ.
+
+## BƯỚC 1 — LOẠI BỎ NOISE
+Bỏ qua hoàn toàn: "tinh bao gia luon", "bao nhieu", "cho hoi",
+"check gia", "giup minh" — đây không phải tên sản phẩm.
+
+## BƯỚC 2 — TÁCH SẢN PHẨM
+Dấu hiệu sản phẩm mới: xuất hiện từ loại SP
+(ga, chăn, vỏ, gối, khăn, đệm, topper, ruột, bảo vệ...)
+KHÔNG cắt giữa kích thước của cùng 1 sản phẩm.
+
+## BƯỚC 3 — CHUẨN HÓA
+Kích thước:
+- Số có dấu thập phân < 10 → mét: 1.6→160 | 2.0→200 | 2.2→220
+- Số nguyên nhỏ sau "x" → cm chiều cao: "14p/14f/14cm/14 phan"→14
+- T200/T225/T250/T300/T350/T400/LTH = chất liệu vải, KHÔNG phải kích thước
+Chất liệu nếu không ghi → mặc định T250
+Màu nếu không ghi → trắng trơn
+Số lượng nếu không ghi → 1
+
+## BƯỚC 4 — BẢNG CHẤT LIỆU (tra để verify)
+T200 : 50%Cotton 50%Poly — phổ thông
+T225/LTH : 40%Cotton 35%Poly 25%Lụa — có ánh lụa
+T250 : 65%Cotton 35%Poly — mặc định
+T300 : 80%Cotton 20%Poly — nhiều cotton
+T350 : 100%Cotton sọc — cao cấp
+T400 : 100%Cotton trơn — cao cấp nhất
+Ánh xạ: "cotton 100%"→T350/T400 | "có lụa"→LTH | "loại thường"→T200
+
+## BƯỚC 5 — BẢNG GIÁ (SKU|Tên|Chất liệu|Giá)
+${catalog}
+
+## BƯỚC 6 — QUY TẮC CHỌN SẢN PHẨM
+Kích thước KHÔNG khớp → chọn LỚN HƠN gần nhất có trong bảng
+KHÔNG BAO GIỜ chọn nhỏ hơn yêu cầu
+Ví dụ: cao 14cm, bảng có 10/15/20 → chọn 15cm
+Ví dụ: cao 22cm, bảng có 20/25 → chọn 25cm
+
+## BƯỚC 7 — VERIFY TRƯỚC KHI OUTPUT
+Tự kiểm tra lại sản phẩm vừa chọn:
+✓ Đúng loại SP? ✓ Đúng T-number? ✓ Đúng kích thước? ✓ Đúng trơn/sọc?
+Nếu sai → tìm lại. KHÔNG được bịa SKU không có trong bảng.
+
+## OUTPUT — JSON thuần túy, không markdown, không backtick
+{
+  "items": [
+    {
+      "yeu_cau_goc": "nguyên văn phần yêu cầu của khách cho SP này",
+      "phan_tich": "giải thích ngắn gọn cách bạn hiểu yêu cầu",
+      "sku": "SKU từ bảng giá",
+      "ten_sp": "tên sản phẩm từ bảng giá",
+      "chat_lieu": "chất liệu đầy đủ",
+      "gia_don_vi": 185000,
+      "so_luong": 1,
+      "thanh_tien": 185000,
+      "ghi_chu": "Khớp chính xác / Đã làm tròn kích thước lên 15cm / ..."
+    }
+  ],
+  "tong_cong": 185000,
+  "luu_y": "Ghi chú nếu có thông tin chưa rõ cần hỏi lại"
+}`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -116,6 +197,34 @@ serve(async (req) => {
       }
       msgs.push({ role: "user", content: question });
       return await callAI(LOVABLE_API_KEY, msgs, [], useStream, corsHeaders, true);
+    }
+
+    // Quotation request detection
+    const isQuotationRequest =
+      /\b(ga\s*chun|ga\s*tham|vo\s*chan|vo\s*goi|chan\s*he|bao\s*ve\s*(nem|dem)|topper|khan\s*tam|dem\s*lo\s*xo|dem\s*cao\s*su|ruot\s*(chan|goi))\b/i.test(lowerQ)
+      || (/\b(\d+[\s]*[xX*][\s]*\d+)\b/.test(lowerQ) && /\b(t200|t225|t250|t300|t350|t400|lth)\b/i.test(lowerQ))
+      || /\btinh\s*bao\s*gia\b|\bbao\s*gia\s*luon\b|\bcheck\s*gia\b/i.test(lowerQ);
+
+    if (isQuotationRequest) {
+      console.log("Quotation request detected, fetching product catalog...");
+      const { data: allProducts } = await supabase
+        .from("products")
+        .select("sku, name, description, price, category, in_stock")
+        .eq("in_stock", true)
+        .order("category");
+
+      const catalogLines = (allProducts || []).map(p => {
+        const mat = extractMaterial(p.description || "");
+        return `${p.sku || ""}|${p.name}|${mat}|${Math.round(Number(p.price || 0))}`;
+      }).join("\n");
+
+      console.log(`Quotation catalog: ${(allProducts || []).length} products`);
+      const quotationSystemPrompt = buildQuotationPrompt(catalogLines);
+      const messages: any[] = [
+        { role: "system", content: quotationSystemPrompt },
+        { role: "user", content: question }
+      ];
+      return await callAI(LOVABLE_API_KEY, messages, [], useStream, corsHeaders, true);
     }
 
     // Auth + date parsing in parallel

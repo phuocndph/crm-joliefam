@@ -1,18 +1,39 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Bot, User, Loader2, Trash2, Copy, Check, FileText, Globe, HelpCircle, Sparkles } from "lucide-react";
+import { Send, Bot, User, Loader2, Trash2, Copy, Check, FileText, Globe, HelpCircle, Sparkles, AlertTriangle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+
+interface QuotationItem {
+  yeu_cau_goc: string;
+  phan_tich: string;
+  sku: string;
+  ten_sp: string;
+  chat_lieu: string;
+  gia_don_vi: number;
+  so_luong: number;
+  thanh_tien: number;
+  ghi_chu: string;
+}
+
+interface QuotationResult {
+  items: QuotationItem[];
+  tong_cong: number;
+  luu_y?: string;
+}
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: { id: string; title: string; type: string }[];
   timestamp?: Date;
+  quotation?: QuotationResult;
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -90,6 +111,77 @@ const markdownComponents = {
   th: ({ ...props }: any) => <th className="border border-border bg-muted px-2 py-1 text-left font-semibold" {...props} />,
   td: ({ ...props }: any) => <td className="border border-border px-2 py-1" {...props} />,
 };
+
+const formatCurrency = (v: number) => new Intl.NumberFormat("vi-VN").format(v);
+
+function QuotationTable({ quotation }: { quotation: QuotationResult }) {
+  return (
+    <div className="space-y-3 text-foreground">
+      <p className="font-semibold text-sm">📋 Báo giá ({quotation.items.length} sản phẩm)</p>
+      <div className="overflow-auto rounded-lg border border-border">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50">
+              <TableHead className="w-8 text-xs">#</TableHead>
+              <TableHead className="text-xs font-mono">SKU</TableHead>
+              <TableHead className="text-xs">Sản phẩm</TableHead>
+              <TableHead className="text-xs">Chất liệu</TableHead>
+              <TableHead className="text-xs text-right">SL</TableHead>
+              <TableHead className="text-xs text-right">Đơn giá</TableHead>
+              <TableHead className="text-xs text-right">Thành tiền</TableHead>
+              <TableHead className="text-xs">Ghi chú</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {quotation.items.map((item, idx) => (
+              <TableRow key={idx}>
+                <TableCell className="text-xs">{idx + 1}</TableCell>
+                <TableCell className="text-xs font-mono text-muted-foreground">{item.sku || "—"}</TableCell>
+                <TableCell className="text-xs">
+                  <div className="font-medium">{item.ten_sp}</div>
+                  {item.phan_tich && (
+                    <div className="text-[10px] text-muted-foreground italic mt-0.5">{item.phan_tich}</div>
+                  )}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">{item.chat_lieu}</TableCell>
+                <TableCell className="text-xs text-right">{item.so_luong}</TableCell>
+                <TableCell className="text-xs text-right">{formatCurrency(item.gia_don_vi)}</TableCell>
+                <TableCell className="text-xs text-right font-medium">{formatCurrency(item.thanh_tien)}</TableCell>
+                <TableCell className="text-xs">
+                  {item.ghi_chu && (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] whitespace-normal font-normal",
+                        item.ghi_chu.includes("Không tìm") ? "border-destructive/40 text-destructive bg-destructive/5" :
+                        item.ghi_chu.includes("→") || item.ghi_chu.includes("làm tròn") ? "border-warning/40 text-warning bg-warning/5" :
+                        "border-border text-muted-foreground"
+                      )}
+                    >
+                      {(item.ghi_chu.includes("Không tìm") || item.ghi_chu.includes("→")) && (
+                        <AlertTriangle className="h-3 w-3 mr-1 inline flex-shrink-0" />
+                      )}
+                      {item.ghi_chu}
+                    </Badge>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="flex justify-between items-center bg-foreground/5 rounded-lg px-4 py-2.5 border border-border">
+        <span className="text-sm font-semibold">Tổng cộng</span>
+        <span className="text-base font-bold text-primary">{formatCurrency(quotation.tong_cong)}đ</span>
+      </div>
+      {quotation.luu_y && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-xs text-primary">
+          💡 {quotation.luu_y}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function KnowledgeChatbot() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -263,6 +355,27 @@ export function KnowledgeChatbot() {
       if (!assistantText) {
         updateAssistant("Xin lỗi, không nhận được phản hồi. Vui lòng thử lại.");
       } else {
+        // Try to parse as quotation JSON
+        let quotation: QuotationResult | undefined;
+        try {
+          const clean = assistantText.replace(/```json|```/g, "").trim();
+          const parsed = JSON.parse(clean);
+          if (parsed.items && Array.isArray(parsed.items)) {
+            quotation = parsed as QuotationResult;
+          }
+        } catch (_) { /* not JSON, normal message */ }
+
+        if (quotation) {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+              return prev.map((m, i) =>
+                i === prev.length - 1 ? { ...m, content: assistantText, quotation, sources: streamSources.length ? streamSources : m.sources } : m
+              );
+            }
+            return [...prev, { role: "assistant", content: assistantText, quotation, sources: streamSources.length ? streamSources : undefined, timestamp: new Date() }];
+          });
+        }
         saveChatHistory(text, assistantText, streamSources);
       }
     } catch (err: any) {
@@ -379,6 +492,8 @@ export function KnowledgeChatbot() {
                   >
                     {isUser ? (
                       <p className="leading-relaxed">{msg.content}</p>
+                    ) : msg.quotation ? (
+                      <QuotationTable quotation={msg.quotation} />
                     ) : (
                       <div className="prose-chat text-foreground">
                         <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
