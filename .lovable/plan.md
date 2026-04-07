@@ -1,83 +1,65 @@
 
 
-## Phân tích nguyên nhân chậm & kế hoạch tối ưu
+## Phân tích lỗi còn lại & kế hoạch fix
 
-### Nguyên nhân gốc (từ logs thực tế)
+### Vấn đề gốc: Beeknoee concurrent limit 1/1
 
-Tổng thời gian hiện tại: **~96 giây** rồi **thất bại hoàn toàn**. Chuỗi sự kiện:
+Từ logs thực tế, mỗi lần đều thất bại theo cùng pattern:
 
 ```text
-t=0s    Catalog download → FAIL (sai đường dẫn file)
-t=1s    Build catalog → OK (31 SP, 2371 chars)
-t=2s    Re-download catalog → FAIL (vẫn sai đường dẫn)
-t=3s    Fallback: gửi 917 SP thô cho AI
-t=4s    Lovable AI → 402 (hết credits)
-t=5s    Beeknoee gemini-2.5-flash → timeout 25s
-t=30s   Beeknoee glm-4.7-flash → timeout
-t=50s   Beeknoee glm-4.5-flash → 429 (concurrent limit 1/1)
-t=55s   Beeknoee gpt-oss-120b → 429
-t=60s   Retry tất cả lần 2 → 429 hết
-t=96s   "All AI providers failed"
+t=0s    Lovable AI → 402 (hết credits)
+t=0s    → Beeknoee gemini-2.5-flash (timeout 15s)
+t=15s   gemini-2.5-flash bị ABORT (client-side)
+t=15s   → glm-4.7-flash → 429 (previous request still active on server)
+t=16s   → glm-4.5-flash → 429
+t=17s   → gpt-oss-120b → 429  
+t=18s   "All AI providers failed"
 ```
 
-### 3 lỗi chính gây chậm
+**Nguyên nhân**: Khi client abort request sau 15s, Beeknoee server vẫn đang xử lý request đó. Concurrent limit = 1/1, nên TẤT CẢ model sau đều bị 429. Delay 1s giữa các lần thử quá ngắn.
+
+### 3 lỗi cần fix
 
 | # | Lỗi | Tác động |
 |---|------|----------|
-| **1** | **Sai đường dẫn Storage** — Backend lưu `catalog/product-catalog-{managerId}.json` nhưng Frontend tải `catalog/product-catalog.json` | Catalog KHÔNG BAO GIỜ được tải → luôn gửi 917 SP thô thay vì 31 SP đã phân loại |
-| **2** | **Lovable AI hết credits (402)** — Không thông báo rõ cho user | User không biết cần nạp credits |
-| **3** | **Beeknoee concurrent limit 1/1** — 917 SP = payload quá lớn, timeout + rate limit | 4 model × 2 lần thử = 8 requests, mỗi cái chờ 15-25s |
+| **1** | Lovable AI fetch không có timeout | Có thể hang vô thời hạn trước khi fallback |
+| **2** | Beeknoee: abort client-side không giải phóng server slot | Tất cả model fallback đều 429 |
+| **3** | Delay 429 chỉ 1s, không đủ để server giải phóng slot | Model sau vẫn bị 429 |
 
-### Kế hoạch sửa (mục tiêu: 5-10 giây)
+### Kế hoạch fix
 
-#### 1. Fix đường dẫn Storage (quan trọng nhất)
-**File**: `src/components/AIQuoteFill.tsx`
+#### File: `supabase/functions/lookup-tax-code/index.ts`
 
-Frontend cần tải catalog theo đường dẫn đúng với manager_id của user. Khi `build-product-catalog` trả về `catalogPath`, lưu lại và dùng path đó để download. Ngoài ra, response từ `build-product-catalog` đã chứa catalog data → dùng trực tiếp thay vì download lại.
+**Fix 1: Thêm timeout cho Lovable AI** (line 54-59)
+- Thêm AbortController với timeout 20s cho Lovable AI fetch
+- Nếu timeout → fallback ngay sang Beeknoee
 
-**Hiệu quả**: 31 SP (2.3KB) thay vì 917 SP (~55KB) → giảm 95% token
+**Fix 2: Chờ đủ lâu khi gặp 429**
+- Tăng delay từ 1s → 5s khi gặp 429 (đợi server hoàn tất request trước)
+- Thêm tối đa 2 lần retry cho model đầu tiên với delay 5s (vì model đầu thường mạnh nhất)
 
-#### 2. Dùng trực tiếp catalog text từ build response  
-**File**: `src/components/AIQuoteFill.tsx`
+**Fix 3: Tăng timeout model đầu, giảm model sau**
+- gemini-2.5-flash: 15s → 25s (cho model chính đủ thời gian hoàn thành thay vì abort rồi block cả chain)
+- Bỏ bớt model thừa, chỉ giữ 2 model: gemini-2.5-flash (25s) + glm-4.7-flash (20s)
+- Giữ 1 model dự phòng cuối: openai/gpt-oss-120b (15s) nhưng delay 8s trước khi gọi
 
-Khi build catalog, response đã trả `catalogPath`. Thay vì download lại từ Storage (vốn đang lỗi), gọi edge function lấy text trực tiếp hoặc sửa build function trả luôn catalog text.
+**Fix 4: Skip model nếu biết chắc 429**
+- Nếu model đầu bị abort (timeout), đợi 8s trước khi thử model tiếp theo
+- Nếu 2 model liên tiếp 429 → dừng ngay, trả lỗi rõ ràng "Server bận, thử lại sau 30s"
 
-**File**: `supabase/functions/build-product-catalog/index.ts`
-
-Thêm `catalogText` vào response body để frontend không cần download riêng.
-
-#### 3. Hiển thị lỗi 402 rõ ràng
-**File**: `src/components/AIQuoteFill.tsx`
-
-Khi nhận lỗi từ AI, kiểm tra nếu là 402/payment → hiện toast "Lovable AI hết credits, đang dùng AI dự phòng" thay vì lỗi chung chung.
-
-#### 4. Giảm timeout Beeknoee
-**File**: `supabase/functions/lookup-tax-code/index.ts`
-
-Với 31 SP (sau khi fix catalog), payload nhẹ hơn nhiều → giảm timeout:
-- gemini-2.5-flash: 25s → 15s  
-- glm-4.7-flash: 20s → 12s
-- glm-4.5-flash: 15s → 10s
-- gpt-oss-120b: 15s → 10s
-- Bỏ retry lần 2 (chỉ thử 1 vòng)
-- Giảm delay 429 từ 3s → 1s
-
-**Hiệu quả**: Worst case giảm từ 96s → ~25s; best case (model đầu thành công): 5-10s
-
-### Tổng kết hiệu quả dự kiến
-
-| Metric | Hiện tại | Sau fix |
-|--------|----------|---------|
-| Payload gửi AI | 917 SP (55KB) | 31 SP (2.3KB) |
-| Thời gian thành công | Không bao giờ thành công | 5-10s |
-| Thời gian worst case | 96s rồi fail | ~25s |
-| Token AI | ~20K | ~1K |
-
-### Thay đổi cụ thể
+### Tổng kết thay đổi
 
 | File | Nội dung |
 |------|----------|
-| `supabase/functions/build-product-catalog/index.ts` | Trả thêm `catalogText` trong response body |
-| `src/components/AIQuoteFill.tsx` | (1) Fix download path dùng manager-specific path. (2) Dùng trực tiếp catalogText từ build response. (3) Hiển thị lỗi 402 rõ ràng |
-| `supabase/functions/lookup-tax-code/index.ts` | Giảm timeout Beeknoee, bỏ retry lần 2, giảm delay 429 |
+| `supabase/functions/lookup-tax-code/index.ts` | (1) Thêm timeout 20s cho Lovable AI. (2) gemini-2.5-flash timeout 25s. (3) Delay 5-8s giữa các model khi abort/429. (4) Giảm còn 3 model fallback. (5) Trả lỗi "server bận" nếu 2 model liên tiếp 429. |
+
+### Hiệu quả dự kiến
+
+| Metric | Hiện tại | Sau fix |
+|--------|----------|---------|
+| Lovable AI timeout | Vô hạn | 20s |
+| Beeknoee model 1 timeout | 15s (quá ngắn → abort → block chain) | 25s (đủ để hoàn thành) |
+| Delay giữa 429 | 1s (quá ngắn) | 5-8s (đủ để server giải phóng) |
+| Worst case total | ~30s rồi fail | ~35s nhưng có thể thành công |
+| Best case (model đầu OK) | Không bao giờ | 5-10s |
 
