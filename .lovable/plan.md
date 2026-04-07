@@ -1,40 +1,79 @@
 
 
-## Sửa lỗi gửi hình ảnh AI Quote Fill
+## Tối ưu Prompt AI Quote Fill theo format SKU|Tên|Giá
 
-### Nguyên nhân lỗi
-1. **Ảnh gốc quá lớn** → base64 phình to → request body vượt giới hạn Edge Function hoặc timeout
-2. **Không nén ảnh trước khi gửi** → ảnh 5-10MB gốc → base64 ~7-14MB
-3. **Fallback models không hỗ trợ vision** → `glm-4.7-flash`, `glm-4.5-flash`, `openai/gpt-oss-120b` không hiểu ảnh → lỗi hoặc trả kết quả sai
-4. **Edge Function timeout** → gemini-2.5-flash 55s không đủ cho ảnh lớn + phân tích
+### Mục tiêu
+Thay thế prompt hiện tại (dài dòng, format `[i] ID: ... | Tên: ... | Giá: ... | Quy cách: ... | Mô tả: ...`) bằng prompt mới ngắn gọn, chuyên biệt cho ga gối đệm, với format `SKU|Tên sản phẩm|Giá bán` và quy tắc nghiệp vụ rõ ràng hơn.
 
-### Giải pháp
+### Thay đổi
 
-**1. Client — Nén ảnh trước khi gửi (`AIQuoteFill.tsx`)**
-- Thêm hàm `compressImage()` dùng Canvas API để resize ảnh xuống max 1200px và chất lượng JPEG 0.7
-- Giảm kích thước từ 5-10MB → ~100-300KB base64
-- Gọi `compressImage()` trước `fileToBase64()` trong `handleAIFill`
+**File: `supabase/functions/lookup-tax-code/index.ts`**
 
-**2. Backend — Chỉ dùng model hỗ trợ vision khi có ảnh (`lookup-tax-code/index.ts`)**
-- Truyền flag `hasImage` vào `callAI()`
-- Khi `hasImage = true`: chỉ thử models hỗ trợ vision (Lovable gateway gemini, Beeknoee gemini-2.5-flash)
-- Bỏ qua các model text-only (glm, gpt-oss) khi có ảnh → tránh lỗi và tiết kiệm thời gian
-- Tăng timeout gemini-2.5-flash lên 90s cho multimodal
+1. **Sửa `productListText` format** (dòng 481-483):
+   - Từ: `[i] ID: ... | Tên: ... | Giá: ... | Quy cách: ... | Mô tả: ...`
+   - Thành: `ID|Tên sản phẩm|Giá bán` (dùng `p.id` thay vì index, bỏ quy cách/mô tả thừa)
+   - Giảm token ~60% do bỏ quy cách + mô tả + label dài dòng
 
-### Flow sau sửa
+2. **Thay toàn bộ `aiQuoteFillPrompt`** (dòng 485-513) bằng prompt mới theo mẫu user cung cấp:
+   - System prompt mở đầu: "Bạn là chuyên gia báo giá sản phẩm ga gối đệm..."
+   - Bảng giá format: `SKU|Tên sản phẩm|Giá bán` (tự động từ products)
+   - Quy tắc phân tích input (chuẩn hóa kích thước, chất liệu)
+   - Quy tắc chọn kích thước (lớn hơn gần nhất)
+   - Quy tắc số lượng
+   - Format trả lời JSON thuần túy
+   - Thêm hỗ trợ hình ảnh khi có ảnh
+
+3. **Sửa JSON output format** để map lại với frontend:
+   - Backend nhận `sku` từ AI → map sang `matchedProductId` bằng cách tìm product có id trùng SKU
+   - Giữ nguyên interface `AIMatchedItem` phía frontend
+
+4. **Redeploy** Edge Function `lookup-tax-code`
+
+### Chi tiết prompt mới
 
 ```text
-User chọn ảnh 5MB
-→ Client nén xuống ~200KB via Canvas
-→ Base64 ~270KB gửi lên Edge Function
-→ callAI(messages, hasImage=true)
-→ Thử Lovable gemini-3-flash (vision) → nếu lỗi → Beeknoee gemini-2.5-flash (vision)
-→ BỎ QUA glm/gpt-oss (không hỗ trợ vision)
-→ Trả kết quả nhanh, không timeout
+Bạn là chuyên gia báo giá sản phẩm ga gối đệm. Nhiệm vụ: đọc yêu cầu (text hoặc hình ảnh), tách từng sản phẩm, tìm đúng trong bảng giá, xử lý kích thước thông minh.
+
+## BẢNG GIÁ (định dạng: SKU|Tên sản phẩm|Giá bán)
+{productListText - tự động generate từ products array}
+
+## QUY TẮC PHÂN TÍCH INPUT
+1. Tách câu thành từng sản phẩm riêng lẻ
+2. Chuẩn hóa kích thước: 1.6→160, 1.8→180...
+3. T250/T300/T350/T400/T200/LTH là chất liệu vải
+4. "trang"/"tron" = trơn/trắng, "soc" = sọc, "chan" = chần
+5. Nếu không ghi chất liệu → ưu tiên T250
+6. "gối" mà không nói rõ → mặc định "Vỏ gối"
+7. LTH = T225 là cùng một loại vải
+8. Phụ kiện (vỏ gối, gối ôm) mặc định dùng chung loại vải với ga giường
+
+## QUY TẮC CHỌN KÍCH THƯỚC
+- Khi kích thước yêu cầu KHÔNG CÓ → chọn kích thước LỚN HƠN GẦN NHẤT
+- KHÔNG BAO GIỜ chọn kích thước nhỏ hơn yêu cầu
+
+## QUY TẮC GIÁ
+- Nếu khách ghi rõ giá → dùng giá khách ghi
+- Nếu không → lấy giá từ bảng giá
+
+## NẾU NHẬN HÌNH ẢNH
+Phân tích ảnh (đơn hàng, tin nhắn, ghi chép tay...) để trích xuất sản phẩm.
+
+## FORMAT TRẢ LỜI (JSON thuần túy)
+{"items":[{"matchedProductId":"product-uuid","customName":"tên theo yêu cầu","quantity":1,"price":0,"specifications":"quy cách theo khách","note":"ghi chú"}]}
+Nếu thiếu thông tin: {"items":[],"clarification":"câu hỏi"}
 ```
+
+### Mapping logic
+- Frontend gửi `products` array với `p.id` (UUID) và `p.name`
+- Prompt hiển thị `p.id|p.name|p.price` cho AI
+- AI trả `matchedProductId` = UUID trực tiếp → frontend dùng ngay, không cần convert
+
+### Không thay đổi
+- Frontend `AIQuoteFill.tsx` — giữ nguyên hoàn toàn
+- `callAI()` function — giữ nguyên
+- Logic nén ảnh, multimodal — giữ nguyên
 
 | File | Thay đổi |
 |------|----------|
-| `src/components/AIQuoteFill.tsx` | Thêm `compressImage()`, gọi trước khi convert base64 |
-| `supabase/functions/lookup-tax-code/index.ts` | `callAI` nhận flag `hasImage`, lọc model vision-only khi có ảnh, tăng timeout |
+| `supabase/functions/lookup-tax-code/index.ts` | Sửa `productListText` format + thay `aiQuoteFillPrompt` |
 
