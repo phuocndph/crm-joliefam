@@ -131,21 +131,16 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setPreviewItems(null);
 
     try {
-      const productList = products.map(p => {
-        const item: any = {
-          id: p.id,
-          name: p.name,
-          price: p.price || 0,
-          specifications: p.specifications || "",
-        };
-        if (includeImages) {
-          item.description = p.description || "";
-        }
-        return item;
-      });
+      const productList = products.map(p => ({
+        id: p.id,
+        name: p.name,
+        price: p.price || 0,
+        specifications: p.specifications || "",
+        description: p.description || "",
+      }));
 
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
-        body: { type: "ai_quote_fill", data: { products: productList, request: request.trim(), includeImages } },
+        body: { type: "ai_quote_fill", data: { products: productList, request: request.trim() } },
       });
 
       if (error) throw error;
