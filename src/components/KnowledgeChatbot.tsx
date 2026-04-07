@@ -1,18 +1,39 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Bot, User, Loader2, Trash2, Copy, Check, FileText, Globe, HelpCircle, Sparkles } from "lucide-react";
+import { Send, Bot, User, Loader2, Trash2, Copy, Check, FileText, Globe, HelpCircle, Sparkles, AlertTriangle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+
+interface QuotationItem {
+  yeu_cau_goc: string;
+  phan_tich: string;
+  sku: string;
+  ten_sp: string;
+  chat_lieu: string;
+  gia_don_vi: number;
+  so_luong: number;
+  thanh_tien: number;
+  ghi_chu: string;
+}
+
+interface QuotationResult {
+  items: QuotationItem[];
+  tong_cong: number;
+  luu_y?: string;
+}
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: { id: string; title: string; type: string }[];
   timestamp?: Date;
+  quotation?: QuotationResult;
 }
 
 const SUGGESTED_QUESTIONS = [
