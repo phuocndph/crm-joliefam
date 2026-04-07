@@ -37,7 +37,7 @@ const BUYER_INFO_SYSTEM_PROMPT = `Bạn là trợ lý phân tích thông tin doa
 }
 Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ trả JSON thuần, không bọc trong code block.`;
 
-async function callAI(messages: any[], tools?: any[], toolChoice?: any) {
+async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: string) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
 
@@ -45,7 +45,8 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any) {
     throw new Error("No AI API key configured");
   }
 
-  const payload: any = { model: "google/gemini-3-flash-preview", messages };
+  const selectedModel = model || "google/gemini-3-flash-preview";
+  const payload: any = { model: selectedModel, messages };
   if (tools) { payload.tools = tools; payload.tool_choice = toolChoice || "auto"; }
 
   // Try Lovable AI first (skip if known 402)
@@ -81,20 +82,32 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any) {
   // Fallback to Beeknoee with model chain
   if (BEEKNOEE_API_KEY) {
     console.log("Falling back to Beeknoee API...");
-    // Use models that support tool calling well
+    // Map Lovable model to Beeknoee fallback
+    const beeknoeeModelMap: Record<string, string> = {
+      "google/gemini-2.5-flash-lite": "gemini-2.5-flash",
+      "google/gemini-2.5-flash": "gemini-2.5-flash",
+      "google/gemini-3-flash-preview": "gemini-2.5-flash",
+      "google/gemini-2.5-pro": "gemini-2.5-flash",
+    };
+    const primaryBeeknoee = beeknoeeModelMap[selectedModel] || "gemini-2.5-flash";
+    
     const models = [
-      { name: "gemini-2.5-flash", timeout: 55000 },
-      { name: "glm-4.7-flash", timeout: 30000 },
-      { name: "glm-4.5-flash", timeout: 30000 },
-      { name: "openai/gpt-oss-120b", timeout: 30000 },
+      { name: primaryBeeknoee, timeout: 25000 },
+      { name: "glm-4.7-flash", timeout: 20000 },
+      { name: "glm-4.5-flash", timeout: 15000 },
+      { name: "openai/gpt-oss-120b", timeout: 15000 },
     ];
     
-    // For Beeknoee, strip tool calling if model doesn't support it well - use JSON mode
+    // For Beeknoee, strip tool calling - use JSON text mode with explicit instruction
     const beeknoeePayload = { ...payload };
     if (tools) {
-      // Remove tools for Beeknoee - fallback to JSON text mode
       delete beeknoeePayload.tools;
       delete beeknoeePayload.tool_choice;
+      // Add JSON format instruction since tools are stripped
+      beeknoeePayload.messages = [
+        ...beeknoeePayload.messages,
+        { role: "user", content: 'QUAN TRỌNG: Trả về CHỈ JSON hợp lệ với format: {"items": [...], "clarification": "..."}. Không giải thích, không markdown.' },
+      ];
     }
     
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -488,7 +501,7 @@ serve(async (req) => {
 
     // ==================== AI QUOTE FILL ====================
     } else if (type === "ai_quote_fill") {
-      const { products, request, includeImages } = data;
+      const { products, request, includeImages, model: requestedModel } = data;
       if (!products || !request) {
         return new Response(JSON.stringify({ error: "Missing products or request" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -550,13 +563,15 @@ ${productListText}`;
         },
       }];
 
+      console.log(`AI Quote Fill: using model ${requestedModel || "default"}`);
       const parsed = await callAI(
         [
           { role: "system", content: aiQuoteFillPrompt },
           { role: "user", content: `Yêu cầu khách hàng:\n"""\n${request}\n"""` },
         ],
         quoteTools,
-        { type: "function", function: { name: "generate_quote_items" } }
+        { type: "function", function: { name: "generate_quote_items" } },
+        requestedModel
       );
       
       if (parsed.status === 429) {
