@@ -1,23 +1,14 @@
-import React, { useState, useMemo } from "react";
-import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff, RefreshCw } from "lucide-react";
+import React, { useState } from "react";
+import { Sparkles, Loader2, Check, X, ImageIcon, ImageOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-
-const AI_MODELS = [
-  { value: "fast", label: "⚡ Nhanh & Tiết kiệm", desc: "Báo giá đơn giản, ít SP", model: "google/gemini-2.5-flash-lite" },
-  { value: "balanced", label: "⚖️ Cân bằng", desc: "Đa số báo giá thông thường", model: "google/gemini-2.5-flash" },
-  { value: "accurate", label: "🎯 Chính xác cao", desc: "Báo giá phức tạp, nhiều SP", model: "google/gemini-3-flash-preview" },
-  { value: "premium", label: "💎 Cao cấp nhất", desc: "Phân tích sâu, yêu cầu đặc biệt", model: "google/gemini-2.5-pro" },
-] as const;
 
 interface Product {
   id: string;
@@ -41,6 +32,7 @@ interface AIQuoteFillProps {
   products: Product[];
   onProductsSelected: (items: AIMatchedItem[]) => void;
 }
+
 const normalize = (text: string) => text.toLowerCase()
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/đ/g, 'd').replace(/Đ/g, 'd')
@@ -51,72 +43,31 @@ const extractKeywords = (text: string) => {
   return norm.match(/[a-z0-9]{2,}/g) || [];
 };
 
-const preFilterProducts = (allProducts: Product[], userRequest: string): Product[] => {
-  const requestKeywords = extractKeywords(userRequest);
-  const sizeMap: Record<string, string[]> = {};
-  const sizePatterns = userRequest.match(/(\d+)[mM](\d*)/g) || [];
-  for (const sp of sizePatterns) {
-    const match = sp.match(/(\d+)[mM](\d*)/);
-    if (match) {
-      const meters = parseInt(match[1]);
-      const decimals = match[2] || "0";
-      const cm = meters * 100 + parseInt(decimals.padEnd(1, "0")) * 10;
-      sizeMap[sp.toLowerCase()] = [cm.toString(), `${meters}m${match[2] || ""}`];
-    }
-  }
-  const allSizeVariants = Object.values(sizeMap).flat();
-  const scored = allProducts.map(p => {
-    const pNorm = normalize(p.name);
-    let score = 0;
-    for (const kw of requestKeywords) {
-      if (pNorm.includes(kw)) score += kw.length >= 4 ? 3 : 1;
-    }
-    for (const sv of allSizeVariants) {
-      if (pNorm.includes(sv)) score += 2;
-    }
-    return { product: p, score };
-  });
-  const filtered = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score).slice(0, 150).map(s => s.product);
-  if (filtered.length < 5) return allProducts.slice(0, 200);
-  return filtered;
-};
-
 export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [request, setRequest] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [previewItems, setPreviewItems] = useState<AIMatchedItem[] | null>(null);
   const [includeImages, setIncludeImages] = useState(true);
-  const [selectedModel, setSelectedModel] = useState<string>("balanced");
   const [catalogCache, setCatalogCache] = useState<{ text: string; builtAt: string } | null>(null);
   const [isBuildingCatalog, setIsBuildingCatalog] = useState(false);
-  const [lastUsedModel, setLastUsedModel] = useState<string | null>(null);
   const { toast } = useToast();
-
-  // Auto-suggest model based on request complexity
-  const suggestedModel = useMemo(() => {
-    if (!request.trim()) return "balanced";
-    if (request.length < 80) return "fast";
-    if (request.length > 200) return "accurate";
-    return "balanced";
-  }, [request]);
 
   const findPreviewImage = async (items: AIMatchedItem[]) => {
     try {
-      let allImageFiles: { name: string; folder: string }[] = [];
+      const allImageFiles: { name: string; folder: string }[] = [];
       const { data: folders } = await supabase.storage.from('product-images').list('', { limit: 200 });
       if (folders) {
-        const topLevelFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
-        const directories = folders.filter(f => !f.name.includes('.'));
-        for (const file of topLevelFiles) {
-          allImageFiles.push({ name: file.name, folder: '' });
-        }
-        for (const dir of directories) {
-          const { data: files } = await supabase.storage.from('product-images').list(dir.name, { limit: 200 });
-          if (files) {
-            for (const file of files) {
-              if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
-                allImageFiles.push({ name: file.name, folder: dir.name });
+        for (const f of folders) {
+          if (/\.(jpg|jpeg|png|gif|webp)$/i.test(f.name)) {
+            allImageFiles.push({ name: f.name, folder: '' });
+          } else if (!f.name.includes('.')) {
+            const { data: files } = await supabase.storage.from('product-images').list(f.name, { limit: 200 });
+            if (files) {
+              for (const file of files) {
+                if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
+                  allImageFiles.push({ name: file.name, folder: f.name });
+                }
               }
             }
           }
@@ -166,6 +117,27 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     }
   };
 
+  const buildCatalog = async (): Promise<string | null> => {
+    if (catalogCache) return catalogCache.text;
+    
+    setIsBuildingCatalog(true);
+    toast({ title: "Đang xây dựng danh mục sản phẩm...", description: "Lần đầu sẽ mất vài giây" });
+    try {
+      const { data: result, error } = await supabase.functions.invoke("build-product-catalog");
+      if (error) throw error;
+      if (result?.catalogText) {
+        setCatalogCache({ text: result.catalogText, builtAt: new Date().toISOString() });
+        return result.catalogText;
+      }
+      return null;
+    } catch (e) {
+      console.warn("Failed to build catalog:", e);
+      return null;
+    } finally {
+      setIsBuildingCatalog(false);
+    }
+  };
+
   const handleAIFill = async () => {
     if (!request.trim()) {
       toast({ title: "Vui lòng nhập yêu cầu khách hàng", variant: "destructive" });
@@ -180,104 +152,50 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setPreviewItems(null);
 
     try {
-      // Try to load/build catalog
-      let catalogText: string | null = null;
-      
-      if (catalogCache) {
-        catalogText = catalogCache.text;
-        console.log(`AI Quote: using cached catalog (${catalogText.length} chars)`);
-      } else {
-        // Build catalog - response includes catalogText directly (no need to download from storage)
-        setIsBuildingCatalog(true);
-        toast({ title: "Đang xây dựng danh mục sản phẩm...", description: "Lần đầu sẽ mất vài giây" });
-        try {
-          const { data: buildResult, error: buildError } = await supabase.functions.invoke("build-product-catalog");
-          if (buildError) throw buildError;
-          
-          if (buildResult?.catalogText) {
-            catalogText = buildResult.catalogText;
-            setCatalogCache({ text: buildResult.catalogText, builtAt: new Date().toISOString() });
-            console.log(`AI Quote: catalog built directly (${catalogText!.length} chars, ${buildResult.productCount} products)`);
-          } else {
-            console.warn("build-product-catalog returned no catalogText:", buildResult);
-          }
-        } catch (e) {
-          console.warn("Failed to build catalog, falling back to raw products:", e);
-        } finally {
-          setIsBuildingCatalog(false);
-        }
-      }
+      const catalogText = await buildCatalog();
 
-      const modelConfig = AI_MODELS.find(m => m.value === selectedModel);
-      
-      // Build request body - use catalog if available, otherwise fallback to raw products
-      const requestBody: any = {
-        request: request.trim(),
-        includeImages,
-        model: modelConfig?.model,
-      };
-      
+      const requestBody: Record<string, unknown> = { request: request.trim() };
       if (catalogText) {
         requestBody.catalogText = catalogText;
       } else {
-        // Fallback: send raw products
-        console.log(`AI Quote: fallback - sending all ${products.length} products`);
         requestBody.products = products.map(p => ({
-          id: p.id,
-          name: p.name,
-          price: p.price || 0,
-          specifications: p.specifications || "",
-          ...(includeImages ? { description: p.description || "" } : {}),
+          id: p.id, name: p.name, price: p.price || 0, specifications: p.specifications || "",
         }));
       }
 
-      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
-        body: { type: "ai_quote_fill", data: requestBody },
-      });
+      const { data, error } = await supabase.functions.invoke("ai-quote-fill", { body: requestBody });
 
-      if (error) throw error;
-
-      if (data?.error) {
-        const is402 = data.error.includes("credits") || data.error.includes("payment");
-        toast({ 
-          title: is402 ? "⚠️ AI hết credits" : "Lỗi AI", 
-          description: is402 ? "Lovable AI hết credits. Vui lòng nạp thêm tại Settings → Workspace → Usage" : data.error, 
-          variant: "destructive",
-          duration: is402 ? 10000 : 5000,
-        });
-        if (!is402) return;
-      }
-
-      // Handle clarification request from AI
-      if (data?.clarification) {
-        toast({ 
-          title: "⚠️ Cần bổ sung thông tin", 
-          description: data.clarification,
-          duration: 10000,
-        });
+      if (error) {
+        // Handle specific HTTP errors from edge function
+        const errMsg = (error as any)?.message || String(error);
+        toast({ title: "Lỗi AI", description: errMsg, variant: "destructive", duration: 8000 });
         return;
       }
 
-      // Track which model was actually used
-      if (data?.usedModel) {
-        setLastUsedModel(`${data.usedProvider || "AI"}: ${data.usedModel}`);
-        console.log(`AI Quote: actual model used: ${data.usedProvider} / ${data.usedModel}`);
+      if (data?.error) {
+        toast({ title: "Lỗi AI", description: data.error, variant: "destructive", duration: 8000 });
+        return;
+      }
+
+      if (data?.clarification) {
+        toast({ title: "⚠️ Cần bổ sung thông tin", description: data.clarification, duration: 10000 });
+        return;
       }
 
       let items: AIMatchedItem[] = data?.items || [];
       if (items.length === 0) {
-        toast({ title: "Không tìm thấy sản phẩm phù hợp", description: "AI không thể so khớp yêu cầu với bảng giá hiện tại" });
+        toast({ title: "Không tìm thấy sản phẩm phù hợp", description: "AI không thể so khớp yêu cầu với bảng giá" });
         return;
       }
 
-      // Find preview images for display (only if enabled)
       if (includeImages) {
         items = await findPreviewImage(items);
       }
       setPreviewItems(items);
+      console.log(`AI Quote: ${items.length} items, model=${data?.usedModel}, provider=${data?.usedProvider}`);
     } catch (err) {
       console.error("AI quote fill error:", err);
-      toast({ title: "Lỗi", description: "Không thể xử lý yêu cầu AI", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Không thể xử lý yêu cầu AI. Thử lại sau.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -293,13 +211,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     }
   };
 
-  const handleCancel = () => {
-    setPreviewItems(null);
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("vi-VN").format(value);
-  };
+  const formatCurrency = (value: number) => new Intl.NumberFormat("vi-VN").format(value);
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -312,55 +224,27 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
       <CollapsibleContent className="mt-3">
         <Card className="border-purple-200 bg-purple-50/50">
           <CardContent className="pt-4 space-y-3">
-            <div>
-              <Textarea
-                placeholder="Mô tả yêu cầu khách hàng... VD: Khách cần 2 bộ drap giường 1m8 cao 12cm, 3 gối ôm, 1 bộ rèm cửa phòng khách"
-                value={request}
-                onChange={(e) => setRequest(e.target.value)}
-                className="bg-white min-h-[80px]"
-                disabled={isLoading}
-              />
-            </div>
+            <Textarea
+              placeholder="Mô tả yêu cầu khách hàng... VD: Khách cần 2 bộ drap giường 1m8 cao 12cm, 3 gối ôm, 1 bộ rèm cửa phòng khách"
+              value={request}
+              onChange={(e) => setRequest(e.target.value)}
+              className="bg-white min-h-[80px]"
+              disabled={isLoading}
+            />
             <div className="flex items-center gap-4 flex-wrap">
               <Button type="button" onClick={handleAIFill} disabled={isLoading || !request.trim()} className="bg-purple-600 hover:bg-purple-700 gap-2">
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {isLoading ? "Đang phân tích..." : "AI tự chọn sản phẩm"}
+                {isLoading ? "Đang phân tích..." : "AI phân tích"}
               </Button>
               <div className="flex items-center gap-2">
-                <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isLoading}>
-                  <SelectTrigger className="w-[200px] h-9 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AI_MODELS.map(m => (
-                      <SelectItem key={m.value} value={m.value}>
-                        <div className="flex items-center gap-2">
-                          <span>{m.label}</span>
-                          {m.value === suggestedModel && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">Gợi ý</Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="include-images"
-                  checked={includeImages}
-                  onCheckedChange={setIncludeImages}
-                  disabled={isLoading}
-                />
+                <Switch id="include-images" checked={includeImages} onCheckedChange={setIncludeImages} disabled={isLoading} />
                 <Label htmlFor="include-images" className="text-sm text-muted-foreground flex items-center gap-1 cursor-pointer">
                   {includeImages ? <ImageIcon className="h-3.5 w-3.5" /> : <ImageOff className="h-3.5 w-3.5" />}
                   {includeImages ? "Có hình ảnh" : "Không hình ảnh"}
                 </Label>
               </div>
               <Button
-                type="button"
-                variant="ghost"
-                size="sm"
+                type="button" variant="ghost" size="sm"
                 disabled={isLoading || isBuildingCatalog}
                 onClick={async () => {
                   setIsBuildingCatalog(true);
@@ -372,7 +256,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                       setCatalogCache(null);
                     }
                     toast({ title: "Đã cập nhật danh mục sản phẩm" });
-                  } catch (e) {
+                  } catch {
                     toast({ title: "Lỗi cập nhật", variant: "destructive" });
                   } finally {
                     setIsBuildingCatalog(false);
@@ -389,7 +273,6 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
               <div className="space-y-3">
                 <p className="text-sm font-medium text-purple-800">
                   Kết quả AI ({previewItems.length} sản phẩm)
-                  {lastUsedModel && <span className="text-xs font-normal text-muted-foreground ml-2">— {lastUsedModel}</span>}
                 </p>
                 <div className="rounded-md border border-purple-200 bg-white overflow-auto">
                   <Table>
@@ -408,42 +291,42 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                     <TableBody>
                       {previewItems.map((item, idx) => (
                         <TableRow key={idx}>
-                          <TableCell>{idx + 1}</TableCell>
+                          <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                           {includeImages && (
                             <TableCell>
                               {item.previewImageUrl ? (
                                 <img src={item.previewImageUrl} alt="" className="w-10 h-10 object-cover rounded border" />
                               ) : (
                                 <div className="w-10 h-10 bg-muted rounded border flex items-center justify-center">
-                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                  <ImageOff className="h-4 w-4 text-muted-foreground" />
                                 </div>
                               )}
                             </TableCell>
                           )}
-                          <TableCell className="font-medium">{item.customName}</TableCell>
-                          <TableCell>{item.specifications}</TableCell>
+                          <TableCell className="font-medium text-sm">{item.customName}</TableCell>
+                          <TableCell className="text-sm">{item.specifications}</TableCell>
                           <TableCell className="text-right">{item.quantity}</TableCell>
                           <TableCell className="text-right">{formatCurrency(item.price)}</TableCell>
                           <TableCell className="text-right">{formatCurrency(item.price * item.quantity)}</TableCell>
-                          <TableCell>
-                            {item.note && (
-                              <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 bg-amber-50 whitespace-normal">
-                                <AlertTriangle className="h-3 w-3 mr-1 inline" />
-                                {item.note}
-                              </Badge>
-                            )}
-                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{item.note}</TableCell>
                         </TableRow>
                       ))}
+                      <TableRow className="bg-purple-50">
+                        <TableCell colSpan={includeImages ? 6 : 5} className="text-right font-semibold">Tổng cộng:</TableCell>
+                        <TableCell className="text-right font-bold text-purple-700">
+                          {formatCurrency(previewItems.reduce((sum, item) => sum + item.price * item.quantity, 0))}
+                        </TableCell>
+                        <TableCell />
+                      </TableRow>
                     </TableBody>
                   </Table>
                 </div>
-                <div className="flex gap-2">
-                  <Button type="button" onClick={handleApply} className="bg-green-600 hover:bg-green-700 gap-2">
-                    <Check className="h-4 w-4" /> Áp dụng
-                  </Button>
-                  <Button type="button" variant="outline" onClick={handleCancel} className="gap-2">
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="outline" onClick={() => setPreviewItems(null)} className="gap-1">
                     <X className="h-4 w-4" /> Hủy
+                  </Button>
+                  <Button type="button" onClick={handleApply} className="bg-green-600 hover:bg-green-700 gap-1">
+                    <Check className="h-4 w-4" /> Áp dụng {previewItems.length} sản phẩm
                   </Button>
                 </div>
               </div>
