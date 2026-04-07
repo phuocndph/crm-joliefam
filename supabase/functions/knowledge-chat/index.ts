@@ -117,7 +117,7 @@ T350 : 100%Cotton sọc — cao cấp
 T400 : 100%Cotton trơn — cao cấp nhất
 Ánh xạ: "cotton 100%"→T350/T400 | "có lụa"→LTH | "loại thường"→T200
 
-## BƯỚC 5 — BẢNG GIÁ (SKU|Tên|Chất liệu|Giá)
+## BƯỚC 5 — BẢNG GIÁ (SKU|Tên|Quy cách|Mô tả|Giá)
 ${catalog}
 
 ## BƯỚC 6 — QUY TẮC CHỌN SẢN PHẨM
@@ -209,13 +209,12 @@ serve(async (req) => {
       console.log("Quotation request detected, fetching product catalog...");
       const { data: allProducts } = await supabase
         .from("products")
-        .select("sku, name, description, price, category, in_stock")
+        .select("sku, name, description, specifications, price, category, in_stock")
         .eq("in_stock", true)
         .order("category");
 
       const catalogLines = (allProducts || []).map(p => {
-        const mat = extractMaterial(p.description || "");
-        return `${p.sku || ""}|${p.name}|${mat}|${Math.round(Number(p.price || 0))}`;
+        return `${p.sku || ""}|${p.name}|${p.specifications || ""}|${p.description || ""}|${Math.round(Number(p.price || 0))}`;
       }).join("\n");
 
       console.log(`Quotation catalog: ${(allProducts || []).length} products`);
