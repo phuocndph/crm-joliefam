@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,6 +40,9 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   const [isLoading, setIsLoading] = useState(false);
   const [previewItems, setPreviewItems] = useState<AIMatchedItem[] | null>(null);
   const [includeImages, setIncludeImages] = useState(true);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const normalize = (text: string) => text.toLowerCase()
@@ -50,6 +53,59 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   const extractKeywords = (text: string) => {
     const norm = normalize(text);
     return norm.match(/[a-z0-9]{3,}/g) || [];
+  };
+
+  const handleImageSelect = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast({ title: "Chỉ hỗ trợ file hình ảnh", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "Ảnh quá lớn (tối đa 10MB)", variant: "destructive" });
+      return;
+    }
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setImagePreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageSelect(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleImageSelect(file);
+        return;
+      }
+    }
+  };
+
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data:image/...;base64, prefix
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   };
 
   const findPreviewImage = async (items: AIMatchedItem[]) => {
@@ -118,8 +174,8 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   };
 
   const handleAIFill = async () => {
-    if (!request.trim()) {
-      toast({ title: "Vui lòng nhập yêu cầu khách hàng", variant: "destructive" });
+    if (!request.trim() && !imageFile) {
+      toast({ title: "Vui lòng nhập yêu cầu hoặc gửi hình ảnh", variant: "destructive" });
       return;
     }
     if (products.length === 0) {
@@ -136,11 +192,19 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         name: p.name,
         price: p.price || 0,
         specifications: p.specifications || "",
-        description: p.description || "",
+        ...(includeImages ? { description: p.description || "" } : {}),
       }));
 
+      const bodyData: any = { products: productList, request: request.trim() };
+
+      // Convert image to base64 if present
+      if (imageFile) {
+        bodyData.imageBase64 = await fileToBase64(imageFile);
+        bodyData.imageMimeType = imageFile.type;
+      }
+
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
-        body: { type: "ai_quote_fill", data: { products: productList, request: request.trim() } },
+        body: { type: "ai_quote_fill", data: bodyData },
       });
 
       if (error) throw error;
@@ -150,7 +214,6 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         return;
       }
 
-      // Handle clarification request from AI
       if (data?.clarification) {
         toast({ 
           title: "⚠️ Cần bổ sung thông tin", 
@@ -166,7 +229,6 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         return;
       }
 
-      // Find preview images for display (only if enabled)
       if (includeImages) {
         items = await findPreviewImage(items);
       }
@@ -184,6 +246,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
       onProductsSelected(previewItems);
       setPreviewItems(null);
       setRequest("");
+      removeImage();
       setIsOpen(false);
       toast({ title: "Đã áp dụng", description: `${previewItems.length} sản phẩm đã được thêm vào báo giá` });
     }
@@ -208,20 +271,63 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
       <CollapsibleContent className="mt-3">
         <Card className="border-purple-200 bg-purple-50/50">
           <CardContent className="pt-4 space-y-3">
-            <div>
+            <div className="relative">
               <Textarea
-                placeholder="Mô tả yêu cầu khách hàng... VD: Khách cần 2 bộ drap giường 1m8 cao 12cm, 3 gối ôm, 1 bộ rèm cửa phòng khách"
+                placeholder="Mô tả yêu cầu khách hàng hoặc dán ảnh (Ctrl+V)... VD: Khách cần 2 bộ drap giường 1m8 cao 12cm, 3 gối ôm"
                 value={request}
                 onChange={(e) => setRequest(e.target.value)}
+                onPaste={handlePaste}
                 className="bg-white min-h-[80px]"
                 disabled={isLoading}
               />
             </div>
-            <div className="flex items-center gap-4">
-              <Button type="button" onClick={handleAIFill} disabled={isLoading || !request.trim()} className="bg-purple-600 hover:bg-purple-700 gap-2">
+
+            {/* Image preview */}
+            {imagePreview && (
+              <div className="flex items-start gap-2">
+                <div className="relative group">
+                  <img src={imagePreview} alt="Preview" className="w-24 h-24 object-cover rounded-lg border-2 border-purple-300" />
+                  <button
+                    type="button"
+                    onClick={removeImage}
+                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-80 hover:opacity-100 transition-opacity"
+                    disabled={isLoading}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <span className="text-xs text-muted-foreground mt-1">
+                  {imageFile?.name}
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button type="button" onClick={handleAIFill} disabled={isLoading || (!request.trim() && !imageFile)} className="bg-purple-600 hover:bg-purple-700 gap-2">
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 {isLoading ? "Đang phân tích..." : "AI tự chọn sản phẩm"}
               </Button>
+
+              {/* Upload image button */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+                className="gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50"
+              >
+                <Camera className="h-4 w-4" />
+                Gửi ảnh
+              </Button>
+
               <div className="flex items-center gap-2">
                 <Switch
                   id="include-images"
