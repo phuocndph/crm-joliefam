@@ -244,7 +244,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[40px]">#</TableHead>
-                        <TableHead className="w-[60px]">Ảnh</TableHead>
+                        {includeImages && <TableHead className="w-[60px]">Ảnh</TableHead>}
                         <TableHead>Tên sản phẩm</TableHead>
                         <TableHead>Quy cách</TableHead>
                         <TableHead className="text-right">SL</TableHead>
@@ -257,15 +257,17 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                       {previewItems.map((item, idx) => (
                         <TableRow key={idx}>
                           <TableCell>{idx + 1}</TableCell>
-                          <TableCell>
-                            {item.previewImageUrl ? (
-                              <img src={item.previewImageUrl} alt="" className="w-10 h-10 object-cover rounded border" />
-                            ) : (
-                              <div className="w-10 h-10 bg-muted rounded border flex items-center justify-center">
-                                <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                              </div>
-                            )}
-                          </TableCell>
+                          {includeImages && (
+                            <TableCell>
+                              {item.previewImageUrl ? (
+                                <img src={item.previewImageUrl} alt="" className="w-10 h-10 object-cover rounded border" />
+                              ) : (
+                                <div className="w-10 h-10 bg-muted rounded border flex items-center justify-center">
+                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                </div>
+                              )}
+                            </TableCell>
+                          )}
                           <TableCell className="font-medium">{item.customName}</TableCell>
                           <TableCell>{item.specifications}</TableCell>
                           <TableCell className="text-right">{item.quantity}</TableCell>
