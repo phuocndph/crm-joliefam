@@ -1,50 +1,83 @@
 
 
-## Các lỗi và vấn đề cần tối ưu
+## Phân tích nguyên nhân chậm & kế hoạch tối ưu
 
-### 1. `build-product-catalog`: Auth logic sai (BUG NGHIÊM TRỌNG)
+### Nguyên nhân gốc (từ logs thực tế)
 
-**Vấn đề**: Dòng 82-91 kiểm tra auth với `if (authHeader)` — nếu KHÔNG có auth header thì function vẫn chạy bình thường (bypass auth). Nhưng config.toml đã set `verify_jwt = true` nên Supabase gateway chặn trước → lỗi 401 khi test. Khi gọi từ client có token, nếu token hết hạn hoặc sai thì function vẫn skip auth check và chạy tiếp vì chỉ check `if (authHeader)`.
+Tổng thời gian hiện tại: **~96 giây** rồi **thất bại hoàn toàn**. Chuỗi sự kiện:
 
-**Fix**: Luôn yêu cầu auth header, throw 401 nếu thiếu.
+```text
+t=0s    Catalog download → FAIL (sai đường dẫn file)
+t=1s    Build catalog → OK (31 SP, 2371 chars)
+t=2s    Re-download catalog → FAIL (vẫn sai đường dẫn)
+t=3s    Fallback: gửi 917 SP thô cho AI
+t=4s    Lovable AI → 402 (hết credits)
+t=5s    Beeknoee gemini-2.5-flash → timeout 25s
+t=30s   Beeknoee glm-4.7-flash → timeout
+t=50s   Beeknoee glm-4.5-flash → 429 (concurrent limit 1/1)
+t=55s   Beeknoee gpt-oss-120b → 429
+t=60s   Retry tất cả lần 2 → 429 hết
+t=96s   "All AI providers failed"
+```
 
-### 2. `build-product-catalog`: Không query theo manager_id (BUG LOGIC)
+### 3 lỗi chính gây chậm
 
-**Vấn đề**: Dùng service role key query tất cả products, không lọc theo manager_id/RLS. Nếu có nhiều manager, catalog sẽ trộn sản phẩm của tất cả manager.
+| # | Lỗi | Tác động |
+|---|------|----------|
+| **1** | **Sai đường dẫn Storage** — Backend lưu `catalog/product-catalog-{managerId}.json` nhưng Frontend tải `catalog/product-catalog.json` | Catalog KHÔNG BAO GIỜ được tải → luôn gửi 917 SP thô thay vì 31 SP đã phân loại |
+| **2** | **Lovable AI hết credits (402)** — Không thông báo rõ cho user | User không biết cần nạp credits |
+| **3** | **Beeknoee concurrent limit 1/1** — 917 SP = payload quá lớn, timeout + rate limit | 4 model × 2 lần thử = 8 requests, mỗi cái chờ 15-25s |
 
-**Fix**: Trích xuất user từ token → xác định manager_id → query products với filter manager_id (hoặc dùng user client thay vì service role).
+### Kế hoạch sửa (mục tiêu: 5-10 giây)
 
-### 3. `AIQuoteFill.tsx`: Frontend gửi data lồng 2 lớp
+#### 1. Fix đường dẫn Storage (quan trọng nhất)
+**File**: `src/components/AIQuoteFill.tsx`
 
-**Vấn đề** (dòng 253-255): Gửi `{ type: "ai_quote_fill", data: requestBody }` nhưng backend (dòng 504) destructure `data` là `{ products, request, ... }`. Cấu trúc đúng nhưng có rủi ro: `requestBody` chứa key `request` trùng tên với biến state `request`. Nếu `request` bị trim sai hoặc rỗng ở edge case, backend sẽ trả 400.
+Frontend cần tải catalog theo đường dẫn đúng với manager_id của user. Khi `build-product-catalog` trả về `catalogPath`, lưu lại và dùng path đó để download. Ngoài ra, response từ `build-product-catalog` đã chứa catalog data → dùng trực tiếp thay vì download lại.
 
-**Không cần fix** — hoạt động đúng, chỉ note.
+**Hiệu quả**: 31 SP (2.3KB) thay vì 917 SP (~55KB) → giảm 95% token
 
-### 4. Catalog download lỗi im lặng khi Storage bucket không public cho folder `catalog/`
+#### 2. Dùng trực tiếp catalog text từ build response  
+**File**: `src/components/AIQuoteFill.tsx`
 
-**Vấn đề**: Bucket `product-images` là public, nhưng download dùng `supabase.storage.download()` từ client (dùng anon key). Nếu RLS chặn, sẽ lỗi im lặng → fallback raw products mỗi lần.
+Khi build catalog, response đã trả `catalogPath`. Thay vì download lại từ Storage (vốn đang lỗi), gọi edge function lấy text trực tiếp hoặc sửa build function trả luôn catalog text.
 
-**Fix**: Thêm error logging rõ ràng khi download catalog thất bại.
+**File**: `supabase/functions/build-product-catalog/index.ts`
 
-### 5. `lookup-tax-code`: Beeknoee fallback model luôn là `gemini-2.5-flash`
+Thêm `catalogText` vào response body để frontend không cần download riêng.
 
-**Vấn đề**: Dù user chọn "Cao cấp nhất" (gemini-2.5-pro), Beeknoee vẫn dùng `gemini-2.5-flash`. Không có thông báo cho user biết model thực tế đang dùng là gì.
+#### 3. Hiển thị lỗi 402 rõ ràng
+**File**: `src/components/AIQuoteFill.tsx`
 
-**Fix nhẹ**: Trả thêm `usedModel` trong response để frontend hiển thị.
+Khi nhận lỗi từ AI, kiểm tra nếu là 402/payment → hiện toast "Lovable AI hết credits, đang dùng AI dự phòng" thay vì lỗi chung chung.
 
-### 6. Catalog text quá dài có thể vượt context window
+#### 4. Giảm timeout Beeknoee
+**File**: `supabase/functions/lookup-tax-code/index.ts`
 
-**Vấn đề**: 917 sản phẩm × ~60 chars/sản phẩm = ~55K chars. Cộng với prompt ~2K chars → có thể gây chậm hoặc bị cắt với model nhẹ.
+Với 31 SP (sau khi fix catalog), payload nhẹ hơn nhiều → giảm timeout:
+- gemini-2.5-flash: 25s → 15s  
+- glm-4.7-flash: 20s → 12s
+- glm-4.5-flash: 15s → 10s
+- gpt-oss-120b: 15s → 10s
+- Bỏ retry lần 2 (chỉ thử 1 vòng)
+- Giảm delay 429 từ 3s → 1s
 
-**Không cần fix ngay** — theo dõi khi sản phẩm tăng.
+**Hiệu quả**: Worst case giảm từ 96s → ~25s; best case (model đầu thành công): 5-10s
 
----
+### Tổng kết hiệu quả dự kiến
 
-### Plan sửa lỗi
+| Metric | Hiện tại | Sau fix |
+|--------|----------|---------|
+| Payload gửi AI | 917 SP (55KB) | 31 SP (2.3KB) |
+| Thời gian thành công | Không bao giờ thành công | 5-10s |
+| Thời gian worst case | 96s rồi fail | ~25s |
+| Token AI | ~20K | ~1K |
 
-| File | Thay đổi |
+### Thay đổi cụ thể
+
+| File | Nội dung |
 |------|----------|
-| `supabase/functions/build-product-catalog/index.ts` | (1) Fix auth: yêu cầu bắt buộc Authorization header, trả 401 nếu thiếu. (2) Xác định manager_id từ user → query products theo manager_id. (3) Xử lý case user là admin → query tất cả. |
-| `src/components/AIQuoteFill.tsx` | (1) Thêm log rõ ràng khi download catalog thất bại (error message cụ thể). (2) Hiển thị model thực tế đang dùng nếu backend trả `usedModel`. |
-| `supabase/functions/lookup-tax-code/index.ts` | Trả thêm `usedModel` và `usedProvider` trong response cho `ai_quote_fill` type. |
+| `supabase/functions/build-product-catalog/index.ts` | Trả thêm `catalogText` trong response body |
+| `src/components/AIQuoteFill.tsx` | (1) Fix download path dùng manager-specific path. (2) Dùng trực tiếp catalogText từ build response. (3) Hiển thị lỗi 402 rõ ràng |
+| `supabase/functions/lookup-tax-code/index.ts` | Giảm timeout Beeknoee, bỏ retry lần 2, giảm delay 429 |
 
