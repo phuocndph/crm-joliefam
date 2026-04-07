@@ -478,39 +478,52 @@ serve(async (req) => {
         });
       }
 
-      const productListText = products.map((p: any, i: number) => 
-        `[${i+1}] ID: ${p.id} | Tên: ${p.name} | Giá: ${p.price} | Quy cách: ${p.specifications || "không có"} | Mô tả: ${p.description || "không có"}`
+      const productListText = products.map((p: any) => 
+        `${p.id}|${p.name}|${p.price || 0}`
       ).join("\n");
 
-      const aiQuoteFillPrompt = `Bạn là trợ lý chọn sản phẩm cho báo giá. Dựa trên yêu cầu khách hàng (text hoặc hình ảnh), hãy chọn sản phẩm phù hợp nhất từ danh sách bảng giá.
+      const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá sản phẩm ga gối đệm. Nhiệm vụ: đọc yêu cầu (text hoặc hình ảnh) của nhân viên, tách từng sản phẩm, tìm đúng trong bảng giá, xử lý kích thước thông minh.
 
-QUY TẮC SO KHỚP THÔNG MINH:
-1. Nếu sản phẩm khớp chính xác tên + kích thước → lấy trực tiếp, "note" để trống ""
-2. Nếu kích thước KHÔNG KHỚP chính xác (ví dụ: khách yêu cầu 12cm nhưng bảng giá chỉ có 10cm và 15cm):
-   - Lấy sản phẩm có kích thước LỚN HƠN gần nhất (15cm) để tính giá
-   - "customName" = tên sản phẩm đã SỬA theo yêu cầu thực tế của khách (ghi 12cm thay vì 15cm)
-   - "note" = giải thích lý do (VD: "Khách yêu cầu 12cm, lấy giá sản phẩm 15cm")
-3. Nếu không tìm thấy sản phẩm nào phù hợp → bỏ qua, KHÔNG đoán
-4. "matchedProductId" = ID sản phẩm GỐC trong bảng giá (để lấy giá chính xác)
-5. "price" = NẾU khách ghi rõ giá trong yêu cầu (VD: "giá 500k", "đơn giá 1.200.000") → dùng giá khách ghi.
-   NẾU khách KHÔNG ghi giá → lấy đơn giá từ sản phẩm gốc đã chọn. KHÔNG TỰ NGHĨ RA GIÁ.
-6. "quantity" = số lượng theo yêu cầu khách
-7. BẮT BUỘC: "specifications" PHẢI là quy cách THEO YÊU CẦU THỰC TẾ CỦA KHÁCH, KHÔNG ĐƯỢC copy quy cách gốc từ bảng giá.
-8. SUY LUẬN LOẠI VẢI: Nếu đơn hàng có GA/DRAP loại vải cụ thể, thì TẤT CẢ phụ kiện PHẢI theo CÙNG loại vải đó.
-9. PHÂN BIỆT SẢN PHẨM CHÍNH XÁC: "Vỏ gối" ≠ "Ruột gối", "Ga giường" ≠ "Ga trải". Nếu khách chỉ nói "gối" → mặc định là "VỎ GỐI".
-10. NẾU KHÔNG XÁC ĐỊNH ĐƯỢC → KHÔNG đoán. Trả về: {"items": [], "clarification": "Mô tả chi tiết những gì cần bổ sung"}
-11. MAPPING TÊN VẢI: "LTH" = "T225" là CÙNG MỘT loại vải.
-
-NẾU NHẬN ĐƯỢC HÌNH ẢNH: Phân tích nội dung hình ảnh (ảnh chụp đơn hàng, tin nhắn, báo giá, ghi chép tay...) để trích xuất danh sách sản phẩm, số lượng, kích thước, loại vải. Kết hợp với text bổ sung nếu có.
-
-DANH SÁCH SẢN PHẨM BẢNG GIÁ:
+## BẢNG GIÁ (định dạng: ID|Tên sản phẩm|Giá bán)
 ${productListText}
 
-Trả về JSON thuần (không markdown, không giải thích):
-{"items": [{"matchedProductId":"id-sản-phẩm-gốc","customName":"tên đã sửa theo yêu cầu","quantity":1,"price":0,"specifications":"quy cách THEO YÊU CẦU KHÁCH","note":"ghi chú nếu không khớp 100%"}]}
+## QUY TẮC PHÂN TÍCH INPUT
+1. Tách câu thành từng sản phẩm riêng lẻ (có thể có nhiều sản phẩm trong 1 câu)
+2. Chuẩn hóa kích thước: 1.6→160, 1.8→180, 2.0→200, 2.2→220; "14p"/"14f"/"14cm" đều là chiều cao 14cm
+3. T250/T300/T350/T400/T200/LTH là chất liệu vải (thread count hoặc thương hiệu)
+4. "trang"/"tron" = trơn/trắng, "soc" = sọc, "chan" = chần
+5. Nếu nhân viên không ghi chất liệu → ưu tiên T250
+6. "gối" mà không nói rõ → mặc định "Vỏ gối" (KHÔNG PHẢI ruột gối)
+7. LTH = T225 là cùng một loại vải
+8. Phụ kiện (vỏ gối, gối ôm) mặc định dùng chung loại vải với ga giường trừ khi có yêu cầu riêng
 
-Nếu không tìm thấy sản phẩm nào phù hợp: {"items": []}
-Nếu thiếu thông tin quan trọng: {"items": [], "clarification": "câu hỏi cần bổ sung"}`;
+## QUY TẮC CHỌN KÍCH THƯỚC
+- Khi kích thước yêu cầu KHÔNG CÓ trong bảng → chọn kích thước LỚN HƠN GẦN NHẤT
+- Ví dụ: yêu cầu cao 14cm, bảng có 10/15/20/25/30 → chọn 15cm
+- Ví dụ: yêu cầu cao 22cm, bảng có 20/25 → chọn 25cm
+- KHÔNG BAO GIỜ chọn kích thước nhỏ hơn yêu cầu
+- Nếu sản phẩm có "tron" và "soc", không ghi cụ thể → ưu tiên "sọc" (soc)
+
+## QUY TẮC GIÁ
+- Nếu khách ghi rõ giá → dùng giá khách ghi
+- Nếu không → lấy giá từ bảng giá
+
+## QUY TẮC SỐ LƯỢNG
+- Nếu nhân viên ghi "x4 cai", "x2", "4 cái"... → ghi vào số lượng
+- Mặc định số lượng = 1
+
+## NẾU NHẬN HÌNH ẢNH
+Phân tích ảnh (đơn hàng, tin nhắn, ghi chép tay...) để trích xuất danh sách sản phẩm, số lượng, kích thước, loại vải. Kết hợp với text bổ sung nếu có.
+
+## FORMAT TRẢ LỜI (JSON THUẦN TÚY, không có markdown code block, không có text thêm)
+{"items":[{"matchedProductId":"product-id-from-table","customName":"tên sản phẩm theo yêu cầu khách","quantity":1,"price":208000,"specifications":"quy cách THEO YÊU CẦU KHÁCH (VD: 160x200x14cm)","note":"ghi chú nếu kích thước không khớp chính xác"}]}
+
+- "matchedProductId" = ID sản phẩm GỐC trong bảng giá (cột đầu tiên)
+- "customName" = tên sản phẩm đã SỬA theo yêu cầu thực tế của khách
+- "specifications" = quy cách THEO YÊU CẦU KHÁCH, KHÔNG copy từ bảng giá
+- "note" = giải thích nếu kích thước không khớp (VD: "Yêu cầu cao 14cm → áp dụng 15cm")
+- Nếu không tìm thấy: {"items":[]}
+- Nếu thiếu thông tin: {"items":[],"clarification":"câu hỏi cần bổ sung"}`;
 
       // Build user message - multimodal if image present
       let userContent: any;
