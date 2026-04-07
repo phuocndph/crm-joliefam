@@ -229,24 +229,12 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
       toast({ title: "Vui lòng nhập yêu cầu hoặc gửi hình ảnh", variant: "destructive" });
       return;
     }
-    if (products.length === 0) {
-      toast({ title: "Bảng giá chưa có sản phẩm", variant: "destructive" });
-      return;
-    }
 
     setIsLoading(true);
     setPreviewItems(null);
 
     try {
-      const productList = products.map(p => ({
-        id: p.id,
-        name: p.name,
-        price: p.price || 0,
-        specifications: p.specifications || "",
-        description: p.description || "",
-      }));
-
-      const bodyData: any = { products: productList, request: request.trim() };
+      const bodyData: any = { request: request.trim() };
 
       // Compress and convert image to base64 if present
       if (imageFile) {

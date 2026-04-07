@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.52.0";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
 const corsHeaders = {
@@ -471,16 +472,39 @@ serve(async (req) => {
 
     // ==================== AI QUOTE FILL ====================
     } else if (type === "ai_quote_fill") {
-      const { products, request, imageBase64, imageMimeType } = data;
-      if (!products || (!request && !imageBase64)) {
-        return new Response(JSON.stringify({ error: "Missing products or request/image" }), {
+      const { request, imageBase64, imageMimeType } = data;
+      if (!request && !imageBase64) {
+        return new Response(JSON.stringify({ error: "Missing request or image" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const productListText = products.map((p: any) => 
+      // Query products from DB (server-side) instead of receiving from frontend
+      const authHeader = req.headers.get("Authorization");
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: { Authorization: authHeader || "" } },
+      });
+
+      const { data: products, error: dbError } = await supabase
+        .from("products")
+        .select("id, name, specifications, description, price")
+        .eq("in_stock", true)
+        .order("category");
+
+      if (dbError) {
+        console.error("Failed to fetch products:", dbError);
+        return new Response(JSON.stringify({ error: "Không thể tải bảng giá" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const productListText = (products || []).map((p: any) => 
         `${p.id}|${p.name}|${p.specifications || ''}|${p.description || ''}|${p.price || 0}`
       ).join("\n");
+
+      console.log(`AI Quote Fill: ${(products || []).length} products from DB`);
 
       const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá ga gối đệm Việt Nam. Nhân viên gõ nhanh, không dấu, viết tắt — bạn phải hiểu đúng ý.
 
