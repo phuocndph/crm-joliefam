@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon } from "lucide-react";
+import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,6 +39,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   const [request, setRequest] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [previewItems, setPreviewItems] = useState<AIMatchedItem[] | null>(null);
+  const [includeImages, setIncludeImages] = useState(true);
   const { toast } = useToast();
 
   const normalize = (text: string) => text.toLowerCase()
@@ -163,8 +166,10 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         return;
       }
 
-      // Find preview images for display
-      items = await findPreviewImage(items);
+      // Find preview images for display (only if enabled)
+      if (includeImages) {
+        items = await findPreviewImage(items);
+      }
       setPreviewItems(items);
     } catch (err) {
       console.error("AI quote fill error:", err);
@@ -212,11 +217,23 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                 disabled={isLoading}
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-4">
               <Button type="button" onClick={handleAIFill} disabled={isLoading || !request.trim()} className="bg-purple-600 hover:bg-purple-700 gap-2">
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 {isLoading ? "Đang phân tích..." : "AI tự chọn sản phẩm"}
               </Button>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="include-images"
+                  checked={includeImages}
+                  onCheckedChange={setIncludeImages}
+                  disabled={isLoading}
+                />
+                <Label htmlFor="include-images" className="text-sm text-muted-foreground flex items-center gap-1 cursor-pointer">
+                  {includeImages ? <ImageIcon className="h-3.5 w-3.5" /> : <ImageOff className="h-3.5 w-3.5" />}
+                  {includeImages ? "Có hình ảnh" : "Không hình ảnh"}
+                </Label>
+              </div>
             </div>
 
             {previewItems && previewItems.length > 0 && (
@@ -227,7 +244,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[40px]">#</TableHead>
-                        <TableHead className="w-[60px]">Ảnh</TableHead>
+                        {includeImages && <TableHead className="w-[60px]">Ảnh</TableHead>}
                         <TableHead>Tên sản phẩm</TableHead>
                         <TableHead>Quy cách</TableHead>
                         <TableHead className="text-right">SL</TableHead>
@@ -240,15 +257,17 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                       {previewItems.map((item, idx) => (
                         <TableRow key={idx}>
                           <TableCell>{idx + 1}</TableCell>
-                          <TableCell>
-                            {item.previewImageUrl ? (
-                              <img src={item.previewImageUrl} alt="" className="w-10 h-10 object-cover rounded border" />
-                            ) : (
-                              <div className="w-10 h-10 bg-muted rounded border flex items-center justify-center">
-                                <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                              </div>
-                            )}
-                          </TableCell>
+                          {includeImages && (
+                            <TableCell>
+                              {item.previewImageUrl ? (
+                                <img src={item.previewImageUrl} alt="" className="w-10 h-10 object-cover rounded border" />
+                              ) : (
+                                <div className="w-10 h-10 bg-muted rounded border flex items-center justify-center">
+                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                </div>
+                              )}
+                            </TableCell>
+                          )}
                           <TableCell className="font-medium">{item.customName}</TableCell>
                           <TableCell>{item.specifications}</TableCell>
                           <TableCell className="text-right">{item.quantity}</TableCell>
