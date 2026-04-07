@@ -501,19 +501,25 @@ serve(async (req) => {
 
     // ==================== AI QUOTE FILL ====================
     } else if (type === "ai_quote_fill") {
-      const { products, request, includeImages, model: requestedModel } = data;
-      if (!products || !request) {
-        return new Response(JSON.stringify({ error: "Missing products or request" }), {
+      const { products, request, includeImages, model: requestedModel, catalogText: providedCatalog } = data;
+      if ((!products && !providedCatalog) || !request) {
+        return new Response(JSON.stringify({ error: "Missing products/catalog or request" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      console.log(`AI Quote Fill: ${products.length} products, includeImages=${includeImages}`);
-
-      const productListText = products.map((p: any, i: number) => {
-        const base = `[${i+1}] ID:${p.id} | ${p.name} | ${p.price}đ | ${p.specifications || "-"}`;
-        return includeImages ? `${base} | ${p.description || "-"}` : base;
-      }).join("\n");
+      // Use pre-built catalog if available, otherwise fall back to raw products
+      let productListText: string;
+      if (providedCatalog) {
+        console.log(`AI Quote Fill: using cached catalog (${providedCatalog.length} chars)`);
+        productListText = providedCatalog;
+      } else {
+        console.log(`AI Quote Fill: fallback to raw ${products.length} products`);
+        productListText = products.map((p: any, i: number) => {
+          const base = `[${i+1}] ID:${p.id} | ${p.name} | ${p.price}đ | ${p.specifications || "-"}`;
+          return includeImages ? `${base} | ${p.description || "-"}` : base;
+        }).join("\n");
+      }
 
       const aiQuoteFillPrompt = `Trợ lý chọn sản phẩm báo giá. Chọn sản phẩm phù hợp từ bảng giá theo yêu cầu khách.
 
