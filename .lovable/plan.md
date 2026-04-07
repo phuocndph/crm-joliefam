@@ -1,38 +1,39 @@
 
 
-## Kết nối tất cả model miễn phí Beeknoee với fallback chain
+## Thêm tính năng gửi hình ảnh để phân tích trong AI Quote Fill
 
-### Vấn đề
-Hiện tại chỉ dùng 1 model `glm-4.7-flash`. Khi model này timeout (524) hoặc bị concurrent limit (429), request thất bại hoàn toàn.
+### Mục tiêu
+Cho phép người dùng upload 1 hình ảnh (ảnh chụp báo giá, đơn hàng, tin nhắn khách) để AI phân tích và so khớp sản phẩm từ bảng giá — thay vì chỉ nhập text.
 
-### Giải pháp
-Tạo **fallback chain** thử lần lượt nhiều model miễn phí trên Beeknoee. Nếu model đầu lỗi → tự động thử model tiếp theo.
+### Thay đổi
 
-Thứ tự ưu tiên (dựa trên hiệu năng):
-1. `glm-4.7-flash` — mạnh nhất, 26 tok/s
-2. `glm-4.5-flash` — backup, tốc độ tương đương
-3. `gpt-oss-120b` — model lớn nhất, chậm hơn nhưng vẫn miễn phí
+**1. Frontend — `src/components/AIQuoteFill.tsx`**
+- Thêm state `imageFile` và `imagePreview` để lưu ảnh đã chọn
+- Thêm nút upload ảnh (icon Camera/Upload) bên cạnh textarea
+- Hỗ trợ dán ảnh trực tiếp (Ctrl+V) vào textarea
+- Hiển thị preview ảnh nhỏ khi đã chọn, có nút X để xóa
+- Sửa validation: cho phép gửi khi có text HOẶC có ảnh (không bắt buộc cả hai)
+- Khi gửi có ảnh: convert sang base64, gửi kèm `imageBase64` và `imageMimeType` trong body request
+- Khi gửi chỉ text: giữ nguyên logic cũ
 
-### Thay đổi cụ thể
+**2. Backend — `supabase/functions/lookup-tax-code/index.ts`**
+- Trong handler `ai_quote_fill`: kiểm tra thêm `data.imageBase64`
+- Nếu có ảnh: gửi message dạng multimodal (image_url + text) kèm danh sách sản phẩm bảng giá
+- Nếu chỉ text: giữ nguyên logic hiện tại
+- Nếu có cả ảnh + text: gộp cả hai vào prompt
 
-Tạo hàm helper `callBeeknoee(apiKey, payload)` chung cho cả 3 file, thử lần lượt từng model với timeout 25s mỗi model:
+### Flow hoạt động
 
 ```text
-callBeeknoee(apiKey, payload):
-  models = ["glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"]
-  for each model:
-    try fetch with AbortController timeout 25s
-    if 429 (concurrent): wait 2s, try next model
-    if 524 (timeout): try next model  
-    if ok: return response
-  throw "All Beeknoee models failed"
+User chọn ảnh (hoặc dán Ctrl+V) → preview hiển thị
+User nhấn "AI tự chọn sản phẩm"
+→ Convert ảnh → base64
+→ Gửi { type: "ai_quote_fill", data: { products, request, imageBase64, imageMimeType } }
+→ Edge Function tạo message multimodal [image + text + product list]
+→ AI phân tích → trả về items
+→ Hiển thị preview table như cũ
 ```
 
-| File | Thay đổi |
-|------|----------|
-| `supabase/functions/lookup-tax-code/index.ts` | Thay fetch Beeknoee đơn lẻ → gọi `callBeeknoee` với fallback chain |
-| `supabase/functions/knowledge-chat/index.ts` | Tương tự |
-| `supabase/functions/extract-document/index.ts` | Tương tự cho cả `extractPDFWithAI` và `cleanWithAI` |
-
-Sau đó redeploy cả 3 Edge Functions.
+### Redeploy
+- Edge Function `lookup-tax-code`
 
