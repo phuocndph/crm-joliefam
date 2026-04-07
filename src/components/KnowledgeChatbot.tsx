@@ -284,6 +284,27 @@ export function KnowledgeChatbot() {
       if (!assistantText) {
         updateAssistant("Xin lỗi, không nhận được phản hồi. Vui lòng thử lại.");
       } else {
+        // Try to parse as quotation JSON
+        let quotation: QuotationResult | undefined;
+        try {
+          const clean = assistantText.replace(/```json|```/g, "").trim();
+          const parsed = JSON.parse(clean);
+          if (parsed.items && Array.isArray(parsed.items)) {
+            quotation = parsed as QuotationResult;
+          }
+        } catch (_) { /* not JSON, normal message */ }
+
+        if (quotation) {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+              return prev.map((m, i) =>
+                i === prev.length - 1 ? { ...m, content: assistantText, quotation, sources: streamSources.length ? streamSources : m.sources } : m
+              );
+            }
+            return [...prev, { role: "assistant", content: assistantText, quotation, sources: streamSources.length ? streamSources : undefined, timestamp: new Date() }];
+          });
+        }
         saveChatHistory(text, assistantText, streamSources);
       }
     } catch (err: any) {
