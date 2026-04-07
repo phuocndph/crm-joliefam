@@ -421,6 +421,8 @@ export function KnowledgeChatbot() {
                   >
                     {isUser ? (
                       <p className="leading-relaxed">{msg.content}</p>
+                    ) : msg.quotation ? (
+                      <QuotationTable quotation={msg.quotation} />
                     ) : (
                       <div className="prose-chat text-foreground">
                         <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
