@@ -49,14 +49,18 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: 
   const payload: any = { model: selectedModel, messages };
   if (tools) { payload.tools = tools; payload.tool_choice = toolChoice || "auto"; }
 
-  // Try Lovable AI first (skip if known 402)
+  // Try Lovable AI first with 20s timeout
   if (LOVABLE_API_KEY) {
     try {
+      const lovableController = new AbortController();
+      const lovableTimeout = setTimeout(() => lovableController.abort(), 20000);
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: lovableController.signal,
       });
+      clearTimeout(lovableTimeout);
 
       if (response.ok) {
         console.log("AI response from: Lovable, model:", selectedModel);
@@ -68,7 +72,6 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: 
       const errText = await response.text();
       console.warn(`Lovable AI failed (${response.status}): ${errText.substring(0, 200)}`);
       
-      // For 402 (no credits), skip directly to Beeknoee
       if (response.status === 402) {
         console.log("Lovable AI: 402 no credits, skipping to Beeknoee immediately");
       }
@@ -77,14 +80,14 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: 
         return { error: "Rate limit exceeded", status: 429 };
       }
     } catch (e) {
-      console.warn("Lovable AI error:", e);
+      const isTimeout = e instanceof DOMException && e.name === "AbortError";
+      console.warn(`Lovable AI ${isTimeout ? "timeout (20s)" : "error"}:`, isTimeout ? "" : e);
     }
   }
 
-  // Fallback to Beeknoee with model chain
+  // Fallback to Beeknoee with optimized model chain
   if (BEEKNOEE_API_KEY) {
     console.log("Falling back to Beeknoee API...");
-    // Map Lovable model to Beeknoee fallback
     const beeknoeeModelMap: Record<string, string> = {
       "google/gemini-2.5-flash-lite": "gemini-2.5-flash",
       "google/gemini-2.5-flash": "gemini-2.5-flash",
@@ -93,29 +96,43 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: 
     };
     const primaryBeeknoee = beeknoeeModelMap[selectedModel] || "gemini-2.5-flash";
     
+    // Reduced to 3 models: primary (25s), secondary (20s), final fallback (15s with 8s delay)
     const models = [
-      { name: primaryBeeknoee, timeout: 15000 },
-      { name: "glm-4.7-flash", timeout: 12000 },
-      { name: "glm-4.5-flash", timeout: 10000 },
-      { name: "openai/gpt-oss-120b", timeout: 10000 },
+      { name: primaryBeeknoee, timeout: 25000, delayBefore: 0 },
+      { name: "glm-4.7-flash", timeout: 20000, delayBefore: 8000 },
+      { name: "openai/gpt-oss-120b", timeout: 15000, delayBefore: 8000 },
     ];
     
-    // For Beeknoee, strip tool calling - use JSON text mode with explicit instruction
+    // For Beeknoee, strip tool calling - use JSON text mode
     const beeknoeePayload = { ...payload };
     if (tools) {
       delete beeknoeePayload.tools;
       delete beeknoeePayload.tool_choice;
-      // Add JSON format instruction since tools are stripped
       beeknoeePayload.messages = [
         ...beeknoeePayload.messages,
         { role: "user", content: 'QUAN TRỌNG: Trả về CHỈ JSON hợp lệ với format: {"items": [...], "clarification": "..."}. Không giải thích, không markdown.' },
       ];
     }
     
-    for (const { name: model, timeout } of models) {
+    let consecutive429 = 0;
+    
+    for (const { name: model, timeout, delayBefore } of models) {
+      // Stop if 2 consecutive 429s - server is busy
+      if (consecutive429 >= 2) {
+        console.warn("2 consecutive 429 errors, server busy - stopping");
+        throw new Error("Server AI đang bận, vui lòng thử lại sau 30 giây");
+      }
+      
+      // Wait before trying next model (allows server to release slot)
+      if (delayBefore > 0) {
+        console.log(`Waiting ${delayBefore/1000}s before trying ${model}...`);
+        await new Promise(r => setTimeout(r, delayBefore));
+      }
+      
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
+        console.log(`Trying Beeknoee ${model} (timeout: ${timeout/1000}s)...`);
         const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
@@ -128,16 +145,27 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: 
           console.log(`AI response from: Beeknoee (${model})`);
           const parsed = parseAIResponse(await response.json(), false);
           parsed._meta = { usedProvider: "Beeknoee", usedModel: model };
+          consecutive429 = 0;
           return parsed;
         }
 
         const errText = await response.text();
         console.warn(`Beeknoee ${model} failed (${response.status}): ${errText.substring(0, 150)}`);
         if (response.status === 429) {
-          await new Promise(r => setTimeout(r, 1000));
+          consecutive429++;
+          // Wait 5s for server to release the slot
+          console.log(`429 rate limit, waiting 5s (consecutive: ${consecutive429})...`);
+          await new Promise(r => setTimeout(r, 5000));
+        } else {
+          consecutive429 = 0;
         }
       } catch (e) {
-        console.warn(`Beeknoee ${model} error:`, e instanceof Error ? e.message : e);
+        const isTimeout = e instanceof DOMException && e.name === "AbortError";
+        console.warn(`Beeknoee ${model} ${isTimeout ? `timeout (${timeout/1000}s)` : "error"}:`, isTimeout ? "" : (e instanceof Error ? e.message : e));
+        // After timeout, server slot is still occupied - need longer delay
+        if (isTimeout) {
+          consecutive429 = 0; // reset 429 counter, but still delay
+        }
       }
     }
   }
