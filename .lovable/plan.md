@@ -1,38 +1,29 @@
 
 
-## Kết nối tất cả model miễn phí Beeknoee với fallback chain
+## Sửa lỗi: Toggle hình ảnh không thực sự tiết kiệm token AI
 
 ### Vấn đề
-Hiện tại chỉ dùng 1 model `glm-4.7-flash`. Khi model này timeout (524) hoặc bị concurrent limit (429), request thất bại hoàn toàn.
+Toggle "Có hình ảnh" hiện chỉ tắt phần quét ảnh trong Storage (client-side) — **không liên quan đến token AI**. Dữ liệu gửi lên AI vẫn giữ nguyên 917 sản phẩm với đầy đủ `description` dù bật hay tắt, nên **chi phí token không giảm**.
+
+Hàm `findPreviewImage` chỉ quét file trong Supabase Storage, không gọi AI — nên toggle hiện tại không tiết kiệm token.
 
 ### Giải pháp
-Tạo **fallback chain** thử lần lượt nhiều model miễn phí trên Beeknoee. Nếu model đầu lỗi → tự động thử model tiếp theo.
+Khi toggle hình ảnh **TẮT**:
+1. **Bỏ trường `description`** khỏi dữ liệu gửi lên AI → giảm đáng kể token (917 sản phẩm × mỗi description)
+2. **Bỏ `findPreviewImage`** hoàn toàn (đã có, giữ nguyên)
+3. **Ẩn cột Ảnh** trong bảng kết quả (đã có, giữ nguyên)
 
-Thứ tự ưu tiên (dựa trên hiệu năng):
-1. `glm-4.7-flash` — mạnh nhất, 26 tok/s
-2. `glm-4.5-flash` — backup, tốc độ tương đương
-3. `gpt-oss-120b` — model lớn nhất, chậm hơn nhưng vẫn miễn phí
+Khi toggle hình ảnh **BẬT**:
+1. Gửi đầy đủ `description` để AI match chính xác hơn
+2. Chạy `findPreviewImage` quét Storage tìm ảnh
+3. Hiện cột Ảnh
 
-### Thay đổi cụ thể
+### Thay đổi
 
-Tạo hàm helper `callBeeknoee(apiKey, payload)` chung cho cả 3 file, thử lần lượt từng model với timeout 25s mỗi model:
-
-```text
-callBeeknoee(apiKey, payload):
-  models = ["glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"]
-  for each model:
-    try fetch with AbortController timeout 25s
-    if 429 (concurrent): wait 2s, try next model
-    if 524 (timeout): try next model  
-    if ok: return response
-  throw "All Beeknoee models failed"
-```
-
-| File | Thay đổi |
+| File | Nội dung |
 |------|----------|
-| `supabase/functions/lookup-tax-code/index.ts` | Thay fetch Beeknoee đơn lẻ → gọi `callBeeknoee` với fallback chain |
-| `supabase/functions/knowledge-chat/index.ts` | Tương tự |
-| `supabase/functions/extract-document/index.ts` | Tương tự cho cả `extractPDFWithAI` và `cleanWithAI` |
+| `src/components/AIQuoteFill.tsx` | Truyền `includeImages` vào body request, chỉ gửi `description` khi bật ảnh |
+| `supabase/functions/lookup-tax-code/index.ts` | Nhận param `includeImages`, bỏ `description` khỏi productListText khi tắt ảnh → giảm token |
 
-Sau đó redeploy cả 3 Edge Functions.
+Ước tính tiết kiệm: ~30-50% token khi tắt ảnh (bỏ description 917 sản phẩm).
 
