@@ -222,33 +222,39 @@ async function extractPDFWithAI(data: Uint8Array): Promise<string> {
 
     // Fallback to Beeknoee with model chain
     if (BEEKNOEE_API_KEY) {
-      const models = ["gemini-2.5-flash", "glm-4.7-flash", "glm-4.5-flash", "openai/gpt-oss-120b"];
-      for (const model of models) {
-        try {
-          console.log(`Trying Beeknoee ${model} for PDF extraction...`);
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 25000);
-          const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model, messages: pdfMessages }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
-
-          if (response.ok) {
-            const result = await response.json();
-            const content = result.choices?.[0]?.message?.content || "";
-            console.log(`Beeknoee ${model} PDF extraction got ${content.length} chars`);
-            return content;
+      const models = [
+        { name: "gemini-2.5-flash", timeout: 55000 },
+        { name: "glm-4.7-flash", timeout: 30000 },
+        { name: "glm-4.5-flash", timeout: 30000 },
+        { name: "openai/gpt-oss-120b", timeout: 30000 },
+      ];
+      for (let attempt = 0; attempt < 2; attempt++) {
+        for (const { name: model, timeout } of models) {
+          try {
+            console.log(`Trying Beeknoee ${model} for PDF extraction...`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ model, messages: pdfMessages }),
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            if (response.ok) {
+              const result = await response.json();
+              const content = result.choices?.[0]?.message?.content || "";
+              console.log(`Beeknoee ${model} PDF extraction got ${content.length} chars`);
+              return content;
+            }
+            const errText = await response.text();
+            console.warn(`Beeknoee ${model} PDF failed (${response.status}): ${errText.substring(0, 150)}`);
+            if (response.status === 429) await new Promise(r => setTimeout(r, 3000));
+          } catch (e) {
+            console.warn(`Beeknoee ${model} PDF error:`, e instanceof Error ? e.message : e);
           }
-
-          const errText = await response.text();
-          console.warn(`Beeknoee ${model} PDF failed (${response.status}): ${errText.substring(0, 150)}`);
-          if (response.status === 429) await new Promise(r => setTimeout(r, 2000));
-        } catch (e) {
-          console.warn(`Beeknoee ${model} PDF error:`, e instanceof Error ? e.message : e);
         }
+        if (attempt === 0) await new Promise(r => setTimeout(r, 5000));
       }
     }
 
@@ -315,28 +321,36 @@ async function cleanWithAI(rawText: string, fileName: string): Promise<string> {
 
     // Fallback to Beeknoee with model chain
     if (BEEKNOEE_API_KEY) {
-      const models = ["gemini-2.5-flash", "glm-4.7-flash", "glm-4.5-flash", "openai/gpt-oss-120b"];
-      for (const model of models) {
-        try {
-          console.log(`Trying Beeknoee ${model} for text cleaning...`);
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 25000);
-          const aiResponse = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model, messages: cleanMessages }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
-          if (aiResponse.ok) {
-            const aiData = await aiResponse.json();
-            return aiData.choices?.[0]?.message?.content || rawText;
+      const models = [
+        { name: "gemini-2.5-flash", timeout: 55000 },
+        { name: "glm-4.7-flash", timeout: 30000 },
+        { name: "glm-4.5-flash", timeout: 30000 },
+        { name: "openai/gpt-oss-120b", timeout: 30000 },
+      ];
+      for (let attempt = 0; attempt < 2; attempt++) {
+        for (const { name: model, timeout } of models) {
+          try {
+            console.log(`Trying Beeknoee ${model} for text cleaning...`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            const aiResponse = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ model, messages: cleanMessages }),
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            if (aiResponse.ok) {
+              const aiData = await aiResponse.json();
+              return aiData.choices?.[0]?.message?.content || rawText;
+            }
+            console.warn(`Beeknoee ${model} clean failed (${aiResponse.status})`);
+            if (aiResponse.status === 429) await new Promise(r => setTimeout(r, 3000));
+          } catch (e) {
+            console.warn(`Beeknoee ${model} clean error:`, e instanceof Error ? e.message : e);
           }
-          console.warn(`Beeknoee ${model} clean failed (${aiResponse.status})`);
-          if (aiResponse.status === 429) await new Promise(r => setTimeout(r, 2000));
-        } catch (e) {
-          console.warn(`Beeknoee ${model} clean error:`, e instanceof Error ? e.message : e);
         }
+        if (attempt === 0) await new Promise(r => setTimeout(r, 5000));
       }
     }
 
