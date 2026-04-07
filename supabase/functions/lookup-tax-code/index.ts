@@ -7,6 +7,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Module-level catalog cache — persists across warm invocations
+const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+let catalogCache: { text: string; count: number; timestamp: number } | null = null;
+
 const ORDER_ITEMS_SYSTEM_PROMPT = `Bạn là trợ lý chuyên trích xuất danh sách sản phẩm/dịch vụ từ đơn hàng, báo giá, hóa đơn Việt Nam.
 
 QUY TẮC QUAN TRỌNG:
