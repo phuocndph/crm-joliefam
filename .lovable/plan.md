@@ -1,71 +1,50 @@
 
 
-## Tối ưu AI báo giá: Cache danh sách sản phẩm dạng có cấu trúc
+## Các lỗi và vấn đề cần tối ưu
 
-### Phân tích ý tưởng
+### 1. `build-product-catalog`: Auth logic sai (BUG NGHIÊM TRỌNG)
 
-Ý tưởng của bạn rất hay: thay vì mỗi lần gửi toàn bộ 917 sản phẩm dạng text thô cho AI (tốn ~15-20K tokens), ta **xây sẵn một "catalog" có cấu trúc, phân loại** và lưu cache trên Supabase Storage. Khi AI cần tìm, chỉ cần đọc file đã tối ưu sẵn.
+**Vấn đề**: Dòng 82-91 kiểm tra auth với `if (authHeader)` — nếu KHÔNG có auth header thì function vẫn chạy bình thường (bypass auth). Nhưng config.toml đã set `verify_jwt = true` nên Supabase gateway chặn trước → lỗi 401 khi test. Khi gọi từ client có token, nếu token hết hạn hoặc sai thì function vẫn skip auth check và chạy tiếp vì chỉ check `if (authHeader)`.
 
-### Hiệu quả thực tế
+**Fix**: Luôn yêu cầu auth header, throw 401 nếu thiếu.
 
-| Yếu tố | Hiện tại | Sau tối ưu |
-|---------|----------|------------|
-| Token gửi AI | ~15-20K (917 SP raw) | ~8-10K (catalog phân loại, nén gọn) |
-| Tốc độ AI xử lý | Chậm (prompt dài, AI phải tự phân loại) | Nhanh hơn ~40% (dữ liệu đã cấu trúc sẵn) |
-| Độ chính xác | AI phải tự hiểu cấu trúc SP | Cao hơn nhờ phân nhóm rõ ràng |
-| Chi phí/request | ~$0.01-0.02 | ~$0.005-0.01 |
+### 2. `build-product-catalog`: Không query theo manager_id (BUG LOGIC)
 
-### Giải pháp: Product Catalog Cache
+**Vấn đề**: Dùng service role key query tất cả products, không lọc theo manager_id/RLS. Nếu có nhiều manager, catalog sẽ trộn sản phẩm của tất cả manager.
 
-#### 1. Tạo Edge Function `build-product-catalog`
-- Đọc toàn bộ sản phẩm từ DB
-- Phân loại tự động theo danh mục (Ga/Drap, Gối, Rèm, Phụ kiện...)
-- Nhóm theo loại vải (T225/LTH, T250, KS, Cotton...)
-- Tạo format nén: bỏ trường thừa, chỉ giữ id, tên ngắn, giá, quy cách
-- Lưu file JSON lên Supabase Storage (bucket `product-images` hoặc tạo bucket mới)
+**Fix**: Trích xuất user từ token → xác định manager_id → query products với filter manager_id (hoặc dùng user client thay vì service role).
 
-#### 2. Cập nhật `AIQuoteFill.tsx`
-- Khi mở AI Quote Fill, kiểm tra cache có tồn tại và còn mới không (so sánh timestamp)
-- Nếu cache cũ hoặc chưa có → gọi `build-product-catalog` để rebuild
-- Gửi catalog đã phân loại cho AI thay vì raw product list
+### 3. `AIQuoteFill.tsx`: Frontend gửi data lồng 2 lớp
 
-#### 3. Format catalog tối ưu cho AI
+**Vấn đề** (dòng 253-255): Gửi `{ type: "ai_quote_fill", data: requestBody }` nhưng backend (dòng 504) destructure `data` là `{ products, request, ... }`. Cấu trúc đúng nhưng có rủi ro: `requestBody` chứa key `request` trùng tên với biến state `request`. Nếu `request` bị trim sai hoặc rỗng ở edge case, backend sẽ trả 400.
 
-```text
-=== GA/DRAP ===
-[T225/LTH]
-id1 | Ga T225 1m | 120000đ | 100x200cm
-id2 | Ga T225 1m2 | 140000đ | 120x200cm
-...
-[T250]
-id10 | Ga T250 1m | 150000đ | 100x200cm
-...
+**Không cần fix** — hoạt động đúng, chỉ note.
 
-=== GỐI ===
-[Vỏ gối - T225]
-id50 | Vỏ gối T225 | 35000đ | 35x50cm
-[Ruột gối]
-id60 | Ruột gối bông | 25000đ | 35x50cm
+### 4. Catalog download lỗi im lặng khi Storage bucket không public cho folder `catalog/`
 
-=== RÈM ===
-...
-```
+**Vấn đề**: Bucket `product-images` là public, nhưng download dùng `supabase.storage.download()` từ client (dùng anon key). Nếu RLS chặn, sẽ lỗi im lặng → fallback raw products mỗi lần.
 
-AI đọc dạng này sẽ:
-- Biết ngay cấu trúc danh mục → tìm nhanh hơn
-- Tự hiểu "vải LTH = T225" nhờ nhóm sẵn
-- Không cần scan 917 dòng, chỉ đọc nhóm liên quan
+**Fix**: Thêm error logging rõ ràng khi download catalog thất bại.
 
-### Thay đổi
+### 5. `lookup-tax-code`: Beeknoee fallback model luôn là `gemini-2.5-flash`
 
-| File | Nội dung |
+**Vấn đề**: Dù user chọn "Cao cấp nhất" (gemini-2.5-pro), Beeknoee vẫn dùng `gemini-2.5-flash`. Không có thông báo cho user biết model thực tế đang dùng là gì.
+
+**Fix nhẹ**: Trả thêm `usedModel` trong response để frontend hiển thị.
+
+### 6. Catalog text quá dài có thể vượt context window
+
+**Vấn đề**: 917 sản phẩm × ~60 chars/sản phẩm = ~55K chars. Cộng với prompt ~2K chars → có thể gây chậm hoặc bị cắt với model nhẹ.
+
+**Không cần fix ngay** — theo dõi khi sản phẩm tăng.
+
+---
+
+### Plan sửa lỗi
+
+| File | Thay đổi |
 |------|----------|
-| `supabase/functions/build-product-catalog/index.ts` | **Mới.** Đọc products từ DB, phân loại theo danh mục + loại vải, tạo catalog text tối ưu, lưu vào Storage |
-| `src/components/AIQuoteFill.tsx` | Thay vì gửi raw `products`, tải catalog từ Storage (có cache client-side). Nếu chưa có catalog → gọi build trước |
-| `supabase/functions/lookup-tax-code/index.ts` | Nhận `catalogText` thay vì `products` array, prompt ngắn gọn hơn |
-
-### Lưu ý
-- Catalog tự rebuild khi có sản phẩm mới (kiểm tra timestamp)
-- Giữ fallback: nếu catalog lỗi → vẫn gửi raw products như hiện tại
-- Có thể thêm nút "Cập nhật catalog" trong UI cho admin
+| `supabase/functions/build-product-catalog/index.ts` | (1) Fix auth: yêu cầu bắt buộc Authorization header, trả 401 nếu thiếu. (2) Xác định manager_id từ user → query products theo manager_id. (3) Xử lý case user là admin → query tất cả. |
+| `src/components/AIQuoteFill.tsx` | (1) Thêm log rõ ràng khi download catalog thất bại (error message cụ thể). (2) Hiển thị model thực tế đang dùng nếu backend trả `usedModel`. |
+| `supabase/functions/lookup-tax-code/index.ts` | Trả thêm `usedModel` và `usedProvider` trong response cho `ai_quote_fill` type. |
 
