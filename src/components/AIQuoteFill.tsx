@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff } from "lucide-react";
+import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
@@ -88,15 +88,17 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   const [previewItems, setPreviewItems] = useState<AIMatchedItem[] | null>(null);
   const [includeImages, setIncludeImages] = useState(true);
   const [selectedModel, setSelectedModel] = useState<string>("balanced");
+  const [catalogCache, setCatalogCache] = useState<{ text: string; builtAt: string } | null>(null);
+  const [isBuildingCatalog, setIsBuildingCatalog] = useState(false);
   const { toast } = useToast();
 
-  // Auto-suggest model based on filtered product count and request length
+  // Auto-suggest model based on request complexity
   const suggestedModel = useMemo(() => {
-    if (!request.trim() || products.length === 0) return "balanced";
-    if (products.length < 30 && request.length < 100) return "fast";
-    if (products.length > 100 || request.length > 200) return "accurate";
+    if (!request.trim()) return "balanced";
+    if (request.length < 80) return "fast";
+    if (request.length > 200) return "accurate";
     return "balanced";
-  }, [request, products]);
+  }, [request]);
 
   const findPreviewImage = async (items: AIMatchedItem[]) => {
     try {
@@ -177,24 +179,79 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setPreviewItems(null);
 
     try {
-      console.log(`AI Quote: sending all ${products.length} products`);
+      // Try to load/build catalog
+      let catalogText: string | null = null;
+      
+      if (catalogCache) {
+        catalogText = catalogCache.text;
+        console.log(`AI Quote: using cached catalog (${catalogText.length} chars)`);
+      } else {
+        // Try to load from storage
+        try {
+          const { data: fileData } = await supabase.storage
+            .from("product-images")
+            .download("catalog/product-catalog.json");
+          if (fileData) {
+            const catalogData = JSON.parse(await fileData.text());
+            catalogText = catalogData.text;
+            setCatalogCache({ text: catalogData.text, builtAt: catalogData.builtAt });
+            console.log(`AI Quote: loaded catalog from storage (${catalogText!.length} chars, built ${catalogData.builtAt})`);
+          }
+        } catch (e) {
+          console.log("No cached catalog found, will build one");
+        }
 
-      const productList = products.map(p => {
-        const item: any = {
+        // If no catalog, build it
+        if (!catalogText) {
+          setIsBuildingCatalog(true);
+          toast({ title: "Đang xây dựng danh mục sản phẩm...", description: "Lần đầu sẽ mất vài giây" });
+          try {
+            const { data: buildResult, error: buildError } = await supabase.functions.invoke("build-product-catalog");
+            if (buildError) throw buildError;
+            console.log("Catalog built:", buildResult);
+            
+            // Re-download the catalog
+            const { data: fileData } = await supabase.storage
+              .from("product-images")
+              .download("catalog/product-catalog.json");
+            if (fileData) {
+              const catalogData = JSON.parse(await fileData.text());
+              catalogText = catalogData.text;
+              setCatalogCache({ text: catalogData.text, builtAt: catalogData.builtAt });
+            }
+          } catch (e) {
+            console.warn("Failed to build catalog, falling back to raw products:", e);
+          } finally {
+            setIsBuildingCatalog(false);
+          }
+        }
+      }
+
+      const modelConfig = AI_MODELS.find(m => m.value === selectedModel);
+      
+      // Build request body - use catalog if available, otherwise fallback to raw products
+      const requestBody: any = {
+        request: request.trim(),
+        includeImages,
+        model: modelConfig?.model,
+      };
+      
+      if (catalogText) {
+        requestBody.catalogText = catalogText;
+      } else {
+        // Fallback: send raw products
+        console.log(`AI Quote: fallback - sending all ${products.length} products`);
+        requestBody.products = products.map(p => ({
           id: p.id,
           name: p.name,
           price: p.price || 0,
           specifications: p.specifications || "",
-        };
-        if (includeImages) {
-          item.description = p.description || "";
-        }
-        return item;
-      });
+          ...(includeImages ? { description: p.description || "" } : {}),
+        }));
+      }
 
-      const modelConfig = AI_MODELS.find(m => m.value === selectedModel);
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
-        body: { type: "ai_quote_fill", data: { products: productList, request: request.trim(), includeImages, model: modelConfig?.model } },
+        body: { type: "ai_quote_fill", data: requestBody },
       });
 
       if (error) throw error;
@@ -307,6 +364,28 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                   {includeImages ? "Có hình ảnh" : "Không hình ảnh"}
                 </Label>
               </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={isLoading || isBuildingCatalog}
+                onClick={async () => {
+                  setIsBuildingCatalog(true);
+                  try {
+                    await supabase.functions.invoke("build-product-catalog");
+                    setCatalogCache(null); // Force re-download next time
+                    toast({ title: "Đã cập nhật danh mục sản phẩm" });
+                  } catch (e) {
+                    toast({ title: "Lỗi cập nhật", variant: "destructive" });
+                  } finally {
+                    setIsBuildingCatalog(false);
+                  }
+                }}
+                className="text-xs text-muted-foreground gap-1"
+              >
+                <RefreshCw className={`h-3 w-3 ${isBuildingCatalog ? "animate-spin" : ""}`} />
+                {catalogCache ? "Cập nhật danh mục" : "Tạo danh mục"}
+              </Button>
             </div>
 
             {previewItems && previewItems.length > 0 && (

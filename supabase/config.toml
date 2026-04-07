@@ -20,3 +20,6 @@ verify_jwt = true
 
 [functions.lookup-tax-code]
 verify_jwt = true
+
+[functions.build-product-catalog]
+verify_jwt = true
