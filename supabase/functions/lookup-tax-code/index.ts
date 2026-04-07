@@ -491,18 +491,30 @@ ${productListText}
 1. Tách câu thành từng sản phẩm riêng lẻ (có thể có nhiều sản phẩm trong 1 câu)
 2. Chuẩn hóa kích thước: 1.6→160, 1.8→180, 2.0→200, 2.2→220; "14p"/"14f"/"14cm" đều là chiều cao 14cm
 3. T250/T300/T350/T400/T200/LTH là chất liệu vải (thread count hoặc thương hiệu)
-4. "trang"/"tron" = trơn/trắng, "soc" = sọc, "chan" = chần
+4. Nhận diện mẫu: "trang"/"tron"/"trắng" = trơn, "soc"/"sọc" = sọc, "chan"/"chần" = chần
 5. Nếu nhân viên không ghi chất liệu → ưu tiên T250
 6. "gối" mà không nói rõ → mặc định "Vỏ gối" (KHÔNG PHẢI ruột gối)
 7. LTH = T225 là cùng một loại vải
 8. Phụ kiện (vỏ gối, gối ôm) mặc định dùng chung loại vải với ga giường trừ khi có yêu cầu riêng
 
+## THỨ TỰ ƯU TIÊN KHI SO KHỚP SẢN PHẨM
+1. Loại sản phẩm (ga chun, ga phủ, vỏ chăn, vỏ gối...) — BẮT BUỘC đúng
+2. Chất liệu vải (T250, T300, LTH/T225...) — BẮT BUỘC đúng
+3. Mẫu (trơn/sọc/chần) — BẮT BUỘC đúng nếu khách ghi rõ, KHÔNG BAO GIỜ tự đổi trơn↔sọc
+4. Kích thước — chọn lớn hơn gần nhất nếu không khớp chính xác
+
 ## QUY TẮC CHỌN KÍCH THƯỚC
 - Khi kích thước yêu cầu KHÔNG CÓ trong bảng → chọn kích thước LỚN HƠN GẦN NHẤT
 - Ví dụ: yêu cầu cao 14cm, bảng có 10/15/20/25/30 → chọn 15cm
-- Ví dụ: yêu cầu cao 22cm, bảng có 20/25 → chọn 25cm
 - KHÔNG BAO GIỜ chọn kích thước nhỏ hơn yêu cầu
-- Nếu sản phẩm có "tron" và "soc", không ghi cụ thể → ưu tiên "sọc" (soc)
+
+## QUY TẮC MẪU TRƠN/SỌC (QUAN TRỌNG!)
+- Khi khách ghi rõ "trơn"/"trắng"/"tron"/"trang" → BẮT BUỘC chọn sản phẩm có mẫu TRƠN trong bảng giá
+- Khi khách ghi rõ "sọc"/"soc" → BẮT BUỘC chọn sản phẩm có mẫu SỌC trong bảng giá
+- TUYỆT ĐỐI KHÔNG tự ý đổi trơn thành sọc hoặc sọc thành trơn
+- Nếu khách yêu cầu mẫu trơn nhưng bảng giá KHÔNG CÓ biến thể trơn → trả clarification hỏi lại
+- Nếu khách yêu cầu mẫu sọc nhưng bảng giá KHÔNG CÓ biến thể sọc → trả clarification hỏi lại
+- Nếu khách KHÔNG ghi rõ trơn hay sọc → trả clarification hỏi: "Vui lòng cho biết [tên sản phẩm] cần loại trơn hay sọc?"
 
 ## QUY TẮC GIÁ
 - Nếu khách ghi rõ giá → dùng giá khách ghi
@@ -513,7 +525,7 @@ ${productListText}
 - Mặc định số lượng = 1
 
 ## NẾU NHẬN HÌNH ẢNH
-Phân tích ảnh (đơn hàng, tin nhắn, ghi chép tay...) để trích xuất danh sách sản phẩm, số lượng, kích thước, loại vải. Kết hợp với text bổ sung nếu có.
+Phân tích ảnh (đơn hàng, tin nhắn, ghi chép tay...) để trích xuất danh sách sản phẩm, số lượng, kích thước, loại vải, mẫu (trơn/sọc). Kết hợp với text bổ sung nếu có.
 
 ## FORMAT TRẢ LỜI (JSON THUẦN TÚY, không có markdown code block, không có text thêm)
 {"items":[{"matchedProductId":"product-id-from-table","customName":"tên sản phẩm theo yêu cầu khách","quantity":1,"price":208000,"specifications":"quy cách THEO YÊU CẦU KHÁCH (VD: 160x200x14cm)","note":"ghi chú nếu kích thước không khớp chính xác"}]}
@@ -523,7 +535,7 @@ Phân tích ảnh (đơn hàng, tin nhắn, ghi chép tay...) để trích xuấ
 - "specifications" = quy cách THEO YÊU CẦU KHÁCH, KHÔNG copy từ bảng giá
 - "note" = giải thích nếu kích thước không khớp (VD: "Yêu cầu cao 14cm → áp dụng 15cm")
 - Nếu không tìm thấy: {"items":[]}
-- Nếu thiếu thông tin: {"items":[],"clarification":"câu hỏi cần bổ sung"}`;
+- Nếu thiếu thông tin (bao gồm thiếu mẫu trơn/sọc): {"items":[],"clarification":"câu hỏi cần bổ sung"}`;
 
       // Build user message - multimodal if image present
       let userContent: any;
