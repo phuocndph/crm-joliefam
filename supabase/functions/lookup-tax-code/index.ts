@@ -529,10 +529,11 @@ Nếu thiếu thông tin quan trọng: {"items": [], "clarification": "câu hỏ
         userContent = `Yêu cầu khách hàng:\n"""\n${request}\n"""`;
       }
 
+      const hasImage = !!imageBase64;
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
         { role: "user", content: userContent },
-      ]);
+      ], hasImage);
       
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
