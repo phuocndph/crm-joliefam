@@ -199,6 +199,34 @@ serve(async (req) => {
       return await callAI(LOVABLE_API_KEY, msgs, [], useStream, corsHeaders, true);
     }
 
+    // Quotation request detection
+    const isQuotationRequest =
+      /\b(ga\s*chun|ga\s*tham|vo\s*chan|vo\s*goi|chan\s*he|bao\s*ve\s*(nem|dem)|topper|khan\s*tam|dem\s*lo\s*xo|dem\s*cao\s*su|ruot\s*(chan|goi))\b/i.test(lowerQ)
+      || (/\b(\d+[\s]*[xX*][\s]*\d+)\b/.test(lowerQ) && /\b(t200|t225|t250|t300|t350|t400|lth)\b/i.test(lowerQ))
+      || /\btinh\s*bao\s*gia\b|\bbao\s*gia\s*luon\b|\bcheck\s*gia\b/i.test(lowerQ);
+
+    if (isQuotationRequest) {
+      console.log("Quotation request detected, fetching product catalog...");
+      const { data: allProducts } = await supabase
+        .from("products")
+        .select("sku, name, description, price, category, in_stock")
+        .eq("in_stock", true)
+        .order("category");
+
+      const catalogLines = (allProducts || []).map(p => {
+        const mat = extractMaterial(p.description || "");
+        return `${p.sku || ""}|${p.name}|${mat}|${Math.round(Number(p.price || 0))}`;
+      }).join("\n");
+
+      console.log(`Quotation catalog: ${(allProducts || []).length} products`);
+      const quotationSystemPrompt = buildQuotationPrompt(catalogLines);
+      const messages: any[] = [
+        { role: "system", content: quotationSystemPrompt },
+        { role: "user", content: question }
+      ];
+      return await callAI(LOVABLE_API_KEY, messages, [], useStream, corsHeaders, true);
+    }
+
     // Auth + date parsing in parallel
     const [{ data: { user }, error: authError }, dateRange] = await Promise.all([
       supabase.auth.getUser(),
