@@ -112,6 +112,77 @@ const markdownComponents = {
   td: ({ ...props }: any) => <td className="border border-border px-2 py-1" {...props} />,
 };
 
+const formatCurrency = (v: number) => new Intl.NumberFormat("vi-VN").format(v);
+
+function QuotationTable({ quotation }: { quotation: QuotationResult }) {
+  return (
+    <div className="space-y-3 text-foreground">
+      <p className="font-semibold text-sm">📋 Báo giá ({quotation.items.length} sản phẩm)</p>
+      <div className="overflow-auto rounded-lg border border-border">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50">
+              <TableHead className="w-8 text-xs">#</TableHead>
+              <TableHead className="text-xs font-mono">SKU</TableHead>
+              <TableHead className="text-xs">Sản phẩm</TableHead>
+              <TableHead className="text-xs">Chất liệu</TableHead>
+              <TableHead className="text-xs text-right">SL</TableHead>
+              <TableHead className="text-xs text-right">Đơn giá</TableHead>
+              <TableHead className="text-xs text-right">Thành tiền</TableHead>
+              <TableHead className="text-xs">Ghi chú</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {quotation.items.map((item, idx) => (
+              <TableRow key={idx}>
+                <TableCell className="text-xs">{idx + 1}</TableCell>
+                <TableCell className="text-xs font-mono text-muted-foreground">{item.sku || "—"}</TableCell>
+                <TableCell className="text-xs">
+                  <div className="font-medium">{item.ten_sp}</div>
+                  {item.phan_tich && (
+                    <div className="text-[10px] text-muted-foreground italic mt-0.5">{item.phan_tich}</div>
+                  )}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">{item.chat_lieu}</TableCell>
+                <TableCell className="text-xs text-right">{item.so_luong}</TableCell>
+                <TableCell className="text-xs text-right">{formatCurrency(item.gia_don_vi)}</TableCell>
+                <TableCell className="text-xs text-right font-medium">{formatCurrency(item.thanh_tien)}</TableCell>
+                <TableCell className="text-xs">
+                  {item.ghi_chu && (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] whitespace-normal font-normal",
+                        item.ghi_chu.includes("Không tìm") ? "border-destructive/40 text-destructive bg-destructive/5" :
+                        item.ghi_chu.includes("→") || item.ghi_chu.includes("làm tròn") ? "border-warning/40 text-warning bg-warning/5" :
+                        "border-border text-muted-foreground"
+                      )}
+                    >
+                      {(item.ghi_chu.includes("Không tìm") || item.ghi_chu.includes("→")) && (
+                        <AlertTriangle className="h-3 w-3 mr-1 inline flex-shrink-0" />
+                      )}
+                      {item.ghi_chu}
+                    </Badge>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="flex justify-between items-center bg-foreground/5 rounded-lg px-4 py-2.5 border border-border">
+        <span className="text-sm font-semibold">Tổng cộng</span>
+        <span className="text-base font-bold text-primary">{formatCurrency(quotation.tong_cong)}đ</span>
+      </div>
+      {quotation.luu_y && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-xs text-primary">
+          💡 {quotation.luu_y}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function KnowledgeChatbot() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
