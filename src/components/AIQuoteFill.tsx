@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,6 +34,44 @@ interface AIQuoteFillProps {
   onProductsSelected: (items: AIMatchedItem[]) => void;
 }
 
+// Module-level image cache — persists across re-renders and re-mounts
+let cachedImageFiles: { name: string; folder: string }[] | null = null;
+let imageCachePromise: Promise<{ name: string; folder: string }[]> | null = null;
+
+async function loadImageFiles(): Promise<{ name: string; folder: string }[]> {
+  if (cachedImageFiles) return cachedImageFiles;
+  if (imageCachePromise) return imageCachePromise;
+
+  imageCachePromise = (async () => {
+    const result: { name: string; folder: string }[] = [];
+    const { data: folders } = await supabase.storage.from('product-images').list('', { limit: 200 });
+    if (!folders) return result;
+
+    const topLevelFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
+    const directories = folders.filter(f => !f.name.includes('.'));
+    for (const file of topLevelFiles) {
+      result.push({ name: file.name, folder: '' });
+    }
+
+    // Fetch all subdirectories in parallel
+    const subResults = await Promise.all(
+      directories.map(async (dir) => {
+        const { data: files } = await supabase.storage.from('product-images').list(dir.name, { limit: 200 });
+        return (files || [])
+          .filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name))
+          .map(f => ({ name: f.name, folder: dir.name }));
+      })
+    );
+    for (const sub of subResults) result.push(...sub);
+
+    cachedImageFiles = result;
+    imageCachePromise = null;
+    return result;
+  })();
+
+  return imageCachePromise;
+}
+
 export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [request, setRequest] = useState("");
@@ -44,6 +82,13 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  // Preload image cache when component opens
+  useEffect(() => {
+    if (isOpen && includeImages) {
+      loadImageFiles();
+    }
+  }, [isOpen, includeImages]);
 
   const normalize = (text: string) => text.toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -134,25 +179,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
 
   const findPreviewImage = async (items: AIMatchedItem[]) => {
     try {
-      let allImageFiles: { name: string; folder: string }[] = [];
-      const { data: folders } = await supabase.storage.from('product-images').list('', { limit: 200 });
-      if (folders) {
-        const topLevelFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
-        const directories = folders.filter(f => !f.name.includes('.'));
-        for (const file of topLevelFiles) {
-          allImageFiles.push({ name: file.name, folder: '' });
-        }
-        for (const dir of directories) {
-          const { data: files } = await supabase.storage.from('product-images').list(dir.name, { limit: 200 });
-          if (files) {
-            for (const file of files) {
-              if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
-                allImageFiles.push({ name: file.name, folder: dir.name });
-              }
-            }
-          }
-        }
-      }
+      const allImageFiles = await loadImageFiles();
 
       return items.map(item => {
         const originalProduct = products.find(p => p.id === item.matchedProductId);
