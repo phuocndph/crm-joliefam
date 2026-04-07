@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,9 +7,17 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
+const AI_MODELS = [
+  { value: "fast", label: "⚡ Nhanh & Tiết kiệm", desc: "Báo giá đơn giản, ít SP", model: "google/gemini-2.5-flash-lite" },
+  { value: "balanced", label: "⚖️ Cân bằng", desc: "Đa số báo giá thông thường", model: "google/gemini-2.5-flash" },
+  { value: "accurate", label: "🎯 Chính xác cao", desc: "Báo giá phức tạp, nhiều SP", model: "google/gemini-3-flash-preview" },
+  { value: "premium", label: "💎 Cao cấp nhất", desc: "Phân tích sâu, yêu cầu đặc biệt", model: "google/gemini-2.5-pro" },
+] as const;
 
 interface Product {
   id: string;
@@ -40,7 +48,18 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   const [isLoading, setIsLoading] = useState(false);
   const [previewItems, setPreviewItems] = useState<AIMatchedItem[] | null>(null);
   const [includeImages, setIncludeImages] = useState(true);
+  const [selectedModel, setSelectedModel] = useState<string>("balanced");
   const { toast } = useToast();
+
+  // Auto-suggest model based on filtered product count and request length
+  const suggestedModel = useMemo(() => {
+    if (!request.trim() || products.length === 0) return "balanced";
+    const filtered = preFilterProducts(products, request.trim());
+    const filteredCount = filtered.length === products.length ? products.length : filtered.length;
+    if (filteredCount < 30 && request.length < 100) return "fast";
+    if (filteredCount > 100 || request.length > 200) return "accurate";
+    return "balanced";
+  }, [request, products]);
 
   const normalize = (text: string) => text.toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -195,8 +214,9 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         return item;
       });
 
+      const modelConfig = AI_MODELS.find(m => m.value === selectedModel);
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
-        body: { type: "ai_quote_fill", data: { products: productList, request: request.trim(), includeImages } },
+        body: { type: "ai_quote_fill", data: { products: productList, request: request.trim(), includeImages, model: modelConfig?.model } },
       });
 
       if (error) throw error;
@@ -273,11 +293,30 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                 disabled={isLoading}
               />
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <Button type="button" onClick={handleAIFill} disabled={isLoading || !request.trim()} className="bg-purple-600 hover:bg-purple-700 gap-2">
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 {isLoading ? "Đang phân tích..." : "AI tự chọn sản phẩm"}
               </Button>
+              <div className="flex items-center gap-2">
+                <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isLoading}>
+                  <SelectTrigger className="w-[200px] h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AI_MODELS.map(m => (
+                      <SelectItem key={m.value} value={m.value}>
+                        <div className="flex items-center gap-2">
+                          <span>{m.label}</span>
+                          {m.value === suggestedModel && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">Gợi ý</Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-center gap-2">
                 <Switch
                   id="include-images"
