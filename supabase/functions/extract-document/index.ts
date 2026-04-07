@@ -222,7 +222,7 @@ async function extractPDFWithAI(data: Uint8Array): Promise<string> {
 
     // Fallback to Beeknoee with model chain
     if (BEEKNOEE_API_KEY) {
-      const models = ["glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"];
+      const models = ["gemini-2.5-flash", "glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"];
       for (const model of models) {
         try {
           console.log(`Trying Beeknoee ${model} for PDF extraction...`);
@@ -315,7 +315,7 @@ async function cleanWithAI(rawText: string, fileName: string): Promise<string> {
 
     // Fallback to Beeknoee with model chain
     if (BEEKNOEE_API_KEY) {
-      const models = ["glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"];
+      const models = ["gemini-2.5-flash", "glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"];
       for (const model of models) {
         try {
           console.log(`Trying Beeknoee ${model} for text cleaning...`);
