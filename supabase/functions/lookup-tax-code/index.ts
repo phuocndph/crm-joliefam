@@ -347,7 +347,7 @@ serve(async (req) => {
             { type: "text", text: "Phân tích hình ảnh này và trích xuất tất cả thông tin doanh nghiệp/cá nhân." },
           ],
         },
-      ]);
+      ], true);
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded. Vui lòng thử lại sau." }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -385,7 +385,7 @@ serve(async (req) => {
             { type: "text", text: "Trích xuất danh sách sản phẩm/dịch vụ từ hình ảnh này (bảng báo giá, đơn hàng, hóa đơn)." },
           ],
         },
-      ]);
+      ], true);
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
