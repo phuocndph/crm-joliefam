@@ -38,7 +38,7 @@ const BUYER_INFO_SYSTEM_PROMPT = `Bạn là trợ lý phân tích thông tin doa
 }
 Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ trả JSON thuần, không bọc trong code block.`;
 
-async function callAI(messages: any[], hasImage = false) {
+async function callAI(messages: any[], hasImage = false, modelOverride?: string) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
 
@@ -46,7 +46,8 @@ async function callAI(messages: any[], hasImage = false) {
     throw new Error("No AI API key configured");
   }
 
-  const payload = { model: "google/gemini-3-flash-preview", messages };
+  const model = modelOverride || "google/gemini-3-flash-preview";
+  const payload = { model, messages };
 
   // Try Lovable AI first (supports vision)
   if (LOVABLE_API_KEY) {
@@ -479,32 +480,40 @@ serve(async (req) => {
         });
       }
 
-      // Query products from DB (server-side) instead of receiving from frontend
+      // Use module-level catalog cache (TTL 5 min) to avoid DB query every request
       const authHeader = req.headers.get("Authorization");
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-      const supabase = createClient(supabaseUrl, supabaseKey, {
-        global: { headers: { Authorization: authHeader || "" } },
-      });
-
-      const { data: products, error: dbError } = await supabase
-        .from("products")
-        .select("id, name, specifications, description, price")
-        .eq("in_stock", true)
-        .order("category");
-
-      if (dbError) {
-        console.error("Failed to fetch products:", dbError);
-        return new Response(JSON.stringify({ error: "Không thể tải bảng giá" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      let productListText: string;
+      
+      if (catalogCache && Date.now() - catalogCache.timestamp < CATALOG_CACHE_TTL) {
+        productListText = catalogCache.text;
+        console.log(`AI Quote Fill: using cached catalog (${catalogCache.count} products)`);
+      } else {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseKey, {
+          global: { headers: { Authorization: authHeader || "" } },
         });
+
+        const { data: products, error: dbError } = await supabase
+          .from("products")
+          .select("id, name, specifications, description, price")
+          .eq("in_stock", true)
+          .order("category");
+
+        if (dbError) {
+          console.error("Failed to fetch products:", dbError);
+          return new Response(JSON.stringify({ error: "Không thể tải bảng giá" }), {
+            status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        productListText = (products || []).map((p: any) => 
+          `${p.id}|${p.name}|${p.specifications || ''}|${p.description || ''}|${p.price || 0}`
+        ).join("\n");
+        
+        catalogCache = { text: productListText, count: (products || []).length, timestamp: Date.now() };
+        console.log(`AI Quote Fill: fetched ${(products || []).length} products, cached`);
       }
-
-      const productListText = (products || []).map((p: any) => 
-        `${p.id}|${p.name}|${p.specifications || ''}|${p.description || ''}|${p.price || 0}`
-      ).join("\n");
-
-      console.log(`AI Quote Fill: ${(products || []).length} products from DB`);
 
       const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá ga gối đệm Việt Nam. Nhân viên gõ nhanh, không dấu, viết tắt — bạn phải hiểu đúng ý.
 
@@ -593,10 +602,12 @@ Input: "vo goi nam 45x65 t300 soc x4"
       }
 
       const hasImage = !!imageBase64;
+      // Use faster model for text-only, vision model for images
+      const quoteModel = hasImage ? undefined : "google/gemini-2.5-flash";
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
         { role: "user", content: userContent },
-      ], hasImage);
+      ], hasImage, quoteModel);
       
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {

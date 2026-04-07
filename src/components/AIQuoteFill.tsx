@@ -243,10 +243,15 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         bodyData.imageMimeType = "image/jpeg";
       }
 
-      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
-        body: { type: "ai_quote_fill", data: bodyData },
-      });
+      // Run AI call and image preload in parallel
+      const [aiResult] = await Promise.all([
+        supabase.functions.invoke("lookup-tax-code", {
+          body: { type: "ai_quote_fill", data: bodyData },
+        }),
+        includeImages ? loadImageFiles() : Promise.resolve(null),
+      ]);
 
+      const { data, error } = aiResult;
       if (error) throw error;
 
       if (data?.error) {
