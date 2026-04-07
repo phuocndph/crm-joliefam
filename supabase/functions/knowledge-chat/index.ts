@@ -366,7 +366,7 @@ async function callAI(apiKey: string, messages: any[], sources: any[], useStream
     const errText = await response.text();
     console.warn(`Lovable AI failed (${response.status}), falling back to Beeknoee: ${errText.substring(0, 200)}`);
 
-    const models = ["gemini-2.5-flash", "glm-4.7-flash", "glm-4.5-flash", "gpt-oss-120b"];
+    const models = ["gemini-2.5-flash", "glm-4.7-flash", "glm-4.5-flash", "openai/gpt-oss-120b"];
     for (const model of models) {
       try {
         const controller = new AbortController();
