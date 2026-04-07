@@ -216,7 +216,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         name: p.name,
         price: p.price || 0,
         specifications: p.specifications || "",
-        ...(includeImages ? { description: p.description || "" } : {}),
+        description: p.description || "",
       }));
 
       const bodyData: any = { products: productList, request: request.trim() };
