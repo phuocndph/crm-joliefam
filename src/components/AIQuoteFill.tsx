@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff } from "lucide-react";
+import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
@@ -364,6 +364,28 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                   {includeImages ? "Có hình ảnh" : "Không hình ảnh"}
                 </Label>
               </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={isLoading || isBuildingCatalog}
+                onClick={async () => {
+                  setIsBuildingCatalog(true);
+                  try {
+                    await supabase.functions.invoke("build-product-catalog");
+                    setCatalogCache(null); // Force re-download next time
+                    toast({ title: "Đã cập nhật danh mục sản phẩm" });
+                  } catch (e) {
+                    toast({ title: "Lỗi cập nhật", variant: "destructive" });
+                  } finally {
+                    setIsBuildingCatalog(false);
+                  }
+                }}
+                className="text-xs text-muted-foreground gap-1"
+              >
+                <RefreshCw className={`h-3 w-3 ${isBuildingCatalog ? "animate-spin" : ""}`} />
+                {catalogCache ? "Cập nhật danh mục" : "Tạo danh mục"}
+              </Button>
             </div>
 
             {previewItems && previewItems.length > 0 && (
