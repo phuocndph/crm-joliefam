@@ -461,7 +461,7 @@ serve(async (req) => {
         });
       }
 
-      const parsed = await callAI(messages);
+      const parsed = await callAI(messages, isPdf);
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
