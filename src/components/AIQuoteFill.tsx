@@ -41,6 +41,45 @@ interface AIQuoteFillProps {
   products: Product[];
   onProductsSelected: (items: AIMatchedItem[]) => void;
 }
+const normalize = (text: string) => text.toLowerCase()
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd').replace(/Đ/g, 'd')
+  .replace(/[^a-z0-9]/g, '');
+
+const extractKeywords = (text: string) => {
+  const norm = normalize(text);
+  return norm.match(/[a-z0-9]{2,}/g) || [];
+};
+
+const preFilterProducts = (allProducts: Product[], userRequest: string): Product[] => {
+  const requestKeywords = extractKeywords(userRequest);
+  const sizeMap: Record<string, string[]> = {};
+  const sizePatterns = userRequest.match(/(\d+)[mM](\d*)/g) || [];
+  for (const sp of sizePatterns) {
+    const match = sp.match(/(\d+)[mM](\d*)/);
+    if (match) {
+      const meters = parseInt(match[1]);
+      const decimals = match[2] || "0";
+      const cm = meters * 100 + parseInt(decimals.padEnd(1, "0")) * 10;
+      sizeMap[sp.toLowerCase()] = [cm.toString(), `${meters}m${match[2] || ""}`];
+    }
+  }
+  const allSizeVariants = Object.values(sizeMap).flat();
+  const scored = allProducts.map(p => {
+    const pNorm = normalize(p.name);
+    let score = 0;
+    for (const kw of requestKeywords) {
+      if (pNorm.includes(kw)) score += kw.length >= 4 ? 3 : 1;
+    }
+    for (const sv of allSizeVariants) {
+      if (pNorm.includes(sv)) score += 2;
+    }
+    return { product: p, score };
+  });
+  const filtered = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score).slice(0, 150).map(s => s.product);
+  if (filtered.length < 5) return allProducts.slice(0, 200);
+  return filtered;
+};
 
 export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) {
   const [isOpen, setIsOpen] = useState(false);
