@@ -37,7 +37,7 @@ const BUYER_INFO_SYSTEM_PROMPT = `Bạn là trợ lý phân tích thông tin doa
 }
 Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ trả JSON thuần, không bọc trong code block.`;
 
-async function callAI(messages: any[]) {
+async function callAI(messages: any[], tools?: any[], toolChoice?: any) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
 
@@ -45,9 +45,10 @@ async function callAI(messages: any[]) {
     throw new Error("No AI API key configured");
   }
 
-  const payload = { model: "google/gemini-3-flash-preview", messages };
+  const payload: any = { model: "google/gemini-3-flash-preview", messages };
+  if (tools) { payload.tools = tools; payload.tool_choice = toolChoice || "auto"; }
 
-  // Try Lovable AI first
+  // Try Lovable AI first (skip if known 402)
   if (LOVABLE_API_KEY) {
     try {
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -58,11 +59,16 @@ async function callAI(messages: any[]) {
 
       if (response.ok) {
         console.log("AI response from: Lovable");
-        return parseAIResponse(await response.json());
+        return parseAIResponse(await response.json(), !!tools);
       }
 
       const errText = await response.text();
       console.warn(`Lovable AI failed (${response.status}): ${errText.substring(0, 200)}`);
+      
+      // For 402 (no credits), skip directly to Beeknoee
+      if (response.status === 402) {
+        console.log("Lovable AI: 402 no credits, skipping to Beeknoee immediately");
+      }
 
       if (response.status === 429 && !BEEKNOEE_API_KEY) {
         return { error: "Rate limit exceeded", status: 429 };
@@ -74,13 +80,22 @@ async function callAI(messages: any[]) {
 
   // Fallback to Beeknoee with model chain
   if (BEEKNOEE_API_KEY) {
-    console.log("Falling back to Beeknoee API with model chain...");
+    console.log("Falling back to Beeknoee API...");
+    // Use models that support tool calling well
     const models = [
       { name: "gemini-2.5-flash", timeout: 55000 },
       { name: "glm-4.7-flash", timeout: 30000 },
       { name: "glm-4.5-flash", timeout: 30000 },
       { name: "openai/gpt-oss-120b", timeout: 30000 },
     ];
+    
+    // For Beeknoee, strip tool calling if model doesn't support it well - use JSON mode
+    const beeknoeePayload = { ...payload };
+    if (tools) {
+      // Remove tools for Beeknoee - fallback to JSON text mode
+      delete beeknoeePayload.tools;
+      delete beeknoeePayload.tool_choice;
+    }
     
     for (let attempt = 0; attempt < 2; attempt++) {
       for (const { name: model, timeout } of models) {
@@ -90,14 +105,14 @@ async function callAI(messages: any[]) {
           const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ ...payload, model }),
+            body: JSON.stringify({ ...beeknoeePayload, model }),
             signal: controller.signal,
           });
           clearTimeout(timeoutId);
 
           if (response.ok) {
             console.log(`AI response from: Beeknoee (${model})`);
-            return parseAIResponse(await response.json());
+            return parseAIResponse(await response.json(), false); // Beeknoee always text mode
           }
 
           const errText = await response.text();
@@ -119,13 +134,26 @@ async function callAI(messages: any[]) {
   throw new Error("All AI providers failed");
 }
 
-function parseAIResponse(result: any) {
+function parseAIResponse(result: any, isToolCall: boolean) {
+  // Handle tool call response
+  if (isToolCall) {
+    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      try {
+        return JSON.parse(toolCall.function.arguments);
+      } catch {
+        console.error("Failed to parse tool call arguments:", toolCall.function.arguments);
+      }
+    }
+  }
+  
+  // Fallback: parse text content
   const content = result.choices?.[0]?.message?.content || "";
   const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
   try {
     return JSON.parse(cleaned);
   } catch {
-    console.error("Failed to parse AI response:", content);
+    console.error("Failed to parse AI response:", content.substring(0, 300));
     return { raw: content };
   }
 }
