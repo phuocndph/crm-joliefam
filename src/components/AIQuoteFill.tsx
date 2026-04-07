@@ -93,10 +93,8 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   // Auto-suggest model based on filtered product count and request length
   const suggestedModel = useMemo(() => {
     if (!request.trim() || products.length === 0) return "balanced";
-    const filtered = preFilterProducts(products, request.trim());
-    const filteredCount = filtered.length === products.length ? products.length : filtered.length;
-    if (filteredCount < 30 && request.length < 100) return "fast";
-    if (filteredCount > 100 || request.length > 200) return "accurate";
+    if (products.length < 30 && request.length < 100) return "fast";
+    if (products.length > 100 || request.length > 200) return "accurate";
     return "balanced";
   }, [request, products]);
 
@@ -179,11 +177,9 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setPreviewItems(null);
 
     try {
-      // Pre-filter products to reduce AI tokens
-      const filteredProducts = preFilterProducts(products, request.trim());
-      console.log(`AI Quote: filtered ${products.length} → ${filteredProducts.length} products`);
+      console.log(`AI Quote: sending all ${products.length} products`);
 
-      const productList = filteredProducts.map(p => {
+      const productList = products.map(p => {
         const item: any = {
           id: p.id,
           name: p.name,
