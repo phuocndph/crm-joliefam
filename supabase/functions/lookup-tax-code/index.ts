@@ -37,7 +37,7 @@ const BUYER_INFO_SYSTEM_PROMPT = `Bạn là trợ lý phân tích thông tin doa
 }
 Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ trả JSON thuần, không bọc trong code block.`;
 
-async function callAI(messages: any[]) {
+async function callAI(messages: any[], tools?: any[], toolChoice?: any) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
 
@@ -45,9 +45,10 @@ async function callAI(messages: any[]) {
     throw new Error("No AI API key configured");
   }
 
-  const payload = { model: "google/gemini-3-flash-preview", messages };
+  const payload: any = { model: "google/gemini-3-flash-preview", messages };
+  if (tools) { payload.tools = tools; payload.tool_choice = toolChoice || "auto"; }
 
-  // Try Lovable AI first
+  // Try Lovable AI first (skip if known 402)
   if (LOVABLE_API_KEY) {
     try {
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -58,11 +59,16 @@ async function callAI(messages: any[]) {
 
       if (response.ok) {
         console.log("AI response from: Lovable");
-        return parseAIResponse(await response.json());
+        return parseAIResponse(await response.json(), !!tools);
       }
 
       const errText = await response.text();
       console.warn(`Lovable AI failed (${response.status}): ${errText.substring(0, 200)}`);
+      
+      // For 402 (no credits), skip directly to Beeknoee
+      if (response.status === 402) {
+        console.log("Lovable AI: 402 no credits, skipping to Beeknoee immediately");
+      }
 
       if (response.status === 429 && !BEEKNOEE_API_KEY) {
         return { error: "Rate limit exceeded", status: 429 };
@@ -74,13 +80,22 @@ async function callAI(messages: any[]) {
 
   // Fallback to Beeknoee with model chain
   if (BEEKNOEE_API_KEY) {
-    console.log("Falling back to Beeknoee API with model chain...");
+    console.log("Falling back to Beeknoee API...");
+    // Use models that support tool calling well
     const models = [
       { name: "gemini-2.5-flash", timeout: 55000 },
       { name: "glm-4.7-flash", timeout: 30000 },
       { name: "glm-4.5-flash", timeout: 30000 },
       { name: "openai/gpt-oss-120b", timeout: 30000 },
     ];
+    
+    // For Beeknoee, strip tool calling if model doesn't support it well - use JSON mode
+    const beeknoeePayload = { ...payload };
+    if (tools) {
+      // Remove tools for Beeknoee - fallback to JSON text mode
+      delete beeknoeePayload.tools;
+      delete beeknoeePayload.tool_choice;
+    }
     
     for (let attempt = 0; attempt < 2; attempt++) {
       for (const { name: model, timeout } of models) {
@@ -90,14 +105,14 @@ async function callAI(messages: any[]) {
           const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ ...payload, model }),
+            body: JSON.stringify({ ...beeknoeePayload, model }),
             signal: controller.signal,
           });
           clearTimeout(timeoutId);
 
           if (response.ok) {
             console.log(`AI response from: Beeknoee (${model})`);
-            return parseAIResponse(await response.json());
+            return parseAIResponse(await response.json(), false); // Beeknoee always text mode
           }
 
           const errText = await response.text();
@@ -119,13 +134,26 @@ async function callAI(messages: any[]) {
   throw new Error("All AI providers failed");
 }
 
-function parseAIResponse(result: any) {
+function parseAIResponse(result: any, isToolCall: boolean) {
+  // Handle tool call response
+  if (isToolCall) {
+    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      try {
+        return JSON.parse(toolCall.function.arguments);
+      } catch {
+        console.error("Failed to parse tool call arguments:", toolCall.function.arguments);
+      }
+    }
+  }
+  
+  // Fallback: parse text content
   const content = result.choices?.[0]?.message?.content || "";
   const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
   try {
     return JSON.parse(cleaned);
   } catch {
-    console.error("Failed to parse AI response:", content);
+    console.error("Failed to parse AI response:", content.substring(0, 300));
     return { raw: content };
   }
 }
@@ -467,61 +495,69 @@ serve(async (req) => {
         });
       }
 
+      console.log(`AI Quote Fill: ${products.length} products, includeImages=${includeImages}`);
+
       const productListText = products.map((p: any, i: number) => {
-        const base = `[${i+1}] ID: ${p.id} | Tên: ${p.name} | Giá: ${p.price} | Quy cách: ${p.specifications || "không có"}`;
-        return includeImages ? `${base} | Mô tả: ${p.description || "không có"}` : base;
+        const base = `[${i+1}] ID:${p.id} | ${p.name} | ${p.price}đ | ${p.specifications || "-"}`;
+        return includeImages ? `${base} | ${p.description || "-"}` : base;
       }).join("\n");
 
-      const aiQuoteFillPrompt = `Bạn là trợ lý chọn sản phẩm cho báo giá. Dựa trên yêu cầu khách hàng, hãy chọn sản phẩm phù hợp nhất từ danh sách bảng giá.
+      const aiQuoteFillPrompt = `Trợ lý chọn sản phẩm báo giá. Chọn sản phẩm phù hợp từ bảng giá theo yêu cầu khách.
 
-QUY TẮC SO KHỚP THÔNG MINH:
-1. Nếu sản phẩm khớp chính xác tên + kích thước → lấy trực tiếp, "note" để trống ""
-2. Nếu kích thước KHÔNG KHỚP chính xác (ví dụ: khách yêu cầu 12cm nhưng bảng giá chỉ có 10cm và 15cm):
-   - Lấy sản phẩm có kích thước LỚN HƠN gần nhất (15cm) để tính giá
-   - "customName" = tên sản phẩm đã SỬA theo yêu cầu thực tế của khách (ghi 12cm thay vì 15cm)
-   - "note" = giải thích lý do (VD: "Khách yêu cầu 12cm, lấy giá sản phẩm 15cm")
-3. Nếu không tìm thấy sản phẩm nào phù hợp → bỏ qua, KHÔNG đoán
-4. "matchedProductId" = ID sản phẩm GỐC trong bảng giá (để lấy giá chính xác)
-5. "price" = NẾU khách ghi rõ giá trong yêu cầu (VD: "giá 500k", "đơn giá 1.200.000") → dùng giá khách ghi.
-   NẾU khách KHÔNG ghi giá → lấy đơn giá từ sản phẩm gốc đã chọn. KHÔNG TỰ NGHĨ RA GIÁ.
-6. "quantity" = số lượng theo yêu cầu khách
-7. BẮT BUỘC: "specifications" PHẢI là quy cách THEO YÊU CẦU THỰC TẾ CỦA KHÁCH, KHÔNG ĐƯỢC copy quy cách gốc từ bảng giá.
-   VD: Khách yêu cầu "160x200x12cm" → specifications = "160x200x12cm" (DÙ sản phẩm gốc ghi "160x200x15cm")
-   VD: Khách yêu cầu "1m8" → specifications phải ghi kích thước tương ứng "180x200x..." theo yêu cầu
+QUY TẮC:
+1. Khớp chính xác → note=""
+2. Kích thước không khớp → lấy size LỚN HƠN gần nhất tính giá, customName ghi theo yêu cầu khách, note giải thích
+3. Không tìm thấy → bỏ qua, KHÔNG đoán
+4. matchedProductId = ID sản phẩm GỐC trong bảng giá
+5. price: dùng giá khách ghi nếu có, không thì lấy giá gốc. KHÔNG TỰ NGHĨ RA GIÁ
+6. specifications = quy cách THEO YÊU CẦU KHÁCH (VD: khách nói 12cm → ghi 12cm dù gốc là 15cm)
+7. SUY LUẬN VẢI: GA/DRAP có loại vải (T225, T250, KS...) → phụ kiện cùng đơn phải cùng loại vải
+8. "LTH" = "T225" (cùng loại vải)
+9. "gối" không rõ → mặc định "vỏ gối". Chỉ chọn "ruột gối" khi khách ghi rõ
+10. Thiếu thông tin quan trọng → trả clarification, KHÔNG đoán
 
-8. SUY LUẬN LOẠI VẢI: Nếu đơn hàng có GA/DRAP loại vải cụ thể (VD: T225, T250, KS, Lụa, Tencel...),
-   thì TẤT CẢ sản phẩm phụ kiện khác (vỏ gối, gối ôm, ga trải...) trong cùng đơn PHẢI theo CÙNG loại vải đó,
-   TRỪ KHI khách ghi rõ loại vải riêng cho từng sản phẩm.
-   VD: "2 bộ ga T225 1m8, 4 vỏ gối" → vỏ gối PHẢI là vỏ gối T225 (không phải T250 hay KS).
+SẢN PHẨM:
+${productListText}`;
 
-9. PHÂN BIỆT SẢN PHẨM CHÍNH XÁC:
-   - "Vỏ gối" ≠ "Ruột gối" — vỏ gối là bao bọc bên ngoài (theo loại vải), ruột gối là phần lõi bông bên trong
-   - "Ga giường" ≠ "Ga trải" — chú ý tên chính xác trong bảng giá
-   - Nếu khách chỉ nói "gối" mà không rõ vỏ hay ruột → mặc định là "VỎ GỐI" (phổ biến hơn trong báo giá)
-   - Chỉ chọn "ruột gối" khi khách ghi RÕ RÀNG: "ruột gối", "lõi gối", "gối bông", "gối ruột"
+      // Tool calling schema for structured output
+      const quoteTools = [{
+        type: "function",
+        function: {
+          name: "generate_quote_items",
+          description: "Trả về danh sách sản phẩm đã chọn cho báo giá",
+          parameters: {
+            type: "object",
+            properties: {
+              items: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    matchedProductId: { type: "string", description: "ID sản phẩm gốc trong bảng giá" },
+                    customName: { type: "string", description: "Tên sản phẩm đã sửa theo yêu cầu khách" },
+                    quantity: { type: "number", description: "Số lượng" },
+                    price: { type: "number", description: "Đơn giá (VNĐ)" },
+                    specifications: { type: "string", description: "Quy cách theo yêu cầu khách" },
+                    note: { type: "string", description: "Ghi chú nếu không khớp 100%" },
+                  },
+                  required: ["matchedProductId", "customName", "quantity", "price", "specifications", "note"],
+                },
+              },
+              clarification: { type: "string", description: "Câu hỏi cần bổ sung nếu thiếu thông tin" },
+            },
+            required: ["items"],
+          },
+        },
+      }];
 
-10. NẾU KHÔNG XÁC ĐỊNH ĐƯỢC loại vải, loại sản phẩm cụ thể, hoặc kích thước mà không thể suy luận từ ngữ cảnh →
-    KHÔNG đoán. Trả về: {"items": [], "clarification": "Mô tả chi tiết những gì cần khách bổ sung thông tin"}
-    VD: Khách nói "2 bộ ga 1m8, 4 gối" mà không nói loại vải → clarification: "Vui lòng cho biết loại vải (T225, T250, KS, Tencel...) cho đơn hàng này"
-
-11. MAPPING TÊN VẢI TƯƠNG ĐƯƠNG:
-    - "LTH" = "T225" — đây là CÙNG MỘT loại vải, tên gọi khác nhau
-    - Khi khách nói "LTH" → tìm sản phẩm có tên chứa "T225" trong bảng giá
-    - Khi khách nói "T225" → cũng có thể match sản phẩm tên "LTH" nếu có
-    - VD: "Ga chun LTH trắng sọc 160x200x20cm" → tìm "Ga chun ks T225 trắng sọc 160x200x20cm"
-
-DANH SÁCH SẢN PHẨM BẢNG GIÁ:
-${productListText}
-
-Trả về JSON thuần (không markdown, không giải thích):
-{"items": [{"matchedProductId":"id-sản-phẩm-gốc","customName":"tên đã sửa theo yêu cầu","quantity":1,"price":0,"specifications":"quy cách THEO YÊU CẦU KHÁCH","note":"ghi chú nếu không khớp 100%"}]}
-
-Nếu không tìm thấy sản phẩm nào phù hợp: {"items": []}
-Nếu thiếu thông tin quan trọng: {"items": [], "clarification": "câu hỏi cần bổ sung"}`;
-      const parsed = await callAI([
-        { role: "system", content: aiQuoteFillPrompt },
-        { role: "user", content: `Yêu cầu khách hàng:\n"""\n${request}\n"""` },
-      ]);
+      const parsed = await callAI(
+        [
+          { role: "system", content: aiQuoteFillPrompt },
+          { role: "user", content: `Yêu cầu khách hàng:\n"""\n${request}\n"""` },
+        ],
+        quoteTools,
+        { type: "function", function: { name: "generate_quote_items" } }
+      );
       
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
