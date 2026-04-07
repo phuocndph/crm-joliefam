@@ -37,7 +37,7 @@ const BUYER_INFO_SYSTEM_PROMPT = `Bạn là trợ lý phân tích thông tin doa
 }
 Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ trả JSON thuần, không bọc trong code block.`;
 
-async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: string) {
+async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: string): Promise<any> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
 
@@ -59,8 +59,10 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: 
       });
 
       if (response.ok) {
-        console.log("AI response from: Lovable");
-        return parseAIResponse(await response.json(), !!tools);
+        console.log("AI response from: Lovable, model:", selectedModel);
+        const parsed = parseAIResponse(await response.json(), !!tools);
+        parsed._meta = { usedProvider: "Lovable", usedModel: selectedModel };
+        return parsed;
       }
 
       const errText = await response.text();
@@ -125,7 +127,9 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: 
 
           if (response.ok) {
             console.log(`AI response from: Beeknoee (${model})`);
-            return parseAIResponse(await response.json(), false); // Beeknoee always text mode
+            const parsed = parseAIResponse(await response.json(), false);
+            parsed._meta = { usedProvider: "Beeknoee", usedModel: model };
+            return parsed;
           }
 
           const errText = await response.text();
