@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { Sparkles, Loader2, Check, X, ImageIcon, ImageOff, RefreshCw } from "lucide-react";
+import { Sparkles, Loader2, Check, X, AlertTriangle, ImageIcon, ImageOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -33,41 +34,40 @@ interface AIQuoteFillProps {
   onProductsSelected: (items: AIMatchedItem[]) => void;
 }
 
-const normalize = (text: string) => text.toLowerCase()
-  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  .replace(/đ/g, 'd').replace(/Đ/g, 'd')
-  .replace(/[^a-z0-9]/g, '');
-
-const extractKeywords = (text: string) => {
-  const norm = normalize(text);
-  return norm.match(/[a-z0-9]{2,}/g) || [];
-};
-
 export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [request, setRequest] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [previewItems, setPreviewItems] = useState<AIMatchedItem[] | null>(null);
   const [includeImages, setIncludeImages] = useState(true);
-  const [catalogCache, setCatalogCache] = useState<{ text: string; builtAt: string } | null>(null);
-  const [isBuildingCatalog, setIsBuildingCatalog] = useState(false);
   const { toast } = useToast();
+
+  const normalize = (text: string) => text.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'd')
+    .replace(/[^a-z0-9]/g, '');
+
+  const extractKeywords = (text: string) => {
+    const norm = normalize(text);
+    return norm.match(/[a-z0-9]{3,}/g) || [];
+  };
 
   const findPreviewImage = async (items: AIMatchedItem[]) => {
     try {
-      const allImageFiles: { name: string; folder: string }[] = [];
+      let allImageFiles: { name: string; folder: string }[] = [];
       const { data: folders } = await supabase.storage.from('product-images').list('', { limit: 200 });
       if (folders) {
-        for (const f of folders) {
-          if (/\.(jpg|jpeg|png|gif|webp)$/i.test(f.name)) {
-            allImageFiles.push({ name: f.name, folder: '' });
-          } else if (!f.name.includes('.')) {
-            const { data: files } = await supabase.storage.from('product-images').list(f.name, { limit: 200 });
-            if (files) {
-              for (const file of files) {
-                if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
-                  allImageFiles.push({ name: file.name, folder: f.name });
-                }
+        const topLevelFiles = folders.filter(f => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
+        const directories = folders.filter(f => !f.name.includes('.'));
+        for (const file of topLevelFiles) {
+          allImageFiles.push({ name: file.name, folder: '' });
+        }
+        for (const dir of directories) {
+          const { data: files } = await supabase.storage.from('product-images').list(dir.name, { limit: 200 });
+          if (files) {
+            for (const file of files) {
+              if (/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
+                allImageFiles.push({ name: file.name, folder: dir.name });
               }
             }
           }
@@ -117,27 +117,6 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     }
   };
 
-  const buildCatalog = async (): Promise<string | null> => {
-    if (catalogCache) return catalogCache.text;
-    
-    setIsBuildingCatalog(true);
-    toast({ title: "Đang xây dựng danh mục sản phẩm...", description: "Lần đầu sẽ mất vài giây" });
-    try {
-      const { data: result, error } = await supabase.functions.invoke("build-product-catalog");
-      if (error) throw error;
-      if (result?.catalogText) {
-        setCatalogCache({ text: result.catalogText, builtAt: new Date().toISOString() });
-        return result.catalogText;
-      }
-      return null;
-    } catch (e) {
-      console.warn("Failed to build catalog:", e);
-      return null;
-    } finally {
-      setIsBuildingCatalog(false);
-    }
-  };
-
   const handleAIFill = async () => {
     if (!request.trim()) {
       toast({ title: "Vui lòng nhập yêu cầu khách hàng", variant: "destructive" });
@@ -152,50 +131,54 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setPreviewItems(null);
 
     try {
-      const catalogText = await buildCatalog();
+      const productList = products.map(p => {
+        const item: any = {
+          id: p.id,
+          name: p.name,
+          price: p.price || 0,
+          specifications: p.specifications || "",
+        };
+        if (includeImages) {
+          item.description = p.description || "";
+        }
+        return item;
+      });
 
-      const requestBody: Record<string, unknown> = { request: request.trim() };
-      if (catalogText) {
-        requestBody.catalogText = catalogText;
-      } else {
-        requestBody.products = products.map(p => ({
-          id: p.id, name: p.name, price: p.price || 0, specifications: p.specifications || "",
-        }));
-      }
+      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
+        body: { type: "ai_quote_fill", data: { products: productList, request: request.trim(), includeImages } },
+      });
 
-      const { data, error } = await supabase.functions.invoke("ai-quote-fill", { body: requestBody });
-
-      if (error) {
-        // Handle specific HTTP errors from edge function
-        const errMsg = (error as any)?.message || String(error);
-        toast({ title: "Lỗi AI", description: errMsg, variant: "destructive", duration: 8000 });
-        return;
-      }
+      if (error) throw error;
 
       if (data?.error) {
-        toast({ title: "Lỗi AI", description: data.error, variant: "destructive", duration: 8000 });
+        toast({ title: "Lỗi AI", description: data.error, variant: "destructive" });
         return;
       }
 
+      // Handle clarification request from AI
       if (data?.clarification) {
-        toast({ title: "⚠️ Cần bổ sung thông tin", description: data.clarification, duration: 10000 });
+        toast({ 
+          title: "⚠️ Cần bổ sung thông tin", 
+          description: data.clarification,
+          duration: 10000,
+        });
         return;
       }
 
       let items: AIMatchedItem[] = data?.items || [];
       if (items.length === 0) {
-        toast({ title: "Không tìm thấy sản phẩm phù hợp", description: "AI không thể so khớp yêu cầu với bảng giá" });
+        toast({ title: "Không tìm thấy sản phẩm phù hợp", description: "AI không thể so khớp yêu cầu với bảng giá hiện tại" });
         return;
       }
 
+      // Find preview images for display (only if enabled)
       if (includeImages) {
         items = await findPreviewImage(items);
       }
       setPreviewItems(items);
-      console.log(`AI Quote: ${items.length} items, model=${data?.usedModel}, provider=${data?.usedProvider}`);
     } catch (err) {
       console.error("AI quote fill error:", err);
-      toast({ title: "Lỗi", description: "Không thể xử lý yêu cầu AI. Thử lại sau.", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Không thể xử lý yêu cầu AI", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -211,7 +194,13 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     }
   };
 
-  const formatCurrency = (value: number) => new Intl.NumberFormat("vi-VN").format(value);
+  const handleCancel = () => {
+    setPreviewItems(null);
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("vi-VN").format(value);
+  };
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -224,56 +213,37 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
       <CollapsibleContent className="mt-3">
         <Card className="border-purple-200 bg-purple-50/50">
           <CardContent className="pt-4 space-y-3">
-            <Textarea
-              placeholder="Mô tả yêu cầu khách hàng... VD: Khách cần 2 bộ drap giường 1m8 cao 12cm, 3 gối ôm, 1 bộ rèm cửa phòng khách"
-              value={request}
-              onChange={(e) => setRequest(e.target.value)}
-              className="bg-white min-h-[80px]"
-              disabled={isLoading}
-            />
-            <div className="flex items-center gap-4 flex-wrap">
+            <div>
+              <Textarea
+                placeholder="Mô tả yêu cầu khách hàng... VD: Khách cần 2 bộ drap giường 1m8 cao 12cm, 3 gối ôm, 1 bộ rèm cửa phòng khách"
+                value={request}
+                onChange={(e) => setRequest(e.target.value)}
+                className="bg-white min-h-[80px]"
+                disabled={isLoading}
+              />
+            </div>
+            <div className="flex items-center gap-4">
               <Button type="button" onClick={handleAIFill} disabled={isLoading || !request.trim()} className="bg-purple-600 hover:bg-purple-700 gap-2">
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {isLoading ? "Đang phân tích..." : "AI phân tích"}
+                {isLoading ? "Đang phân tích..." : "AI tự chọn sản phẩm"}
               </Button>
               <div className="flex items-center gap-2">
-                <Switch id="include-images" checked={includeImages} onCheckedChange={setIncludeImages} disabled={isLoading} />
+                <Switch
+                  id="include-images"
+                  checked={includeImages}
+                  onCheckedChange={setIncludeImages}
+                  disabled={isLoading}
+                />
                 <Label htmlFor="include-images" className="text-sm text-muted-foreground flex items-center gap-1 cursor-pointer">
                   {includeImages ? <ImageIcon className="h-3.5 w-3.5" /> : <ImageOff className="h-3.5 w-3.5" />}
                   {includeImages ? "Có hình ảnh" : "Không hình ảnh"}
                 </Label>
               </div>
-              <Button
-                type="button" variant="ghost" size="sm"
-                disabled={isLoading || isBuildingCatalog}
-                onClick={async () => {
-                  setIsBuildingCatalog(true);
-                  try {
-                    const { data: result } = await supabase.functions.invoke("build-product-catalog");
-                    if (result?.catalogText) {
-                      setCatalogCache({ text: result.catalogText, builtAt: new Date().toISOString() });
-                    } else {
-                      setCatalogCache(null);
-                    }
-                    toast({ title: "Đã cập nhật danh mục sản phẩm" });
-                  } catch {
-                    toast({ title: "Lỗi cập nhật", variant: "destructive" });
-                  } finally {
-                    setIsBuildingCatalog(false);
-                  }
-                }}
-                className="text-xs text-muted-foreground gap-1"
-              >
-                <RefreshCw className={`h-3 w-3 ${isBuildingCatalog ? "animate-spin" : ""}`} />
-                {catalogCache ? "Cập nhật danh mục" : "Tạo danh mục"}
-              </Button>
             </div>
 
             {previewItems && previewItems.length > 0 && (
               <div className="space-y-3">
-                <p className="text-sm font-medium text-purple-800">
-                  Kết quả AI ({previewItems.length} sản phẩm)
-                </p>
+                <p className="text-sm font-medium text-purple-800">Kết quả AI ({previewItems.length} sản phẩm):</p>
                 <div className="rounded-md border border-purple-200 bg-white overflow-auto">
                   <Table>
                     <TableHeader>
@@ -291,42 +261,42 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                     <TableBody>
                       {previewItems.map((item, idx) => (
                         <TableRow key={idx}>
-                          <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                          <TableCell>{idx + 1}</TableCell>
                           {includeImages && (
                             <TableCell>
                               {item.previewImageUrl ? (
                                 <img src={item.previewImageUrl} alt="" className="w-10 h-10 object-cover rounded border" />
                               ) : (
                                 <div className="w-10 h-10 bg-muted rounded border flex items-center justify-center">
-                                  <ImageOff className="h-4 w-4 text-muted-foreground" />
+                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
                                 </div>
                               )}
                             </TableCell>
                           )}
-                          <TableCell className="font-medium text-sm">{item.customName}</TableCell>
-                          <TableCell className="text-sm">{item.specifications}</TableCell>
+                          <TableCell className="font-medium">{item.customName}</TableCell>
+                          <TableCell>{item.specifications}</TableCell>
                           <TableCell className="text-right">{item.quantity}</TableCell>
                           <TableCell className="text-right">{formatCurrency(item.price)}</TableCell>
                           <TableCell className="text-right">{formatCurrency(item.price * item.quantity)}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{item.note}</TableCell>
+                          <TableCell>
+                            {item.note && (
+                              <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 bg-amber-50 whitespace-normal">
+                                <AlertTriangle className="h-3 w-3 mr-1 inline" />
+                                {item.note}
+                              </Badge>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
-                      <TableRow className="bg-purple-50">
-                        <TableCell colSpan={includeImages ? 6 : 5} className="text-right font-semibold">Tổng cộng:</TableCell>
-                        <TableCell className="text-right font-bold text-purple-700">
-                          {formatCurrency(previewItems.reduce((sum, item) => sum + item.price * item.quantity, 0))}
-                        </TableCell>
-                        <TableCell />
-                      </TableRow>
                     </TableBody>
                   </Table>
                 </div>
-                <div className="flex gap-2 justify-end">
-                  <Button type="button" variant="outline" onClick={() => setPreviewItems(null)} className="gap-1">
-                    <X className="h-4 w-4" /> Hủy
+                <div className="flex gap-2">
+                  <Button type="button" onClick={handleApply} className="bg-green-600 hover:bg-green-700 gap-2">
+                    <Check className="h-4 w-4" /> Áp dụng
                   </Button>
-                  <Button type="button" onClick={handleApply} className="bg-green-600 hover:bg-green-700 gap-1">
-                    <Check className="h-4 w-4" /> Áp dụng {previewItems.length} sản phẩm
+                  <Button type="button" variant="outline" onClick={handleCancel} className="gap-2">
+                    <X className="h-4 w-4" /> Hủy
                   </Button>
                 </div>
               </div>
