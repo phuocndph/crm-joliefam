@@ -460,16 +460,17 @@ serve(async (req) => {
 
     // ==================== AI QUOTE FILL ====================
     } else if (type === "ai_quote_fill") {
-      const { products, request } = data;
+      const { products, request, includeImages } = data;
       if (!products || !request) {
         return new Response(JSON.stringify({ error: "Missing products or request" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const productListText = products.map((p: any, i: number) => 
-        `[${i+1}] ID: ${p.id} | Tên: ${p.name} | Giá: ${p.price} | Quy cách: ${p.specifications || "không có"} | Mô tả: ${p.description || "không có"}`
-      ).join("\n");
+      const productListText = products.map((p: any, i: number) => {
+        const base = `[${i+1}] ID: ${p.id} | Tên: ${p.name} | Giá: ${p.price} | Quy cách: ${p.specifications || "không có"}`;
+        return includeImages ? `${base} | Mô tả: ${p.description || "không có"}` : base;
+      }).join("\n");
 
       const aiQuoteFillPrompt = `Bạn là trợ lý chọn sản phẩm cho báo giá. Dựa trên yêu cầu khách hàng, hãy chọn sản phẩm phù hợp nhất từ danh sách bảng giá.
 
