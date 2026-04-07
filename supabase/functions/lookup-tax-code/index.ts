@@ -37,7 +37,7 @@ const BUYER_INFO_SYSTEM_PROMPT = `Bạn là trợ lý phân tích thông tin doa
 }
 Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ trả JSON thuần, không bọc trong code block.`;
 
-async function callAI(messages: any[]) {
+async function callAI(messages: any[], hasImage = false) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
 
@@ -47,14 +47,19 @@ async function callAI(messages: any[]) {
 
   const payload = { model: "google/gemini-3-flash-preview", messages };
 
-  // Try Lovable AI first
+  // Try Lovable AI first (supports vision)
   if (LOVABLE_API_KEY) {
     try {
+      const controller = new AbortController();
+      const timeout = hasImage ? 90000 : 55000;
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         console.log("AI response from: Lovable");
@@ -68,19 +73,25 @@ async function callAI(messages: any[]) {
         return { error: "Rate limit exceeded", status: 429 };
       }
     } catch (e) {
-      console.warn("Lovable AI error:", e);
+      console.warn("Lovable AI error:", e instanceof Error ? e.message : e);
     }
   }
 
   // Fallback to Beeknoee with model chain
   if (BEEKNOEE_API_KEY) {
-    console.log("Falling back to Beeknoee API with model chain...");
-    const models = [
-      { name: "gemini-2.5-flash", timeout: 55000 },
-      { name: "glm-4.7-flash", timeout: 30000 },
-      { name: "glm-4.5-flash", timeout: 30000 },
-      { name: "openai/gpt-oss-120b", timeout: 30000 },
-    ];
+    console.log(`Falling back to Beeknoee API (hasImage: ${hasImage})...`);
+    
+    // Vision-capable models only when image is present
+    const models = hasImage
+      ? [
+          { name: "gemini-2.5-flash", timeout: 90000 },
+        ]
+      : [
+          { name: "gemini-2.5-flash", timeout: 55000 },
+          { name: "glm-4.7-flash", timeout: 30000 },
+          { name: "glm-4.5-flash", timeout: 30000 },
+          { name: "openai/gpt-oss-120b", timeout: 30000 },
+        ];
     
     for (let attempt = 0; attempt < 2; attempt++) {
       for (const { name: model, timeout } of models) {
@@ -336,7 +347,7 @@ serve(async (req) => {
             { type: "text", text: "Phân tích hình ảnh này và trích xuất tất cả thông tin doanh nghiệp/cá nhân." },
           ],
         },
-      ]);
+      ], true);
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded. Vui lòng thử lại sau." }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -374,7 +385,7 @@ serve(async (req) => {
             { type: "text", text: "Trích xuất danh sách sản phẩm/dịch vụ từ hình ảnh này (bảng báo giá, đơn hàng, hóa đơn)." },
           ],
         },
-      ]);
+      ], true);
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -450,7 +461,7 @@ serve(async (req) => {
         });
       }
 
-      const parsed = await callAI(messages);
+      const parsed = await callAI(messages, isPdf);
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -518,10 +529,11 @@ Nếu thiếu thông tin quan trọng: {"items": [], "clarification": "câu hỏ
         userContent = `Yêu cầu khách hàng:\n"""\n${request}\n"""`;
       }
 
+      const hasImage = !!imageBase64;
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
         { role: "user", content: userContent },
-      ]);
+      ], hasImage);
       
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
