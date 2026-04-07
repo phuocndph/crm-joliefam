@@ -94,10 +94,10 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: 
     const primaryBeeknoee = beeknoeeModelMap[selectedModel] || "gemini-2.5-flash";
     
     const models = [
-      { name: primaryBeeknoee, timeout: 25000 },
-      { name: "glm-4.7-flash", timeout: 20000 },
-      { name: "glm-4.5-flash", timeout: 15000 },
-      { name: "openai/gpt-oss-120b", timeout: 15000 },
+      { name: primaryBeeknoee, timeout: 15000 },
+      { name: "glm-4.7-flash", timeout: 12000 },
+      { name: "glm-4.5-flash", timeout: 10000 },
+      { name: "openai/gpt-oss-120b", timeout: 10000 },
     ];
     
     // For Beeknoee, strip tool calling - use JSON text mode with explicit instruction
@@ -112,38 +112,32 @@ async function callAI(messages: any[], tools?: any[], toolChoice?: any, model?: 
       ];
     }
     
-    for (let attempt = 0; attempt < 2; attempt++) {
-      for (const { name: model, timeout } of models) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), timeout);
-          const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ ...beeknoeePayload, model }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
+    for (const { name: model, timeout } of models) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ...beeknoeePayload, model }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
 
-          if (response.ok) {
-            console.log(`AI response from: Beeknoee (${model})`);
-            const parsed = parseAIResponse(await response.json(), false);
-            parsed._meta = { usedProvider: "Beeknoee", usedModel: model };
-            return parsed;
-          }
-
-          const errText = await response.text();
-          console.warn(`Beeknoee ${model} failed (${response.status}): ${errText.substring(0, 150)}`);
-          if (response.status === 429) {
-            await new Promise(r => setTimeout(r, 3000));
-          }
-        } catch (e) {
-          console.warn(`Beeknoee ${model} error:`, e instanceof Error ? e.message : e);
+        if (response.ok) {
+          console.log(`AI response from: Beeknoee (${model})`);
+          const parsed = parseAIResponse(await response.json(), false);
+          parsed._meta = { usedProvider: "Beeknoee", usedModel: model };
+          return parsed;
         }
-      }
-      if (attempt === 0) {
-        console.log("All models failed on first attempt, retrying after 5s...");
-        await new Promise(r => setTimeout(r, 5000));
+
+        const errText = await response.text();
+        console.warn(`Beeknoee ${model} failed (${response.status}): ${errText.substring(0, 150)}`);
+        if (response.status === 429) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      } catch (e) {
+        console.warn(`Beeknoee ${model} error:`, e instanceof Error ? e.message : e);
       }
     }
   }

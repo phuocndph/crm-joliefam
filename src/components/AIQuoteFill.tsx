@@ -187,46 +187,24 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
         catalogText = catalogCache.text;
         console.log(`AI Quote: using cached catalog (${catalogText.length} chars)`);
       } else {
-        // Try to load from storage
+        // Build catalog - response includes catalogText directly (no need to download from storage)
+        setIsBuildingCatalog(true);
+        toast({ title: "Đang xây dựng danh mục sản phẩm...", description: "Lần đầu sẽ mất vài giây" });
         try {
-          const { data: fileData, error: downloadError } = await supabase.storage
-            .from("product-images")
-            .download("catalog/product-catalog.json");
-          if (downloadError) {
-            console.warn("Catalog download failed:", downloadError.message);
-          } else if (fileData) {
-            const catalogData = JSON.parse(await fileData.text());
-            catalogText = catalogData.text;
-            setCatalogCache({ text: catalogData.text, builtAt: catalogData.builtAt });
-            console.log(`AI Quote: loaded catalog from storage (${catalogText!.length} chars, built ${catalogData.builtAt})`);
+          const { data: buildResult, error: buildError } = await supabase.functions.invoke("build-product-catalog");
+          if (buildError) throw buildError;
+          
+          if (buildResult?.catalogText) {
+            catalogText = buildResult.catalogText;
+            setCatalogCache({ text: buildResult.catalogText, builtAt: new Date().toISOString() });
+            console.log(`AI Quote: catalog built directly (${catalogText!.length} chars, ${buildResult.productCount} products)`);
+          } else {
+            console.warn("build-product-catalog returned no catalogText:", buildResult);
           }
         } catch (e) {
-          console.warn("Catalog download error:", e instanceof Error ? e.message : e);
-        }
-
-        // If no catalog, build it
-        if (!catalogText) {
-          setIsBuildingCatalog(true);
-          toast({ title: "Đang xây dựng danh mục sản phẩm...", description: "Lần đầu sẽ mất vài giây" });
-          try {
-            const { data: buildResult, error: buildError } = await supabase.functions.invoke("build-product-catalog");
-            if (buildError) throw buildError;
-            console.log("Catalog built:", buildResult);
-            
-            // Re-download the catalog
-            const { data: fileData } = await supabase.storage
-              .from("product-images")
-              .download("catalog/product-catalog.json");
-            if (fileData) {
-              const catalogData = JSON.parse(await fileData.text());
-              catalogText = catalogData.text;
-              setCatalogCache({ text: catalogData.text, builtAt: catalogData.builtAt });
-            }
-          } catch (e) {
-            console.warn("Failed to build catalog, falling back to raw products:", e);
-          } finally {
-            setIsBuildingCatalog(false);
-          }
+          console.warn("Failed to build catalog, falling back to raw products:", e);
+        } finally {
+          setIsBuildingCatalog(false);
         }
       }
 
@@ -260,8 +238,14 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
       if (error) throw error;
 
       if (data?.error) {
-        toast({ title: "Lỗi AI", description: data.error, variant: "destructive" });
-        return;
+        const is402 = data.error.includes("credits") || data.error.includes("payment");
+        toast({ 
+          title: is402 ? "⚠️ AI hết credits" : "Lỗi AI", 
+          description: is402 ? "Lovable AI hết credits. Vui lòng nạp thêm tại Settings → Workspace → Usage" : data.error, 
+          variant: "destructive",
+          duration: is402 ? 10000 : 5000,
+        });
+        if (!is402) return;
       }
 
       // Handle clarification request from AI
@@ -381,8 +365,12 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
                 onClick={async () => {
                   setIsBuildingCatalog(true);
                   try {
-                    await supabase.functions.invoke("build-product-catalog");
-                    setCatalogCache(null); // Force re-download next time
+                    const { data: result } = await supabase.functions.invoke("build-product-catalog");
+                    if (result?.catalogText) {
+                      setCatalogCache({ text: result.catalogText, builtAt: new Date().toISOString() });
+                    } else {
+                      setCatalogCache(null);
+                    }
                     toast({ title: "Đã cập nhật danh mục sản phẩm" });
                   } catch (e) {
                     toast({ title: "Lỗi cập nhật", variant: "destructive" });
