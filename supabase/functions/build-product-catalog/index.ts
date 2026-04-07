@@ -212,6 +212,7 @@ serve(async (req) => {
       catalogLength: catalogText.length,
       groups: Object.keys(grouped),
       catalogPath,
+      catalogText,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
