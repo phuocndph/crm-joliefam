@@ -1,79 +1,42 @@
 
 
-## Tối ưu Prompt AI Quote Fill theo format SKU|Tên|Giá
+## Sửa prompt AI Quote Fill: phân tích chính xác trơn/sọc
 
-### Mục tiêu
-Thay thế prompt hiện tại (dài dòng, format `[i] ID: ... | Tên: ... | Giá: ... | Quy cách: ... | Mô tả: ...`) bằng prompt mới ngắn gọn, chuyên biệt cho ga gối đệm, với format `SKU|Tên sản phẩm|Giá bán` và quy tắc nghiệp vụ rõ ràng hơn.
+### Vấn đề hiện tại
+1. Prompt dòng 505 ghi: `Nếu sản phẩm có "tron" và "soc", không ghi cụ thể → ưu tiên "sọc" (soc)` — điều này khiến AI tự động chọn sọc ngay cả khi không cần thiết
+2. Prompt không nhấn mạnh đủ việc **phải tuân thủ chính xác** yêu cầu trơn/sọc của khách
+3. Không có quy tắc rõ ràng khi khách ghi rõ nhưng bảng giá không có biến thể đó
 
-### Thay đổi
+### Giải pháp
+Sửa prompt trong `supabase/functions/lookup-tax-code/index.ts` (dòng 485-526) với các thay đổi:
 
-**File: `supabase/functions/lookup-tax-code/index.ts`**
+**1. Sửa quy tắc phân tích input (mục 4)**
+- Thêm nhấn mạnh: khi khách ghi rõ "trơn" thì **BẮT BUỘC** chọn sản phẩm trơn, ghi rõ "sọc" thì **BẮT BUỘC** chọn sọc
+- Không được tự ý đổi trơn thành sọc hoặc ngược lại
 
-1. **Sửa `productListText` format** (dòng 481-483):
-   - Từ: `[i] ID: ... | Tên: ... | Giá: ... | Quy cách: ... | Mô tả: ...`
-   - Thành: `ID|Tên sản phẩm|Giá bán` (dùng `p.id` thay vì index, bỏ quy cách/mô tả thừa)
-   - Giảm token ~60% do bỏ quy cách + mô tả + label dài dòng
+**2. Xóa dòng 505 (mặc định ưu tiên sọc)**
+- Thay bằng: nếu khách không ghi rõ trơn hay sọc → trả `clarification` hỏi lại
 
-2. **Thay toàn bộ `aiQuoteFillPrompt`** (dòng 485-513) bằng prompt mới theo mẫu user cung cấp:
-   - System prompt mở đầu: "Bạn là chuyên gia báo giá sản phẩm ga gối đệm..."
-   - Bảng giá format: `SKU|Tên sản phẩm|Giá bán` (tự động từ products)
-   - Quy tắc phân tích input (chuẩn hóa kích thước, chất liệu)
-   - Quy tắc chọn kích thước (lớn hơn gần nhất)
-   - Quy tắc số lượng
-   - Format trả lời JSON thuần túy
-   - Thêm hỗ trợ hình ảnh khi có ảnh
-
-3. **Sửa JSON output format** để map lại với frontend:
-   - Backend nhận `sku` từ AI → map sang `matchedProductId` bằng cách tìm product có id trùng SKU
-   - Giữ nguyên interface `AIMatchedItem` phía frontend
-
-4. **Redeploy** Edge Function `lookup-tax-code`
-
-### Chi tiết prompt mới
-
-```text
-Bạn là chuyên gia báo giá sản phẩm ga gối đệm. Nhiệm vụ: đọc yêu cầu (text hoặc hình ảnh), tách từng sản phẩm, tìm đúng trong bảng giá, xử lý kích thước thông minh.
-
-## BẢNG GIÁ (định dạng: SKU|Tên sản phẩm|Giá bán)
-{productListText - tự động generate từ products array}
-
-## QUY TẮC PHÂN TÍCH INPUT
-1. Tách câu thành từng sản phẩm riêng lẻ
-2. Chuẩn hóa kích thước: 1.6→160, 1.8→180...
-3. T250/T300/T350/T400/T200/LTH là chất liệu vải
-4. "trang"/"tron" = trơn/trắng, "soc" = sọc, "chan" = chần
-5. Nếu không ghi chất liệu → ưu tiên T250
-6. "gối" mà không nói rõ → mặc định "Vỏ gối"
-7. LTH = T225 là cùng một loại vải
-8. Phụ kiện (vỏ gối, gối ôm) mặc định dùng chung loại vải với ga giường
-
-## QUY TẮC CHỌN KÍCH THƯỚC
-- Khi kích thước yêu cầu KHÔNG CÓ → chọn kích thước LỚN HƠN GẦN NHẤT
-- KHÔNG BAO GIỜ chọn kích thước nhỏ hơn yêu cầu
-
-## QUY TẮC GIÁ
-- Nếu khách ghi rõ giá → dùng giá khách ghi
-- Nếu không → lấy giá từ bảng giá
-
-## NẾU NHẬN HÌNH ẢNH
-Phân tích ảnh (đơn hàng, tin nhắn, ghi chép tay...) để trích xuất sản phẩm.
-
-## FORMAT TRẢ LỜI (JSON thuần túy)
-{"items":[{"matchedProductId":"product-uuid","customName":"tên theo yêu cầu","quantity":1,"price":0,"specifications":"quy cách theo khách","note":"ghi chú"}]}
-Nếu thiếu thông tin: {"items":[],"clarification":"câu hỏi"}
+**3. Thêm quy tắc ưu tiên matching rõ ràng**
+```
+## THỨ TỰ ƯU TIÊN KHI SO KHỚP
+1. Loại sản phẩm (ga chun, ga phủ, vỏ chăn, vỏ gối...)
+2. Chất liệu vải (T250, T300, LTH...) — BẮT BUỘC đúng
+3. Mẫu (trơn/sọc/chần) — BẮT BUỘC đúng nếu khách ghi rõ
+4. Kích thước — chọn lớn hơn gần nhất nếu không khớp chính xác
+→ Nếu không tìm được sản phẩm khớp mẫu trơn/sọc → dùng clarification hỏi lại
+→ KHÔNG BAO GIỜ tự đổi trơn↔sọc khi khách đã ghi rõ
 ```
 
-### Mapping logic
-- Frontend gửi `products` array với `p.id` (UUID) và `p.name`
-- Prompt hiển thị `p.id|p.name|p.price` cho AI
-- AI trả `matchedProductId` = UUID trực tiếp → frontend dùng ngay, không cần convert
+**4. Thêm quy tắc khi thiếu thông tin mẫu**
+- Khách không ghi trơn/sọc → trả `clarification` hỏi: "Vui lòng cho biết [sản phẩm] cần loại trơn hay sọc?"
 
-### Không thay đổi
-- Frontend `AIQuoteFill.tsx` — giữ nguyên hoàn toàn
-- `callAI()` function — giữ nguyên
-- Logic nén ảnh, multimodal — giữ nguyên
+### File thay đổi
 
 | File | Thay đổi |
 |------|----------|
-| `supabase/functions/lookup-tax-code/index.ts` | Sửa `productListText` format + thay `aiQuoteFillPrompt` |
+| `supabase/functions/lookup-tax-code/index.ts` | Sửa prompt dòng 485-526: thêm quy tắc matching chặt cho trơn/sọc, xóa default ưu tiên sọc, thêm clarification khi thiếu info |
+
+### Redeploy
+- Edge Function `lookup-tax-code`
 
