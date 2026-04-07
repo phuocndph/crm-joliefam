@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Category grouping rules - map raw categories to high-level groups
+// Category grouping rules
 const CATEGORY_GROUPS: Record<string, string[]> = {
   "GA CHUN KS": ["ga chun ks"],
   "GA TẤM PHỦ": ["ga tấm phủ", "ga tam phu"],
@@ -20,10 +20,9 @@ const CATEGORY_GROUPS: Record<string, string[]> = {
   "GỐI ÔM": ["gối ôm", "goi om"],
   "ÁO CHOÀNG": ["áo choàng"],
   "KHĂN": ["khăn"],
-  "PHỤ KIỆN": [],  // fallback
+  "PHỤ KIỆN": [],
 };
 
-// Fabric type extraction
 const FABRIC_PATTERNS: [RegExp, string][] = [
   [/\bLTH\b/i, "LTH/T225"],
   [/\bT225\b/i, "LTH/T225"],
@@ -71,34 +70,71 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    // Get auth context
-    const authHeader = req.headers.get("Authorization");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    // Use service role to read all products and write to storage
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    // Verify user is authenticated
-    if (authHeader) {
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      if (authError || !user) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    // === Auth: REQUIRED ===
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Missing Authorization header" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Fetch all products
+    // Create user-scoped client to get user info
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await userClient.auth.getUser(token);
+    if (claimsError || !claimsData?.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized: invalid token" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const userId = claimsData.user.id;
+    console.log(`build-product-catalog: user=${userId}`);
+
+    // Use service role to read user_roles and products
+    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Determine manager_id based on user role
+    const { data: roleData } = await serviceClient
+      .from("user_roles")
+      .select("role, assigned_by")
+      .eq("user_id", userId)
+      .single();
+
+    let managerId: string | null = null;
+    const userRole = roleData?.role;
+
+    if (userRole === "manager") {
+      managerId = userId;
+    } else if (userRole === "employee" || userRole === "accountant") {
+      managerId = roleData?.assigned_by || null;
+    }
+    // admin: managerId stays null → query all products
+
+    console.log(`build-product-catalog: role=${userRole}, managerId=${managerId}`);
+
+    // Fetch products (filtered by manager_id if applicable)
     const allProducts: any[] = [];
     let from = 0;
     const pageSize = 1000;
     while (true) {
-      const { data, error } = await supabase
+      let query = serviceClient
         .from("products")
         .select("id, name, price, specifications, category")
         .range(from, from + pageSize - 1);
+      
+      if (managerId) {
+        query = query.eq("manager_id", managerId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       if (!data || data.length === 0) break;
       allProducts.push(...data);
@@ -132,7 +168,6 @@ serve(async (req) => {
       for (const [fabric, products] of Object.entries(fabrics)) {
         lines.push(`[${fabric}]`);
         for (const p of products) {
-          // Compact format: id | name | price | specs
           const price = p.price ? `${Math.round(p.price)}đ` : "?đ";
           const specs = p.specifications || "-";
           lines.push(`${p.id}|${p.name}|${price}|${specs}`);
@@ -144,17 +179,22 @@ serve(async (req) => {
     const catalogText = lines.join("\n");
     console.log(`Catalog built: ${catalogText.length} chars, ${allProducts.length} products`);
 
-    // Save to storage
+    // Save to storage - use manager-specific path for non-admin
+    const catalogPath = managerId 
+      ? `catalog/product-catalog-${managerId}.json`
+      : "catalog/product-catalog.json";
+
     const catalogData = {
       text: catalogText,
       productCount: allProducts.length,
       builtAt: new Date().toISOString(),
       groups: Object.keys(grouped),
+      managerId,
     };
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await serviceClient.storage
       .from("product-images")
-      .upload("catalog/product-catalog.json", JSON.stringify(catalogData), {
+      .upload(catalogPath, JSON.stringify(catalogData), {
         contentType: "application/json",
         upsert: true,
       });
@@ -164,13 +204,14 @@ serve(async (req) => {
       throw uploadError;
     }
 
-    console.log("Catalog saved to storage");
+    console.log(`Catalog saved to storage: ${catalogPath}`);
 
     return new Response(JSON.stringify({ 
       success: true, 
       productCount: allProducts.length,
       catalogLength: catalogText.length,
       groups: Object.keys(grouped),
+      catalogPath,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
