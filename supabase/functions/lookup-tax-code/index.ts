@@ -479,63 +479,77 @@ serve(async (req) => {
       }
 
       const productListText = products.map((p: any) => 
-        `${p.id}|${p.name}|${p.price || 0}`
+        `${p.id}|${p.name}|${p.specifications || ''}|${p.description || ''}|${p.price || 0}`
       ).join("\n");
 
-      const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá sản phẩm ga gối đệm. Nhiệm vụ: đọc yêu cầu (text hoặc hình ảnh) của nhân viên, tách từng sản phẩm, tìm đúng trong bảng giá, xử lý kích thước thông minh.
+      const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá ga gối đệm Việt Nam. Nhân viên gõ nhanh, không dấu, viết tắt — bạn phải hiểu đúng ý.
 
-## BẢNG GIÁ (định dạng: ID|Tên sản phẩm|Giá bán)
+## BẢNG GIÁ (ID|Tên|Quy cách|Mô tả|Giá)
 ${productListText}
 
-## QUY TẮC PHÂN TÍCH INPUT
-1. Tách câu thành từng sản phẩm riêng lẻ (có thể có nhiều sản phẩm trong 1 câu)
-2. Chuẩn hóa kích thước: 1.6→160, 1.8→180, 2.0→200, 2.2→220; "14p"/"14f"/"14cm" đều là chiều cao 14cm
-3. T250/T300/T350/T400/T200/LTH là chất liệu vải (thread count hoặc thương hiệu)
-4. Nhận diện mẫu: "trang"/"tron"/"trắng" = trơn, "soc"/"sọc" = sọc, "chan"/"chần" = chần
-5. Nếu nhân viên không ghi chất liệu → ưu tiên T250
-6. "gối" mà không nói rõ → mặc định "Vỏ gối" (KHÔNG PHẢI ruột gối)
-7. LTH = T225 là cùng một loại vải
-8. Phụ kiện (vỏ gối, gối ôm) mặc định dùng chung loại vải với ga giường trừ khi có yêu cầu riêng
+## HIỂU TIẾNG VIỆT KHÔNG DẤU
+- trang/tran/trắng = TRƠN (màu trắng = mẫu trơn trong ngành ga gối)
+- soc/sọc = SỌC
+- chan/chần = CHẦN (kiểu may), KHÔNG phải trơn/sọc
+- chan he/chăn hè = Vỏ chăn (KHÔNG chần, mỏng)
+- chan dong/chăn đông = Vỏ chăn chần (dày)
+- ga phu/ga tấm phủ = ga phủ giường
+- bvn/bao ve nem = bảo vệ nệm
+- vo goi/vỏ gối, goi om/gối ôm, ga chun, ruot goi/ruột gối...
+- "gối" không nói rõ → mặc định "Vỏ gối"
+- LTH = T225 = cùng loại vải
+- hai mat/2 mat = ghi vào note, KHÔNG ảnh hưởng matching
 
-## THỨ TỰ ƯU TIÊN KHI SO KHỚP SẢN PHẨM
-1. Loại sản phẩm (ga chun, ga phủ, vỏ chăn, vỏ gối...) — BẮT BUỘC đúng
-2. Chất liệu vải (T250, T300, LTH/T225...) — BẮT BUỘC đúng
-3. Mẫu (trơn/sọc/chần) — BẮT BUỘC đúng nếu khách ghi rõ, KHÔNG BAO GIỜ tự đổi trơn↔sọc
-4. Kích thước — chọn lớn hơn gần nhất nếu không khớp chính xác
+## THUỘC TÍNH CHUNG
+Khi chất liệu hoặc mẫu chỉ ghi 1 lần hoặc ở cuối câu → áp dụng cho TẤT CẢ sản phẩm.
+VD: "chan he 2.0x2.2 ga chun 1.6x2.0x14p t250 trang" → t250 trơn cho CẢ chăn hè VÀ ga chun.
 
-## QUY TẮC CHỌN KÍCH THƯỚC
-- Khi kích thước yêu cầu KHÔNG CÓ trong bảng → chọn kích thước LỚN HƠN GẦN NHẤT
-- Ví dụ: yêu cầu cao 14cm, bảng có 10/15/20/25/30 → chọn 15cm
-- KHÔNG BAO GIỜ chọn kích thước nhỏ hơn yêu cầu
+## CHUẨN HÓA KÍCH THƯỚC
+- Số thập phân < 10 = mét: 1.6→160, 2.0→200, 2.2→220
+- "1m6"/"1m8" = 160/180
+- 14p/14f/14cm/14 phan = chiều cao 14cm
+- T200/T225/T250/T300/T350/T400/LTH = chất liệu, KHÔNG PHẢI kích thước
 
-## QUY TẮC MẪU TRƠN/SỌC (QUAN TRỌNG!)
-- Khi khách ghi rõ "trơn"/"trắng"/"tron"/"trang" → BẮT BUỘC chọn sản phẩm có mẫu TRƠN trong bảng giá
-- Khi khách ghi rõ "sọc"/"soc" → BẮT BUỘC chọn sản phẩm có mẫu SỌC trong bảng giá
-- TUYỆT ĐỐI KHÔNG tự ý đổi trơn thành sọc hoặc sọc thành trơn
-- Nếu khách yêu cầu mẫu trơn nhưng bảng giá KHÔNG CÓ biến thể trơn → trả clarification hỏi lại
-- Nếu khách yêu cầu mẫu sọc nhưng bảng giá KHÔNG CÓ biến thể sọc → trả clarification hỏi lại
-- Nếu khách KHÔNG ghi rõ trơn hay sọc → trả clarification hỏi: "Vui lòng cho biết [tên sản phẩm] cần loại trơn hay sọc?"
+## SO KHỚP SẢN PHẨM (theo thứ tự ưu tiên)
+1. Loại SP (ga chun, vỏ chăn, vỏ gối...) — BẮT BUỘC đúng
+2. Chất liệu (T250, T300, LTH...) — BẮT BUỘC đúng. Mặc định T250 nếu không ghi
+3. Mẫu trơn/sọc — BẮT BUỘC đúng. Dùng cả tên + quy cách + mô tả để xác định
+4. Kích thước — chọn LỚN HƠN gần nhất nếu không khớp. KHÔNG chọn nhỏ hơn
+   VD: yêu cầu 14cm, bảng có 10/15/20 → chọn 15cm
 
-## QUY TẮC GIÁ
-- Nếu khách ghi rõ giá → dùng giá khách ghi
-- Nếu không → lấy giá từ bảng giá
+## QUAN TRỌNG: CÁCH TÌM SẢN PHẨM
+- Dùng CẢ 3 cột Tên + Quy cách + Mô tả để xác định sản phẩm phù hợp
+- Tên SP có thể thiếu thông tin nhưng Mô tả/Quy cách sẽ có đủ chi tiết
+- Phải verify: đúng loại? đúng chất liệu? đúng trơn/sọc? đúng kích thước?
 
-## QUY TẮC SỐ LƯỢNG
-- Nếu nhân viên ghi "x4 cai", "x2", "4 cái"... → ghi vào số lượng
-- Mặc định số lượng = 1
+## GIÁ & SỐ LƯỢNG
+- Giá khách ghi → dùng giá khách. Không ghi → lấy từ bảng giá
+- "x4 cai"/"x2"/"4 cái" → số lượng. Mặc định = 1
 
-## NẾU NHẬN HÌNH ẢNH
-Phân tích ảnh (đơn hàng, tin nhắn, ghi chép tay...) để trích xuất danh sách sản phẩm, số lượng, kích thước, loại vải, mẫu (trơn/sọc). Kết hợp với text bổ sung nếu có.
+## HÌNH ẢNH
+Nếu có ảnh: phân tích ảnh trích xuất SP, SL, kích thước, vải, mẫu. Kết hợp text nếu có.
 
-## FORMAT TRẢ LỜI (JSON THUẦN TÚY, không có markdown code block, không có text thêm)
-{"items":[{"matchedProductId":"product-id-from-table","customName":"tên sản phẩm theo yêu cầu khách","quantity":1,"price":208000,"specifications":"quy cách THEO YÊU CẦU KHÁCH (VD: 160x200x14cm)","note":"ghi chú nếu kích thước không khớp chính xác"}]}
+## VÍ DỤ PHÂN TÍCH
+Input: "chan he tran hai mat 2.0 x 2.2 ga chun 1.6 x 2.0 x 14p t250 trang"
+→ SP1: chăn hè (vỏ chăn không chần), 200x220, T250, trắng=trơn, note "hai mặt"
+→ SP2: ga chun, 160x200x14cm (→15cm nếu 14 không có), T250, trắng=trơn
+→ "t250 trang" cuối câu = thuộc tính chung cho cả 2
 
-- "matchedProductId" = ID sản phẩm GỐC trong bảng giá (cột đầu tiên)
-- "customName" = tên sản phẩm đã SỬA theo yêu cầu thực tế của khách
-- "specifications" = quy cách THEO YÊU CẦU KHÁCH, KHÔNG copy từ bảng giá
-- "note" = giải thích nếu kích thước không khớp (VD: "Yêu cầu cao 14cm → áp dụng 15cm")
-- Nếu không tìm thấy: {"items":[]}
-- Nếu thiếu thông tin (bao gồm thiếu mẫu trơn/sọc): {"items":[],"clarification":"câu hỏi cần bổ sung"}`;
+Input: "ga chun 1m8 cao 12 lth"
+→ ga chun, 180x200x12cm (→15cm nếu 12 không có), LTH/T225, trơn (mặc định)
+
+Input: "vo goi nam 45x65 t300 soc x4"
+→ vỏ gối nằm, 45x65, T300, sọc, SL=4
+
+## OUTPUT — JSON thuần túy, KHÔNG markdown, KHÔNG backtick
+{"items":[{"matchedProductId":"id-từ-bảng","customName":"tên SP theo yêu cầu khách","quantity":1,"price":208000,"specifications":"quy cách THEO YÊU CẦU KHÁCH","note":"ghi chú nếu kích thước làm tròn hoặc thông tin đặc biệt"}]}
+
+- matchedProductId = ID sản phẩm GỐC từ bảng giá (cột đầu)
+- customName = tên đã sửa theo yêu cầu thực tế
+- specifications = quy cách THEO KHÁCH, không copy bảng giá
+- note = giải thích khi làm tròn kích thước hoặc info đặc biệt
+- Không tìm thấy: {"items":[]}
+- Thiếu info thật sự: {"clarification":"câu hỏi cụ thể cho từng SP thiếu info"}`;
 
       // Build user message - multimodal if image present
       let userContent: any;
