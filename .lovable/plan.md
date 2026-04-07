@@ -1,39 +1,40 @@
 
 
-## Thêm tính năng gửi hình ảnh để phân tích trong AI Quote Fill
+## Sửa lỗi gửi hình ảnh AI Quote Fill
 
-### Mục tiêu
-Cho phép người dùng upload 1 hình ảnh (ảnh chụp báo giá, đơn hàng, tin nhắn khách) để AI phân tích và so khớp sản phẩm từ bảng giá — thay vì chỉ nhập text.
+### Nguyên nhân lỗi
+1. **Ảnh gốc quá lớn** → base64 phình to → request body vượt giới hạn Edge Function hoặc timeout
+2. **Không nén ảnh trước khi gửi** → ảnh 5-10MB gốc → base64 ~7-14MB
+3. **Fallback models không hỗ trợ vision** → `glm-4.7-flash`, `glm-4.5-flash`, `openai/gpt-oss-120b` không hiểu ảnh → lỗi hoặc trả kết quả sai
+4. **Edge Function timeout** → gemini-2.5-flash 55s không đủ cho ảnh lớn + phân tích
 
-### Thay đổi
+### Giải pháp
 
-**1. Frontend — `src/components/AIQuoteFill.tsx`**
-- Thêm state `imageFile` và `imagePreview` để lưu ảnh đã chọn
-- Thêm nút upload ảnh (icon Camera/Upload) bên cạnh textarea
-- Hỗ trợ dán ảnh trực tiếp (Ctrl+V) vào textarea
-- Hiển thị preview ảnh nhỏ khi đã chọn, có nút X để xóa
-- Sửa validation: cho phép gửi khi có text HOẶC có ảnh (không bắt buộc cả hai)
-- Khi gửi có ảnh: convert sang base64, gửi kèm `imageBase64` và `imageMimeType` trong body request
-- Khi gửi chỉ text: giữ nguyên logic cũ
+**1. Client — Nén ảnh trước khi gửi (`AIQuoteFill.tsx`)**
+- Thêm hàm `compressImage()` dùng Canvas API để resize ảnh xuống max 1200px và chất lượng JPEG 0.7
+- Giảm kích thước từ 5-10MB → ~100-300KB base64
+- Gọi `compressImage()` trước `fileToBase64()` trong `handleAIFill`
 
-**2. Backend — `supabase/functions/lookup-tax-code/index.ts`**
-- Trong handler `ai_quote_fill`: kiểm tra thêm `data.imageBase64`
-- Nếu có ảnh: gửi message dạng multimodal (image_url + text) kèm danh sách sản phẩm bảng giá
-- Nếu chỉ text: giữ nguyên logic hiện tại
-- Nếu có cả ảnh + text: gộp cả hai vào prompt
+**2. Backend — Chỉ dùng model hỗ trợ vision khi có ảnh (`lookup-tax-code/index.ts`)**
+- Truyền flag `hasImage` vào `callAI()`
+- Khi `hasImage = true`: chỉ thử models hỗ trợ vision (Lovable gateway gemini, Beeknoee gemini-2.5-flash)
+- Bỏ qua các model text-only (glm, gpt-oss) khi có ảnh → tránh lỗi và tiết kiệm thời gian
+- Tăng timeout gemini-2.5-flash lên 90s cho multimodal
 
-### Flow hoạt động
+### Flow sau sửa
 
 ```text
-User chọn ảnh (hoặc dán Ctrl+V) → preview hiển thị
-User nhấn "AI tự chọn sản phẩm"
-→ Convert ảnh → base64
-→ Gửi { type: "ai_quote_fill", data: { products, request, imageBase64, imageMimeType } }
-→ Edge Function tạo message multimodal [image + text + product list]
-→ AI phân tích → trả về items
-→ Hiển thị preview table như cũ
+User chọn ảnh 5MB
+→ Client nén xuống ~200KB via Canvas
+→ Base64 ~270KB gửi lên Edge Function
+→ callAI(messages, hasImage=true)
+→ Thử Lovable gemini-3-flash (vision) → nếu lỗi → Beeknoee gemini-2.5-flash (vision)
+→ BỎ QUA glm/gpt-oss (không hỗ trợ vision)
+→ Trả kết quả nhanh, không timeout
 ```
 
-### Redeploy
-- Edge Function `lookup-tax-code`
+| File | Thay đổi |
+|------|----------|
+| `src/components/AIQuoteFill.tsx` | Thêm `compressImage()`, gọi trước khi convert base64 |
+| `supabase/functions/lookup-tax-code/index.ts` | `callAI` nhận flag `hasImage`, lọc model vision-only khi có ảnh, tăng timeout |
 
