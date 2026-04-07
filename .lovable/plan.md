@@ -1,64 +1,23 @@
 
 
-## Thêm tính năng chọn AI model cho báo giá
+## Bỏ pre-filter, gửi toàn bộ sản phẩm cho AI
 
-### Mục tiêu
-Cho phép người dùng chọn model AI khi tạo báo giá, kèm gợi ý mức chi phí và độ phù hợp để cân bằng giữa tốc độ, chất lượng và chi phí.
+### Vấn đề
+Pre-filter client-side dựa trên keyword matching quá đơn giản, bỏ sót sản phẩm mà AI cần để match chính xác. Ví dụ khách nói "ga T225 1m8" nhưng tên sản phẩm trong DB có thể viết khác hoàn toàn → bị loại khỏi danh sách gửi AI.
 
-### Thiết kế UI
+### Giải pháp
+Bỏ `preFilterProducts()`, gửi toàn bộ 917 sản phẩm cho AI. Để bù đắp token tăng lên:
+- Chỉ gửi fields tối thiểu: `id`, `name`, `price`, `specifications` (bỏ `description` trừ khi bật ảnh)
+- Gợi ý model tự động dựa trên tổng số sản phẩm thay vì số filtered
 
-Thêm một dropdown chọn model bên cạnh toggle hình ảnh trong `AIQuoteFill.tsx`, hiển thị:
-
-```text
-┌─────────────────────────────────────┐
-│ [AI tự chọn SP]  [⚡ Nhanh ▼]      │
-│                                     │
-│  ⚡ Nhanh & Tiết kiệm (Mặc định)   │
-│     gemini-2.5-flash-lite           │
-│     → Báo giá đơn giản, ít SP      │
-│                                     │
-│  ⚖️ Cân bằng                        │
-│     gemini-2.5-flash                │
-│     → Đa số báo giá thông thường   │
-│                                     │
-│  🎯 Chính xác cao                   │
-│     gemini-3-flash-preview          │
-│     → Báo giá phức tạp, nhiều SP   │
-│                                     │
-│  💎 Cao cấp nhất                    │
-│     gemini-2.5-pro                  │
-│     → Yêu cầu đặc biệt, cần       │
-│       phân tích sâu                 │
-└─────────────────────────────────────┘
-```
-
-### Logic gợi ý tự động
-
-Dựa trên số sản phẩm sau pre-filter và độ dài yêu cầu:
-- **< 30 SP, yêu cầu ngắn** → Gợi ý "Nhanh & Tiết kiệm"
-- **30-100 SP** → Gợi ý "Cân bằng"
-- **> 100 SP hoặc yêu cầu dài/phức tạp** → Gợi ý "Chính xác cao"
-
-Gợi ý hiển thị dưới dạng badge nhỏ "Gợi ý" bên cạnh option phù hợp, người dùng vẫn tự chọn được.
-
-### Thay đổi chi tiết
+### Thay đổi
 
 | File | Nội dung |
 |------|----------|
-| `src/components/AIQuoteFill.tsx` | Thêm state `selectedModel`, dropdown Select với 4 options kèm mô tả chi phí/chất lượng. Truyền `model` vào body request. Thêm logic gợi ý tự động dựa trên số SP filtered. |
-| `supabase/functions/lookup-tax-code/index.ts` | Nhận param `model` từ request, sử dụng model được chọn cho Lovable AI. Cho Beeknoee fallback: map model tương ứng (gemini-2.5-flash-lite → gemini-2.5-flash, gemini-2.5-pro → gemini-2.5-flash vì Beeknoee không có pro). |
+| `src/components/AIQuoteFill.tsx` | Bỏ gọi `preFilterProducts()` trong `handleAIFill`, gửi trực tiếp `products`. Cập nhật `suggestedModel` dựa trên `products.length` và `request.length` thay vì filtered count. Giữ nguyên hàm `preFilterProducts` nhưng không dùng. |
 
-### Chi tiết kỹ thuật
-
-**Models mapping:**
-| UI Label | Lovable AI model | Beeknoee fallback |
-|----------|-----------------|-------------------|
-| Nhanh & Tiết kiệm | google/gemini-2.5-flash-lite | gemini-2.5-flash |
-| Cân bằng | google/gemini-2.5-flash | gemini-2.5-flash |
-| Chính xác cao | google/gemini-3-flash-preview | gemini-2.5-flash |
-| Cao cấp nhất | google/gemini-2.5-pro | gemini-2.5-flash |
-
-**Frontend**: Dropdown sử dụng component `Select` có sẵn, đặt cùng hàng với toggle hình ảnh. Mặc định chọn "Cân bằng".
-
-**Backend**: Hàm `callAI` nhận thêm param `model?: string`, sử dụng nó thay vì hardcode `google/gemini-3-flash-preview`. Chỉ áp dụng cho `ai_quote_fill`, các type khác giữ nguyên model mặc định.
+### Chi tiết
+- `handleAIFill`: thay `preFilterProducts(products, request.trim())` bằng `products` trực tiếp
+- `suggestedModel`: với 917 SP → mặc định gợi ý "Cân bằng" hoặc "Chính xác cao"
+- Log vẫn hiển thị số sản phẩm gửi đi để debug
 
