@@ -589,7 +589,14 @@ ${productListText}`;
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      return new Response(JSON.stringify(parsed), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      // Extract _meta and include in response
+      const { _meta, ...rest } = parsed;
+      const responseData = { ...rest };
+      if (_meta) {
+        responseData.usedModel = _meta.usedModel;
+        responseData.usedProvider = _meta.usedProvider;
+      }
+      return new Response(JSON.stringify(responseData), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     } else {
       return new Response(JSON.stringify({ error: "Invalid type" }), {
