@@ -90,6 +90,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
   const [selectedModel, setSelectedModel] = useState<string>("balanced");
   const [catalogCache, setCatalogCache] = useState<{ text: string; builtAt: string } | null>(null);
   const [isBuildingCatalog, setIsBuildingCatalog] = useState(false);
+  const [lastUsedModel, setLastUsedModel] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Auto-suggest model based on request complexity
@@ -188,17 +189,19 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
       } else {
         // Try to load from storage
         try {
-          const { data: fileData } = await supabase.storage
+          const { data: fileData, error: downloadError } = await supabase.storage
             .from("product-images")
             .download("catalog/product-catalog.json");
-          if (fileData) {
+          if (downloadError) {
+            console.warn("Catalog download failed:", downloadError.message);
+          } else if (fileData) {
             const catalogData = JSON.parse(await fileData.text());
             catalogText = catalogData.text;
             setCatalogCache({ text: catalogData.text, builtAt: catalogData.builtAt });
             console.log(`AI Quote: loaded catalog from storage (${catalogText!.length} chars, built ${catalogData.builtAt})`);
           }
         } catch (e) {
-          console.log("No cached catalog found, will build one");
+          console.warn("Catalog download error:", e instanceof Error ? e.message : e);
         }
 
         // If no catalog, build it
@@ -269,6 +272,12 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
           duration: 10000,
         });
         return;
+      }
+
+      // Track which model was actually used
+      if (data?.usedModel) {
+        setLastUsedModel(`${data.usedProvider || "AI"}: ${data.usedModel}`);
+        console.log(`AI Quote: actual model used: ${data.usedProvider} / ${data.usedModel}`);
       }
 
       let items: AIMatchedItem[] = data?.items || [];
@@ -390,7 +399,10 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
 
             {previewItems && previewItems.length > 0 && (
               <div className="space-y-3">
-                <p className="text-sm font-medium text-purple-800">Kết quả AI ({previewItems.length} sản phẩm):</p>
+                <p className="text-sm font-medium text-purple-800">
+                  Kết quả AI ({previewItems.length} sản phẩm)
+                  {lastUsedModel && <span className="text-xs font-normal text-muted-foreground ml-2">— {lastUsedModel}</span>}
+                </p>
                 <div className="rounded-md border border-purple-200 bg-white overflow-auto">
                   <Table>
                     <TableHeader>
