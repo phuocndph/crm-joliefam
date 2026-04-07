@@ -94,17 +94,41 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setImagePreview(null);
   };
 
-  const fileToBase64 = (file: File): Promise<string> => {
+  const compressImage = (file: File, maxDim = 1200, quality = 0.7): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(
+            (blob) => blob ? resolve(blob) : reject(new Error("Canvas toBlob failed")),
+            "image/jpeg",
+            quality
+          );
+        };
+        img.onerror = reject;
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        // Remove data:image/...;base64, prefix
-        const base64 = result.split(',')[1];
-        resolve(base64);
+        resolve(result.split(',')[1]);
       };
       reader.onerror = reject;
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(blob);
     });
   };
 
@@ -197,10 +221,11 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
 
       const bodyData: any = { products: productList, request: request.trim() };
 
-      // Convert image to base64 if present
+      // Compress and convert image to base64 if present
       if (imageFile) {
-        bodyData.imageBase64 = await fileToBase64(imageFile);
-        bodyData.imageMimeType = imageFile.type;
+        const compressed = await compressImage(imageFile);
+        bodyData.imageBase64 = await blobToBase64(compressed);
+        bodyData.imageMimeType = "image/jpeg";
       }
 
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
