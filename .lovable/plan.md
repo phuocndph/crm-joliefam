@@ -1,35 +1,64 @@
 
 
-## Tối ưu tốc độ và độ chính xác AI báo giá
+## Thêm tính năng chọn AI model cho báo giá
 
-### Vấn đề hiện tại
-1. **Lovable AI luôn lỗi 402** (hết credits) → mất thời gian thử rồi mới fallback sang Beeknoee
-2. **Gửi toàn bộ 917 sản phẩm** lên AI dù khách chỉ cần 3-5 sản phẩm → prompt quá dài, AI xử lý chậm và dễ nhầm
-3. **Model `google/gemini-3-flash-preview`** không có trên Beeknoee → luôn phải dùng model khác
-4. **Yêu cầu AI trả JSON text** → dễ bị format sai, phải clean markdown
+### Mục tiêu
+Cho phép người dùng chọn model AI khi tạo báo giá, kèm gợi ý mức chi phí và độ phù hợp để cân bằng giữa tốc độ, chất lượng và chi phí.
 
-### Giải pháp
+### Thiết kế UI
 
-#### 1. Bỏ qua Lovable AI khi đã hết credits (tiết kiệm 2-3s)
-Phát hiện lỗi 402 → ghi nhớ và chuyển thẳng Beeknoee, không thử lại Lovable trong cùng request.
+Thêm một dropdown chọn model bên cạnh toggle hình ảnh trong `AIQuoteFill.tsx`, hiển thị:
 
-#### 2. Lọc sản phẩm trước khi gửi AI (giảm 70-80% token)
-Client-side pre-filter: phân tích keywords từ yêu cầu khách → chỉ gửi sản phẩm có tên liên quan. Ví dụ khách nói "ga T225 1m8" → chỉ gửi ~50 sản phẩm chứa "ga", "T225", "160", "180" thay vì 917 sản phẩm.
+```text
+┌─────────────────────────────────────┐
+│ [AI tự chọn SP]  [⚡ Nhanh ▼]      │
+│                                     │
+│  ⚡ Nhanh & Tiết kiệm (Mặc định)   │
+│     gemini-2.5-flash-lite           │
+│     → Báo giá đơn giản, ít SP      │
+│                                     │
+│  ⚖️ Cân bằng                        │
+│     gemini-2.5-flash                │
+│     → Đa số báo giá thông thường   │
+│                                     │
+│  🎯 Chính xác cao                   │
+│     gemini-3-flash-preview          │
+│     → Báo giá phức tạp, nhiều SP   │
+│                                     │
+│  💎 Cao cấp nhất                    │
+│     gemini-2.5-pro                  │
+│     → Yêu cầu đặc biệt, cần       │
+│       phân tích sâu                 │
+└─────────────────────────────────────┘
+```
 
-#### 3. Dùng tool calling thay vì yêu cầu JSON text (chính xác hơn)
-Sử dụng `tools` + `tool_choice` trong API call để AI trả về structured output chuẩn, không cần parse/clean JSON thủ công.
+### Logic gợi ý tự động
 
-#### 4. Tối ưu prompt (gọn hơn, rõ hơn)
-Rút gọn prompt hướng dẫn, giữ nguyên logic nhưng bớt lặp lại.
+Dựa trên số sản phẩm sau pre-filter và độ dài yêu cầu:
+- **< 30 SP, yêu cầu ngắn** → Gợi ý "Nhanh & Tiết kiệm"
+- **30-100 SP** → Gợi ý "Cân bằng"
+- **> 100 SP hoặc yêu cầu dài/phức tạp** → Gợi ý "Chính xác cao"
+
+Gợi ý hiển thị dưới dạng badge nhỏ "Gợi ý" bên cạnh option phù hợp, người dùng vẫn tự chọn được.
 
 ### Thay đổi chi tiết
 
 | File | Nội dung |
 |------|----------|
-| `src/components/AIQuoteFill.tsx` | Thêm hàm `preFilterProducts()` lọc sản phẩm theo keywords trước khi gửi AI. Giới hạn tối đa 100 sản phẩm liên quan nhất |
-| `supabase/functions/lookup-tax-code/index.ts` | (1) Xử lý nhanh lỗi 402 Lovable AI, (2) Dùng tool calling cho `ai_quote_fill`, (3) Rút gọn prompt |
+| `src/components/AIQuoteFill.tsx` | Thêm state `selectedModel`, dropdown Select với 4 options kèm mô tả chi phí/chất lượng. Truyền `model` vào body request. Thêm logic gợi ý tự động dựa trên số SP filtered. |
+| `supabase/functions/lookup-tax-code/index.ts` | Nhận param `model` từ request, sử dụng model được chọn cho Lovable AI. Cho Beeknoee fallback: map model tương ứng (gemini-2.5-flash-lite → gemini-2.5-flash, gemini-2.5-pro → gemini-2.5-flash vì Beeknoee không có pro). |
 
-### Ước tính cải thiện
-- Tốc độ: nhanh hơn **2-3x** (ít token + bỏ retry Lovable)
-- Chính xác: cao hơn nhờ ít sản phẩm nhiễu + structured output
+### Chi tiết kỹ thuật
+
+**Models mapping:**
+| UI Label | Lovable AI model | Beeknoee fallback |
+|----------|-----------------|-------------------|
+| Nhanh & Tiết kiệm | google/gemini-2.5-flash-lite | gemini-2.5-flash |
+| Cân bằng | google/gemini-2.5-flash | gemini-2.5-flash |
+| Chính xác cao | google/gemini-3-flash-preview | gemini-2.5-flash |
+| Cao cấp nhất | google/gemini-2.5-pro | gemini-2.5-flash |
+
+**Frontend**: Dropdown sử dụng component `Select` có sẵn, đặt cùng hàng với toggle hình ảnh. Mặc định chọn "Cân bằng".
+
+**Backend**: Hàm `callAI` nhận thêm param `model?: string`, sử dụng nó thay vì hardcode `google/gemini-3-flash-preview`. Chỉ áp dụng cho `ai_quote_fill`, các type khác giữ nguyên model mặc định.
 
