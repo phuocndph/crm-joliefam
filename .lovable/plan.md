@@ -1,38 +1,49 @@
 
 
-## Tối ưu xử lý ảnh AI Quote Fill — Giảm thời gian chờ
+## Thêm tính năng chọn model OCR và xem luồng xử lý ảnh vào Cài đặt AI
 
-### Nguyên nhân gốc
+### Mô tả
+Thêm vào tab Model của trang Cài đặt AI:
+1. **Chọn model OCR riêng** (Bước 1 trích xuất ảnh) — tách biệt với model matching text (Bước 2)
+2. **Xem luồng xử lý ảnh** — hiển thị sơ đồ pipeline 2 bước (OCR → Text Matching) với thông tin model, delay, fallback chain
 
-Từ logs thấy rõ:
-- **Lovable AI hết credits (402)** → tất cả request phải fallback Beeknoee
-- **Beeknoee rate limit 1 concurrent** → Bước 1 OCR dùng gemini-2.5-flash xong, Bước 2 gọi lại gemini-2.5-flash ngay → bị 429
-- Sau đó thử lần lượt 3 model khác (glm, gpt-oss) đều 429 → chờ 5s retry → lặp lại
-- Tổng: 30-60s+ thay vì 10-15s
+### Thay đổi cụ thể
 
-### Giải pháp
+**File: `src/pages/AISettingsPage.tsx`**
+
+#### 1. Thêm cài đặt model OCR
+- Thêm field `ai_quote_ocr_model` vào `AISettings` interface và `DEFAULTS` (mặc định: `google/gemini-2.5-flash`)
+- Thêm card "Model OCR (Bước 1)" trong tab Model, giữa model Text và model Image hiện tại
+- Lọc danh sách model chỉ hiện các model hỗ trợ vision cho OCR (Gemini series)
+- Giải thích: model này dùng cho bước trích xuất text từ ảnh, khác với model Image (dùng cho full multimodal khi OCR thất bại)
+
+#### 2. Thêm card "Luồng xử lý ảnh" (Pipeline Visualization)
+- Thêm card mới trong tab Model, hiển thị sơ đồ pipeline dạng timeline/steps:
+  - **Bước 1 — OCR**: Model OCR → trích xuất text từ ảnh (prompt nhỏ, không catalog)
+  - **Delay 1.5s**: Giải phóng concurrent slot Beeknoee
+  - **Bước 2 — Text Matching**: Model Text → so khớp với catalog (dùng GLM first nếu Beeknoee)
+  - **Fallback**: Nếu OCR thất bại → dùng full multimodal với model Image
+- Hiển thị Beeknoee fallback chain cho mỗi bước (model order + timeout)
+- Dùng visual steps với icon và badge
+
+#### 3. Thêm cài đặt delay giữa 2 bước
+- Thêm field `ai_quote_step_delay` (ms) — mặc định 1500ms
+- Input number cho phép điều chỉnh (0-5000ms)
 
 **File: `supabase/functions/lookup-tax-code/index.ts`**
 
-#### 1. Tách model giữa 2 bước để tránh rate limit
-- Bước 1 OCR: dùng `gemini-2.5-flash` (vision)
-- Bước 2 Text matching: dùng model **khác** đầu tiên (vd `glm-4.7-flash`) rồi mới fallback gemini
-- Tránh 2 bước cùng model → 429
+#### 4. Đọc config OCR model và delay từ DB
+- Đọc `ai_quote_ocr_model` từ `aiConfig` thay vì hardcode `google/gemini-2.5-flash`
+- Đọc `ai_quote_step_delay` từ `aiConfig` thay vì hardcode 1500ms
+- Trả thêm metadata về pipeline trong response: `ocrModel`, `matchModel`, `ocrTime`, `matchTime`, `totalTime`
 
-#### 2. Thêm delay nhỏ giữa 2 bước khi dùng Beeknoee
-- Sau bước 1 OCR thành công, chờ 1-2s trước khi gọi bước 2
-- Cho Beeknoee giải phóng concurrent slot
+#### 5. Trả metadata luồng trong response
+- Bổ sung vào response JSON: `{ pipeline: { step1: { model, time }, delay, step2: { model, time }, total } }`
 
-#### 3. Giảm retry overhead
-- Bước 2 (text-only) không cần vision → ưu tiên model text nhanh (glm) trước gemini
-- Giảm retry wait từ 5s → 2s
-- Chỉ retry 1 lần thay vì 2
+### Files thay đổi
 
-#### 4. Log thời gian từng bước
-- Thêm `console.log` với timestamp để dễ debug: "Step 1 OCR took Xms", "Step 2 matching took Xms"
-
-### Kết quả mong đợi
-- Bước 1 OCR: ~5-10s (không đổi)
-- Bước 2 Text: ~3-5s (dùng model khác, tránh 429)
-- Tổng: ~10-15s thay vì 30-60s+
+| File | Thay đổi |
+|------|----------|
+| `src/pages/AISettingsPage.tsx` | Thêm model OCR selector, pipeline visualization, delay config |
+| `supabase/functions/lookup-tax-code/index.ts` | Đọc OCR model + delay từ DB config, trả metadata pipeline |
 
