@@ -57,6 +57,7 @@ import {
   XCircle,
   AlertCircle,
   Settings,
+  Sparkles,
   Calculator,
   Calendar,
   Copy,
