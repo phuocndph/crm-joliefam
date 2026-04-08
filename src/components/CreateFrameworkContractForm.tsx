@@ -9,7 +9,7 @@ import { useCreateContract } from "@/hooks/useContracts";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Plus, Trash2, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 
 interface Props {
   onSuccess: () => void;
@@ -90,9 +90,29 @@ export const CreateFrameworkContractForm = ({ onSuccess }: Props) => {
     setLookingUpTax(false);
   };
 
-  const handleArticleChange = (idx: number, value: string) => {
-    setArticles(prev => prev.map((a, i) => i === idx ? { ...a, content: value } : a));
+  const handleArticleChange = (idx: number, field: "title" | "content", value: string) => {
+    setArticles(prev => prev.map((a, i) => i === idx ? { ...a, [field]: value } : a));
   };
+
+  const addArticle = () => {
+    setArticles(prev => [...prev, { title: `ĐIỀU ${prev.length + 1}: `, content: "" }]);
+  };
+
+  const removeArticle = (idx: number) => {
+    setArticles(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const moveArticle = (idx: number, dir: -1 | 1) => {
+    setArticles(prev => {
+      const next = [...prev];
+      const target = idx + dir;
+      if (target < 0 || target >= next.length) return prev;
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  };
+
+  const resetArticles = () => setArticles(defaultArticles);
 
   const handleSubmit = async () => {
     if (!buyerInfo.company_name.trim()) {
@@ -248,20 +268,43 @@ export const CreateFrameworkContractForm = ({ onSuccess }: Props) => {
       {/* Articles */}
       <details>
         <summary className="cursor-pointer text-sm font-medium text-primary hover:underline">
-          Chỉnh sửa nội dung các điều khoản (6 điều)
+          Chỉnh sửa nội dung các điều khoản ({articles.length} điều)
         </summary>
-        <div className="mt-3 space-y-3 p-3 border rounded-lg bg-muted/20">
+        <div className="mt-3 space-y-4 p-3 border rounded-lg bg-muted/20">
           {articles.map((article, idx) => (
-            <div key={idx}>
-              <Label className="text-xs font-semibold">{article.title}</Label>
+            <div key={idx} className="space-y-1 p-2 border rounded bg-background">
+              <div className="flex items-center gap-1">
+                <Input
+                  value={article.title}
+                  onChange={e => handleArticleChange(idx, "title", e.target.value)}
+                  className="text-xs font-semibold flex-1 h-8"
+                />
+                <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => moveArticle(idx, -1)} disabled={idx === 0}>
+                  <ArrowUp className="h-3 w-3" />
+                </Button>
+                <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => moveArticle(idx, 1)} disabled={idx === articles.length - 1}>
+                  <ArrowDown className="h-3 w-3" />
+                </Button>
+                <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-destructive hover:text-destructive" onClick={() => removeArticle(idx)}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
               <Textarea
                 value={article.content}
-                onChange={e => handleArticleChange(idx, e.target.value)}
+                onChange={e => handleArticleChange(idx, "content", e.target.value)}
                 rows={4}
-                className="mt-1 text-xs"
+                className="text-xs"
               />
             </div>
           ))}
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={addArticle}>
+              <Plus className="h-3 w-3 mr-1" /> Thêm điều khoản
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={resetArticles}>
+              <RotateCcw className="h-3 w-3 mr-1" /> Khôi phục mặc định
+            </Button>
+          </div>
         </div>
       </details>
 
