@@ -290,36 +290,77 @@ export default function AISettingsPage() {
 
         {/* TAB 1: PROMPT */}
         <TabsContent value="prompt">
-          <Card>
-            <CardHeader>
-              <CardTitle>System Prompt</CardTitle>
-              <CardDescription>
-                Prompt chính gửi cho AI khi xử lý AI Quote Fill. Để trống sẽ dùng prompt mặc định.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Custom Prompt (để trống = mặc định)</Label>
-                <Textarea
-                  value={settings.ai_quote_fill_prompt}
-                  onChange={(e) => setSettings(s => ({ ...s, ai_quote_fill_prompt: e.target.value }))}
-                  placeholder="Bạn là chuyên gia báo giá nội thất phòng ngủ VN..."
-                  className="min-h-[300px] font-mono text-sm"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Prompt sẽ được chèn trước bảng giá sản phẩm. Các biến tự động: {'{productListText}'}, {'{segmentInstruction}'}
-                </p>
-              </div>
-              {settings.ai_quote_fill_prompt && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">Custom prompt</Badge>
-                  <span className="text-sm text-muted-foreground">
-                    {settings.ai_quote_fill_prompt.length} ký tự
-                  </span>
+          <div className="space-y-4">
+            {/* Default Prompt - always visible */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Prompt mặc định (đang sử dụng)</CardTitle>
+                <CardDescription>
+                  Đây là prompt hệ thống đang dùng trong edge function. Các biến {'{productListText}'}, {'{segmentInstruction}'}, {'{catalogHeader}'} sẽ được thay thế tự động.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-muted rounded-md p-4 overflow-x-auto max-h-[400px] overflow-y-auto">
+                  <pre className="text-xs font-mono whitespace-pre-wrap text-foreground/80">
+                    {DEFAULT_PROMPT_DISPLAY}
+                  </pre>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant="secondary">{DEFAULT_PROMPT_DISPLAY.length} ký tự</Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(DEFAULT_PROMPT_DISPLAY);
+                      toast({ title: "Đã copy", description: "Prompt mặc định đã được copy vào clipboard" });
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Custom Prompt Override */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Custom Prompt (ghi đè)</CardTitle>
+                <CardDescription>
+                  Nhập prompt tùy chỉnh để thay thế prompt mặc định. Để trống sẽ dùng prompt mặc định ở trên.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Textarea
+                    value={settings.ai_quote_fill_prompt}
+                    onChange={(e) => setSettings(s => ({ ...s, ai_quote_fill_prompt: e.target.value }))}
+                    placeholder="Để trống = dùng prompt mặc định..."
+                    className="min-h-[250px] font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Biến tự động: {'{productListText}'} (bảng giá), {'{segmentInstruction}'} (phân đoạn), {'{catalogHeader}'} (header)
+                  </p>
+                </div>
+                {settings.ai_quote_fill_prompt ? (
+                  <div className="flex items-center gap-2">
+                    <Badge>Custom prompt đang bật</Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {settings.ai_quote_fill_prompt.length} ký tự
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSettings(s => ({ ...s, ai_quote_fill_prompt: '' }))}
+                    >
+                      Xoá & dùng mặc định
+                    </Button>
+                  </div>
+                ) : (
+                  <Badge variant="outline">Đang dùng prompt mặc định</Badge>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* TAB 2: MODEL */}
