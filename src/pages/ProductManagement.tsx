@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Package, Plus, Edit, Trash2, Search, Filter, FileSpreadsheet, Users, Calendar, Settings, Image, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Package, Plus, Edit, Trash2, Search, Filter, FileSpreadsheet, Users, Calendar, Settings, Image, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { ColumnMappingDialog } from '@/components/ColumnMappingDialog';
@@ -224,7 +224,102 @@ const ProductManagement = () => {
     }
   };
 
-  // Get unique categories for filter dropdown
+  const exportToExcel = async () => {
+    if (!selectedPriceList) {
+      toast({ title: "Lỗi", description: "Vui lòng chọn bảng giá trước", variant: "destructive" });
+      return;
+    }
+    try {
+      toast({ title: "Đang xuất...", description: "Đang tải toàn bộ sản phẩm để xuất Excel" });
+      
+      // Fetch ALL products for this price list (no pagination)
+      let allProducts: Product[] = [];
+      let offset = 0;
+      const batchSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('products' as any)
+          .select('*')
+          .eq('price_list_id', selectedPriceList)
+          .order('category', { ascending: true })
+          .order('sku', { ascending: true })
+          .range(offset, offset + batchSize - 1);
+        if (error) throw error;
+        const batch = (data as unknown as Product[]) || [];
+        allProducts = [...allProducts, ...batch];
+        if (batch.length < batchSize) break;
+        offset += batchSize;
+      }
+
+      const ExcelJS = await import('exceljs');
+      const { saveAs } = await import('file-saver');
+      
+      const workbook = new ExcelJS.Workbook();
+      const priceListName = priceLists.find(p => p.id === selectedPriceList)?.name || 'Bảng giá';
+      const sheet = workbook.addWorksheet(priceListName);
+
+      // Header row
+      sheet.columns = [
+        { header: 'STT', key: 'stt', width: 6 },
+        { header: 'Mã SP', key: 'sku', width: 18 },
+        { header: 'Danh mục', key: 'category', width: 30 },
+        { header: 'Tên sản phẩm', key: 'name', width: 45 },
+        { header: 'Quy cách', key: 'specifications', width: 20 },
+        { header: 'Giá gốc', key: 'cost_price', width: 15 },
+        { header: 'Giá bán', key: 'price', width: 15 },
+        { header: 'Kho', key: 'in_stock', width: 8 },
+        { header: 'Mô tả', key: 'description', width: 40 },
+      ];
+
+      // Style header
+      const headerRow = sheet.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+      headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+      headerRow.height = 28;
+
+      // Add data
+      allProducts.forEach((p, i) => {
+        sheet.addRow({
+          stt: i + 1,
+          sku: p.sku || '',
+          category: p.category || '',
+          name: p.name,
+          specifications: p.specifications || '',
+          cost_price: p.cost_price || 0,
+          price: p.price || 0,
+          in_stock: p.in_stock ? 'Còn' : 'Hết',
+          description: p.description || '',
+        });
+      });
+
+      // Format currency columns
+      sheet.getColumn('cost_price').numFmt = '#,##0';
+      sheet.getColumn('price').numFmt = '#,##0';
+
+      // Alternate row colors
+      for (let i = 2; i <= allProducts.length + 1; i++) {
+        const row = sheet.getRow(i);
+        if (i % 2 === 0) {
+          row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+        }
+        row.alignment = { vertical: 'middle', wrapText: true };
+      }
+
+      const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9À-ỹ\s-]/g, '').trim();
+      const fileName = `BangGia-${sanitize(priceListName)}.xlsx`;
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName);
+
+      toast({ title: "Thành công", description: `Đã xuất ${allProducts.length} sản phẩm ra file Excel` });
+    } catch (error) {
+      console.error('Export error:', error);
+      toast({ title: "Lỗi", description: "Không thể xuất file Excel", variant: "destructive" });
+    }
+  };
+
+
   const getUniqueCategories = () => {
     const categories = products
       .map(p => p.category)
@@ -1014,6 +1109,14 @@ const ProductManagement = () => {
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Thêm SP
+                    </Button>
+                    <Button
+                      onClick={exportToExcel}
+                      variant="outline"
+                      className="flex items-center gap-2"
+                    >
+                      <Download className="h-4 w-4" />
+                      Tải Excel
                     </Button>
                   </div>
                 </div>
