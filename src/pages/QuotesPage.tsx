@@ -57,6 +57,7 @@ import {
   XCircle,
   AlertCircle,
   Settings,
+  Sparkles,
   Calculator,
   Calendar,
   Copy,
@@ -86,6 +87,7 @@ export default function QuotesPage() {
   const { role: userRole } = useUserRole(user);
   const { hasPermission } = useEmployeePermissions(user, userRole);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   
   // Use React Query for quotes with real-time updates
   const { data: quotes = [], isLoading: loading, refetch: refetchQuotes } = useQuotes({ 
@@ -433,14 +435,24 @@ export default function QuotesPage() {
           <div className="flex gap-2">
             <CreateAssigneeForm onSuccess={refetchQuotes} />
             {(userRole === 'manager' || userRole === 'admin') && (
-              <Button 
-                variant="outline" 
-                onClick={() => setShowTemplateSettings(true)} 
-                className="gap-2"
-              >
-                <Settings className="h-4 w-4" />
-                Cài đặt Template
-              </Button>
+              <>
+                <Button 
+                  variant="outline" 
+                  onClick={() => navigate('/ai-settings')} 
+                  className="gap-2"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Cài đặt AI
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowTemplateSettings(true)} 
+                  className="gap-2"
+                >
+                  <Settings className="h-4 w-4" />
+                  Cài đặt Template
+                </Button>
+              </>
             )}
             <Button onClick={() => setShowCreateForm(true)} className="gap-2">
               <Plus className="h-4 w-4" />

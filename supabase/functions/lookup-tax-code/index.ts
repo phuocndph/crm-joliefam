@@ -1542,6 +1542,122 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
 
       return new Response(JSON.stringify(parsed), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    // ==================== AI QUOTE DEBUG ====================
+    } else if (type === "ai_quote_debug") {
+      const { request, config } = data;
+      if (!request) {
+        return new Response(JSON.stringify({ error: "Missing request" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const startTime = Date.now();
+
+      // Use custom config if provided
+      const customTypeCategories = config?.typeCategories;
+      const customProductKeywords = config?.productKeywords;
+      const customMaterialKeywords = config?.materialKeywords;
+
+      // Override globals temporarily if custom keywords provided
+      // (parseRequestSegments uses module-level PRODUCT_TYPE_KEYWORDS)
+
+      // Fetch products
+      const authHeader = req.headers.get("Authorization");
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: { Authorization: authHeader || "" } },
+      });
+
+      const { data: products, error: dbError } = await supabase
+        .from("products")
+        .select("id, name, specifications, description, price, category")
+        .eq("in_stock", true)
+        .order("category");
+
+      if (dbError) {
+        return new Response(JSON.stringify({ error: "DB error: " + dbError.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const allProducts = products || [];
+
+      // Parse segments
+      const segments = parseRequestSegments(request);
+      
+      // Filter
+      let filteredProducts: any[];
+      if (segments.length > 0) {
+        filteredProducts = filterProductsBySegments(allProducts, segments);
+      } else {
+        const { categories, materials } = extractCategoryFilters(request);
+        filteredProducts = filterProductsByCategory(allProducts, categories, materials);
+      }
+
+      // Call AI with custom or default model
+      const textModel = config?.textModel || "google/gemini-2.5-flash";
+      
+      // Build prompt (same as ai_quote_fill)
+      const productListText = filteredProducts.map((p: any) => 
+        `${p.id}|${p.name}|${p.specifications || ''}|${p.price || 0}`
+      ).join("\n");
+
+      let segmentInstruction = '';
+      if (segments.length > 0) {
+        const segLines = segments.map((s, i) => {
+          const parts = [s.type];
+          if (s.material) parts.push(s.material);
+          if (s.pattern) parts.push(s.pattern);
+          if (s.size) parts.push(s.size);
+          if (s.quantity > 1) parts.push(`x${s.quantity}`);
+          return `${i + 1}. ${parts.join(' ')}`;
+        }).join('\n');
+        segmentInstruction = `\n## YÊU CẦU ĐÃ PHÂN TÍCH (${segments.length} sản phẩm):\n${segLines}\n`;
+      }
+
+      const defaultPrompt = `Bạn là chuyên gia báo giá nội thất phòng ngủ VN.
+
+## BẢNG GIÁ (ID|Tên|Quy cách|Giá)
+${productListText}
+${segmentInstruction}
+## OUTPUT — JSON thuần
+{"items":[{"matchedProductId":"uuid","customName":"tên","quantity":1,"price":0,"specifications":"","note":""}]}`;
+
+      const systemPrompt = config?.customPrompt || defaultPrompt;
+
+      const parsed = await callAI([
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Yêu cầu khách hàng:\n"""\n${request}\n"""` },
+      ], false, textModel);
+
+      const processingTime = Date.now() - startTime;
+
+      // Validate
+      let warnings: string[] = [];
+      if (parsed.items && Array.isArray(parsed.items)) {
+        const candidateMap = segments.length > 0 ? buildSegmentCandidates(segments, allProducts) : new Map();
+        const validProductIds = new Set(allProducts.map((p: any) => p.id));
+        const validation = validateAndRepairItems(parsed.items, segments, candidateMap, allProducts, validProductIds);
+        parsed.items = validation.items;
+        warnings = validation.warnings;
+      }
+
+      return new Response(JSON.stringify({
+        segments: segments.map(s => ({
+          type: s.type, material: s.material, pattern: s.pattern,
+          size: s.size, quantity: s.quantity, needsFabric: s.needsFabric, rawText: s.rawText,
+        })),
+        filtering: {
+          totalProducts: allProducts.length,
+          filteredProducts: filteredProducts.length,
+        },
+        aiResponse: parsed,
+        warnings,
+        modelUsed: textModel,
+        processingTime,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     } else {
       return new Response(JSON.stringify({ error: "Invalid type" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },

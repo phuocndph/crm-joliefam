@@ -13,7 +13,8 @@ import {
   Scissors,
   BookOpen,
   FileSignature,
-  Receipt
+  Receipt,
+  Sparkles,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -131,6 +132,13 @@ const menuItems = [
     icon: BookOpen,
     description: "AI hỗ trợ bán hàng",
     permission: "knowledge_base" as const
+  },
+  { 
+    title: "Cài đặt AI", 
+    url: "/ai-settings", 
+    icon: Sparkles,
+    description: "Cấu hình AI Quote Fill",
+    permission: "user_management" as const
   },
   { 
     title: "Quản lý nhân viên", 
