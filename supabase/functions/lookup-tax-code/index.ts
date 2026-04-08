@@ -972,12 +972,28 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
         });
       }
 
-      // Validate matchedProductId — warn if AI returned fake IDs
+      // Validate matchedProductId — fix fake IDs by finding closest real product
       const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const validProductIds = new Set(allProducts.map((p: any) => p.id));
+      
       if (parsed.items && Array.isArray(parsed.items)) {
         for (const item of parsed.items) {
-          if (item.matchedProductId && !UUID_REGEX.test(item.matchedProductId)) {
-            console.warn(`⚠️ AI returned fake ID: "${item.matchedProductId}" for "${item.customName}"`);
+          const id = item.matchedProductId;
+          const isValidUUID = id && UUID_REGEX.test(id);
+          const existsInCatalog = isValidUUID && validProductIds.has(id);
+          
+          if (!existsInCatalog) {
+            console.warn(`⚠️ AI returned invalid/fake ID: "${id}" for "${item.customName}" — finding closest match`);
+            const closest = findClosestProduct(item.customName || '', allProducts);
+            if (closest) {
+              const oldId = item.matchedProductId;
+              item.matchedProductId = closest.id;
+              item.price = closest.price || item.price;
+              item.note = (item.note ? item.note + '. ' : '') + `Auto-match: ${closest.name} (SP gốc không tìm thấy chính xác)`;
+              console.log(`✅ Fixed: "${item.customName}" → ${closest.name} (${closest.id}) [was: ${oldId}]`);
+            } else {
+              console.warn(`❌ No match found for "${item.customName}"`);
+            }
           }
         }
         // Validation: check if AI returned fewer items than segments
