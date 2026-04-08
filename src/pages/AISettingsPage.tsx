@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Save, Loader2, Play, Sparkles, Brain, Database, TestTube, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Play, Sparkles, Brain, Database, TestTube, RotateCcw, ChevronDown, ChevronUp, Eye, Clock, Zap, ArrowRight, AlertTriangle } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const DEFAULT_PROMPT_DISPLAY = `Bạn là chuyên gia báo giá nội thất phòng ngủ VN. Nhân viên gõ nhanh, không dấu, viết tắt.
@@ -50,13 +50,15 @@ matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU bảng giá. TUY�
 Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
 
 const AI_MODELS = [
-  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", desc: "Nhanh & tiết kiệm" },
-  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Cân bằng (mặc định text)" },
-  { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash Preview", desc: "Mặc định ảnh" },
-  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", desc: "Chính xác cao" },
-  { value: "openai/gpt-5-mini", label: "GPT-5 Mini", desc: "OpenAI cân bằng" },
-  { value: "openai/gpt-5", label: "GPT-5", desc: "Cao cấp nhất" },
+  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", desc: "Nhanh & tiết kiệm", vision: false },
+  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Cân bằng (mặc định text)", vision: true },
+  { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash Preview", desc: "Mặc định ảnh", vision: true },
+  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", desc: "Chính xác cao", vision: true },
+  { value: "openai/gpt-5-mini", label: "GPT-5 Mini", desc: "OpenAI cân bằng", vision: false },
+  { value: "openai/gpt-5", label: "GPT-5", desc: "Cao cấp nhất", vision: true },
 ];
+
+const VISION_MODELS = AI_MODELS.filter(m => m.vision);
 
 const DEFAULT_TYPE_CATEGORIES: Record<string, string[]> = {
   'ga chun': ['ga chun'],
@@ -99,6 +101,8 @@ interface AISettings {
   ai_quote_fill_prompt: string;
   ai_quote_text_model: string;
   ai_quote_image_model: string;
+  ai_quote_ocr_model: string;
+  ai_quote_step_delay: string;
   ai_quote_type_categories: string;
   ai_quote_product_keywords: string;
   ai_quote_material_keywords: string;
@@ -109,6 +113,8 @@ const DEFAULTS: AISettings = {
   ai_quote_fill_prompt: '',
   ai_quote_text_model: 'google/gemini-2.5-flash',
   ai_quote_image_model: 'google/gemini-3-flash-preview',
+  ai_quote_ocr_model: 'google/gemini-2.5-flash',
+  ai_quote_step_delay: '1500',
   ai_quote_type_categories: JSON.stringify(DEFAULT_TYPE_CATEGORIES, null, 2),
   ai_quote_product_keywords: JSON.stringify(DEFAULT_PRODUCT_TYPE_KEYWORDS),
   ai_quote_material_keywords: JSON.stringify(DEFAULT_MATERIAL_KEYWORDS),
@@ -376,64 +382,125 @@ export default function AISettingsPage() {
           </div>
         </TabsContent>
 
-        {/* TAB 2: MODEL */}
         <TabsContent value="model">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Model xử lý Text</CardTitle>
-                <CardDescription>Dùng khi khách nhập yêu cầu bằng văn bản</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Select
-                  value={settings.ai_quote_text_model}
-                  onValueChange={(v) => setSettings(s => ({ ...s, ai_quote_text_model: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AI_MODELS.map(m => (
-                      <SelectItem key={m.value} value={m.value}>
-                        <div className="flex items-center gap-2">
-                          <span>{m.label}</span>
-                          <span className="text-xs text-muted-foreground">— {m.desc}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </CardContent>
-            </Card>
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Model xử lý Text</CardTitle>
+                  <CardDescription>Dùng cho Bước 2 — so khớp text với catalog (không ảnh)</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Select
+                    value={settings.ai_quote_text_model}
+                    onValueChange={(v) => setSettings(s => ({ ...s, ai_quote_text_model: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AI_MODELS.map(m => (
+                        <SelectItem key={m.value} value={m.value}>
+                          <div className="flex items-center gap-2">
+                            <span>{m.label}</span>
+                            <span className="text-xs text-muted-foreground">— {m.desc}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Model xử lý Ảnh</CardTitle>
-                <CardDescription>Dùng khi khách gửi hình ảnh báo giá/đơn hàng</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Select
-                  value={settings.ai_quote_image_model}
-                  onValueChange={(v) => setSettings(s => ({ ...s, ai_quote_image_model: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AI_MODELS.map(m => (
-                      <SelectItem key={m.value} value={m.value}>
-                        <div className="flex items-center gap-2">
-                          <span>{m.label}</span>
-                          <span className="text-xs text-muted-foreground">— {m.desc}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </CardContent>
-            </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Eye className="h-4 w-4 text-blue-500" />
+                    Model OCR (Bước 1)
+                  </CardTitle>
+                  <CardDescription>Trích xuất text từ ảnh. Chỉ model hỗ trợ vision.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Select
+                    value={settings.ai_quote_ocr_model}
+                    onValueChange={(v) => setSettings(s => ({ ...s, ai_quote_ocr_model: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VISION_MODELS.map(m => (
+                        <SelectItem key={m.value} value={m.value}>
+                          <div className="flex items-center gap-2">
+                            <span>{m.label}</span>
+                            <span className="text-xs text-muted-foreground">— {m.desc}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Khác với model Image (fallback khi OCR thất bại). OCR chỉ trích xuất text, không cần catalog.
+                  </p>
+                </CardContent>
+              </Card>
 
-            <Card className="md:col-span-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Model xử lý Ảnh (Fallback)</CardTitle>
+                  <CardDescription>Dùng khi OCR thất bại — full multimodal với catalog</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Select
+                    value={settings.ai_quote_image_model}
+                    onValueChange={(v) => setSettings(s => ({ ...s, ai_quote_image_model: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VISION_MODELS.map(m => (
+                        <SelectItem key={m.value} value={m.value}>
+                          <div className="flex items-center gap-2">
+                            <span>{m.label}</span>
+                            <span className="text-xs text-muted-foreground">— {m.desc}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Delay giữa 2 bước
+                  </CardTitle>
+                  <CardDescription>Thời gian chờ giữa OCR và Text Matching (ms). Giúp tránh rate limit.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4">
+                    <Input
+                      type="number"
+                      value={settings.ai_quote_step_delay}
+                      onChange={(e) => setSettings(s => ({ ...s, ai_quote_step_delay: e.target.value }))}
+                      className="w-32"
+                      min={0}
+                      max={5000}
+                      step={100}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      = {(parseInt(settings.ai_quote_step_delay || '0') / 1000).toFixed(1)}s
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Cache TTL */}
+            <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Cache TTL</CardTitle>
                 <CardDescription>Thời gian cache catalog sản phẩm (giây). Mặc định 300 = 5 phút.</CardDescription>
@@ -451,6 +518,96 @@ export default function AISettingsPage() {
                   <span className="text-sm text-muted-foreground">
                     = {Math.round(parseInt(settings.ai_quote_cache_ttl || '0') / 60)} phút
                   </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Pipeline Visualization */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-yellow-500" />
+                  Luồng xử lý ảnh (Pipeline)
+                </CardTitle>
+                <CardDescription>
+                  Sơ đồ pipeline 2 bước khi xử lý ảnh báo giá. Khi không có ảnh, chỉ chạy Bước 2.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {/* Step 1 */}
+                  <div className="flex items-start gap-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold">1</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">OCR — Trích xuất text từ ảnh</span>
+                        <Badge variant="outline" className="text-xs">Vision</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Model: <span className="font-mono text-foreground">{AI_MODELS.find(m => m.value === settings.ai_quote_ocr_model)?.label || settings.ai_quote_ocr_model}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">Prompt ngắn, không gửi catalog → tiết kiệm 60-80% token</p>
+                      <div className="mt-2">
+                        <p className="text-xs font-medium text-muted-foreground">Beeknoee fallback:</p>
+                        <div className="flex gap-1 flex-wrap mt-1">
+                          <Badge variant="secondary" className="text-[10px]">gemini-2.5-flash</Badge>
+                          <span className="text-[10px] text-muted-foreground self-center">→ timeout 90s</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Delay arrow */}
+                  <div className="flex items-center gap-2 pl-4">
+                    <div className="w-0.5 h-4 bg-border mx-3.5" />
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      Delay {(parseInt(settings.ai_quote_step_delay || '0') / 1000).toFixed(1)}s — giải phóng concurrent slot
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="flex items-start gap-3 p-3 rounded-lg border bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center text-sm font-bold">2</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">Text Matching — So khớp với catalog</span>
+                        <Badge variant="outline" className="text-xs">Text-only</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Model: <span className="font-mono text-foreground">{AI_MODELS.find(m => m.value === settings.ai_quote_text_model)?.label || settings.ai_quote_text_model}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">Dùng text OCR + catalog đã lọc theo segment</p>
+                      <div className="mt-2">
+                        <p className="text-xs font-medium text-muted-foreground">Beeknoee fallback (ưu tiên GLM để tránh 429):</p>
+                        <div className="flex gap-1 flex-wrap mt-1">
+                          {['glm-4.7-flash', 'glm-4.5-flash', 'gemini-2.5-flash', 'gpt-oss-120b'].map((m, i) => (
+                            <span key={m} className="flex items-center gap-0.5">
+                              <Badge variant="secondary" className="text-[10px]">{m}</Badge>
+                              {i < 3 && <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Fallback */}
+                  <div className="flex items-start gap-3 p-3 rounded-lg border border-dashed bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-400 text-white flex items-center justify-center">
+                      <AlertTriangle className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">Fallback — Full Multimodal</span>
+                        <Badge variant="outline" className="text-xs text-orange-600">Khi OCR thất bại</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Model: <span className="font-mono text-foreground">{AI_MODELS.find(m => m.value === settings.ai_quote_image_model)?.label || settings.ai_quote_image_model}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">Gửi ảnh + catalog → tốn nhiều token hơn, chậm hơn</p>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
