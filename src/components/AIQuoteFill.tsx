@@ -417,6 +417,7 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
                         <TableHead className="text-right">Thành tiền</TableHead>
                          <TableHead>Ghi chú</TableHead>
                          <TableHead className="w-[80px]">Trạng thái</TableHead>
+                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {previewItems.map((item, idx) => (
