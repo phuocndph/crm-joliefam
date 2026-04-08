@@ -362,9 +362,11 @@ function parseRequestSegments(request: string): RequestSegment[] {
     const localPattern = detectPattern(chunk);
 
     // Quantity — check leading text first ("4c Vỏ chăn"), then inside chunk
+    // "Nc" means N cái (shorthand), but avoid matching sizes like "12cm"
     let qty = 1;
-    const leadingQtyMatch = leadingText.match(/(\d+)\s*c\b/i) || leadingText.match(/(\d+)\s*(cai|bo|chiec|cap|doi)\b/i);
-    const chunkQtyMatch = chunk.match(/(\d+)\s*c\b/i) || chunk.match(/[x×]\s*(\d+)\s*$/) || chunk.match(/(\d+)\s*(cai|bo|chiec|cap|doi)\b/i);
+    const qtyRegexes = [/(\d+)\s*c(?!\s*m)\b/i, /(\d+)\s*(cai|bo|chiec|cap|doi)\b/i];
+    const leadingQtyMatch = leadingText.match(qtyRegexes[0]) || leadingText.match(qtyRegexes[1]);
+    const chunkQtyMatch = chunk.match(/[x×]\s*(\d+)\s*$/) || chunk.match(qtyRegexes[0]) || chunk.match(qtyRegexes[1]);
     if (leadingQtyMatch) {
       qty = parseInt(leadingQtyMatch[1]) || 1;
     } else if (chunkQtyMatch) {
