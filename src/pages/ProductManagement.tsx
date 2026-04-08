@@ -1110,6 +1110,14 @@ const ProductManagement = () => {
                       <Plus className="h-4 w-4 mr-2" />
                       Thêm SP
                     </Button>
+                    <Button
+                      onClick={exportToExcel}
+                      variant="outline"
+                      className="flex items-center gap-2"
+                    >
+                      <Download className="h-4 w-4" />
+                      Tải Excel
+                    </Button>
                   </div>
                 </div>
               </CardContent>
