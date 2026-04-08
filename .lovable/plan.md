@@ -1,54 +1,54 @@
 
 
-## Tối ưu AI Quote Fill: Tách xử lý ảnh thành 2 bước
+## Làm lại nội dung Đề nghị Thanh toán cho chuyên nghiệp
 
-### Luồng hiện tại (tốn token)
+### Các thay đổi nội dung
+
+Hiện tại văn bản thiếu số hiệu công văn, thiếu thông tin địa chỉ/đại diện bên mua-bán, câu từ chưa theo đúng mẫu công văn hành chính. Sẽ cải thiện toàn diện cả phần preview HTML và phần xuất Word.
+
+**File sửa: `src/components/PaymentRequestDialog.tsx`**
+
+#### 1. Bổ sung header công ty bên trái + quốc hiệu bên phải (đúng mẫu công văn VN)
+
 ```text
-Client: gửi imageBase64 + catalog 917 SP → AI (multimodal)
-AI nhận: ảnh + prompt dài + toàn bộ catalog = ~30K-50K tokens
-Model: phải dùng vision model (chậm hơn, đắt hơn)
+[Bên trái]                              [Bên phải]
+CÔNG TY TNHH GIA LỘC HƯNG PHÁT        CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Số: .../ĐNTT-GLHP                       Độc lập – Tự do – Hạnh phúc
+                                         ————————
+                                         TP.HCM, ngày ... tháng ... năm ...
 ```
 
-### Luồng mới (tiết kiệm)
-```text
-Bước 1: Client gửi imageBase64 → AI OCR (prompt nhỏ, không catalog)
-         AI trả về: text mô tả sản phẩm (~200-500 tokens)
-         
-Bước 2: Dùng text đó → chạy logic text bình thường
-         (segment parsing → filter catalog → AI match với text model nhanh)
-```
+#### 2. Cải thiện phần thân văn bản
+- Thêm "V/v: Đề nghị thanh toán theo Hợp đồng số ..."
+- Thêm đoạn giới thiệu bên đề nghị: tên công ty, MST, địa chỉ, người đại diện
+- Thêm thông tin bên được đề nghị: tên công ty, địa chỉ
+- Câu dẫn chuyên nghiệp hơn: "Căn cứ Hợp đồng kinh tế số ... ký ngày ... giữa hai bên về việc cung cấp hàng hóa, Bên A kính đề nghị Bên B thanh toán khoản tiền theo bảng chi tiết dưới đây:"
 
-### Thay đổi
+#### 3. Bảng thanh toán - thêm cột STT và mở rộng
+| STT | Nội dung | Thành tiền |
+|-----|----------|------------|
+| 1 | Tổng giá trị hợp đồng | ... |
+| 2 | Đã thanh toán đợt 1 (đặt cọc X%) | ... |
+| 3 | **Số tiền đề nghị thanh toán đợt này** | ... |
 
-**File: `supabase/functions/lookup-tax-code/index.ts`**
+#### 4. Phần thông tin chuyển khoản - format rõ ràng hơn
+- Tách riêng: Tên TK, Số TK, Ngân hàng, Chi nhánh (parse từ `sellerBank`)
+- "Nội dung chuyển khoản" thay cho "Nội dung CK"
 
-Trong handler `ai_quote_fill`, khi `imageBase64` có:
+#### 5. Phần kết - câu từ đúng mực
+- "Kính đề nghị Quý Công ty/Đơn vị sắp xếp thanh toán theo thông tin nêu trên. Mọi thắc mắc xin vui lòng liên hệ theo số điện thoại: ... để được hỗ trợ."
+- "Trân trọng cảm ơn sự hợp tác của Quý khách hàng./"
 
-1. **Bước 1 — OCR**: Gọi AI vision model với prompt ngắn (chỉ ~500 tokens):
-```text
-"Trích xuất danh sách sản phẩm từ ảnh. Ghi lại: tên SP, số lượng, kích thước, chất liệu, giá (nếu có).
-Trả về dạng text thuần, mỗi dòng 1 sản phẩm. VD: ga chun T250 sọc 180x200 x2"
-```
-→ Nhận text ~200-500 ký tự
+#### 6. Phần ký - đúng mẫu
+- Bên trái: "ĐẠI DIỆN BÊN A" (Ký, đóng dấu, ghi rõ họ tên)
+- Bên phải: "ĐẠI DIỆN BÊN B" (Ký, đóng dấu, ghi rõ họ tên)
 
-2. **Bước 2 — Ghép text**: Nối text OCR với `request` gốc (nếu có), rồi chạy luồng text bình thường:
-   - `parseRequestSegments(ocrText)` → segments
-   - `filterProductsBySegments()` → filtered catalog
-   - Gọi AI text model (nhanh, rẻ) với catalog đã lọc
+#### 7. Thêm state cho số công văn
+- Thêm input `documentNumber` trong phần editable fields để nhập số công văn
 
-**Lợi ích**:
-- Bước 1: ~1K tokens (ảnh + prompt OCR ngắn, không catalog)
-- Bước 2: ~5-10K tokens (text + catalog đã lọc, dùng flash-lite)
-- Tổng: ~6-11K tokens thay vì ~30-50K tokens → **tiết kiệm 60-80%**
-- Dùng text model nhanh hơn ở bước 2
+#### 8. Đồng bộ Word export
+- Cập nhật `handleDownloadWord` với cùng nội dung mới, bao gồm header 2 cột, bảng có STT, câu từ mới
 
-**File: `src/components/AIQuoteFill.tsx`**
-- Không thay đổi logic client — vẫn gửi imageBase64 như cũ
-- Chỉ cần bỏ gửi description trong catalog khi có ảnh (đã không cần vì bước 2 là text)
-
-### Files thay đổi
-
-| File | Thay đổi |
-|------|----------|
-| `supabase/functions/lookup-tax-code/index.ts` | Tách multimodal thành 2 bước: OCR → text matching |
+### Kết quả
+Văn bản Đề nghị thanh toán sẽ theo đúng chuẩn công văn hành chính Việt Nam, chuyên nghiệp, đầy đủ thông tin pháp lý, phù hợp gửi cho đối tác/khách hàng.
 
