@@ -1490,8 +1490,48 @@ serve(async (req) => {
       // Build custom TYPE_TO_CATEGORY from DB config
       const customTypeToCategory = buildTypeToCategory(aiConfig['ai_quote_type_categories'] || null);
 
-      // Layer 2: Segment-based filtering (new) or legacy fallback
-      const segments = parseRequestSegments(request || '');
+      // ===== 2-STEP IMAGE PROCESSING =====
+      // Step 1: If image present, OCR extract text first (small prompt, no catalog)
+      let effectiveRequest = request || '';
+      const hasImage = !!imageBase64;
+      
+      if (hasImage) {
+        console.log('AI Quote Fill: Step 1 — OCR extraction from image...');
+        const ocrPrompt = `Trích xuất danh sách sản phẩm từ ảnh. Ghi lại: tên SP, số lượng, kích thước, chất liệu, giá (nếu có).
+Trả về dạng text thuần, mỗi dòng 1 sản phẩm. VD: ga chun T250 sọc 180x200 x2
+Chỉ trả text, KHÔNG markdown, KHÔNG giải thích.`;
+        
+        try {
+          const ocrMessages = [
+            { role: "system", content: ocrPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "image_url", image_url: { url: `data:${imageMimeType || 'image/jpeg'};base64,${imageBase64}` } },
+                { type: "text", text: request ? `Thông tin bổ sung: ${request}` : "Trích xuất sản phẩm từ ảnh." },
+              ],
+            },
+          ];
+          
+          // Use vision model for OCR only
+          const configImageModel = aiConfig['ai_quote_image_model'];
+          const ocrModel = configImageModel || "google/gemini-2.5-flash";
+          
+          const ocrResult = await callAI(ocrMessages, true, ocrModel);
+          const ocrText = ocrResult?.raw || (typeof ocrResult === 'string' ? ocrResult : JSON.stringify(ocrResult));
+          
+          console.log(`AI Quote Fill: OCR result (${ocrText.length} chars): ${ocrText.substring(0, 300)}`);
+          
+          // Combine OCR text with original request
+          effectiveRequest = request ? `${request}\n${ocrText}` : ocrText;
+        } catch (ocrError) {
+          console.error('OCR extraction failed, falling back to full multimodal:', ocrError);
+          // Fall through — will use old multimodal approach below
+        }
+      }
+
+      // Step 2: Parse segments from effective request (OCR text or original)
+      const segments = parseRequestSegments(effectiveRequest);
       let filteredProducts: any[];
       
       if (segments.length > 0) {
@@ -1499,20 +1539,17 @@ serve(async (req) => {
         console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after segment filter (${segments.length} segments: ${segments.map(s => s.type).join(', ')})${customTypeToCategory ? ' [CUSTOM mapping]' : ''}`);
       } else {
         // Legacy fallback for requests without clear product keywords
-        const { categories: catPatterns, materials: matPatterns } = extractCategoryFilters(request || '');
+        const { categories: catPatterns, materials: matPatterns } = extractCategoryFilters(effectiveRequest);
         filteredProducts = filterProductsByCategory(allProducts, catPatterns, matPatterns);
         console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after legacy filter (cats: ${catPatterns.join(', ') || 'none'}, mats: ${matPatterns.join(', ') || 'none'})`);
       }
 
-      // Layer 1: Remove description for text-only (saves ~30% tokens)
-      const hasImage = !!imageBase64;
+      // Build catalog text (always text-only format now since OCR already extracted text)
       const productListText = filteredProducts.map((p: any) => 
-        hasImage 
-          ? `${p.id}|${p.name}|${p.specifications || ''}|${p.description || ''}|${p.price || 0}`
-          : `${p.id}|${p.name}|${p.specifications || ''}|${p.price || 0}`
+        `${p.id}|${p.name}|${p.specifications || ''}|${p.price || 0}`
       ).join("\n");
       
-      const catalogHeader = hasImage ? "ID|Tên|Quy cách|Mô tả|Giá" : "ID|Tên|Quy cách|Giá";
+      const catalogHeader = "ID|Tên|Quy cách|Giá";
 
       // Build segment instruction for AI
       let segmentInstruction = '';
@@ -1534,7 +1571,6 @@ serve(async (req) => {
       
       let aiQuoteFillPrompt: string;
       if (customPromptFromDB) {
-        // Replace template variables in custom prompt
         aiQuoteFillPrompt = customPromptFromDB
           .replace(/\$\{catalogHeader\}/g, catalogHeader)
           .replace(/\$\{productListText\}/g, productListText)
@@ -1569,7 +1605,6 @@ Số <10 = mét (1.6→160, 2.0→200). "1m6"=160. 14p/14f=14cm. T200/T250...=ch
 
 ## GIÁ & SL
 Giá khách ghi → dùng giá khách. Không ghi → từ bảng giá. "x2"/"4 cái"→số lượng. Mặc định=1
-${hasImage ? '\n## ẢNH\nPhân tích ảnh trích xuất SP, SL, kích thước, vải, mẫu. Kết hợp text nếu có.' : ''}
 
 ## OUTPUT — JSON thuần, KHÔNG markdown/backtick
 matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU bảng giá. TUYỆT ĐỐI KHÔNG bịa UUID.
@@ -1577,36 +1612,19 @@ matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU bảng giá. TUY�
 Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
-      // Build user message - multimodal if image present
-      let userContent: any;
-      if (imageBase64) {
-        const parts: any[] = [];
-        parts.push({
-          type: "image_url",
-          image_url: { url: `data:${imageMimeType || 'image/jpeg'};base64,${imageBase64}` }
-        });
-        const textPart = request 
-          ? `Phân tích hình ảnh trên kết hợp với yêu cầu bổ sung:\n"""\n${request}\n"""`
-          : `Phân tích hình ảnh trên để trích xuất danh sách sản phẩm và so khớp với bảng giá.`;
-        parts.push({ type: "text", text: textPart });
-        userContent = parts;
-      } else {
-        userContent = `Yêu cầu khách hàng:\n"""\n${request}\n"""`;
-      }
+      // Step 2b: Call text model (fast, cheap) with filtered catalog — NO image needed
+      const userContent = `Yêu cầu khách hàng:\n"""\n${effectiveRequest}\n"""`;
 
-      // Use model from DB config, fallback to defaults
+      // Always use text model now (image already processed in Step 1)
       const configTextModel = aiConfig['ai_quote_text_model'];
-      const configImageModel = aiConfig['ai_quote_image_model'];
-      const quoteModel = hasImage 
-        ? (configImageModel || undefined) 
-        : (configTextModel || "google/gemini-2.5-flash");
+      const quoteModel = configTextModel || "google/gemini-2.5-flash";
       
-      console.log(`AI Quote Fill: model=${quoteModel}, hasImage=${hasImage}, customPrompt=${!!customPromptFromDB}`);
+      console.log(`AI Quote Fill: Step 2 — text matching, model=${quoteModel}, products=${filteredProducts.length}, request=${effectiveRequest.length} chars`);
       
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
         { role: "user", content: userContent },
-      ], hasImage, quoteModel);
+      ], false, quoteModel);
       
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
