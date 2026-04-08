@@ -582,15 +582,17 @@ Input: "tam trang tri 1m6 x1, vo goi trang tri 45x45 x2, ga chun t250 tron 1m8x2
 Phân tích: mỗi SP tìm riêng trong bảng giá. "tran"=trơn. "tấm trang trí 1m6" → tìm SP tên chứa "Tấm trang trí" kèm kích thước giường 160.
 Output:
 {"items":[
-  {"matchedProductId":"id-tam-tt","customName":"Tấm Trang Trí 160 : 50x235","quantity":1,"price":210000,"specifications":"50 x 235cm","note":"Kích thước giường 160"},
-  {"matchedProductId":"id-goi-tt","customName":"Vỏ gối trang trí 45x45","quantity":2,"price":60000,"specifications":"45 x 45cm","note":""},
-  {"matchedProductId":"id-ga","customName":"Ga chun T250 trơn 180x200x20cm","quantity":1,"price":258000,"specifications":"180 x 200 x 20cm","note":""},
-  {"matchedProductId":"id-chan","customName":"Vỏ chăn T250 trơn 200x220","quantity":1,"price":350000,"specifications":"200 x 220cm","note":""}
+  {"matchedProductId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","customName":"Tấm Trang Trí 160 : 50x235","quantity":1,"price":210000,"specifications":"50 x 235cm","note":"Kích thước giường 160"},
+  {"matchedProductId":"b2c3d4e5-f6a7-8901-bcde-f12345678901","customName":"Vỏ gối trang trí 45x45","quantity":2,"price":60000,"specifications":"45 x 45cm","note":""},
+  {"matchedProductId":"c3d4e5f6-a7b8-9012-cdef-123456789012","customName":"Ga chun T250 trơn 180x200x20cm","quantity":1,"price":258000,"specifications":"180 x 200 x 20cm","note":""},
+  {"matchedProductId":"d4e5f6a7-b8c9-0123-defa-234567890123","customName":"Vỏ chăn T250 trơn 200x220","quantity":1,"price":350000,"specifications":"200 x 220cm","note":""}
 ]}
 
 ## OUTPUT — JSON thuần túy, KHÔNG markdown, KHÔNG backtick
-{"items":[{"matchedProductId":"id-từ-bảng","customName":"tên SP","quantity":1,"price":208000,"specifications":"quy cách THEO KHÁCH","note":"ghi chú nếu cần"}]}
-- matchedProductId = ID sản phẩm GỐC từ bảng giá (cột đầu)
+⚠️ matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU TIÊN của bảng giá (dạng xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx). TUYỆT ĐỐI KHÔNG tự tạo ID, KHÔNG viết tắt, KHÔNG bịa UUID. Copy nguyên văn UUID từ bảng giá.
+
+{"items":[{"matchedProductId":"uuid-chính-xác-từ-bảng-giá","customName":"tên SP","quantity":1,"price":208000,"specifications":"quy cách THEO KHÁCH","note":"ghi chú nếu cần"}]}
+- matchedProductId = UUID chính xác từ cột đầu tiên bảng giá. Ví dụ: "349a185f-94fd-4021-885a-51ad0b5f3647". KHÔNG ĐƯỢC tự nghĩ ra.
 - customName = tên đã sửa theo yêu cầu thực tế
 - specifications = quy cách THEO KHÁCH, không copy bảng giá
 - note = giải thích khi làm tròn kích thước hoặc info đặc biệt
