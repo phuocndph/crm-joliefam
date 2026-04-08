@@ -1,23 +1,39 @@
 
 
-## Cho phép điều chỉnh điều khoản tự do trong Hợp đồng Nguyên tắc
+## Sửa 3 lỗi logic lọc sản phẩm trong AI Quote Fill
 
-### Hiện tại
-- 6 điều khoản cố định, chỉ sửa được nội dung (content), không sửa được tiêu đề, không thêm/xóa/đổi thứ tự
+### Lỗi 1 — Item-to-segment matching sai (nghiêm trọng nhất)
 
-### Nâng cấp
+**Vấn đề**: `validateAndRepairItems()` gán "Bảo vệ nệm chống thấm chần bông" vào segment "chăn" (thay vì segment "bảo vệ nệm") vì chữ "chần" trong tên SP chứa "chan". Sau đó hệ thống "sửa" nó thành Chăn hè T250 — hoàn toàn sai.
 
-**File**: `src/components/CreateFrameworkContractForm.tsx`
+**Sửa** (dòng 265-281, `validateAndRepairItems`):
+- Đổi scoring để ưu tiên match dài hơn (longer segment type = higher priority)
+- Thêm logic: nếu item match đúng type segment (cùng `getProductType`), ưu tiên segment đó
+- Khi 2 segment có cùng điểm, chọn segment có type dài hơn hoặc match chính xác hơn
+- Nếu item đã có valid ID trong catalog và ID thuộc đúng category của segment → KHÔNG sửa
 
-1. **Sửa tiêu đề điều khoản** — Thay Label tĩnh bằng Input, cho phép đổi tên điều (ví dụ: "ĐIỀU 1: PHẠM VI HỢP TÁC" → "ĐIỀU 1: SẢN PHẨM")
+### Lỗi 2 — Quantity parsing bỏ sót số đứng đầu dòng
 
-2. **Thêm điều khoản mới** — Nút "Thêm điều khoản" ở cuối danh sách, tự động đánh số "ĐIỀU N:"
+**Vấn đề**: Input "10 ga chun 160x200x20cm" parse ra qty=1. Regex hiện tại chỉ bắt "Nc" (4c) hoặc "xN", không bắt "N spName".
 
-3. **Xóa điều khoản** — Nút xóa (icon Trash) trên mỗi điều, có xác nhận nếu nội dung không rỗng
+**Sửa** (dòng 647-657, qty detection):
+- Thêm regex mới cho leading number: `/^(\d+)\s+/` trên leadingText
+- Thêm regex: `/^(\d+)\s/` cho đầu chunk (trước keyword)
+- Thứ tự ưu tiên: leadingText "Nc" > leadingText "N cái" > leadingText bare number > chunk patterns
 
-4. **Đổi thứ tự** — Nút mũi tên lên/xuống (ArrowUp/ArrowDown) để di chuyển điều khoản, tự động cập nhật lại số thứ tự "ĐIỀU 1, 2, 3..."
+### Lỗi 3 — Category mapping "vỏ chăn" quá rộng (128 candidates)
 
-5. **Khôi phục mặc định** — Nút "Khôi phục mặc định" để reset về 6 điều khoản gốc
+**Vấn đề**: `'vỏ chăn': ['chăn']` match tất cả SP có "chăn" (chăn hè, vỏ chăn chần, ruột chăn...).
 
-6. **Cập nhật summary** — Hiển thị số điều khoản động: "Chỉnh sửa nội dung các điều khoản (N điều)"
+**Sửa** (TYPE_TO_CATEGORY, dòng 724):
+- `'vỏ chăn': ['vỏ chăn']` thay vì `['chăn']`
+- Giữ `'chăn': ['chăn']` cho trường hợp chung
+
+### File cần sửa
+- `supabase/functions/lookup-tax-code/index.ts` — cả 3 lỗi đều nằm trong file này
+
+### Kết quả mong đợi
+- "Bảo vệ nệm" match đúng segment "bảo vệ nệm", không bị sửa thành chăn
+- "10 ga chun" parse ra qty=10, "20 ruột gối" parse ra qty=20
+- "vỏ chăn T225 sọc" chỉ có ~10-20 candidates thay vì 128
 
