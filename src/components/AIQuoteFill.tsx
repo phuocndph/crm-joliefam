@@ -27,6 +27,7 @@ interface AIMatchedItem {
   specifications: string;
   note: string;
   previewImageUrl?: string;
+  matchQuality?: 'exact' | 'fallback_size' | 'fallback_product' | 'uncertain';
 }
 
 interface AIQuoteFillProps {
@@ -270,9 +271,21 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
       }
 
       let items: AIMatchedItem[] = data?.items || [];
+      const aiWarnings: string[] = data?.warnings || [];
+      if (data?.warning && aiWarnings.length === 0) aiWarnings.push(data.warning);
+      
       if (items.length === 0) {
         toast({ title: "Không tìm thấy sản phẩm phù hợp", description: "AI không thể so khớp yêu cầu với bảng giá hiện tại" });
         return;
+      }
+
+      if (aiWarnings.length > 0) {
+        toast({ 
+          title: "⚠️ Cảnh báo so khớp", 
+          description: aiWarnings.slice(0, 3).join('\n'),
+          duration: 10000,
+          variant: "destructive",
+        });
       }
 
       if (includeImages) {
@@ -402,8 +415,9 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
                         <TableHead className="text-right">SL</TableHead>
                         <TableHead className="text-right">Đơn giá</TableHead>
                         <TableHead className="text-right">Thành tiền</TableHead>
-                        <TableHead>Ghi chú</TableHead>
-                      </TableRow>
+                         <TableHead>Ghi chú</TableHead>
+                         <TableHead className="w-[80px]">Trạng thái</TableHead>
+                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {previewItems.map((item, idx) => (
@@ -431,6 +445,23 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
                                 <AlertTriangle className="h-3 w-3 mr-1 inline" />
                                 {item.note}
                               </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {item.matchQuality === 'exact' && (
+                              <Badge className="text-xs bg-green-100 text-green-700 border-green-300">✓ Chính xác</Badge>
+                            )}
+                            {item.matchQuality === 'fallback_size' && (
+                              <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-300">↕ Size gần nhất</Badge>
+                            )}
+                            {item.matchQuality === 'fallback_product' && (
+                              <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-300">⚠ SP gần giống</Badge>
+                            )}
+                            {item.matchQuality === 'uncertain' && (
+                              <Badge className="text-xs bg-red-100 text-red-700 border-red-300">❌ Không chắc</Badge>
+                            )}
+                            {!item.matchQuality && (
+                              <Badge className="text-xs bg-gray-100 text-gray-600 border-gray-300">— N/A</Badge>
                             )}
                           </TableCell>
                         </TableRow>
