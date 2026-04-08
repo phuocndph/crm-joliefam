@@ -218,12 +218,13 @@ function findClosestProduct(itemName: string, allProducts: any[]): any | null {
 
 // ==================== SEGMENT-SCOPED CANDIDATE BUILDER ====================
 
-function buildSegmentCandidates(segments: RequestSegment[], allProducts: any[]): Map<number, any[]> {
+function buildSegmentCandidates(segments: RequestSegment[], allProducts: any[], customTypeToCategory?: Record<string, string[]> | null): Map<number, any[]> {
   const candidateMap = new Map<number, any[]>();
+  const effectiveMapping = customTypeToCategory || TYPE_TO_CATEGORY;
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
-    const cats = TYPE_TO_CATEGORY[seg.type] || [seg.type];
+    const cats = effectiveMapping[seg.type] || TYPE_TO_CATEGORY[seg.type] || [seg.type];
 
     // Filter by category
     let candidates = allProducts.filter(p => {
@@ -797,14 +798,47 @@ const TYPE_TO_CATEGORY: Record<string, string[]> = {
   'bộ': ['bộ'],
 };
 
-function filterProductsBySegments(products: any[], segments: RequestSegment[]): any[] {
+// Build dynamic TYPE_TO_CATEGORY from DB config JSON
+function buildTypeToCategory(configJson: string | null): Record<string, string[]> | null {
+  if (!configJson) return null;
+  try {
+    const parsed = JSON.parse(configJson);
+    const mapping: Record<string, string[]> = {};
+    const typeToCat = parsed?.TYPE_TO_CATEGORY || parsed;
+    if (!typeToCat || typeof typeToCat !== 'object') return null;
+    
+    for (const key in typeToCat) {
+      const entry = typeToCat[key];
+      if (!entry || !entry.categories) continue;
+      const normalizedCategories = entry.categories.map((cat: string) => cat.toLowerCase());
+      if (entry.exact_keywords && Array.isArray(entry.exact_keywords)) {
+        for (const kw of entry.exact_keywords) {
+          mapping[kw.toLowerCase()] = normalizedCategories;
+        }
+      }
+      // Also add the key itself as a mapping (lowercased, replacing underscores with spaces)
+      const keyNorm = key.toLowerCase().replace(/_/g, ' ');
+      if (!mapping[keyNorm]) {
+        mapping[keyNorm] = normalizedCategories;
+      }
+    }
+    console.log(`buildTypeToCategory: built ${Object.keys(mapping).length} keyword mappings from DB config`);
+    return Object.keys(mapping).length > 0 ? mapping : null;
+  } catch (e) {
+    console.error('Error parsing TYPE_TO_CATEGORY config:', e);
+    return null;
+  }
+}
+
+function filterProductsBySegments(products: any[], segments: RequestSegment[], customTypeToCategory?: Record<string, string[]> | null): any[] {
   if (segments.length === 0) return products;
 
+  const effectiveMapping = customTypeToCategory || TYPE_TO_CATEGORY;
   const resultSet = new Set<string>();
   const results: any[] = [];
 
   for (const seg of segments) {
-    const cats = TYPE_TO_CATEGORY[seg.type] || [seg.type];
+    const cats = effectiveMapping[seg.type] || TYPE_TO_CATEGORY[seg.type] || [seg.type];
 
     // Step 1: Filter by category
     let segProducts = products.filter(p => {
@@ -847,7 +881,7 @@ function filterProductsBySegments(products: any[], segments: RequestSegment[]): 
 
   if (results.length < 5) {
     console.log(`Segment filter too narrow (${results.length}), falling back`);
-    const allCats = segments.flatMap(s => TYPE_TO_CATEGORY[s.type] || [s.type]);
+    const allCats = segments.flatMap(s => effectiveMapping[s.type] || TYPE_TO_CATEGORY[s.type] || [s.type]);
     const fallback = products.filter(p => {
       const cat = (p.category || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
@@ -1453,13 +1487,16 @@ serve(async (req) => {
         console.log(`AI Quote Fill: fetched ${allProducts.length} products for priceList=${cacheKey}, cached`);
       }
 
+      // Build custom TYPE_TO_CATEGORY from DB config
+      const customTypeToCategory = buildTypeToCategory(aiConfig['ai_quote_type_categories'] || null);
+
       // Layer 2: Segment-based filtering (new) or legacy fallback
       const segments = parseRequestSegments(request || '');
       let filteredProducts: any[];
       
       if (segments.length > 0) {
-        filteredProducts = filterProductsBySegments(allProducts, segments);
-        console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after segment filter (${segments.length} segments: ${segments.map(s => s.type).join(', ')})`);
+        filteredProducts = filterProductsBySegments(allProducts, segments, customTypeToCategory);
+        console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after segment filter (${segments.length} segments: ${segments.map(s => s.type).join(', ')})${customTypeToCategory ? ' [CUSTOM mapping]' : ''}`);
       } else {
         // Legacy fallback for requests without clear product keywords
         const { categories: catPatterns, materials: matPatterns } = extractCategoryFilters(request || '');
@@ -1578,7 +1615,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
       // Build segment-scoped candidate map for validation
-      const candidateMap = segments.length > 0 ? buildSegmentCandidates(segments, allProducts) : new Map();
+      const candidateMap = segments.length > 0 ? buildSegmentCandidates(segments, allProducts, customTypeToCategory) : new Map();
       const validProductIds = new Set(allProducts.map((p: any) => p.id));
       
       if (parsed.items && Array.isArray(parsed.items)) {
@@ -1637,13 +1674,16 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
 
       const allProducts = products || [];
 
+      // Build custom TYPE_TO_CATEGORY from DB config
+      const customTypeToCategoryDebug = buildTypeToCategory(dbConfig['ai_quote_type_categories'] || null);
+
       // Parse segments
       const segments = parseRequestSegments(request);
       
       // Filter
       let filteredProducts: any[];
       if (segments.length > 0) {
-        filteredProducts = filterProductsBySegments(allProducts, segments);
+        filteredProducts = filterProductsBySegments(allProducts, segments, customTypeToCategoryDebug);
       } else {
         const { categories, materials } = extractCategoryFilters(request);
         filteredProducts = filterProductsByCategory(allProducts, categories, materials);
@@ -1690,7 +1730,7 @@ ${segmentInstruction}
       // Validate
       let warnings: string[] = [];
       if (parsed.items && Array.isArray(parsed.items)) {
-        const candidateMap = segments.length > 0 ? buildSegmentCandidates(segments, allProducts) : new Map();
+        const candidateMap = segments.length > 0 ? buildSegmentCandidates(segments, allProducts, customTypeToCategoryDebug) : new Map();
         const validProductIds = new Set(allProducts.map((p: any) => p.id));
         const validation = validateAndRepairItems(parsed.items, segments, candidateMap, allProducts, validProductIds);
         parsed.items = validation.items;
