@@ -1,59 +1,54 @@
 
 
-## Kết nối TYPE_TO_CATEGORY từ DB Config vào Edge Function
+## Tối ưu AI Quote Fill: Tách xử lý ảnh thành 2 bước
 
-### Vấn đề
-Config `ai_quote_type_categories` đã được lưu trong DB (11KB JSON chi tiết) nhưng Edge Function **không bao giờ đọc và áp dụng** nó. Hai hàm `filterProductsBySegments()` và `buildSegmentCandidates()` luôn dùng constant hardcode `TYPE_TO_CATEGORY` (25 entries cũ).
-
-Kết quả: segment "vỏ chăn" chỉ match `['vỏ chăn']` nhưng DB dùng category như "VỎ CHĂN T250 SỌC", "Vỏ chăn T200 TRƠN"... → filter trả 0 products → AI bịa ID → sai hoàn toàn.
-
-### Giải pháp
-
-**File sửa: `supabase/functions/lookup-tax-code/index.ts`**
-
-1. **Thêm hàm `buildTypeToCategory()`**: Parse JSON config từ DB thành `Record<string, string[]>` đơn giản.
-
+### Luồng hiện tại (tốn token)
 ```text
-Input (từ DB):
-{
-  "TYPE_TO_CATEGORY": {
-    "GA_CHUN": {
-      "exact_keywords": ["ga chun"],
-      "categories": ["Ga chun ks LTH SỌC", "Ga chun ks T200 TRƠN", ...]
-    },
-    "VO_CHAN": {
-      "exact_keywords": ["vo chan", "vỏ chăn"],
-      "categories": ["Vỏ chăn T200 TRƠN", "VỎ CHĂN T250 SỌC", ...]
-    }
-  }
-}
-
-Output:
-{
-  "ga chun": ["ga chun ks lth sọc", "ga chun ks t200 trơn", ...],
-  "vo chan": ["vỏ chăn t200 trơn", "vỏ chăn t250 sọc", ...],
-  "vỏ chăn": ["vỏ chăn t200 trơn", "vỏ chăn t250 sọc", ...],
-  ...
-}
+Client: gửi imageBase64 + catalog 917 SP → AI (multimodal)
+AI nhận: ảnh + prompt dài + toàn bộ catalog = ~30K-50K tokens
+Model: phải dùng vision model (chậm hơn, đắt hơn)
 ```
 
-2. **Sửa `filterProductsBySegments()` và `buildSegmentCandidates()`**: Nhận thêm param `typeToCategory` thay vì dùng global constant. Nếu DB config có → dùng custom, không có → fallback hardcode.
-
-3. **Trong handler `ai_quote_fill`**: Sau khi `loadAIConfig()`, parse `ai_quote_type_categories` và truyền vào các hàm filter.
-
-### Luồng mới
-
+### Luồng mới (tiết kiệm)
 ```text
-ai_quote_fill request
-  → loadAIConfig() → lấy ai_quote_type_categories JSON
-  → buildTypeToCategory(json) → Record<string, string[]>
-  → filterProductsBySegments(products, segments, customMapping)
-  → buildSegmentCandidates(segments, products, customMapping)
-  → AI match với đúng catalog đã lọc
+Bước 1: Client gửi imageBase64 → AI OCR (prompt nhỏ, không catalog)
+         AI trả về: text mô tả sản phẩm (~200-500 tokens)
+         
+Bước 2: Dùng text đó → chạy logic text bình thường
+         (segment parsing → filter catalog → AI match với text model nhanh)
 ```
 
-### Kết quả mong đợi
-- "vỏ chăn" T225 → match categories "Vỏ chăn T200 TRƠN", "VỎ CHĂN T250 SỌC"... → 60+ SP thay vì 0
-- "vỏ gối" → match "Vỏ gối T250 SỌC"... → 61 SP thay vì 0  
-- "ruột gối" → match "Ruột gối bông 3D"... → 16 SP thay vì 0
+### Thay đổi
+
+**File: `supabase/functions/lookup-tax-code/index.ts`**
+
+Trong handler `ai_quote_fill`, khi `imageBase64` có:
+
+1. **Bước 1 — OCR**: Gọi AI vision model với prompt ngắn (chỉ ~500 tokens):
+```text
+"Trích xuất danh sách sản phẩm từ ảnh. Ghi lại: tên SP, số lượng, kích thước, chất liệu, giá (nếu có).
+Trả về dạng text thuần, mỗi dòng 1 sản phẩm. VD: ga chun T250 sọc 180x200 x2"
+```
+→ Nhận text ~200-500 ký tự
+
+2. **Bước 2 — Ghép text**: Nối text OCR với `request` gốc (nếu có), rồi chạy luồng text bình thường:
+   - `parseRequestSegments(ocrText)` → segments
+   - `filterProductsBySegments()` → filtered catalog
+   - Gọi AI text model (nhanh, rẻ) với catalog đã lọc
+
+**Lợi ích**:
+- Bước 1: ~1K tokens (ảnh + prompt OCR ngắn, không catalog)
+- Bước 2: ~5-10K tokens (text + catalog đã lọc, dùng flash-lite)
+- Tổng: ~6-11K tokens thay vì ~30-50K tokens → **tiết kiệm 60-80%**
+- Dùng text model nhanh hơn ở bước 2
+
+**File: `src/components/AIQuoteFill.tsx`**
+- Không thay đổi logic client — vẫn gửi imageBase64 như cũ
+- Chỉ cần bỏ gửi description trong catalog khi có ảnh (đã không cần vì bước 2 là text)
+
+### Files thay đổi
+
+| File | Thay đổi |
+|------|----------|
+| `supabase/functions/lookup-tax-code/index.ts` | Tách multimodal thành 2 bước: OCR → text matching |
 
