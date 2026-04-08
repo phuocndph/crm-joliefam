@@ -648,7 +648,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
         userContent = `Yêu cầu khách hàng:\n"""\n${request}\n"""`;
       }
 
-      const hasImage = !!imageBase64;
+      // Use faster model for text-only, vision model for images
       // Use faster model for text-only, vision model for images
       const quoteModel = hasImage ? undefined : "google/gemini-2.5-flash";
       const parsed = await callAI([
