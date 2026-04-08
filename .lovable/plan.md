@@ -1,63 +1,37 @@
 
 
-## Tối ưu tốc độ AI Quote Fill — Lọc catalog theo category từ DB
+## Phân biệt "Chăn hè" vs "Vỏ chăn chần" trong AI Quote Fill prompt
 
-### Phân tích vấn đề
-
-- Catalog hiện tại: **917 SP** (~60K tokens) gửi toàn bộ mỗi lần
-- Description trung bình 113 ký tự/SP → chiếm ~30% token catalog nhưng **không cần cho text-only matching**
-- Lọc keyword trên text dễ sai (miss sản phẩm, viết tắt, không dấu)
-
-### Giải pháp: 3 tầng tối ưu
-
-**Tầng 1: Bỏ description cho text-only (an toàn 100%, giảm ~30% token)**
-
-Khi không có ảnh, format catalog chỉ còn 4 cột: `ID|Tên|Quy cách|Giá`. Description chỉ cần khi phân tích ảnh.
-
-**Tầng 2: Lọc category từ DB (an toàn, giảm 917 → ~100-200 SP)**
-
-Thay vì lọc text, trích keyword từ input → map sang pattern category → lọc bằng SQL `ILIKE`. Đây là lọc ở tầng DB, chính xác 100%.
-
-Bảng mapping keyword → category pattern:
-```text
-ga/ga chun     → '%Ga chun%'
-ga phu/ga phủ  → '%Ga tấm phủ%'  
-chan/chăn      → '%chăn%' (bắt cả vỏ chăn, chăn hè, chăn chần, ruột chăn)
-goi/gối       → '%gối%', '%Vỏ gối%', '%Ruột gối%'
-bvn/bảo vệ    → '%Bảo vệ%'
-dem/đệm       → '%Đệm%'
-topper         → '%Topper%'
-khan/khăn      → '%Khăn%'
-trang tri      → '%Trang Trí%'
-vay/váy        → '%Váy%'
-ao choang      → '%Áo choàng%'
-ruot chan       → '%Ruột chăn%'
-rem            → '%rem%'
-```
-
-Khi chất liệu rõ (T250, T300...) → thêm filter `AND category ILIKE '%T250%'` để thu hẹp thêm.
-
-**Fallback an toàn**: Nếu sau lọc < 30 SP → gửi toàn bộ catalog (không lọc).
-
-**Tầng 3: Rút gọn prompt (~20% token)**
-
-Gộp các ví dụ trùng lặp, bỏ giải thích dài dòng, giữ nguyên logic.
+### Vấn đề
+Dòng 637 hiện tại ghi `chan he/chăn hè=Vỏ chăn mỏng` — sai. Cần phân biệt rõ 2 loại sản phẩm khác nhau:
+- **Chăn hè** = Chăn hè chần (SP độc lập, VD: "Chăn hè T250 sọc 200*220")
+- **Vỏ chăn chần** = Vỏ chăn chần bông (loại khác, VD: "Vỏ chăn chần T350 sọc 170*235")
 
 ### Sửa đổi
 
 **File**: `supabase/functions/lookup-tax-code/index.ts`
 
-1. Thêm hàm `extractCategoryFilters(request: string): string[]` — trả về mảng ILIKE patterns
-2. Sửa query DB: thêm `.or(patterns.map(p => \`category.ilike.${p}\`).join(','))` khi có patterns
-3. Bỏ `description` khỏi select khi `!imageBase64`
-4. Rút gọn prompt (gộp ví dụ, bỏ text thừa)
+**Dòng 637** — Sửa mapping tiếng Việt không dấu:
 
-### Kết quả kỳ vọng
+Từ:
+```
+chan he/chăn hè=Vỏ chăn mỏng | chan dong=Vỏ chăn chần dày
+```
 
-| Metric | Trước | Sau |
-|--------|-------|-----|
-| SP gửi AI | 917 | 100-200 |
-| Token catalog | ~60K | ~8-15K |
-| Thời gian | 15-25s | 5-10s |
-| Độ chính xác | 100% | 100% (fallback toàn bộ nếu lọc quá ít) |
+Thành:
+```
+chan he/chăn hè=Chăn hè chần (SP riêng, KHÔNG phải vỏ chăn) | vo chan chan/vỏ chăn chần=Vỏ chăn chần bông (SP riêng, KHÔNG phải chăn hè) | chan dong=Vỏ chăn chần dày
+```
+
+Thêm vào phần SO KHỚP (sau dòng 634) một rule phân biệt:
+```
+4. PHÂN BIỆT: "chăn hè" → match "Chăn hè chần" (không có từ "vỏ"). "vỏ chăn chần" → match "Vỏ chăn chần bông". Hai loại KHÁC NHAU hoàn toàn.
+```
+
+Cũng cần cập nhật hàm `extractCategoryFilters` để tách keyword "chan he" và "vo chan chan" ra đúng category.
+
+### Kết quả
+- AI không nhầm lẫn giữa 2 dòng sản phẩm
+- "chan he tran 2.0x2.2" → match đúng "Chăn hè chần T250 trơn 200*220"
+- "vo chan chan soc 1m8" → match đúng "Vỏ chăn chần bông T250 sọc 180*210"
 
