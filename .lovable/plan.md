@@ -1,45 +1,45 @@
 
 
-## Vấn đề: AI trả về ID giả thay vì UUID thực
+## Sửa logic suy luận chất liệu trong prompt AI Quote Fill
 
-### Nguyên nhân gốc
+### Vấn đề
 
-AI nhận catalog dạng `UUID|Tên|Quy cách|Mô tả|Giá` với ID thật (VD: `349a185f-94fd-4021-885a-51ad0b5f3647`), nhưng **ví dụ few-shot trong prompt dùng ID giả** (`id-tam-tt`, `id-goi-tt`, `id-ga`). AI học theo mẫu và tự bịa ID thay vì copy UUID từ bảng giá.
+Dòng 564-565 hiện tại:
+```
+Khi chất liệu hoặc mẫu chỉ ghi 1 lần hoặc ở cuối câu → áp dụng cho TẤT CẢ sản phẩm.
+Nếu không ghi chất liệu → ưu tiên T250.
+```
 
-Kết quả: Frontend `products.find(p => p.id === item.matchedProductId)` không tìm được sản phẩm → chỉ hiển thị những item mà ID may mắn trùng (hoặc hiển thị nhưng thiếu thông tin gốc).
+Rule "mặc định T250" sai — phải suy luận chất liệu từ các SP khác trong cùng báo giá. Ví dụ: khách ghi "ga chun T250 trắng, vỏ chăn trắng 2.0x2.2" → vỏ chăn phải lấy T250 theo ga chun, không phải mặc định cứng.
 
-Trong ảnh user gửi: nhập 7 SP nhưng chỉ hiển thị 3 — vì 4 SP còn lại có ID giả, frontend không match được.
+Khi khách dùng nhiều loại vải (VD: "ga T250 trắng 1m8, ga T300 sọc 1m6") thì phải phân tách đúng nhóm — không áp dụng chung.
 
 ### Sửa đổi
 
-#### File: `supabase/functions/lookup-tax-code/index.ts`
+**File**: `supabase/functions/lookup-tax-code/index.ts` — dòng 563-565
 
-**1. Sửa ví dụ few-shot — dùng UUID format thật**
+Thay section `THUỘC TÍNH CHUNG` thành:
 
-Thay:
-```
-{"matchedProductId":"id-tam-tt",...}
-```
-Bằng:
-```
-{"matchedProductId":"349a185f-94fd-4021-885a-51ad0b5f3647",...}
-```
+```text
+## SUY LUẬN CHẤT LIỆU
+1. Nếu SP ghi rõ chất liệu (T250, T300...) → dùng đúng chất liệu đó
+2. Nếu SP KHÔNG ghi chất liệu → suy luận từ các SP KHÁC trong cùng báo giá:
+   - Nếu tất cả SP khác dùng cùng 1 chất liệu → áp dụng chất liệu đó
+   - Nếu có NHIỀU chất liệu khác nhau → xác định theo VỊ TRÍ/NGỮ CẢNH: SP nằm gần SP nào (trước/sau) thì dùng chất liệu của SP đó
+3. Khi mẫu (trơn/sọc) chỉ ghi 1 lần → áp dụng cho tất cả SP cùng nhóm chất liệu
+4. CHỈ KHI không có bất kỳ chất liệu nào trong toàn bộ yêu cầu → mới dùng T250 làm mặc định
 
-Dùng UUID thực từ DB cho ví dụ (Tấm Trang Trí 160, Vỏ gối trang trí 45x45, v.v.) để AI hiểu rằng phải copy chính xác ID từ cột đầu tiên.
+VD: "ga chun t250 trắng 1m8, vỏ chăn trắng 2.0x2.2, vỏ gối 50x70 x2"
+→ Tất cả = T250 trơn (vì chỉ có 1 chất liệu T250)
 
-**2. Thêm rule nhấn mạnh ID phải là UUID từ bảng giá**
-
-Thêm vào phần OUTPUT:
-```
-- matchedProductId = PHẢI là UUID chính xác từ CỘT ĐẦU TIÊN của bảng giá (dạng xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx). TUYỆT ĐỐI KHÔNG tự tạo ID.
+VD: "ga chun t300 sọc 1m8 x1, ga chun t250 trắng 1m6 x1, vỏ chăn sọc 2.0x2.2"
+→ vỏ chăn sọc → gần "ga t300 sọc" hơn → T300 sọc
 ```
 
-**3. Thêm validation phía backend** (optional nhưng tốt)
+Cập nhật ví dụ few-shot (dòng 581-589) để phản ánh logic mới — vỏ chăn lấy T250 từ ga chun cùng báo giá thay vì mặc định.
 
-Sau khi AI trả kết quả, validate `matchedProductId` — nếu không phải UUID format thì log warning.
-
-### Kết quả kỳ vọng
-- AI sẽ copy chính xác UUID từ catalog thay vì bịa ID
-- Frontend match được 100% sản phẩm AI trả về
-- Tất cả 7 SP trong ảnh user sẽ hiển thị đầy đủ
+### Kết quả
+- AI suy luận chất liệu từ ngữ cảnh thay vì mặc định cứng T250
+- Xử lý đúng cả trường hợp 1 loại vải và nhiều loại vải trong cùng báo giá
+- Phân tách chính xác theo vị trí/nhóm khi có nhiều chất liệu
 
