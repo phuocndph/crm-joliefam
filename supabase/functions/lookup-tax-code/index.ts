@@ -11,7 +11,7 @@ const corsHeaders = {
 const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const catalogCacheMap = new Map<string, { products: any[]; timestamp: number }>();
 
-// ==================== FIND CLOSEST PRODUCT ====================
+// ==================== FIND CLOSEST PRODUCT (v2 — segment-scoped) ====================
 
 function removeVietnameseTones(str: string): string {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
@@ -20,7 +20,6 @@ function removeVietnameseTones(str: string): string {
 function extractSizeDimensions(text: string): number[] {
   const normalized = removeVietnameseTones(text);
   const dims: number[] = [];
-  // Match patterns like 160x200, 1.6x2.0, 45x65, 50x80x330g
   const matches = normalized.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/g);
   if (matches) {
     for (const m of matches) {
@@ -56,73 +55,312 @@ function getMaterial(text: string): string {
   return '';
 }
 
-function findClosestProduct(itemName: string, allProducts: any[]): any | null {
-  if (!itemName || !allProducts.length) return null;
+function getPattern(text: string): string {
+  const norm = removeVietnameseTones(text);
+  if (norm.includes('soc') || norm.includes('ke')) return 'soc';
+  if (norm.includes('tron')) return 'tron';
+  return '';
+}
+
+interface MatchResult {
+  product: any;
+  score: number;
+  matchQuality: 'exact' | 'fallback_size' | 'fallback_product' | 'uncertain';
+}
+
+function findClosestProductScoped(
+  itemName: string,
+  candidates: any[],
+  allProducts: any[],
+  constraints?: { material?: string; pattern?: string }
+): MatchResult | null {
+  if (!itemName) return null;
 
   const itemType = getProductType(itemName);
-  const itemMaterial = getMaterial(itemName);
+  const itemMaterial = constraints?.material?.toLowerCase() || getMaterial(itemName);
+  const itemPattern = constraints?.pattern === 'sọc' ? 'soc' : (constraints?.pattern === 'trơn' ? 'tron' : getPattern(itemName));
   const itemDims = extractSizeDimensions(itemName);
   const itemNorm = removeVietnameseTones(itemName);
 
-  let bestProduct: any = null;
-  let bestScore = -1;
-
-  for (const product of allProducts) {
+  function scoreProduct(product: any): { score: number; quality: 'exact' | 'fallback_size' | 'fallback_product' | 'uncertain' } {
     const prodName = product.name || '';
     const prodSpec = product.specifications || '';
     const fullText = prodName + ' ' + prodSpec;
     const prodType = getProductType(fullText);
     const prodMaterial = getMaterial(fullText);
+    const prodPattern = getPattern(fullText);
     const prodDims = extractSizeDimensions(fullText);
     const prodNorm = removeVietnameseTones(fullText);
 
     let score = 0;
+    let sizeExact = false;
 
-    // Product type match (most important)
+    // Product type match (most important: 15pts)
     if (itemType && prodType && itemType === prodType) {
-      score += 10;
+      score += 15;
     } else if (itemType && prodType) {
-      // Partial type match (e.g., both contain 'chan' or 'ga')
       const itemWords = itemNorm.split(/\s+/);
       const prodWords = prodNorm.split(/\s+/);
       const commonWords = itemWords.filter(w => w.length > 2 && prodWords.includes(w));
       score += Math.min(commonWords.length * 2, 6);
     }
 
-    // Material match
-    if (itemMaterial && prodMaterial && itemMaterial === prodMaterial) {
-      score += 5;
+    // Material match (10pts) — HARD RULE: mismatched material = heavy penalty
+    if (itemMaterial && prodMaterial) {
+      if (itemMaterial === prodMaterial || (itemMaterial === 'lth' && prodMaterial === 't225') || (itemMaterial === 't225' && prodMaterial === 'lth')) {
+        score += 10;
+      } else {
+        // HARD PENALTY: different material (e.g. T300 vs T250)
+        score -= 20;
+      }
+    } else if (itemMaterial && !prodMaterial) {
+      score -= 5; // product doesn't specify material
     }
 
-    // Size proximity — prefer LARGER or equal sizes
+    // Pattern match (7pts) — HARD RULE: mismatched pattern = penalty
+    if (itemPattern && prodPattern) {
+      if (itemPattern === prodPattern) {
+        score += 7;
+      } else {
+        score -= 15; // sọc vs trơn mismatch
+      }
+    }
+
+    // Size proximity — prefer LARGER or equal sizes (5pts max)
     if (itemDims.length > 0 && prodDims.length > 0) {
       const mainItemDim = Math.max(...itemDims);
       const mainProdDim = Math.max(...prodDims);
-      if (mainProdDim >= mainItemDim) {
-        // Closer larger size gets more points
+      if (mainProdDim === mainItemDim) {
+        score += 5;
+        sizeExact = true;
+      } else if (mainProdDim > mainItemDim) {
         const diff = mainProdDim - mainItemDim;
-        score += Math.max(0, 3 - diff / 50);
+        score += Math.max(0, 4 - diff / 30);
       } else {
-        // Smaller size — penalize but still consider
         score += 1;
       }
     }
 
-    // Pattern match (tron/soc)
-    const itemPattern = itemNorm.includes('soc') ? 'soc' : (itemNorm.includes('tron') || itemNorm.includes('trang') ? 'tron' : '');
-    const prodPattern = prodNorm.includes('soc') ? 'soc' : (prodNorm.includes('tron') || prodNorm.includes('trang') ? 'tron' : '');
-    if (itemPattern && prodPattern && itemPattern === prodPattern) {
-      score += 2;
+    let quality: 'exact' | 'fallback_size' | 'fallback_product' | 'uncertain' = 'uncertain';
+    if (score >= 30) {
+      quality = sizeExact ? 'exact' : 'fallback_size';
+    } else if (score >= 15) {
+      quality = 'fallback_product';
     }
 
+    return { score, quality };
+  }
+
+  // Step 1: Score candidates first
+  let bestProduct: any = null;
+  let bestScore = -Infinity;
+  let bestQuality: 'exact' | 'fallback_size' | 'fallback_product' | 'uncertain' = 'uncertain';
+
+  for (const product of candidates) {
+    const { score, quality } = scoreProduct(product);
     if (score > bestScore) {
       bestScore = score;
       bestProduct = product;
+      bestQuality = quality;
     }
   }
 
-  // Only return if we have a reasonable match (at least type match)
-  return bestScore >= 5 ? bestProduct : (bestScore > 0 ? bestProduct : null);
+  // Step 2: If no good match in candidates, try allProducts but with warnings
+  if (bestScore < 10 && allProducts.length > candidates.length) {
+    console.log(`  findClosestProductScoped: candidates score too low (${bestScore}), trying full catalog for "${itemName}"`);
+    for (const product of allProducts) {
+      const { score, quality } = scoreProduct(product);
+      if (score > bestScore) {
+        bestScore = score;
+        bestProduct = product;
+        bestQuality = 'fallback_product'; // always fallback when from full catalog
+      }
+    }
+  }
+
+  if (!bestProduct || bestScore < 5) return null;
+  return { product: bestProduct, score: bestScore, matchQuality: bestQuality };
+}
+
+// Legacy wrapper for backward compatibility
+function findClosestProduct(itemName: string, allProducts: any[]): any | null {
+  const result = findClosestProductScoped(itemName, allProducts, allProducts);
+  return result?.product || null;
+}
+
+// ==================== SEGMENT-SCOPED CANDIDATE BUILDER ====================
+
+function buildSegmentCandidates(segments: RequestSegment[], allProducts: any[]): Map<number, any[]> {
+  const candidateMap = new Map<number, any[]>();
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const cats = TYPE_TO_CATEGORY[seg.type] || [seg.type];
+
+    // Filter by category
+    let candidates = allProducts.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      return cats.some(c => cat.includes(c) || name.includes(c));
+    });
+
+    // Narrow by material
+    if (seg.needsFabric && seg.material) {
+      const matLower = seg.material.toLowerCase();
+      const narrowed = candidates.filter(p => {
+        const cat = (p.category || '').toLowerCase();
+        const name = (p.name || '').toLowerCase();
+        return cat.includes(matLower) || name.includes(matLower);
+      });
+      if (narrowed.length > 0) candidates = narrowed;
+    }
+
+    // Narrow by pattern
+    if (seg.pattern) {
+      const patLower = seg.pattern.toLowerCase();
+      const narrowed = candidates.filter(p => {
+        const cat = (p.category || '').toLowerCase();
+        const name = (p.name || '').toLowerCase();
+        return cat.includes(patLower) || name.includes(patLower);
+      });
+      if (narrowed.length > 0) candidates = narrowed;
+    }
+
+    candidateMap.set(i, candidates);
+    console.log(`  Segment ${i} "${seg.type}" (${seg.material} ${seg.pattern}): ${candidates.length} candidates`);
+  }
+
+  return candidateMap;
+}
+
+// ==================== POST-VALIDATION ====================
+
+interface ValidationResult {
+  items: any[];
+  warnings: string[];
+  segmentMatches: { segmentIdx: number; itemIdx: number; quality: string }[];
+}
+
+function validateAndRepairItems(
+  items: any[],
+  segments: RequestSegment[],
+  candidateMap: Map<number, any[]>,
+  allProducts: any[],
+  validProductIds: Set<string>
+): ValidationResult {
+  const warnings: string[] = [];
+  const segmentMatches: { segmentIdx: number; itemIdx: number; quality: string }[] = [];
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // For each item, validate and repair
+  for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+    const item = items[itemIdx];
+    const id = item.matchedProductId;
+    const isValidUUID = id && UUID_REGEX.test(id);
+    const existsInCatalog = isValidUUID && validProductIds.has(id);
+
+    // Try to find which segment this item belongs to
+    let bestSegIdx = -1;
+    if (segments.length > 0) {
+      const itemNorm = removeVietnameseTones(item.customName || '');
+      let bestSegScore = -1;
+      for (let si = 0; si < segments.length; si++) {
+        const seg = segments[si];
+        const segNorm = removeVietnameseTones(seg.type);
+        let score = 0;
+        if (itemNorm.includes(segNorm)) score += 5;
+        // Material match
+        if (seg.material && itemNorm.includes(seg.material.toLowerCase())) score += 3;
+        // Size match
+        if (seg.size && itemNorm.includes(seg.size)) score += 2;
+        if (score > bestSegScore) {
+          bestSegScore = score;
+          bestSegIdx = si;
+        }
+      }
+    }
+
+    if (!existsInCatalog) {
+      // Need to repair — use segment candidates if available
+      const candidates = bestSegIdx >= 0 ? (candidateMap.get(bestSegIdx) || []) : [];
+      const constraints = bestSegIdx >= 0 ? { material: segments[bestSegIdx].material, pattern: segments[bestSegIdx].pattern } : undefined;
+
+      console.warn(`⚠️ AI returned invalid/fake ID: "${id}" for "${item.customName}" — finding scoped match (seg=${bestSegIdx}, candidates=${candidates.length})`);
+
+      const match = findClosestProductScoped(item.customName || '', candidates, allProducts, constraints);
+      if (match) {
+        const oldId = item.matchedProductId;
+        item.matchedProductId = match.product.id;
+        item.price = match.product.price || item.price;
+        item.matchQuality = match.matchQuality;
+        item.note = (item.note ? item.note + '. ' : '') + `Auto-match: ${match.product.name} (SP gốc không tìm thấy chính xác)`;
+        console.log(`✅ Fixed: "${item.customName}" → ${match.product.name} (${match.product.id}) quality=${match.matchQuality} [was: ${oldId}]`);
+      } else {
+        item.matchQuality = 'uncertain';
+        console.warn(`❌ No match found for "${item.customName}"`);
+        warnings.push(`Không tìm thấy SP phù hợp cho "${item.customName}"`);
+      }
+    } else {
+      // ID is valid — but does it belong to the right segment?
+      if (bestSegIdx >= 0) {
+        const candidates = candidateMap.get(bestSegIdx) || [];
+        const isInCandidates = candidates.some(c => c.id === id);
+        if (isInCandidates) {
+          // Check exact quality
+          const matchedProduct = allProducts.find(p => p.id === id);
+          if (matchedProduct) {
+            const constraints = { material: segments[bestSegIdx].material, pattern: segments[bestSegIdx].pattern };
+            const result = findClosestProductScoped(item.customName || '', [matchedProduct], allProducts, constraints);
+            item.matchQuality = result?.matchQuality || 'exact';
+          } else {
+            item.matchQuality = 'exact';
+          }
+        } else {
+          // ID valid but NOT in correct segment candidates — likely wrong material/pattern
+          const seg = segments[bestSegIdx];
+          console.warn(`⚠️ Item "${item.customName}" has valid ID ${id} but NOT in segment ${bestSegIdx} candidates (${seg.type} ${seg.material} ${seg.pattern})`);
+
+          // Re-match within correct candidates
+          const segCandidates = candidates.length > 0 ? candidates : allProducts;
+          const constraints = { material: seg.material, pattern: seg.pattern };
+          const match = findClosestProductScoped(item.customName || '', segCandidates, allProducts, constraints);
+          if (match && match.product.id !== id) {
+            const oldProduct = allProducts.find(p => p.id === id);
+            item.matchedProductId = match.product.id;
+            item.price = match.product.price || item.price;
+            item.matchQuality = match.matchQuality;
+            item.note = (item.note ? item.note + '. ' : '') + `Sửa: ${match.product.name} (thay ${oldProduct?.name || id})`;
+            console.log(`🔄 Corrected: "${item.customName}" → ${match.product.name} (was: ${oldProduct?.name})`);
+            warnings.push(`"${item.customName}" đã được sửa từ ${oldProduct?.name || 'SP sai'} → ${match.product.name}`);
+          } else {
+            item.matchQuality = 'fallback_product';
+          }
+        }
+      } else {
+        item.matchQuality = 'exact'; // no segment context, trust AI
+      }
+    }
+
+    if (bestSegIdx >= 0) {
+      segmentMatches.push({ segmentIdx: bestSegIdx, itemIdx, quality: item.matchQuality || 'unknown' });
+    }
+  }
+
+  // Check for missing segments
+  if (segments.length > 0) {
+    const matchedSegments = new Set(segmentMatches.map(m => m.segmentIdx));
+    for (let si = 0; si < segments.length; si++) {
+      if (!matchedSegments.has(si)) {
+        const seg = segments[si];
+        warnings.push(`Thiếu SP cho: ${seg.type} ${seg.material} ${seg.pattern} ${seg.size}`);
+      }
+    }
+    if (items.length < segments.length) {
+      warnings.push(`Hệ thống phát hiện ${segments.length} sản phẩm nhưng AI chỉ trả ${items.length}. Có thể thiếu sản phẩm.`);
+    }
+  }
+
+  return { items, warnings, segmentMatches };
 }
 
 // ==================== SEGMENT PARSER ====================
@@ -1212,34 +1450,17 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
         });
       }
 
-      // Validate matchedProductId — fix fake IDs by finding closest real product
-      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      // Build segment-scoped candidate map for validation
+      const candidateMap = segments.length > 0 ? buildSegmentCandidates(segments, allProducts) : new Map();
       const validProductIds = new Set(allProducts.map((p: any) => p.id));
       
       if (parsed.items && Array.isArray(parsed.items)) {
-        for (const item of parsed.items) {
-          const id = item.matchedProductId;
-          const isValidUUID = id && UUID_REGEX.test(id);
-          const existsInCatalog = isValidUUID && validProductIds.has(id);
-          
-          if (!existsInCatalog) {
-            console.warn(`⚠️ AI returned invalid/fake ID: "${id}" for "${item.customName}" — finding closest match`);
-            const closest = findClosestProduct(item.customName || '', allProducts);
-            if (closest) {
-              const oldId = item.matchedProductId;
-              item.matchedProductId = closest.id;
-              item.price = closest.price || item.price;
-              item.note = (item.note ? item.note + '. ' : '') + `Auto-match: ${closest.name} (SP gốc không tìm thấy chính xác)`;
-              console.log(`✅ Fixed: "${item.customName}" → ${closest.name} (${closest.id}) [was: ${oldId}]`);
-            } else {
-              console.warn(`❌ No match found for "${item.customName}"`);
-            }
-          }
-        }
-        // Validation: check if AI returned fewer items than segments
-        if (segments.length > 0 && parsed.items.length < segments.length) {
-          console.warn(`⚠️ AI returned ${parsed.items.length} items but ${segments.length} segments were detected. Missing segments possible.`);
-          parsed.warning = `Hệ thống phát hiện ${segments.length} sản phẩm nhưng AI chỉ trả ${parsed.items.length}. Có thể thiếu sản phẩm.`;
+        const validation = validateAndRepairItems(parsed.items, segments, candidateMap, allProducts, validProductIds);
+        parsed.items = validation.items;
+        if (validation.warnings.length > 0) {
+          parsed.warnings = validation.warnings;
+          parsed.warning = validation.warnings.join('. ');
+          console.warn('Validation warnings:', validation.warnings);
         }
       }
 
