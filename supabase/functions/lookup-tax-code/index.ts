@@ -1635,12 +1635,16 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       const configTextModel = aiConfig['ai_quote_text_model'];
       const quoteModel = configTextModel || "google/gemini-2.5-flash";
       
+      const step2Start = Date.now();
       console.log(`AI Quote Fill: Step 2 — text matching, model=${quoteModel}, products=${filteredProducts.length}, request=${effectiveRequest.length} chars`);
       
+      // Pass stepHint='text' so Beeknoee uses GLM first (avoids 429 from OCR's gemini)
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
         { role: "user", content: userContent },
-      ], false, quoteModel);
+      ], false, quoteModel, hasImage ? 'text' : undefined);
+      
+      console.log(`AI Quote Fill: Step 2 took ${Date.now() - step2Start}ms`);
       
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
