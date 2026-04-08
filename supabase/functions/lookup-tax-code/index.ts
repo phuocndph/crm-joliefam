@@ -1024,11 +1024,9 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
         ]
       : stepHint === 'text'
         ? [
-            // Text matching step: use GLM first to avoid 429 from OCR's gemini
-            { name: "glm-4.7-flash", timeout: 30000 },
-            { name: "glm-4.5-flash", timeout: 30000 },
+            // Text matching step: use Gemini models only for reliability
+            { name: "gemini-3-flash-preview", timeout: 55000 },
             { name: "gemini-2.5-flash", timeout: 55000 },
-            { name: "openai/gpt-oss-120b", timeout: 30000 },
           ]
         : [
             { name: "gemini-2.5-flash", timeout: 55000 },
