@@ -456,38 +456,77 @@ interface SectionContext {
 function parseSectionsFromRequest(normText: string): SectionContext[] {
   const sections: SectionContext[] = [];
   
-  // Match headers like: "vai t250 trang soc", "vai t300 soc", "vai lth"
-  // These are section headers that define material context for products below
-  const headerRegex = /\bvai\s+(?:t\s*\d{3}|lth|mcr|tencel|tici)\b[^:\n]*(?::|$)/gi;
-  let match;
-  const headerPositions: { idx: number; end: number; material: string; pattern: string }[] = [];
+  // Strategy: split by explicit separators FIRST, then find headers within each block
+  // This prevents material leakage across separator boundaries (e.g. "---")
   
-  while ((match = headerRegex.exec(normText)) !== null) {
-    const headerText = match[0];
-    const material = detectMaterial(headerText);
-    const pattern = detectPattern(headerText);
-    headerPositions.push({
-      idx: match.index,
-      end: match.index + match[0].length,
+  // Find separator positions: "---", "- - -", double newline, etc.
+  const separatorRegex = /-{2,}|={2,}/g;
+  const separatorPositions: number[] = [];
+  let sepMatch;
+  while ((sepMatch = separatorRegex.exec(normText)) !== null) {
+    separatorPositions.push(sepMatch.index);
+  }
+  
+  // Build block boundaries from separators
+  const blockBounds: { start: number; end: number }[] = [];
+  if (separatorPositions.length === 0) {
+    blockBounds.push({ start: 0, end: normText.length });
+  } else {
+    // Before first separator
+    blockBounds.push({ start: 0, end: separatorPositions[0] });
+    // Between separators
+    for (let i = 0; i < separatorPositions.length; i++) {
+      const sepEnd = normText.indexOf('\n', separatorPositions[i]);
+      const blockStart = sepEnd >= 0 ? sepEnd + 1 : separatorPositions[i] + 3;
+      const blockEnd = i < separatorPositions.length - 1 ? separatorPositions[i + 1] : normText.length;
+      blockBounds.push({ start: blockStart, end: blockEnd });
+    }
+  }
+  
+  // Within each block, find header "vai t250/t300..." (colon optional)
+  const headerRegex = /\b(?:vai\s+)?(?:t\s*\d{3}|lth|mcr|tencel|tici)\b[^:\n]*/gi;
+  
+  let lastMaterial = '';
+  let lastPattern = '';
+  
+  for (const block of blockBounds) {
+    const blockText = normText.substring(block.start, block.end);
+    if (blockText.trim().length === 0) continue;
+    
+    // Try to find a header within this block
+    headerRegex.lastIndex = 0;
+    const hMatch = headerRegex.exec(blockText);
+    
+    let material = '';
+    let pattern = '';
+    let contentStart = block.start; // default: whole block is content
+    
+    if (hMatch) {
+      material = detectMaterial(hMatch[0]);
+      pattern = detectPattern(hMatch[0]);
+      // Content starts after the header (skip colon if present)
+      const afterHeader = hMatch.index + hMatch[0].length;
+      const nextChar = blockText[afterHeader];
+      contentStart = block.start + afterHeader + (nextChar === ':' ? 1 : 0);
+    }
+    
+    // If no header found in this block, inherit from previous block
+    if (!material) material = lastMaterial;
+    if (!pattern) pattern = lastPattern;
+    
+    // Update carry-forward context
+    if (material) lastMaterial = material;
+    if (pattern) lastPattern = pattern;
+    
+    sections.push({
       material,
       pattern,
+      startIdx: contentStart,
+      endIdx: block.end,
     });
   }
   
-  // Also split by separators: "---", " - " at line start, or newlines with header
-  // Build sections from header positions
-  for (let i = 0; i < headerPositions.length; i++) {
-    const h = headerPositions[i];
-    const nextStart = i < headerPositions.length - 1 ? headerPositions[i + 1].idx : normText.length;
-    sections.push({
-      material: h.material,
-      pattern: h.pattern,
-      startIdx: h.end, // content starts AFTER header
-      endIdx: nextStart,
-    });
-  }
-  
-  // If no headers found, the entire text is one section
+  // If no sections created at all, use entire text
   if (sections.length === 0) {
     sections.push({
       material: '',
@@ -496,6 +535,8 @@ function parseSectionsFromRequest(normText: string): SectionContext[] {
       endIdx: normText.length,
     });
   }
+  
+  console.log('Normalized text (first 300):', normText.substring(0, 300));
   
   return sections;
 }
