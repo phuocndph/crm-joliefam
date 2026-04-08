@@ -1,49 +1,44 @@
 
 
-## Thêm tính năng chọn model OCR và xem luồng xử lý ảnh vào Cài đặt AI
+## Bỏ Lovable AI, dùng prompt OCR mới trích xuất JSON trực tiếp từ ảnh
 
-### Mô tả
-Thêm vào tab Model của trang Cài đặt AI:
-1. **Chọn model OCR riêng** (Bước 1 trích xuất ảnh) — tách biệt với model matching text (Bước 2)
-2. **Xem luồng xử lý ảnh** — hiển thị sơ đồ pipeline 2 bước (OCR → Text Matching) với thông tin model, delay, fallback chain
+### Phân tích
 
-### Thay đổi cụ thể
+Hiện tại `callAI()` luôn thử Lovable AI trước (dòng 1018-1044) → bị 402 hết credits → mất ~2-5s rồi mới fallback Beeknoee. Bỏ hoàn toàn Lovable AI sẽ giảm latency ngay.
 
-**File: `src/pages/AISettingsPage.tsx`**
+Prompt OCR hiện tại (dòng 1512-1514) trích xuất text thô rồi phải qua Step 2 matching. User muốn dùng prompt mới trích xuất JSON có cấu trúc trực tiếp từ ảnh → có thể bỏ Step 2 nếu OCR trả đủ thông tin.
 
-#### 1. Thêm cài đặt model OCR
-- Thêm field `ai_quote_ocr_model` vào `AISettings` interface và `DEFAULTS` (mặc định: `google/gemini-2.5-flash`)
-- Thêm card "Model OCR (Bước 1)" trong tab Model, giữa model Text và model Image hiện tại
-- Lọc danh sách model chỉ hiện các model hỗ trợ vision cho OCR (Gemini series)
-- Giải thích: model này dùng cho bước trích xuất text từ ảnh, khác với model Image (dùng cho full multimodal khi OCR thất bại)
-
-#### 2. Thêm card "Luồng xử lý ảnh" (Pipeline Visualization)
-- Thêm card mới trong tab Model, hiển thị sơ đồ pipeline dạng timeline/steps:
-  - **Bước 1 — OCR**: Model OCR → trích xuất text từ ảnh (prompt nhỏ, không catalog)
-  - **Delay 1.5s**: Giải phóng concurrent slot Beeknoee
-  - **Bước 2 — Text Matching**: Model Text → so khớp với catalog (dùng GLM first nếu Beeknoee)
-  - **Fallback**: Nếu OCR thất bại → dùng full multimodal với model Image
-- Hiển thị Beeknoee fallback chain cho mỗi bước (model order + timeout)
-- Dùng visual steps với icon và badge
-
-#### 3. Thêm cài đặt delay giữa 2 bước
-- Thêm field `ai_quote_step_delay` (ms) — mặc định 1500ms
-- Input number cho phép điều chỉnh (0-5000ms)
+### Thay đổi
 
 **File: `supabase/functions/lookup-tax-code/index.ts`**
 
-#### 4. Đọc config OCR model và delay từ DB
-- Đọc `ai_quote_ocr_model` từ `aiConfig` thay vì hardcode `google/gemini-2.5-flash`
-- Đọc `ai_quote_step_delay` từ `aiConfig` thay vì hardcode 1500ms
-- Trả thêm metadata về pipeline trong response: `ocrModel`, `matchModel`, `ocrTime`, `matchTime`, `totalTime`
+#### 1. Bỏ Lovable AI khỏi `callAI()`
+- Xóa block thử Lovable AI (dòng 1017-1045)
+- `callAI()` chỉ gọi thẳng Beeknoee
 
-#### 5. Trả metadata luồng trong response
-- Bổ sung vào response JSON: `{ pipeline: { step1: { model, time }, delay, step2: { model, time }, total } }`
+#### 2. Thay prompt OCR Step 1
+- Thay prompt hiện tại bằng prompt user cung cấp:
+```
+Trích xuất thông tin bảng sản phẩm từ ảnh, xuất JSON như sau:
+{"san_pham":[{"stt":1,"ten_san_pham":"","quy_cach":"","chat_lieu":"","so_luong":0,"don_gia":0,"thanh_tien":0}]}
+Lưu ý:
+- Chỉ lấy dữ liệu trong bảng sản phẩm, bỏ qua mọi thông tin khác
+- Giữ nguyên số (không thêm/bỏ ký tự)
+- Ô chat_lieu nào trống thì để ""
+- Chỉ trả về JSON, không giải thích
+```
+
+#### 3. Xử lý kết quả OCR JSON mới
+- Parse kết quả `san_pham[]` từ OCR
+- Chuyển thành text format cho Step 2 matching (vẫn cần match với catalog để lấy `matchedProductId`)
+- Format: `"{ten_san_pham} {quy_cach} {chat_lieu} x{so_luong}"` mỗi dòng
+
+#### 4. Cho phép config prompt OCR từ DB
+- Đọc `ai_quote_ocr_prompt` từ `aiConfig` — nếu có thì dùng, không thì dùng prompt mặc định mới
 
 ### Files thay đổi
 
 | File | Thay đổi |
 |------|----------|
-| `src/pages/AISettingsPage.tsx` | Thêm model OCR selector, pipeline visualization, delay config |
-| `supabase/functions/lookup-tax-code/index.ts` | Đọc OCR model + delay từ DB config, trả metadata pipeline |
+| `supabase/functions/lookup-tax-code/index.ts` | Bỏ Lovable AI, thay prompt OCR, parse JSON result |
 
