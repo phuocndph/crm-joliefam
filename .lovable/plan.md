@@ -1,51 +1,76 @@
 
 
-## Sửa lỗi AI bịa UUID — Validate và tìm SP gần nhất
+## Sửa 2 lỗi parser: "trắng sọc" → trơn, và không hiểu section header
 
-### Vấn đề
-AI đôi khi trả `matchedProductId` là UUID không tồn tại trong bảng giá (bịa). Khi đó:
-- `originalProduct` = undefined → SKU trống
-- Giá có thể sai
-- Ảnh hưởng tính lợi nhuận vì không link được SP gốc
+### Vấn đề gốc (từ logs)
 
-### Giải pháp: Server-side validation + auto-fix
+Input: `Vải T250 trắng sọc: Vỏ chăn 200x220... --- Vải T300 trắng sọc: Ga chun...`
+
+Parser hiện tại trả:
+- Tất cả pattern = "trơn" (sai, phải là "sọc")
+- "chăn" phantom segment từ "Vải T300 trắng **sọc**" (header bị parse thành SP)
+- Ga chun sau "---" nhận T250 thay vì T300
+
+**Lỗi 1**: Regex pattern `/(tron|trang\s*tinh|trang|soc|ke)/` — "trang" match trước "soc" → gán "trơn". Nhưng "trắng sọc" = màu trắng + mẫu sọc, KHÔNG phải trơn.
+
+**Lỗi 2**: Không có logic section header. "Vải T250 trắng sọc:" là header định nghĩa vải cho các SP bên dưới, không phải SP.
+
+### Giải pháp
 
 **File**: `supabase/functions/lookup-tax-code/index.ts`
 
-#### 1. Sau khi AI trả kết quả (dòng 975-988), thêm bước validate + sửa
+#### 1. Sửa pattern regex — "trang" đứng trước "soc" thì KHÔNG phải trơn
 
-Với mỗi item AI trả về:
-1. Kiểm tra `matchedProductId` có tồn tại trong `filteredProducts` không
-2. Nếu **KHÔNG** tồn tại → tìm SP gần nhất bằng cách:
-   - So khớp `customName` với tên SP trong catalog (fuzzy match đơn giản: normalize text, tính số từ khóa trùng)
-   - Ưu tiên SP cùng loại + kích thước LỚN HƠN gần nhất
-   - Gán lại `matchedProductId` = UUID thật, `price` = giá SP thật
-   - Thêm note: "SP gốc không tìm thấy chính xác, đã match với [tên SP thật]"
-3. Nếu **CÓ** tồn tại → giữ nguyên
+Thay:
+```
+/\b(tron|trang\s*tinh|trang|soc|ke)\b/
+```
+Bằng logic: match "soc/ke" → sọc. Match "tron" hoặc "trang tinh" → trơn. "trang" đứng một mình (không có "soc" theo sau) → trơn. "trang" + "soc" → chỉ lấy "sọc", bỏ "trang".
 
-#### 2. Hàm `findClosestProduct(itemName, allProducts)`
+Áp dụng cho cả global pattern (dòng 218) và local pattern (dòng 256).
 
-Logic match:
-- Normalize cả 2 string (lowercase, bỏ dấu)
-- Tách từ khóa chính: loại SP (thảm, ga, chăn...), kích thước, chất liệu
-- Tính điểm: loại SP trùng (+10), chất liệu trùng (+5), kích thước gần nhất (+3)
-- Trả SP có điểm cao nhất
+#### 2. Thêm logic parse section headers
 
-VD: AI bịa "Thảm chân 45x70x360g dệt logo" → tìm trong catalog → match "Thảm chân 50x80x330g dệt logo" (cùng loại, size gần nhất)
+Trước khi tìm product keywords, quét các dòng dạng:
+- `Vải T250 trắng sọc:` hoặc `Vải T300 sọc`
+- Dấu phân cách: `---`, `-`, dòng trống
 
-#### 3. Cập nhật prompt thêm nhấn mạnh
+Logic:
+1. Tách request theo separator (`---`, `-` đầu dòng)
+2. Mỗi section kiểm tra có header "Vải Txxx..." không
+3. Nếu có → lưu material + pattern context cho section đó
+4. Các SP trong section thừa hưởng material/pattern từ header
+5. Header KHÔNG được parse thành SP (loại khỏi product keyword scan)
 
-Thêm vào dòng 940: "Nếu không tìm thấy SP đúng kích thước, PHẢI chọn SP kích thước LỚN HƠN gần nhất từ bảng giá, KHÔNG ĐƯỢC tự tạo UUID mới."
+#### 3. Sửa logic gán material fallback
 
-### Kết quả
-- Mọi `matchedProductId` trong output đều là UUID thật từ DB
-- SKU, giá, link SP luôn chính xác
-- Người dùng click vào mã SP sẽ thấy đúng SP gốc trong bảng giá
-- Lợi nhuận tính đúng vì có `originalProductId` thật
+Thay vì `uniqueMats[0]` cho tất cả, mỗi segment nhận material từ section context của nó:
+- SP trong section 1 ("Vải T250 sọc") → T250 sọc
+- SP trong section 2 ("Vải T300 sọc") → T300 sọc
+
+### Ví dụ kết quả sau fix
+
+```text
+Input: Vải T250 trắng sọc: 4c Vỏ chăn 200x220 ... 1c chăn hè chần 200x220 --- Vải T300 trắng sọc: 1c Ga chun 160x200x12cm
+
+Sections:
+  Section 1: context = { material: T250, pattern: sọc }
+    → Vỏ chăn: T250 sọc 200x220
+    → Ga chun: T250 sọc 160x200x12cm
+    → Vỏ gối: T250 (gối không có sọc/trơn trong DB nên chỉ filter T250)
+    → Chăn hè chần: T250 sọc 200x220
+  Section 2: context = { material: T300, pattern: sọc }
+    → Ga chun: T300 sọc 160x200x12cm
+    → Ga chun: T300 sọc 160x200x15cm
+```
 
 ### Phạm vi sửa
-- **File duy nhất**: `supabase/functions/lookup-tax-code/index.ts`
-  1. Thêm hàm `findClosestProduct()`
-  2. Thêm bước validate + auto-fix sau dòng 988
-  3. Bổ sung prompt nhấn mạnh không bịa UUID
+
+**File duy nhất**: `supabase/functions/lookup-tax-code/index.ts`
+
+1. Sửa hàm `parseRequestSegments()`:
+   - Thêm bước 0: tách sections theo separator, parse header
+   - Sửa pattern regex: "trang" + "soc" = sọc, không phải trơn
+   - Loại header text khỏi product keyword scan
+   - Gán material/pattern từ section context thay vì global first
 
