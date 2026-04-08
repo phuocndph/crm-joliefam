@@ -634,6 +634,8 @@ function parseRequestSegments(request: string): RequestSegment[] {
     // Leading text before the keyword (for qty detection)
     const leadingText = norm.substring(chunkStart, found[i].idx).trim();
     const chunk = norm.substring(found[i].idx, chunkEnd).trim();
+    
+    console.log(`  Chunk debug[${i}]: type="${found[i].type}" kwIdx=${found[i].idx} chunkStart=${chunkStart} prevEnd=${prevEnd} sections=${sections.length} headerRanges=${JSON.stringify(headerRanges)} leadingText="${leadingText}" chunk="${chunk.substring(0, 40)}..."`);
     const fullChunk = (leadingText + ' ' + chunk).trim();
 
     // Size
