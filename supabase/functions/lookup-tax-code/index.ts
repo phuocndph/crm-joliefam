@@ -1002,7 +1002,7 @@ const BUYER_INFO_SYSTEM_PROMPT = `Bạn là trợ lý phân tích thông tin doa
 }
 Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ trả JSON thuần, không bọc trong code block.`;
 
-async function callAI(messages: any[], hasImage = false, modelOverride?: string) {
+async function callAI(messages: any[], hasImage = false, modelOverride?: string, stepHint?: 'ocr' | 'text') {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
 
@@ -1012,6 +1012,7 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string)
 
   const model = modelOverride || "google/gemini-3-flash-preview";
   const payload = { model, messages };
+  const callStart = Date.now();
 
   // Try Lovable AI first (supports vision)
   if (LOVABLE_API_KEY) {
@@ -1028,7 +1029,7 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string)
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        console.log("AI response from: Lovable");
+        console.log(`AI response from: Lovable (${Date.now() - callStart}ms)`);
         return parseAIResponse(await response.json());
       }
 
@@ -1045,20 +1046,29 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string)
 
   // Fallback to Beeknoee with model chain
   if (BEEKNOEE_API_KEY) {
-    console.log(`Falling back to Beeknoee API (hasImage: ${hasImage})...`);
+    console.log(`Falling back to Beeknoee API (hasImage: ${hasImage}, step: ${stepHint || 'default'})...`);
     
-    // Vision-capable models only when image is present
+    // Different model orders based on step to avoid 429 concurrent limit
     const models = hasImage
       ? [
           { name: "gemini-2.5-flash", timeout: 90000 },
         ]
-      : [
-          { name: "gemini-2.5-flash", timeout: 55000 },
-          { name: "glm-4.7-flash", timeout: 30000 },
-          { name: "glm-4.5-flash", timeout: 30000 },
-          { name: "openai/gpt-oss-120b", timeout: 30000 },
-        ];
+      : stepHint === 'text'
+        ? [
+            // Text matching step: use GLM first to avoid 429 from OCR's gemini
+            { name: "glm-4.7-flash", timeout: 30000 },
+            { name: "glm-4.5-flash", timeout: 30000 },
+            { name: "gemini-2.5-flash", timeout: 55000 },
+            { name: "openai/gpt-oss-120b", timeout: 30000 },
+          ]
+        : [
+            { name: "gemini-2.5-flash", timeout: 55000 },
+            { name: "glm-4.7-flash", timeout: 30000 },
+            { name: "glm-4.5-flash", timeout: 30000 },
+            { name: "openai/gpt-oss-120b", timeout: 30000 },
+          ];
     
+    // Only 1 retry attempt (was 2), with shorter wait
     for (let attempt = 0; attempt < 2; attempt++) {
       for (const { name: model, timeout } of models) {
         try {
@@ -1073,22 +1083,23 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string)
           clearTimeout(timeoutId);
 
           if (response.ok) {
-            console.log(`AI response from: Beeknoee (${model})`);
+            console.log(`AI response from: Beeknoee (${model}) (${Date.now() - callStart}ms)`);
             return parseAIResponse(await response.json());
           }
 
           const errText = await response.text();
           console.warn(`Beeknoee ${model} failed (${response.status}): ${errText.substring(0, 150)}`);
           if (response.status === 429) {
-            await new Promise(r => setTimeout(r, 3000));
+            // Short delay for concurrent limit
+            await new Promise(r => setTimeout(r, 2000));
           }
         } catch (e) {
           console.warn(`Beeknoee ${model} error:`, e instanceof Error ? e.message : e);
         }
       }
       if (attempt === 0) {
-        console.log("All models failed on first attempt, retrying after 5s...");
-        await new Promise(r => setTimeout(r, 5000));
+        console.log("All models failed on first attempt, retrying after 2s...");
+        await new Promise(r => setTimeout(r, 2000));
       }
     }
   }
@@ -1496,6 +1507,7 @@ serve(async (req) => {
       const hasImage = !!imageBase64;
       
       if (hasImage) {
+        const step1Start = Date.now();
         console.log('AI Quote Fill: Step 1 — OCR extraction from image...');
         const ocrPrompt = `Trích xuất danh sách sản phẩm từ ảnh. Ghi lại: tên SP, số lượng, kích thước, chất liệu, giá (nếu có).
 Trả về dạng text thuần, mỗi dòng 1 sản phẩm. VD: ga chun T250 sọc 180x200 x2
@@ -1517,13 +1529,17 @@ Chỉ trả text, KHÔNG markdown, KHÔNG giải thích.`;
           const configImageModel = aiConfig['ai_quote_image_model'];
           const ocrModel = configImageModel || "google/gemini-2.5-flash";
           
-          const ocrResult = await callAI(ocrMessages, true, ocrModel);
+          const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
           const ocrText = ocrResult?.raw || (typeof ocrResult === 'string' ? ocrResult : JSON.stringify(ocrResult));
           
-          console.log(`AI Quote Fill: OCR result (${ocrText.length} chars): ${ocrText.substring(0, 300)}`);
+          console.log(`AI Quote Fill: Step 1 OCR took ${Date.now() - step1Start}ms (${ocrText.length} chars): ${ocrText.substring(0, 300)}`);
           
           // Combine OCR text with original request
           effectiveRequest = request ? `${request}\n${ocrText}` : ocrText;
+
+          // Delay 1.5s between steps to release Beeknoee concurrent slot
+          console.log('AI Quote Fill: waiting 1.5s before Step 2 to release concurrent slot...');
+          await new Promise(r => setTimeout(r, 1500));
         } catch (ocrError) {
           console.error('OCR extraction failed, falling back to full multimodal:', ocrError);
           // Fall through — will use old multimodal approach below
@@ -1619,12 +1635,16 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       const configTextModel = aiConfig['ai_quote_text_model'];
       const quoteModel = configTextModel || "google/gemini-2.5-flash";
       
+      const step2Start = Date.now();
       console.log(`AI Quote Fill: Step 2 — text matching, model=${quoteModel}, products=${filteredProducts.length}, request=${effectiveRequest.length} chars`);
       
+      // Pass stepHint='text' so Beeknoee uses GLM first (avoids 429 from OCR's gemini)
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
         { role: "user", content: userContent },
-      ], false, quoteModel);
+      ], false, quoteModel, hasImage ? 'text' : undefined);
+      
+      console.log(`AI Quote Fill: Step 2 took ${Date.now() - step2Start}ms`);
       
       if (parsed.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
