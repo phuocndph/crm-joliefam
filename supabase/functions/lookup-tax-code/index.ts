@@ -567,8 +567,12 @@ function parseRequestSegments(request: string): RequestSegment[] {
     if (kwSection && chunkStart < kwSection.startIdx) {
       chunkStart = kwSection.startIdx;
     }
-    // Extend to just before next keyword or end of text
-    const chunkEnd = i < found.length - 1 ? found[i + 1].idx : norm.length;
+    // Extend to just before next keyword or end of text, BUT bounded by section end
+    let chunkEnd = i < found.length - 1 ? found[i + 1].idx : norm.length;
+    // Don't extend chunk past current keyword's section boundary
+    if (kwSection && chunkEnd > kwSection.endIdx) {
+      chunkEnd = kwSection.endIdx;
+    }
     // Leading text before the keyword (for qty detection)
     const leadingText = norm.substring(chunkStart, found[i].idx).trim();
     const chunk = norm.substring(found[i].idx, chunkEnd).trim();
