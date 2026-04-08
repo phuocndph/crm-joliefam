@@ -636,7 +636,6 @@ function parseRequestSegments(request: string): RequestSegment[] {
     const chunk = norm.substring(found[i].idx, chunkEnd).trim();
     
     const fullChunk = (leadingText + ' ' + chunk).trim();
-    const fullChunk = (leadingText + ' ' + chunk).trim();
 
     // Size
     const sizeMatch = chunk.match(/(\d+\.?\d*)\s*[x×*]\s*(\d+\.?\d*)(?:\s*[x×*]\s*(\d+\.?\d*)\s*(p|f|cm)?)?/i);
