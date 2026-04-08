@@ -8,8 +8,36 @@ const corsHeaders = {
 };
 
 // Module-level catalog cache — keyed by priceListId, persists across warm invocations
-const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const catalogCacheMap = new Map<string, { products: any[]; timestamp: number }>();
+
+// Module-level AI config cache
+const configCache: { data: Record<string, string> | null; timestamp: number } = { data: null, timestamp: 0 };
+const CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes default
+
+async function loadAIConfig(supabaseClient: any): Promise<Record<string, string>> {
+  if (configCache.data && Date.now() - configCache.timestamp < CONFIG_CACHE_TTL) {
+    return configCache.data;
+  }
+  try {
+    const { data, error } = await supabaseClient
+      .from('ai_config')
+      .select('config_key, config_value');
+    if (!error && data) {
+      const map: Record<string, string> = {};
+      for (const row of data) {
+        map[row.config_key] = row.config_value;
+      }
+      configCache.data = map;
+      configCache.timestamp = Date.now();
+      console.log(`AI Config loaded: ${Object.keys(map).length} keys`);
+      return map;
+    }
+  } catch (e) {
+    console.warn('Failed to load AI config:', e);
+  }
+  return configCache.data || {};
+}
 
 // ==================== FIND CLOSEST PRODUCT (v2 — segment-scoped) ====================
 
@@ -1382,23 +1410,27 @@ serve(async (req) => {
         });
       }
 
-      // Use module-level catalog cache keyed by priceListId (TTL 5 min)
+      // Use module-level catalog cache keyed by priceListId
       const authHeader = req.headers.get("Authorization");
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const supabaseClient = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: { Authorization: authHeader || "" } },
+      });
+
+      // Load AI config from DB
+      const aiConfig = await loadAIConfig(supabaseClient);
+      const customCacheTtl = aiConfig['ai_quote_cache_ttl'] ? parseInt(aiConfig['ai_quote_cache_ttl']) * 1000 : DEFAULT_CATALOG_CACHE_TTL;
+
       const cacheKey = priceListId || "__all__";
       const cached = catalogCacheMap.get(cacheKey);
       let allProducts: any[];
       
-      if (cached && Date.now() - cached.timestamp < CATALOG_CACHE_TTL) {
+      if (cached && Date.now() - cached.timestamp < customCacheTtl) {
         allProducts = cached.products;
         console.log(`AI Quote Fill: using cached catalog for priceList=${cacheKey} (${allProducts.length} products)`);
       } else {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-        const supabase = createClient(supabaseUrl, supabaseKey, {
-          global: { headers: { Authorization: authHeader || "" } },
-        });
-
-        let query = supabase
+        let query = supabaseClient
           .from("products")
           .select("id, name, specifications, description, price, category")
           .eq("in_stock", true);
@@ -1460,7 +1492,19 @@ serve(async (req) => {
         segmentInstruction = `\n## YÊU CẦU ĐÃ PHÂN TÍCH (${segments.length} sản phẩm):\n${segLines}\nMỗi dòng trên PHẢI có ÍT NHẤT 1 item tương ứng trong kết quả. KHÔNG được bỏ sót dòng nào.\n`;
       }
 
-      const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá nội thất phòng ngủ VN. Nhân viên gõ nhanh, không dấu, viết tắt.
+      // Check for custom prompt from DB config
+      const customPromptFromDB = aiConfig['ai_quote_fill_prompt'];
+      
+      let aiQuoteFillPrompt: string;
+      if (customPromptFromDB) {
+        // Replace template variables in custom prompt
+        aiQuoteFillPrompt = customPromptFromDB
+          .replace(/\$\{catalogHeader\}/g, catalogHeader)
+          .replace(/\$\{productListText\}/g, productListText)
+          .replace(/\$\{segmentInstruction\}/g, segmentInstruction);
+        console.log('AI Quote Fill: using CUSTOM prompt from DB');
+      } else {
+        aiQuoteFillPrompt = `Bạn là chuyên gia báo giá nội thất phòng ngủ VN. Nhân viên gõ nhanh, không dấu, viết tắt.
 
 ## BẢNG GIÁ (${catalogHeader})
 ${productListText}
@@ -1494,7 +1538,7 @@ ${hasImage ? '\n## ẢNH\nPhân tích ảnh trích xuất SP, SL, kích thước
 matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU bảng giá. TUYỆT ĐỐI KHÔNG bịa UUID.
 {"items":[{"matchedProductId":"uuid-từ-bảng-giá","customName":"tên SP kích thước ĐÚNG khách","quantity":1,"price":0,"specifications":"KT đúng khách, KHÔNG làm tròn","note":""}]}
 Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
-
+      }
 
       // Build user message - multimodal if image present
       let userContent: any;
@@ -1513,8 +1557,15 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
         userContent = `Yêu cầu khách hàng:\n"""\n${request}\n"""`;
       }
 
-      // Use faster model for text-only, vision model for images
-      const quoteModel = hasImage ? undefined : "google/gemini-2.5-flash";
+      // Use model from DB config, fallback to defaults
+      const configTextModel = aiConfig['ai_quote_text_model'];
+      const configImageModel = aiConfig['ai_quote_image_model'];
+      const quoteModel = hasImage 
+        ? (configImageModel || undefined) 
+        : (configTextModel || "google/gemini-2.5-flash");
+      
+      console.log(`AI Quote Fill: model=${quoteModel}, hasImage=${hasImage}, customPrompt=${!!customPromptFromDB}`);
+      
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
         { role: "user", content: userContent },
@@ -1565,11 +1616,14 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       const authHeader = req.headers.get("Authorization");
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-      const supabase = createClient(supabaseUrl, supabaseKey, {
+      const supabaseClient = createClient(supabaseUrl, supabaseKey, {
         global: { headers: { Authorization: authHeader || "" } },
       });
 
-      const { data: products, error: dbError } = await supabase
+      // Load DB config (for defaults when no config passed from client)
+      const dbConfig = await loadAIConfig(supabaseClient);
+
+      const { data: products, error: dbError } = await supabaseClient
         .from("products")
         .select("id, name, specifications, description, price, category")
         .eq("in_stock", true)
@@ -1596,7 +1650,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
       // Call AI with custom or default model
-      const textModel = config?.textModel || "google/gemini-2.5-flash";
+      const textModel = config?.textModel || dbConfig['ai_quote_text_model'] || "google/gemini-2.5-flash";
       
       // Build prompt (same as ai_quote_fill)
       const productListText = filteredProducts.map((p: any) => 
