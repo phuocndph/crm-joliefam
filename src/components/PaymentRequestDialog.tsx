@@ -125,8 +125,8 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
           children: [
             new DocxTableCell({
               children: [
-                new Paragraph({ children: [new TextRun({ text: sellerName.toUpperCase(), bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
-                new Paragraph({ children: [new TextRun({ text: documentNumber ? `Số: ${documentNumber}` : "Số: .../ĐNTT", size: sz - 2, font })], alignment: AlignmentType.CENTER }),
+                new Paragraph({ children: [new TextRun({ text: sellerName.toUpperCase(), bold: true, size: 26, font })], alignment: AlignmentType.CENTER }),
+                new Paragraph({ children: [new TextRun({ text: documentNumber ? `Số: ${documentNumber}` : "Số: .../ĐNTT", size: sz, font })], alignment: AlignmentType.CENTER }),
               ],
               borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
               verticalAlign: "center",
