@@ -1,52 +1,70 @@
 
 
-## Tạo trang Cài đặt AI Quote Fill
+## Kết nối Cài đặt AI với Database và Edge Function
 
-### Mục tiêu
-Tạo trang cài đặt riêng cho hệ thống AI Quote Fill, cho phép Admin/Manager kiểm soát toàn bộ pipeline: prompt, model, catalog filtering, và debug logs.
+### Vấn đề hiện tại
+1. Bảng `ai_settings` chỉ có cột `setting_value` kiểu **boolean** — không lưu được text/JSON
+2. Trang Settings lưu vào **localStorage** — mất khi đổi máy, không chia sẻ
+3. Edge Function dùng **hardcode** — không đọc config từ DB
 
-### Thiết kế
+### Giải pháp
 
-**Trang mới**: `src/pages/AISettingsPage.tsx` — truy cập từ nút bên cạnh "Cài đặt Template" trên trang Báo giá.
+**Bước 1 — Migration: Tạo bảng `ai_config`**
 
-**Các section chính:**
+```sql
+CREATE TABLE public.ai_config (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  config_key text UNIQUE NOT NULL,
+  config_value text NOT NULL,
+  updated_at timestamptz DEFAULT now(),
+  updated_by uuid REFERENCES auth.users(id)
+);
+ALTER TABLE public.ai_config ENABLE ROW LEVEL SECURITY;
 
-1. **Prompt System** — Hiển thị và cho phép chỉnh sửa `aiQuoteFillPrompt` (prompt chính gửi cho AI). Lưu vào bảng `ai_settings` với key `ai_quote_fill_prompt`. Nếu trống → dùng prompt mặc định từ edge function.
+CREATE POLICY "admin_manager_read" ON public.ai_config
+  FOR SELECT TO authenticated
+  USING (public.get_user_role(auth.uid()) IN ('admin', 'manager'));
 
-2. **Model Selection** — Chọn model cho từng loại request:
-   - Text-only (hiện tại: `google/gemini-2.5-flash`)
-   - Image (hiện tại: `google/gemini-3-flash-preview`)
-   - Danh sách models: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro, gemini-3-flash-preview, gpt-5-mini
+CREATE POLICY "admin_manager_write" ON public.ai_config
+  FOR ALL TO authenticated
+  USING (public.get_user_role(auth.uid()) IN ('admin', 'manager'))
+  WITH CHECK (public.get_user_role(auth.uid()) IN ('admin', 'manager'));
+```
 
-3. **Catalog & Filtering** — Hiển thị và chỉnh sửa:
-   - `TYPE_TO_CATEGORY` mapping (segment type → DB category)
-   - `PRODUCT_TYPE_KEYWORDS` list
-   - `MATERIAL_KEYWORDS` list
-   - Cache TTL (hiện tại 5 phút)
+Config keys: `ai_quote_fill_prompt`, `ai_quote_text_model`, `ai_quote_image_model`, `ai_quote_type_categories`, `ai_quote_product_keywords`, `ai_quote_material_keywords`, `ai_quote_cache_ttl`
 
-4. **Test & Debug** — Textarea nhập input mẫu, gửi test và hiển thị:
-   - Parsed segments
-   - Filtered products count
-   - AI response raw JSON
-   - Validation warnings
+**Bước 2 — Sửa `AISettingsPage.tsx`**
+- `loadSettings()`: SELECT từ `ai_config` thay vì localStorage
+- `handleSave()`: Upsert vào `ai_config` (onConflict: `config_key`), xóa localStorage
+- Vì bảng `ai_config` không có trong types.ts, dùng `.from('ai_config' as any)` hoặc cast type
 
-### Thay đổi kỹ thuật
+**Bước 3 — Sửa Edge Function `lookup-tax-code/index.ts`**
+- Thêm module-level cache cho config (giống catalog cache)
+- Trong handler `ai_quote_fill`: query `ai_config` → nếu có custom prompt/model → dùng thay hardcode
+- Trong handler `ai_quote_debug`: cũng đọc config từ DB
+- Logic:
+```text
+const configCache = { data: null, timestamp: 0 };
+// Trong handler:
+if (Date.now() - configCache.timestamp > cacheTTL) {
+  const { data } = await supabase.from('ai_config').select('config_key, config_value');
+  configCache.data = data; configCache.timestamp = Date.now();
+}
+const customPrompt = configCache.data?.find(c => c.config_key === 'ai_quote_fill_prompt')?.config_value;
+const textModel = configCache.data?.find(c => c.config_key === 'ai_quote_text_model')?.config_value || 'google/gemini-2.5-flash';
+// ... apply to prompt building and API call
+```
 
-**Files mới:**
-- `src/pages/AISettingsPage.tsx` — Trang chính với 4 tabs (Prompt, Model, Catalog, Test)
+### Files thay đổi
 
-**Files sửa:**
-- `src/pages/QuotesPage.tsx` — Thêm nút "Cài đặt AI" bên cạnh "Cài đặt Template"
-- `src/App.tsx` — Thêm route `/ai-settings`
-- `src/components/ui/app-sidebar.tsx` — Thêm menu item (chỉ admin/manager)
-- `supabase/functions/lookup-tax-code/index.ts` — Đọc custom prompt/model/catalog config từ DB thay vì hardcode. Thêm endpoint `type: "ai_quote_debug"` trả về parsed segments + filtered products để debug.
+| File | Thay đổi |
+|------|----------|
+| Migration SQL | Tạo bảng `ai_config` + RLS |
+| `src/pages/AISettingsPage.tsx` | localStorage → Supabase upsert/select |
+| `supabase/functions/lookup-tax-code/index.ts` | Đọc config từ `ai_config`, apply custom prompt/model/catalog |
 
-**Database migration:**
-- Tận dụng bảng `ai_settings` có sẵn, thêm các setting keys mới: `ai_quote_fill_prompt`, `ai_quote_text_model`, `ai_quote_image_model`, `ai_quote_type_categories`, `ai_quote_keywords`
-
-### Luồng hoạt động
-1. Admin mở trang AI Settings → load settings từ `ai_settings`
-2. Chỉnh sửa prompt/model/catalog → Save → upsert vào `ai_settings`
-3. Edge function khi xử lý `ai_quote_fill` → đọc settings từ DB (cache 5 phút) → dùng custom prompt/model nếu có
-4. Tab Test: gửi input → edge function trả debug info + kết quả AI → hiển thị trực quan
+### Kết quả
+- Admin lưu settings → persist trong DB, chia sẻ toàn hệ thống
+- Edge Function đọc config (cache theo TTL) → dùng custom prompt/model/catalog khi có
+- Không ảnh hưởng hiệu năng nhờ cache module-level
 
