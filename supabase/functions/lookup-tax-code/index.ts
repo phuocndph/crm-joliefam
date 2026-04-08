@@ -1507,6 +1507,7 @@ serve(async (req) => {
       const hasImage = !!imageBase64;
       
       if (hasImage) {
+        const step1Start = Date.now();
         console.log('AI Quote Fill: Step 1 — OCR extraction from image...');
         const ocrPrompt = `Trích xuất danh sách sản phẩm từ ảnh. Ghi lại: tên SP, số lượng, kích thước, chất liệu, giá (nếu có).
 Trả về dạng text thuần, mỗi dòng 1 sản phẩm. VD: ga chun T250 sọc 180x200 x2
@@ -1528,13 +1529,17 @@ Chỉ trả text, KHÔNG markdown, KHÔNG giải thích.`;
           const configImageModel = aiConfig['ai_quote_image_model'];
           const ocrModel = configImageModel || "google/gemini-2.5-flash";
           
-          const ocrResult = await callAI(ocrMessages, true, ocrModel);
+          const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
           const ocrText = ocrResult?.raw || (typeof ocrResult === 'string' ? ocrResult : JSON.stringify(ocrResult));
           
-          console.log(`AI Quote Fill: OCR result (${ocrText.length} chars): ${ocrText.substring(0, 300)}`);
+          console.log(`AI Quote Fill: Step 1 OCR took ${Date.now() - step1Start}ms (${ocrText.length} chars): ${ocrText.substring(0, 300)}`);
           
           // Combine OCR text with original request
           effectiveRequest = request ? `${request}\n${ocrText}` : ocrText;
+
+          // Delay 1.5s between steps to release Beeknoee concurrent slot
+          console.log('AI Quote Fill: waiting 1.5s before Step 2 to release concurrent slot...');
+          await new Promise(r => setTimeout(r, 1500));
         } catch (ocrError) {
           console.error('OCR extraction failed, falling back to full multimodal:', ocrError);
           // Fall through — will use old multimodal approach below
