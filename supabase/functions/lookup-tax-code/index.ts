@@ -1650,7 +1650,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
       // Call AI with custom or default model
-      const textModel = config?.textModel || "google/gemini-2.5-flash";
+      const textModel = config?.textModel || dbConfig['ai_quote_text_model'] || "google/gemini-2.5-flash";
       
       // Build prompt (same as ai_quote_fill)
       const productListText = filteredProducts.map((p: any) => 
