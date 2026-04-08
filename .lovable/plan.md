@@ -1,45 +1,46 @@
 
 
-## Sửa logic suy luận chất liệu trong prompt AI Quote Fill
+## Sửa logic kích thước: Giữ nguyên kích thước khách yêu cầu, chỉ match giá theo SP gần nhất lớn hơn
 
 ### Vấn đề
 
-Dòng 564-565 hiện tại:
-```
-Khi chất liệu hoặc mẫu chỉ ghi 1 lần hoặc ở cuối câu → áp dụng cho TẤT CẢ sản phẩm.
-Nếu không ghi chất liệu → ưu tiên T250.
-```
-
-Rule "mặc định T250" sai — phải suy luận chất liệu từ các SP khác trong cùng báo giá. Ví dụ: khách ghi "ga chun T250 trắng, vỏ chăn trắng 2.0x2.2" → vỏ chăn phải lấy T250 theo ga chun, không phải mặc định cứng.
-
-Khi khách dùng nhiều loại vải (VD: "ga T250 trắng 1m8, ga T300 sọc 1m6") thì phải phân tách đúng nhóm — không áp dụng chung.
+Hiện tại AI trả về kích thước đã làm tròn trong `customName` và `specifications` (VD: khách yêu cầu 14cm → AI ghi "15cm"). Yêu cầu: **giữ nguyên kích thước khách ghi** (12cm, 14cm...) nhưng **lấy giá của SP có kích thước lớn hơn gần nhất** trong bảng giá. Ghi chú giải thích trong `note`.
 
 ### Sửa đổi
 
-**File**: `supabase/functions/lookup-tax-code/index.ts` — dòng 563-565
+**File**: `supabase/functions/lookup-tax-code/index.ts`
 
-Thay section `THUỘC TÍNH CHUNG` thành:
+**1. Sửa rule kích thước (dòng 543-545)**
 
-```text
-## SUY LUẬN CHẤT LIỆU
-1. Nếu SP ghi rõ chất liệu (T250, T300...) → dùng đúng chất liệu đó
-2. Nếu SP KHÔNG ghi chất liệu → suy luận từ các SP KHÁC trong cùng báo giá:
-   - Nếu tất cả SP khác dùng cùng 1 chất liệu → áp dụng chất liệu đó
-   - Nếu có NHIỀU chất liệu khác nhau → xác định theo VỊ TRÍ/NGỮ CẢNH: SP nằm gần SP nào (trước/sau) thì dùng chất liệu của SP đó
-3. Khi mẫu (trơn/sọc) chỉ ghi 1 lần → áp dụng cho tất cả SP cùng nhóm chất liệu
-4. CHỈ KHI không có bất kỳ chất liệu nào trong toàn bộ yêu cầu → mới dùng T250 làm mặc định
-
-VD: "ga chun t250 trắng 1m8, vỏ chăn trắng 2.0x2.2, vỏ gối 50x70 x2"
-→ Tất cả = T250 trơn (vì chỉ có 1 chất liệu T250)
-
-VD: "ga chun t300 sọc 1m8 x1, ga chun t250 trắng 1m6 x1, vỏ chăn sọc 2.0x2.2"
-→ vỏ chăn sọc → gần "ga t300 sọc" hơn → T300 sọc
+Thay:
+```
+5. Chọn kích thước LỚN HƠN gần nhất nếu không khớp chính xác. KHÔNG chọn nhỏ hơn
+   VD: yêu cầu 14cm, bảng có 10/15/20 → chọn 15cm
+```
+Bằng:
+```
+5. Khi kích thước khách yêu cầu KHÔNG có trong bảng giá → tìm SP có kích thước LỚN HƠN gần nhất để lấy GIÁ và matchedProductId
+   - NHƯNG customName và specifications PHẢI ghi đúng kích thước KHÁCH YÊU CẦU, KHÔNG được làm tròn
+   - Ghi note giải thích: "Giá theo SP [kích thước bảng giá], khách yêu cầu [kích thước thực]"
+   VD: yêu cầu ga 160x200x12cm, bảng có 15cm → lấy giá SP 15cm, nhưng ghi "160x200x12cm" trong specifications
+   VD: bảo vệ nệm yêu cầu trên 10cm → lấy giá của 25cm
+   VD: chăn → lấy kích thước gần sát nhất trong bảng giá (lớn hơn hoặc bằng)
 ```
 
-Cập nhật ví dụ few-shot (dòng 581-589) để phản ánh logic mới — vỏ chăn lấy T250 từ ga chun cùng báo giá thay vì mặc định.
+**2. Sửa rule OUTPUT (dòng 607, 610)**
+
+Nhấn mạnh:
+```
+- specifications = kích thước CHÍNH XÁC theo yêu cầu khách, KHÔNG làm tròn, KHÔNG copy kích thước bảng giá
+- customName = tên SP với kích thước ĐÚNG của khách (VD: "Ga chun T250 trơn 160x200x12cm" chứ KHÔNG PHẢI "160x200x15cm")
+```
+
+**3. Cập nhật ví dụ few-shot (dòng 597-601)**
+
+Sửa ví dụ để phản ánh: kích thước trong customName/specifications giữ nguyên theo khách, note giải thích việc lấy giá SP khác.
 
 ### Kết quả
-- AI suy luận chất liệu từ ngữ cảnh thay vì mặc định cứng T250
-- Xử lý đúng cả trường hợp 1 loại vải và nhiều loại vải trong cùng báo giá
-- Phân tách chính xác theo vị trí/nhóm khi có nhiều chất liệu
+- Báo giá hiển thị đúng kích thước khách yêu cầu (12cm, 14cm...)
+- Giá lấy từ SP phù hợp nhất (lớn hơn gần nhất) để tránh lỗ
+- Note ghi rõ khi giá được lấy từ SP kích thước khác
 
