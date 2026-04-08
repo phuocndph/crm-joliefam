@@ -22,7 +22,11 @@ function extractCategoryFilters(request: string): { categories: string[]; materi
     [/\bga\s*chun\b|\bgachun\b|\bga\s*chu\b/, ['ga chun']],
     [/\bga\s*phu\b|\bga\s*tam\s*phu\b/, ['ga tấm phủ', 'ga phủ']],
     [/\bga\b(?!\s*chun)(?!\s*phu)(?!\s*tam)/, ['ga chun', 'ga tấm phủ', 'ga phủ']],
-    [/\bvo\s*chan\b|\bchan\s*he\b|\bchan\s*dong\b|\bchan\b/, ['chăn']],
+    [/\bchan\s*he\b/, ['chăn hè chần']],
+    [/\bvo\s*chan\s*chan\b/, ['vỏ chăn chần']],
+    [/\bchan\s*dong\b/, ['vỏ chăn chần']],
+    [/\bvo\s*chan\b(?!\s*chan)/, ['chăn']],
+    [/\bchan\b(?!\s*he)(?!\s*dong)/, ['chăn']],
     [/\bvo\s*goi\s*om\b|\bgoi\s*om\b/, ['gối ôm']],
     [/\bvo\s*goi\b|\bgoi\s*nam\b|\bgoi\b(?!\s*om)(?!\s*trang)/, ['gối']],
     [/\bbvn\b|\bbao\s*ve\s*nem\b|\bbao\s*ve\b/, ['bảo vệ']],
@@ -632,9 +636,10 @@ ${productListText}
 2. Kích thước khách KHÔNG có trong bảng → lấy GIÁ & matchedProductId của SP kích thước LỚN HƠN gần nhất. customName/specifications ghi ĐÚNG kích thước KHÁCH, KHÔNG làm tròn. Note: "Giá theo SP [KT bảng giá], khách yêu cầu [KT thực]"
    VD: ga 12cm, bảng có 15cm → matchedProductId=SP 15cm, ghi "12cm". BVN trên 10cm → giá SP 25cm
 3. KHÔNG hoán đổi Trơn↔Sọc nếu khách ghi rõ
+4. PHÂN BIỆT: "chăn hè" → match "Chăn hè chần" (SP riêng, KHÔNG có từ "vỏ"). "vỏ chăn chần" → match "Vỏ chăn chần bông" (SP riêng, KHÔNG phải chăn hè). Hai loại KHÁC NHAU hoàn toàn.
 
 ## TIẾNG VIỆT KHÔNG DẤU
-trang/trắng=TRƠN | soc=SỌC | chan he/chăn hè=Vỏ chăn mỏng | chan dong=Vỏ chăn chần dày
+trang/trắng=TRƠN | soc=SỌC | chan he/chăn hè=Chăn hè chần (SP riêng, KHÔNG phải vỏ chăn) | vo chan chan/vỏ chăn chần=Vỏ chăn chần bông (SP riêng, KHÔNG phải chăn hè) | chan dong=Vỏ chăn chần dày
 ga phu=ga phủ | bvn=bảo vệ nệm | tam trang tri=tấm trang trí | goi trang tri=Vỏ gối trang trí
 "gối" không rõ loại→Vỏ gối | LTH=T225 | hai mat/2 mat→ghi note
 
