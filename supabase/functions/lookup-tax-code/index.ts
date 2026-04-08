@@ -608,9 +608,9 @@ serve(async (req) => {
       }
 
       // Layer 2: Category-based filtering
-      const categoryPatterns = extractCategoryFilters(request || '');
-      const filteredProducts = filterProductsByCategory(allProducts, categoryPatterns);
-      console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after category filter (patterns: ${categoryPatterns.join(', ') || 'none'})`);
+      const { categories: catPatterns, materials: matPatterns } = extractCategoryFilters(request || '');
+      const filteredProducts = filterProductsByCategory(allProducts, catPatterns, matPatterns);
+      console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after filter (cats: ${catPatterns.join(', ') || 'none'}, mats: ${matPatterns.join(', ') || 'none'})`);
 
       // Layer 1: Remove description for text-only (saves ~30% tokens)
       const hasImage = !!imageBase64;
