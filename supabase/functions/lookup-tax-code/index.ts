@@ -9,7 +9,65 @@ const corsHeaders = {
 
 // Module-level catalog cache — keyed by priceListId, persists across warm invocations
 const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const catalogCacheMap = new Map<string, { text: string; count: number; timestamp: number }>();
+const catalogCacheMap = new Map<string, { products: any[]; timestamp: number }>();
+
+// Category filter extraction — maps Vietnamese keywords to DB category patterns
+function extractCategoryFilters(request: string): string[] {
+  const norm = request.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'd');
+  
+  const patterns: string[] = [];
+  const mapping: [RegExp, string[]][] = [
+    [/\bga\s*chun\b|\bgachun\b|\bga\s*chu\b/, ['Ga chun']],
+    [/\bga\s*phu\b|\bga\s*tam\s*phu\b|\bga\b(?!\s*chun)/, ['Ga chun', 'Ga tấm phủ', 'ga phủ']],
+    [/\bvo\s*chan\b|\bchan\s*he\b|\bchan\s*dong\b|\bchan\b/, ['chăn', 'Chăn']],
+    [/\bvo\s*goi\s*om\b|\bgoi\s*om\b/, ['gối ôm', 'Gối ôm']],
+    [/\bvo\s*goi\b|\bgoi\s*nam\b|\bgoi\b(?!\s*om)(?!\s*trang)/, ['gối', 'Gối']],
+    [/\bbvn\b|\bbao\s*ve\s*nem\b|\bbao\s*ve\b/, ['Bảo vệ']],
+    [/\bdem\b|\bdệm\b|\bnệm\b|\bnem\b/, ['Đệm', 'đệm']],
+    [/\btopper\b/, ['Topper', 'topper']],
+    [/\bkhan\b/, ['Khăn', 'khăn']],
+    [/\btam\s*trang\s*tri\b/, ['Trang Trí', 'trang trí']],
+    [/\bgoi\s*trang\s*tri\b/, ['gối trang trí', 'Gối trang trí', 'Trang Trí']],
+    [/\bvay\b|\bváy\b/, ['Váy', 'váy']],
+    [/\bao\s*choang\b/, ['Áo choàng', 'áo choàng']],
+    [/\bruot\s*chan\b/, ['Ruột chăn', 'ruột chăn']],
+    [/\bruot\s*goi\b/, ['Ruột gối', 'ruột gối']],
+    [/\brem\b/, ['rem', 'rèm', 'Rem']],
+    [/\bbo\s*\d+\s*mon\b|\bbo\s*combo\b|\bcombo\b|\bbo\b/, ['Bộ']],
+  ];
+
+  for (const [regex, cats] of mapping) {
+    if (regex.test(norm)) {
+      patterns.push(...cats);
+    }
+  }
+
+  // Deduplicate
+  return [...new Set(patterns)];
+}
+
+function filterProductsByCategory(products: any[], patterns: string[]): any[] {
+  if (patterns.length === 0) return products;
+  
+  const filtered = products.filter(p => {
+    const cat = (p.category || '').toLowerCase();
+    const name = (p.name || '').toLowerCase();
+    return patterns.some(pat => {
+      const lp = pat.toLowerCase();
+      return cat.includes(lp) || name.includes(lp);
+    });
+  });
+
+  // Fallback: if too few results, return full catalog
+  if (filtered.length < 30) {
+    console.log(`Category filter too narrow (${filtered.length} results), using full catalog`);
+    return products;
+  }
+  
+  return filtered;
+}
 
 const ORDER_ITEMS_SYSTEM_PROMPT = `Bạn là trợ lý chuyên trích xuất danh sách sản phẩm/dịch vụ từ đơn hàng, báo giá, hóa đơn Việt Nam.
 
