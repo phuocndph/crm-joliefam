@@ -150,6 +150,7 @@ const PRODUCT_KEYWORDS: [RegExp, string, boolean][] = [
   [/\bga\s*chun/i, 'ga chun', true],
   [/\bga\s*tam\s*phu/i, 'ga tấm phủ', true],
   [/\bga\s*phu/i, 'ga phủ', true],
+  [/\bchan\s*he\s*chan/i, 'chăn hè chần', true],  // MUST be before "chan he"
   [/\bchan\s*he/i, 'chăn hè', true],
   [/\bvo\s*chan\s*chan/i, 'vỏ chăn chần', true],
   [/\bchan\s*dong/i, 'chăn đông', true],
@@ -313,11 +314,27 @@ function parseRequestSegments(request: string): RequestSegment[] {
   const globalPat = detectPattern(norm);
   if (globalPat) globalPatterns.push(globalPat);
 
-  // Split into chunks per product keyword
+  // Split into chunks per product keyword — extend chunk BEFORE keyword to capture leading qty
   for (let i = 0; i < found.length; i++) {
-    const start = found[i].idx;
-    const end = i < found.length - 1 ? found[i + 1].idx : norm.length;
-    const chunk = norm.substring(start, end).trim();
+    const prevEnd = i > 0 ? found[i - 1].end : (sections.length > 0 ? sections[0].startIdx : 0);
+    // Also check if prevEnd is inside a header — if so, use header end
+    let chunkStart = prevEnd;
+    for (const hr of headerRanges) {
+      if (chunkStart >= hr.start && chunkStart < hr.end) {
+        chunkStart = hr.end;
+      }
+    }
+    // Don't go before the section start of this keyword's section
+    const kwSection = sections.find(s => found[i].idx >= s.startIdx && found[i].idx < s.endIdx);
+    if (kwSection && chunkStart < kwSection.startIdx) {
+      chunkStart = kwSection.startIdx;
+    }
+    // Extend to just before next keyword or end of text
+    const chunkEnd = i < found.length - 1 ? found[i + 1].idx : norm.length;
+    // Leading text before the keyword (for qty detection)
+    const leadingText = norm.substring(chunkStart, found[i].idx).trim();
+    const chunk = norm.substring(found[i].idx, chunkEnd).trim();
+    const fullChunk = (leadingText + ' ' + chunk).trim();
 
     // Size
     const sizeMatch = chunk.match(/(\d+\.?\d*)\s*[x×*]\s*(\d+\.?\d*)(?:\s*[x×*]\s*(\d+\.?\d*)\s*(p|f|cm)?)?/i);
@@ -344,10 +361,15 @@ function parseRequestSegments(request: string): RequestSegment[] {
     // Local pattern from chunk (using smart detection)
     const localPattern = detectPattern(chunk);
 
-    // Quantity
+    // Quantity — check leading text first ("4c Vỏ chăn"), then inside chunk
     let qty = 1;
-    const qtyMatch = chunk.match(/[x×]\s*(\d+)\s*$/) || chunk.match(/(\d+)\s*(cai|bo|chiec|cap|doi)\b/i);
-    if (qtyMatch) qty = parseInt(qtyMatch[1]) || 1;
+    const leadingQtyMatch = leadingText.match(/(\d+)\s*c\b/i) || leadingText.match(/(\d+)\s*(cai|bo|chiec|cap|doi)\b/i);
+    const chunkQtyMatch = chunk.match(/(\d+)\s*c\b/i) || chunk.match(/[x×]\s*(\d+)\s*$/) || chunk.match(/(\d+)\s*(cai|bo|chiec|cap|doi)\b/i);
+    if (leadingQtyMatch) {
+      qty = parseInt(leadingQtyMatch[1]) || 1;
+    } else if (chunkQtyMatch) {
+      qty = parseInt(chunkQtyMatch[1]) || 1;
+    }
 
     // Note
     let note = '';
@@ -362,16 +384,17 @@ function parseRequestSegments(request: string): RequestSegment[] {
       quantity: qty,
       note,
       needsFabric: found[i].needsFabric,
-    });
+      _pos: found[i].idx,  // store actual position for section mapping
+    } as RequestSegment & { _pos: number });
   }
 
-  // Assign material/pattern from SECTION CONTEXT (not global first)
+  // Assign material/pattern from SECTION CONTEXT using stored position (_pos)
   for (const seg of segments) {
     if (!seg.needsFabric) continue;
 
-    // Find which section this segment belongs to (by position in normalized text)
-    const segIdx = norm.indexOf(seg.rawText);
-    const section = sections.find(s => segIdx >= s.startIdx && segIdx < s.endIdx);
+    // Find which section this segment belongs to using actual position
+    const segPos = (seg as any)._pos ?? norm.indexOf(seg.rawText);
+    const section = sections.find(s => segPos >= s.startIdx && segPos < s.endIdx);
 
     if (!seg.material) {
       if (section && section.material) {
@@ -407,6 +430,7 @@ const TYPE_TO_CATEGORY: Record<string, string[]> = {
   'ga tấm phủ': ['ga tấm phủ', 'ga phủ'],
   'ga phủ': ['ga tấm phủ', 'ga phủ'],
   'ga': ['ga chun', 'ga tấm phủ', 'ga phủ'],
+  'chăn hè chần': ['chăn hè'],
   'chăn hè': ['chăn hè'],
   'vỏ chăn chần': ['vỏ chăn chần'],
   'chăn đông': ['vỏ chăn chần'],
