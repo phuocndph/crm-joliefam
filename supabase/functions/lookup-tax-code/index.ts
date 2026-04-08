@@ -1003,48 +1003,17 @@ const BUYER_INFO_SYSTEM_PROMPT = `Bạn là trợ lý phân tích thông tin doa
 Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ trả JSON thuần, không bọc trong code block.`;
 
 async function callAI(messages: any[], hasImage = false, modelOverride?: string, stepHint?: 'ocr' | 'text') {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
 
-  if (!LOVABLE_API_KEY && !BEEKNOEE_API_KEY) {
-    throw new Error("No AI API key configured");
+  if (!BEEKNOEE_API_KEY) {
+    throw new Error("No AI API key configured (BEEKNOEE_API_KEY required)");
   }
 
   const model = modelOverride || "google/gemini-3-flash-preview";
   const payload = { model, messages };
   const callStart = Date.now();
 
-  // Try Lovable AI first (supports vision)
-  if (LOVABLE_API_KEY) {
-    try {
-      const controller = new AbortController();
-      const timeout = hasImage ? 90000 : 55000;
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        console.log(`AI response from: Lovable (${Date.now() - callStart}ms)`);
-        return parseAIResponse(await response.json());
-      }
-
-      const errText = await response.text();
-      console.warn(`Lovable AI failed (${response.status}): ${errText.substring(0, 200)}`);
-
-      if (response.status === 429 && !BEEKNOEE_API_KEY) {
-        return { error: "Rate limit exceeded", status: 429 };
-      }
-    } catch (e) {
-      console.warn("Lovable AI error:", e instanceof Error ? e.message : e);
-    }
-  }
-
-  // Fallback to Beeknoee with model chain
+  // Direct Beeknoee with model chain (no Lovable AI)
   if (BEEKNOEE_API_KEY) {
     console.log(`Falling back to Beeknoee API (hasImage: ${hasImage}, step: ${stepHint || 'default'})...`);
     
@@ -1509,9 +1478,15 @@ serve(async (req) => {
       if (hasImage) {
         const step1Start = Date.now();
         console.log('AI Quote Fill: Step 1 — OCR extraction from image...');
-        const ocrPrompt = `Trích xuất danh sách sản phẩm từ ảnh. Ghi lại: tên SP, số lượng, kích thước, chất liệu, giá (nếu có).
-Trả về dạng text thuần, mỗi dòng 1 sản phẩm. VD: ga chun T250 sọc 180x200 x2
-Chỉ trả text, KHÔNG markdown, KHÔNG giải thích.`;
+        const defaultOcrPrompt = `Trích xuất thông tin bảng sản phẩm từ ảnh, xuất JSON như sau:
+{"san_pham":[{"stt":1,"ten_san_pham":"","quy_cach":"","chat_lieu":"","so_luong":0,"don_gia":0,"thanh_tien":0}]}
+Lưu ý:
+- Chỉ lấy dữ liệu trong bảng sản phẩm, bỏ qua mọi thông tin khác
+- Giữ nguyên số (không thêm/bỏ ký tự)
+- Ô chat_lieu nào trống thì để ""
+- Chỉ trả về JSON, không giải thích`;
+        
+        const ocrPrompt = aiConfig['ai_quote_ocr_prompt'] || defaultOcrPrompt;
         
         try {
           const ocrMessages = [
@@ -1525,17 +1500,27 @@ Chỉ trả text, KHÔNG markdown, KHÔNG giải thích.`;
             },
           ];
           
-          // Use OCR model from config (separate from image fallback model)
           const configOcrModel = aiConfig['ai_quote_ocr_model'];
           const configImageModel = aiConfig['ai_quote_image_model'];
           const ocrModel = configOcrModel || configImageModel || "google/gemini-2.5-flash";
           
           const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
-          const ocrText = ocrResult?.raw || (typeof ocrResult === 'string' ? ocrResult : JSON.stringify(ocrResult));
+          
+          // Try to parse structured JSON from OCR
+          let ocrText = '';
+          if (ocrResult?.san_pham && Array.isArray(ocrResult.san_pham)) {
+            // Structured JSON result - convert to text for Step 2 matching
+            ocrText = ocrResult.san_pham.map((p: any) => 
+              `${p.ten_san_pham || ''} ${p.quy_cach || ''} ${p.chat_lieu || ''} x${p.so_luong || 1}`.trim()
+            ).join('\n');
+            console.log(`AI Quote Fill: Step 1 OCR parsed ${ocrResult.san_pham.length} structured products`);
+          } else {
+            // Fallback: raw text result
+            ocrText = ocrResult?.raw || (typeof ocrResult === 'string' ? ocrResult : JSON.stringify(ocrResult));
+          }
           
           console.log(`AI Quote Fill: Step 1 OCR took ${Date.now() - step1Start}ms (${ocrText.length} chars), model=${ocrModel}: ${ocrText.substring(0, 300)}`);
           
-          // Combine OCR text with original request
           effectiveRequest = request ? `${request}\n${ocrText}` : ocrText;
 
           // Configurable delay between steps (from DB config, default 1500ms)
