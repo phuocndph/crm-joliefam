@@ -125,18 +125,17 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
           children: [
             new DocxTableCell({
               children: [
-                new Paragraph({ children: [new TextRun({ text: sellerName.toUpperCase(), bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
-                new Paragraph({ children: [new TextRun({ text: documentNumber ? `Số: ${documentNumber}` : "Số: .../ĐNTT", size: sz - 2, font })], alignment: AlignmentType.CENTER }),
+                new Paragraph({ children: [new TextRun({ text: sellerName.toUpperCase(), bold: true, size: 26, font })], alignment: AlignmentType.CENTER }),
+                new Paragraph({ children: [new TextRun({ text: documentNumber ? `Số: ${documentNumber}` : "Số: .../ĐNTT", size: sz, font })], alignment: AlignmentType.CENTER }),
               ],
               borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
               verticalAlign: "center",
             }),
             new DocxTableCell({
               children: [
-                new Paragraph({ children: [new TextRun({ text: "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
-                new Paragraph({ children: [new TextRun({ text: "Độc lập – Tự do – Hạnh phúc", bold: true, size: sz, font, underline: {} })], alignment: AlignmentType.CENTER }),
-                new Paragraph({ children: [new TextRun({ text: "————————", size: 18, font })], alignment: AlignmentType.CENTER }),
-                new Paragraph({ children: [new TextRun({ text: `TP.HCM, ngày ${dateParts.day} tháng ${dateParts.month} năm ${dateParts.year}`, italics: true, size: sz - 2, font })], alignment: AlignmentType.CENTER }),
+                new Paragraph({ children: [new TextRun({ text: "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold: true, size: 26, font })], alignment: AlignmentType.CENTER }),
+                new Paragraph({ children: [new TextRun({ text: "Độc lập – Tự do – Hạnh phúc", bold: true, size: 26, font })], alignment: AlignmentType.CENTER, border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000", space: 1 } } }),
+                new Paragraph({ children: [new TextRun({ text: `TP.HCM, ngày ${dateParts.day} tháng ${dateParts.month} năm ${dateParts.year}`, italics: true, size: sz, font })], alignment: AlignmentType.CENTER, spacing: { before: 80 } }),
               ],
               borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
             }),
@@ -195,7 +194,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
 
       // Seller info block
       children.push(
-        new Paragraph({ children: [new TextRun({ text: "Bên đề nghị (Bên A):", bold: true, size: sz, font })], spacing: { before: 100 } }),
+        new Paragraph({ children: [new TextRun({ text: "Đơn vị đề nghị thanh toán:", bold: true, size: sz, font })], spacing: { before: 100 } }),
         new Paragraph({ children: [new TextRun({ text: `- Tên đơn vị: ${sellerName}`, size: sz, font })] }),
       );
       if (sellerTaxCode) children.push(new Paragraph({ children: [new TextRun({ text: `- Mã số thuế: ${sellerTaxCode}`, size: sz, font })] }));
@@ -205,7 +204,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
 
       children.push(
         new Paragraph({ spacing: { after: 100 } }),
-        new Paragraph({ children: [new TextRun({ text: `Căn cứ Hợp đồng kinh tế số ${contract.contract_number} ký ngày ${formatDate(contract.contract_date)} giữa ${sellerName} (Bên A) và ${buyerName} (Bên B) về việc cung cấp hàng hóa, Bên A kính đề nghị Bên B thanh toán khoản tiền theo bảng chi tiết dưới đây:`, size: sz, font })], spacing: { after: 200 } }),
+        new Paragraph({ children: [new TextRun({ text: `Căn cứ Hợp đồng số ${contract.contract_number} ký ngày ${formatDate(contract.contract_date)} giữa hai bên về việc cung cấp hàng hóa, ${sellerName} kính đề nghị Quý Công ty thanh toán số tiền theo bảng chi tiết dưới đây:`, size: sz, font })], spacing: { after: 200 } }),
         new Paragraph({ children: [new TextRun({ text: "I. BẢNG CHI TIẾT THANH TOÁN", bold: true, size: sz + 2, font })], spacing: { before: 100, after: 100 } }),
         new DocxTable({ rows: paymentTableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
         new Paragraph({ spacing: { after: 100 } }),
@@ -225,8 +224,8 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
       }
 
       children.push(
-        new Paragraph({ children: [new TextRun({ text: `Kính đề nghị Quý Công ty sắp xếp thanh toán theo thông tin nêu trên.${sellerPhone ? ` Mọi thắc mắc xin vui lòng liên hệ theo số điện thoại: ${sellerPhone} để được hỗ trợ.` : ""}`, size: sz, font })], spacing: { before: 200 } }),
-        new Paragraph({ children: [new TextRun({ text: "Trân trọng cảm ơn sự hợp tác của Quý khách hàng./", size: sz, font })], spacing: { after: 300 } }),
+        new Paragraph({ children: [new TextRun({ text: `Kính đề nghị Quý Công ty/Đơn vị sắp xếp thanh toán đúng hạn theo thông tin nêu trên.${sellerPhone ? ` Mọi thắc mắc xin vui lòng liên hệ theo số điện thoại: ${sellerPhone} để được hỗ trợ.` : ""}`, size: sz, font })], spacing: { before: 200 } }),
+        new Paragraph({ children: [new TextRun({ text: "Trân trọng./", size: sz, font })], spacing: { after: 300 } }),
 
         // Signature table
         new DocxTable({
@@ -234,7 +233,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
             children: [
               new DocxTableCell({
                 children: [
-                  new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN A", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
+                  new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN BÁN", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ children: [new TextRun({ text: "(Ký, đóng dấu, ghi rõ họ tên)", italics: true, size: 18, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }),
                   ...(sellerRep ? [new Paragraph({ children: [new TextRun({ text: sellerRep, bold: true, size: sz, font })], alignment: AlignmentType.CENTER })] : []),
@@ -243,7 +242,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
               }),
               new DocxTableCell({
                 children: [
-                  new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN B", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
+                  new Paragraph({ children: [new TextRun({ text: "XÁC NHẬN BÊN MUA", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ children: [new TextRun({ text: "(Ký, đóng dấu, ghi rõ họ tên)", italics: true, size: 18, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }),
                   ...(buyerRep ? [new Paragraph({ children: [new TextRun({ text: buyerRep, bold: true, size: sz, font })], alignment: AlignmentType.CENTER })] : []),
@@ -325,16 +324,15 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
             <tbody>
               <tr>
                 <td style={{ width: "45%", textAlign: "center", verticalAlign: "top", border: "none", padding: "0 8px" }}>
-                  <p className="font-bold text-sm" style={{ marginBottom: 4 }}>{sellerName.toUpperCase()}</p>
-                  <p className="text-xs" style={{ color: "#374151" }}>
+                  <p style={{ fontWeight: "bold", fontSize: "14px", marginBottom: 4 }}>{sellerName.toUpperCase()}</p>
+                  <p style={{ fontSize: "13px" }}>
                     {documentNumber ? `Số: ${documentNumber}` : "Số: .../ĐNTT"}
                   </p>
                 </td>
                 <td style={{ width: "55%", textAlign: "center", verticalAlign: "top", border: "none", padding: "0 8px" }}>
-                  <p className="font-bold text-sm" style={{ marginBottom: 0 }}>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
-                  <p className="font-bold text-sm" style={{ textDecoration: "underline", marginBottom: 2 }}>Độc lập – Tự do – Hạnh phúc</p>
-                  <p className="text-xs" style={{ color: "#6b7280", marginBottom: 4 }}>————————</p>
-                  <p className="text-xs italic" style={{ color: "#374151" }}>
+                  <p style={{ fontWeight: "bold", fontSize: "14px", marginBottom: 0 }}>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
+                  <p style={{ fontWeight: "bold", fontSize: "14px", borderBottom: "2px solid #000", display: "inline-block", paddingBottom: 2, marginBottom: 6 }}>Độc lập – Tự do – Hạnh phúc</p>
+                  <p style={{ fontSize: "13px", fontStyle: "italic", marginTop: 6 }}>
                     TP.HCM, ngày {dateParts.day} tháng {dateParts.month} năm {dateParts.year}
                   </p>
                 </td>
@@ -343,9 +341,9 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
           </table>
 
           {/* Title */}
-          <div className="text-center" style={{ margin: "16px 0 8px" }}>
-            <h2 className="text-lg font-bold" style={{ color: "#000", marginBottom: 4 }}>ĐỀ NGHỊ THANH TOÁN</h2>
-            <p className="text-sm italic">V/v: Đề nghị thanh toán theo Hợp đồng số {contract.contract_number}</p>
+          <div className="text-center" style={{ margin: "20px 0 12px" }}>
+            <h2 style={{ fontWeight: "bold", fontSize: "16px", color: "#000", marginBottom: 4 }}>ĐỀ NGHỊ THANH TOÁN</h2>
+            <p style={{ fontSize: "13px", fontStyle: "italic" }}>V/v: Đề nghị thanh toán theo Hợp đồng số {contract.contract_number}</p>
           </div>
 
           {/* Kính gửi */}
@@ -357,7 +355,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
 
           {/* Bên đề nghị */}
           <div style={{ marginTop: 12 }}>
-            <p><strong>Bên đề nghị (Bên A):</strong></p>
+            <p><strong>Đơn vị đề nghị thanh toán:</strong></p>
             <p style={{ paddingLeft: 20 }}>- Tên đơn vị: {sellerName}</p>
             {sellerTaxCode && <p style={{ paddingLeft: 20 }}>- Mã số thuế: {sellerTaxCode}</p>}
             {sellerAddress && <p style={{ paddingLeft: 20 }}>- Địa chỉ: {sellerAddress}</p>}
@@ -367,7 +365,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
 
           {/* Căn cứ */}
           <p style={{ marginTop: 12, textAlign: "justify" }}>
-            Căn cứ Hợp đồng kinh tế số <strong>{contract.contract_number}</strong> ký ngày {formatDate(contract.contract_date)} giữa {sellerName} (Bên A) và {buyerName} (Bên B) về việc cung cấp hàng hóa, Bên A kính đề nghị Bên B thanh toán khoản tiền theo bảng chi tiết dưới đây:
+            Căn cứ Hợp đồng số <strong>{contract.contract_number}</strong> ký ngày {formatDate(contract.contract_date)} giữa hai bên về việc cung cấp hàng hóa, {sellerName} kính đề nghị Quý Công ty thanh toán số tiền theo bảng chi tiết dưới đây:
           </p>
 
           {/* Bảng thanh toán */}
@@ -418,25 +416,25 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
 
           {/* Kết */}
           <p style={{ marginTop: 16, textAlign: "justify" }}>
-            Kính đề nghị Quý Công ty sắp xếp thanh toán theo thông tin nêu trên.
+            Kính đề nghị Quý Công ty/Đơn vị sắp xếp thanh toán đúng hạn theo thông tin nêu trên.
             {sellerPhone ? ` Mọi thắc mắc xin vui lòng liên hệ theo số điện thoại: ${sellerPhone} để được hỗ trợ.` : ""}
           </p>
-          <p style={{ marginTop: 4 }}>Trân trọng cảm ơn sự hợp tác của Quý khách hàng./</p>
+          <p style={{ marginTop: 4 }}>Trân trọng./</p>
 
           {/* Ký tên */}
           <div className="grid grid-cols-2 gap-8 text-center" style={{ marginTop: 32 }}>
             <div>
-              <p className="font-bold">ĐẠI DIỆN BÊN A</p>
-              <p className="text-xs italic" style={{ color: "#6b7280" }}>(Ký, đóng dấu, ghi rõ họ tên)</p>
+              <p style={{ fontWeight: "bold" }}>ĐẠI DIỆN BÊN BÁN</p>
+              <p style={{ fontSize: "11px", fontStyle: "italic", color: "#6b7280" }}>(Ký, đóng dấu, ghi rõ họ tên)</p>
               <OnlineStampSignature show={showOnlineStamp} sellerRep={sellerRep} sellerPos={sellerPos} />
               {!showOnlineStamp && <div style={{ height: 80 }}></div>}
-              {sellerRep && !showOnlineStamp && <p className="font-bold text-sm">{sellerRep}</p>}
+              {sellerRep && !showOnlineStamp && <p style={{ fontWeight: "bold", fontSize: "13px" }}>{sellerRep}</p>}
             </div>
             <div>
-              <p className="font-bold">ĐẠI DIỆN BÊN B</p>
-              <p className="text-xs italic" style={{ color: "#6b7280" }}>(Ký, đóng dấu, ghi rõ họ tên)</p>
+              <p style={{ fontWeight: "bold" }}>XÁC NHẬN BÊN MUA</p>
+              <p style={{ fontSize: "11px", fontStyle: "italic", color: "#6b7280" }}>(Ký, đóng dấu, ghi rõ họ tên)</p>
               <div style={{ height: 80 }}></div>
-              {buyerRep && <p className="font-bold text-sm">{buyerRep}</p>}
+              {buyerRep && <p style={{ fontWeight: "bold", fontSize: "13px" }}>{buyerRep}</p>}
             </div>
           </div>
         </div>
