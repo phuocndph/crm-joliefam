@@ -540,9 +540,12 @@ KHÔNG được tự giới hạn vào vài loại SP — phải tìm kiếm TO�
 2. So khớp từ khóa từ yêu cầu khách với TÊN sản phẩm
 3. Dùng CẢ 3 cột Tên + Quy cách + Mô tả để xác định đúng sản phẩm
 4. Khi có nhiều SP tên giống, phân biệt bằng: chất liệu (T200/T250/T300...), mẫu (trơn/sọc), kích thước
-5. Chọn kích thước LỚN HƠN gần nhất nếu không khớp chính xác. KHÔNG chọn nhỏ hơn
-   VD: yêu cầu 14cm, bảng có 10/15/20 → chọn 15cm
-   VD: yêu cầu 50x230, bảng có 50x235 → chọn 50x235
+5. Khi kích thước khách yêu cầu KHÔNG có trong bảng giá → tìm SP có kích thước LỚN HƠN gần nhất để lấy GIÁ và matchedProductId
+   - NHƯNG customName và specifications PHẢI ghi đúng kích thước KHÁCH YÊU CẦU, KHÔNG được làm tròn
+   - Ghi note giải thích: "Giá theo SP [kích thước bảng giá], khách yêu cầu [kích thước thực]"
+   VD: yêu cầu ga 160x200x12cm, bảng có 15cm → matchedProductId = SP 15cm, nhưng ghi "160x200x12cm" trong specifications và customName
+   VD: bảo vệ nệm yêu cầu trên 10cm → lấy giá của 25cm
+   VD: chăn → lấy kích thước gần sát nhất trong bảng giá (lớn hơn hoặc bằng)
 6. KHÔNG được hoán đổi Trơn↔Sọc nếu khách đã ghi rõ
 7. Phải verify: đúng loại? đúng chất liệu? đúng trơn/sọc? đúng kích thước?
 
@@ -595,20 +598,29 @@ Input: "ga chun t250 trắng tinh 1m8x2mx25p x1, vỏ chăn trắng 2.0x2.2 x1, 
 Phân tích: ga chun có chất liệu T250 trơn → vỏ chăn + vỏ gối không ghi chất liệu → suy luận T250 trơn theo ga chun. "tấm trang trí" → tìm riêng trong bảng giá.
 Output:
 {"items":[
-  {"matchedProductId":"c3d4e5f6-a7b8-9012-cdef-123456789012","customName":"Ga chun T250 trơn 180x200x25cm","quantity":1,"price":258000,"specifications":"180 x 200 x 25cm","note":""},
-  {"matchedProductId":"d4e5f6a7-b8c9-0123-defa-234567890123","customName":"Vỏ chăn T250 trơn 200x220","quantity":1,"price":350000,"specifications":"200 x 220cm","note":"Chất liệu T250 trơn suy luận từ ga chun"},
-  {"matchedProductId":"e5f6a7b8-c9d0-1234-efab-345678901234","customName":"Vỏ gối T250 trơn 50x70","quantity":2,"price":65000,"specifications":"50 x 70cm","note":"Chất liệu T250 trơn suy luận từ ga chun"},
-  {"matchedProductId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","customName":"Tấm Trang Trí 160 : 50x235","quantity":1,"price":210000,"specifications":"50 x 235cm","note":"Kích thước giường 160"}
+  {"matchedProductId":"UUID-ga-chun-t250-tron-180x200x25","customName":"Ga chun T250 trơn 180x200x25cm","quantity":1,"price":258000,"specifications":"180 x 200 x 25cm","note":""},
+  {"matchedProductId":"UUID-vo-chan-t250-tron-200x220","customName":"Vỏ chăn T250 trơn 200x220","quantity":1,"price":350000,"specifications":"200 x 220cm","note":"Chất liệu T250 trơn suy luận từ ga chun"},
+  {"matchedProductId":"UUID-vo-goi-t250-tron-50x70","customName":"Vỏ gối T250 trơn 50x70","quantity":2,"price":65000,"specifications":"50 x 70cm","note":"Chất liệu T250 trơn suy luận từ ga chun"},
+  {"matchedProductId":"UUID-tam-trang-tri-160","customName":"Tấm Trang Trí 160 : 50x235","quantity":1,"price":210000,"specifications":"50 x 235cm","note":"Kích thước giường 160"}
+]}
+
+VÍ DỤ 2 (kích thước không chuẩn):
+Input: "ga chun t250 trắng 160x200x12cm x1, bảo vệ nệm 1m6x2m 12cm x1"
+Phân tích: ga 12cm không có trong bảng → lấy giá SP 15cm. BVN 12cm (trên 10cm) → lấy giá SP 25cm. NHƯNG ghi kích thước ĐÚNG 12cm trong customName/specifications.
+Output:
+{"items":[
+  {"matchedProductId":"UUID-ga-chun-t250-tron-160x200x15","customName":"Ga chun T250 trơn 160x200x12cm","quantity":1,"price":240000,"specifications":"160 x 200 x 12cm","note":"Giá theo SP 15cm, khách yêu cầu 12cm"},
+  {"matchedProductId":"UUID-bvn-160x200x25","customName":"Bảo vệ nệm 160x200x12cm","quantity":1,"price":320000,"specifications":"160 x 200 x 12cm","note":"Giá theo SP 25cm, khách yêu cầu 12cm (trên 10cm)"}
 ]}
 
 ## OUTPUT — JSON thuần túy, KHÔNG markdown, KHÔNG backtick
 ⚠️ matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU TIÊN của bảng giá (dạng xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx). TUYỆT ĐỐI KHÔNG tự tạo ID, KHÔNG viết tắt, KHÔNG bịa UUID. Copy nguyên văn UUID từ bảng giá.
 
-{"items":[{"matchedProductId":"uuid-chính-xác-từ-bảng-giá","customName":"tên SP","quantity":1,"price":208000,"specifications":"quy cách THEO KHÁCH","note":"ghi chú nếu cần"}]}
-- matchedProductId = UUID chính xác từ cột đầu tiên bảng giá. Ví dụ: "349a185f-94fd-4021-885a-51ad0b5f3647". KHÔNG ĐƯỢC tự nghĩ ra.
-- customName = tên đã sửa theo yêu cầu thực tế
-- specifications = quy cách THEO KHÁCH, không copy bảng giá
-- note = giải thích khi làm tròn kích thước hoặc info đặc biệt
+{"items":[{"matchedProductId":"uuid-chính-xác-từ-bảng-giá","customName":"tên SP với kích thước ĐÚNG của khách","quantity":1,"price":208000,"specifications":"kích thước CHÍNH XÁC theo khách, KHÔNG làm tròn","note":"ghi chú nếu cần"}]}
+- matchedProductId = UUID chính xác từ cột đầu tiên bảng giá (SP có kích thước LỚN HƠN gần nhất nếu kích thước khách không khớp). KHÔNG ĐƯỢC tự nghĩ ra.
+- customName = tên SP với kích thước ĐÚNG của khách (VD: "Ga chun T250 trơn 160x200x12cm" chứ KHÔNG PHẢI "160x200x15cm")
+- specifications = kích thước CHÍNH XÁC theo yêu cầu khách, KHÔNG làm tròn, KHÔNG copy kích thước bảng giá
+- note = khi kích thước khách khác bảng giá: "Giá theo SP [kích thước bảng giá], khách yêu cầu [kích thước thực]"
 - Không tìm thấy: {"items":[]}
 - Thiếu info quan trọng: {"clarification":"câu hỏi cụ thể"}`;
 
