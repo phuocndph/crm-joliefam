@@ -139,30 +139,19 @@ export default function AISettingsPage() {
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const { data } = await supabase
-        .from('ai_settings')
-        .select('setting_name, setting_value')
-        .in('setting_name', Object.keys(DEFAULTS));
+      const { data, error } = await (supabase as any)
+        .from('ai_config')
+        .select('config_key, config_value');
 
-      if (data && data.length > 0) {
+      if (!error && data && data.length > 0) {
         const loaded = { ...DEFAULTS };
         for (const row of data) {
-          const key = row.setting_name as keyof AISettings;
+          const key = row.config_key as keyof AISettings;
           if (key in loaded) {
-            // setting_value is boolean in DB, but we store JSON strings as setting_name-based
-            // We need a text field. Let's use a workaround with the existing schema.
+            loaded[key] = row.config_value;
           }
         }
-        // The ai_settings table has setting_value as boolean — not suitable for text.
-        // We'll store config as JSON in a single setting or use a different approach.
-        // For now, load from localStorage as a fallback until migration adds text support.
-        const stored = localStorage.getItem('ai_settings_config');
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            setSettings({ ...DEFAULTS, ...parsed });
-          } catch {}
-        }
+        setSettings(loaded);
       }
     } catch (err) {
       console.error('Failed to load AI settings:', err);
@@ -173,11 +162,7 @@ export default function AISettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Store settings - since ai_settings table only has boolean values,
-      // we use a combined approach: store in localStorage for UI and pass to edge function
-      localStorage.setItem('ai_settings_config', JSON.stringify(settings));
-      
-      // Validate JSON fields
+      // Validate JSON fields first
       if (settings.ai_quote_type_categories) {
         JSON.parse(settings.ai_quote_type_categories);
       }
@@ -188,7 +173,30 @@ export default function AISettingsPage() {
         JSON.parse(settings.ai_quote_material_keywords);
       }
 
-      toast({ title: "Đã lưu", description: "Cài đặt AI đã được lưu thành công" });
+      // Upsert each setting into ai_config
+      const { data: userData } = await supabase.auth.getUser();
+      const entries = Object.entries(settings) as [keyof AISettings, string][];
+      
+      for (const [key, value] of entries) {
+        // Skip empty prompt (means use default)
+        if (key === 'ai_quote_fill_prompt' && !value) {
+          // Delete the key if it exists
+          await (supabase as any).from('ai_config').delete().eq('config_key', key);
+          continue;
+        }
+        const { error } = await (supabase as any)
+          .from('ai_config')
+          .upsert({
+            config_key: key,
+            config_value: value,
+            updated_by: userData.user?.id,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'config_key' });
+        
+        if (error) throw error;
+      }
+
+      toast({ title: "Đã lưu", description: "Cài đặt AI đã được lưu vào database thành công" });
     } catch (err) {
       toast({ 
         title: "Lỗi", 
@@ -233,9 +241,14 @@ export default function AISettingsPage() {
     setTesting(false);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     setSettings(DEFAULTS);
-    localStorage.removeItem('ai_settings_config');
+    // Delete all config keys from DB
+    try {
+      for (const key of Object.keys(DEFAULTS)) {
+        await (supabase as any).from('ai_config').delete().eq('config_key', key);
+      }
+    } catch {}
     toast({ title: "Đã reset", description: "Cài đặt AI đã được khôi phục mặc định" });
   };
 
