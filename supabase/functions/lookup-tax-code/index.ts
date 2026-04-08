@@ -1009,7 +1009,7 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
     throw new Error("No AI API key configured (BEEKNOEE_API_KEY required)");
   }
 
-  const model = modelOverride || "google/gemini-3-flash-preview";
+  const model = modelOverride || "google/gemini-2.5-flash";
   const payload = { model, messages };
   const callStart = Date.now();
 
