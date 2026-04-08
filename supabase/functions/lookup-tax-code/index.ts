@@ -612,7 +612,7 @@ function parseRequestSegments(request: string): RequestSegment[] {
 
   // Split into chunks per product keyword — extend chunk BEFORE keyword to capture leading qty
   for (let i = 0; i < found.length; i++) {
-    const prevEnd = i > 0 ? found[i - 1].end : (sections.length > 0 ? sections[0].startIdx : 0);
+    const prevEnd = i > 0 ? found[i - 1].end : (sections.length > 0 ? Math.min(sections[0].startIdx, found[i].idx) : 0);
     // Also check if prevEnd is inside a header — if so, use header end
     let chunkStart = prevEnd;
     for (const hr of headerRanges) {
