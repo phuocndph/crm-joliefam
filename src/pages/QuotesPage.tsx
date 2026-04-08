@@ -87,6 +87,7 @@ export default function QuotesPage() {
   const { role: userRole } = useUserRole(user);
   const { hasPermission } = useEmployeePermissions(user, userRole);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   
   // Use React Query for quotes with real-time updates
   const { data: quotes = [], isLoading: loading, refetch: refetchQuotes } = useQuotes({ 
