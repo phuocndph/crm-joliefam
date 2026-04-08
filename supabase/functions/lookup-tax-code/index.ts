@@ -668,11 +668,18 @@ function parseRequestSegments(request: string): RequestSegment[] {
     const leadingQtyMatch = leadingText.match(qtyRegexes[0]) || leadingText.match(qtyRegexes[1]);
     // Also check for bare leading number: "10 ga chun", "20 ruột gối"
     const leadingBareQtyMatch = !leadingQtyMatch ? leadingText.match(/^(\d+)\s*$/) : null;
+    // Also check beginning of fullChunk for "N product_name" pattern
+    const fullChunkBareQtyMatch = !leadingQtyMatch && !leadingBareQtyMatch ? fullChunk.match(/^(\d+)\s+\S/) : null;
     const chunkQtyMatch = chunk.match(/[x×]\s*(\d+)\s*$/) || chunk.match(qtyRegexes[0]) || chunk.match(qtyRegexes[1]);
+    
+    console.log(`  Qty debug: type="${found[i].type}" leadingText="${leadingText}" leadingQty=${leadingQtyMatch?.[1]} leadingBareQty=${leadingBareQtyMatch?.[1]} fullChunkBareQty=${fullChunkBareQtyMatch?.[1]} chunkQty=${chunkQtyMatch?.[1]}`);
+    
     if (leadingQtyMatch) {
       qty = parseInt(leadingQtyMatch[1]) || 1;
     } else if (leadingBareQtyMatch) {
       qty = parseInt(leadingBareQtyMatch[1]) || 1;
+    } else if (fullChunkBareQtyMatch) {
+      qty = parseInt(fullChunkBareQtyMatch[1]) || 1;
     } else if (chunkQtyMatch) {
       qty = parseInt(chunkQtyMatch[1]) || 1;
     }
