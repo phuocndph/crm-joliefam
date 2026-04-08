@@ -133,10 +133,9 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
             }),
             new DocxTableCell({
               children: [
-                new Paragraph({ children: [new TextRun({ text: "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
-                new Paragraph({ children: [new TextRun({ text: "Độc lập – Tự do – Hạnh phúc", bold: true, size: sz, font, underline: {} })], alignment: AlignmentType.CENTER }),
-                new Paragraph({ children: [new TextRun({ text: "————————", size: 18, font })], alignment: AlignmentType.CENTER }),
-                new Paragraph({ children: [new TextRun({ text: `TP.HCM, ngày ${dateParts.day} tháng ${dateParts.month} năm ${dateParts.year}`, italics: true, size: sz - 2, font })], alignment: AlignmentType.CENTER }),
+                new Paragraph({ children: [new TextRun({ text: "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold: true, size: 26, font })], alignment: AlignmentType.CENTER }),
+                new Paragraph({ children: [new TextRun({ text: "Độc lập – Tự do – Hạnh phúc", bold: true, size: 26, font })], alignment: AlignmentType.CENTER, border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000", space: 1 } } }),
+                new Paragraph({ children: [new TextRun({ text: `TP.HCM, ngày ${dateParts.day} tháng ${dateParts.month} năm ${dateParts.year}`, italics: true, size: sz, font })], alignment: AlignmentType.CENTER, spacing: { before: 80 } }),
               ],
               borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
             }),
@@ -195,7 +194,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
 
       // Seller info block
       children.push(
-        new Paragraph({ children: [new TextRun({ text: "Bên đề nghị (Bên A):", bold: true, size: sz, font })], spacing: { before: 100 } }),
+        new Paragraph({ children: [new TextRun({ text: "Đơn vị đề nghị thanh toán:", bold: true, size: sz, font })], spacing: { before: 100 } }),
         new Paragraph({ children: [new TextRun({ text: `- Tên đơn vị: ${sellerName}`, size: sz, font })] }),
       );
       if (sellerTaxCode) children.push(new Paragraph({ children: [new TextRun({ text: `- Mã số thuế: ${sellerTaxCode}`, size: sz, font })] }));
@@ -205,7 +204,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
 
       children.push(
         new Paragraph({ spacing: { after: 100 } }),
-        new Paragraph({ children: [new TextRun({ text: `Căn cứ Hợp đồng kinh tế số ${contract.contract_number} ký ngày ${formatDate(contract.contract_date)} giữa ${sellerName} (Bên A) và ${buyerName} (Bên B) về việc cung cấp hàng hóa, Bên A kính đề nghị Bên B thanh toán khoản tiền theo bảng chi tiết dưới đây:`, size: sz, font })], spacing: { after: 200 } }),
+        new Paragraph({ children: [new TextRun({ text: `Căn cứ Hợp đồng số ${contract.contract_number} ký ngày ${formatDate(contract.contract_date)} giữa hai bên về việc cung cấp hàng hóa, ${sellerName} kính đề nghị Quý Công ty thanh toán số tiền theo bảng chi tiết dưới đây:`, size: sz, font })], spacing: { after: 200 } }),
         new Paragraph({ children: [new TextRun({ text: "I. BẢNG CHI TIẾT THANH TOÁN", bold: true, size: sz + 2, font })], spacing: { before: 100, after: 100 } }),
         new DocxTable({ rows: paymentTableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
         new Paragraph({ spacing: { after: 100 } }),
@@ -225,8 +224,8 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
       }
 
       children.push(
-        new Paragraph({ children: [new TextRun({ text: `Kính đề nghị Quý Công ty sắp xếp thanh toán theo thông tin nêu trên.${sellerPhone ? ` Mọi thắc mắc xin vui lòng liên hệ theo số điện thoại: ${sellerPhone} để được hỗ trợ.` : ""}`, size: sz, font })], spacing: { before: 200 } }),
-        new Paragraph({ children: [new TextRun({ text: "Trân trọng cảm ơn sự hợp tác của Quý khách hàng./", size: sz, font })], spacing: { after: 300 } }),
+        new Paragraph({ children: [new TextRun({ text: `Kính đề nghị Quý Công ty/Đơn vị sắp xếp thanh toán đúng hạn theo thông tin nêu trên.${sellerPhone ? ` Mọi thắc mắc xin vui lòng liên hệ theo số điện thoại: ${sellerPhone} để được hỗ trợ.` : ""}`, size: sz, font })], spacing: { before: 200 } }),
+        new Paragraph({ children: [new TextRun({ text: "Trân trọng./", size: sz, font })], spacing: { after: 300 } }),
 
         // Signature table
         new DocxTable({
@@ -234,7 +233,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
             children: [
               new DocxTableCell({
                 children: [
-                  new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN A", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
+                  new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN BÁN", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ children: [new TextRun({ text: "(Ký, đóng dấu, ghi rõ họ tên)", italics: true, size: 18, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }),
                   ...(sellerRep ? [new Paragraph({ children: [new TextRun({ text: sellerRep, bold: true, size: sz, font })], alignment: AlignmentType.CENTER })] : []),
@@ -243,7 +242,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
               }),
               new DocxTableCell({
                 children: [
-                  new Paragraph({ children: [new TextRun({ text: "ĐẠI DIỆN BÊN B", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
+                  new Paragraph({ children: [new TextRun({ text: "XÁC NHẬN BÊN MUA", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ children: [new TextRun({ text: "(Ký, đóng dấu, ghi rõ họ tên)", italics: true, size: 18, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }),
                   ...(buyerRep ? [new Paragraph({ children: [new TextRun({ text: buyerRep, bold: true, size: sz, font })], alignment: AlignmentType.CENTER })] : []),
