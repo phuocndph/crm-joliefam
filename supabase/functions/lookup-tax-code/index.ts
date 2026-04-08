@@ -9,7 +9,91 @@ const corsHeaders = {
 
 // Module-level catalog cache — keyed by priceListId, persists across warm invocations
 const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const catalogCacheMap = new Map<string, { text: string; count: number; timestamp: number }>();
+const catalogCacheMap = new Map<string, { products: any[]; timestamp: number }>();
+
+// Category filter extraction — maps Vietnamese keywords to DB category patterns
+function extractCategoryFilters(request: string): { categories: string[]; materials: string[] } {
+  const norm = request.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'd');
+  
+  const categories: string[] = [];
+  const mapping: [RegExp, string[]][] = [
+    [/\bga\s*chun\b|\bgachun\b|\bga\s*chu\b/, ['ga chun']],
+    [/\bga\s*phu\b|\bga\s*tam\s*phu\b/, ['ga tấm phủ', 'ga phủ']],
+    [/\bga\b(?!\s*chun)(?!\s*phu)(?!\s*tam)/, ['ga chun', 'ga tấm phủ', 'ga phủ']],
+    [/\bvo\s*chan\b|\bchan\s*he\b|\bchan\s*dong\b|\bchan\b/, ['chăn']],
+    [/\bvo\s*goi\s*om\b|\bgoi\s*om\b/, ['gối ôm']],
+    [/\bvo\s*goi\b|\bgoi\s*nam\b|\bgoi\b(?!\s*om)(?!\s*trang)/, ['gối']],
+    [/\bbvn\b|\bbao\s*ve\s*nem\b|\bbao\s*ve\b/, ['bảo vệ']],
+    [/\bdem\b|\bnem\b/, ['đệm']],
+    [/\btopper\b/, ['topper']],
+    [/\bkhan\b/, ['khăn']],
+    [/\btam\s*trang\s*tri\b/, ['trang trí']],
+    [/\bgoi\s*trang\s*tri\b/, ['gối trang trí', 'trang trí']],
+    [/\bvay\b/, ['váy']],
+    [/\bao\s*choang\b/, ['áo choàng']],
+    [/\bruot\s*chan\b/, ['ruột chăn']],
+    [/\bruot\s*goi\b/, ['ruột gối']],
+    [/\brem\b/, ['rem', 'rèm']],
+    [/\bbo\s*\d+\s*mon\b|\bcombo\b/, ['bộ']],
+  ];
+
+  for (const [regex, cats] of mapping) {
+    if (regex.test(norm)) categories.push(...cats);
+  }
+
+  // Extract materials (T200, T250, T300, T350, T400, LTH, MCR, tencel, tici)
+  const materials: string[] = [];
+  const matMatch = norm.match(/\bt\s*(\d{3})\b/g);
+  if (matMatch) {
+    for (const m of matMatch) {
+      const num = m.replace(/\s/g, '').toUpperCase();
+      materials.push(num);
+    }
+  }
+  if (/\blth\b/.test(norm)) materials.push('LTH');
+  if (/\bmcr\b/.test(norm)) materials.push('MCR');
+  if (/\btencel\b/.test(norm)) materials.push('tencel');
+  if (/\btici\b/.test(norm)) materials.push('tici');
+
+  return { categories: [...new Set(categories)], materials: [...new Set(materials)] };
+}
+
+function filterProductsByCategory(products: any[], categories: string[], materials: string[]): any[] {
+  if (categories.length === 0 && materials.length === 0) return products;
+  
+  // Step 1: Filter by category
+  let filtered = products;
+  if (categories.length > 0) {
+    filtered = products.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      return categories.some(pat => cat.includes(pat) || name.includes(pat));
+    });
+  }
+
+  // Step 2: If we have materials AND category filter returned many results, narrow by material
+  if (materials.length > 0 && filtered.length > 100) {
+    const materialFiltered = filtered.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      return materials.some(mat => cat.includes(mat.toLowerCase()) || name.includes(mat.toLowerCase()));
+    });
+    // Only use material filter if it still leaves enough results
+    if (materialFiltered.length >= 30) {
+      filtered = materialFiltered;
+    }
+  }
+
+  // Fallback: if too few results, return full catalog
+  if (filtered.length < 30) {
+    console.log(`Category filter too narrow (${filtered.length} results), using full catalog`);
+    return products;
+  }
+  
+  return filtered;
+}
 
 const ORDER_ITEMS_SYSTEM_PROMPT = `Bạn là trợ lý chuyên trích xuất danh sách sản phẩm/dịch vụ từ đơn hàng, báo giá, hóa đơn Việt Nam.
 
@@ -488,11 +572,11 @@ serve(async (req) => {
       const authHeader = req.headers.get("Authorization");
       const cacheKey = priceListId || "__all__";
       const cached = catalogCacheMap.get(cacheKey);
-      let productListText: string;
+      let allProducts: any[];
       
       if (cached && Date.now() - cached.timestamp < CATALOG_CACHE_TTL) {
-        productListText = cached.text;
-        console.log(`AI Quote Fill: using cached catalog for priceList=${cacheKey} (${cached.count} products)`);
+        allProducts = cached.products;
+        console.log(`AI Quote Fill: using cached catalog for priceList=${cacheKey} (${allProducts.length} products)`);
       } else {
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -502,7 +586,7 @@ serve(async (req) => {
 
         let query = supabase
           .from("products")
-          .select("id, name, specifications, description, price")
+          .select("id, name, specifications, description, price, category")
           .eq("in_stock", true);
         
         if (priceListId) {
@@ -518,111 +602,59 @@ serve(async (req) => {
           });
         }
 
-        productListText = (products || []).map((p: any) => 
-          `${p.id}|${p.name}|${p.specifications || ''}|${p.description || ''}|${p.price || 0}`
-        ).join("\n");
-        
-        catalogCacheMap.set(cacheKey, { text: productListText, count: (products || []).length, timestamp: Date.now() });
-        console.log(`AI Quote Fill: fetched ${(products || []).length} products for priceList=${cacheKey}, cached`);
+        allProducts = products || [];
+        catalogCacheMap.set(cacheKey, { products: allProducts, timestamp: Date.now() });
+        console.log(`AI Quote Fill: fetched ${allProducts.length} products for priceList=${cacheKey}, cached`);
       }
 
-      const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá sản phẩm nội thất phòng ngủ Việt Nam. Nhân viên gõ nhanh, không dấu, viết tắt — bạn phải hiểu đúng ý.
+      // Layer 2: Category-based filtering
+      const { categories: catPatterns, materials: matPatterns } = extractCategoryFilters(request || '');
+      const filteredProducts = filterProductsByCategory(allProducts, catPatterns, matPatterns);
+      console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after filter (cats: ${catPatterns.join(', ') || 'none'}, mats: ${matPatterns.join(', ') || 'none'})`);
 
-## BẢNG GIÁ (ID|Tên|Quy cách|Mô tả|Giá)
+      // Layer 1: Remove description for text-only (saves ~30% tokens)
+      const hasImage = !!imageBase64;
+      const productListText = filteredProducts.map((p: any) => 
+        hasImage 
+          ? `${p.id}|${p.name}|${p.specifications || ''}|${p.description || ''}|${p.price || 0}`
+          : `${p.id}|${p.name}|${p.specifications || ''}|${p.price || 0}`
+      ).join("\n");
+      
+      const catalogHeader = hasImage ? "ID|Tên|Quy cách|Mô tả|Giá" : "ID|Tên|Quy cách|Giá";
+
+      const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá nội thất phòng ngủ VN. Nhân viên gõ nhanh, không dấu, viết tắt.
+
+## BẢNG GIÁ (${catalogHeader})
 ${productListText}
 
-## QUAN TRỌNG — TOÀN BỘ BẢNG GIÁ
-Bảng giá trên chứa TẤT CẢ danh mục sản phẩm: ga chun, ga phủ, vỏ chăn, chăn hè, chăn đông, vỏ gối nằm, vỏ gối ôm, ruột gối, ruột gối ôm, tấm trang trí, gối trang trí (vỏ + ruột), bảo vệ nệm, đệm, topper, áo choàng tắm, rèm, bộ combo, v.v.
-KHÔNG được tự giới hạn vào vài loại SP — phải tìm kiếm TOÀN BỘ bảng giá.
+## SO KHỚP
+1. So khớp từ khóa yêu cầu với TÊN SP. Phân biệt bằng: chất liệu (T200/T250/T300...), mẫu (trơn/sọc), kích thước
+2. Kích thước khách KHÔNG có trong bảng → lấy GIÁ & matchedProductId của SP kích thước LỚN HƠN gần nhất. customName/specifications ghi ĐÚNG kích thước KHÁCH, KHÔNG làm tròn. Note: "Giá theo SP [KT bảng giá], khách yêu cầu [KT thực]"
+   VD: ga 12cm, bảng có 15cm → matchedProductId=SP 15cm, ghi "12cm". BVN trên 10cm → giá SP 25cm
+3. KHÔNG hoán đổi Trơn↔Sọc nếu khách ghi rõ
 
-## CÁCH SO KHỚP SẢN PHẨM
-1. Đọc KỸ tên tất cả sản phẩm trong bảng giá
-2. So khớp từ khóa từ yêu cầu khách với TÊN sản phẩm
-3. Dùng CẢ 3 cột Tên + Quy cách + Mô tả để xác định đúng sản phẩm
-4. Khi có nhiều SP tên giống, phân biệt bằng: chất liệu (T200/T250/T300...), mẫu (trơn/sọc), kích thước
-5. Khi kích thước khách yêu cầu KHÔNG có trong bảng giá → tìm SP có kích thước LỚN HƠN gần nhất để lấy GIÁ và matchedProductId
-   - NHƯNG customName và specifications PHẢI ghi đúng kích thước KHÁCH YÊU CẦU, KHÔNG được làm tròn
-   - Ghi note giải thích: "Giá theo SP [kích thước bảng giá], khách yêu cầu [kích thước thực]"
-   VD: yêu cầu ga 160x200x12cm, bảng có 15cm → matchedProductId = SP 15cm, nhưng ghi "160x200x12cm" trong specifications và customName
-   VD: bảo vệ nệm yêu cầu trên 10cm → lấy giá của 25cm
-   VD: chăn → lấy kích thước gần sát nhất trong bảng giá (lớn hơn hoặc bằng)
-6. KHÔNG được hoán đổi Trơn↔Sọc nếu khách đã ghi rõ
-7. Phải verify: đúng loại? đúng chất liệu? đúng trơn/sọc? đúng kích thước?
-
-## HIỂU TIẾNG VIỆT KHÔNG DẤU
-- trang/tran/trắng = TRƠN (màu trắng = mẫu trơn trong ngành ga gối)
-- soc/sọc = SỌC
-- chan/chần = CHẦN (kiểu may), KHÔNG phải trơn/sọc
-- chan he/chăn hè = Vỏ chăn (KHÔNG chần, mỏng)
-- chan dong/chăn đông = Vỏ chăn chần (dày)
-- ga phu/ga tấm phủ = ga phủ giường
-- bvn/bao ve nem = bảo vệ nệm
-- tam trang tri/tấm trang trí = tấm trang trí (phụ kiện trang trí giường)
-- goi trang tri/gối trang trí = mặc định "Vỏ gối trang trí" (trừ khi nói rõ "ruột")
-- "gối" không nói rõ loại → mặc định "Vỏ gối"
-- LTH = T225 = cùng loại vải
-- hai mat/2 mat = ghi vào note, KHÔNG ảnh hưởng matching
+## TIẾNG VIỆT KHÔNG DẤU
+trang/trắng=TRƠN | soc=SỌC | chan he/chăn hè=Vỏ chăn mỏng | chan dong=Vỏ chăn chần dày
+ga phu=ga phủ | bvn=bảo vệ nệm | tam trang tri=tấm trang trí | goi trang tri=Vỏ gối trang trí
+"gối" không rõ loại→Vỏ gối | LTH=T225 | hai mat/2 mat→ghi note
 
 ## SUY LUẬN CHẤT LIỆU
-1. Nếu SP ghi rõ chất liệu (T250, T300, T225, LTH...) → dùng đúng chất liệu đó
-2. Nếu SP KHÔNG ghi chất liệu → suy luận từ các SP KHÁC trong cùng báo giá:
-   - Nếu tất cả SP khác dùng cùng 1 chất liệu → áp dụng chất liệu đó cho SP thiếu
-   - Nếu có NHIỀU chất liệu khác nhau → xác định theo VỊ TRÍ/NGỮ CẢNH: SP nằm gần (trước/sau) SP nào thì dùng chất liệu của SP đó
-3. Khi mẫu (trơn/sọc) chỉ ghi 1 lần → áp dụng cho tất cả SP cùng nhóm chất liệu
-4. CHỈ KHI không có bất kỳ chất liệu nào trong TOÀN BỘ yêu cầu → mới dùng T250 làm mặc định
+- SP ghi rõ chất liệu → dùng đúng. SP KHÔNG ghi → suy luận từ SP khác cùng báo giá:
+  + 1 chất liệu duy nhất → áp dụng cho tất cả
+  + Nhiều chất liệu → theo vị trí gần nhất + cùng mẫu (trơn/sọc)
+  + Không có chất liệu nào → mặc định T250
 
-VD1: "ga chun t250 trắng 1m8, vỏ chăn trắng 2.0x2.2, vỏ gối 50x70 x2"
-→ Tất cả = T250 trơn (vì chỉ có 1 chất liệu T250, "trắng"=trơn)
+## KÍCH THƯỚC
+Số <10 = mét (1.6→160, 2.0→200). "1m6"=160. 14p/14f=14cm. T200/T250...=chất liệu KHÔNG PHẢI kích thước
 
-VD2: "ga chun t300 sọc 1m8 x1, ga chun t250 trắng 1m6 x1, vỏ chăn sọc 2.0x2.2"
-→ vỏ chăn sọc → gần "ga t300 sọc" hơn (cùng mẫu sọc) → T300 sọc
+## GIÁ & SL
+Giá khách ghi → dùng giá khách. Không ghi → từ bảng giá. "x2"/"4 cái"→số lượng. Mặc định=1
+${hasImage ? '\n## ẢNH\nPhân tích ảnh trích xuất SP, SL, kích thước, vải, mẫu. Kết hợp text nếu có.' : ''}
 
-VD3: "ga chun t250 trắng 1m8, vỏ chăn 2.0x2.2, vỏ gối 50x70 x2, ga chun t300 sọc 1m6"
-→ vỏ chăn + vỏ gối nằm giữa → gần ga T250 hơn → T250 trơn
-
-## CHUẨN HÓA KÍCH THƯỚC
-- Số thập phân < 10 = mét: 1.6→160, 2.0→200, 2.2→220
-- "1m6"/"1m8" = 160/180
-- 14p/14f/14cm/14 phan = chiều cao 14cm
-- T200/T225/T250/T300/T350/T400/LTH = chất liệu, KHÔNG PHẢI kích thước
-
-## GIÁ & SỐ LƯỢNG
-- Giá khách ghi → dùng giá khách. Không ghi → lấy từ bảng giá
-- "x4 cai"/"x2"/"4 cái" → số lượng. Mặc định = 1
-
-## HÌNH ẢNH
-Nếu có ảnh: phân tích ảnh trích xuất SP, SL, kích thước, vải, mẫu. Kết hợp text nếu có.
-
-## VÍ DỤ
-Input: "ga chun t250 trắng tinh 1m8x2mx25p x1, vỏ chăn trắng 2.0x2.2 x1, vỏ gối 50x70 x2, tấm trang trí 1m6 x1"
-Phân tích: ga chun có chất liệu T250 trơn → vỏ chăn + vỏ gối không ghi chất liệu → suy luận T250 trơn theo ga chun. "tấm trang trí" → tìm riêng trong bảng giá.
-Output:
-{"items":[
-  {"matchedProductId":"UUID-ga-chun-t250-tron-180x200x25","customName":"Ga chun T250 trơn 180x200x25cm","quantity":1,"price":258000,"specifications":"180 x 200 x 25cm","note":""},
-  {"matchedProductId":"UUID-vo-chan-t250-tron-200x220","customName":"Vỏ chăn T250 trơn 200x220","quantity":1,"price":350000,"specifications":"200 x 220cm","note":"Chất liệu T250 trơn suy luận từ ga chun"},
-  {"matchedProductId":"UUID-vo-goi-t250-tron-50x70","customName":"Vỏ gối T250 trơn 50x70","quantity":2,"price":65000,"specifications":"50 x 70cm","note":"Chất liệu T250 trơn suy luận từ ga chun"},
-  {"matchedProductId":"UUID-tam-trang-tri-160","customName":"Tấm Trang Trí 160 : 50x235","quantity":1,"price":210000,"specifications":"50 x 235cm","note":"Kích thước giường 160"}
-]}
-
-VÍ DỤ 2 (kích thước không chuẩn):
-Input: "ga chun t250 trắng 160x200x12cm x1, bảo vệ nệm 1m6x2m 12cm x1"
-Phân tích: ga 12cm không có trong bảng → lấy giá SP 15cm. BVN 12cm (trên 10cm) → lấy giá SP 25cm. NHƯNG ghi kích thước ĐÚNG 12cm trong customName/specifications.
-Output:
-{"items":[
-  {"matchedProductId":"UUID-ga-chun-t250-tron-160x200x15","customName":"Ga chun T250 trơn 160x200x12cm","quantity":1,"price":240000,"specifications":"160 x 200 x 12cm","note":"Giá theo SP 15cm, khách yêu cầu 12cm"},
-  {"matchedProductId":"UUID-bvn-160x200x25","customName":"Bảo vệ nệm 160x200x12cm","quantity":1,"price":320000,"specifications":"160 x 200 x 12cm","note":"Giá theo SP 25cm, khách yêu cầu 12cm (trên 10cm)"}
-]}
-
-## OUTPUT — JSON thuần túy, KHÔNG markdown, KHÔNG backtick
-⚠️ matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU TIÊN của bảng giá (dạng xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx). TUYỆT ĐỐI KHÔNG tự tạo ID, KHÔNG viết tắt, KHÔNG bịa UUID. Copy nguyên văn UUID từ bảng giá.
-
-{"items":[{"matchedProductId":"uuid-chính-xác-từ-bảng-giá","customName":"tên SP với kích thước ĐÚNG của khách","quantity":1,"price":208000,"specifications":"kích thước CHÍNH XÁC theo khách, KHÔNG làm tròn","note":"ghi chú nếu cần"}]}
-- matchedProductId = UUID chính xác từ cột đầu tiên bảng giá (SP có kích thước LỚN HƠN gần nhất nếu kích thước khách không khớp). KHÔNG ĐƯỢC tự nghĩ ra.
-- customName = tên SP với kích thước ĐÚNG của khách (VD: "Ga chun T250 trơn 160x200x12cm" chứ KHÔNG PHẢI "160x200x15cm")
-- specifications = kích thước CHÍNH XÁC theo yêu cầu khách, KHÔNG làm tròn, KHÔNG copy kích thước bảng giá
-- note = khi kích thước khách khác bảng giá: "Giá theo SP [kích thước bảng giá], khách yêu cầu [kích thước thực]"
-- Không tìm thấy: {"items":[]}
-- Thiếu info quan trọng: {"clarification":"câu hỏi cụ thể"}`;
+## OUTPUT — JSON thuần, KHÔNG markdown/backtick
+matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU bảng giá. TUYỆT ĐỐI KHÔNG bịa UUID.
+{"items":[{"matchedProductId":"uuid-từ-bảng-giá","customName":"tên SP kích thước ĐÚNG khách","quantity":1,"price":0,"specifications":"KT đúng khách, KHÔNG làm tròn","note":""}]}
+Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
 
 
       // Build user message - multimodal if image present
@@ -642,7 +674,7 @@ Output:
         userContent = `Yêu cầu khách hàng:\n"""\n${request}\n"""`;
       }
 
-      const hasImage = !!imageBase64;
+      // Use faster model for text-only, vision model for images
       // Use faster model for text-only, vision model for images
       const quoteModel = hasImage ? undefined : "google/gemini-2.5-flash";
       const parsed = await callAI([
