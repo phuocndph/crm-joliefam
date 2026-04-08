@@ -604,6 +604,15 @@ Output:
   {"matchedProductId":"UUID-tam-trang-tri-160","customName":"Tấm Trang Trí 160 : 50x235","quantity":1,"price":210000,"specifications":"50 x 235cm","note":"Kích thước giường 160"}
 ]}
 
+VÍ DỤ 2 (kích thước không chuẩn):
+Input: "ga chun t250 trắng 160x200x12cm x1, bảo vệ nệm 1m6x2m 12cm x1"
+Phân tích: ga 12cm không có trong bảng → lấy giá SP 15cm. BVN 12cm (trên 10cm) → lấy giá SP 25cm. NHƯNG ghi kích thước ĐÚNG 12cm trong customName/specifications.
+Output:
+{"items":[
+  {"matchedProductId":"UUID-ga-chun-t250-tron-160x200x15","customName":"Ga chun T250 trơn 160x200x12cm","quantity":1,"price":240000,"specifications":"160 x 200 x 12cm","note":"Giá theo SP 15cm, khách yêu cầu 12cm"},
+  {"matchedProductId":"UUID-bvn-160x200x25","customName":"Bảo vệ nệm 160x200x12cm","quantity":1,"price":320000,"specifications":"160 x 200 x 12cm","note":"Giá theo SP 25cm, khách yêu cầu 12cm (trên 10cm)"}
+]}
+
 ## OUTPUT — JSON thuần túy, KHÔNG markdown, KHÔNG backtick
 ⚠️ matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU TIÊN của bảng giá (dạng xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx). TUYỆT ĐỐI KHÔNG tự tạo ID, KHÔNG viết tắt, KHÔNG bịa UUID. Copy nguyên văn UUID từ bảng giá.
 
