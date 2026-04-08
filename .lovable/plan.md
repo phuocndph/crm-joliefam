@@ -1,52 +1,45 @@
 
 
-## Vấn đề: Catalog AI không phân biệt bảng giá
+## Vấn đề: AI trả về ID giả thay vì UUID thực
 
-### Phân tích
+### Nguyên nhân gốc
 
-Frontend đã lọc đúng sản phẩm theo `price_list_id` khi chọn bảng giá:
-```
-supabase.from("products").select("*").eq("price_list_id", priceListId).eq("in_stock", true)
-```
+AI nhận catalog dạng `UUID|Tên|Quy cách|Mô tả|Giá` với ID thật (VD: `349a185f-94fd-4021-885a-51ad0b5f3647`), nhưng **ví dụ few-shot trong prompt dùng ID giả** (`id-tam-tt`, `id-goi-tt`, `id-ga`). AI học theo mẫu và tự bịa ID thay vì copy UUID từ bảng giá.
 
-Nhưng Edge Function (`lookup-tax-code`) lấy **TẤT CẢ** sản phẩm `in_stock = true` — không lọc theo bảng giá:
-```
-supabase.from("products").select("...").eq("in_stock", true).order("category")
-```
+Kết quả: Frontend `products.find(p => p.id === item.matchedProductId)` không tìm được sản phẩm → chỉ hiển thị những item mà ID may mắn trùng (hoặc hiển thị nhưng thiếu thông tin gốc).
 
-Kết quả: AI có thể match sản phẩm từ bảng giá cũ (2023) khi user đang báo giá bảng giá 2025, hoặc trả về giá sai.
-
-DB hiện có 2 bảng giá có sản phẩm:
-- "Từ 01/5 Năm 2025 Đến Nay" → 917 SP
-- "Đến tháng 31/07 Năm 2023" → 852 SP
+Trong ảnh user gửi: nhập 7 SP nhưng chỉ hiển thị 3 — vì 4 SP còn lại có ID giả, frontend không match được.
 
 ### Sửa đổi
 
-#### 1. Frontend: Truyền `priceListId` cho AI Quote Fill
-**File**: `src/components/CreateQuoteForm.tsx`
-- Thêm prop `priceListId` vào `<AIQuoteFill>`
+#### File: `supabase/functions/lookup-tax-code/index.ts`
 
-**File**: `src/components/AIQuoteFill.tsx`
-- Thêm `priceListId: string` vào `AIQuoteFillProps`
-- Gửi `priceListId` trong body request lên Edge Function
+**1. Sửa ví dụ few-shot — dùng UUID format thật**
 
-#### 2. Backend: Lọc catalog theo `priceListId`
-**File**: `supabase/functions/lookup-tax-code/index.ts`
-- Nhận `priceListId` từ request body
-- Thêm `.eq("price_list_id", priceListId)` vào query products
-- Sửa cache key để phân biệt theo `priceListId` (cache key = `priceListId`, không chỉ 1 cache chung)
-
-Cache thay đổi:
-```text
-// Trước: 1 cache chung cho tất cả
-catalogCache: { text, count, timestamp }
-
-// Sau: cache theo priceListId
-catalogCacheMap: Map<string, { text, count, timestamp }>
+Thay:
+```
+{"matchedProductId":"id-tam-tt",...}
+```
+Bằng:
+```
+{"matchedProductId":"349a185f-94fd-4021-885a-51ad0b5f3647",...}
 ```
 
-### Kết quả
-- AI chỉ match sản phẩm trong đúng bảng giá user đã chọn
-- Giá luôn đúng theo mốc thời gian
-- Cache vẫn hoạt động (phân theo priceListId)
+Dùng UUID thực từ DB cho ví dụ (Tấm Trang Trí 160, Vỏ gối trang trí 45x45, v.v.) để AI hiểu rằng phải copy chính xác ID từ cột đầu tiên.
+
+**2. Thêm rule nhấn mạnh ID phải là UUID từ bảng giá**
+
+Thêm vào phần OUTPUT:
+```
+- matchedProductId = PHẢI là UUID chính xác từ CỘT ĐẦU TIÊN của bảng giá (dạng xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx). TUYỆT ĐỐI KHÔNG tự tạo ID.
+```
+
+**3. Thêm validation phía backend** (optional nhưng tốt)
+
+Sau khi AI trả kết quả, validate `matchedProductId` — nếu không phải UUID format thì log warning.
+
+### Kết quả kỳ vọng
+- AI sẽ copy chính xác UUID từ catalog thay vì bịa ID
+- Frontend match được 100% sản phẩm AI trả về
+- Tất cả 7 SP trong ảnh user sẽ hiển thị đầy đủ
 
