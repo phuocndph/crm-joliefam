@@ -1,23 +1,18 @@
 
 
-## Cho phép điều chỉnh điều khoản tự do trong Hợp đồng Nguyên tắc
+## Khi click vào mã SP → mở dialog và tự động tìm đúng sản phẩm đó
 
-### Hiện tại
-- 6 điều khoản cố định, chỉ sửa được nội dung (content), không sửa được tiêu đề, không thêm/xóa/đổi thứ tự
+### Vấn đề
+Hiện tại click vào nút mã SP (VD: "CHT250-200-T") mở dialog chọn sản phẩm nhưng ô tìm kiếm trống — phải tự gõ lại để tìm. Cần tự động điền mã SP vào ô tìm kiếm để trỏ ngay đến đúng sản phẩm.
 
-### Nâng cấp
+### Giải pháp
 
-**File**: `src/components/CreateFrameworkContractForm.tsx`
+**File**: `src/components/CreateQuoteForm.tsx`
 
-1. **Sửa tiêu đề điều khoản** — Thay Label tĩnh bằng Input, cho phép đổi tên điều (ví dụ: "ĐIỀU 1: PHẠM VI HỢP TÁC" → "ĐIỀU 1: SẢN PHẨM")
+Tại dòng ~1490, khi click nút:
+1. Ngoài `setCurrentEditingIndex(index)`, thêm `setSearchTerm(item.sku || item.name || '')` để tự động điền mã SP/tên SP vào ô tìm kiếm
+2. Dialog mở ra sẽ hiển thị ngay sản phẩm đang chọn, người dùng thấy được thông tin chi tiết để xác nhận đúng/sai
 
-2. **Thêm điều khoản mới** — Nút "Thêm điều khoản" ở cuối danh sách, tự động đánh số "ĐIỀU N:"
-
-3. **Xóa điều khoản** — Nút xóa (icon Trash) trên mỗi điều, có xác nhận nếu nội dung không rỗng
-
-4. **Đổi thứ tự** — Nút mũi tên lên/xuống (ArrowUp/ArrowDown) để di chuyển điều khoản, tự động cập nhật lại số thứ tự "ĐIỀU 1, 2, 3..."
-
-5. **Khôi phục mặc định** — Nút "Khôi phục mặc định" để reset về 6 điều khoản gốc
-
-6. **Cập nhật summary** — Hiển thị số điều khoản động: "Chỉnh sửa nội dung các điều khoản (N điều)"
+### Kết quả
+- Click "CHT250-200-T" → dialog mở với ô search đã điền "CHT250-200-T" → hiển thị đúng sản phẩm đó ngay lập tức
 
