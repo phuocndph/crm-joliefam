@@ -1410,23 +1410,27 @@ serve(async (req) => {
         });
       }
 
-      // Use module-level catalog cache keyed by priceListId (TTL 5 min)
+      // Use module-level catalog cache keyed by priceListId
       const authHeader = req.headers.get("Authorization");
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const supabaseClient = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: { Authorization: authHeader || "" } },
+      });
+
+      // Load AI config from DB
+      const aiConfig = await loadAIConfig(supabaseClient);
+      const customCacheTtl = aiConfig['ai_quote_cache_ttl'] ? parseInt(aiConfig['ai_quote_cache_ttl']) * 1000 : DEFAULT_CATALOG_CACHE_TTL;
+
       const cacheKey = priceListId || "__all__";
       const cached = catalogCacheMap.get(cacheKey);
       let allProducts: any[];
       
-      if (cached && Date.now() - cached.timestamp < CATALOG_CACHE_TTL) {
+      if (cached && Date.now() - cached.timestamp < customCacheTtl) {
         allProducts = cached.products;
         console.log(`AI Quote Fill: using cached catalog for priceList=${cacheKey} (${allProducts.length} products)`);
       } else {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-        const supabase = createClient(supabaseUrl, supabaseKey, {
-          global: { headers: { Authorization: authHeader || "" } },
-        });
-
-        let query = supabase
+        let query = supabaseClient
           .from("products")
           .select("id, name, specifications, description, price, category")
           .eq("in_stock", true);
