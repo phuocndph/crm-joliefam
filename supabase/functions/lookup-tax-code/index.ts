@@ -867,10 +867,19 @@ serve(async (req) => {
         console.log(`AI Quote Fill: fetched ${allProducts.length} products for priceList=${cacheKey}, cached`);
       }
 
-      // Layer 2: Category-based filtering
-      const { categories: catPatterns, materials: matPatterns } = extractCategoryFilters(request || '');
-      const filteredProducts = filterProductsByCategory(allProducts, catPatterns, matPatterns);
-      console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after filter (cats: ${catPatterns.join(', ') || 'none'}, mats: ${matPatterns.join(', ') || 'none'})`);
+      // Layer 2: Segment-based filtering (new) or legacy fallback
+      const segments = parseRequestSegments(request || '');
+      let filteredProducts: any[];
+      
+      if (segments.length > 0) {
+        filteredProducts = filterProductsBySegments(allProducts, segments);
+        console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after segment filter (${segments.length} segments: ${segments.map(s => s.type).join(', ')})`);
+      } else {
+        // Legacy fallback for requests without clear product keywords
+        const { categories: catPatterns, materials: matPatterns } = extractCategoryFilters(request || '');
+        filteredProducts = filterProductsByCategory(allProducts, catPatterns, matPatterns);
+        console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after legacy filter (cats: ${catPatterns.join(', ') || 'none'}, mats: ${matPatterns.join(', ') || 'none'})`);
+      }
 
       // Layer 1: Remove description for text-only (saves ~30% tokens)
       const hasImage = !!imageBase64;
@@ -882,11 +891,26 @@ serve(async (req) => {
       
       const catalogHeader = hasImage ? "ID|Tên|Quy cách|Mô tả|Giá" : "ID|Tên|Quy cách|Giá";
 
+      // Build segment instruction for AI
+      let segmentInstruction = '';
+      if (segments.length > 0) {
+        const segLines = segments.map((s, i) => {
+          const parts = [s.type];
+          if (s.material) parts.push(s.material);
+          if (s.pattern) parts.push(s.pattern);
+          if (s.size) parts.push(s.size);
+          if (s.note) parts.push(`(${s.note})`);
+          if (s.quantity > 1) parts.push(`x${s.quantity}`);
+          return `${i + 1}. ${parts.join(' ')}`;
+        }).join('\n');
+        segmentInstruction = `\n## YÊU CẦU ĐÃ PHÂN TÍCH (${segments.length} sản phẩm):\n${segLines}\nMỗi dòng trên PHẢI có ÍT NHẤT 1 item tương ứng trong kết quả. KHÔNG được bỏ sót dòng nào.\n`;
+      }
+
       const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá nội thất phòng ngủ VN. Nhân viên gõ nhanh, không dấu, viết tắt.
 
 ## BẢNG GIÁ (${catalogHeader})
 ${productListText}
-
+${segmentInstruction}
 ## SO KHỚP
 1. So khớp từ khóa yêu cầu với TÊN SP. Phân biệt bằng: chất liệu (T200/T250/T300...), mẫu (trơn/sọc), kích thước
 2. Kích thước khách KHÔNG có trong bảng → lấy GIÁ & matchedProductId của SP kích thước LỚN HƠN gần nhất. customName/specifications ghi ĐÚNG kích thước KHÁCH, KHÔNG làm tròn. Note: "Giá theo SP [KT bảng giá], khách yêu cầu [KT thực]"
@@ -936,7 +960,6 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
       // Use faster model for text-only, vision model for images
-      // Use faster model for text-only, vision model for images
       const quoteModel = hasImage ? undefined : "google/gemini-2.5-flash";
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
@@ -956,6 +979,11 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
           if (item.matchedProductId && !UUID_REGEX.test(item.matchedProductId)) {
             console.warn(`⚠️ AI returned fake ID: "${item.matchedProductId}" for "${item.customName}"`);
           }
+        }
+        // Validation: check if AI returned fewer items than segments
+        if (segments.length > 0 && parsed.items.length < segments.length) {
+          console.warn(`⚠️ AI returned ${parsed.items.length} items but ${segments.length} segments were detected. Missing segments possible.`);
+          parsed.warning = `Hệ thống phát hiện ${segments.length} sản phẩm nhưng AI chỉ trả ${parsed.items.length}. Có thể thiếu sản phẩm.`;
         }
       }
 
