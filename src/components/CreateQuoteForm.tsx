@@ -1282,6 +1282,7 @@ export function CreateQuoteForm({
                     {products.length > 0 && (
                       <AIQuoteFill
                         products={products}
+                        priceListId={watchedValues.priceList}
                         onProductsSelected={async (items) => {
                           // Fetch all images from product-images bucket for auto-matching
                           let allImageFiles: { name: string; folder: string }[] = [];

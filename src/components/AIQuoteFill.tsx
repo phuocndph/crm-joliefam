@@ -32,6 +32,7 @@ interface AIMatchedItem {
 interface AIQuoteFillProps {
   products: Product[];
   onProductsSelected: (items: AIMatchedItem[]) => void;
+  priceListId?: string;
 }
 
 // Module-level image cache — persists across re-renders and re-mounts
@@ -72,7 +73,7 @@ async function loadImageFiles(): Promise<{ name: string; folder: string }[]> {
   return imageCachePromise;
 }
 
-export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) {
+export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuoteFillProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [request, setRequest] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -234,7 +235,7 @@ export function AIQuoteFill({ products, onProductsSelected }: AIQuoteFillProps) 
     setPreviewItems(null);
 
     try {
-      const bodyData: any = { request: request.trim() };
+      const bodyData: any = { request: request.trim(), priceListId };
 
       // Compress and convert image to base64 if present
       if (imageFile) {

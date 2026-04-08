@@ -7,9 +7,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Module-level catalog cache — persists across warm invocations
+// Module-level catalog cache — keyed by priceListId, persists across warm invocations
 const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-let catalogCache: { text: string; count: number; timestamp: number } | null = null;
+const catalogCacheMap = new Map<string, { text: string; count: number; timestamp: number }>();
 
 const ORDER_ITEMS_SYSTEM_PROMPT = `Bạn là trợ lý chuyên trích xuất danh sách sản phẩm/dịch vụ từ đơn hàng, báo giá, hóa đơn Việt Nam.
 
@@ -477,20 +477,22 @@ serve(async (req) => {
 
     // ==================== AI QUOTE FILL ====================
     } else if (type === "ai_quote_fill") {
-      const { request, imageBase64, imageMimeType } = data;
+      const { request, imageBase64, imageMimeType, priceListId } = data;
       if (!request && !imageBase64) {
         return new Response(JSON.stringify({ error: "Missing request or image" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      // Use module-level catalog cache (TTL 5 min) to avoid DB query every request
+      // Use module-level catalog cache keyed by priceListId (TTL 5 min)
       const authHeader = req.headers.get("Authorization");
+      const cacheKey = priceListId || "__all__";
+      const cached = catalogCacheMap.get(cacheKey);
       let productListText: string;
       
-      if (catalogCache && Date.now() - catalogCache.timestamp < CATALOG_CACHE_TTL) {
-        productListText = catalogCache.text;
-        console.log(`AI Quote Fill: using cached catalog (${catalogCache.count} products)`);
+      if (cached && Date.now() - cached.timestamp < CATALOG_CACHE_TTL) {
+        productListText = cached.text;
+        console.log(`AI Quote Fill: using cached catalog for priceList=${cacheKey} (${cached.count} products)`);
       } else {
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -498,11 +500,16 @@ serve(async (req) => {
           global: { headers: { Authorization: authHeader || "" } },
         });
 
-        const { data: products, error: dbError } = await supabase
+        let query = supabase
           .from("products")
           .select("id, name, specifications, description, price")
-          .eq("in_stock", true)
-          .order("category");
+          .eq("in_stock", true);
+        
+        if (priceListId) {
+          query = query.eq("price_list_id", priceListId);
+        }
+        
+        const { data: products, error: dbError } = await query.order("category");
 
         if (dbError) {
           console.error("Failed to fetch products:", dbError);
@@ -515,8 +522,8 @@ serve(async (req) => {
           `${p.id}|${p.name}|${p.specifications || ''}|${p.description || ''}|${p.price || 0}`
         ).join("\n");
         
-        catalogCache = { text: productListText, count: (products || []).length, timestamp: Date.now() };
-        console.log(`AI Quote Fill: fetched ${(products || []).length} products, cached`);
+        catalogCacheMap.set(cacheKey, { text: productListText, count: (products || []).length, timestamp: Date.now() });
+        console.log(`AI Quote Fill: fetched ${(products || []).length} products for priceList=${cacheKey}, cached`);
       }
 
       const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá sản phẩm nội thất phòng ngủ Việt Nam. Nhân viên gõ nhanh, không dấu, viết tắt — bạn phải hiểu đúng ý.
