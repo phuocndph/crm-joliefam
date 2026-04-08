@@ -1487,7 +1487,7 @@ export function CreateQuoteForm({
                                      <TableCell className="w-32 min-w-32 p-3 border-r border-gray-300">
                             <Dialog>
                               <DialogTrigger asChild>
-                                <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => setCurrentEditingIndex(index)}>
+                                <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => { setCurrentEditingIndex(index); setSearchTerm(item.sku || item.name || ''); }}>
                                   <Search className="h-4 w-4 text-blue-600" />
                                    <span className="text-blue-600">
                                      {item.sku ? item.sku : item.name ? `${item.name.substring(0, 15)}...` : 'Chọn sản phẩm từ danh sách'}
