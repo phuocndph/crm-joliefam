@@ -134,6 +134,13 @@ const menuItems = [
     permission: "knowledge_base" as const
   },
   { 
+    title: "Cài đặt AI", 
+    url: "/ai-settings", 
+    icon: Sparkles,
+    description: "Cấu hình AI Quote Fill",
+    permission: "user_management" as const
+  },
+  { 
     title: "Quản lý nhân viên", 
     url: "/user-management", 
     icon: Settings,
