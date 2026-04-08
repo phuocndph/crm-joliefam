@@ -560,9 +560,22 @@ KHÔNG được tự giới hạn vào vài loại SP — phải tìm kiếm TO�
 - LTH = T225 = cùng loại vải
 - hai mat/2 mat = ghi vào note, KHÔNG ảnh hưởng matching
 
-## THUỘC TÍNH CHUNG
-Khi chất liệu hoặc mẫu chỉ ghi 1 lần hoặc ở cuối câu → áp dụng cho TẤT CẢ sản phẩm.
-Nếu không ghi chất liệu → ưu tiên T250. Nếu không có T250 cùng loại → chọn SP phổ biến nhất cùng loại.
+## SUY LUẬN CHẤT LIỆU
+1. Nếu SP ghi rõ chất liệu (T250, T300, T225, LTH...) → dùng đúng chất liệu đó
+2. Nếu SP KHÔNG ghi chất liệu → suy luận từ các SP KHÁC trong cùng báo giá:
+   - Nếu tất cả SP khác dùng cùng 1 chất liệu → áp dụng chất liệu đó cho SP thiếu
+   - Nếu có NHIỀU chất liệu khác nhau → xác định theo VỊ TRÍ/NGỮ CẢNH: SP nằm gần (trước/sau) SP nào thì dùng chất liệu của SP đó
+3. Khi mẫu (trơn/sọc) chỉ ghi 1 lần → áp dụng cho tất cả SP cùng nhóm chất liệu
+4. CHỈ KHI không có bất kỳ chất liệu nào trong TOÀN BỘ yêu cầu → mới dùng T250 làm mặc định
+
+VD1: "ga chun t250 trắng 1m8, vỏ chăn trắng 2.0x2.2, vỏ gối 50x70 x2"
+→ Tất cả = T250 trơn (vì chỉ có 1 chất liệu T250, "trắng"=trơn)
+
+VD2: "ga chun t300 sọc 1m8 x1, ga chun t250 trắng 1m6 x1, vỏ chăn sọc 2.0x2.2"
+→ vỏ chăn sọc → gần "ga t300 sọc" hơn (cùng mẫu sọc) → T300 sọc
+
+VD3: "ga chun t250 trắng 1m8, vỏ chăn 2.0x2.2, vỏ gối 50x70 x2, ga chun t300 sọc 1m6"
+→ vỏ chăn + vỏ gối nằm giữa → gần ga T250 hơn → T250 trơn
 
 ## CHUẨN HÓA KÍCH THƯỚC
 - Số thập phân < 10 = mét: 1.6→160, 2.0→200, 2.2→220
@@ -578,14 +591,14 @@ Nếu không ghi chất liệu → ưu tiên T250. Nếu không có T250 cùng l
 Nếu có ảnh: phân tích ảnh trích xuất SP, SL, kích thước, vải, mẫu. Kết hợp text nếu có.
 
 ## VÍ DỤ
-Input: "tam trang tri 1m6 x1, vo goi trang tri 45x45 x2, ga chun t250 tron 1m8x2mx20p x1, chan he tran 2.0x2.2"
-Phân tích: mỗi SP tìm riêng trong bảng giá. "tran"=trơn. "tấm trang trí 1m6" → tìm SP tên chứa "Tấm trang trí" kèm kích thước giường 160.
+Input: "ga chun t250 trắng tinh 1m8x2mx25p x1, vỏ chăn trắng 2.0x2.2 x1, vỏ gối 50x70 x2, tấm trang trí 1m6 x1"
+Phân tích: ga chun có chất liệu T250 trơn → vỏ chăn + vỏ gối không ghi chất liệu → suy luận T250 trơn theo ga chun. "tấm trang trí" → tìm riêng trong bảng giá.
 Output:
 {"items":[
-  {"matchedProductId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","customName":"Tấm Trang Trí 160 : 50x235","quantity":1,"price":210000,"specifications":"50 x 235cm","note":"Kích thước giường 160"},
-  {"matchedProductId":"b2c3d4e5-f6a7-8901-bcde-f12345678901","customName":"Vỏ gối trang trí 45x45","quantity":2,"price":60000,"specifications":"45 x 45cm","note":""},
-  {"matchedProductId":"c3d4e5f6-a7b8-9012-cdef-123456789012","customName":"Ga chun T250 trơn 180x200x20cm","quantity":1,"price":258000,"specifications":"180 x 200 x 20cm","note":""},
-  {"matchedProductId":"d4e5f6a7-b8c9-0123-defa-234567890123","customName":"Vỏ chăn T250 trơn 200x220","quantity":1,"price":350000,"specifications":"200 x 220cm","note":""}
+  {"matchedProductId":"c3d4e5f6-a7b8-9012-cdef-123456789012","customName":"Ga chun T250 trơn 180x200x25cm","quantity":1,"price":258000,"specifications":"180 x 200 x 25cm","note":""},
+  {"matchedProductId":"d4e5f6a7-b8c9-0123-defa-234567890123","customName":"Vỏ chăn T250 trơn 200x220","quantity":1,"price":350000,"specifications":"200 x 220cm","note":"Chất liệu T250 trơn suy luận từ ga chun"},
+  {"matchedProductId":"e5f6a7b8-c9d0-1234-efab-345678901234","customName":"Vỏ gối T250 trơn 50x70","quantity":2,"price":65000,"specifications":"50 x 70cm","note":"Chất liệu T250 trơn suy luận từ ga chun"},
+  {"matchedProductId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","customName":"Tấm Trang Trí 160 : 50x235","quantity":1,"price":210000,"specifications":"50 x 235cm","note":"Kích thước giường 160"}
 ]}
 
 ## OUTPUT — JSON thuần túy, KHÔNG markdown, KHÔNG backtick
