@@ -635,7 +635,7 @@ function parseRequestSegments(request: string): RequestSegment[] {
     const leadingText = norm.substring(chunkStart, found[i].idx).trim();
     const chunk = norm.substring(found[i].idx, chunkEnd).trim();
     
-    console.log(`  Chunk debug[${i}]: type="${found[i].type}" kwIdx=${found[i].idx} chunkStart=${chunkStart} prevEnd=${prevEnd} sections=${sections.length} headerRanges=${JSON.stringify(headerRanges)} leadingText="${leadingText}" chunk="${chunk.substring(0, 40)}..."`);
+    const fullChunk = (leadingText + ' ' + chunk).trim();
     const fullChunk = (leadingText + ' ' + chunk).trim();
 
     // Size
@@ -674,7 +674,7 @@ function parseRequestSegments(request: string): RequestSegment[] {
     const fullChunkBareQtyMatch = !leadingQtyMatch && !leadingBareQtyMatch ? fullChunk.match(/^(\d+)\s+\S/) : null;
     const chunkQtyMatch = chunk.match(/[x×]\s*(\d+)\s*$/) || chunk.match(qtyRegexes[0]) || chunk.match(qtyRegexes[1]);
     
-    console.log(`  Qty debug: type="${found[i].type}" leadingText="${leadingText}" leadingQty=${leadingQtyMatch?.[1]} leadingBareQty=${leadingBareQtyMatch?.[1]} fullChunkBareQty=${fullChunkBareQtyMatch?.[1]} chunkQty=${chunkQtyMatch?.[1]}`);
+    
     
     if (leadingQtyMatch) {
       qty = parseInt(leadingQtyMatch[1]) || 1;
