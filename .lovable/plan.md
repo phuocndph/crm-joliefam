@@ -1,70 +1,59 @@
 
 
-## Kết nối Cài đặt AI với Database và Edge Function
+## Kết nối TYPE_TO_CATEGORY từ DB Config vào Edge Function
 
-### Vấn đề hiện tại
-1. Bảng `ai_settings` chỉ có cột `setting_value` kiểu **boolean** — không lưu được text/JSON
-2. Trang Settings lưu vào **localStorage** — mất khi đổi máy, không chia sẻ
-3. Edge Function dùng **hardcode** — không đọc config từ DB
+### Vấn đề
+Config `ai_quote_type_categories` đã được lưu trong DB (11KB JSON chi tiết) nhưng Edge Function **không bao giờ đọc và áp dụng** nó. Hai hàm `filterProductsBySegments()` và `buildSegmentCandidates()` luôn dùng constant hardcode `TYPE_TO_CATEGORY` (25 entries cũ).
+
+Kết quả: segment "vỏ chăn" chỉ match `['vỏ chăn']` nhưng DB dùng category như "VỎ CHĂN T250 SỌC", "Vỏ chăn T200 TRƠN"... → filter trả 0 products → AI bịa ID → sai hoàn toàn.
 
 ### Giải pháp
 
-**Bước 1 — Migration: Tạo bảng `ai_config`**
+**File sửa: `supabase/functions/lookup-tax-code/index.ts`**
 
-```sql
-CREATE TABLE public.ai_config (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  config_key text UNIQUE NOT NULL,
-  config_value text NOT NULL,
-  updated_at timestamptz DEFAULT now(),
-  updated_by uuid REFERENCES auth.users(id)
-);
-ALTER TABLE public.ai_config ENABLE ROW LEVEL SECURITY;
+1. **Thêm hàm `buildTypeToCategory()`**: Parse JSON config từ DB thành `Record<string, string[]>` đơn giản.
 
-CREATE POLICY "admin_manager_read" ON public.ai_config
-  FOR SELECT TO authenticated
-  USING (public.get_user_role(auth.uid()) IN ('admin', 'manager'));
-
-CREATE POLICY "admin_manager_write" ON public.ai_config
-  FOR ALL TO authenticated
-  USING (public.get_user_role(auth.uid()) IN ('admin', 'manager'))
-  WITH CHECK (public.get_user_role(auth.uid()) IN ('admin', 'manager'));
-```
-
-Config keys: `ai_quote_fill_prompt`, `ai_quote_text_model`, `ai_quote_image_model`, `ai_quote_type_categories`, `ai_quote_product_keywords`, `ai_quote_material_keywords`, `ai_quote_cache_ttl`
-
-**Bước 2 — Sửa `AISettingsPage.tsx`**
-- `loadSettings()`: SELECT từ `ai_config` thay vì localStorage
-- `handleSave()`: Upsert vào `ai_config` (onConflict: `config_key`), xóa localStorage
-- Vì bảng `ai_config` không có trong types.ts, dùng `.from('ai_config' as any)` hoặc cast type
-
-**Bước 3 — Sửa Edge Function `lookup-tax-code/index.ts`**
-- Thêm module-level cache cho config (giống catalog cache)
-- Trong handler `ai_quote_fill`: query `ai_config` → nếu có custom prompt/model → dùng thay hardcode
-- Trong handler `ai_quote_debug`: cũng đọc config từ DB
-- Logic:
 ```text
-const configCache = { data: null, timestamp: 0 };
-// Trong handler:
-if (Date.now() - configCache.timestamp > cacheTTL) {
-  const { data } = await supabase.from('ai_config').select('config_key, config_value');
-  configCache.data = data; configCache.timestamp = Date.now();
+Input (từ DB):
+{
+  "TYPE_TO_CATEGORY": {
+    "GA_CHUN": {
+      "exact_keywords": ["ga chun"],
+      "categories": ["Ga chun ks LTH SỌC", "Ga chun ks T200 TRƠN", ...]
+    },
+    "VO_CHAN": {
+      "exact_keywords": ["vo chan", "vỏ chăn"],
+      "categories": ["Vỏ chăn T200 TRƠN", "VỎ CHĂN T250 SỌC", ...]
+    }
+  }
 }
-const customPrompt = configCache.data?.find(c => c.config_key === 'ai_quote_fill_prompt')?.config_value;
-const textModel = configCache.data?.find(c => c.config_key === 'ai_quote_text_model')?.config_value || 'google/gemini-2.5-flash';
-// ... apply to prompt building and API call
+
+Output:
+{
+  "ga chun": ["ga chun ks lth sọc", "ga chun ks t200 trơn", ...],
+  "vo chan": ["vỏ chăn t200 trơn", "vỏ chăn t250 sọc", ...],
+  "vỏ chăn": ["vỏ chăn t200 trơn", "vỏ chăn t250 sọc", ...],
+  ...
+}
 ```
 
-### Files thay đổi
+2. **Sửa `filterProductsBySegments()` và `buildSegmentCandidates()`**: Nhận thêm param `typeToCategory` thay vì dùng global constant. Nếu DB config có → dùng custom, không có → fallback hardcode.
 
-| File | Thay đổi |
-|------|----------|
-| Migration SQL | Tạo bảng `ai_config` + RLS |
-| `src/pages/AISettingsPage.tsx` | localStorage → Supabase upsert/select |
-| `supabase/functions/lookup-tax-code/index.ts` | Đọc config từ `ai_config`, apply custom prompt/model/catalog |
+3. **Trong handler `ai_quote_fill`**: Sau khi `loadAIConfig()`, parse `ai_quote_type_categories` và truyền vào các hàm filter.
 
-### Kết quả
-- Admin lưu settings → persist trong DB, chia sẻ toàn hệ thống
-- Edge Function đọc config (cache theo TTL) → dùng custom prompt/model/catalog khi có
-- Không ảnh hưởng hiệu năng nhờ cache module-level
+### Luồng mới
+
+```text
+ai_quote_fill request
+  → loadAIConfig() → lấy ai_quote_type_categories JSON
+  → buildTypeToCategory(json) → Record<string, string[]>
+  → filterProductsBySegments(products, segments, customMapping)
+  → buildSegmentCandidates(segments, products, customMapping)
+  → AI match với đúng catalog đã lọc
+```
+
+### Kết quả mong đợi
+- "vỏ chăn" T225 → match categories "Vỏ chăn T200 TRƠN", "VỎ CHĂN T250 SỌC"... → 60+ SP thay vì 0
+- "vỏ gối" → match "Vỏ gối T250 SỌC"... → 61 SP thay vì 0  
+- "ruột gối" → match "Ruột gối bông 3D"... → 16 SP thay vì 0
 
