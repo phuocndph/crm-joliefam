@@ -11,12 +11,276 @@ const corsHeaders = {
 const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const catalogCacheMap = new Map<string, { products: any[]; timestamp: number }>();
 
-// Category filter extraction — maps Vietnamese keywords to DB category patterns
-function extractCategoryFilters(request: string): { categories: string[]; materials: string[] } {
-  const norm = request.toLowerCase()
+// ==================== SEGMENT PARSER ====================
+
+interface RequestSegment {
+  type: string;
+  rawText: string;
+  material: string;
+  pattern: string;
+  size: string;
+  quantity: number;
+  note: string;
+  needsFabric: boolean;
+}
+
+const NAMED_MATERIALS: [RegExp, string][] = [
+  [/\blth\b/i, 'LTH'],
+  [/\bmcr\b/i, 'MCR'],
+  [/\btencel\b/i, 'tencel'],
+  [/\btici\b/i, 'tici'],
+];
+
+// Ordered product keyword detection (longer matches first)
+const PRODUCT_KEYWORDS: [RegExp, string, boolean][] = [
+  [/\bga\s*chun/i, 'ga chun', true],
+  [/\bga\s*tam\s*phu/i, 'ga tấm phủ', true],
+  [/\bga\s*phu/i, 'ga phủ', true],
+  [/\bchan\s*he/i, 'chăn hè', true],
+  [/\bvo\s*chan\s*chan/i, 'vỏ chăn chần', true],
+  [/\bchan\s*dong/i, 'chăn đông', true],
+  [/\bvo\s*chan/i, 'vỏ chăn', true],
+  [/\bvo\s*goi\s*om/i, 'vỏ gối ôm', true],
+  [/\bgoi\s*om/i, 'gối ôm', true],
+  [/\bvo\s*goi/i, 'vỏ gối', true],
+  [/\bgoi\s*trang\s*tri/i, 'gối trang trí', false],
+  [/\btam\s*trang\s*tri/i, 'tấm trang trí', false],
+  [/\bbao\s*ve\s*(nem|dem|n[eệ]m|d[eệ]m)/i, 'bảo vệ nệm', false],
+  [/\bbvn/i, 'bảo vệ nệm', false],
+  [/\bruot\s*chan/i, 'ruột chăn', false],
+  [/\bruot\s*goi/i, 'ruột gối', false],
+  [/\bao\s*choang/i, 'áo choàng', false],
+  [/\bvay\s*(giuong)?/i, 'váy giường', false],
+  [/\btopper/i, 'topper', false],
+  [/\bkhan\s*(tam)?/i, 'khăn tắm', false],
+  [/\bdem\b/i, 'đệm', false],
+  [/\bnem\b/i, 'đệm', false],
+  [/\brem\b/i, 'rèm', false],
+  [/\bga\b/i, 'ga', true],
+  [/\bgoi\b(?!\s*trang)/i, 'vỏ gối', true],
+  [/\bchan\b/i, 'chăn', true],
+  [/\bbo\s*\d+\s*mon/i, 'bộ', true],
+  [/\bcombo/i, 'bộ', true],
+];
+
+function normalizeVN(text: string): string {
+  return text.toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd').replace(/Đ/g, 'd');
-  
+}
+
+function parseRequestSegments(request: string): RequestSegment[] {
+  const norm = normalizeVN(request);
+  const segments: RequestSegment[] = [];
+
+  // Find all product keyword positions
+  const found: { idx: number; end: number; type: string; needsFabric: boolean }[] = [];
+  for (const [regex, type, needsFabric] of PRODUCT_KEYWORDS) {
+    const re = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : regex.flags + 'g');
+    let m;
+    while ((m = re.exec(norm)) !== null) {
+      const overlaps = found.some(f => m!.index >= f.idx && m!.index < f.end);
+      if (!overlaps) {
+        found.push({ idx: m.index, end: m.index + m[0].length, type, needsFabric });
+      }
+    }
+  }
+
+  if (found.length === 0) return [];
+
+  found.sort((a, b) => a.idx - b.idx);
+
+  // Collect all materials & patterns from entire request
+  const globalMaterials: string[] = [];
+  const globalPatterns: string[] = [];
+  const matRegex = /\bt\s*(\d{3})\b/gi;
+  let matMatch;
+  while ((matMatch = matRegex.exec(norm)) !== null) {
+    globalMaterials.push('T' + matMatch[1]);
+  }
+  for (const [re, name] of NAMED_MATERIALS) {
+    if (re.test(norm)) globalMaterials.push(name);
+  }
+  const patRegex = /\b(tron|trang\s*tinh|trang|soc|ke)\b/gi;
+  let patMatch;
+  while ((patMatch = patRegex.exec(norm)) !== null) {
+    const p = patMatch[1].toLowerCase();
+    if (p === 'soc' || p === 'ke') globalPatterns.push('sọc');
+    else globalPatterns.push('trơn');
+  }
+
+  // Split into chunks per product keyword
+  for (let i = 0; i < found.length; i++) {
+    const start = found[i].idx;
+    const end = i < found.length - 1 ? found[i + 1].idx : norm.length;
+    const chunk = norm.substring(start, end).trim();
+
+    // Size
+    const sizeMatch = chunk.match(/(\d+\.?\d*)\s*[x×*]\s*(\d+\.?\d*)(?:\s*[x×*]\s*(\d+\.?\d*)\s*(p|f|cm)?)?/i);
+    let size = '';
+    if (sizeMatch) {
+      const dims = [sizeMatch[1], sizeMatch[2]];
+      if (sizeMatch[3]) dims.push(sizeMatch[3] + (sizeMatch[4] ? 'cm' : ''));
+      size = dims.map(d => {
+        const n = parseFloat(d.replace(/cm$/i, ''));
+        if (d.match(/cm$/i)) return d;
+        if (d.match(/(p|f)$/i)) return n + 'cm';
+        return n < 10 ? String(Math.round(n * 100)) : String(Math.round(n));
+      }).join('x');
+    }
+
+    // Local material
+    let localMaterial = '';
+    const localMatMatch = chunk.match(/\bt\s*(\d{3})\b/i);
+    if (localMatMatch) localMaterial = 'T' + localMatMatch[1];
+    for (const [re, name] of NAMED_MATERIALS) {
+      if (re.test(chunk)) { localMaterial = name; break; }
+    }
+
+    // Local pattern
+    let localPattern = '';
+    const localPatMatch = chunk.match(/\b(tron|trang\s*tinh|trang|soc|ke)\b/i);
+    if (localPatMatch) {
+      const p = localPatMatch[1].toLowerCase();
+      localPattern = (p === 'soc' || p === 'ke') ? 'sọc' : 'trơn';
+    }
+
+    // Quantity
+    let qty = 1;
+    const qtyMatch = chunk.match(/[x×]\s*(\d+)\s*$/) || chunk.match(/(\d+)\s*(cai|bo|chiec|cap|doi)\b/i);
+    if (qtyMatch) qty = parseInt(qtyMatch[1]) || 1;
+
+    // Note
+    let note = '';
+    if (/hai\s*mat|2\s*mat/i.test(chunk)) note = 'hai mặt';
+
+    segments.push({
+      type: found[i].type,
+      rawText: chunk,
+      material: localMaterial,
+      pattern: localPattern,
+      size,
+      quantity: qty,
+      note,
+      needsFabric: found[i].needsFabric,
+    });
+  }
+
+  // Assign shared material/pattern to segments missing their own
+  const uniqueMats = [...new Set(globalMaterials)];
+  const uniquePats = [...new Set(globalPatterns)];
+  for (const seg of segments) {
+    if (seg.needsFabric && !seg.material && uniqueMats.length > 0) {
+      seg.material = uniqueMats[0];
+    }
+    if (seg.needsFabric && !seg.pattern && uniquePats.length > 0) {
+      seg.pattern = uniquePats[0];
+    }
+  }
+
+  console.log('Parsed segments:', JSON.stringify(segments.map(s => ({
+    type: s.type, material: s.material, pattern: s.pattern, size: s.size, qty: s.quantity, fabric: s.needsFabric
+  }))));
+
+  return segments;
+}
+
+// ==================== DB FILTERING ====================
+
+// Map segment type to DB category search terms
+const TYPE_TO_CATEGORY: Record<string, string[]> = {
+  'ga chun': ['ga chun'],
+  'ga tấm phủ': ['ga tấm phủ', 'ga phủ'],
+  'ga phủ': ['ga tấm phủ', 'ga phủ'],
+  'ga': ['ga chun', 'ga tấm phủ', 'ga phủ'],
+  'chăn hè': ['chăn hè'],
+  'vỏ chăn chần': ['vỏ chăn chần'],
+  'chăn đông': ['vỏ chăn chần'],
+  'vỏ chăn': ['chăn'],
+  'chăn': ['chăn'],
+  'vỏ gối ôm': ['gối ôm'],
+  'gối ôm': ['gối ôm'],
+  'vỏ gối': ['gối'],
+  'bảo vệ nệm': ['bảo vệ'],
+  'khăn tắm': ['khăn'],
+  'tấm trang trí': ['trang trí'],
+  'gối trang trí': ['gối trang trí', 'trang trí'],
+  'ruột chăn': ['ruột chăn'],
+  'ruột gối': ['ruột gối'],
+  'áo choàng': ['áo choàng'],
+  'váy giường': ['váy'],
+  'topper': ['topper'],
+  'đệm': ['đệm'],
+  'rèm': ['rem', 'rèm'],
+  'bộ': ['bộ'],
+};
+
+function filterProductsBySegments(products: any[], segments: RequestSegment[]): any[] {
+  if (segments.length === 0) return products;
+
+  const resultSet = new Set<string>();
+  const results: any[] = [];
+
+  for (const seg of segments) {
+    const cats = TYPE_TO_CATEGORY[seg.type] || [seg.type];
+
+    // Step 1: Filter by category
+    let segProducts = products.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      return cats.some(c => cat.includes(c) || name.includes(c));
+    });
+
+    // Step 2: If needs fabric and has material, narrow
+    if (seg.needsFabric && seg.material && segProducts.length > 20) {
+      const matLower = seg.material.toLowerCase();
+      const narrowed = segProducts.filter(p => {
+        const cat = (p.category || '').toLowerCase();
+        const name = (p.name || '').toLowerCase();
+        return cat.includes(matLower) || name.includes(matLower);
+      });
+      if (narrowed.length > 0) segProducts = narrowed;
+    }
+
+    // Step 3: Narrow by pattern
+    if (seg.pattern && segProducts.length > 20) {
+      const patLower = seg.pattern.toLowerCase();
+      const narrowed = segProducts.filter(p => {
+        const cat = (p.category || '').toLowerCase();
+        const name = (p.name || '').toLowerCase();
+        return cat.includes(patLower) || name.includes(patLower);
+      });
+      if (narrowed.length > 0) segProducts = narrowed;
+    }
+
+    for (const p of segProducts) {
+      if (!resultSet.has(p.id)) {
+        resultSet.add(p.id);
+        results.push(p);
+      }
+    }
+
+    console.log(`Segment "${seg.type}" (${seg.material} ${seg.pattern}): ${segProducts.length} products`);
+  }
+
+  if (results.length < 5) {
+    console.log(`Segment filter too narrow (${results.length}), falling back`);
+    const allCats = segments.flatMap(s => TYPE_TO_CATEGORY[s.type] || [s.type]);
+    const fallback = products.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      return allCats.some(c => cat.includes(c) || name.includes(c));
+    });
+    return fallback.length >= 5 ? fallback : products;
+  }
+
+  return results;
+}
+
+// Legacy extractCategoryFilters — used when no segments detected
+function extractCategoryFilters(request: string): { categories: string[]; materials: string[] } {
+  const norm = normalizeVN(request);
+
   const categories: string[] = [];
   const mapping: [RegExp, string[]][] = [
     [/\bga\s*chun\b|\bgachun\b|\bga\s*chu\b/, ['ga chun']],
@@ -47,13 +311,11 @@ function extractCategoryFilters(request: string): { categories: string[]; materi
     if (regex.test(norm)) categories.push(...cats);
   }
 
-  // Extract materials (T200, T250, T300, T350, T400, LTH, MCR, tencel, tici)
   const materials: string[] = [];
   const matMatch = norm.match(/\bt\s*(\d{3})\b/g);
   if (matMatch) {
     for (const m of matMatch) {
-      const num = m.replace(/\s/g, '').toUpperCase();
-      materials.push(num);
+      materials.push(m.replace(/\s/g, '').toUpperCase());
     }
   }
   if (/\blth\b/.test(norm)) materials.push('LTH');
@@ -66,8 +328,7 @@ function extractCategoryFilters(request: string): { categories: string[]; materi
 
 function filterProductsByCategory(products: any[], categories: string[], materials: string[]): any[] {
   if (categories.length === 0 && materials.length === 0) return products;
-  
-  // Step 1: Filter by category
+
   let filtered = products;
   if (categories.length > 0) {
     filtered = products.filter(p => {
@@ -77,25 +338,20 @@ function filterProductsByCategory(products: any[], categories: string[], materia
     });
   }
 
-  // Step 2: If we have materials AND category filter returned many results, narrow by material
   if (materials.length > 0 && filtered.length > 100) {
     const materialFiltered = filtered.filter(p => {
       const cat = (p.category || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
       return materials.some(mat => cat.includes(mat.toLowerCase()) || name.includes(mat.toLowerCase()));
     });
-    // Only use material filter if it still leaves enough results
-    if (materialFiltered.length >= 30) {
-      filtered = materialFiltered;
-    }
+    if (materialFiltered.length >= 30) filtered = materialFiltered;
   }
 
-  // Fallback: if too few results, return full catalog
   if (filtered.length < 30) {
     console.log(`Category filter too narrow (${filtered.length} results), using full catalog`);
     return products;
   }
-  
+
   return filtered;
 }
 
