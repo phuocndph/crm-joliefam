@@ -519,10 +519,25 @@ serve(async (req) => {
         console.log(`AI Quote Fill: fetched ${(products || []).length} products, cached`);
       }
 
-      const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá ga gối đệm Việt Nam. Nhân viên gõ nhanh, không dấu, viết tắt — bạn phải hiểu đúng ý.
+      const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá sản phẩm nội thất phòng ngủ Việt Nam. Nhân viên gõ nhanh, không dấu, viết tắt — bạn phải hiểu đúng ý.
 
 ## BẢNG GIÁ (ID|Tên|Quy cách|Mô tả|Giá)
 ${productListText}
+
+## QUAN TRỌNG — TOÀN BỘ BẢNG GIÁ
+Bảng giá trên chứa TẤT CẢ danh mục sản phẩm: ga chun, ga phủ, vỏ chăn, chăn hè, chăn đông, vỏ gối nằm, vỏ gối ôm, ruột gối, ruột gối ôm, tấm trang trí, gối trang trí (vỏ + ruột), bảo vệ nệm, đệm, topper, áo choàng tắm, rèm, bộ combo, v.v.
+KHÔNG được tự giới hạn vào vài loại SP — phải tìm kiếm TOÀN BỘ bảng giá.
+
+## CÁCH SO KHỚP SẢN PHẨM
+1. Đọc KỸ tên tất cả sản phẩm trong bảng giá
+2. So khớp từ khóa từ yêu cầu khách với TÊN sản phẩm
+3. Dùng CẢ 3 cột Tên + Quy cách + Mô tả để xác định đúng sản phẩm
+4. Khi có nhiều SP tên giống, phân biệt bằng: chất liệu (T200/T250/T300...), mẫu (trơn/sọc), kích thước
+5. Chọn kích thước LỚN HƠN gần nhất nếu không khớp chính xác. KHÔNG chọn nhỏ hơn
+   VD: yêu cầu 14cm, bảng có 10/15/20 → chọn 15cm
+   VD: yêu cầu 50x230, bảng có 50x235 → chọn 50x235
+6. KHÔNG được hoán đổi Trơn↔Sọc nếu khách đã ghi rõ
+7. Phải verify: đúng loại? đúng chất liệu? đúng trơn/sọc? đúng kích thước?
 
 ## HIỂU TIẾNG VIỆT KHÔNG DẤU
 - trang/tran/trắng = TRƠN (màu trắng = mẫu trơn trong ngành ga gối)
@@ -532,36 +547,21 @@ ${productListText}
 - chan dong/chăn đông = Vỏ chăn chần (dày)
 - ga phu/ga tấm phủ = ga phủ giường
 - bvn/bao ve nem = bảo vệ nệm
-- vo goi/vỏ gối, goi om/gối ôm, ga chun, ruot goi/ruột gối...
-- "gối" không nói rõ → mặc định "Vỏ gối"
+- tam trang tri/tấm trang trí = tấm trang trí (phụ kiện trang trí giường)
+- goi trang tri/gối trang trí = mặc định "Vỏ gối trang trí" (trừ khi nói rõ "ruột")
+- "gối" không nói rõ loại → mặc định "Vỏ gối"
 - LTH = T225 = cùng loại vải
 - hai mat/2 mat = ghi vào note, KHÔNG ảnh hưởng matching
 
-## PHÂN BIỆT RUỘT GỐI vs VỎ GỐI (QUAN TRỌNG)
-- "Vỏ gối"/"bao gối" = vỏ bọc bên ngoài, phân theo vải (T250/T300...) và mẫu (trơn/sọc)
-- "Ruột gối"/"lõi gối" = lõi bông bên trong, KHÔNG phân theo vải/mẫu
-- TUYỆT ĐỐI KHÔNG được nhầm 2 loại này với nhau
-
 ## THUỘC TÍNH CHUNG
 Khi chất liệu hoặc mẫu chỉ ghi 1 lần hoặc ở cuối câu → áp dụng cho TẤT CẢ sản phẩm.
+Nếu không ghi chất liệu → ưu tiên T250. Nếu không có T250 cùng loại → chọn SP phổ biến nhất cùng loại.
 
 ## CHUẨN HÓA KÍCH THƯỚC
 - Số thập phân < 10 = mét: 1.6→160, 2.0→200, 2.2→220
 - "1m6"/"1m8" = 160/180
 - 14p/14f/14cm/14 phan = chiều cao 14cm
 - T200/T225/T250/T300/T350/T400/LTH = chất liệu, KHÔNG PHẢI kích thước
-
-## SO KHỚP SẢN PHẨM (theo thứ tự ưu tiên)
-1. Loại SP (ga chun, vỏ chăn, vỏ gối...) — BẮT BUỘC đúng
-2. Chất liệu — BẮT BUỘC đúng. Nếu không ghi → ưu tiên T250. Nếu không có T250 cùng loại → chọn sản phẩm phổ biến nhất cùng loại
-3. Mẫu trơn/sọc — BẮT BUỘC đúng. Dùng cả tên + quy cách + mô tả để xác định
-4. Kích thước — chọn LỚN HƠN gần nhất nếu không khớp. KHÔNG chọn nhỏ hơn
-   VD: yêu cầu 14cm, bảng có 10/15/20 → chọn 15cm
-5. KHÔNG được hoán đổi Trơn↔Sọc nếu khách đã ghi rõ
-
-## CÁCH TÌM SẢN PHẨM
-- Dùng CẢ 3 cột Tên + Quy cách + Mô tả để xác định sản phẩm phù hợp
-- Phải verify: đúng loại? đúng chất liệu? đúng trơn/sọc? đúng kích thước?
 
 ## GIÁ & SỐ LƯỢNG
 - Giá khách ghi → dùng giá khách. Không ghi → lấy từ bảng giá
@@ -571,13 +571,14 @@ Khi chất liệu hoặc mẫu chỉ ghi 1 lần hoặc ở cuối câu → áp 
 Nếu có ảnh: phân tích ảnh trích xuất SP, SL, kích thước, vải, mẫu. Kết hợp text nếu có.
 
 ## VÍ DỤ
-Input: "chan he tran 2.0x2.2 ga chun 1.6x2.0x14p vo goi nam 45x65 soc x4 t250"
-Phân tích: "t250" cuối câu = thuộc tính chung. "tran"=trơn cho chăn hè+ga chun. "soc" ghi riêng cho vỏ gối.
+Input: "tam trang tri 1m6 x1, vo goi trang tri 45x45 x2, ga chun t250 tron 1m8x2mx20p x1, chan he tran 2.0x2.2"
+Phân tích: mỗi SP tìm riêng trong bảng giá. "tran"=trơn. "tấm trang trí 1m6" → tìm SP tên chứa "Tấm trang trí" kèm kích thước giường 160.
 Output:
 {"items":[
-  {"matchedProductId":"id-chan-he","customName":"Vỏ chăn T250 trơn 200x220","quantity":1,"price":350000,"specifications":"200 x 220cm","note":""},
-  {"matchedProductId":"id-ga-chun","customName":"Ga chun T250 trơn 160x200x14cm","quantity":1,"price":208000,"specifications":"160 x 200 x 14cm","note":"14cm làm tròn lên 15cm"},
-  {"matchedProductId":"id-vo-goi","customName":"Vỏ gối nằm T250 sọc 45x65","quantity":4,"price":45000,"specifications":"45 x 65cm","note":""}
+  {"matchedProductId":"id-tam-tt","customName":"Tấm Trang Trí 160 : 50x235","quantity":1,"price":210000,"specifications":"50 x 235cm","note":"Kích thước giường 160"},
+  {"matchedProductId":"id-goi-tt","customName":"Vỏ gối trang trí 45x45","quantity":2,"price":60000,"specifications":"45 x 45cm","note":""},
+  {"matchedProductId":"id-ga","customName":"Ga chun T250 trơn 180x200x20cm","quantity":1,"price":258000,"specifications":"180 x 200 x 20cm","note":""},
+  {"matchedProductId":"id-chan","customName":"Vỏ chăn T250 trơn 200x220","quantity":1,"price":350000,"specifications":"200 x 220cm","note":""}
 ]}
 
 ## OUTPUT — JSON thuần túy, KHÔNG markdown, KHÔNG backtick
