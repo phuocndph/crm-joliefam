@@ -8,8 +8,36 @@ const corsHeaders = {
 };
 
 // Module-level catalog cache — keyed by priceListId, persists across warm invocations
-const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const catalogCacheMap = new Map<string, { products: any[]; timestamp: number }>();
+
+// Module-level AI config cache
+const configCache: { data: Record<string, string> | null; timestamp: number } = { data: null, timestamp: 0 };
+const CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes default
+
+async function loadAIConfig(supabaseClient: any): Promise<Record<string, string>> {
+  if (configCache.data && Date.now() - configCache.timestamp < CONFIG_CACHE_TTL) {
+    return configCache.data;
+  }
+  try {
+    const { data, error } = await supabaseClient
+      .from('ai_config')
+      .select('config_key, config_value');
+    if (!error && data) {
+      const map: Record<string, string> = {};
+      for (const row of data) {
+        map[row.config_key] = row.config_value;
+      }
+      configCache.data = map;
+      configCache.timestamp = Date.now();
+      console.log(`AI Config loaded: ${Object.keys(map).length} keys`);
+      return map;
+    }
+  } catch (e) {
+    console.warn('Failed to load AI config:', e);
+  }
+  return configCache.data || {};
+}
 
 // ==================== FIND CLOSEST PRODUCT (v2 — segment-scoped) ====================
 
