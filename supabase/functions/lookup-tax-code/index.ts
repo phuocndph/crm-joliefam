@@ -635,6 +635,8 @@ function parseRequestSegments(request: string): RequestSegment[] {
     // Find which section this segment belongs to using actual position
     const segPos = (seg as any)._pos ?? norm.indexOf(seg.rawText);
     const section = sections.find(s => segPos >= s.startIdx && segPos < s.endIdx);
+    
+    console.log(`  Section assign: "${seg.type}" pos=${segPos} → section=${section ? `${section.material}/${section.pattern} [${section.startIdx}-${section.endIdx}]` : 'NONE'} (already has material=${seg.material})`);
 
     if (!seg.material) {
       if (section && section.material) {
