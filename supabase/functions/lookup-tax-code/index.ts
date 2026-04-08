@@ -537,9 +537,13 @@ ${productListText}
 - LTH = T225 = cùng loại vải
 - hai mat/2 mat = ghi vào note, KHÔNG ảnh hưởng matching
 
+## PHÂN BIỆT RUỘT GỐI vs VỎ GỐI (QUAN TRỌNG)
+- "Vỏ gối"/"bao gối" = vỏ bọc bên ngoài, phân theo vải (T250/T300...) và mẫu (trơn/sọc)
+- "Ruột gối"/"lõi gối" = lõi bông bên trong, KHÔNG phân theo vải/mẫu
+- TUYỆT ĐỐI KHÔNG được nhầm 2 loại này với nhau
+
 ## THUỘC TÍNH CHUNG
 Khi chất liệu hoặc mẫu chỉ ghi 1 lần hoặc ở cuối câu → áp dụng cho TẤT CẢ sản phẩm.
-VD: "chan he 2.0x2.2 ga chun 1.6x2.0x14p t250 trang" → t250 trơn cho CẢ chăn hè VÀ ga chun.
 
 ## CHUẨN HÓA KÍCH THƯỚC
 - Số thập phân < 10 = mét: 1.6→160, 2.0→200, 2.2→220
@@ -549,14 +553,14 @@ VD: "chan he 2.0x2.2 ga chun 1.6x2.0x14p t250 trang" → t250 trơn cho CẢ ch�
 
 ## SO KHỚP SẢN PHẨM (theo thứ tự ưu tiên)
 1. Loại SP (ga chun, vỏ chăn, vỏ gối...) — BẮT BUỘC đúng
-2. Chất liệu (T250, T300, LTH...) — BẮT BUỘC đúng. Mặc định T250 nếu không ghi
+2. Chất liệu — BẮT BUỘC đúng. Nếu không ghi → ưu tiên T250. Nếu không có T250 cùng loại → chọn sản phẩm phổ biến nhất cùng loại
 3. Mẫu trơn/sọc — BẮT BUỘC đúng. Dùng cả tên + quy cách + mô tả để xác định
 4. Kích thước — chọn LỚN HƠN gần nhất nếu không khớp. KHÔNG chọn nhỏ hơn
    VD: yêu cầu 14cm, bảng có 10/15/20 → chọn 15cm
+5. KHÔNG được hoán đổi Trơn↔Sọc nếu khách đã ghi rõ
 
-## QUAN TRỌNG: CÁCH TÌM SẢN PHẨM
+## CÁCH TÌM SẢN PHẨM
 - Dùng CẢ 3 cột Tên + Quy cách + Mô tả để xác định sản phẩm phù hợp
-- Tên SP có thể thiếu thông tin nhưng Mô tả/Quy cách sẽ có đủ chi tiết
 - Phải verify: đúng loại? đúng chất liệu? đúng trơn/sọc? đúng kích thước?
 
 ## GIÁ & SỐ LƯỢNG
@@ -566,27 +570,25 @@ VD: "chan he 2.0x2.2 ga chun 1.6x2.0x14p t250 trang" → t250 trơn cho CẢ ch�
 ## HÌNH ẢNH
 Nếu có ảnh: phân tích ảnh trích xuất SP, SL, kích thước, vải, mẫu. Kết hợp text nếu có.
 
-## VÍ DỤ PHÂN TÍCH
-Input: "chan he tran hai mat 2.0 x 2.2 ga chun 1.6 x 2.0 x 14p t250 trang"
-→ SP1: chăn hè (vỏ chăn không chần), 200x220, T250, trắng=trơn, note "hai mặt"
-→ SP2: ga chun, 160x200x14cm (→15cm nếu 14 không có), T250, trắng=trơn
-→ "t250 trang" cuối câu = thuộc tính chung cho cả 2
-
-Input: "ga chun 1m8 cao 12 lth"
-→ ga chun, 180x200x12cm (→15cm nếu 12 không có), LTH/T225, trơn (mặc định)
-
-Input: "vo goi nam 45x65 t300 soc x4"
-→ vỏ gối nằm, 45x65, T300, sọc, SL=4
+## VÍ DỤ
+Input: "chan he tran 2.0x2.2 ga chun 1.6x2.0x14p vo goi nam 45x65 soc x4 t250"
+Phân tích: "t250" cuối câu = thuộc tính chung. "tran"=trơn cho chăn hè+ga chun. "soc" ghi riêng cho vỏ gối.
+Output:
+{"items":[
+  {"matchedProductId":"id-chan-he","customName":"Vỏ chăn T250 trơn 200x220","quantity":1,"price":350000,"specifications":"200 x 220cm","note":""},
+  {"matchedProductId":"id-ga-chun","customName":"Ga chun T250 trơn 160x200x14cm","quantity":1,"price":208000,"specifications":"160 x 200 x 14cm","note":"14cm làm tròn lên 15cm"},
+  {"matchedProductId":"id-vo-goi","customName":"Vỏ gối nằm T250 sọc 45x65","quantity":4,"price":45000,"specifications":"45 x 65cm","note":""}
+]}
 
 ## OUTPUT — JSON thuần túy, KHÔNG markdown, KHÔNG backtick
-{"items":[{"matchedProductId":"id-từ-bảng","customName":"tên SP theo yêu cầu khách","quantity":1,"price":208000,"specifications":"quy cách THEO YÊU CẦU KHÁCH","note":"ghi chú nếu kích thước làm tròn hoặc thông tin đặc biệt"}]}
-
+{"items":[{"matchedProductId":"id-từ-bảng","customName":"tên SP","quantity":1,"price":208000,"specifications":"quy cách THEO KHÁCH","note":"ghi chú nếu cần"}]}
 - matchedProductId = ID sản phẩm GỐC từ bảng giá (cột đầu)
 - customName = tên đã sửa theo yêu cầu thực tế
 - specifications = quy cách THEO KHÁCH, không copy bảng giá
 - note = giải thích khi làm tròn kích thước hoặc info đặc biệt
 - Không tìm thấy: {"items":[]}
-- Thiếu info thật sự: {"clarification":"câu hỏi cụ thể cho từng SP thiếu info"}`;
+- Thiếu info quan trọng: {"clarification":"câu hỏi cụ thể"}`;
+
 
       // Build user message - multimodal if image present
       let userContent: any;
