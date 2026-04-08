@@ -12,53 +12,79 @@ const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const catalogCacheMap = new Map<string, { products: any[]; timestamp: number }>();
 
 // Category filter extraction — maps Vietnamese keywords to DB category patterns
-function extractCategoryFilters(request: string): string[] {
+function extractCategoryFilters(request: string): { categories: string[]; materials: string[] } {
   const norm = request.toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd').replace(/Đ/g, 'd');
   
-  const patterns: string[] = [];
+  const categories: string[] = [];
   const mapping: [RegExp, string[]][] = [
-    [/\bga\s*chun\b|\bgachun\b|\bga\s*chu\b/, ['Ga chun']],
-    [/\bga\s*phu\b|\bga\s*tam\s*phu\b|\bga\b(?!\s*chun)/, ['Ga chun', 'Ga tấm phủ', 'ga phủ']],
-    [/\bvo\s*chan\b|\bchan\s*he\b|\bchan\s*dong\b|\bchan\b/, ['chăn', 'Chăn']],
-    [/\bvo\s*goi\s*om\b|\bgoi\s*om\b/, ['gối ôm', 'Gối ôm']],
-    [/\bvo\s*goi\b|\bgoi\s*nam\b|\bgoi\b(?!\s*om)(?!\s*trang)/, ['gối', 'Gối']],
-    [/\bbvn\b|\bbao\s*ve\s*nem\b|\bbao\s*ve\b/, ['Bảo vệ']],
-    [/\bdem\b|\bdệm\b|\bnệm\b|\bnem\b/, ['Đệm', 'đệm']],
-    [/\btopper\b/, ['Topper', 'topper']],
-    [/\bkhan\b/, ['Khăn', 'khăn']],
-    [/\btam\s*trang\s*tri\b/, ['Trang Trí', 'trang trí']],
-    [/\bgoi\s*trang\s*tri\b/, ['gối trang trí', 'Gối trang trí', 'Trang Trí']],
-    [/\bvay\b|\bváy\b/, ['Váy', 'váy']],
-    [/\bao\s*choang\b/, ['Áo choàng', 'áo choàng']],
-    [/\bruot\s*chan\b/, ['Ruột chăn', 'ruột chăn']],
-    [/\bruot\s*goi\b/, ['Ruột gối', 'ruột gối']],
-    [/\brem\b/, ['rem', 'rèm', 'Rem']],
-    [/\bbo\s*\d+\s*mon\b|\bbo\s*combo\b|\bcombo\b|\bbo\b/, ['Bộ']],
+    [/\bga\s*chun\b|\bgachun\b|\bga\s*chu\b/, ['ga chun']],
+    [/\bga\s*phu\b|\bga\s*tam\s*phu\b/, ['ga tấm phủ', 'ga phủ']],
+    [/\bga\b(?!\s*chun)(?!\s*phu)(?!\s*tam)/, ['ga chun', 'ga tấm phủ', 'ga phủ']],
+    [/\bvo\s*chan\b|\bchan\s*he\b|\bchan\s*dong\b|\bchan\b/, ['chăn']],
+    [/\bvo\s*goi\s*om\b|\bgoi\s*om\b/, ['gối ôm']],
+    [/\bvo\s*goi\b|\bgoi\s*nam\b|\bgoi\b(?!\s*om)(?!\s*trang)/, ['gối']],
+    [/\bbvn\b|\bbao\s*ve\s*nem\b|\bbao\s*ve\b/, ['bảo vệ']],
+    [/\bdem\b|\bnem\b/, ['đệm']],
+    [/\btopper\b/, ['topper']],
+    [/\bkhan\b/, ['khăn']],
+    [/\btam\s*trang\s*tri\b/, ['trang trí']],
+    [/\bgoi\s*trang\s*tri\b/, ['gối trang trí', 'trang trí']],
+    [/\bvay\b/, ['váy']],
+    [/\bao\s*choang\b/, ['áo choàng']],
+    [/\bruot\s*chan\b/, ['ruột chăn']],
+    [/\bruot\s*goi\b/, ['ruột gối']],
+    [/\brem\b/, ['rem', 'rèm']],
+    [/\bbo\s*\d+\s*mon\b|\bcombo\b/, ['bộ']],
   ];
 
   for (const [regex, cats] of mapping) {
-    if (regex.test(norm)) {
-      patterns.push(...cats);
-    }
+    if (regex.test(norm)) categories.push(...cats);
   }
 
-  // Deduplicate
-  return [...new Set(patterns)];
+  // Extract materials (T200, T250, T300, T350, T400, LTH, MCR, tencel, tici)
+  const materials: string[] = [];
+  const matMatch = norm.match(/\bt\s*(\d{3})\b/g);
+  if (matMatch) {
+    for (const m of matMatch) {
+      const num = m.replace(/\s/g, '').toUpperCase();
+      materials.push(num);
+    }
+  }
+  if (/\blth\b/.test(norm)) materials.push('LTH');
+  if (/\bmcr\b/.test(norm)) materials.push('MCR');
+  if (/\btencel\b/.test(norm)) materials.push('tencel');
+  if (/\btici\b/.test(norm)) materials.push('tici');
+
+  return { categories: [...new Set(categories)], materials: [...new Set(materials)] };
 }
 
-function filterProductsByCategory(products: any[], patterns: string[]): any[] {
-  if (patterns.length === 0) return products;
+function filterProductsByCategory(products: any[], categories: string[], materials: string[]): any[] {
+  if (categories.length === 0 && materials.length === 0) return products;
   
-  const filtered = products.filter(p => {
-    const cat = (p.category || '').toLowerCase();
-    const name = (p.name || '').toLowerCase();
-    return patterns.some(pat => {
-      const lp = pat.toLowerCase();
-      return cat.includes(lp) || name.includes(lp);
+  // Step 1: Filter by category
+  let filtered = products;
+  if (categories.length > 0) {
+    filtered = products.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      return categories.some(pat => cat.includes(pat) || name.includes(pat));
     });
-  });
+  }
+
+  // Step 2: If we have materials AND category filter returned many results, narrow by material
+  if (materials.length > 0 && filtered.length > 100) {
+    const materialFiltered = filtered.filter(p => {
+      const cat = (p.category || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      return materials.some(mat => cat.includes(mat.toLowerCase()) || name.includes(mat.toLowerCase()));
+    });
+    // Only use material filter if it still leaves enough results
+    if (materialFiltered.length >= 30) {
+      filtered = materialFiltered;
+    }
+  }
 
   // Fallback: if too few results, return full catalog
   if (filtered.length < 30) {
