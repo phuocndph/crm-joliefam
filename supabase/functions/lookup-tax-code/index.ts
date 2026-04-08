@@ -183,16 +183,110 @@ function normalizeVN(text: string): string {
     .replace(/đ/g, 'd').replace(/Đ/g, 'd');
 }
 
+// Smart pattern detection: "trang soc" = sọc (white + striped), NOT trơn
+function detectPattern(text: string): string {
+  const norm = text.toLowerCase();
+  // Check "soc" or "ke" first — these are definitive
+  if (/\b(soc|ke)\b/.test(norm)) return 'sọc';
+  // "tron" or "trang tinh" = trơn
+  if (/\b(tron|trang\s*tinh)\b/.test(norm)) return 'trơn';
+  // "trang" alone (without "soc" nearby) = trơn (white = plain)
+  if (/\btrang\b/.test(norm) && !/\bsoc\b/.test(norm)) return 'trơn';
+  return '';
+}
+
+// Detect material from text
+function detectMaterial(text: string): string {
+  const norm = text.toLowerCase();
+  const matMatch = norm.match(/\bt\s*(\d{3})\b/i);
+  if (matMatch) return 'T' + matMatch[1];
+  for (const [re, name] of NAMED_MATERIALS) {
+    if (re.test(norm)) return name;
+  }
+  return '';
+}
+
+// Parse section headers like "Vải T250 trắng sọc:" or "Vải T300 sọc"
+interface SectionContext {
+  material: string;
+  pattern: string;
+  startIdx: number;
+  endIdx: number;
+}
+
+function parseSectionsFromRequest(normText: string): SectionContext[] {
+  const sections: SectionContext[] = [];
+  
+  // Match headers like: "vai t250 trang soc", "vai t300 soc", "vai lth"
+  // These are section headers that define material context for products below
+  const headerRegex = /\bvai\s+(?:t\s*\d{3}|lth|mcr|tencel|tici)\b[^:\n]*(?::|$)/gi;
+  let match;
+  const headerPositions: { idx: number; end: number; material: string; pattern: string }[] = [];
+  
+  while ((match = headerRegex.exec(normText)) !== null) {
+    const headerText = match[0];
+    const material = detectMaterial(headerText);
+    const pattern = detectPattern(headerText);
+    headerPositions.push({
+      idx: match.index,
+      end: match.index + match[0].length,
+      material,
+      pattern,
+    });
+  }
+  
+  // Also split by separators: "---", " - " at line start, or newlines with header
+  // Build sections from header positions
+  for (let i = 0; i < headerPositions.length; i++) {
+    const h = headerPositions[i];
+    const nextStart = i < headerPositions.length - 1 ? headerPositions[i + 1].idx : normText.length;
+    sections.push({
+      material: h.material,
+      pattern: h.pattern,
+      startIdx: h.end, // content starts AFTER header
+      endIdx: nextStart,
+    });
+  }
+  
+  // If no headers found, the entire text is one section
+  if (sections.length === 0) {
+    sections.push({
+      material: '',
+      pattern: '',
+      startIdx: 0,
+      endIdx: normText.length,
+    });
+  }
+  
+  return sections;
+}
+
 function parseRequestSegments(request: string): RequestSegment[] {
   const norm = normalizeVN(request);
   const segments: RequestSegment[] = [];
 
-  // Find all product keyword positions
+  // Step 0: Parse section headers to get material/pattern context per section
+  const sections = parseSectionsFromRequest(norm);
+  console.log('Parsed sections:', JSON.stringify(sections));
+
+  // Build a set of header ranges to exclude from product keyword scanning
+  const headerRanges: { start: number; end: number }[] = [];
+  const headerRegex2 = /\bvai\s+(?:t\s*\d{3}|lth|mcr|tencel|tici)\b[^:\n]*(?::|$)/gi;
+  let hm;
+  while ((hm = headerRegex2.exec(norm)) !== null) {
+    headerRanges.push({ start: hm.index, end: hm.index + hm[0].length });
+  }
+
+  // Find all product keyword positions, excluding those inside headers
   const found: { idx: number; end: number; type: string; needsFabric: boolean }[] = [];
   for (const [regex, type, needsFabric] of PRODUCT_KEYWORDS) {
     const re = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : regex.flags + 'g');
     let m;
     while ((m = re.exec(norm)) !== null) {
+      // Skip if inside a header range
+      const inHeader = headerRanges.some(hr => m!.index >= hr.start && m!.index < hr.end);
+      if (inHeader) continue;
+      
       const overlaps = found.some(f => m!.index >= f.idx && m!.index < f.end);
       if (!overlaps) {
         found.push({ idx: m.index, end: m.index + m[0].length, type, needsFabric });
@@ -204,24 +298,20 @@ function parseRequestSegments(request: string): RequestSegment[] {
 
   found.sort((a, b) => a.idx - b.idx);
 
-  // Collect all materials & patterns from entire request
+  // Global fallback materials & patterns (from entire text, excluding headers)
   const globalMaterials: string[] = [];
   const globalPatterns: string[] = [];
   const matRegex = /\bt\s*(\d{3})\b/gi;
   let matMatch;
   while ((matMatch = matRegex.exec(norm)) !== null) {
-    globalMaterials.push('T' + matMatch[1]);
+    const inHeader = headerRanges.some(hr => matMatch!.index >= hr.start && matMatch!.index < hr.end);
+    if (!inHeader) globalMaterials.push('T' + matMatch[1]);
   }
   for (const [re, name] of NAMED_MATERIALS) {
     if (re.test(norm)) globalMaterials.push(name);
   }
-  const patRegex = /\b(tron|trang\s*tinh|trang|soc|ke)\b/gi;
-  let patMatch;
-  while ((patMatch = patRegex.exec(norm)) !== null) {
-    const p = patMatch[1].toLowerCase();
-    if (p === 'soc' || p === 'ke') globalPatterns.push('sọc');
-    else globalPatterns.push('trơn');
-  }
+  const globalPat = detectPattern(norm);
+  if (globalPat) globalPatterns.push(globalPat);
 
   // Split into chunks per product keyword
   for (let i = 0; i < found.length; i++) {
@@ -243,7 +333,7 @@ function parseRequestSegments(request: string): RequestSegment[] {
       }).join('x');
     }
 
-    // Local material
+    // Local material from chunk
     let localMaterial = '';
     const localMatMatch = chunk.match(/\bt\s*(\d{3})\b/i);
     if (localMatMatch) localMaterial = 'T' + localMatMatch[1];
@@ -251,13 +341,8 @@ function parseRequestSegments(request: string): RequestSegment[] {
       if (re.test(chunk)) { localMaterial = name; break; }
     }
 
-    // Local pattern
-    let localPattern = '';
-    const localPatMatch = chunk.match(/\b(tron|trang\s*tinh|trang|soc|ke)\b/i);
-    if (localPatMatch) {
-      const p = localPatMatch[1].toLowerCase();
-      localPattern = (p === 'soc' || p === 'ke') ? 'sọc' : 'trơn';
-    }
+    // Local pattern from chunk (using smart detection)
+    const localPattern = detectPattern(chunk);
 
     // Quantity
     let qty = 1;
@@ -280,15 +365,30 @@ function parseRequestSegments(request: string): RequestSegment[] {
     });
   }
 
-  // Assign shared material/pattern to segments missing their own
-  const uniqueMats = [...new Set(globalMaterials)];
-  const uniquePats = [...new Set(globalPatterns)];
+  // Assign material/pattern from SECTION CONTEXT (not global first)
   for (const seg of segments) {
-    if (seg.needsFabric && !seg.material && uniqueMats.length > 0) {
-      seg.material = uniqueMats[0];
+    if (!seg.needsFabric) continue;
+
+    // Find which section this segment belongs to (by position in normalized text)
+    const segIdx = norm.indexOf(seg.rawText);
+    const section = sections.find(s => segIdx >= s.startIdx && segIdx < s.endIdx);
+
+    if (!seg.material) {
+      if (section && section.material) {
+        seg.material = section.material;
+      } else {
+        // Global fallback
+        const uniqueMats = [...new Set(globalMaterials)];
+        if (uniqueMats.length > 0) seg.material = uniqueMats[0];
+      }
     }
-    if (seg.needsFabric && !seg.pattern && uniquePats.length > 0) {
-      seg.pattern = uniquePats[0];
+    if (!seg.pattern) {
+      if (section && section.pattern) {
+        seg.pattern = section.pattern;
+      } else {
+        const uniquePats = [...new Set(globalPatterns)];
+        if (uniquePats.length > 0) seg.pattern = uniquePats[0];
+      }
     }
   }
 
