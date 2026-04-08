@@ -141,41 +141,19 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
     setImagePreview(null);
   };
 
-  const compressImage = (file: File, maxDim = 1200, quality = 0.7): Promise<Blob> => {
+  const compressImage = async (file: File, maxWidth = 1600, quality = 0.85): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.round(img.width * scale);
-          canvas.height = Math.round(img.height * scale);
-          const ctx = canvas.getContext("2d")!;
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          canvas.toBlob(
-            (blob) => blob ? resolve(blob) : reject(new Error("Canvas toBlob failed")),
-            "image/jpeg",
-            quality
-          );
-        };
-        img.onerror = reject;
-        img.src = event.target?.result as string;
+      const canvas = document.createElement('canvas');
+      const img = new Image();
+      img.onload = () => {
+        const ratio = Math.min(maxWidth / img.width, 1);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1]);
       };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.split(',')[1]);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
     });
   };
 
