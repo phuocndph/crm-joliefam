@@ -630,6 +630,17 @@ Output:
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+
+      // Validate matchedProductId — warn if AI returned fake IDs
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (parsed.items && Array.isArray(parsed.items)) {
+        for (const item of parsed.items) {
+          if (item.matchedProductId && !UUID_REGEX.test(item.matchedProductId)) {
+            console.warn(`⚠️ AI returned fake ID: "${item.matchedProductId}" for "${item.customName}"`);
+          }
+        }
+      }
+
       return new Response(JSON.stringify(parsed), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     } else {
