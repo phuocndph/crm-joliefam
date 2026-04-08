@@ -546,11 +546,11 @@ serve(async (req) => {
       const authHeader = req.headers.get("Authorization");
       const cacheKey = priceListId || "__all__";
       const cached = catalogCacheMap.get(cacheKey);
-      let productListText: string;
+      let allProducts: any[];
       
       if (cached && Date.now() - cached.timestamp < CATALOG_CACHE_TTL) {
-        productListText = cached.text;
-        console.log(`AI Quote Fill: using cached catalog for priceList=${cacheKey} (${cached.count} products)`);
+        allProducts = cached.products;
+        console.log(`AI Quote Fill: using cached catalog for priceList=${cacheKey} (${allProducts.length} products)`);
       } else {
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -560,7 +560,7 @@ serve(async (req) => {
 
         let query = supabase
           .from("products")
-          .select("id, name, specifications, description, price")
+          .select("id, name, specifications, description, price, category")
           .eq("in_stock", true);
         
         if (priceListId) {
@@ -576,13 +576,25 @@ serve(async (req) => {
           });
         }
 
-        productListText = (products || []).map((p: any) => 
-          `${p.id}|${p.name}|${p.specifications || ''}|${p.description || ''}|${p.price || 0}`
-        ).join("\n");
-        
-        catalogCacheMap.set(cacheKey, { text: productListText, count: (products || []).length, timestamp: Date.now() });
-        console.log(`AI Quote Fill: fetched ${(products || []).length} products for priceList=${cacheKey}, cached`);
+        allProducts = products || [];
+        catalogCacheMap.set(cacheKey, { products: allProducts, timestamp: Date.now() });
+        console.log(`AI Quote Fill: fetched ${allProducts.length} products for priceList=${cacheKey}, cached`);
       }
+
+      // Layer 2: Category-based filtering
+      const categoryPatterns = extractCategoryFilters(request || '');
+      const filteredProducts = filterProductsByCategory(allProducts, categoryPatterns);
+      console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after category filter (patterns: ${categoryPatterns.join(', ') || 'none'})`);
+
+      // Layer 1: Remove description for text-only (saves ~30% tokens)
+      const hasImage = !!imageBase64;
+      const productListText = filteredProducts.map((p: any) => 
+        hasImage 
+          ? `${p.id}|${p.name}|${p.specifications || ''}|${p.description || ''}|${p.price || 0}`
+          : `${p.id}|${p.name}|${p.specifications || ''}|${p.price || 0}`
+      ).join("\n");
+      
+      const catalogHeader = hasImage ? "ID|Tên|Quy cách|Mô tả|Giá" : "ID|Tên|Quy cách|Giá";
 
       const aiQuoteFillPrompt = `Bạn là chuyên gia báo giá sản phẩm nội thất phòng ngủ Việt Nam. Nhân viên gõ nhanh, không dấu, viết tắt — bạn phải hiểu đúng ý.
 
