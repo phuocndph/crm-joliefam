@@ -1525,21 +1525,25 @@ Chỉ trả text, KHÔNG markdown, KHÔNG giải thích.`;
             },
           ];
           
-          // Use vision model for OCR only
+          // Use OCR model from config (separate from image fallback model)
+          const configOcrModel = aiConfig['ai_quote_ocr_model'];
           const configImageModel = aiConfig['ai_quote_image_model'];
-          const ocrModel = configImageModel || "google/gemini-2.5-flash";
+          const ocrModel = configOcrModel || configImageModel || "google/gemini-2.5-flash";
           
           const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
           const ocrText = ocrResult?.raw || (typeof ocrResult === 'string' ? ocrResult : JSON.stringify(ocrResult));
           
-          console.log(`AI Quote Fill: Step 1 OCR took ${Date.now() - step1Start}ms (${ocrText.length} chars): ${ocrText.substring(0, 300)}`);
+          console.log(`AI Quote Fill: Step 1 OCR took ${Date.now() - step1Start}ms (${ocrText.length} chars), model=${ocrModel}: ${ocrText.substring(0, 300)}`);
           
           // Combine OCR text with original request
           effectiveRequest = request ? `${request}\n${ocrText}` : ocrText;
 
-          // Delay 1.5s between steps to release Beeknoee concurrent slot
-          console.log('AI Quote Fill: waiting 1.5s before Step 2 to release concurrent slot...');
-          await new Promise(r => setTimeout(r, 1500));
+          // Configurable delay between steps (from DB config, default 1500ms)
+          const stepDelay = aiConfig['ai_quote_step_delay'] ? parseInt(aiConfig['ai_quote_step_delay']) : 1500;
+          if (stepDelay > 0) {
+            console.log(`AI Quote Fill: waiting ${stepDelay}ms before Step 2 to release concurrent slot...`);
+            await new Promise(r => setTimeout(r, stepDelay));
+          }
         } catch (ocrError) {
           console.error('OCR extraction failed, falling back to full multimodal:', ocrError);
           // Fall through — will use old multimodal approach below
