@@ -1024,8 +1024,7 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
         ]
       : stepHint === 'text'
         ? [
-            // Text matching step: use Gemini models only for reliability
-            { name: "gemini-3-flash-preview", timeout: 55000 },
+            // Text matching step: use Gemini 2.5 Flash (gemini-3-flash-preview not available on Beeknoee)
             { name: "gemini-2.5-flash", timeout: 55000 },
           ]
         : [
@@ -1472,9 +1471,10 @@ serve(async (req) => {
       // Step 1: If image present, OCR extract text first (small prompt, no catalog)
       let effectiveRequest = request || '';
       const hasImage = !!imageBase64;
+      let step1Start: number | null = null;
       
       if (hasImage) {
-        const step1Start = Date.now();
+        step1Start = Date.now();
         console.log('AI Quote Fill: Step 1 — OCR extraction from image...');
         const defaultOcrPrompt = `Trích xuất thông tin bảng sản phẩm từ ảnh, xuất JSON như sau:
 {"san_pham":[{"stt":1,"ten_san_pham":"","quy_cach":"","chat_lieu":"","so_luong":0,"don_gia":0,"thanh_tien":0}]}
@@ -1655,15 +1655,20 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
       // Add pipeline metadata for transparency
-      if (hasImage) {
-        const ocrModelUsed = aiConfig['ai_quote_ocr_model'] || aiConfig['ai_quote_image_model'] || 'google/gemini-2.5-flash';
-        const stepDelayUsed = aiConfig['ai_quote_step_delay'] ? parseInt(aiConfig['ai_quote_step_delay']) : 1500;
-        parsed.pipeline = {
-          step1: { model: ocrModelUsed, duration: step1Start ? (Date.now() - step1Start - step2Time - stepDelayUsed) : null },
-          delay: stepDelayUsed,
-          step2: { model: quoteModel, duration: step2Time },
-          total: Date.now() - step1Start,
-        };
+      if (hasImage && step1Start) {
+        try {
+          const ocrModelUsed = aiConfig['ai_quote_ocr_model'] || aiConfig['ai_quote_image_model'] || 'google/gemini-2.5-flash';
+          const stepDelayUsed = aiConfig['ai_quote_step_delay'] ? parseInt(aiConfig['ai_quote_step_delay']) : 1500;
+          const totalDuration = Date.now() - step1Start;
+          parsed.pipeline = {
+            step1: { model: ocrModelUsed, duration: totalDuration - (step2Time || 0) - stepDelayUsed },
+            delay: stepDelayUsed,
+            step2: { model: quoteModel, duration: step2Time },
+            total: totalDuration,
+          };
+        } catch (e) {
+          console.warn('Pipeline metadata error (non-fatal):', e);
+        }
       }
 
       return new Response(JSON.stringify(parsed), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
