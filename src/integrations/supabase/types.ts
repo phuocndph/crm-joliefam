@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_config: {
+        Row: {
+          config_key: string
+          config_value: string
+          id: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          config_key: string
+          config_value: string
+          id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          config_key?: string
+          config_value?: string
+          id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       ai_settings: {
         Row: {
           created_at: string
