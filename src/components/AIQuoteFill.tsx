@@ -218,8 +218,7 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
 
       // Compress and convert image to base64 if present
       if (imageFile) {
-        const compressed = await compressImage(imageFile);
-        bodyData.imageBase64 = await blobToBase64(compressed);
+        bodyData.imageBase64 = await compressImage(imageFile);
         bodyData.imageMimeType = "image/jpeg";
       }
 

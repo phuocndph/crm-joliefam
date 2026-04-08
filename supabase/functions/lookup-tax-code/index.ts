@@ -1475,63 +1475,76 @@ serve(async (req) => {
       
       if (hasImage) {
         step1Start = Date.now();
-        console.log('AI Quote Fill: Step 1 — OCR extraction from image...');
-        const defaultOcrPrompt = `Trích xuất thông tin bảng sản phẩm từ ảnh, xuất JSON như sau:
-{"san_pham":[{"stt":1,"ten_san_pham":"","quy_cach":"","chat_lieu":"","so_luong":0,"don_gia":0,"thanh_tien":0}]}
-Lưu ý:
-- Chỉ lấy dữ liệu trong bảng sản phẩm, bỏ qua mọi thông tin khác
-- Giữ nguyên số (không thêm/bỏ ký tự)
-- Ô chat_lieu nào trống thì để ""
-- Chỉ trả về JSON, không giải thích`;
-        
-        const ocrPrompt = aiConfig['ai_quote_ocr_prompt'] || defaultOcrPrompt;
-        
+        console.log('AI Quote Fill: Single-step OCR + matching from image...');
+
+        // Pre-build filtered products for single-step prompt
+        const preSegments = parseRequestSegments(request || '');
+        let preFiltered: any[];
+        if (preSegments.length > 0) {
+          preFiltered = filterProductsBySegments(allProducts, preSegments, customTypeToCategory);
+        } else {
+          const { categories: catP, materials: matP } = extractCategoryFilters(request || '');
+          preFiltered = filterProductsByCategory(allProducts, catP, matP);
+        }
+
+        const productListText = preFiltered.map((p: any) =>
+          `${p.id}|${p.name}|${p.specifications || ''}|${p.price || 0}`
+        ).join("\n");
+
+        const singleStepPrompt = `
+Bạn nhận được ảnh bảng báo giá. Hãy:
+1. Đọc bảng sản phẩm từ ảnh
+2. So khớp với bảng giá hệ thống bên dưới
+3. Trả về JSON kết quả luôn — KHÔNG qua bước trung gian
+
+## BẢNG GIÁ HỆ THỐNG (ID|Tên|Quy cách|Giá)
+${productListText}
+
+## OUTPUT — JSON thuần, KHÔNG markdown
+{"items":[{"matchedProductId":"uuid-từ-bảng-giá","customName":"tên đúng kích thước khách","quantity":1,"price":0,"specifications":"","note":""}]}
+        `.trim();
+
         try {
-          const ocrMessages = [
-            { role: "system", content: ocrPrompt },
+          const singleStepMessages = [
+            { role: "system", content: singleStepPrompt },
             {
               role: "user",
               content: [
                 { type: "image_url", image_url: { url: `data:${imageMimeType || 'image/jpeg'};base64,${imageBase64}` } },
-                { type: "text", text: request ? `Thông tin bổ sung: ${request}` : "Trích xuất sản phẩm từ ảnh." },
+                { type: "text", text: request || "So khớp sản phẩm từ ảnh với bảng giá." },
               ],
             },
           ];
-          
-          const configOcrModel = aiConfig['ai_quote_ocr_model'];
-          const configImageModel = aiConfig['ai_quote_image_model'];
-          const ocrModel = configOcrModel || configImageModel || "google/gemini-2.5-flash";
-          
-          const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
-          
-          // Try to parse structured JSON from OCR
-          let ocrText = '';
-          if (ocrResult?.san_pham && Array.isArray(ocrResult.san_pham)) {
-            // Structured JSON result - convert to text for Step 2 matching
-            ocrText = ocrResult.san_pham.map((p: any) => 
-              `${p.ten_san_pham || ''} ${p.quy_cach || ''} ${p.chat_lieu || ''} x${p.so_luong || 1}`.trim()
-            ).join('\n');
-            console.log(`AI Quote Fill: Step 1 OCR parsed ${ocrResult.san_pham.length} structured products`);
-          } else {
-            // Fallback: raw text result
-            ocrText = ocrResult?.raw || (typeof ocrResult === 'string' ? ocrResult : JSON.stringify(ocrResult));
-          }
-          
-          console.log(`AI Quote Fill: Step 1 OCR took ${Date.now() - step1Start}ms (${ocrText.length} chars), model=${ocrModel}: ${ocrText.substring(0, 300)}`);
-          
-          effectiveRequest = request ? `${request}\n${ocrText}` : ocrText;
 
-          // Configurable delay between steps (from DB config, default 1500ms)
-          const stepDelay = aiConfig['ai_quote_step_delay'] ? parseInt(aiConfig['ai_quote_step_delay']) : 1500;
-          if (stepDelay > 0) {
-            console.log(`AI Quote Fill: waiting ${stepDelay}ms before Step 2 to release concurrent slot...`);
-            await new Promise(r => setTimeout(r, stepDelay));
+          const ocrModel = aiConfig['ai_quote_ocr_model'] || "google/gemini-2.5-flash";
+          const singleResult = await callAI(singleStepMessages, true, ocrModel, 'ocr');
+
+          if (singleResult?.items && Array.isArray(singleResult.items)) {
+            console.log(`Single-step matched ${singleResult.items.length} items in ${Date.now() - step1Start}ms`);
+            const validProductIds = new Set(allProducts.map((p: any) => p.id));
+            const segs = parseRequestSegments(request || '');
+            const candidateMap = segs.length > 0
+              ? buildSegmentCandidates(segs, allProducts, customTypeToCategory)
+              : new Map();
+            const validation = validateAndRepairItems(singleResult.items, segs, candidateMap, allProducts, validProductIds);
+
+            return new Response(JSON.stringify({ items: validation.items }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
           }
-        } catch (ocrError) {
-          console.error('OCR extraction failed, falling back to full multimodal:', ocrError);
-          // Fall through — will use old multimodal approach below
+
+          // Fallback: AI chỉ trả OCR text → dùng cho Step 2
+          if (singleResult?.san_pham && Array.isArray(singleResult.san_pham)) {
+            effectiveRequest = singleResult.san_pham.map((p: any) =>
+              `${p.ten_san_pham || ''} ${p.quy_cach || ''} x${p.so_luong || 1}`.trim()
+            ).join('\n');
+            console.log(`Single-step OCR fallback: ${singleResult.san_pham.length} products → Step 2`);
+          }
+        } catch (e) {
+          console.error('Single-step failed, falling back to Step 2:', e);
         }
       }
+      // Nếu single-step không trả items → tiếp tục Step 2 bên dưới như cũ
 
       // Step 2: Parse segments from effective request (OCR text or original)
       const segments = parseRequestSegments(effectiveRequest);
