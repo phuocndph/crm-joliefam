@@ -324,16 +324,15 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
             <tbody>
               <tr>
                 <td style={{ width: "45%", textAlign: "center", verticalAlign: "top", border: "none", padding: "0 8px" }}>
-                  <p className="font-bold text-sm" style={{ marginBottom: 4 }}>{sellerName.toUpperCase()}</p>
-                  <p className="text-xs" style={{ color: "#374151" }}>
+                  <p style={{ fontWeight: "bold", fontSize: "14px", marginBottom: 4 }}>{sellerName.toUpperCase()}</p>
+                  <p style={{ fontSize: "13px" }}>
                     {documentNumber ? `Số: ${documentNumber}` : "Số: .../ĐNTT"}
                   </p>
                 </td>
                 <td style={{ width: "55%", textAlign: "center", verticalAlign: "top", border: "none", padding: "0 8px" }}>
-                  <p className="font-bold text-sm" style={{ marginBottom: 0 }}>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
-                  <p className="font-bold text-sm" style={{ textDecoration: "underline", marginBottom: 2 }}>Độc lập – Tự do – Hạnh phúc</p>
-                  <p className="text-xs" style={{ color: "#6b7280", marginBottom: 4 }}>————————</p>
-                  <p className="text-xs italic" style={{ color: "#374151" }}>
+                  <p style={{ fontWeight: "bold", fontSize: "14px", marginBottom: 0 }}>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
+                  <p style={{ fontWeight: "bold", fontSize: "14px", borderBottom: "2px solid #000", display: "inline-block", paddingBottom: 2, marginBottom: 6 }}>Độc lập – Tự do – Hạnh phúc</p>
+                  <p style={{ fontSize: "13px", fontStyle: "italic", marginTop: 6 }}>
                     TP.HCM, ngày {dateParts.day} tháng {dateParts.month} năm {dateParts.year}
                   </p>
                 </td>
@@ -342,9 +341,9 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
           </table>
 
           {/* Title */}
-          <div className="text-center" style={{ margin: "16px 0 8px" }}>
-            <h2 className="text-lg font-bold" style={{ color: "#000", marginBottom: 4 }}>ĐỀ NGHỊ THANH TOÁN</h2>
-            <p className="text-sm italic">V/v: Đề nghị thanh toán theo Hợp đồng số {contract.contract_number}</p>
+          <div className="text-center" style={{ margin: "20px 0 12px" }}>
+            <h2 style={{ fontWeight: "bold", fontSize: "16px", color: "#000", marginBottom: 4 }}>ĐỀ NGHỊ THANH TOÁN</h2>
+            <p style={{ fontSize: "13px", fontStyle: "italic" }}>V/v: Đề nghị thanh toán theo Hợp đồng số {contract.contract_number}</p>
           </div>
 
           {/* Kính gửi */}
@@ -356,7 +355,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
 
           {/* Bên đề nghị */}
           <div style={{ marginTop: 12 }}>
-            <p><strong>Bên đề nghị (Bên A):</strong></p>
+            <p><strong>Đơn vị đề nghị thanh toán:</strong></p>
             <p style={{ paddingLeft: 20 }}>- Tên đơn vị: {sellerName}</p>
             {sellerTaxCode && <p style={{ paddingLeft: 20 }}>- Mã số thuế: {sellerTaxCode}</p>}
             {sellerAddress && <p style={{ paddingLeft: 20 }}>- Địa chỉ: {sellerAddress}</p>}
@@ -366,7 +365,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
 
           {/* Căn cứ */}
           <p style={{ marginTop: 12, textAlign: "justify" }}>
-            Căn cứ Hợp đồng kinh tế số <strong>{contract.contract_number}</strong> ký ngày {formatDate(contract.contract_date)} giữa {sellerName} (Bên A) và {buyerName} (Bên B) về việc cung cấp hàng hóa, Bên A kính đề nghị Bên B thanh toán khoản tiền theo bảng chi tiết dưới đây:
+            Căn cứ Hợp đồng số <strong>{contract.contract_number}</strong> ký ngày {formatDate(contract.contract_date)} giữa hai bên về việc cung cấp hàng hóa, {sellerName} kính đề nghị Quý Công ty thanh toán số tiền theo bảng chi tiết dưới đây:
           </p>
 
           {/* Bảng thanh toán */}
@@ -417,25 +416,25 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
 
           {/* Kết */}
           <p style={{ marginTop: 16, textAlign: "justify" }}>
-            Kính đề nghị Quý Công ty sắp xếp thanh toán theo thông tin nêu trên.
+            Kính đề nghị Quý Công ty/Đơn vị sắp xếp thanh toán đúng hạn theo thông tin nêu trên.
             {sellerPhone ? ` Mọi thắc mắc xin vui lòng liên hệ theo số điện thoại: ${sellerPhone} để được hỗ trợ.` : ""}
           </p>
-          <p style={{ marginTop: 4 }}>Trân trọng cảm ơn sự hợp tác của Quý khách hàng./</p>
+          <p style={{ marginTop: 4 }}>Trân trọng./</p>
 
           {/* Ký tên */}
           <div className="grid grid-cols-2 gap-8 text-center" style={{ marginTop: 32 }}>
             <div>
-              <p className="font-bold">ĐẠI DIỆN BÊN A</p>
-              <p className="text-xs italic" style={{ color: "#6b7280" }}>(Ký, đóng dấu, ghi rõ họ tên)</p>
+              <p style={{ fontWeight: "bold" }}>ĐẠI DIỆN BÊN BÁN</p>
+              <p style={{ fontSize: "11px", fontStyle: "italic", color: "#6b7280" }}>(Ký, đóng dấu, ghi rõ họ tên)</p>
               <OnlineStampSignature show={showOnlineStamp} sellerRep={sellerRep} sellerPos={sellerPos} />
               {!showOnlineStamp && <div style={{ height: 80 }}></div>}
-              {sellerRep && !showOnlineStamp && <p className="font-bold text-sm">{sellerRep}</p>}
+              {sellerRep && !showOnlineStamp && <p style={{ fontWeight: "bold", fontSize: "13px" }}>{sellerRep}</p>}
             </div>
             <div>
-              <p className="font-bold">ĐẠI DIỆN BÊN B</p>
-              <p className="text-xs italic" style={{ color: "#6b7280" }}>(Ký, đóng dấu, ghi rõ họ tên)</p>
+              <p style={{ fontWeight: "bold" }}>XÁC NHẬN BÊN MUA</p>
+              <p style={{ fontSize: "11px", fontStyle: "italic", color: "#6b7280" }}>(Ký, đóng dấu, ghi rõ họ tên)</p>
               <div style={{ height: 80 }}></div>
-              {buyerRep && <p className="font-bold text-sm">{buyerRep}</p>}
+              {buyerRep && <p style={{ fontWeight: "bold", fontSize: "13px" }}>{buyerRep}</p>}
             </div>
           </div>
         </div>
