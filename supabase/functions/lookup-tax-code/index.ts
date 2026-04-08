@@ -1487,13 +1487,16 @@ serve(async (req) => {
         console.log(`AI Quote Fill: fetched ${allProducts.length} products for priceList=${cacheKey}, cached`);
       }
 
+      // Build custom TYPE_TO_CATEGORY from DB config
+      const customTypeToCategory = buildTypeToCategory(aiConfig['ai_quote_type_categories'] || null);
+
       // Layer 2: Segment-based filtering (new) or legacy fallback
       const segments = parseRequestSegments(request || '');
       let filteredProducts: any[];
       
       if (segments.length > 0) {
-        filteredProducts = filterProductsBySegments(allProducts, segments);
-        console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after segment filter (${segments.length} segments: ${segments.map(s => s.type).join(', ')})`);
+        filteredProducts = filterProductsBySegments(allProducts, segments, customTypeToCategory);
+        console.log(`AI Quote Fill: ${allProducts.length} total → ${filteredProducts.length} after segment filter (${segments.length} segments: ${segments.map(s => s.type).join(', ')})${customTypeToCategory ? ' [CUSTOM mapping]' : ''}`);
       } else {
         // Legacy fallback for requests without clear product keywords
         const { categories: catPatterns, materials: matPatterns } = extractCategoryFilters(request || '');
