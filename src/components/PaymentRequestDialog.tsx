@@ -135,7 +135,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
               children: [
                 new Paragraph({ children: [new TextRun({ text: "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold: true, size: 26, font })], alignment: AlignmentType.CENTER }),
                 new Paragraph({ children: [new TextRun({ text: "Độc lập – Tự do – Hạnh phúc", bold: true, size: 26, font })], alignment: AlignmentType.CENTER, border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000", space: 1 } } }),
-                new Paragraph({ children: [new TextRun({ text: `TP.HCM, ngày ${dateParts.day} tháng ${dateParts.month} năm ${dateParts.year}`, italics: true, size: sz, font })], alignment: AlignmentType.CENTER, spacing: { before: 80 } }),
+                new Paragraph({ children: [new TextRun({ text: `Hà Nội, ngày ${dateParts.day} tháng ${dateParts.month} năm ${dateParts.year}`, italics: true, size: sz, font })], alignment: AlignmentType.CENTER, spacing: { before: 80 } }),
               ],
               borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
             }),
@@ -333,7 +333,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
                   <p style={{ fontWeight: "bold", fontSize: "14px", marginBottom: 0 }}>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
                   <p style={{ fontWeight: "bold", fontSize: "14px", borderBottom: "2px solid #000", display: "inline-block", paddingBottom: 2, marginBottom: 6 }}>Độc lập – Tự do – Hạnh phúc</p>
                   <p style={{ fontSize: "13px", fontStyle: "italic", marginTop: 6 }}>
-                    TP.HCM, ngày {dateParts.day} tháng {dateParts.month} năm {dateParts.year}
+                    Hà Nội, ngày {dateParts.day} tháng {dateParts.month} năm {dateParts.year}
                   </p>
                 </td>
               </tr>
