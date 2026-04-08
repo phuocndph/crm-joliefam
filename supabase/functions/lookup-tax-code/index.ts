@@ -1730,7 +1730,7 @@ ${segmentInstruction}
       // Validate
       let warnings: string[] = [];
       if (parsed.items && Array.isArray(parsed.items)) {
-        const candidateMap = segments.length > 0 ? buildSegmentCandidates(segments, allProducts) : new Map();
+        const candidateMap = segments.length > 0 ? buildSegmentCandidates(segments, allProducts, customTypeToCategoryDebug) : new Map();
         const validProductIds = new Set(allProducts.map((p: any) => p.id));
         const validation = validateAndRepairItems(parsed.items, segments, candidateMap, allProducts, validProductIds);
         parsed.items = validation.items;
