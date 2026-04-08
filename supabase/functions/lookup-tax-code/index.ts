@@ -1615,7 +1615,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
       // Build segment-scoped candidate map for validation
-      const candidateMap = segments.length > 0 ? buildSegmentCandidates(segments, allProducts) : new Map();
+      const candidateMap = segments.length > 0 ? buildSegmentCandidates(segments, allProducts, customTypeToCategory) : new Map();
       const validProductIds = new Set(allProducts.map((p: any) => p.id));
       
       if (parsed.items && Array.isArray(parsed.items)) {
@@ -1674,13 +1674,16 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
 
       const allProducts = products || [];
 
+      // Build custom TYPE_TO_CATEGORY from DB config
+      const customTypeToCategoryDebug = buildTypeToCategory(dbConfig['ai_quote_type_categories'] || null);
+
       // Parse segments
       const segments = parseRequestSegments(request);
       
       // Filter
       let filteredProducts: any[];
       if (segments.length > 0) {
-        filteredProducts = filterProductsBySegments(allProducts, segments);
+        filteredProducts = filterProductsBySegments(allProducts, segments, customTypeToCategoryDebug);
       } else {
         const { categories, materials } = extractCategoryFilters(request);
         filteredProducts = filterProductsByCategory(allProducts, categories, materials);
