@@ -263,12 +263,21 @@ function validateAndRepairItems(
     let bestSegIdx = -1;
     if (segments.length > 0) {
       const itemNorm = removeVietnameseTones(item.customName || '');
+      const itemType = getProductType(item.customName || '');
       let bestSegScore = -1;
       for (let si = 0; si < segments.length; si++) {
         const seg = segments[si];
         const segNorm = removeVietnameseTones(seg.type);
+        const segType = getProductType(seg.type);
         let score = 0;
-        if (itemNorm.includes(segNorm)) score += 5;
+        
+        // Exact type match gets highest priority (weighted by type length to prefer longer/more specific matches)
+        if (itemType && segType && itemType === segType) {
+          score += 10 + segNorm.length;
+        } else if (itemNorm.includes(segNorm)) {
+          // Partial text match — but penalize short matches to avoid "chan" matching "chăn hè" etc.
+          score += segNorm.length;
+        }
         // Material match
         if (seg.material && itemNorm.includes(seg.material.toLowerCase())) score += 3;
         // Size match
@@ -301,13 +310,21 @@ function validateAndRepairItems(
         warnings.push(`Không tìm thấy SP phù hợp cho "${item.customName}"`);
       }
     } else {
-      // ID is valid — but does it belong to the right segment?
+      // ID is valid — check if it belongs to the right segment
       if (bestSegIdx >= 0) {
         const candidates = candidateMap.get(bestSegIdx) || [];
         const isInCandidates = candidates.some(c => c.id === id);
-        if (isInCandidates) {
-          // Check exact quality
-          const matchedProduct = allProducts.find(p => p.id === id);
+        
+        // Check if the item's product type matches the segment type
+        const matchedProduct = allProducts.find(p => p.id === id);
+        const itemType = getProductType(item.customName || '');
+        const segType = getProductType(segments[bestSegIdx].type);
+        const productType = matchedProduct ? getProductType(matchedProduct.name + ' ' + (matchedProduct.specifications || '')) : '';
+        const typeMatchesSegment = itemType && segType && itemType === segType;
+        const productMatchesItem = productType && itemType && productType === itemType;
+        
+        if (isInCandidates || (productMatchesItem && typeMatchesSegment)) {
+          // Product is in candidates OR product type matches both item and segment — trust it
           if (matchedProduct) {
             const constraints = { material: segments[bestSegIdx].material, pattern: segments[bestSegIdx].pattern };
             const result = findClosestProductScoped(item.customName || '', [matchedProduct], allProducts, constraints);
@@ -649,9 +666,13 @@ function parseRequestSegments(request: string): RequestSegment[] {
     let qty = 1;
     const qtyRegexes = [/(\d+)\s*c(?!\s*m)\b/i, /(\d+)\s*(cai|bo|chiec|cap|doi)\b/i];
     const leadingQtyMatch = leadingText.match(qtyRegexes[0]) || leadingText.match(qtyRegexes[1]);
+    // Also check for bare leading number: "10 ga chun", "20 ruột gối"
+    const leadingBareQtyMatch = !leadingQtyMatch ? leadingText.match(/^(\d+)\s*$/) : null;
     const chunkQtyMatch = chunk.match(/[x×]\s*(\d+)\s*$/) || chunk.match(qtyRegexes[0]) || chunk.match(qtyRegexes[1]);
     if (leadingQtyMatch) {
       qty = parseInt(leadingQtyMatch[1]) || 1;
+    } else if (leadingBareQtyMatch) {
+      qty = parseInt(leadingBareQtyMatch[1]) || 1;
     } else if (chunkQtyMatch) {
       qty = parseInt(chunkQtyMatch[1]) || 1;
     }
@@ -721,7 +742,7 @@ const TYPE_TO_CATEGORY: Record<string, string[]> = {
   'chăn hè': ['chăn hè'],
   'vỏ chăn chần': ['vỏ chăn chần'],
   'chăn đông': ['vỏ chăn chần'],
-  'vỏ chăn': ['chăn'],
+  'vỏ chăn': ['vỏ chăn'],
   'chăn': ['chăn'],
   'vỏ gối ôm': ['gối ôm'],
   'gối ôm': ['gối ôm'],
