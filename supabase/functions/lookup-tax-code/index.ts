@@ -1616,11 +1616,14 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       const authHeader = req.headers.get("Authorization");
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-      const supabase = createClient(supabaseUrl, supabaseKey, {
+      const supabaseClient = createClient(supabaseUrl, supabaseKey, {
         global: { headers: { Authorization: authHeader || "" } },
       });
 
-      const { data: products, error: dbError } = await supabase
+      // Load DB config (for defaults when no config passed from client)
+      const dbConfig = await loadAIConfig(supabaseClient);
+
+      const { data: products, error: dbError } = await supabaseClient
         .from("products")
         .select("id, name, specifications, description, price, category")
         .eq("in_stock", true)
