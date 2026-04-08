@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Save, Loader2, Play, Sparkles, Brain, Database, TestTube, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Play, Sparkles, Brain, Database, TestTube, RotateCcw, ChevronDown, ChevronUp, Eye, Clock, Zap, ArrowRight, AlertTriangle } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const DEFAULT_PROMPT_DISPLAY = `Bạn là chuyên gia báo giá nội thất phòng ngủ VN. Nhân viên gõ nhanh, không dấu, viết tắt.
@@ -50,13 +50,15 @@ matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU bảng giá. TUY�
 Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
 
 const AI_MODELS = [
-  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", desc: "Nhanh & tiết kiệm" },
-  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Cân bằng (mặc định text)" },
-  { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash Preview", desc: "Mặc định ảnh" },
-  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", desc: "Chính xác cao" },
-  { value: "openai/gpt-5-mini", label: "GPT-5 Mini", desc: "OpenAI cân bằng" },
-  { value: "openai/gpt-5", label: "GPT-5", desc: "Cao cấp nhất" },
+  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", desc: "Nhanh & tiết kiệm", vision: false },
+  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Cân bằng (mặc định text)", vision: true },
+  { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash Preview", desc: "Mặc định ảnh", vision: true },
+  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", desc: "Chính xác cao", vision: true },
+  { value: "openai/gpt-5-mini", label: "GPT-5 Mini", desc: "OpenAI cân bằng", vision: false },
+  { value: "openai/gpt-5", label: "GPT-5", desc: "Cao cấp nhất", vision: true },
 ];
+
+const VISION_MODELS = AI_MODELS.filter(m => m.vision);
 
 const DEFAULT_TYPE_CATEGORIES: Record<string, string[]> = {
   'ga chun': ['ga chun'],
@@ -99,6 +101,8 @@ interface AISettings {
   ai_quote_fill_prompt: string;
   ai_quote_text_model: string;
   ai_quote_image_model: string;
+  ai_quote_ocr_model: string;
+  ai_quote_step_delay: string;
   ai_quote_type_categories: string;
   ai_quote_product_keywords: string;
   ai_quote_material_keywords: string;
@@ -109,6 +113,8 @@ const DEFAULTS: AISettings = {
   ai_quote_fill_prompt: '',
   ai_quote_text_model: 'google/gemini-2.5-flash',
   ai_quote_image_model: 'google/gemini-3-flash-preview',
+  ai_quote_ocr_model: 'google/gemini-2.5-flash',
+  ai_quote_step_delay: '1500',
   ai_quote_type_categories: JSON.stringify(DEFAULT_TYPE_CATEGORIES, null, 2),
   ai_quote_product_keywords: JSON.stringify(DEFAULT_PRODUCT_TYPE_KEYWORDS),
   ai_quote_material_keywords: JSON.stringify(DEFAULT_MATERIAL_KEYWORDS),
