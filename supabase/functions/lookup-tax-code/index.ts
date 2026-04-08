@@ -551,7 +551,7 @@ function parseRequestSegments(request: string): RequestSegment[] {
 
   // Build a set of header ranges to exclude from product keyword scanning
   const headerRanges: { start: number; end: number }[] = [];
-  const headerRegex2 = /\bvai\s+(?:t\s*\d{3}|lth|mcr|tencel|tici)\b[^:\n]*(?::|$)/gi;
+  const headerRegex2 = /\b(?:vai\s+)?(?:t\s*\d{3}|lth|mcr|tencel|tici)\b[^:\n]*:?/gi;
   let hm;
   while ((hm = headerRegex2.exec(norm)) !== null) {
     headerRanges.push({ start: hm.index, end: hm.index + hm[0].length });
