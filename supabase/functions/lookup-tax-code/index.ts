@@ -11,6 +11,120 @@ const corsHeaders = {
 const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const catalogCacheMap = new Map<string, { products: any[]; timestamp: number }>();
 
+// ==================== FIND CLOSEST PRODUCT ====================
+
+function removeVietnameseTones(str: string): string {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+}
+
+function extractSizeDimensions(text: string): number[] {
+  const normalized = removeVietnameseTones(text);
+  const dims: number[] = [];
+  // Match patterns like 160x200, 1.6x2.0, 45x65, 50x80x330g
+  const matches = normalized.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/g);
+  if (matches) {
+    for (const m of matches) {
+      const parts = m.split(/x/i).map(Number);
+      dims.push(...parts);
+    }
+  }
+  return dims;
+}
+
+const PRODUCT_TYPE_KEYWORDS = [
+  'chan he', 'chan dong', 'vo chan', 'ga chun', 'ga phu', 'ga goi',
+  'vo goi', 'goi trang tri', 'bao ve nem', 'bvn', 'tam trang tri',
+  'tham chan', 'tham', 'khan tam', 'khan mat', 'chan', 'ga', 'goi',
+  'drap', 'rap', 'nem', 'ruot chan', 'ruot goi', 'ao goi',
+];
+
+function getProductType(text: string): string {
+  const norm = removeVietnameseTones(text);
+  for (const kw of PRODUCT_TYPE_KEYWORDS) {
+    if (norm.includes(kw)) return kw;
+  }
+  return '';
+}
+
+const MATERIAL_KEYWORDS = ['t200', 't250', 't300', 't350', 't400', 't500', 'lth', 'tencel', 'mcr', 'modal', 'satin'];
+
+function getMaterial(text: string): string {
+  const norm = removeVietnameseTones(text);
+  for (const mat of MATERIAL_KEYWORDS) {
+    if (norm.includes(mat)) return mat;
+  }
+  return '';
+}
+
+function findClosestProduct(itemName: string, allProducts: any[]): any | null {
+  if (!itemName || !allProducts.length) return null;
+
+  const itemType = getProductType(itemName);
+  const itemMaterial = getMaterial(itemName);
+  const itemDims = extractSizeDimensions(itemName);
+  const itemNorm = removeVietnameseTones(itemName);
+
+  let bestProduct: any = null;
+  let bestScore = -1;
+
+  for (const product of allProducts) {
+    const prodName = product.name || '';
+    const prodSpec = product.specifications || '';
+    const fullText = prodName + ' ' + prodSpec;
+    const prodType = getProductType(fullText);
+    const prodMaterial = getMaterial(fullText);
+    const prodDims = extractSizeDimensions(fullText);
+    const prodNorm = removeVietnameseTones(fullText);
+
+    let score = 0;
+
+    // Product type match (most important)
+    if (itemType && prodType && itemType === prodType) {
+      score += 10;
+    } else if (itemType && prodType) {
+      // Partial type match (e.g., both contain 'chan' or 'ga')
+      const itemWords = itemNorm.split(/\s+/);
+      const prodWords = prodNorm.split(/\s+/);
+      const commonWords = itemWords.filter(w => w.length > 2 && prodWords.includes(w));
+      score += Math.min(commonWords.length * 2, 6);
+    }
+
+    // Material match
+    if (itemMaterial && prodMaterial && itemMaterial === prodMaterial) {
+      score += 5;
+    }
+
+    // Size proximity — prefer LARGER or equal sizes
+    if (itemDims.length > 0 && prodDims.length > 0) {
+      const mainItemDim = Math.max(...itemDims);
+      const mainProdDim = Math.max(...prodDims);
+      if (mainProdDim >= mainItemDim) {
+        // Closer larger size gets more points
+        const diff = mainProdDim - mainItemDim;
+        score += Math.max(0, 3 - diff / 50);
+      } else {
+        // Smaller size — penalize but still consider
+        score += 1;
+      }
+    }
+
+    // Pattern match (tron/soc)
+    const itemPattern = itemNorm.includes('soc') ? 'soc' : (itemNorm.includes('tron') || itemNorm.includes('trang') ? 'tron' : '');
+    const prodPattern = prodNorm.includes('soc') ? 'soc' : (prodNorm.includes('tron') || prodNorm.includes('trang') ? 'tron' : '');
+    if (itemPattern && prodPattern && itemPattern === prodPattern) {
+      score += 2;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestProduct = product;
+    }
+  }
+
+  // Only return if we have a reasonable match (at least type match)
+  return bestScore >= 5 ? bestProduct : (bestScore > 0 ? bestProduct : null);
+}
+
 // ==================== SEGMENT PARSER ====================
 
 interface RequestSegment {
