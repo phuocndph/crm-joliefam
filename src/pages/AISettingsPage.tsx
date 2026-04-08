@@ -12,7 +12,42 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Save, Loader2, Play, Sparkles, Brain, Database, TestTube, RotateCcw } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Play, Sparkles, Brain, Database, TestTube, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
+const DEFAULT_PROMPT_DISPLAY = `Bạn là chuyên gia báo giá nội thất phòng ngủ VN. Nhân viên gõ nhanh, không dấu, viết tắt.
+
+## BẢNG GIÁ (\${catalogHeader})
+\${productListText}
+\${segmentInstruction}
+## SO KHỚP
+1. So khớp từ khóa yêu cầu với TÊN SP. Phân biệt bằng: chất liệu (T200/T250/T300...), mẫu (trơn/sọc), kích thước
+2. Kích thước khách KHÔNG có trong bảng → lấy GIÁ & matchedProductId của SP kích thước LỚN HƠN gần nhất. customName/specifications ghi ĐÚNG kích thước KHÁCH, KHÔNG làm tròn. Note: "Giá theo SP [KT bảng giá], khách yêu cầu [KT thực]"
+   VD: ga 12cm, bảng có 15cm → matchedProductId=SP 15cm, ghi "12cm". BVN trên 10cm → giá SP 25cm
+3. KHÔNG hoán đổi Trơn↔Sọc nếu khách ghi rõ
+4. PHÂN BIỆT: "chăn hè" → match "Chăn hè chần" (SP riêng, KHÔNG có từ "vỏ"). "vỏ chăn chần" → match "Vỏ chăn chần bông" (SP riêng, KHÔNG phải chăn hè). Hai loại KHÁC NHAU hoàn toàn.
+
+## TIẾNG VIỆT KHÔNG DẤU
+trang/trắng=TRƠN | soc=SỌC | chan he/chăn hè=Chăn hè chần (SP riêng, KHÔNG phải vỏ chăn) | vo chan chan/vỏ chăn chần=Vỏ chăn chần bông (SP riêng, KHÔNG phải chăn hè) | chan dong=Vỏ chăn chần dày
+ga phu=ga phủ | bvn=bảo vệ nệm | tam trang tri=tấm trang trí | goi trang tri=Vỏ gối trang trí
+"gối" không rõ loại→Vỏ gối | LTH=T225 | hai mat/2 mat→ghi note
+
+## SUY LUẬN CHẤT LIỆU
+- SP ghi rõ chất liệu → dùng đúng. SP KHÔNG ghi → suy luận từ SP khác cùng báo giá:
+  + 1 chất liệu duy nhất → áp dụng cho tất cả
+  + Nhiều chất liệu → theo vị trí gần nhất + cùng mẫu (trơn/sọc)
+  + Không có chất liệu nào → mặc định T250
+
+## KÍCH THƯỚC
+Số <10 = mét (1.6→160, 2.0→200). "1m6"=160. 14p/14f=14cm. T200/T250...=chất liệu KHÔNG PHẢI kích thước
+
+## GIÁ & SL
+Giá khách ghi → dùng giá khách. Không ghi → từ bảng giá. "x2"/"4 cái"→số lượng. Mặc định=1
+
+## OUTPUT — JSON thuần, KHÔNG markdown/backtick
+matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU bảng giá. TUYỆT ĐỐI KHÔNG bịa UUID.
+{"items":[{"matchedProductId":"uuid-từ-bảng-giá","customName":"tên SP kích thước ĐÚNG khách","quantity":1,"price":0,"specifications":"KT đúng khách, KHÔNG làm tròn","note":""}]}
+Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
 
 const AI_MODELS = [
   { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", desc: "Nhanh & tiết kiệm" },
@@ -255,36 +290,77 @@ export default function AISettingsPage() {
 
         {/* TAB 1: PROMPT */}
         <TabsContent value="prompt">
-          <Card>
-            <CardHeader>
-              <CardTitle>System Prompt</CardTitle>
-              <CardDescription>
-                Prompt chính gửi cho AI khi xử lý AI Quote Fill. Để trống sẽ dùng prompt mặc định.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Custom Prompt (để trống = mặc định)</Label>
-                <Textarea
-                  value={settings.ai_quote_fill_prompt}
-                  onChange={(e) => setSettings(s => ({ ...s, ai_quote_fill_prompt: e.target.value }))}
-                  placeholder="Bạn là chuyên gia báo giá nội thất phòng ngủ VN..."
-                  className="min-h-[300px] font-mono text-sm"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Prompt sẽ được chèn trước bảng giá sản phẩm. Các biến tự động: {'{productListText}'}, {'{segmentInstruction}'}
-                </p>
-              </div>
-              {settings.ai_quote_fill_prompt && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">Custom prompt</Badge>
-                  <span className="text-sm text-muted-foreground">
-                    {settings.ai_quote_fill_prompt.length} ký tự
-                  </span>
+          <div className="space-y-4">
+            {/* Default Prompt - always visible */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Prompt mặc định (đang sử dụng)</CardTitle>
+                <CardDescription>
+                  Đây là prompt hệ thống đang dùng trong edge function. Các biến {'{productListText}'}, {'{segmentInstruction}'}, {'{catalogHeader}'} sẽ được thay thế tự động.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-muted rounded-md p-4 overflow-x-auto max-h-[400px] overflow-y-auto">
+                  <pre className="text-xs font-mono whitespace-pre-wrap text-foreground/80">
+                    {DEFAULT_PROMPT_DISPLAY}
+                  </pre>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant="secondary">{DEFAULT_PROMPT_DISPLAY.length} ký tự</Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(DEFAULT_PROMPT_DISPLAY);
+                      toast({ title: "Đã copy", description: "Prompt mặc định đã được copy vào clipboard" });
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Custom Prompt Override */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Custom Prompt (ghi đè)</CardTitle>
+                <CardDescription>
+                  Nhập prompt tùy chỉnh để thay thế prompt mặc định. Để trống sẽ dùng prompt mặc định ở trên.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Textarea
+                    value={settings.ai_quote_fill_prompt}
+                    onChange={(e) => setSettings(s => ({ ...s, ai_quote_fill_prompt: e.target.value }))}
+                    placeholder="Để trống = dùng prompt mặc định..."
+                    className="min-h-[250px] font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Biến tự động: {'{productListText}'} (bảng giá), {'{segmentInstruction}'} (phân đoạn), {'{catalogHeader}'} (header)
+                  </p>
+                </div>
+                {settings.ai_quote_fill_prompt ? (
+                  <div className="flex items-center gap-2">
+                    <Badge>Custom prompt đang bật</Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {settings.ai_quote_fill_prompt.length} ký tự
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSettings(s => ({ ...s, ai_quote_fill_prompt: '' }))}
+                    >
+                      Xoá & dùng mặc định
+                    </Button>
+                  </div>
+                ) : (
+                  <Badge variant="outline">Đang dùng prompt mặc định</Badge>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* TAB 2: MODEL */}
