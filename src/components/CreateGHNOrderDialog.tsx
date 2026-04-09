@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -531,7 +532,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   // ======== ADDRESS SUB-DIALOG (rendered as overlay, not nested Dialog) ========
   const addressDialog = showAddressDialog ? (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setShowAddressDialog(false)}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onClick={() => setShowAddressDialog(false)}>
       <div className="bg-background rounded-xl shadow-xl w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b">
@@ -568,7 +569,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} />
                   </SelectTrigger>
-                  <SelectContent className="max-h-60 z-[70]">
+                  <SelectContent className="max-h-60 z-[110]">
                     {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -579,7 +580,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder={loadingDistricts ? "Tải..." : "Chọn"} />
                   </SelectTrigger>
-                  <SelectContent className="max-h-60 z-[70]">
+                  <SelectContent className="max-h-60 z-[110]">
                     {tempDistricts.map(d => <SelectItem key={d.DistrictID} value={String(d.DistrictID)}>{d.DistrictName}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -590,7 +591,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder={loadingWards ? "Tải..." : "Chọn"} />
                   </SelectTrigger>
-                  <SelectContent className="max-h-60 z-[70]">
+                  <SelectContent className="max-h-60 z-[110]">
                     {tempWards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -879,8 +880,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         </div>
       </DialogContent>
 
-      {/* Address sub-dialog rendered as sibling overlay */}
-      {addressDialog}
+      {/* Address sub-dialog rendered via portal to bypass Radix body-lock */}
+      {addressDialog && createPortal(addressDialog, document.body)}
     </Dialog>
   );
 }
