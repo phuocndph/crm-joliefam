@@ -1,25 +1,49 @@
 
 
-## Sửa lỗi: Model `gemini-2.0-flash-lite` không có prefix `google/`
+## Sửa lỗi model sai trong DB và validation khi lưu
 
-### Nguyên nhân gốc
+### Vấn đề gốc
+Bảng `ai_config` đang lưu 3 model không hợp lệ:
+- `ai_quote_text_model` = `gpt-5-nano` (không tồn tại)
+- `ai_quote_image_model` = `google/gemini-2.5-flash` (sai prefix)
+- `ai_quote_ocr_model` = `google/gemini-3-flash-preview` (sai prefix + có thể không tồn tại)
 
-Trong hàm `callAI`, khi `modelOverride` = `"google/gemini-2.0-flash-lite"` thất bại (400), code fallback vào model chain. Nhưng model chain ở line 1023 và 1027 ghi `"gemini-2.0-flash-lite"` **thiếu prefix `google/`** → Beeknoee không nhận ra → 400 tiếp → fallback cuối cùng về `gemini-2.5-flash` (chậm 9-11s).
+→ Mỗi request text matching mất ~90s do fallback chain.
 
 ### Sửa
 
-**File: `supabase/functions/lookup-tax-code/index.ts`**
+**1. Cập nhật DB — sửa 3 giá trị model sai**
 
-- **Line 1023**: `"gemini-2.0-flash-lite"` → `"google/gemini-2.0-flash-lite"`
-- **Line 1024**: `"gemini-2.5-flash"` → `"google/gemini-2.5-flash"`
-- **Line 1027**: `"gemini-2.0-flash-lite"` → `"google/gemini-2.0-flash-lite"`
-- **Line 1028**: `"gemini-2.5-flash"` → `"google/gemini-2.5-flash"`
+```sql
+UPDATE ai_config SET config_value = 'gemini-2.5-flash-lite' WHERE config_key = 'ai_quote_text_model';
+UPDATE ai_config SET config_value = 'gemini-2.5-flash' WHERE config_key = 'ai_quote_image_model';
+UPDATE ai_config SET config_value = 'gemini-2.5-flash-lite' WHERE config_key = 'ai_quote_ocr_model';
+```
 
-Tức là thêm prefix `google/` cho **tất cả** model trong chain, giống format đã dùng ở `modelOverride` (line 1012) và `ocrModel` (line 1443).
+**2. File `src/pages/AISettingsPage.tsx` — Validate model trước khi lưu**
 
-### Sau khi sửa
-- `google/gemini-2.0-flash-lite` sẽ được gọi đúng → OCR chỉ mất ~1-3s thay vì 10s
-- `google/gemini-2.5-flash` chỉ là fallback khi model lite thực sự lỗi
+Khi người dùng chọn model từ dropdown, đảm bảo giá trị lưu vào DB không có prefix `google/`. Thêm logic strip prefix trước khi ghi:
 
-### Deploy lại edge function sau khi sửa
+```typescript
+// Strip google/ prefix before saving
+const cleanModel = (model: string) => model.replace(/^google\//, '');
+```
+
+**3. File `supabase/functions/lookup-tax-code/index.ts` — Defensive strip prefix khi đọc từ DB**
+
+Trong hàm đọc model từ DB config, tự động loại bỏ prefix `google/` để tránh lỗi tương tự trong tương lai:
+
+```typescript
+const cleanModelName = (name: string) => name?.replace(/^google\//, '') || '';
+```
+
+Áp dụng tại:
+- Line 1636: `configTextModel` 
+- Line 1736: `textModel`
+- Bất kỳ nơi nào đọc model từ `aiConfig`/`dbConfig`
+
+### Kết quả mong đợi
+- Text matching: ~3-5s (thay vì 90s)
+- OCR: ~2-3s
+- Không bị lỗi model sai nữa dù người dùng cấu hình nhầm prefix
 
