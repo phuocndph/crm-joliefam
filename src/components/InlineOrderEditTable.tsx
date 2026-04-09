@@ -507,6 +507,5 @@ export function InlineOrderEditTable({
           })}
         </TableBody>
       </Table>
-      </div>
     </div>;
 }
