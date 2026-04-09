@@ -145,7 +145,7 @@ serve(async (req) => {
         headers: {
           'Content-Type': 'application/json',
           'Token': ghnApiKey,
-          'ShopId': ghnShopId,
+          'ShopId': String(effectiveShopId),
         },
         body: JSON.stringify(ghnPayload),
       });
