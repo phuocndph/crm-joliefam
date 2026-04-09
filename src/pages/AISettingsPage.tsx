@@ -49,16 +49,43 @@ matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU bảng giá. TUY�
 {"items":[{"matchedProductId":"uuid-từ-bảng-giá","customName":"tên SP kích thước ĐÚNG khách","quantity":1,"price":0,"specifications":"KT đúng khách, KHÔNG làm tròn","note":""}]}
 Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
 
-const AI_MODELS = [
-  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", desc: "Nhanh & tiết kiệm", vision: false },
-  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Cân bằng (mặc định text)", vision: true },
-  { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash Preview", desc: "Mặc định ảnh", vision: true },
-  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", desc: "Chính xác cao", vision: true },
-  { value: "openai/gpt-5-mini", label: "GPT-5 Mini", desc: "OpenAI cân bằng", vision: false },
-  { value: "openai/gpt-5", label: "GPT-5", desc: "Cao cấp nhất", vision: true },
+// Known vision-capable model patterns
+const VISION_MODEL_PATTERNS = [
+  'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash', 'gemini-3.1',
+  'gpt-5', 'gpt-5.2', 'gpt-5.4', 'claude-sonnet', 'claude-opus', 'claude-haiku',
+  'glm-5', 'glm-4.7',
 ];
 
-const VISION_MODELS = AI_MODELS.filter(m => m.vision);
+// Exclude non-chat models (image gen, video gen, embedding, codex)
+const EXCLUDED_PATTERNS = [
+  'dall-e', 'imagen-', 'sora-', 'veo-', 'gpt-image', 'chatgpt-image',
+  'text-embedding', 'gemini-embedding', 'codex',
+];
+
+interface BeeknoeeModel {
+  id: string;
+  owned_by: string;
+  context_window?: number;
+}
+
+function isVisionModel(modelId: string): boolean {
+  return VISION_MODEL_PATTERNS.some(p => modelId.includes(p));
+}
+
+function isChatModel(model: BeeknoeeModel): boolean {
+  if (EXCLUDED_PATTERNS.some(p => model.id.includes(p))) return false;
+  if (model.context_window && model.context_window > 5000) return true;
+  return false;
+}
+
+// Fallback static models in case API fails
+const FALLBACK_MODELS = [
+  { value: "gemini-2.5-flash-lite", label: "gemini-2.5-flash-lite", desc: "Google — Nhanh", vision: false },
+  { value: "gemini-2.5-flash", label: "gemini-2.5-flash", desc: "Google — Cân bằng", vision: true },
+  { value: "gemini-3-flash", label: "gemini-3-flash", desc: "Google — Mới nhất", vision: true },
+  { value: "glm-4.7-flash", label: "glm-4.7-flash", desc: "Z.AI — Nhanh", vision: false },
+  { value: "gpt-5-mini", label: "gpt-5-mini", desc: "OpenAI — Cân bằng", vision: false },
+];
 
 const DEFAULT_TYPE_CATEGORIES: Record<string, string[]> = {
   'ga chun': ['ga chun'],
@@ -117,9 +144,9 @@ Giữ nguyên số liệu gốc. Chuỗi rỗng cho thông tin thiếu. KHÔNG g
 const DEFAULTS: AISettings = {
   ai_quote_fill_prompt: '',
   ai_quote_ocr_prompt: '',
-  ai_quote_text_model: 'google/gemini-2.5-flash',
-  ai_quote_image_model: 'google/gemini-3-flash-preview',
-  ai_quote_ocr_model: 'google/gemini-2.5-flash',
+  ai_quote_text_model: 'gemini-2.5-flash',
+  ai_quote_image_model: 'gemini-2.5-flash',
+  ai_quote_ocr_model: 'gemini-2.5-flash-lite',
   ai_quote_step_delay: '1500',
   ai_quote_type_categories: JSON.stringify(DEFAULT_TYPE_CATEGORIES, null, 2),
   ai_quote_product_keywords: JSON.stringify(DEFAULT_PRODUCT_TYPE_KEYWORDS),
@@ -139,8 +166,47 @@ export default function AISettingsPage() {
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
 
+  const [beeknoeeModels, setBeeknoeeModels] = useState<Array<{value: string; label: string; desc: string; vision: boolean}>>(FALLBACK_MODELS);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+  }, []);
+
+  // Fetch models from Beeknoee
+  useEffect(() => {
+    const fetchModels = async () => {
+      setModelsLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('lookup-tax-code', {
+          body: { type: 'list_models' },
+        });
+        if (!error && data?.data) {
+          const chatModels = (data.data as BeeknoeeModel[])
+            .filter(isChatModel)
+            .map(m => ({
+              value: m.id,
+              label: m.id,
+              desc: `${m.owned_by}${m.context_window ? ` — ${Math.round(m.context_window / 1000)}K ctx` : ''}`,
+              vision: isVisionModel(m.id),
+            }))
+            .sort((a, b) => {
+              // Sort: google first, then by name
+              const ownerA = a.desc.split(' —')[0];
+              const ownerB = b.desc.split(' —')[0];
+              if (ownerA !== ownerB) return ownerA.localeCompare(ownerB);
+              return a.label.localeCompare(b.label);
+            });
+          if (chatModels.length > 0) {
+            setBeeknoeeModels(chatModels);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch Beeknoee models:', err);
+      }
+      setModelsLoading(false);
+    };
+    fetchModels();
   }, []);
 
   useEffect(() => {
@@ -439,8 +505,11 @@ export default function AISettingsPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Model xử lý Text</CardTitle>
-                  <CardDescription>Dùng cho Bước 2 — so khớp text với catalog (không ảnh)</CardDescription>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    Model xử lý Text
+                    {modelsLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                  </CardTitle>
+                  <CardDescription>Dùng cho Bước 2 — so khớp text với catalog (không ảnh). Lấy từ Beeknoee API.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Select
@@ -451,7 +520,7 @@ export default function AISettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {AI_MODELS.map(m => (
+                      {beeknoeeModels.map(m => (
                         <SelectItem key={m.value} value={m.value}>
                           <div className="flex items-center gap-2">
                             <span>{m.label}</span>
@@ -481,7 +550,7 @@ export default function AISettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {VISION_MODELS.map(m => (
+                      {beeknoeeModels.filter(m => m.vision).map(m => (
                         <SelectItem key={m.value} value={m.value}>
                           <div className="flex items-center gap-2">
                             <span>{m.label}</span>
@@ -511,7 +580,7 @@ export default function AISettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {VISION_MODELS.map(m => (
+                      {beeknoeeModels.filter(m => m.vision).map(m => (
                         <SelectItem key={m.value} value={m.value}>
                           <div className="flex items-center gap-2">
                             <span>{m.label}</span>
@@ -596,7 +665,7 @@ export default function AISettingsPage() {
                         <Badge variant="outline" className="text-xs">Vision</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Model: <span className="font-mono text-foreground">{AI_MODELS.find(m => m.value === settings.ai_quote_ocr_model)?.label || settings.ai_quote_ocr_model}</span>
+                        Model: <span className="font-mono text-foreground">{beeknoeeModels.find(m => m.value === settings.ai_quote_ocr_model)?.label || settings.ai_quote_ocr_model}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">Prompt ngắn, không gửi catalog → tiết kiệm 60-80% token</p>
                       <div className="mt-2">
@@ -627,16 +696,16 @@ export default function AISettingsPage() {
                         <Badge variant="outline" className="text-xs">Text-only</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Model: <span className="font-mono text-foreground">{AI_MODELS.find(m => m.value === settings.ai_quote_text_model)?.label || settings.ai_quote_text_model}</span>
+                        Model: <span className="font-mono text-foreground">{beeknoeeModels.find(m => m.value === settings.ai_quote_text_model)?.label || settings.ai_quote_text_model}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">Dùng text OCR + catalog đã lọc theo segment</p>
                       <div className="mt-2">
-                        <p className="text-xs font-medium text-muted-foreground">Beeknoee fallback (ưu tiên GLM để tránh 429):</p>
+                        <p className="text-xs font-medium text-muted-foreground">Beeknoee fallback:</p>
                         <div className="flex gap-1 flex-wrap mt-1">
-                          {['glm-4.7-flash', 'glm-4.5-flash', 'gemini-2.5-flash', 'gpt-oss-120b'].map((m, i) => (
+                          {['gemini-2.5-flash-lite', 'gemini-2.5-flash'].map((m, i) => (
                             <span key={m} className="flex items-center gap-0.5">
                               <Badge variant="secondary" className="text-[10px]">{m}</Badge>
-                              {i < 3 && <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />}
+                              {i < 1 && <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />}
                             </span>
                           ))}
                         </div>
@@ -655,7 +724,7 @@ export default function AISettingsPage() {
                         <Badge variant="outline" className="text-xs text-orange-600">Khi OCR thất bại</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Model: <span className="font-mono text-foreground">{AI_MODELS.find(m => m.value === settings.ai_quote_image_model)?.label || settings.ai_quote_image_model}</span>
+                        Model: <span className="font-mono text-foreground">{beeknoeeModels.find(m => m.value === settings.ai_quote_image_model)?.label || settings.ai_quote_image_model}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">Gửi ảnh + catalog → tốn nhiều token hơn, chậm hơn</p>
                     </div>

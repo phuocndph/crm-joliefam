@@ -1254,6 +1254,36 @@ serve(async (req) => {
         });
       }
 
+    // ==================== LIST MODELS ====================
+    } else if (type === "list_models") {
+      const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
+      if (!BEEKNOEE_API_KEY) {
+        return new Response(JSON.stringify({ error: "BEEKNOEE_API_KEY not configured" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const resp = await fetch("https://platform.beeknoee.com/api/v1/models", {
+          headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}` },
+        });
+        if (!resp.ok) {
+          const errText = await resp.text();
+          console.error("Beeknoee list models error:", resp.status, errText);
+          return new Response(JSON.stringify({ error: `Beeknoee API error: ${resp.status}` }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const result = await resp.json();
+        return new Response(JSON.stringify(result), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        console.error("List models error:", err);
+        return new Response(JSON.stringify({ error: String(err) }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
     // ==================== PARSE BUYER TEXT ====================
     } else if (type === "parse_text") {
       const parsed = await callAI([
