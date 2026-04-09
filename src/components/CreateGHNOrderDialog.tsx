@@ -482,10 +482,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
               </Button>
               {feeDetail && (
                 <div className="rounded-md border text-sm">
-                  <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí dịch vụ</span><span>{fmt(feeDetail.main_service)}</span></div>
-                  <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí bảo hiểm</span><span>{fmt(feeDetail.insurance)}</span></div>
+                  <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí dịch vụ</span><span>{fmt(feeDetail.service_fee)}</span></div>
+                  <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí bảo hiểm</span><span>{fmt(feeDetail.insurance_fee)}</span></div>
                   {feeDetail.cod_fee > 0 && <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí COD</span><span>{fmt(feeDetail.cod_fee)}</span></div>}
-                  {feeDetail.coupon > 0 && <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Giảm giá</span><span className="text-green-600">-{fmt(feeDetail.coupon)}</span></div>}
+                  {feeDetail.coupon_value > 0 && <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Giảm giá</span><span className="text-green-600">-{fmt(feeDetail.coupon_value)}</span></div>}
                   <div className="flex justify-between px-3 py-2 font-medium bg-muted/50"><span>Tổng cước</span><span className="text-primary">{fmt(feeDetail.total)}</span></div>
                 </div>
               )}
