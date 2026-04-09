@@ -1621,7 +1621,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       const parsed = await callAI([
         { role: "system", content: aiQuoteFillPrompt },
         { role: "user", content: userContent },
-      ], false, quoteModel, hasImage ? 'text' : undefined);
+      ], false, quoteModel, 'text');
       
       const step2Time = Date.now() - step2Start;
       console.log(`AI Quote Fill: Step 2 took ${step2Time}ms`);
@@ -1647,21 +1647,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
       // Add pipeline metadata for transparency
-      if (hasImage && step1Start) {
-        try {
-          const ocrModelUsed = aiConfig['ai_quote_ocr_model'] || aiConfig['ai_quote_image_model'] || 'google/gemini-2.5-flash';
-          const stepDelayUsed = aiConfig['ai_quote_step_delay'] ? parseInt(aiConfig['ai_quote_step_delay']) : 1500;
-          const totalDuration = Date.now() - step1Start;
-          parsed.pipeline = {
-            step1: { model: ocrModelUsed, duration: totalDuration - (step2Time || 0) - stepDelayUsed },
-            delay: stepDelayUsed,
-            step2: { model: quoteModel, duration: step2Time },
-            total: totalDuration,
-          };
-        } catch (e) {
-          console.warn('Pipeline metadata error (non-fatal):', e);
-        }
-      }
+      // Pipeline metadata removed - OCR is now a separate step
 
       return new Response(JSON.stringify(parsed), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
