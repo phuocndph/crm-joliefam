@@ -1,44 +1,57 @@
 
 
-## Sửa auto-match tỉnh/quận/phường và xác nhận cước phí
+## Nâng cấp form GHN giống giao diện chính thức
 
-### Trạng thái hiện tại
+### Tổng quan
+Redesign `CreateGHNOrderDialog` theo layout GHN chính thức: 2 cột (form trái + cước phí phải), section "Bên gửi" hiển thị thông tin shop, section "Bên nhận" với dialog chọn địa chỉ riêng (như ảnh tham khảo), và pickup option.
 
-**Cước phí: ĐANG HOẠT ĐỘNG ĐÚNG.** Từ logs và session replay, API GHN trả về code 200 với dữ liệu chính xác (ví dụ: service_fee 28,600đ, insurance_fee 31,925đ, total 60,525đ). Badge hiển thị "Đã tính" sau khi tính. Không cần sửa phần này.
+### Thay đổi trong `src/components/CreateGHNOrderDialog.tsx`
 
-**Auto-match tỉnh/quận/phường: ĐANG LỖI.** Nguyên nhân:
+**1. Layout 2 cột:**
+- Cột trái (2/3): Form nhập liệu
+- Cột phải (1/3): Sidebar cước phí luôn hiển thị, sticky
 
-### Vấn đề 1: Không sử dụng `NameExtension` từ GHN API
+**2. Section "Bên gửi":**
+- Hiển thị tên shop, SĐT, địa chỉ shop đã chọn (text, không phải dropdown nữa khi chỉ có 1 shop)
+- Radio: "Lấy hàng tận nơi" / "Gửi hàng tại bưu cục"
+- Dropdown "Chọn ca lấy hàng" (placeholder)
 
-GHN API trả về mảng `NameExtension` cho mỗi tỉnh/quận/phường, chứa tất cả tên gọi thay thế:
+**3. Section "Bên nhận" - Address dialog:**
+- Hiển thị: SĐT, Họ tên, nút "Địa chỉ người nhận" mở sub-dialog
+- Sub-dialog (như ảnh 95): Input "Địa chỉ nhận" (text tự do) + 3 dropdown Tỉnh/Quận/Phường bên dưới
+- Toggle "Địa chỉ mới" 
+- Nút Hủy / Xong để xác nhận
+- Auto-match vẫn hoạt động bên trong sub-dialog
+
+**4. Sidebar cước phí (cột phải):**
+- Hiển thị "Tổng phí: XX đ" lớn ở trên
+- Info: "Tổng phí đã bao gồm phụ phí xăng dầu 10%..."
+- Cước phí tự động cập nhật khi đủ thông tin
+
+**5. Giữ nguyên:**
+- Section hàng hóa (weight, dimensions)
+- Section dịch vụ & thanh toán
+- Logic auto-match, auto-calculate fee
+- Success screen sau tạo đơn
+
+### Chi tiết kỹ thuật
+
 ```text
-"NameExtension": ["Hà Nội", "Thành phố Hà Nội", "TP.Hà Nội", "T Hà Nội", "hanoi"]
+Dialog max-w-4xl
+├── Grid 2 cols (lg:grid-cols-3)
+│   ├── Col span 2 (scrollable)
+│   │   ├── Bên gửi: shop info + pickup radio
+│   │   ├── Bên nhận: phone, name, address button → opens sub-dialog
+│   │   │   └── AddressDialog: textarea + province/district/ward selects
+│   │   ├── Hàng hóa: weight, dimensions, content
+│   │   └── Dịch vụ & Thanh toán: service, payment, COD, note
+│   └── Col span 1 (sticky sidebar)
+│       ├── Tổng phí (large text)
+│       ├── Fee breakdown
+│       └── Nút "Tạo đơn GHN"
 ```
 
-Code hiện tại chỉ dùng `ProvinceName` rồi bỏ prefix "tỉnh/thành phố" → dễ miss. Cần match qua toàn bộ `NameExtension`.
-
-### Vấn đề 2: Interface thiếu trường `NameExtension`
-
-```typescript
-// Hiện tại - thiếu
-interface Province { ProvinceID: number; ProvinceName: string; }
-interface District { DistrictID: number; DistrictName: string; }
-interface Ward { WardCode: string; WardName: string; }
-```
-
-### Vấn đề 3: useEffect dependency bug
-
-Auto-match useEffect (line 226-230) không có `provinceId` trong deps. Khi dialog mở lần 2, pre-fill reset `provinceId=""` nhưng auto-match không re-trigger vì deps `[provinces, selectedShopId, order, open]` có thể không thay đổi đủ.
-
-### Thay đổi - file `src/components/CreateGHNOrderDialog.tsx`
-
-1. **Cập nhật interfaces** - thêm `NameExtension?: string[]` vào Province, District, Ward
-
-2. **Viết lại `tryAutoMatchLocation`**:
-   - Với mỗi province, normalize tất cả tên trong `NameExtension` + `ProvinceName`
-   - So sánh từng tên đã normalize với địa chỉ khách hàng đã normalize
-   - Ưu tiên match tên dài nhất trước (tránh "Hà" match trước "Hà Nội")
-   - Áp dụng tương tự cho district và ward
-
-3. **Sửa useEffect dependency** - thêm tracking state `autoMatchDone` để tránh chạy lại vô hạn, thay vì dựa vào `!provinceId`
+- Address sub-dialog: sử dụng state `showAddressDialog` boolean
+- Khi bấm "Xong" trong address dialog → đóng dialog, giữ province/district/ward đã chọn
+- Auto-match chạy khi address dialog mở và có sẵn address text
 
