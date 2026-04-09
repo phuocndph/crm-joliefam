@@ -289,9 +289,11 @@ export function InlineOrderEditTable({
   };
   const getCellContent = (order: Order, field: string) => {
     const cellKey = `${order.id}-${field}`;
-    const isEditing = editingCell === cellKey;
+    const deliveredCellKey = `${order.id}-delivered_date`;
+    const isEditing = editingCell === cellKey || (field === "delivery_date" && editingCell === deliveredCellKey);
+    const effectiveField = editingCell === deliveredCellKey ? "delivered_date" : field;
     if (isEditing) {
-      switch (field) {
+      switch (effectiveField) {
         case "status":
           return <Select open={true} value={editValue} onValueChange={value => {
             setEditValue(value);
