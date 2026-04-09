@@ -311,7 +311,7 @@ export function InlineOrderEditTable({
             </div>;
         case "notes":
           return <div className="flex items-start gap-2">
-              <textarea value={editValue} onChange={e => setEditValue(e.target.value)} className="w-48 min-h-[60px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" placeholder="Nhập ghi chú..." rows={3} />
+              <textarea value={editValue} onChange={e => setEditValue(e.target.value)} className="w-full min-h-[60px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" placeholder="Nhập ghi chú..." rows={3} />
               <div className="flex flex-col gap-1">
                 <Button size="sm" variant="ghost" onClick={() => handleSave(order.id, field)}>
                   <Check className="h-4 w-4" />
@@ -374,7 +374,7 @@ export function InlineOrderEditTable({
           </div>;
       case "notes":
         const formatNotes = (notes: string | null) => {
-          if (!notes) return "Thêm ghi chú...";
+          if (!notes) return null;
 
           // Split by lines and format each line that starts with "•"
           const lines = notes.split('\n');
@@ -389,7 +389,7 @@ export function InlineOrderEditTable({
           }).filter(Boolean);
         };
         return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.notes)}>
-            <div className="text-sm break-words max-w-48 leading-relaxed space-y-1">
+            <div className="text-sm break-words leading-relaxed space-y-1">
               {formatNotes(order.notes)}
             </div>
           </div>;
