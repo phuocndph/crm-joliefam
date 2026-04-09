@@ -1161,6 +1161,24 @@ serve(async (req) => {
   try {
     const { type, data } = await req.json();
 
+    // ==================== LIST MODELS (debug) ====================
+    if (type === "list_models") {
+      const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
+      try {
+        const resp = await fetch("https://platform.beeknoee.com/api/v1/models", {
+          headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}` },
+        });
+        const modelsData = await resp.json();
+        return new Response(JSON.stringify(modelsData), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // ==================== TAX CODE LOOKUP ====================
     if (type === "tax_code") {
       const taxCode = data.toString().trim();
