@@ -1,64 +1,41 @@
 
 
-## Sửa logic xử lý ảnh: OCR → text → chạy như text bình thường
+## Tách UX thành 2 bước: Phân tích ảnh → AI chọn sản phẩm
 
-### Vấn đề
-Code hiện tại dùng "single-step" — nhồi cả catalog (917 SP) vào prompt cùng ảnh → AI xử lý chậm (~50s), dễ timeout.
-
-Đúng ra phải là: **Ảnh → OCR ra text → dùng text đó chạy qua pipeline text bình thường** (segment, filter, match) — giống hệt khi user gõ text.
+### Hiện tại
+Nút "AI tự chọn sản phẩm" làm cả 2 việc (OCR + matching) trong 1 lần bấm. User không thấy/sửa được text OCR trước khi matching.
 
 ### Thay đổi
 
-**File: `supabase/functions/lookup-tax-code/index.ts` (lines 1476-1546)**
+**File: `src/components/AIQuoteFill.tsx`**
 
-Thay toàn bộ block `if (hasImage)` hiện tại bằng logic OCR thuần:
+1. **Thêm state `isAnalyzingImage`** để theo dõi trạng thái đang OCR ảnh
 
-```typescript
-if (hasImage) {
-  step1Start = Date.now();
-  console.log('AI Quote Fill: Step 1 — OCR extract text from image...');
+2. **Thêm hàm `handleAnalyzeImage`** — chỉ gọi OCR (không matching):
+   - Gửi ảnh lên edge function với type mới hoặc flag `ocrOnly: true`
+   - Nhận text OCR trả về → đưa vào `setRequest(ocrText)`
+   - Xóa ảnh sau khi OCR xong (vì đã chuyển thành text)
 
-  const ocrPrompt = `Trích xuất TOÀN BỘ bảng sản phẩm từ ảnh. Trả về JSON thuần:
-{"san_pham":[{"ten_san_pham":"...","quy_cach":"...","so_luong":1,"don_gia":0,"thanh_tien":0}]}
-Giữ nguyên số liệu gốc. Chuỗi rỗng cho thông tin thiếu. KHÔNG giải thích.`;
+3. **Đổi logic nút chính (line 342)**:
+   - Khi **có ảnh** (`imageFile != null`): hiện nút "Phân tích ảnh" (chạy OCR only → điền text vào textarea)
+   - Khi **không có ảnh**: hiện nút "AI tự chọn sản phẩm" như cũ (chạy matching từ text)
 
-  try {
-    const ocrMessages = [
-      { role: "system", content: ocrPrompt },
-      {
-        role: "user",
-        content: [
-          { type: "image_url", image_url: { url: `data:${imageMimeType || 'image/jpeg'};base64,${imageBase64}` } },
-          { type: "text", text: "Trích xuất bảng sản phẩm." },
-        ],
-      },
-    ];
+4. **Sửa `handleAIFill`**: Bỏ phần gửi `imageBase64` — chỉ gửi text thuần (vì ảnh đã được OCR thành text ở bước trước)
 
-    const ocrModel = aiConfig['ai_quote_ocr_model'] || "google/gemini-2.5-flash";
-    const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
+**File: `supabase/functions/lookup-tax-code/index.ts`**
 
-    if (ocrResult?.san_pham && Array.isArray(ocrResult.san_pham)) {
-      effectiveRequest = ocrResult.san_pham.map((p: any) =>
-        `${p.ten_san_pham || ''} ${p.quy_cach || ''} x${p.so_luong || 1}`.trim()
-      ).join('\n');
-      console.log(`Step 1 OCR: ${ocrResult.san_pham.length} products in ${Date.now() - step1Start}ms`);
-      console.log('OCR text:', effectiveRequest);
-    }
-  } catch (e) {
-    console.error('OCR failed:', e);
-    // effectiveRequest giữ nguyên = request gốc, Step 2 vẫn chạy
-  }
-}
+5. **Thêm xử lý `ocrOnly` flag**: Khi nhận `data.ocrOnly === true`, chỉ chạy Step 1 OCR rồi trả text về client ngay — không chạy Step 2 matching.
+
+### Flow mới
+```text
+User gửi ảnh → Nút đổi thành "Phân tích ảnh"
+  → Bấm → OCR → Text điền vào textarea
+  → Nút đổi lại "AI tự chọn sản phẩm"
+  → User xem/sửa text → Bấm → Matching → Kết quả
 ```
 
-**Không sửa gì khác.** Sau block này, `effectiveRequest` chứa text OCR → chạy vào Step 2 (segment → filter → match) giống hệt text bình thường.
-
-### Tại sao nhanh hơn
-- Step 1 OCR: prompt nhỏ (không có catalog) → ~5-8s
-- Step 2 text match: catalog đã filter → ~5-8s
-- Tổng: ~10-15s thay vì 50s
-
-### Không mất gì
-- Nếu OCR fail → `effectiveRequest` giữ nguyên text gốc user nhập → Step 2 vẫn chạy
-- Step 2 giữ nguyên 100% logic hiện tại (segment, filter, validate, repair)
+### Lợi ích
+- User kiểm tra/sửa text OCR trước khi matching
+- Tách rõ 2 bước, dễ debug
+- Matching không gửi ảnh nữa → nhanh hơn
 
