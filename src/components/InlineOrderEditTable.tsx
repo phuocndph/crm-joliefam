@@ -209,7 +209,7 @@ export function InlineOrderEditTable({
   const handleCellEdit = (orderId: string, field: string, currentValue: any) => {
     setEditingCell(`${orderId}-${field}`);
     setEditValue(currentValue || "");
-    if ((field === "delivery_date" || field === "created_at") && currentValue) {
+    if ((field === "delivery_date" || field === "created_at" || field === "delivered_date") && currentValue) {
       setSelectedDate(new Date(currentValue));
     }
   };
