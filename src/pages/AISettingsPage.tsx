@@ -258,7 +258,7 @@ export default function AISettingsPage() {
       const { data: userData } = await supabase.auth.getUser();
       const entries = Object.entries(settings) as [keyof AISettings, string][];
       const nextSettings = { ...settings };
-      
+
       for (const [key, value] of entries) {
         const isModelKey = key.includes('_model');
         const cleanValue = isModelKey ? cleanModel(value) : value;
