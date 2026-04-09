@@ -1020,6 +1020,8 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
     // Different model orders based on step to avoid 429 concurrent limit
     const models = hasImage
       ? [
+          { name: "gemini-2.0-flash-lite", timeout: 30000 },
+          { name: "gemini-2.0-flash", timeout: 45000 },
           { name: "gemini-2.5-flash", timeout: 90000 },
         ]
       : stepHint === 'text'
@@ -1446,7 +1448,7 @@ Giữ nguyên số liệu gốc. KHÔNG trả JSON. KHÔNG giải thích.`;
           },
         ];
         
-        const ocrModel = aiConfig['ai_quote_ocr_model'] || "google/gemini-2.5-flash";
+        const ocrModel = aiConfig['ai_quote_ocr_model'] || "google/gemini-2.0-flash-lite";
         const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
         
         let ocrText = '';
