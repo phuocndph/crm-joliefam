@@ -93,6 +93,23 @@ const statusConfig = {
     color: "bg-orange-100 text-orange-800"
   }
 };
+
+// Row color mapping by status
+const statusRowStyles: Record<string, { bg: string; text: string; hoverBg: string }> = {
+  pending:    { bg: '#FFF9C4', text: '#7B6000', hoverBg: '#F5EFA0' },
+  processing: { bg: '#FFCDD2', text: '#B71C1C', hoverBg: '#F3B8BD' },
+  cancelled:  { bg: '#BBDEFB', text: '#0D47A1', hoverBg: '#A8CEE8' },
+  returned:   { bg: '#FFE0B2', text: '#E65100', hoverBg: '#ECCF9E' },
+  delivered:  { bg: '#FFFFFF', text: '#212121', hoverBg: '#EBEBEB' },
+  shipped:    { bg: '#C8E6C9', text: '#1B5E20', hoverBg: '#B5D4B6' },
+  self_delivered: { bg: '#E1BEE7', text: '#4A148C', hoverBg: '#D0ABD6' },
+};
+
+export function applyRowColor(status: string): React.CSSProperties {
+  const style = statusRowStyles[status];
+  if (!style) return {};
+  return { backgroundColor: style.bg, color: style.text };
+}
 const paymentStatusConfig = {
   pending: {
     label: "Chưa thanh toán",
@@ -399,11 +416,22 @@ export function InlineOrderEditTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {orders.map(order => <TableRow key={order.id} className="hover:bg-muted/50">
-              <TableCell className="font-medium min-w-[120px]">
+          {orders.map(order => {
+            const rowStyle = statusRowStyles[order.status];
+            const rowBg = rowStyle?.bg || '#FFFFFF';
+            const rowText = rowStyle?.text || '#212121';
+            const rowHoverBg = rowStyle?.hoverBg || '#F5F5F5';
+            return <TableRow 
+              key={order.id} 
+              className="transition-colors group"
+              style={{ backgroundColor: rowBg, color: rowText }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = rowHoverBg)}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = rowBg)}
+            >
+              <TableCell className="font-medium min-w-[120px]" style={{ color: rowText }}>
                 {getCellContent(order, "order_number")}
               </TableCell>
-              <TableCell className="min-w-[110px]">
+              <TableCell className="min-w-[110px]" style={{ color: rowText }}>
                 {getCellContent(order, "created_at")}
               </TableCell>
               <TableCell className="min-w-[150px]">
@@ -417,28 +445,27 @@ export function InlineOrderEditTable({
                   )}
                 </div>
               </TableCell>
-              <TableCell className="min-w-[200px]">
+              <TableCell className="min-w-[200px]" style={{ color: rowText }}>
                 <div>
                   <div className="font-medium">{order.customers?.name}</div>
-                  {order.customers?.phone && <div className="text-sm text-muted-foreground">{order.customers.phone}</div>}
+                  {order.customers?.phone && <div className="text-sm opacity-70">{order.customers.phone}</div>}
                 </div>
               </TableCell>
-              <TableCell className="min-w-[150px]">
+              <TableCell className="min-w-[150px]" style={{ color: rowText }}>
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-1">
-                    
                     {formatCurrency(order.total_amount)}
                   </div>
                   {(() => {
-                const totalPaid = order.order_payments?.reduce((total: number, payment: any) => total + (payment.payment_amount || 0), 0) || 0;
-                const remaining = Math.max(0, (order.total_amount || 0) - totalPaid); // "CÒN LẠI = TỔNG TIỀN - THANH TOÁN ĐÃ NHẬN"
-                return remaining > 0 ? <div className="text-sm text-muted-foreground">
+                    const totalPaid = order.order_payments?.reduce((total: number, payment: any) => total + (payment.payment_amount || 0), 0) || 0;
+                    const remaining = Math.max(0, (order.total_amount || 0) - totalPaid);
+                    return remaining > 0 ? <div className="text-sm opacity-70">
                         Còn: {formatCurrency(remaining)}
                       </div> : null;
-              })()}
+                  })()}
                 </div>
               </TableCell>
-              <TableCell className="min-w-[180px]">
+              <TableCell className="min-w-[180px]" style={{ color: rowText }}>
                 {getCellContent(order, "delivery_date")}
               </TableCell>
               <TableCell className="min-w-[120px]">
@@ -450,7 +477,7 @@ export function InlineOrderEditTable({
               <TableCell className="min-w-[150px]">
                 {getCellContent(order, "assignee_id")}
               </TableCell>
-              <TableCell className="min-w-[250px]">
+              <TableCell className="min-w-[250px]" style={{ color: rowText }}>
                 {getCellContent(order, "notes")}
               </TableCell>
               <TableCell className="min-w-[200px]">
@@ -476,7 +503,8 @@ export function InlineOrderEditTable({
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>
-            </TableRow>)}
+            </TableRow>;
+          })}
         </TableBody>
       </Table>
     </div>;
