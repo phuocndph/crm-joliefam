@@ -384,7 +384,7 @@ export function InlineOrderEditTable({
         const remainingAmount = (order.total_amount || 0) - totalPaid; // "CÒN LẠI = TỔNG TIỀN ĐÃ BAO GỒM GTGT - THANH TOÁN ĐÃ NHẬN"
         return <div className="text-sm space-y-1">
             <div className="flex items-center gap-1">
-              <span className="text-green-600">Đã thanh toán:</span>
+              <span className="text-sidebar-primary">Đã thanh toán:</span>
               <span className="font-medium">{formatCurrency(totalPaid)}</span>
             </div>
             <div className="flex items-center gap-1">
