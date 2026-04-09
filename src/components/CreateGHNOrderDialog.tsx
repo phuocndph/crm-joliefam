@@ -85,9 +85,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [loadingFee, setLoadingFee] = useState(false);
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
 
-  // Pre-fill
+  // Track if dialog just opened to prevent re-running pre-fill
+  const hasPrefilledRef = useRef(false);
+
+  // Pre-fill - only on dialog open
   useEffect(() => {
-    if (order && open) {
+    if (order && open && !hasPrefilledRef.current) {
+      hasPrefilledRef.current = true;
       setToName(order.customers?.name || "");
       setToPhone(order.customers?.phone || "");
       setToAddress((order.customers as any)?.address || "");
@@ -103,6 +107,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setFeeStatus("idle");
       setServices([]);
       setServiceTypeId("");
+      setProvinceId("");
+      setDistrictId("");
+      setWardCode("");
+      setDistricts([]);
+      setWards([]);
+    }
+    if (!open) {
+      hasPrefilledRef.current = false;
     }
   }, [order, open, remainingAmount]);
 
