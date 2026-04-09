@@ -778,6 +778,20 @@ export default function OrderManagement() {
           }} 
         />
       )}
+
+      {/* Create GHN Order Dialog */}
+      {orderToCreateGHN && (
+        <CreateGHNOrderDialog
+          order={orderToCreateGHN}
+          open={!!orderToCreateGHN}
+          onOpenChange={open => !open && setOrderToCreateGHN(null)}
+          remainingAmount={calculateRemainingAmount(orderToCreateGHN)}
+          onSuccess={() => {
+            loadOrders();
+            setOrderToCreateGHN(null);
+          }}
+        />
+      )}
     </div>
   );
 }
