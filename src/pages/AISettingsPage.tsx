@@ -697,12 +697,12 @@ export default function AISettingsPage() {
                       </p>
                       <p className="text-xs text-muted-foreground">Dùng text OCR + catalog đã lọc theo segment</p>
                       <div className="mt-2">
-                        <p className="text-xs font-medium text-muted-foreground">Beeknoee fallback (ưu tiên GLM để tránh 429):</p>
+                        <p className="text-xs font-medium text-muted-foreground">Beeknoee fallback:</p>
                         <div className="flex gap-1 flex-wrap mt-1">
-                          {['glm-4.7-flash', 'glm-4.5-flash', 'gemini-2.5-flash', 'gpt-oss-120b'].map((m, i) => (
+                          {['gemini-2.5-flash-lite', 'gemini-2.5-flash'].map((m, i) => (
                             <span key={m} className="flex items-center gap-0.5">
                               <Badge variant="secondary" className="text-[10px]">{m}</Badge>
-                              {i < 3 && <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />}
+                              {i < 1 && <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />}
                             </span>
                           ))}
                         </div>
