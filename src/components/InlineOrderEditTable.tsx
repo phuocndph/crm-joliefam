@@ -209,7 +209,7 @@ export function InlineOrderEditTable({
   const handleCellEdit = (orderId: string, field: string, currentValue: any) => {
     setEditingCell(`${orderId}-${field}`);
     setEditValue(currentValue || "");
-    if ((field === "delivery_date" || field === "created_at") && currentValue) {
+    if ((field === "delivery_date" || field === "created_at" || field === "delivered_date") && currentValue) {
       setSelectedDate(new Date(currentValue));
     }
   };
@@ -289,9 +289,11 @@ export function InlineOrderEditTable({
   };
   const getCellContent = (order: Order, field: string) => {
     const cellKey = `${order.id}-${field}`;
-    const isEditing = editingCell === cellKey;
+    const deliveredCellKey = `${order.id}-delivered_date`;
+    const isEditing = editingCell === cellKey || (field === "delivery_date" && editingCell === deliveredCellKey);
+    const effectiveField = editingCell === deliveredCellKey ? "delivered_date" : field;
     if (isEditing) {
-      switch (field) {
+      switch (effectiveField) {
         case "status":
           return <Select open={true} value={editValue} onValueChange={value => {
             setEditValue(value);
@@ -336,7 +338,7 @@ export function InlineOrderEditTable({
                 <CalendarComponent mode="single" selected={selectedDate} onSelect={date => {
                 setSelectedDate(date);
                 if (date) {
-                  handleSave(order.id, field, date);
+                  handleSave(order.id, effectiveField, date);
                 }
               }} initialFocus locale={vi} className="p-3 pointer-events-auto" />
               </PopoverContent>
