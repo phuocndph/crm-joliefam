@@ -1,26 +1,30 @@
 
 
-## Thêm cột "Mã Vận Đơn" vào bảng đơn hàng
+## Sắp xếp lại thứ tự cột trong bảng đơn hàng
 
-### Phân tích
-- Dữ liệu mã vận đơn nằm trong bảng `ghn_tracking`, liên kết với orders qua `order_id`, trường `ghn_order_code`.
-- Hiện tại query orders trong `useOrders.ts` chưa join `ghn_tracking`.
-- Cần join thêm và hiển thị cột mới trong `InlineOrderEditTable`.
+### Thứ tự mới (13 cột)
 
-### Các file cần sửa
+```text
+1. Mã đơn hàng
+2. Mã vận đơn
+3. Ngày tạo đơn
+4. Ngày hẹn trả
+5. Tình trạng đơn
+6. Tên khách
+7. Giá trị đơn hàng
+8. Thanh toán
+9. Ghi chú
+10. Người phụ trách
+11. Quản lý
+12. Vải đã sử dụng
+13. Hành động (sticky)
+```
 
-**1. `src/hooks/useOrders.ts`**
-- Thêm `ghn_tracking(ghn_order_code)` vào select query để lấy mã vận đơn theo từng đơn hàng.
+### Thay đổi
+- Sắp xếp lại thứ tự các `TableHead` và `TableCell` tương ứng trong `src/components/InlineOrderEditTable.tsx`
+- Giữ nguyên cột **Vải đã sử dụng** (đặt sau Quản lý, trước Hành động)
+- Không thêm/bỏ cột nào
 
-**2. `src/components/InlineOrderEditTable.tsx`**
-- Thêm field `ghn_tracking` vào interface `Order`:
-  ```tsx
-  ghn_tracking?: { ghn_order_code: string }[];
-  ```
-- Thêm cột header "Mã Vận Đơn" sau cột "Mã đơn hàng" (hoặc vị trí phù hợp).
-- Thêm TableCell hiển thị danh sách mã vận đơn. Nếu 1 đơn có nhiều mã GHN, hiển thị từng mã trên 1 dòng. Nếu chưa có thì để trống.
-- Màu nền cell theo row status như các cột khác.
-
-### Kết quả
-- Cột "Mã Vận Đơn" hiển thị mã GHN tracking code của từng đơn hàng, giống hình mẫu user gửi.
+### File sửa
+- `src/components/InlineOrderEditTable.tsx`
 
