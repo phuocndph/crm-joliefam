@@ -13,9 +13,9 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, Calculator, ExternalLink, Printer } from "lucide-react";
 
-interface Province { ProvinceID: number; ProvinceName: string; }
-interface District { DistrictID: number; DistrictName: string; }
-interface Ward { WardCode: string; WardName: string; }
+interface Province { ProvinceID: number; ProvinceName: string; NameExtension?: string[]; }
+interface District { DistrictID: number; DistrictName: string; NameExtension?: string[]; }
+interface Ward { WardCode: string; WardName: string; NameExtension?: string[]; }
 interface GHNShop { _id: number; name: string; address: string; district_id: number; }
 interface GHNService { service_id: number; short_name: string; service_type_id: number; }
 interface FeeDetail {
@@ -84,6 +84,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [feeDetail, setFeeDetail] = useState<FeeDetail | null>(null);
   const [loadingFee, setLoadingFee] = useState(false);
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
+  const [autoMatchDone, setAutoMatchDone] = useState(false);
 
   // Track if dialog just opened to prevent re-running pre-fill
   const hasPrefilledRef = useRef(false);
@@ -112,6 +113,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setWardCode("");
       setDistricts([]);
       setWards([]);
+      setAutoMatchDone(false);
     }
     if (!open) {
       hasPrefilledRef.current = false;
@@ -163,71 +165,92 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       .replace(/\s+/g, " ").trim();
   };
 
-  // Auto-match address to province/district/ward with improved fuzzy matching
+  // Auto-match address to province/district/ward using NameExtension
   const tryAutoMatchLocation = useCallback(async (provList: Province[], rawAddress: string) => {
     if (!rawAddress || provList.length === 0) return;
-    const normalized = normalizeText(rawAddress);
+    const normalizedAddr = normalizeText(rawAddress);
 
-    // Helper: find best match from a list, prioritizing exact then longest match
-    const findBestMatch = (items: { name: string; id: any }[]) => {
-      // Sort by name length descending to match longer names first (e.g., "Hà Nội" before "Hà")
-      const sorted = [...items].sort((a, b) => b.name.length - a.name.length);
-      // Try exact word boundary match first
-      for (const item of sorted) {
-        if (normalized.includes(item.name)) return item;
+    // Helper: find best match using NameExtension + primary name
+    const findBestMatch = <T extends { id: any }>(
+      items: { id: any; names: string[] }[]
+    ): { id: any } | null => {
+      // Collect all (name, id) pairs, sort by name length descending
+      const allPairs: { name: string; id: any }[] = [];
+      for (const item of items) {
+        for (const n of item.names) {
+          allPairs.push({ name: n, id: item.id });
+        }
+      }
+      allPairs.sort((a, b) => b.name.length - a.name.length);
+      for (const pair of allPairs) {
+        if (pair.name.length >= 2 && normalizedAddr.includes(pair.name)) {
+          return pair;
+        }
       }
       return null;
     };
 
-    // Match province
-    const provItems = provList.map(p => {
-      const name = normalizeText(p.ProvinceName);
-      const shortName = name.replace(/^(tinh |thanh pho )/, "");
-      return { name: shortName, fullName: name, id: p.ProvinceID };
+    // Build province candidates with all name extensions
+    const provCandidates = provList.map(p => {
+      const names = [
+        normalizeText(p.ProvinceName),
+        normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
+        ...(p.NameExtension || []).map(n => normalizeText(n)),
+      ];
+      return { id: p.ProvinceID, names: Array.from(new Set(names)) };
     });
-    const matchedProv = findBestMatch(provItems);
-
+    const matchedProv = findBestMatch(provCandidates);
     if (!matchedProv) return;
+
+    console.log('🗺️ Auto-matched province:', matchedProv.id);
     setProvinceId(String(matchedProv.id));
 
     // Load and match district
     try {
-      const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
+      const distList: District[] = await callGHN('get_districts', { provinceId: matchedProv.id });
       setDistricts(distList || []);
 
-      const distItems = (distList || []).map((d: District) => {
-        const name = normalizeText(d.DistrictName);
-        const shortName = name.replace(/^(quan |huyen |thi xa |thanh pho )/, "");
-        return { name: shortName, fullName: name, id: d.DistrictID };
+      const distCandidates = (distList || []).map(d => {
+        const names = [
+          normalizeText(d.DistrictName),
+          normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
+          ...(d.NameExtension || []).map(n => normalizeText(n)),
+        ];
+        return { id: d.DistrictID, names: Array.from(new Set(names)) };
       });
-      const matchedDist = findBestMatch(distItems);
-
+      const matchedDist = findBestMatch(distCandidates);
       if (!matchedDist) return;
+
+      console.log('🗺️ Auto-matched district:', matchedDist.id);
       setDistrictId(String(matchedDist.id));
 
       // Load and match ward
-      const wardList = await callGHN('get_wards', { districtId: matchedDist.id });
+      const wardList: Ward[] = await callGHN('get_wards', { districtId: matchedDist.id });
       setWards(wardList || []);
 
-      const wardItems = (wardList || []).map((w: Ward) => {
-        const name = normalizeText(w.WardName);
-        const shortName = name.replace(/^(phuong |xa |thi tran )/, "");
-        return { name: shortName, fullName: name, id: w.WardCode };
+      const wardCandidates = (wardList || []).map(w => {
+        const names = [
+          normalizeText(w.WardName),
+          normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
+          ...(w.NameExtension || []).map(n => normalizeText(n)),
+        ];
+        return { id: w.WardCode, names: Array.from(new Set(names)) };
       });
-      const matchedWard = findBestMatch(wardItems);
-
+      const matchedWard = findBestMatch(wardCandidates);
       if (matchedWard) {
+        console.log('🗺️ Auto-matched ward:', matchedWard.id);
         setWardCode(String(matchedWard.id));
       }
     } catch (e) { console.error('Auto-match error:', e); }
   }, [callGHN]);
 
-  // Trigger auto-match ONLY when both provinces AND selectedShopId are ready
+  // Trigger auto-match when both provinces AND selectedShopId are ready
   useEffect(() => {
-    if (provinces.length > 0 && selectedShopId && order?.customers?.address && open && !provinceId) {
+    if (provinces.length > 0 && selectedShopId && order?.customers?.address && open && !autoMatchDone) {
+      setAutoMatchDone(true);
       tryAutoMatchLocation(provinces, order.customers.address);
     }
-  }, [provinces, selectedShopId, order, open]);
+  }, [provinces, selectedShopId, order, open, autoMatchDone]);
 
   const loadDistricts = async (provId: number) => {
     setLoadingDistricts(true);
