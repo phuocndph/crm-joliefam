@@ -99,6 +99,7 @@ const DEFAULT_MATERIAL_KEYWORDS = ['t200', 't250', 't300', 't350', 't400', 't500
 
 interface AISettings {
   ai_quote_fill_prompt: string;
+  ai_quote_ocr_prompt: string;
   ai_quote_text_model: string;
   ai_quote_image_model: string;
   ai_quote_ocr_model: string;
@@ -109,8 +110,13 @@ interface AISettings {
   ai_quote_cache_ttl: string;
 }
 
+const DEFAULT_OCR_PROMPT = `Trích xuất TOÀN BỘ bảng sản phẩm từ ảnh. Trả về JSON thuần:
+{"san_pham":[{"ten_san_pham":"...","quy_cach":"...","so_luong":1,"don_gia":0,"thanh_tien":0}]}
+Giữ nguyên số liệu gốc. Chuỗi rỗng cho thông tin thiếu. KHÔNG giải thích.`;
+
 const DEFAULTS: AISettings = {
   ai_quote_fill_prompt: '',
+  ai_quote_ocr_prompt: '',
   ai_quote_text_model: 'google/gemini-2.5-flash',
   ai_quote_image_model: 'google/gemini-3-flash-preview',
   ai_quote_ocr_model: 'google/gemini-2.5-flash',
@@ -184,8 +190,8 @@ export default function AISettingsPage() {
       const entries = Object.entries(settings) as [keyof AISettings, string][];
       
       for (const [key, value] of entries) {
-        // Skip empty prompt (means use default)
-        if (key === 'ai_quote_fill_prompt' && !value) {
+        // Skip empty prompts (means use default)
+        if ((key === 'ai_quote_fill_prompt' || key === 'ai_quote_ocr_prompt') && !value) {
           // Delete the key if it exists
           await (supabase as any).from('ai_config').delete().eq('config_key', key);
           continue;
@@ -310,6 +316,52 @@ export default function AISettingsPage() {
         {/* TAB 1: PROMPT */}
         <TabsContent value="prompt">
           <div className="space-y-4">
+            {/* OCR Prompt */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-blue-500" />
+                  Prompt OCR (trích xuất ảnh)
+                </CardTitle>
+                <CardDescription>
+                  Prompt dùng để trích xuất bảng sản phẩm từ ảnh (Bước 1). Kết quả OCR sẽ được chuyển thành text rồi chạy qua pipeline matching bình thường.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-muted rounded-md p-4 overflow-x-auto max-h-[200px] overflow-y-auto">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Prompt mặc định:</p>
+                  <pre className="text-xs font-mono whitespace-pre-wrap text-foreground/80">
+                    {DEFAULT_OCR_PROMPT}
+                  </pre>
+                </div>
+                <Textarea
+                  value={settings.ai_quote_ocr_prompt}
+                  onChange={(e) => setSettings(s => ({ ...s, ai_quote_ocr_prompt: e.target.value }))}
+                  placeholder="Để trống = dùng prompt OCR mặc định..."
+                  className="min-h-[150px] font-mono text-sm"
+                />
+                {settings.ai_quote_ocr_prompt ? (
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-blue-100 text-blue-700 border-blue-300">Custom OCR prompt đang bật</Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {settings.ai_quote_ocr_prompt.length} ký tự
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSettings(s => ({ ...s, ai_quote_ocr_prompt: '' }))}
+                    >
+                      Xoá & dùng mặc định
+                    </Button>
+                  </div>
+                ) : (
+                  <Badge variant="outline">Đang dùng OCR prompt mặc định</Badge>
+                )}
+              </CardContent>
+            </Card>
+
+            <Separator />
+
             {/* Default Prompt - always visible */}
             <Card>
               <CardHeader>
