@@ -1273,6 +1273,13 @@ serve(async (req) => {
       }
 
     // ==================== LIST MODELS ====================
+    } else if (type === "refresh_ai_config") {
+      invalidateAIConfigCache('edge-function request');
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+
+    // ==================== LIST MODELS ====================
     } else if (type === "list_models") {
       const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
       if (!BEEKNOEE_API_KEY) {
