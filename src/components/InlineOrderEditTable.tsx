@@ -338,7 +338,7 @@ export function InlineOrderEditTable({
                 <CalendarComponent mode="single" selected={selectedDate} onSelect={date => {
                 setSelectedDate(date);
                 if (date) {
-                  handleSave(order.id, field, date);
+                  handleSave(order.id, effectiveField, date);
                 }
               }} initialFocus locale={vi} className="p-3 pointer-events-auto" />
               </PopoverContent>
