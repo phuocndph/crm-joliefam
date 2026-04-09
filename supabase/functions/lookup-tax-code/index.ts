@@ -1020,12 +1020,12 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
     // Different model orders based on step to avoid 429 concurrent limit
     const models = hasImage
       ? [
-          { name: "gemini-2.0-flash-lite", timeout: 30000 },
-          { name: "gemini-2.5-flash", timeout: 90000 },
+          { name: "google/gemini-2.0-flash-lite", timeout: 30000 },
+          { name: "google/gemini-2.5-flash", timeout: 90000 },
         ]
       : [
-          { name: "gemini-2.0-flash-lite", timeout: 30000 },
-          { name: "gemini-2.5-flash", timeout: 55000 },
+          { name: "google/gemini-2.0-flash-lite", timeout: 30000 },
+          { name: "google/gemini-2.5-flash", timeout: 55000 },
         ];
     
     // Only 1 retry attempt (was 2), with shorter wait
