@@ -1,68 +1,43 @@
 
 
-## Nâng cấp form tạo đơn GHN - giống giao diện GHN chính thức
+## Sửa lỗi form tạo đơn GHN - tự động hóa đúng cách
 
-### Tổng quan
-Nâng cấp `CreateGHNOrderDialog` thành form đầy đủ theo quy trình GHN chính thức, bao gồm: chọn shop, nhập thông tin người nhận, tính cước phí trước khi tạo, hiển thị kết quả chi tiết sau khi tạo đơn.
+### Vấn đề hiện tại
+1. **Shop không tự chọn**: Load danh sách shop nhưng không auto-select shop đầu tiên
+2. **Dịch vụ load sai thời điểm**: Services chỉ load khi chọn ward, nhưng GHN API chỉ cần `from_district` + `to_district` → nên load ngay khi chọn quận
+3. **Cước phí không tự tính**: Phải bấm nút thủ công, nên tự tính khi đã đủ thông tin (quận + phường + dịch vụ)
+4. **Địa chỉ không auto-fill province/district/ward**: Chỉ fill text address, nhưng dropdown tỉnh/quận/phường vẫn trống
 
-### Thay đổi
+### Thay đổi trong `src/components/CreateGHNOrderDialog.tsx`
 
-**1. Edge Function: `supabase/functions/ghn-tracking/index.ts`**
-Thêm 2 action mới:
-- `get_shops`: Gọi `v2/shop/all` lấy danh sách shop (nếu tài khoản có nhiều shop)
-- `calculate_fee`: Gọi `v2/shipping-order/fee` tính cước phí dựa trên thông tin đã nhập (district, ward, weight, dimensions, COD, service_type)
-- `get_services`: Gọi `v2/shipping-order/available-services` lấy dịch vụ khả dụng theo tuyến (from_district → to_district)
+**1. Auto-select shop đầu tiên:**
+- Sau khi `loadShops()` xong, tự động set `selectedShopId` = shop đầu tiên
 
-**2. Component: `src/components/CreateGHNOrderDialog.tsx`** - Nâng cấp toàn diện
+**2. Dời `loadServices` sang khi chọn quận (district), không đợi ward:**
+- Khi `districtId` thay đổi → gọi `loadServices(districtId)`
+- Bỏ `loadServices` ra khỏi `loadWards`
 
-Chia form thành các bước/section rõ ràng với Tabs hoặc Accordion:
+**3. Auto-calculate fee khi đủ thông tin:**
+- Thêm `useEffect` theo dõi `districtId`, `wardCode`, `serviceTypeId`, `weight` → tự động gọi `calculateFee` khi tất cả có giá trị
 
-**Section 1 - Thông tin shop gửi hàng:**
-- Dropdown chọn shop (từ API `get_shops`), mặc định shop đầu tiên
-- Hiển thị địa chỉ shop đã chọn
+**4. Auto-match tỉnh/quận/phường từ text address (fuzzy match):**
+- Sau khi load provinces, thử match tên tỉnh/thành từ `order.customers.address`
+- Nếu match → auto load districts → match quận → auto load wards → match phường
+- Sử dụng `String.includes()` hoặc normalize text để so sánh
+- Nếu không match được thì để user chọn thủ công
 
-**Section 2 - Thông tin người nhận:**
-- Tên, SĐT (pre-fill từ đơn hàng)
-- Tỉnh/Quận/Phường (dropdown cascade, giữ nguyên logic hiện tại)
-- Địa chỉ chi tiết
-- Yêu cầu khi giao: CHOTHUHANG / CHOXEMHANGKHONGTHU / KHONGCHOXEMHANG (radio group)
+### Thay đổi kỹ thuật chi tiết
 
-**Section 3 - Thông tin hàng hóa:**
-- Cân nặng (g)
-- Kích thước (dài x rộng x cao cm)
-- Giá trị hàng hóa (insurance_value) - để tính phí bảo hiểm
-- Số lượng sản phẩm
-- Nội dung hàng hóa
+```
+loadShops() → auto-set selectedShopId = shops[0]._id
 
-**Section 4 - Dịch vụ & thanh toán:**
-- Dịch vụ vận chuyển: tự động load từ API `get_services` theo tuyến đường
-- Phí ship: Người gửi trả / Người nhận trả
-- Tiền COD (VNĐ)
-- Ghi chú giao hàng
+loadDistricts() → bỏ loadServices ra
+loadWards() → bỏ loadServices ra
 
-**Section 5 - Xem cước phí (trước khi tạo):**
-- Nút "Tính cước phí" gọi API `calculate_fee`
-- Hiển thị bảng phí chi tiết: phí dịch vụ, phí bảo hiểm, phí COD, tổng cước
-- Thời gian giao dự kiến
+useEffect([districtId, selectedShopId]) → loadServices(districtId)
+useEffect([districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount]) → auto calculateFee
 
-**Section 6 - Kết quả sau khi tạo đơn (thay thế success screen hiện tại):**
-- Mã vận đơn GHN (copy được)
-- Trạng thái đơn: "Sẵn sàng lấy hàng"
-- Link tracking GHN
-- Nút "In phiếu gửi" (mở link GHN print)
-- Nút "Tạo đơn khác" / "Đóng"
-
-### Chi tiết kỹ thuật
-
-**GHN API endpoints sử dụng:**
-- `GET /shiip/public-api/v2/shop/all` - danh sách shop
-- `POST /shiip/public-api/v2/shipping-order/available-services` - dịch vụ khả dụng (cần `shop_id`, `from_district`, `to_district`)
-- `POST /shiip/public-api/v2/shipping-order/fee` - tính cước (cần `service_type_id`, `to_district_id`, `to_ward_code`, `weight`, `dimensions`, `insurance_value`)
-- `POST /shiip/public-api/v2/shipping-order/create` - tạo đơn (đã có)
-
-**UI Layout:**
-- Dialog mở rộng `max-w-3xl`
-- Sử dụng Card sections với tiêu đề cho mỗi nhóm thông tin
-- Cước phí hiển thị trong bảng tóm tắt trước nút "Tạo đơn"
-- Badge hiển thị trạng thái tính cước (chưa tính / đang tính / đã tính)
+useEffect([provinces, order.customers.address]) → tryAutoMatchLocation()
+  → match province → load districts → match district → load wards → match ward
+```
 
