@@ -84,6 +84,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [feeDetail, setFeeDetail] = useState<FeeDetail | null>(null);
   const [loadingFee, setLoadingFee] = useState(false);
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
+  const [autoMatchDone, setAutoMatchDone] = useState(false);
 
   // Track if dialog just opened to prevent re-running pre-fill
   const hasPrefilledRef = useRef(false);
