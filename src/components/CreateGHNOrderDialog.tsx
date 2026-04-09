@@ -19,8 +19,8 @@ interface Ward { WardCode: string; WardName: string; }
 interface GHNShop { _id: number; name: string; address: string; district_id: number; }
 interface GHNService { service_id: number; short_name: string; service_type_id: number; }
 interface FeeDetail {
-  main_service: number; insurance: number; cod_fee: number; station_do: number;
-  station_pu: number; return_: number; r2s: number; coupon: number; total: number;
+  service_fee: number; insurance_fee: number; cod_fee: number; r2s_fee: number;
+  coupon_value: number; total: number; [key: string]: number;
 }
 
 interface CreateGHNOrderDialogProps {
