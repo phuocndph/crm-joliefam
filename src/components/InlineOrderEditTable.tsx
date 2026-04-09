@@ -450,19 +450,19 @@ export function InlineOrderEditTable({
       <Table disableWrapper className="min-w-max">
         <TableHeader className="sticky top-0 bg-background z-10">
           <TableRow>
-            <TableHead className="min-w-[120px] bg-background">Mã đơn hàng</TableHead>
-            <TableHead className="min-w-[140px] bg-background">Mã vận đơn</TableHead>
-            <TableHead className="min-w-[110px] bg-background">Ngày tạo đơn</TableHead>
-            <TableHead className="min-w-[150px] bg-background">Quản lý</TableHead>
-            <TableHead className="min-w-[200px] bg-background">Tên khách hàng</TableHead>
-            <TableHead className="min-w-[150px] bg-background">Giá trị đơn hàng</TableHead>
-            <TableHead className="min-w-[180px] bg-background">Ngày hẹn trả</TableHead>
-            <TableHead className="min-w-[120px] bg-background">Tình trạng đơn</TableHead>
-            <TableHead className="min-w-[280px] bg-background">Thanh toán</TableHead>
-            <TableHead className="min-w-[150px] bg-background">Người phụ trách</TableHead>
-            <TableHead className="min-w-[250px] bg-background">Ghi chú</TableHead>
-            <TableHead className="min-w-[200px] bg-background">Vải đã sử dụng</TableHead>
-            <TableHead className="min-w-[100px] sticky right-0 bg-background shadow-lg">Hành động</TableHead>
+            <TableHead className="min-w-[120px] bg-primary text-primary-foreground">Mã đơn hàng</TableHead>
+            <TableHead className="min-w-[140px] bg-primary text-primary-foreground">Mã vận đơn</TableHead>
+            <TableHead className="min-w-[110px] bg-primary text-primary-foreground">Ngày tạo đơn</TableHead>
+            <TableHead className="min-w-[150px] bg-primary text-primary-foreground border-primary-foreground">Quản lý</TableHead>
+            <TableHead className="min-w-[200px] bg-primary text-primary-foreground">Tên khách hàng</TableHead>
+            <TableHead className="min-w-[150px] bg-primary text-primary-foreground">Giá trị đơn hàng</TableHead>
+            <TableHead className="min-w-[180px] bg-primary text-primary-foreground">Ngày hẹn trả</TableHead>
+            <TableHead className="min-w-[120px] bg-primary text-primary-foreground">Tình trạng đơn</TableHead>
+            <TableHead className="min-w-[280px] bg-primary text-primary-foreground">Thanh toán</TableHead>
+            <TableHead className="min-w-[150px] bg-primary text-primary-foreground border-solid border-primary-foreground">Người phụ trách</TableHead>
+            <TableHead className="min-w-[250px] bg-primary text-primary-foreground">Ghi chú</TableHead>
+            <TableHead className="min-w-[200px] bg-primary text-primary-foreground">Vải đã sử dụng</TableHead>
+            <TableHead className="min-w-[100px] sticky right-0 bg-primary text-primary-foreground shadow-lg">Hành động</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
