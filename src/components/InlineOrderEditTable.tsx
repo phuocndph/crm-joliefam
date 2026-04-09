@@ -247,23 +247,22 @@ export function InlineOrderEditTable({
   };
   const formatDateWithCountdown = (date: string | null, createdAt?: string) => {
     let effectiveDate = date;
-    let isDefault = false;
     
     if (!effectiveDate && createdAt) {
       const created = new Date(createdAt);
       created.setDate(created.getDate() + 6);
       effectiveDate = created.toISOString();
-      isDefault = true;
     }
     
     if (!effectiveDate) return {
-      text: "Chưa đặt",
+      dateText: "Chưa đặt",
+      countdownText: "",
       isUrgent: false
     };
 
     const deliveryDate = new Date(effectiveDate);
     if (isNaN(deliveryDate.getTime())) {
-      return { text: "Ngày không hợp lệ", isUrgent: false };
+      return { dateText: "Ngày không hợp lệ", countdownText: "", isUrgent: false };
     }
     
     const today = new Date();
@@ -271,21 +270,16 @@ export function InlineOrderEditTable({
     deliveryDate.setHours(0, 0, 0, 0);
 
     const daysLeft = differenceInDays(deliveryDate, today);
-    let text = format(deliveryDate, "dd/MM/yyyy", { locale: vi });
-    const defaultTag = isDefault ? " (mặc định)" : "";
+    const dateText = format(deliveryDate, "dd/MM/yyyy", { locale: vi });
     
     if (daysLeft < 0) {
-      text += ` (Quá hạn ${Math.abs(daysLeft)} ngày)${defaultTag}`;
-      return { text, isUrgent: true };
+      return { dateText, countdownText: `Quá hạn ${Math.abs(daysLeft)} ngày`, isUrgent: true };
     } else if (daysLeft === 0) {
-      text += ` (Hôm nay)${defaultTag}`;
-      return { text, isUrgent: true };
+      return { dateText, countdownText: "Hôm nay", isUrgent: true };
     } else if (daysLeft <= 2) {
-      text += ` (Còn ${daysLeft} ngày)${defaultTag}`;
-      return { text, isUrgent: true };
+      return { dateText, countdownText: `Còn ${daysLeft} ngày`, isUrgent: true };
     } else {
-      text += ` (Còn ${daysLeft} ngày)${defaultTag}`;
-      return { text, isUrgent: false };
+      return { dateText, countdownText: `Còn ${daysLeft} ngày`, isUrgent: false };
     }
   };
   const getCellContent = (order: Order, field: string) => {
@@ -395,9 +389,14 @@ export function InlineOrderEditTable({
       case "delivery_date":
         const dateInfo = formatDateWithCountdown(order.delivery_date, order.created_at);
         return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.delivery_date)}>
-            <span className={cn("text-sm", dateInfo.isUrgent && "text-red-600 font-semibold")}>
-              {dateInfo.text}
-            </span>
+            <div className="leading-tight">
+              <span className="text-sm font-medium block">{dateInfo.dateText}</span>
+              {dateInfo.countdownText && (
+                <span className={cn("text-xs block", dateInfo.isUrgent ? "text-red-600 font-semibold" : "text-muted-foreground")}>
+                  {dateInfo.countdownText}
+                </span>
+              )}
+            </div>
           </div>;
       case "created_at":
         return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.created_at)}>
