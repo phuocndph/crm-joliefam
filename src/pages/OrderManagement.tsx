@@ -20,6 +20,7 @@ import { DeleteOrderDialog } from "@/components/DeleteOrderDialog";
 import { CreatePaymentForm } from "@/components/CreatePaymentForm";
 import { EditOrderNumberDialog } from "@/components/EditOrderNumberDialog";
 import { GHNTrackingDialog } from "@/components/GHNTrackingDialog";
+import { CreateGHNOrderDialog } from "@/components/CreateGHNOrderDialog";
 import { InlineOrderEditTable } from "@/components/InlineOrderEditTable";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -122,6 +123,7 @@ export default function OrderManagement() {
   const [orderToPayment, setOrderToPayment] = useState<Order | null>(null);
   const [orderToEditNumber, setOrderToEditNumber] = useState<Order | null>(null);
   const [orderToGHNTracking, setOrderToGHNTracking] = useState<Order | null>(null);
+  const [orderToCreateGHN, setOrderToCreateGHN] = useState<Order | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("orders");
   const [bulkSyncing, setBulkSyncing] = useState(false);
@@ -701,6 +703,10 @@ export default function OrderManagement() {
 
                 {/* Action Buttons */}
                 <div className="flex justify-end space-x-2 pt-4 border-t border-gray-300 mt-4">
+                  <Button onClick={() => setOrderToCreateGHN(selectedOrder)} variant="outline" className="gap-2">
+                    <Truck className="h-4 w-4" />
+                    Tạo đơn GHN
+                  </Button>
                   <Button onClick={() => setOrderToPayment(selectedOrder)} variant="default" className="gap-2">
                     <CreditCard className="h-4 w-4" />
                     Thêm thanh toán
