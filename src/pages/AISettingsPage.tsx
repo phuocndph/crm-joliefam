@@ -49,16 +49,43 @@ matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU bảng giá. TUY�
 {"items":[{"matchedProductId":"uuid-từ-bảng-giá","customName":"tên SP kích thước ĐÚNG khách","quantity":1,"price":0,"specifications":"KT đúng khách, KHÔNG làm tròn","note":""}]}
 Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
 
-const AI_MODELS = [
-  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", desc: "Nhanh & tiết kiệm", vision: false },
-  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Cân bằng (mặc định text)", vision: true },
-  { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash Preview", desc: "Mặc định ảnh", vision: true },
-  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", desc: "Chính xác cao", vision: true },
-  { value: "openai/gpt-5-mini", label: "GPT-5 Mini", desc: "OpenAI cân bằng", vision: false },
-  { value: "openai/gpt-5", label: "GPT-5", desc: "Cao cấp nhất", vision: true },
+// Known vision-capable model patterns
+const VISION_MODEL_PATTERNS = [
+  'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash', 'gemini-3.1',
+  'gpt-5', 'gpt-5.2', 'gpt-5.4', 'claude-sonnet', 'claude-opus', 'claude-haiku',
+  'glm-5', 'glm-4.7',
 ];
 
-const VISION_MODELS = AI_MODELS.filter(m => m.vision);
+// Exclude non-chat models (image gen, video gen, embedding, codex)
+const EXCLUDED_PATTERNS = [
+  'dall-e', 'imagen-', 'sora-', 'veo-', 'gpt-image', 'chatgpt-image',
+  'text-embedding', 'gemini-embedding', 'codex',
+];
+
+interface BeeknoeeModel {
+  id: string;
+  owned_by: string;
+  context_window?: number;
+}
+
+function isVisionModel(modelId: string): boolean {
+  return VISION_MODEL_PATTERNS.some(p => modelId.includes(p));
+}
+
+function isChatModel(model: BeeknoeeModel): boolean {
+  if (EXCLUDED_PATTERNS.some(p => model.id.includes(p))) return false;
+  if (model.context_window && model.context_window > 5000) return true;
+  return false;
+}
+
+// Fallback static models in case API fails
+const FALLBACK_MODELS = [
+  { value: "gemini-2.5-flash-lite", label: "gemini-2.5-flash-lite", desc: "Google — Nhanh", vision: false },
+  { value: "gemini-2.5-flash", label: "gemini-2.5-flash", desc: "Google — Cân bằng", vision: true },
+  { value: "gemini-3-flash", label: "gemini-3-flash", desc: "Google — Mới nhất", vision: true },
+  { value: "glm-4.7-flash", label: "glm-4.7-flash", desc: "Z.AI — Nhanh", vision: false },
+  { value: "gpt-5-mini", label: "gpt-5-mini", desc: "OpenAI — Cân bằng", vision: false },
+];
 
 const DEFAULT_TYPE_CATEGORIES: Record<string, string[]> = {
   'ga chun': ['ga chun'],
