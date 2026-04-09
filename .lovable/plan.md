@@ -1,43 +1,51 @@
 
 
-## Sửa lỗi form tạo đơn GHN - tự động hóa đúng cách
+## Sửa lỗi form tạo đơn GHN - Race condition & Auto-match
 
-### Vấn đề hiện tại
-1. **Shop không tự chọn**: Load danh sách shop nhưng không auto-select shop đầu tiên
-2. **Dịch vụ load sai thời điểm**: Services chỉ load khi chọn ward, nhưng GHN API chỉ cần `from_district` + `to_district` → nên load ngay khi chọn quận
-3. **Cước phí không tự tính**: Phải bấm nút thủ công, nên tự tính khi đã đủ thông tin (quận + phường + dịch vụ)
-4. **Địa chỉ không auto-fill province/district/ward**: Chỉ fill text address, nhưng dropdown tỉnh/quận/phường vẫn trống
+### Vấn đề phát hiện
+
+1. **Race condition giữa loadShops và auto-match**: Khi dialog mở, `loadShops` và `loadProvinces` chạy song song. Nếu provinces load xong trước shops, auto-match sẽ set `districtId` nhưng `selectedShopId` vẫn rỗng → services không load được.
+
+2. **`GHN_SHOP_ID` env var sai giá trị**: Khi edge function dùng fallback `GHN_SHOP_ID`, GHN API trả lỗi "Tài khoản không thuộc cửa hàng". Cần sửa để luôn yêu cầu shopId từ client.
+
+3. **Fuzzy matching có thể match sai**: "Hà Nội" và "Hà Nam" có thể nhầm lẫn do dùng `includes()` trên substring ngắn.
 
 ### Thay đổi trong `src/components/CreateGHNOrderDialog.tsx`
 
-**1. Auto-select shop đầu tiên:**
-- Sau khi `loadShops()` xong, tự động set `selectedShopId` = shop đầu tiên
+**1. Sửa race condition - đợi cả shops và provinces load xong trước khi auto-match:**
+- Thay vì trigger auto-match chỉ khi `provinces.length > 0`, thêm điều kiện `selectedShopId` cũng phải có giá trị
+- Hoặc: trong `tryAutoMatchLocation`, sau khi set districtId, chờ shops load xong rồi mới để useEffect load services
 
-**2. Dời `loadServices` sang khi chọn quận (district), không đợi ward:**
-- Khi `districtId` thay đổi → gọi `loadServices(districtId)`
-- Bỏ `loadServices` ra khỏi `loadWards`
+**2. Cải thiện fuzzy matching:**
+- Ưu tiên match exact trước, sau đó mới fallback match includes
+- Sử dụng `NameExtension` từ GHN API response (mảng các tên thay thế) để match chính xác hơn
+- Sort provinces/districts theo độ dài tên giảm dần để match tên dài trước (tránh "Hà" match trước "Hà Nội")
 
-**3. Auto-calculate fee khi đủ thông tin:**
-- Thêm `useEffect` theo dõi `districtId`, `wardCode`, `serviceTypeId`, `weight` → tự động gọi `calculateFee` khi tất cả có giá trị
+**3. Đảm bảo auto-load services chạy đúng:**
+- Thêm `selectedShopId` vào dependency của `tryAutoMatchLocation`
+- Nếu `selectedShopId` chưa có, đợi nó có rồi mới trigger load services
+- useEffect auto-load services: kiểm tra `shops.length > 0` nữa (đảm bảo shops đã load)
 
-**4. Auto-match tỉnh/quận/phường từ text address (fuzzy match):**
-- Sau khi load provinces, thử match tên tỉnh/thành từ `order.customers.address`
-- Nếu match → auto load districts → match quận → auto load wards → match phường
-- Sử dụng `String.includes()` hoặc normalize text để so sánh
-- Nếu không match được thì để user chọn thủ công
+**4. Sửa pre-fill useEffect:**
+- Chỉ reset state khi dialog mới mở (dùng ref track), không reset khi `order`/`remainingAmount` thay đổi trong khi dialog đang mở
 
-### Thay đổi kỹ thuật chi tiết
+### Tóm tắt flow sau sửa
 
-```
-loadShops() → auto-set selectedShopId = shops[0]._id
-
-loadDistricts() → bỏ loadServices ra
-loadWards() → bỏ loadServices ra
-
-useEffect([districtId, selectedShopId]) → loadServices(districtId)
-useEffect([districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount]) → auto calculateFee
-
-useEffect([provinces, order.customers.address]) → tryAutoMatchLocation()
-  → match province → load districts → match district → load wards → match ward
+```text
+Dialog mở
+  ├─ loadShops() → auto-select shop đầu tiên → set selectedShopId
+  └─ loadProvinces() → set provinces
+                            │
+  useEffect([provinces, selectedShopId, open])
+  ├─ Cả 2 đã có? → tryAutoMatchLocation()
+  │   ├─ Match province → set provinceId
+  │   ├─ Load & match district → set districtId
+  │   └─ Load & match ward → set wardCode
+  │
+  useEffect([districtId, selectedShopId])
+  └─ loadServices() → auto-select service → set serviceTypeId
+                                                    │
+  useEffect([districtId, wardCode, serviceTypeId, weight...])
+  └─ calculateFee() → hiển thị cước phí
 ```
 
