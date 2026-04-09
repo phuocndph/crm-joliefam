@@ -483,7 +483,7 @@ export function InlineOrderEditTable({
               <TableCell className="min-w-[200px]">
                 <FabricUsageCell orderId={order.id} />
               </TableCell>
-              <TableCell className="min-w-[100px] sticky right-0 shadow-lg" style={{ backgroundColor: rowBg }}>
+              <TableCell className="min-w-[100px] sticky right-0 shadow-lg outline-none focus:outline-none" style={{ backgroundColor: rowBg, outline: 'none' }} tabIndex={-1}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="h-8 w-8 p-0">
