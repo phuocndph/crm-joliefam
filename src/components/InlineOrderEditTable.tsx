@@ -403,6 +403,7 @@ export function InlineOrderEditTable({
         <TableHeader className="sticky top-0 bg-background z-10">
           <TableRow>
             <TableHead className="min-w-[120px] bg-background">Mã đơn hàng</TableHead>
+            <TableHead className="min-w-[140px] bg-background">Mã vận đơn</TableHead>
             <TableHead className="min-w-[110px] bg-background">Ngày tạo đơn</TableHead>
             <TableHead className="min-w-[150px] bg-background">Quản lý</TableHead>
             <TableHead className="min-w-[200px] bg-background">Tên khách hàng</TableHead>
@@ -431,6 +432,17 @@ export function InlineOrderEditTable({
             >
               <TableCell className="font-medium min-w-[120px]" style={{ color: rowText }}>
                 {getCellContent(order, "order_number")}
+              </TableCell>
+              <TableCell className="min-w-[140px]" style={{ color: rowText }}>
+                <div className="flex flex-col gap-0.5">
+                  {order.ghn_tracking && order.ghn_tracking.length > 0 ? (
+                    order.ghn_tracking.map((t, i) => (
+                      <span key={i} className="text-xs font-mono">{t.ghn_order_code}</span>
+                    ))
+                  ) : (
+                    <span className="text-xs opacity-50 italic">—</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="min-w-[110px]" style={{ color: rowText }}>
                 {getCellContent(order, "created_at")}
