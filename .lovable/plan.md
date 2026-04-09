@@ -1,25 +1,31 @@
 
 
-## Lỗi: `ReferenceError: hasImage is not defined`
+## Chỉ dùng gemini-2.0-flash-lite và gemini-2.5-flash
 
-### Nguyên nhân
-Khi tách OCR thành bước riêng, biến `hasImage` bị xóa khai báo nhưng vẫn còn 2 chỗ tham chiếu:
-
-1. **Line 1624**: `hasImage ? 'text' : undefined` — dùng trong `callAI` stepHint
-2. **Line 1650**: `if (hasImage && step1Start)` — dùng để thêm pipeline metadata
-
-Cả 2 đều crash vì `hasImage` không tồn tại.
-
-### Sửa
+### Thay đổi
 
 **File: `supabase/functions/lookup-tax-code/index.ts`**
 
-1. **Line 1624**: Thay `hasImage ? 'text' : undefined` → `'text'` (vì giờ luồng này chỉ xử lý text thuần, luôn là step text)
+1. **Model chain cho image tasks (line 1021-1026)**: Bỏ `gemini-2.0-flash`, chỉ giữ 2 model:
+```typescript
+const models = hasImage
+  ? [
+      { name: "gemini-2.0-flash-lite", timeout: 30000 },
+      { name: "gemini-2.5-flash", timeout: 90000 },
+    ]
+```
 
-2. **Line 1650**: Xóa block `if (hasImage && step1Start)` hoặc đổi thành `if (false)` — vì pipeline metadata chỉ có ý nghĩa khi chạy 2 bước liên tục, nhưng giờ OCR đã tách riêng nên không còn `step1Start` trong luồng này.
+2. **Model chain cho text/default tasks (line 1032-1037)**: Bỏ `glm-4.7-flash`, `glm-4.5-flash`, `openai/gpt-oss-120b`, chỉ giữ:
+```typescript
+: [
+    { name: "gemini-2.0-flash-lite", timeout: 30000 },
+    { name: "gemini-2.5-flash", timeout: 55000 },
+  ];
+```
+
+3. **OCR model default (line 1451)**: Giữ nguyên `google/gemini-2.0-flash-lite` (đã đúng).
 
 ### Tóm tắt
-- Sửa 2 dòng trong edge function
-- Deploy lại
-- Không thay đổi logic, chỉ xóa tham chiếu đến biến đã bị xóa
+- Xóa tất cả model khác khỏi chain, chỉ dùng `gemini-2.0-flash-lite` (nhanh, rẻ) và `gemini-2.5-flash` (fallback mạnh)
+- Deploy lại edge function
 
