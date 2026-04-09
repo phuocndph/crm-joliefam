@@ -216,7 +216,7 @@ export function InlineOrderEditTable({
   const handleSave = async (orderId: string, field: string, dateValue?: Date, newValue?: any) => {
     try {
       let valueToSave = newValue !== undefined ? newValue : editValue;
-      if (field === "delivery_date" || field === "created_at") {
+      if (field === "delivery_date" || field === "created_at" || field === "delivered_date") {
         const dateToUse = dateValue || selectedDate;
         if (dateToUse) {
           valueToSave = dateToUse.toISOString();
@@ -226,9 +226,14 @@ export function InlineOrderEditTable({
       // Map order_number field to display_order_number in database
       const fieldToUpdate = field === "order_number" ? "display_order_number" : field;
       console.log('handleSave - field:', field, 'valueToSave:', valueToSave);
-      await onOrderUpdate(orderId, {
+      const updateData: Record<string, any> = {
         [fieldToUpdate]: valueToSave
-      });
+      };
+      // Khi chuyển trạng thái sang "delivered", tự động set delivered_date = hôm nay
+      if (field === "status" && valueToSave === "delivered") {
+        updateData.delivered_date = new Date().toISOString();
+      }
+      await onOrderUpdate(orderId, updateData);
       setEditingCell(null);
       setEditValue("");
       setSelectedDate(undefined);
@@ -321,6 +326,7 @@ export function InlineOrderEditTable({
           // Payment status is now read-only, no editing needed
           return null;
         case "delivery_date":
+        case "delivered_date":
         case "created_at":
           return <Popover open={true} onOpenChange={open => !open && handleCancel()}>
               <PopoverTrigger asChild>
@@ -387,6 +393,15 @@ export function InlineOrderEditTable({
             </div>
           </div>;
       case "delivery_date":
+        if (order.status === "delivered") {
+          const deliveredDate = order.delivered_date ? format(new Date(order.delivered_date), "dd/MM/yyyy", { locale: vi }) : format(new Date(), "dd/MM/yyyy", { locale: vi });
+          return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, "delivered_date", order.delivered_date || new Date().toISOString())}>
+              <div className="leading-tight">
+                <span className="text-sm font-medium block">{deliveredDate}</span>
+                <span className="text-xs block text-green-600 font-semibold">Đã giao</span>
+              </div>
+            </div>;
+        }
         const dateInfo = formatDateWithCountdown(order.delivery_date, order.created_at);
         return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.delivery_date)}>
             <div className="leading-tight">
