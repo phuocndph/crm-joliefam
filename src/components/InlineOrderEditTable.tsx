@@ -146,6 +146,52 @@ const FabricUsageCell = ({
         </div>)}
     </div>;
 };
+const GhnTrackingEditCell = ({ orderId, initialCodes, onDone }: { orderId: string; initialCodes: string[]; onDone: () => void }) => {
+  const [value, setValue] = useState(initialCodes.join('\n'));
+  const queryClient = useQueryClient();
+
+  const handleSave = async () => {
+    const newCodes = value.split('\n').map(c => c.trim()).filter(Boolean);
+
+    // Delete existing tracking records for this order
+    await supabase.from('ghn_tracking').delete().eq('order_id', orderId);
+
+    // Insert new ones
+    if (newCodes.length > 0) {
+      const inserts = newCodes.map(code => ({
+        ghn_order_code: code,
+        order_id: orderId,
+        internal_order_code: code,
+      }));
+      await supabase.from('ghn_tracking').insert(inserts);
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['orders'] });
+    onDone();
+  };
+
+  return (
+    <div className="flex items-start gap-1">
+      <textarea
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        className="w-full min-h-[40px] resize-none rounded-md border border-input bg-background px-2 py-1 text-xs font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        placeholder="Nhập mã vận đơn (mỗi dòng 1 mã)..."
+        rows={2}
+        autoFocus
+      />
+      <div className="flex flex-col gap-0.5">
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={handleSave}>
+          <Check className="h-3 w-3" />
+        </Button>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={onDone}>
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 export function InlineOrderEditTable({
   orders,
   onOrderUpdate,
