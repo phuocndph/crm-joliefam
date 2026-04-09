@@ -1477,9 +1477,10 @@ serve(async (req) => {
         step1Start = Date.now();
         console.log('AI Quote Fill: Step 1 — OCR extract text from image...');
 
-        const ocrPrompt = `Trích xuất TOÀN BỘ bảng sản phẩm từ ảnh. Trả về JSON thuần:
+        const defaultOcrPrompt = `Trích xuất TOÀN BỘ bảng sản phẩm từ ảnh. Trả về JSON thuần:
 {"san_pham":[{"ten_san_pham":"...","quy_cach":"...","so_luong":1,"don_gia":0,"thanh_tien":0}]}
 Giữ nguyên số liệu gốc. Chuỗi rỗng cho thông tin thiếu. KHÔNG giải thích.`;
+        const ocrPrompt = aiConfig['ai_quote_ocr_prompt'] || defaultOcrPrompt;
 
         try {
           const ocrMessages = [
