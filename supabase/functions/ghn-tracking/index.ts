@@ -79,6 +79,52 @@ serve(async (req) => {
       });
     }
 
+    // ==================== SHOP ACTION ====================
+    if (action === 'get_shops') {
+      const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shop/all', {
+        method: 'POST',
+        headers: { 'Token': ghnApiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offset: 0, limit: 50, client_phone: "" }),
+      });
+      const data = await response.json();
+      return new Response(JSON.stringify({ success: true, data: data.data?.shops || [] }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ==================== SERVICES ACTION ====================
+    if (action === 'get_services') {
+      const ghnShopId = Deno.env.get('GHN_SHOP_ID');
+      if (!ghnShopId) throw new Error('GHN_SHOP_ID not configured');
+      const { fromDistrictId, toDistrictId } = requestBody;
+      const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/available-services', {
+        method: 'POST',
+        headers: { 'Token': ghnApiKey, 'Content-Type': 'application/json', 'ShopId': ghnShopId },
+        body: JSON.stringify({ shop_id: parseInt(ghnShopId), from_district: fromDistrictId, to_district: toDistrictId }),
+      });
+      const data = await response.json();
+      return new Response(JSON.stringify({ success: true, data: data.data || [] }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ==================== CALCULATE FEE ACTION ====================
+    if (action === 'calculate_fee') {
+      const ghnShopId = Deno.env.get('GHN_SHOP_ID');
+      if (!ghnShopId) throw new Error('GHN_SHOP_ID not configured');
+      const { feeData } = requestBody;
+      const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/fee', {
+        method: 'POST',
+        headers: { 'Token': ghnApiKey, 'Content-Type': 'application/json', 'ShopId': ghnShopId },
+        body: JSON.stringify({ shop_id: parseInt(ghnShopId), ...feeData }),
+      });
+      const data = await response.json();
+      if (data.code !== 200) throw new Error(data.message || 'Cannot calculate fee');
+      return new Response(JSON.stringify({ success: true, data: data.data }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // ==================== CREATE ORDER ACTION ====================
     if (action === 'create_order') {
       const ghnShopId = Deno.env.get('GHN_SHOP_ID');
