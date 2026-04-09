@@ -1,28 +1,21 @@
 
 
-## Ngày hẹn trả mặc định 6 ngày + bộ đếm ngược
+## Sửa logic "Đã giao" để bao gồm cả "Đã giao tự thu tiền"
 
-### Hiện trạng
-- Khi `delivery_date` là `null`, hiển thị "Chưa đặt"
-- Bộ đếm ngược đã có sẵn cho các đơn có `delivery_date`
-- `CreateOrderForm` không set `delivery_date` khi tạo đơn
-- `EditOrderDialog` mặc định 4 ngày — cần đổi thành 6 ngày
+### Nguyên nhân
+Code hiện tại chỉ kiểm tra `status === "delivered"`, nhưng thực tế có 2 trạng thái giao hàng:
+- `shipped` = "Đã giao"
+- `self_delivered` = "Đã giao tự thu tiền"
 
-### Thay đổi
+### Thay đổi trong `src/components/InlineOrderEditTable.tsx`
 
-**File: `src/components/InlineOrderEditTable.tsx`**
-- Sửa `formatDateWithCountdown`: khi `delivery_date` là null, tự tính ngày mặc định = `created_at + 6 ngày` và hiển thị countdown tương tự (kèm ghi chú "mặc định")
-- Truyền thêm `created_at` vào hàm để tính toán
+1. **Dòng 233**: Sửa điều kiện auto-set `delivered_date`:
+   - `valueToSave === "delivered"` → `valueToSave === "shipped" || valueToSave === "self_delivered"`
 
-**File: `src/components/CreateOrderForm.tsx`**
-- Khi tạo đơn hàng, tự động set `delivery_date = created_at + 6 ngày`
+2. **Dòng 396**: Sửa điều kiện hiển thị ngày giao:
+   - `order.status === "delivered"` → `order.status === "shipped" || order.status === "self_delivered"`
 
-**File: `src/components/EditOrderDialog.tsx`**
-- Đổi default từ 4 ngày thành 6 ngày (dòng 66: `+ 4` → `+ 6`)
-
-### Hiển thị bộ đếm ngược
-- Quá hạn: `"12/04/2026 (Quá hạn 2 ngày)"` — đỏ đậm
-- Hôm nay: `"12/04/2026 (Hôm nay)"` — đỏ
-- Còn ≤ 2 ngày: `"14/04/2026 (Còn 2 ngày)"` — đỏ
-- Còn > 2 ngày: `"18/04/2026 (Còn 7 ngày)"` — bình thường
+3. **Dòng 401**: Hiển thị nhãn phù hợp theo trạng thái:
+   - `shipped` → "Đã giao"
+   - `self_delivered` → "Đã giao tự thu tiền"
 
