@@ -436,15 +436,23 @@ export function InlineOrderEditTable({
                 {getCellContent(order, "order_number")}
               </TableCell>
               <TableCell className="min-w-[140px]" style={{ color: rowText }}>
-                <div className="flex flex-col gap-0.5">
-                  {order.ghn_tracking && order.ghn_tracking.length > 0 ? (
-                    order.ghn_tracking.map((t, i) => (
-                      <span key={i} className="text-xs font-mono">{t.ghn_order_code}</span>
-                    ))
-                  ) : (
-                    <span className="text-xs opacity-50 italic">—</span>
-                  )}
-                </div>
+                {editingCell === `${order.id}-ghn_tracking` ? (
+                  <GhnTrackingEditCell
+                    orderId={order.id}
+                    initialCodes={order.ghn_tracking?.map(t => t.ghn_order_code) || []}
+                    onDone={() => { setEditingCell(null); }}
+                  />
+                ) : (
+                  <div className="flex flex-col gap-0.5 cursor-pointer min-h-[24px]" onClick={() => setEditingCell(`${order.id}-ghn_tracking`)}>
+                    {order.ghn_tracking && order.ghn_tracking.length > 0 ? (
+                      order.ghn_tracking.map((t, i) => (
+                        <span key={i} className="text-xs font-mono">{t.ghn_order_code}</span>
+                      ))
+                    ) : (
+                      <span className="text-xs opacity-50 italic">—</span>
+                    )}
+                  </div>
+                )}
               </TableCell>
               <TableCell className="min-w-[110px]" style={{ color: rowText }}>
                 {getCellContent(order, "created_at")}
