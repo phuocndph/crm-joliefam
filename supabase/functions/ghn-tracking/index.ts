@@ -129,15 +129,15 @@ serve(async (req) => {
 
     // ==================== CREATE ORDER ACTION ====================
     if (action === 'create_order') {
-      const ghnShopId = Deno.env.get('GHN_SHOP_ID');
-      if (!ghnShopId) throw new Error('GHN_SHOP_ID not configured');
+      const { orderData, orderId, orderNumber, shopId } = requestBody;
+      const effectiveShopId = shopId || Deno.env.get('GHN_SHOP_ID');
+      if (!effectiveShopId) throw new Error('Shop ID not provided');
 
-      const { orderData, orderId, orderNumber } = requestBody;
-      console.log('Creating GHN order for:', orderNumber);
+      console.log('Creating GHN order for:', orderNumber, 'shop:', effectiveShopId);
 
       const ghnPayload = {
         ...orderData,
-        shop_id: parseInt(ghnShopId),
+        shop_id: parseInt(String(effectiveShopId)),
       };
 
       const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/create', {

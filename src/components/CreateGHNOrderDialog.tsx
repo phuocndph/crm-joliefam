@@ -154,8 +154,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setServices([]); setServiceTypeId("");
     try {
       const selectedShop = shops.find(s => String(s._id) === selectedShopId);
-      const fromDistrictId = selectedShop?.district_id || 1542; // default HCM
-      const data = await callGHN('get_services', { fromDistrictId, toDistrictId });
+      const fromDistrictId = selectedShop?.district_id || 1490; // default Hoàng Mai
+      const data = await callGHN('get_services', { fromDistrictId, toDistrictId, shopId: selectedShopId || undefined });
       setServices(data || []);
       if (data?.length > 0) setServiceTypeId(String(data[0].service_type_id));
     } catch (e) { console.error(e); } finally { setLoadingServices(false); }
@@ -169,6 +169,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setLoadingFee(true); setFeeStatus("loading");
     try {
       const data = await callGHN('calculate_fee', {
+        shopId: selectedShopId || undefined,
         feeData: {
           service_type_id: parseInt(serviceTypeId),
           to_district_id: parseInt(districtId),
