@@ -1414,7 +1414,60 @@ serve(async (req) => {
 
     // ==================== AI QUOTE FILL ====================
     } else if (type === "ai_quote_fill") {
-      const { request, imageBase64, imageMimeType, priceListId } = data;
+      const { request, imageBase64, imageMimeType, priceListId, ocrOnly } = data;
+      
+      // ===== OCR-ONLY MODE =====
+      if (ocrOnly && imageBase64) {
+        console.log('AI Quote Fill: OCR-only mode — extracting text from image...');
+        const ocrStart = Date.now();
+        
+        // Load AI config for OCR prompt
+        const authHeader = req.headers.get("Authorization");
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+        const supabaseClient = createClient(supabaseUrl, supabaseKey, {
+          global: { headers: { Authorization: authHeader || "" } },
+        });
+        const aiConfig = await loadAIConfig(supabaseClient);
+        
+        const defaultOcrPrompt = `Trích xuất TOÀN BỘ bảng sản phẩm từ ảnh. Trả về dạng text thuần, mỗi sản phẩm 1 dòng theo format:
+[tên sản phẩm] [quy cách/kích thước] x[số lượng]
+Giữ nguyên số liệu gốc. KHÔNG trả JSON. KHÔNG giải thích.`;
+        const ocrPrompt = aiConfig['ai_quote_ocr_prompt'] || defaultOcrPrompt;
+        
+        const ocrMessages = [
+          { role: "system", content: ocrPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: `data:${imageMimeType || 'image/jpeg'};base64,${imageBase64}` } },
+              { type: "text", text: "Trích xuất bảng sản phẩm." },
+            ],
+          },
+        ];
+        
+        const ocrModel = aiConfig['ai_quote_ocr_model'] || "google/gemini-2.5-flash";
+        const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
+        
+        let ocrText = '';
+        if (ocrResult?.san_pham && Array.isArray(ocrResult.san_pham)) {
+          ocrText = ocrResult.san_pham.map((p: any) =>
+            `${p.ten_san_pham || ''} ${p.quy_cach || ''} x${p.so_luong || 1}`.trim()
+          ).join('\n');
+        } else if (ocrResult?.raw) {
+          ocrText = ocrResult.raw;
+        } else if (typeof ocrResult === 'string') {
+          ocrText = ocrResult;
+        }
+        
+        console.log(`OCR-only done in ${Date.now() - ocrStart}ms, text length: ${ocrText.length}`);
+        console.log('OCR text:', ocrText.substring(0, 500));
+        
+        return new Response(JSON.stringify({ ocrText }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      
       if (!request && !imageBase64) {
         return new Response(JSON.stringify({ error: "Missing request or image" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1467,47 +1520,8 @@ serve(async (req) => {
       // Build custom TYPE_TO_CATEGORY from DB config
       const customTypeToCategory = buildTypeToCategory(aiConfig['ai_quote_type_categories'] || null);
 
-      // ===== 2-STEP IMAGE PROCESSING =====
-      // Step 1: If image present, OCR extract text first (small prompt, no catalog)
+      // Use request directly (no more image processing here — OCR is done separately)
       let effectiveRequest = request || '';
-      const hasImage = !!imageBase64;
-      let step1Start: number | null = null;
-      
-      if (hasImage) {
-        step1Start = Date.now();
-        console.log('AI Quote Fill: Step 1 — OCR extract text from image...');
-
-        const defaultOcrPrompt = `Trích xuất TOÀN BỘ bảng sản phẩm từ ảnh. Trả về JSON thuần:
-{"san_pham":[{"ten_san_pham":"...","quy_cach":"...","so_luong":1,"don_gia":0,"thanh_tien":0}]}
-Giữ nguyên số liệu gốc. Chuỗi rỗng cho thông tin thiếu. KHÔNG giải thích.`;
-        const ocrPrompt = aiConfig['ai_quote_ocr_prompt'] || defaultOcrPrompt;
-
-        try {
-          const ocrMessages = [
-            { role: "system", content: ocrPrompt },
-            {
-              role: "user",
-              content: [
-                { type: "image_url", image_url: { url: `data:${imageMimeType || 'image/jpeg'};base64,${imageBase64}` } },
-                { type: "text", text: "Trích xuất bảng sản phẩm." },
-              ],
-            },
-          ];
-
-          const ocrModel = aiConfig['ai_quote_ocr_model'] || "google/gemini-2.5-flash";
-          const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
-
-          if (ocrResult?.san_pham && Array.isArray(ocrResult.san_pham)) {
-            effectiveRequest = ocrResult.san_pham.map((p: any) =>
-              `${p.ten_san_pham || ''} ${p.quy_cach || ''} x${p.so_luong || 1}`.trim()
-            ).join('\n');
-            console.log(`Step 1 OCR: ${ocrResult.san_pham.length} products in ${Date.now() - step1Start}ms`);
-            console.log('OCR text:', effectiveRequest);
-          }
-        } catch (e) {
-          console.error('OCR failed:', e);
-        }
-      }
 
       // Step 2: Parse segments from effective request (OCR text or original)
       const segments = parseRequestSegments(effectiveRequest);
