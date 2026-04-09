@@ -96,13 +96,13 @@ const statusConfig = {
 
 // Row color mapping by status
 const statusRowStyles: Record<string, { bg: string; text: string; hoverBg: string }> = {
-  pending:    { bg: '#FFF9C4', text: '#7B6000', hoverBg: '#F5EFA0' },
-  processing: { bg: '#FFCDD2', text: '#B71C1C', hoverBg: '#F3B8BD' },
-  cancelled:  { bg: '#BBDEFB', text: '#0D47A1', hoverBg: '#A8CEE8' },
-  returned:   { bg: '#FFE0B2', text: '#E65100', hoverBg: '#ECCF9E' },
-  delivered:  { bg: '#FFFFFF', text: '#212121', hoverBg: '#EBEBEB' },
-  shipped:    { bg: '#C8E6C9', text: '#1B5E20', hoverBg: '#B5D4B6' },
-  self_delivered: { bg: '#E1BEE7', text: '#4A148C', hoverBg: '#D0ABD6' },
+  pending:        { bg: '#C8F7C5', text: '#1B5E20', hoverBg: '#B5E4B2' },
+  processing:     { bg: '#FFF9C4', text: '#7B6000', hoverBg: '#F5EFA0' },
+  shipped:        { bg: '#FFCDD2', text: '#B71C1C', hoverBg: '#F3B8BD' },
+  delivered:      { bg: '#FFFFFF', text: '#212121', hoverBg: '#EBEBEB' },
+  cancelled:      { bg: '#B3E5FC', text: '#01579B', hoverBg: '#9FD4EA' },
+  self_delivered:  { bg: '#FFCDD2', text: '#B71C1C', hoverBg: '#F3B8BD' },
+  returned:       { bg: '#FFE0B2', text: '#E65100', hoverBg: '#ECCF9E' },
 };
 
 export function applyRowColor(status: string): React.CSSProperties {
