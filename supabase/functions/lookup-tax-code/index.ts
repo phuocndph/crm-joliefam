@@ -1604,7 +1604,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
 
       // Always use text model now (image already processed in Step 1)
       const configTextModel = aiConfig['ai_quote_text_model'];
-      const quoteModel = configTextModel || "google/gemini-2.5-flash";
+      const quoteModel = configTextModel || "gemini-2.5-flash";
       
       const step2Start = Date.now();
       console.log(`AI Quote Fill: Step 2 — text matching, model=${quoteModel}, products=${filteredProducts.length}, request=${effectiveRequest.length} chars`);
@@ -1703,7 +1703,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
       // Call AI with custom or default model
-      const textModel = config?.textModel || dbConfig['ai_quote_text_model'] || "google/gemini-2.5-flash";
+      const textModel = config?.textModel || dbConfig['ai_quote_text_model'] || "gemini-2.5-flash";
       
       // Build prompt (same as ai_quote_fill)
       const productListText = filteredProducts.map((p: any) => 
