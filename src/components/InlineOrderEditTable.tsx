@@ -230,7 +230,7 @@ export function InlineOrderEditTable({
         [fieldToUpdate]: valueToSave
       };
       // Khi chuyển trạng thái sang "delivered", tự động set delivered_date = hôm nay
-      if (field === "status" && valueToSave === "delivered") {
+      if (field === "status" && (valueToSave === "shipped" || valueToSave === "self_delivered")) {
         updateData.delivered_date = new Date().toISOString();
       }
       await onOrderUpdate(orderId, updateData);
@@ -393,12 +393,13 @@ export function InlineOrderEditTable({
             </div>
           </div>;
       case "delivery_date":
-        if (order.status === "delivered") {
+        if (order.status === "shipped" || order.status === "self_delivered") {
           const deliveredDate = order.delivered_date ? format(new Date(order.delivered_date), "dd/MM/yyyy", { locale: vi }) : format(new Date(), "dd/MM/yyyy", { locale: vi });
+          const deliveryLabel = order.status === "self_delivered" ? "Đã giao tự thu tiền" : "Đã giao";
           return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, "delivered_date", order.delivered_date || new Date().toISOString())}>
               <div className="leading-tight">
                 <span className="text-sm font-medium block">{deliveredDate}</span>
-                <span className="text-xs block text-green-600 font-semibold">Đã giao</span>
+                <span className="text-xs block text-green-600 font-semibold">{deliveryLabel}</span>
               </div>
             </div>;
         }
