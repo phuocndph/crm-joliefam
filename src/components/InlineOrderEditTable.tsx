@@ -453,14 +453,14 @@ export function InlineOrderEditTable({
             <TableHead className="min-w-[120px] bg-primary text-primary-foreground">Mã đơn hàng</TableHead>
             <TableHead className="min-w-[140px] bg-primary text-primary-foreground">Mã vận đơn</TableHead>
             <TableHead className="min-w-[110px] bg-primary text-primary-foreground">Ngày tạo đơn</TableHead>
-            <TableHead className="min-w-[150px] bg-primary text-primary-foreground border-primary-foreground">Quản lý</TableHead>
-            <TableHead className="min-w-[200px] bg-primary text-primary-foreground">Tên khách hàng</TableHead>
-            <TableHead className="min-w-[150px] bg-primary text-primary-foreground">Giá trị đơn hàng</TableHead>
             <TableHead className="min-w-[180px] bg-primary text-primary-foreground">Ngày hẹn trả</TableHead>
             <TableHead className="min-w-[120px] bg-primary text-primary-foreground">Tình trạng đơn</TableHead>
+            <TableHead className="min-w-[200px] bg-primary text-primary-foreground">Tên khách</TableHead>
+            <TableHead className="min-w-[150px] bg-primary text-primary-foreground">Giá trị đơn hàng</TableHead>
             <TableHead className="min-w-[280px] bg-primary text-primary-foreground">Thanh toán</TableHead>
-            <TableHead className="min-w-[150px] bg-primary text-primary-foreground border-solid border-primary-foreground">Người phụ trách</TableHead>
             <TableHead className="min-w-[250px] bg-primary text-primary-foreground">Ghi chú</TableHead>
+            <TableHead className="min-w-[150px] bg-primary text-primary-foreground border-solid border-primary-foreground">Người phụ trách</TableHead>
+            <TableHead className="min-w-[150px] bg-primary text-primary-foreground border-primary-foreground">Quản lý</TableHead>
             <TableHead className="min-w-[200px] bg-primary text-primary-foreground">Vải đã sử dụng</TableHead>
             <TableHead className="min-w-[100px] sticky right-0 bg-primary text-primary-foreground shadow-lg">Hành động</TableHead>
           </TableRow>
@@ -503,16 +503,11 @@ export function InlineOrderEditTable({
               <TableCell className="min-w-[110px]" style={{ color: rowText }}>
                 {getCellContent(order, "created_at")}
               </TableCell>
-              <TableCell className="min-w-[150px]">
-                <div className="text-sm">
-                  {order.manager_id ? (
-                    <span className="font-medium text-blue-600">
-                      {managerMap.get(order.manager_id) || 'Chưa có thông tin'}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground italic">Chưa có thông tin</span>
-                  )}
-                </div>
+              <TableCell className="min-w-[180px]" style={{ color: rowText }}>
+                {getCellContent(order, "delivery_date")}
+              </TableCell>
+              <TableCell className="min-w-[120px]">
+                {getCellContent(order, "status")}
               </TableCell>
               <TableCell className="min-w-[200px]" style={{ color: rowText }}>
                 <div>
@@ -534,20 +529,25 @@ export function InlineOrderEditTable({
                   })()}
                 </div>
               </TableCell>
-              <TableCell className="min-w-[180px]" style={{ color: rowText }}>
-                {getCellContent(order, "delivery_date")}
-              </TableCell>
-              <TableCell className="min-w-[120px]">
-                {getCellContent(order, "status")}
-              </TableCell>
               <TableCell className="min-w-[280px]">
                 {getCellContent(order, "payment_status")}
+              </TableCell>
+              <TableCell className="min-w-[250px]" style={{ color: rowText }}>
+                {getCellContent(order, "notes")}
               </TableCell>
               <TableCell className="min-w-[150px]">
                 {getCellContent(order, "assignee_id")}
               </TableCell>
-              <TableCell className="min-w-[250px]" style={{ color: rowText }}>
-                {getCellContent(order, "notes")}
+              <TableCell className="min-w-[150px]">
+                <div className="text-sm">
+                  {order.manager_id ? (
+                    <span className="font-medium text-blue-600">
+                      {managerMap.get(order.manager_id) || 'Chưa có thông tin'}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground italic">Chưa có thông tin</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="min-w-[200px]">
                 <FabricUsageCell orderId={order.id} />
