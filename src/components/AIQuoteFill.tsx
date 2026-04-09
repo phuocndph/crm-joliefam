@@ -78,6 +78,7 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
   const [isOpen, setIsOpen] = useState(false);
   const [request, setRequest] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
   const [previewItems, setPreviewItems] = useState<AIMatchedItem[] | null>(null);
   const [includeImages, setIncludeImages] = useState(true);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -204,9 +205,42 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
     }
   };
 
+  const handleAnalyzeImage = async () => {
+    if (!imageFile) return;
+
+    setIsAnalyzingImage(true);
+    try {
+      const imageBase64 = await compressImage(imageFile);
+      const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
+        body: { type: "ai_quote_fill", data: { imageBase64, imageMimeType: "image/jpeg", ocrOnly: true } },
+      });
+
+      if (error) throw error;
+      if (data?.error) {
+        toast({ title: "Lỗi OCR", description: data.error, variant: "destructive" });
+        return;
+      }
+
+      const ocrText = data?.ocrText || "";
+      if (!ocrText.trim()) {
+        toast({ title: "Không trích xuất được dữ liệu từ ảnh", variant: "destructive" });
+        return;
+      }
+
+      setRequest(ocrText);
+      removeImage();
+      toast({ title: "✅ Đã trích xuất dữ liệu", description: "Kiểm tra và sửa nếu cần, sau đó bấm 'AI tự chọn sản phẩm'" });
+    } catch (err) {
+      console.error("Image analysis error:", err);
+      toast({ title: "Lỗi", description: "Không thể phân tích ảnh", variant: "destructive" });
+    } finally {
+      setIsAnalyzingImage(false);
+    }
+  };
+
   const handleAIFill = async () => {
-    if (!request.trim() && !imageFile) {
-      toast({ title: "Vui lòng nhập yêu cầu hoặc gửi hình ảnh", variant: "destructive" });
+    if (!request.trim()) {
+      toast({ title: "Vui lòng nhập yêu cầu", variant: "destructive" });
       return;
     }
 
@@ -215,12 +249,6 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
 
     try {
       const bodyData: any = { request: request.trim(), priceListId };
-
-      // Compress and convert image to base64 if present
-      if (imageFile) {
-        bodyData.imageBase64 = await compressImage(imageFile);
-        bodyData.imageMimeType = "image/jpeg";
-      }
 
       // Run AI call and image preload in parallel
       const [aiResult] = await Promise.all([
@@ -339,10 +367,17 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
             )}
 
             <div className="flex items-center gap-3 flex-wrap">
-              <Button type="button" onClick={handleAIFill} disabled={isLoading || (!request.trim() && !imageFile)} className="bg-purple-600 hover:bg-purple-700 gap-2">
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {isLoading ? "Đang phân tích..." : "AI tự chọn sản phẩm"}
-              </Button>
+              {imageFile ? (
+                <Button type="button" onClick={handleAnalyzeImage} disabled={isAnalyzingImage} className="bg-orange-600 hover:bg-orange-700 gap-2">
+                  {isAnalyzingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                  {isAnalyzingImage ? "Đang phân tích ảnh..." : "Phân tích ảnh"}
+                </Button>
+              ) : (
+                <Button type="button" onClick={handleAIFill} disabled={isLoading || !request.trim()} className="bg-purple-600 hover:bg-purple-700 gap-2">
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {isLoading ? "Đang phân tích..." : "AI tự chọn sản phẩm"}
+                </Button>
+              )}
 
               {/* Upload image button */}
               <input
