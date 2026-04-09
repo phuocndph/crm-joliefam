@@ -257,10 +257,14 @@ export default function AISettingsPage() {
       // Upsert each setting into ai_config
       const { data: userData } = await supabase.auth.getUser();
       const entries = Object.entries(settings) as [keyof AISettings, string][];
+      const nextSettings = { ...settings };
       
       for (const [key, value] of entries) {
         const isModelKey = key.includes('_model');
         const cleanValue = isModelKey ? cleanModel(value) : value;
+        if (isModelKey) {
+          nextSettings[key] = cleanValue;
+        }
         // Skip empty prompts (means use default)
         if ((key === 'ai_quote_fill_prompt' || key === 'ai_quote_ocr_prompt') && !value) {
           // Delete the key if it exists
@@ -278,6 +282,15 @@ export default function AISettingsPage() {
         
         if (error) throw error;
       }
+
+      const { error: refreshError } = await supabase.functions.invoke('lookup-tax-code', {
+        body: { type: 'refresh_ai_config' },
+      });
+
+      if (refreshError) throw refreshError;
+
+      setSettings(nextSettings);
+      await loadSettings();
 
       toast({ title: "Đã lưu", description: "Cài đặt AI đã được lưu vào database thành công" });
     } catch (err) {
