@@ -1633,7 +1633,8 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       const userContent = `Yêu cầu khách hàng:\n"""\n${effectiveRequest}\n"""`;
 
       // Always use text model now (image already processed in Step 1)
-      const configTextModel = aiConfig['ai_quote_text_model'];
+      const cleanModelName = (n: string) => n?.replace(/^google\//, '') || '';
+      const configTextModel = cleanModelName(aiConfig['ai_quote_text_model'] || '');
       const quoteModel = configTextModel || "gemini-2.5-flash";
       
       const step2Start = Date.now();
@@ -1732,8 +1733,9 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
         filteredProducts = filterProductsByCategory(allProducts, categories, materials);
       }
 
-      // Call AI with custom or default model
-      const textModel = config?.textModel || dbConfig['ai_quote_text_model'] || "gemini-2.5-flash";
+      // Call AI with custom or default model — strip google/ prefix for Beeknoee compatibility
+      const cleanModelName2 = (n: string) => n?.replace(/^google\//, '') || '';
+      const textModel = cleanModelName2(config?.textModel || dbConfig['ai_quote_text_model'] || '') || "gemini-2.5-flash";
       
       // Build prompt (same as ai_quote_fill)
       const productListText = filteredProducts.map((p: any) => 

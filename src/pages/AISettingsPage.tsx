@@ -251,11 +251,16 @@ export default function AISettingsPage() {
         JSON.parse(settings.ai_quote_material_keywords);
       }
 
+      // Strip google/ prefix from model values before saving
+      const cleanModel = (v: string) => v.replace(/^google\//, '');
+      
       // Upsert each setting into ai_config
       const { data: userData } = await supabase.auth.getUser();
       const entries = Object.entries(settings) as [keyof AISettings, string][];
       
       for (const [key, value] of entries) {
+        const isModelKey = key.includes('_model');
+        const cleanValue = isModelKey ? cleanModel(value) : value;
         // Skip empty prompts (means use default)
         if ((key === 'ai_quote_fill_prompt' || key === 'ai_quote_ocr_prompt') && !value) {
           // Delete the key if it exists
