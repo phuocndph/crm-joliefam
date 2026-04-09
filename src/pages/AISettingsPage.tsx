@@ -144,9 +144,9 @@ Giữ nguyên số liệu gốc. Chuỗi rỗng cho thông tin thiếu. KHÔNG g
 const DEFAULTS: AISettings = {
   ai_quote_fill_prompt: '',
   ai_quote_ocr_prompt: '',
-  ai_quote_text_model: 'google/gemini-2.5-flash',
-  ai_quote_image_model: 'google/gemini-3-flash-preview',
-  ai_quote_ocr_model: 'google/gemini-2.5-flash',
+  ai_quote_text_model: 'gemini-2.5-flash',
+  ai_quote_image_model: 'gemini-2.5-flash',
+  ai_quote_ocr_model: 'gemini-2.5-flash-lite',
   ai_quote_step_delay: '1500',
   ai_quote_type_categories: JSON.stringify(DEFAULT_TYPE_CATEGORIES, null, 2),
   ai_quote_product_keywords: JSON.stringify(DEFAULT_PRODUCT_TYPE_KEYWORDS),
