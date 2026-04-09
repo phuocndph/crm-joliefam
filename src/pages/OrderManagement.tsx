@@ -52,7 +52,7 @@ interface Order {
     phone: string | null;
     company: string | null;
     customer_code: string | null;
-    address: string | null;
+    address?: string | null;
   } | null;
   assignees?: {
     name: string;
