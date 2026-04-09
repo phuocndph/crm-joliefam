@@ -208,6 +208,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         },
         orderId: order.id,
         orderNumber: order.display_order_number || order.order_number,
+        shopId: selectedShopId || undefined,
       });
       setCreatedOrderCode(data?.order_code || "");
       setCreatedOrderData(data);
