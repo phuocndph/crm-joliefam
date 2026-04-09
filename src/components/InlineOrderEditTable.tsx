@@ -216,7 +216,7 @@ export function InlineOrderEditTable({
   const handleSave = async (orderId: string, field: string, dateValue?: Date, newValue?: any) => {
     try {
       let valueToSave = newValue !== undefined ? newValue : editValue;
-      if (field === "delivery_date" || field === "created_at") {
+      if (field === "delivery_date" || field === "created_at" || field === "delivered_date") {
         const dateToUse = dateValue || selectedDate;
         if (dateToUse) {
           valueToSave = dateToUse.toISOString();
