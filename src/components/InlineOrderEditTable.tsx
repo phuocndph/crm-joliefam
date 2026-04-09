@@ -93,6 +93,23 @@ const statusConfig = {
     color: "bg-orange-100 text-orange-800"
   }
 };
+
+// Row color mapping by status
+const statusRowStyles: Record<string, { bg: string; text: string; hoverBg: string }> = {
+  pending:    { bg: '#FFF9C4', text: '#7B6000', hoverBg: '#F5EFA0' },
+  processing: { bg: '#FFCDD2', text: '#B71C1C', hoverBg: '#F3B8BD' },
+  cancelled:  { bg: '#BBDEFB', text: '#0D47A1', hoverBg: '#A8CEE8' },
+  returned:   { bg: '#FFE0B2', text: '#E65100', hoverBg: '#ECCF9E' },
+  delivered:  { bg: '#FFFFFF', text: '#212121', hoverBg: '#EBEBEB' },
+  shipped:    { bg: '#C8E6C9', text: '#1B5E20', hoverBg: '#B5D4B6' },
+  self_delivered: { bg: '#E1BEE7', text: '#4A148C', hoverBg: '#D0ABD6' },
+};
+
+export function applyRowColor(status: string): React.CSSProperties {
+  const style = statusRowStyles[status];
+  if (!style) return {};
+  return { backgroundColor: style.bg, color: style.text };
+}
 const paymentStatusConfig = {
   pending: {
     label: "Chưa thanh toán",
