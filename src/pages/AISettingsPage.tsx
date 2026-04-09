@@ -505,8 +505,11 @@ export default function AISettingsPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Model xử lý Text</CardTitle>
-                  <CardDescription>Dùng cho Bước 2 — so khớp text với catalog (không ảnh)</CardDescription>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    Model xử lý Text
+                    {modelsLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                  </CardTitle>
+                  <CardDescription>Dùng cho Bước 2 — so khớp text với catalog (không ảnh). Lấy từ Beeknoee API.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Select
