@@ -326,6 +326,7 @@ export function InlineOrderEditTable({
           // Payment status is now read-only, no editing needed
           return null;
         case "delivery_date":
+        case "delivered_date":
         case "created_at":
           return <Popover open={true} onOpenChange={open => !open && handleCancel()}>
               <PopoverTrigger asChild>
