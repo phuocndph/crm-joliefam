@@ -13,9 +13,9 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, Calculator, ExternalLink, Printer } from "lucide-react";
 
-interface Province { ProvinceID: number; ProvinceName: string; }
-interface District { DistrictID: number; DistrictName: string; }
-interface Ward { WardCode: string; WardName: string; }
+interface Province { ProvinceID: number; ProvinceName: string; NameExtension?: string[]; }
+interface District { DistrictID: number; DistrictName: string; NameExtension?: string[]; }
+interface Ward { WardCode: string; WardName: string; NameExtension?: string[]; }
 interface GHNShop { _id: number; name: string; address: string; district_id: number; }
 interface GHNService { service_id: number; short_name: string; service_type_id: number; }
 interface FeeDetail {
