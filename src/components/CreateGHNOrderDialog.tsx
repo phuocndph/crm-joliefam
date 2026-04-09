@@ -532,68 +532,77 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   // ======== ADDRESS SUB-DIALOG (rendered as overlay, not nested Dialog) ========
   const addressDialog = showAddressDialog ? (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setShowAddressDialog(false)}>
-      <div className="bg-background rounded-lg shadow-xl w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-background rounded-xl shadow-xl w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h3 className="font-semibold text-base">Địa chỉ người nhận</h3>
-          <button onClick={() => setShowAddressDialog(false)} className="rounded-sm opacity-70 hover:opacity-100 p-1">
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <h3 className="font-semibold text-base">Địa chỉ nhận</h3>
+          <button onClick={() => setShowAddressDialog(false)} className="rounded-full opacity-70 hover:opacity-100 p-1.5 hover:bg-muted transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-4 space-y-4">
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Địa chỉ nhận hàng</Label>
-            <Input
-              value={tempAddress}
-              onChange={e => setTempAddress(e.target.value)}
-              placeholder="Số nhà, tên đường..."
-              className="text-sm"
-            />
-          </div>
+        <div className="p-5 space-y-4">
+          {/* Section card */}
+          <div className="rounded-lg border p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Bên nhận</span>
+            </div>
+            <Separator />
 
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Tỉnh/Thành phố</Label>
-            <Select value={tempProvinceId} onValueChange={v => { setTempProvinceId(v); loadTempDistricts(parseInt(v)); }}>
-              <SelectTrigger className="text-sm">
-                <SelectValue placeholder={loadingProvinces ? "Đang tải..." : "Chọn Tỉnh/Thành phố"} />
-              </SelectTrigger>
-              <SelectContent className="max-h-60">
-                {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Địa chỉ nhận <span className="text-destructive">*</span></Label>
+              <Input
+                value={tempAddress}
+                onChange={e => setTempAddress(e.target.value)}
+                placeholder="Số nhà, tên đường..."
+                className="text-sm"
+              />
+            </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Quận/Huyện</Label>
-            <Select value={tempDistrictId} onValueChange={v => { setTempDistrictId(v); loadTempWards(parseInt(v)); }} disabled={!tempProvinceId}>
-              <SelectTrigger className="text-sm">
-                <SelectValue placeholder={loadingDistricts ? "Đang tải..." : "Chọn Quận/Huyện"} />
-              </SelectTrigger>
-              <SelectContent className="max-h-60">
-                {tempDistricts.map(d => <SelectItem key={d.DistrictID} value={String(d.DistrictID)}>{d.DistrictName}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Phường/Xã</Label>
-            <Select value={tempWardCode} onValueChange={setTempWardCode} disabled={!tempDistrictId}>
-              <SelectTrigger className="text-sm">
-                <SelectValue placeholder={loadingWards ? "Đang tải..." : "Chọn Phường/Xã"} />
-              </SelectTrigger>
-              <SelectContent className="max-h-60">
-                {tempWards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {/* 3 selects in a row like GHN */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Tỉnh - Thành phố <span className="text-destructive">*</span></Label>
+                <Select value={tempProvinceId} onValueChange={v => { setTempProvinceId(v); loadTempDistricts(parseInt(v)); }}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60 z-[70]">
+                    {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Quận - Huyện <span className="text-destructive">*</span></Label>
+                <Select value={tempDistrictId} onValueChange={v => { setTempDistrictId(v); loadTempWards(parseInt(v)); }} disabled={!tempProvinceId}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder={loadingDistricts ? "Tải..." : "Chọn"} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60 z-[70]">
+                    {tempDistricts.map(d => <SelectItem key={d.DistrictID} value={String(d.DistrictID)}>{d.DistrictName}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Phường - Xã <span className="text-destructive">*</span></Label>
+                <Select value={tempWardCode} onValueChange={setTempWardCode} disabled={!tempDistrictId}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder={loadingWards ? "Tải..." : "Chọn"} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60 z-[70]">
+                    {tempWards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-4 py-3 border-t">
-          <Button variant="outline" size="sm" onClick={() => setShowAddressDialog(false)}>Hủy</Button>
-          <Button size="sm" onClick={confirmAddress} disabled={!tempProvinceId || !tempDistrictId || !tempWardCode}>
+        <div className="flex justify-end gap-3 px-5 py-4 border-t">
+          <Button variant="outline" onClick={() => setShowAddressDialog(false)}>Hủy</Button>
+          <Button onClick={confirmAddress} disabled={!tempProvinceId || !tempDistrictId || !tempWardCode}>
             Xong
           </Button>
         </div>
