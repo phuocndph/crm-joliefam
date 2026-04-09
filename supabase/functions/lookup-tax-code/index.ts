@@ -1458,7 +1458,7 @@ Giữ nguyên số liệu gốc. KHÔNG trả JSON. KHÔNG giải thích.`;
           },
         ];
         
-        const ocrModel = aiConfig['ai_quote_ocr_model'] || "google/gemini-2.0-flash-lite";
+        const ocrModel = aiConfig['ai_quote_ocr_model'] || "gemini-2.5-flash-lite";
         const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
         
         let ocrText = '';
