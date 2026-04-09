@@ -45,6 +45,7 @@ interface Order {
     email: string | null;
     phone: string | null;
     company: string | null;
+    address?: string | null;
   } | null;
   assignees?: {
     name: string;

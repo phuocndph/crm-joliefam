@@ -19,8 +19,8 @@ interface Ward { WardCode: string; WardName: string; }
 interface GHNShop { _id: number; name: string; address: string; district_id: number; }
 interface GHNService { service_id: number; short_name: string; service_type_id: number; }
 interface FeeDetail {
-  main_service: number; insurance: number; cod_fee: number; station_do: number;
-  station_pu: number; return_: number; r2s: number; coupon: number; total: number;
+  service_fee: number; insurance_fee: number; cod_fee: number; r2s_fee: number;
+  coupon_value: number; total: number; [key: string]: number;
 }
 
 interface CreateGHNOrderDialogProps {
@@ -154,8 +154,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setServices([]); setServiceTypeId("");
     try {
       const selectedShop = shops.find(s => String(s._id) === selectedShopId);
-      const fromDistrictId = selectedShop?.district_id || 1542; // default HCM
-      const data = await callGHN('get_services', { fromDistrictId, toDistrictId });
+      const fromDistrictId = selectedShop?.district_id || 1490; // default Hoàng Mai
+      const data = await callGHN('get_services', { fromDistrictId, toDistrictId, shopId: selectedShopId || undefined });
       setServices(data || []);
       if (data?.length > 0) setServiceTypeId(String(data[0].service_type_id));
     } catch (e) { console.error(e); } finally { setLoadingServices(false); }
@@ -169,6 +169,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setLoadingFee(true); setFeeStatus("loading");
     try {
       const data = await callGHN('calculate_fee', {
+        shopId: selectedShopId || undefined,
         feeData: {
           service_type_id: parseInt(serviceTypeId),
           to_district_id: parseInt(districtId),
@@ -207,6 +208,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         },
         orderId: order.id,
         orderNumber: order.display_order_number || order.order_number,
+        shopId: selectedShopId || undefined,
       });
       setCreatedOrderCode(data?.order_code || "");
       setCreatedOrderData(data);
@@ -480,10 +482,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
               </Button>
               {feeDetail && (
                 <div className="rounded-md border text-sm">
-                  <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí dịch vụ</span><span>{fmt(feeDetail.main_service)}</span></div>
-                  <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí bảo hiểm</span><span>{fmt(feeDetail.insurance)}</span></div>
+                  <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí dịch vụ</span><span>{fmt(feeDetail.service_fee)}</span></div>
+                  <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí bảo hiểm</span><span>{fmt(feeDetail.insurance_fee)}</span></div>
                   {feeDetail.cod_fee > 0 && <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí COD</span><span>{fmt(feeDetail.cod_fee)}</span></div>}
-                  {feeDetail.coupon > 0 && <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Giảm giá</span><span className="text-green-600">-{fmt(feeDetail.coupon)}</span></div>}
+                  {feeDetail.coupon_value > 0 && <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Giảm giá</span><span className="text-green-600">-{fmt(feeDetail.coupon_value)}</span></div>}
                   <div className="flex justify-between px-3 py-2 font-medium bg-muted/50"><span>Tổng cước</span><span className="text-primary">{fmt(feeDetail.total)}</span></div>
                 </div>
               )}
