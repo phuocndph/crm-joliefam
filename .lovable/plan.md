@@ -1,15 +1,39 @@
 
 
-## Nâng cấp cột Ghi chú
+## Fix thanh cuộn ngang bảng đơn hàng - luôn hiển thị ở cuối viewport
 
-### Thay đổi trong `src/components/InlineOrderEditTable.tsx`
+### Vấn đề
+Bảng đơn hàng có `max-h-[600px] overflow-auto` → thanh cuộn ngang nằm ở đáy bảng. Khi đang ở đầu bảng, phải cuộn dọc xuống cuối mới thấy thanh cuộn ngang.
 
-**1. Bỏ text mặc định** (line 377)
-- Thay `if (!notes) return "Thêm ghi chú...";` → `if (!notes) return null;` để ô trống khi chưa có ghi chú.
+### Giải pháp
+Tách overflow-x và overflow-y riêng biệt bằng cách dùng 2 wrapper lồng nhau:
 
-**2. Hiển thị đầy đủ text, không bị cắt** (line 392)
-- Bỏ `max-w-48` khỏi div hiển thị ghi chú để text không bị giới hạn chiều rộng.
+1. **Wrapper ngoài**: chỉ cuộn ngang (`overflow-x-auto overflow-y-hidden`) + dùng CSS `position: sticky; bottom: 0` để thanh cuộn ngang luôn dính ở cuối viewport.
 
-**3. Mở rộng textarea khi edit** (line 314)
-- Thay `w-48` → `w-full` để textarea edit cũng hiển thị đầy đủ nội dung.
+2. **Wrapper trong**: chỉ cuộn dọc (`overflow-y-auto overflow-x-hidden max-h-[600px]`), giữ header sticky.
+
+### Thay đổi file `src/components/InlineOrderEditTable.tsx`
+
+Thay container hiện tại (line 400):
+```tsx
+// Trước:
+<div className="rounded-md border max-h-[600px] overflow-auto">
+
+// Sau:
+<div className="rounded-md border overflow-x-auto" style={{ position: 'sticky', bottom: 0 }}>
+  <div className="max-h-[600px] overflow-y-auto">
+```
+
+Thêm đóng `</div>` tương ứng ở cuối component.
+
+Ngoài ra, thêm CSS cho scrollbar luôn hiển thị:
+```css
+.overflow-x-auto::-webkit-scrollbar {
+  height: 12px;
+}
+```
+
+### Kết quả
+- Thanh cuộn ngang luôn nhìn thấy được mà không cần kéo xuống đáy bảng
+- Cuộn dọc trong bảng vẫn hoạt động bình thường với header sticky
 
