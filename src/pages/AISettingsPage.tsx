@@ -517,7 +517,7 @@ export default function AISettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {AI_MODELS.map(m => (
+                      {beeknoeeModels.map(m => (
                         <SelectItem key={m.value} value={m.value}>
                           <div className="flex items-center gap-2">
                             <span>{m.label}</span>
@@ -547,7 +547,7 @@ export default function AISettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {VISION_MODELS.map(m => (
+                      {beeknoeeModels.filter(m => m.vision).map(m => (
                         <SelectItem key={m.value} value={m.value}>
                           <div className="flex items-center gap-2">
                             <span>{m.label}</span>
@@ -577,7 +577,7 @@ export default function AISettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {VISION_MODELS.map(m => (
+                      {beeknoeeModels.filter(m => m.vision).map(m => (
                         <SelectItem key={m.value} value={m.value}>
                           <div className="flex items-center gap-2">
                             <span>{m.label}</span>
@@ -662,7 +662,7 @@ export default function AISettingsPage() {
                         <Badge variant="outline" className="text-xs">Vision</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Model: <span className="font-mono text-foreground">{AI_MODELS.find(m => m.value === settings.ai_quote_ocr_model)?.label || settings.ai_quote_ocr_model}</span>
+                        Model: <span className="font-mono text-foreground">{beeknoeeModels.find(m => m.value === settings.ai_quote_ocr_model)?.label || settings.ai_quote_ocr_model}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">Prompt ngắn, không gửi catalog → tiết kiệm 60-80% token</p>
                       <div className="mt-2">
@@ -693,7 +693,7 @@ export default function AISettingsPage() {
                         <Badge variant="outline" className="text-xs">Text-only</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Model: <span className="font-mono text-foreground">{AI_MODELS.find(m => m.value === settings.ai_quote_text_model)?.label || settings.ai_quote_text_model}</span>
+                        Model: <span className="font-mono text-foreground">{beeknoeeModels.find(m => m.value === settings.ai_quote_text_model)?.label || settings.ai_quote_text_model}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">Dùng text OCR + catalog đã lọc theo segment</p>
                       <div className="mt-2">
@@ -721,7 +721,7 @@ export default function AISettingsPage() {
                         <Badge variant="outline" className="text-xs text-orange-600">Khi OCR thất bại</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Model: <span className="font-mono text-foreground">{AI_MODELS.find(m => m.value === settings.ai_quote_image_model)?.label || settings.ai_quote_image_model}</span>
+                        Model: <span className="font-mono text-foreground">{beeknoeeModels.find(m => m.value === settings.ai_quote_image_model)?.label || settings.ai_quote_image_model}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">Gửi ảnh + catalog → tốn nhiều token hơn, chậm hơn</p>
                     </div>
