@@ -1009,7 +1009,7 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
     throw new Error("No AI API key configured (BEEKNOEE_API_KEY required)");
   }
 
-  const model = modelOverride || "google/gemini-2.5-flash";
+  const model = modelOverride || "gemini-2.5-flash";
   const payload = { model, messages };
   const callStart = Date.now();
 
@@ -1020,12 +1020,12 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
     // Different model orders based on step to avoid 429 concurrent limit
     const models = hasImage
       ? [
-          { name: "google/gemini-2.0-flash-lite", timeout: 30000 },
-          { name: "google/gemini-2.5-flash", timeout: 90000 },
+          { name: "gemini-2.5-flash-lite", timeout: 30000 },
+          { name: "gemini-2.5-flash", timeout: 90000 },
         ]
       : [
-          { name: "google/gemini-2.0-flash-lite", timeout: 30000 },
-          { name: "google/gemini-2.5-flash", timeout: 55000 },
+          { name: "gemini-2.5-flash-lite", timeout: 30000 },
+          { name: "gemini-2.5-flash", timeout: 55000 },
         ];
     
     // Only 1 retry attempt (was 2), with shorter wait
@@ -1440,7 +1440,7 @@ Giữ nguyên số liệu gốc. KHÔNG trả JSON. KHÔNG giải thích.`;
           },
         ];
         
-        const ocrModel = aiConfig['ai_quote_ocr_model'] || "google/gemini-2.0-flash-lite";
+        const ocrModel = aiConfig['ai_quote_ocr_model'] || "gemini-2.5-flash-lite";
         const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
         
         let ocrText = '';
