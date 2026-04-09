@@ -197,7 +197,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
         ...(p.NameExtension || []).map(n => normalizeText(n)),
       ];
-      return { id: p.ProvinceID, names: [...new Set(names)] };
+      return { id: p.ProvinceID, names: Array.from(new Set(names)) };
     });
     const matchedProv = findBestMatch(provCandidates);
     if (!matchedProv) return;
@@ -216,7 +216,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
           ...(d.NameExtension || []).map(n => normalizeText(n)),
         ];
-        return { id: d.DistrictID, names: [...new Set(names)] };
+        return { id: d.DistrictID, names: Array.from(new Set(names)) };
       });
       const matchedDist = findBestMatch(distCandidates);
       if (!matchedDist) return;
@@ -234,7 +234,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
           ...(w.NameExtension || []).map(n => normalizeText(n)),
         ];
-        return { id: w.WardCode, names: [...new Set(names)] };
+        return { id: w.WardCode, names: Array.from(new Set(names)) };
       });
       const matchedWard = findBestMatch(wardCandidates);
       if (matchedWard) {
