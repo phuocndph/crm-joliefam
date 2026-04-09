@@ -367,7 +367,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const fmt = (n: number) => n.toLocaleString("vi-VN") + " đ";
 
   // Open address sub-dialog
-  const openAddressDialog = () => {
+  const openAddressDialog = async () => {
     setTempAddress(toAddress);
     setTempProvinceId(provinceId);
     setTempDistrictId(districtId);
@@ -375,6 +375,63 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setTempDistricts(districts);
     setTempWards(wards);
     setShowAddressDialog(true);
+
+    // Auto-match if we have address but no province selected yet
+    if (toAddress && !provinceId && provinces.length > 0) {
+      const normalizedAddr = normalizeText(toAddress);
+      const findBestMatch = (items: { id: any; names: string[] }[]): { id: any } | null => {
+        const allPairs: { name: string; id: any }[] = [];
+        for (const item of items) {
+          for (const n of item.names) allPairs.push({ name: n, id: item.id });
+        }
+        allPairs.sort((a, b) => b.name.length - a.name.length);
+        for (const pair of allPairs) {
+          if (pair.name.length >= 2 && normalizedAddr.includes(pair.name)) return pair;
+        }
+        return null;
+      };
+
+      const provCandidates = provinces.map(p => ({
+        id: p.ProvinceID,
+        names: Array.from(new Set([
+          normalizeText(p.ProvinceName),
+          normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
+          ...(p.NameExtension || []).map(n => normalizeText(n)),
+        ]))
+      }));
+      const matchedProv = findBestMatch(provCandidates);
+      if (matchedProv) {
+        setTempProvinceId(String(matchedProv.id));
+        try {
+          const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
+          setTempDistricts(distList || []);
+          const distCandidates = (distList || []).map((d: District) => ({
+            id: d.DistrictID,
+            names: Array.from(new Set([
+              normalizeText(d.DistrictName),
+              normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
+              ...(d.NameExtension || []).map(n => normalizeText(n)),
+            ]))
+          }));
+          const matchedDist = findBestMatch(distCandidates);
+          if (matchedDist) {
+            setTempDistrictId(String(matchedDist.id));
+            const wardList = await callGHN('get_wards', { districtId: matchedDist.id });
+            setTempWards(wardList || []);
+            const wardCandidates = (wardList || []).map((w: Ward) => ({
+              id: w.WardCode,
+              names: Array.from(new Set([
+                normalizeText(w.WardName),
+                normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
+                ...(w.NameExtension || []).map(n => normalizeText(n)),
+              ]))
+            }));
+            const matchedWard = findBestMatch(wardCandidates);
+            if (matchedWard) setTempWardCode(String(matchedWard.id));
+          }
+        } catch (e) { console.error('Address dialog auto-match error:', e); }
+      }
+    }
   };
 
   // Confirm address from sub-dialog
