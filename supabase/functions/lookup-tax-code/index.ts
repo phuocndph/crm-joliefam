@@ -1021,20 +1021,12 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
     const models = hasImage
       ? [
           { name: "gemini-2.0-flash-lite", timeout: 30000 },
-          { name: "gemini-2.0-flash", timeout: 45000 },
           { name: "gemini-2.5-flash", timeout: 90000 },
         ]
-      : stepHint === 'text'
-        ? [
-            // Text matching step: use Gemini 2.5 Flash (gemini-3-flash-preview not available on Beeknoee)
-            { name: "gemini-2.5-flash", timeout: 55000 },
-          ]
-        : [
-            { name: "gemini-2.5-flash", timeout: 55000 },
-            { name: "glm-4.7-flash", timeout: 30000 },
-            { name: "glm-4.5-flash", timeout: 30000 },
-            { name: "openai/gpt-oss-120b", timeout: 30000 },
-          ];
+      : [
+          { name: "gemini-2.0-flash-lite", timeout: 30000 },
+          { name: "gemini-2.5-flash", timeout: 55000 },
+        ];
     
     // Only 1 retry attempt (was 2), with shorter wait
     for (let attempt = 0; attempt < 2; attempt++) {
