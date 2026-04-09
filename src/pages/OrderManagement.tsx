@@ -52,6 +52,7 @@ interface Order {
     phone: string | null;
     company: string | null;
     customer_code: string | null;
+    address: string | null;
   } | null;
   assignees?: {
     name: string;
@@ -788,7 +789,6 @@ export default function OrderManagement() {
           remainingAmount={calculateRemainingAmount(orderToCreateGHN)}
           onSuccess={() => {
             loadOrders();
-            setOrderToCreateGHN(null);
           }}
         />
       )}
