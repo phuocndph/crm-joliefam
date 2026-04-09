@@ -397,8 +397,8 @@ export function InlineOrderEditTable({
         return null;
     }
   };
-  return <div className="rounded-md border max-h-[600px] overflow-auto">
-      <Table>
+  return <div className="rounded-md border max-h-[600px] overflow-auto order-table-scroll">
+      <Table disableWrapper className="min-w-max">
         <TableHeader className="sticky top-0 bg-background z-10">
           <TableRow>
             <TableHead className="min-w-[120px] bg-background">Mã đơn hàng</TableHead>
