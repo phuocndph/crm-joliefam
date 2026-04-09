@@ -4,19 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, Calculator, ExternalLink, Printer } from "lucide-react";
+import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, ExternalLink, Printer, X, Info, ChevronRight } from "lucide-react";
 
 interface Province { ProvinceID: number; ProvinceName: string; NameExtension?: string[]; }
 interface District { DistrictID: number; DistrictName: string; NameExtension?: string[]; }
 interface Ward { WardCode: string; WardName: string; NameExtension?: string[]; }
-interface GHNShop { _id: number; name: string; address: string; district_id: number; }
+interface GHNShop { _id: number; name: string; address: string; district_id: number; phone?: string; }
 interface GHNService { service_id: number; short_name: string; service_type_id: number; }
 interface FeeDetail {
   service_fee: number; insurance_fee: number; cod_fee: number; r2s_fee: number;
@@ -76,6 +75,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [note, setNote] = useState("");
   const [requiredNote, setRequiredNote] = useState("CHOTHUHANG");
   const [paymentTypeId, setPaymentTypeId] = useState("1");
+  const [pickupType, setPickupType] = useState("pickup"); // pickup | dropoff
 
   // Services & Fee
   const [services, setServices] = useState<GHNService[]>([]);
@@ -86,10 +86,18 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
   const [autoMatchDone, setAutoMatchDone] = useState(false);
 
-  // Track if dialog just opened to prevent re-running pre-fill
+  // Address sub-dialog
+  const [showAddressDialog, setShowAddressDialog] = useState(false);
+  const [tempAddress, setTempAddress] = useState("");
+  const [tempProvinceId, setTempProvinceId] = useState("");
+  const [tempDistrictId, setTempDistrictId] = useState("");
+  const [tempWardCode, setTempWardCode] = useState("");
+  const [tempDistricts, setTempDistricts] = useState<District[]>([]);
+  const [tempWards, setTempWards] = useState<Ward[]>([]);
+
   const hasPrefilledRef = useRef(false);
 
-  // Pre-fill - only on dialog open
+  // Pre-fill
   useEffect(() => {
     if (order && open && !hasPrefilledRef.current) {
       hasPrefilledRef.current = true;
@@ -142,7 +150,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     try {
       const data = await callGHN('get_shops');
       setShops(data);
-      // Auto-select first shop
       if (data?.length > 0 && !selectedShopId) {
         setSelectedShopId(String(data[0]._id));
       }
@@ -157,7 +164,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     } catch (e) { console.error(e); } finally { setLoadingProvinces(false); }
   };
 
-  // Normalize Vietnamese text for fuzzy matching
   const normalizeText = (text: string) => {
     return text.toLowerCase()
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -165,16 +171,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       .replace(/\s+/g, " ").trim();
   };
 
-  // Auto-match address to province/district/ward using NameExtension
   const tryAutoMatchLocation = useCallback(async (provList: Province[], rawAddress: string) => {
     if (!rawAddress || provList.length === 0) return;
     const normalizedAddr = normalizeText(rawAddress);
 
-    // Helper: find best match using NameExtension + primary name
-    const findBestMatch = <T extends { id: any }>(
-      items: { id: any; names: string[] }[]
-    ): { id: any } | null => {
-      // Collect all (name, id) pairs, sort by name length descending
+    const findBestMatch = (items: { id: any; names: string[] }[]): { id: any } | null => {
       const allPairs: { name: string; id: any }[] = [];
       for (const item of items) {
         for (const n of item.names) {
@@ -190,7 +191,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       return null;
     };
 
-    // Build province candidates with all name extensions
     const provCandidates = provList.map(p => {
       const names = [
         normalizeText(p.ProvinceName),
@@ -205,7 +205,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     console.log('🗺️ Auto-matched province:', matchedProv.id);
     setProvinceId(String(matchedProv.id));
 
-    // Load and match district
     try {
       const distList: District[] = await callGHN('get_districts', { provinceId: matchedProv.id });
       setDistricts(distList || []);
@@ -224,7 +223,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       console.log('🗺️ Auto-matched district:', matchedDist.id);
       setDistrictId(String(matchedDist.id));
 
-      // Load and match ward
       const wardList: Ward[] = await callGHN('get_wards', { districtId: matchedDist.id });
       setWards(wardList || []);
 
@@ -244,7 +242,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     } catch (e) { console.error('Auto-match error:', e); }
   }, [callGHN]);
 
-  // Trigger auto-match when both provinces AND selectedShopId are ready
+  // Trigger auto-match
   useEffect(() => {
     if (provinces.length > 0 && selectedShopId && order?.customers?.address && open && !autoMatchDone) {
       setAutoMatchDone(true);
@@ -266,6 +264,19 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     try { setWards(await callGHN('get_wards', { districtId: distId })); } catch (e) { console.error(e); } finally { setLoadingWards(false); }
   };
 
+  // Load temp districts/wards for address sub-dialog
+  const loadTempDistricts = async (provId: number) => {
+    setLoadingDistricts(true);
+    setTempDistricts([]); setTempWards([]); setTempDistrictId(""); setTempWardCode("");
+    try { setTempDistricts(await callGHN('get_districts', { provinceId: provId })); } catch (e) { console.error(e); } finally { setLoadingDistricts(false); }
+  };
+
+  const loadTempWards = async (distId: number) => {
+    setLoadingWards(true);
+    setTempWards([]); setTempWardCode("");
+    try { setTempWards(await callGHN('get_wards', { districtId: distId })); } catch (e) { console.error(e); } finally { setLoadingWards(false); }
+  };
+
   // Auto-load services when district changes
   useEffect(() => {
     if (districtId && selectedShopId) {
@@ -285,21 +296,16 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     } catch (e) { console.error(e); } finally { setLoadingServices(false); }
   };
 
-  // Auto-calculate fee when all required fields are filled
+  // Auto-calculate fee
   useEffect(() => {
     if (districtId && wardCode && serviceTypeId && weight > 0) {
-      const timer = setTimeout(() => {
-        calculateFee();
-      }, 500); // debounce
+      const timer = setTimeout(() => { calculateFee(); }, 500);
       return () => clearTimeout(timer);
     }
   }, [districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount]);
 
   const calculateFee = async () => {
-    if (!districtId || !wardCode || !serviceTypeId) {
-      toast({ title: "Thiếu thông tin", description: "Vui lòng chọn quận/phường và dịch vụ trước", variant: "destructive" });
-      return;
-    }
+    if (!districtId || !wardCode || !serviceTypeId) return;
     setLoadingFee(true); setFeeStatus("loading");
     try {
       const data = await callGHN('calculate_fee', {
@@ -308,8 +314,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           service_type_id: parseInt(serviceTypeId),
           to_district_id: parseInt(districtId),
           to_ward_code: wardCode,
-          weight,
-          length, width, height,
+          weight, length, width, height,
           insurance_value: insuranceValue,
           cod_value: codAmount,
         }
@@ -361,6 +366,44 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   const fmt = (n: number) => n.toLocaleString("vi-VN") + " đ";
 
+  // Open address sub-dialog
+  const openAddressDialog = () => {
+    setTempAddress(toAddress);
+    setTempProvinceId(provinceId);
+    setTempDistrictId(districtId);
+    setTempWardCode(wardCode);
+    setTempDistricts(districts);
+    setTempWards(wards);
+    setShowAddressDialog(true);
+  };
+
+  // Confirm address from sub-dialog
+  const confirmAddress = () => {
+    setToAddress(tempAddress);
+    setProvinceId(tempProvinceId);
+    setDistrictId(tempDistrictId);
+    setWardCode(tempWardCode);
+    setDistricts(tempDistricts);
+    setWards(tempWards);
+    setShowAddressDialog(false);
+  };
+
+  // Get display text for selected address
+  const getAddressDisplayText = () => {
+    const parts: string[] = [];
+    if (toAddress) parts.push(toAddress);
+    const ward = wards.find(w => w.WardCode === wardCode);
+    if (ward) parts.push(ward.WardName);
+    const district = districts.find(d => String(d.DistrictID) === districtId);
+    if (district) parts.push(district.DistrictName);
+    const province = provinces.find(p => String(p.ProvinceID) === provinceId);
+    if (province) parts.push(province.ProvinceName);
+    return parts.length > 0 ? parts.join(", ") : "";
+  };
+
+  const selectedShop = shops.find(s => String(s._id) === selectedShopId);
+
+  // ======== SUCCESS SCREEN ========
   if (success) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -410,7 +453,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 )}
               </CardContent>
             </Card>
-
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1 gap-2" asChild>
                 <a href={`https://donhang.ghn.vn/?order_code=${createdOrderCode}`} target="_blank" rel="noopener noreferrer">
@@ -430,144 +472,236 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     );
   }
 
+  // ======== ADDRESS SUB-DIALOG (rendered as overlay, not nested Dialog) ========
+  const addressDialog = showAddressDialog ? (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setShowAddressDialog(false)}>
+      <div className="bg-background rounded-lg shadow-xl w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h3 className="font-semibold text-base">Địa chỉ người nhận</h3>
+          <button onClick={() => setShowAddressDialog(false)} className="rounded-sm opacity-70 hover:opacity-100 p-1">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-4 space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Địa chỉ nhận hàng</Label>
+            <Input
+              value={tempAddress}
+              onChange={e => setTempAddress(e.target.value)}
+              placeholder="Số nhà, tên đường..."
+              className="text-sm"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Tỉnh/Thành phố</Label>
+            <Select value={tempProvinceId} onValueChange={v => { setTempProvinceId(v); loadTempDistricts(parseInt(v)); }}>
+              <SelectTrigger className="text-sm">
+                <SelectValue placeholder={loadingProvinces ? "Đang tải..." : "Chọn Tỉnh/Thành phố"} />
+              </SelectTrigger>
+              <SelectContent className="max-h-60">
+                {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Quận/Huyện</Label>
+            <Select value={tempDistrictId} onValueChange={v => { setTempDistrictId(v); loadTempWards(parseInt(v)); }} disabled={!tempProvinceId}>
+              <SelectTrigger className="text-sm">
+                <SelectValue placeholder={loadingDistricts ? "Đang tải..." : "Chọn Quận/Huyện"} />
+              </SelectTrigger>
+              <SelectContent className="max-h-60">
+                {tempDistricts.map(d => <SelectItem key={d.DistrictID} value={String(d.DistrictID)}>{d.DistrictName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Phường/Xã</Label>
+            <Select value={tempWardCode} onValueChange={setTempWardCode} disabled={!tempDistrictId}>
+              <SelectTrigger className="text-sm">
+                <SelectValue placeholder={loadingWards ? "Đang tải..." : "Chọn Phường/Xã"} />
+              </SelectTrigger>
+              <SelectContent className="max-h-60">
+                {tempWards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-4 py-3 border-t">
+          <Button variant="outline" size="sm" onClick={() => setShowAddressDialog(false)}>Hủy</Button>
+          <Button size="sm" onClick={confirmAddress} disabled={!tempProvinceId || !tempDistrictId || !tempWardCode}>
+            Xong
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  // ======== MAIN FORM ========
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Truck className="h-5 w-5" /> Tạo đơn vận chuyển GHN
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0">
+        {/* Header */}
+        <div className="px-6 pt-5 pb-3">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Truck className="h-5 w-5 text-primary" /> Tạo đơn vận chuyển GHN
+            </DialogTitle>
+          </DialogHeader>
+        </div>
 
-        <div className="space-y-4">
-          {/* Section 1: Shop */}
-          <Card>
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="text-sm flex items-center gap-2"><Store className="h-4 w-4" /> Thông tin shop gửi hàng</CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 pt-0">
-              <Select value={selectedShopId} onValueChange={setSelectedShopId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={loadingShops ? "Đang tải..." : "Chọn shop gửi hàng"} />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {shops.map(s => (
-                    <SelectItem key={s._id} value={String(s._id)}>
-                      <span className="font-medium">{s.name}</span>
-                      <span className="text-muted-foreground ml-2 text-xs">- {s.address}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 h-[calc(90vh-80px)]">
+          {/* LEFT COLUMN - Form */}
+          <div className="lg:col-span-2 overflow-y-auto px-6 pb-6 space-y-4 border-r">
 
-          {/* Section 2: Recipient */}
-          <Card>
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="text-sm flex items-center gap-2"><MapPin className="h-4 w-4" /> Thông tin người nhận</CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 pt-0 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Tên người nhận *</Label>
-                  <Input value={toName} onChange={e => setToName(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Số điện thoại *</Label>
-                  <Input value={toPhone} onChange={e => setToPhone(e.target.value)} />
-                </div>
+            {/* === BÊN GỬI === */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                <Store className="h-4 w-4" /> Bên gửi
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Tỉnh/Thành *</Label>
-                  <Select value={provinceId} onValueChange={v => { setProvinceId(v); loadDistricts(parseInt(v)); }}>
-                    <SelectTrigger><SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} /></SelectTrigger>
-                    <SelectContent className="max-h-60">{provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}</SelectContent>
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                {loadingShops ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Đang tải shop...
+                  </div>
+                ) : shops.length > 1 ? (
+                  <Select value={selectedShopId} onValueChange={setSelectedShopId}>
+                    <SelectTrigger className="text-sm bg-background">
+                      <SelectValue placeholder="Chọn shop gửi hàng" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {shops.map(s => (
+                        <SelectItem key={s._id} value={String(s._id)}>
+                          {s.name} - {s.address}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Quận/Huyện *</Label>
-                  <Select value={districtId} onValueChange={v => { setDistrictId(v); loadWards(parseInt(v)); }} disabled={!provinceId}>
-                    <SelectTrigger><SelectValue placeholder={loadingDistricts ? "Tải..." : "Chọn"} /></SelectTrigger>
-                    <SelectContent className="max-h-60">{districts.map(d => <SelectItem key={d.DistrictID} value={String(d.DistrictID)}>{d.DistrictName}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Phường/Xã *</Label>
-                  <Select value={wardCode} onValueChange={setWardCode} disabled={!districtId}>
-                    <SelectTrigger><SelectValue placeholder={loadingWards ? "Tải..." : "Chọn"} /></SelectTrigger>
-                    <SelectContent className="max-h-60">{wards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Địa chỉ chi tiết *</Label>
-                <Input value={toAddress} onChange={e => setToAddress(e.target.value)} placeholder="Số nhà, đường..." />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Yêu cầu khi giao hàng</Label>
-                <RadioGroup value={requiredNote} onValueChange={setRequiredNote} className="flex flex-wrap gap-4">
-                  <div className="flex items-center gap-1.5"><RadioGroupItem value="CHOTHUHANG" id="rn1" /><Label htmlFor="rn1" className="text-xs font-normal">Cho thử hàng</Label></div>
-                  <div className="flex items-center gap-1.5"><RadioGroupItem value="CHOXEMHANGKHONGTHU" id="rn2" /><Label htmlFor="rn2" className="text-xs font-normal">Cho xem, không thử</Label></div>
-                  <div className="flex items-center gap-1.5"><RadioGroupItem value="KHONGCHOXEMHANG" id="rn3" /><Label htmlFor="rn3" className="text-xs font-normal">Không cho xem</Label></div>
+                ) : selectedShop ? (
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium">{selectedShop.name}</div>
+                    <div className="text-xs text-muted-foreground">{selectedShop.address}</div>
+                  </div>
+                ) : null}
+
+                {/* Pickup type */}
+                <RadioGroup value={pickupType} onValueChange={setPickupType} className="flex gap-4 pt-1">
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="pickup" id="pt1" />
+                    <Label htmlFor="pt1" className="text-xs font-normal cursor-pointer">Lấy hàng tận nơi</Label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="dropoff" id="pt2" />
+                    <Label htmlFor="pt2" className="text-xs font-normal cursor-pointer">Gửi hàng tại bưu cục</Label>
+                  </div>
                 </RadioGroup>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Section 3: Package */}
-          <Card>
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="text-sm flex items-center gap-2"><Package className="h-4 w-4" /> Thông tin hàng hóa</CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 pt-0 space-y-3">
+            <Separator />
+
+            {/* === BÊN NHẬN === */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                <MapPin className="h-4 w-4" /> Bên nhận
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Số điện thoại *</Label>
+                  <Input value={toPhone} onChange={e => setToPhone(e.target.value)} placeholder="Nhập SĐT" className="text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Họ tên *</Label>
+                  <Input value={toName} onChange={e => setToName(e.target.value)} placeholder="Nhập họ tên" className="text-sm" />
+                </div>
+              </div>
+
+              {/* Address button - opens sub-dialog */}
+              <div className="space-y-1">
+                <Label className="text-xs">Địa chỉ người nhận *</Label>
+                <button
+                  type="button"
+                  onClick={openAddressDialog}
+                  className="w-full flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent/50 transition-colors text-left min-h-[40px]"
+                >
+                  <span className={getAddressDisplayText() ? "text-foreground" : "text-muted-foreground"}>
+                    {getAddressDisplayText() || "Nhấn để chọn địa chỉ..."}
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                </button>
+              </div>
+
+              {/* Required note */}
+              <div className="space-y-1">
+                <Label className="text-xs">Yêu cầu khi giao</Label>
+                <RadioGroup value={requiredNote} onValueChange={setRequiredNote} className="flex flex-wrap gap-3">
+                  <div className="flex items-center gap-1.5"><RadioGroupItem value="CHOTHUHANG" id="rn1" /><Label htmlFor="rn1" className="text-xs font-normal cursor-pointer">Cho thử hàng</Label></div>
+                  <div className="flex items-center gap-1.5"><RadioGroupItem value="CHOXEMHANGKHONGTHU" id="rn2" /><Label htmlFor="rn2" className="text-xs font-normal cursor-pointer">Cho xem, không thử</Label></div>
+                  <div className="flex items-center gap-1.5"><RadioGroupItem value="KHONGCHOXEMHANG" id="rn3" /><Label htmlFor="rn3" className="text-xs font-normal cursor-pointer">Không cho xem</Label></div>
+                </RadioGroup>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* === HÀNG HÓA === */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                <Package className="h-4 w-4" /> Hàng hóa
+              </div>
               <div className="grid grid-cols-4 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Cân nặng (g) *</Label>
-                  <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} />
+                  <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} className="text-sm" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Dài (cm)</Label>
-                  <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} />
+                  <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Rộng (cm)</Label>
-                  <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} />
+                  <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Cao (cm)</Label>
-                  <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} />
+                  <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Giá trị hàng (VNĐ)</Label>
-                  <Input type="number" value={insuranceValue} onChange={e => setInsuranceValue(parseInt(e.target.value) || 0)} />
+                  <Input type="number" value={insuranceValue} onChange={e => setInsuranceValue(parseInt(e.target.value) || 0)} className="text-sm" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Số lượng SP</Label>
-                  <Input type="number" value={itemQuantity} onChange={e => setItemQuantity(parseInt(e.target.value) || 1)} min={1} />
+                  <Label className="text-xs">Số lượng</Label>
+                  <Input type="number" value={itemQuantity} onChange={e => setItemQuantity(parseInt(e.target.value) || 1)} min={1} className="text-sm" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Nội dung hàng</Label>
-                  <Input value={itemContent} onChange={e => setItemContent(e.target.value)} placeholder="Mô tả hàng hóa" />
+                  <Label className="text-xs">Nội dung</Label>
+                  <Input value={itemContent} onChange={e => setItemContent(e.target.value)} placeholder="Mô tả hàng" className="text-sm" />
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Section 4: Service & Payment */}
-          <Card>
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="text-sm flex items-center gap-2"><CreditCard className="h-4 w-4" /> Dịch vụ & Thanh toán</CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 pt-0 space-y-3">
+            <Separator />
+
+            {/* === DỊCH VỤ & THANH TOÁN === */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                <CreditCard className="h-4 w-4" /> Dịch vụ & Thanh toán
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Dịch vụ vận chuyển *</Label>
                   <Select value={serviceTypeId} onValueChange={v => { setServiceTypeId(v); setFeeDetail(null); setFeeStatus("idle"); }} disabled={services.length === 0}>
-                    <SelectTrigger>
+                    <SelectTrigger className="text-sm">
                       <SelectValue placeholder={loadingServices ? "Đang tải..." : services.length === 0 ? "Chọn địa chỉ trước" : "Chọn dịch vụ"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -576,9 +710,9 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Phí vận chuyển</Label>
+                  <Label className="text-xs">Người trả phí vận chuyển</Label>
                   <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="1">Người gửi trả</SelectItem>
                       <SelectItem value="2">Người nhận trả</SelectItem>
@@ -589,53 +723,98 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Tiền COD (VNĐ)</Label>
-                  <Input type="number" value={codAmount} onChange={e => setCodAmount(parseInt(e.target.value) || 0)} />
+                  <Input type="number" value={codAmount} onChange={e => setCodAmount(parseInt(e.target.value) || 0)} className="text-sm" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Ghi chú giao hàng</Label>
-                  <Input value={note} onChange={e => setNote(e.target.value)} />
+                  <Input value={note} onChange={e => setNote(e.target.value)} className="text-sm" />
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          {/* Section 5: Fee Calculation */}
-          <Card>
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Calculator className="h-4 w-4" /> Cước phí
-                {feeStatus === "idle" && <Badge variant="outline" className="ml-2 text-xs">Chưa tính</Badge>}
-                {feeStatus === "loading" && <Badge variant="outline" className="ml-2 text-xs bg-yellow-50 text-yellow-700">Đang tính...</Badge>}
-                {feeStatus === "done" && <Badge variant="outline" className="ml-2 text-xs bg-green-50 text-green-700">Đã tính</Badge>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 pt-0 space-y-3">
-              <Button variant="outline" size="sm" onClick={calculateFee} disabled={loadingFee || !districtId || !wardCode || !serviceTypeId} className="gap-2">
-                {loadingFee ? <Loader2 className="h-3 w-3 animate-spin" /> : <Calculator className="h-3 w-3" />}
-                Tính cước phí
-              </Button>
+          {/* RIGHT COLUMN - Fee Sidebar */}
+          <div className="lg:col-span-1 flex flex-col bg-muted/20">
+            <div className="p-4 space-y-4 flex-1">
+              {/* Total fee */}
+              <div className="text-center space-y-1">
+                <div className="text-xs text-muted-foreground uppercase tracking-wide">Tổng phí</div>
+                <div className="text-2xl font-bold text-primary">
+                  {feeStatus === "loading" ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    </span>
+                  ) : feeDetail ? (
+                    fmt(feeDetail.total)
+                  ) : (
+                    <span className="text-muted-foreground text-lg">-- đ</span>
+                  )}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Fee breakdown */}
               {feeDetail && (
-                <div className="rounded-md border text-sm">
-                  <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí dịch vụ</span><span>{fmt(feeDetail.service_fee)}</span></div>
-                  <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí bảo hiểm</span><span>{fmt(feeDetail.insurance_fee)}</span></div>
-                  {feeDetail.cod_fee > 0 && <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Phí COD</span><span>{fmt(feeDetail.cod_fee)}</span></div>}
-                  {feeDetail.coupon_value > 0 && <div className="flex justify-between px-3 py-2 border-b"><span className="text-muted-foreground">Giảm giá</span><span className="text-green-600">-{fmt(feeDetail.coupon_value)}</span></div>}
-                  <div className="flex justify-between px-3 py-2 font-medium bg-muted/50"><span>Tổng cước</span><span className="text-primary">{fmt(feeDetail.total)}</span></div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Phí dịch vụ</span>
+                    <span>{fmt(feeDetail.service_fee)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Phí bảo hiểm</span>
+                    <span>{fmt(feeDetail.insurance_fee)}</span>
+                  </div>
+                  {feeDetail.cod_fee > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Phí COD</span>
+                      <span>{fmt(feeDetail.cod_fee)}</span>
+                    </div>
+                  )}
+                  {feeDetail.r2s_fee > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Phí hoàn</span>
+                      <span>{fmt(feeDetail.r2s_fee)}</span>
+                    </div>
+                  )}
+                  {feeDetail.coupon_value > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Giảm giá</span>
+                      <span className="text-green-600">-{fmt(feeDetail.coupon_value)}</span>
+                    </div>
+                  )}
                 </div>
               )}
-            </CardContent>
-          </Card>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Hủy</Button>
-            <Button onClick={handleSubmit} disabled={loading} className="gap-2">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
-              {loading ? "Đang tạo đơn..." : "Tạo đơn GHN"}
-            </Button>
+              {!feeDetail && feeStatus === "idle" && (
+                <div className="text-xs text-muted-foreground text-center py-2">
+                  Cước phí sẽ tự động tính khi chọn đủ địa chỉ và dịch vụ
+                </div>
+              )}
+
+              {/* Info note */}
+              <div className="flex gap-2 rounded-md bg-blue-50 dark:bg-blue-950/30 p-2.5 text-xs text-blue-700 dark:text-blue-300">
+                <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <span>Tổng phí đã bao gồm phụ phí xăng dầu. Phí có thể thay đổi tùy theo khu vực giao hàng.</span>
+              </div>
+            </div>
+
+            {/* Bottom actions */}
+            <div className="p-4 border-t space-y-2">
+              <Button className="w-full gap-2" onClick={handleSubmit} disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
+                {loading ? "Đang tạo đơn..." : "Tạo đơn GHN"}
+              </Button>
+              <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)} disabled={loading}>
+                Hủy
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>
+
+      {/* Address sub-dialog rendered as sibling overlay */}
+      {addressDialog}
     </Dialog>
   );
 }
