@@ -163,58 +163,71 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       .replace(/\s+/g, " ").trim();
   };
 
-  // Auto-match address to province/district/ward
+  // Auto-match address to province/district/ward with improved fuzzy matching
   const tryAutoMatchLocation = useCallback(async (provList: Province[], rawAddress: string) => {
     if (!rawAddress || provList.length === 0) return;
     const normalized = normalizeText(rawAddress);
 
+    // Helper: find best match from a list, prioritizing exact then longest match
+    const findBestMatch = (items: { name: string; id: any }[]) => {
+      // Sort by name length descending to match longer names first (e.g., "Hà Nội" before "Hà")
+      const sorted = [...items].sort((a, b) => b.name.length - a.name.length);
+      // Try exact word boundary match first
+      for (const item of sorted) {
+        if (normalized.includes(item.name)) return item;
+      }
+      return null;
+    };
+
     // Match province
-    const matchedProv = provList.find(p => {
+    const provItems = provList.map(p => {
       const name = normalizeText(p.ProvinceName);
-      // Try matching without "Tỉnh " or "Thành phố " prefix
       const shortName = name.replace(/^(tinh |thanh pho )/, "");
-      return normalized.includes(shortName) || normalized.includes(name);
+      return { name: shortName, fullName: name, id: p.ProvinceID };
     });
+    const matchedProv = findBestMatch(provItems);
 
     if (!matchedProv) return;
-    setProvinceId(String(matchedProv.ProvinceID));
+    setProvinceId(String(matchedProv.id));
 
     // Load and match district
     try {
-      const distList = await callGHN('get_districts', { provinceId: matchedProv.ProvinceID });
+      const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
       setDistricts(distList || []);
 
-      const matchedDist = (distList || []).find((d: District) => {
+      const distItems = (distList || []).map((d: District) => {
         const name = normalizeText(d.DistrictName);
         const shortName = name.replace(/^(quan |huyen |thi xa |thanh pho )/, "");
-        return normalized.includes(shortName) || normalized.includes(name);
+        return { name: shortName, fullName: name, id: d.DistrictID };
       });
+      const matchedDist = findBestMatch(distItems);
 
       if (!matchedDist) return;
-      setDistrictId(String(matchedDist.DistrictID));
+      setDistrictId(String(matchedDist.id));
 
       // Load and match ward
-      const wardList = await callGHN('get_wards', { districtId: matchedDist.DistrictID });
+      const wardList = await callGHN('get_wards', { districtId: matchedDist.id });
       setWards(wardList || []);
 
-      const matchedWard = (wardList || []).find((w: Ward) => {
+      const wardItems = (wardList || []).map((w: Ward) => {
         const name = normalizeText(w.WardName);
         const shortName = name.replace(/^(phuong |xa |thi tran )/, "");
-        return normalized.includes(shortName) || normalized.includes(name);
+        return { name: shortName, fullName: name, id: w.WardCode };
       });
+      const matchedWard = findBestMatch(wardItems);
 
       if (matchedWard) {
-        setWardCode(matchedWard.WardCode);
+        setWardCode(String(matchedWard.id));
       }
     } catch (e) { console.error('Auto-match error:', e); }
   }, [callGHN]);
 
-  // Trigger auto-match when provinces loaded and address available
+  // Trigger auto-match ONLY when both provinces AND selectedShopId are ready
   useEffect(() => {
-    if (provinces.length > 0 && order?.customers?.address && open && !provinceId) {
+    if (provinces.length > 0 && selectedShopId && order?.customers?.address && open && !provinceId) {
       tryAutoMatchLocation(provinces, order.customers.address);
     }
-  }, [provinces, order, open]);
+  }, [provinces, selectedShopId, order, open]);
 
   const loadDistricts = async (provId: number) => {
     setLoadingDistricts(true);
