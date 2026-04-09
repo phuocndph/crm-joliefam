@@ -1,45 +1,68 @@
 
 
-## Tạo đơn GHN tự động từ chi tiết đơn hàng
+## Nâng cấp form tạo đơn GHN - giống giao diện GHN chính thức
 
 ### Tổng quan
-Thêm nút "Tạo đơn GHN" trong dialog chi tiết đơn hàng. Khi click, hiện form xác nhận với thông tin đã điền sẵn từ đơn hàng (tên, SĐT, địa chỉ, COD). Cho phép chỉnh sửa cân nặng, kích thước, ghi chú trước khi gửi lên GHN API.
-
-### Yêu cầu từ GHN API
-GHN API `v2/shipping-order/create` cần các thông tin:
-- **Bắt buộc**: to_name, to_phone, to_address, to_ward_code, to_district_id, weight, service_type_id, payment_type_id
-- **Tùy chọn**: cod_amount, note, content, length/width/height
-- Cần tra cứu mã phường/quận từ GHN API (`province`, `district`, `ward`)
+Nâng cấp `CreateGHNOrderDialog` thành form đầy đủ theo quy trình GHN chính thức, bao gồm: chọn shop, nhập thông tin người nhận, tính cước phí trước khi tạo, hiển thị kết quả chi tiết sau khi tạo đơn.
 
 ### Thay đổi
 
 **1. Edge Function: `supabase/functions/ghn-tracking/index.ts`**
-- Thêm 3 action mới:
-  - `get_provinces`: Lấy danh sách tỉnh/thành từ GHN
-  - `get_districts`: Lấy danh sách quận/huyện theo tỉnh
-  - `get_wards`: Lấy danh sách phường/xã theo quận
-  - `create_order`: Gọi GHN API tạo đơn vận chuyển, sau khi thành công tự động lưu tracking vào DB
+Thêm 2 action mới:
+- `get_shops`: Gọi `v2/shop/all` lấy danh sách shop (nếu tài khoản có nhiều shop)
+- `calculate_fee`: Gọi `v2/shipping-order/fee` tính cước phí dựa trên thông tin đã nhập (district, ward, weight, dimensions, COD, service_type)
+- `get_services`: Gọi `v2/shipping-order/available-services` lấy dịch vụ khả dụng theo tuyến (from_district → to_district)
 
-**2. Component mới: `src/components/CreateGHNOrderDialog.tsx`**
-- Dialog form với các trường đã điền sẵn:
-  - Tên người nhận (từ customer name)
-  - SĐT (từ customer phone)
-  - Địa chỉ chi tiết (từ customer address)
-  - Tỉnh/Quận/Phường: dropdown tra cứu từ GHN API
-  - Cân nặng (gram) - mặc định 500g
-  - Kích thước (dài x rộng x cao) - tùy chọn
-  - Tiền COD (từ tổng tiền còn lại của đơn)
-  - Ghi chú giao hàng
-  - Loại thanh toán (người gửi/người nhận trả phí ship)
-- Nút "Tạo đơn" gọi edge function
-- Sau khi tạo thành công: hiển thị mã vận đơn GHN và tự động lưu vào bảng `ghn_tracking`
+**2. Component: `src/components/CreateGHNOrderDialog.tsx`** - Nâng cấp toàn diện
 
-**3. File: `src/pages/OrderManagement.tsx`**
-- Thêm nút "Tạo đơn GHN" trong dialog chi tiết đơn hàng (gần khu vực footer)
-- Import và render `CreateGHNOrderDialog`
+Chia form thành các bước/section rõ ràng với Tabs hoặc Accordion:
 
-### Lưu ý kỹ thuật
-- GHN API key (`GHN_API_KEY`) và Shop ID (`GHN_SHOP_ID`) đã có sẵn trong secrets
-- Sau khi tạo đơn thành công, mã vận đơn sẽ tự động liên kết với đơn hàng qua trigger `trg_auto_link_ghn_tracking`
-- Địa chỉ khách hàng hiện tại là text tự do, cần user chọn lại tỉnh/quận/phường từ dropdown GHN để đảm bảo chính xác
+**Section 1 - Thông tin shop gửi hàng:**
+- Dropdown chọn shop (từ API `get_shops`), mặc định shop đầu tiên
+- Hiển thị địa chỉ shop đã chọn
+
+**Section 2 - Thông tin người nhận:**
+- Tên, SĐT (pre-fill từ đơn hàng)
+- Tỉnh/Quận/Phường (dropdown cascade, giữ nguyên logic hiện tại)
+- Địa chỉ chi tiết
+- Yêu cầu khi giao: CHOTHUHANG / CHOXEMHANGKHONGTHU / KHONGCHOXEMHANG (radio group)
+
+**Section 3 - Thông tin hàng hóa:**
+- Cân nặng (g)
+- Kích thước (dài x rộng x cao cm)
+- Giá trị hàng hóa (insurance_value) - để tính phí bảo hiểm
+- Số lượng sản phẩm
+- Nội dung hàng hóa
+
+**Section 4 - Dịch vụ & thanh toán:**
+- Dịch vụ vận chuyển: tự động load từ API `get_services` theo tuyến đường
+- Phí ship: Người gửi trả / Người nhận trả
+- Tiền COD (VNĐ)
+- Ghi chú giao hàng
+
+**Section 5 - Xem cước phí (trước khi tạo):**
+- Nút "Tính cước phí" gọi API `calculate_fee`
+- Hiển thị bảng phí chi tiết: phí dịch vụ, phí bảo hiểm, phí COD, tổng cước
+- Thời gian giao dự kiến
+
+**Section 6 - Kết quả sau khi tạo đơn (thay thế success screen hiện tại):**
+- Mã vận đơn GHN (copy được)
+- Trạng thái đơn: "Sẵn sàng lấy hàng"
+- Link tracking GHN
+- Nút "In phiếu gửi" (mở link GHN print)
+- Nút "Tạo đơn khác" / "Đóng"
+
+### Chi tiết kỹ thuật
+
+**GHN API endpoints sử dụng:**
+- `GET /shiip/public-api/v2/shop/all` - danh sách shop
+- `POST /shiip/public-api/v2/shipping-order/available-services` - dịch vụ khả dụng (cần `shop_id`, `from_district`, `to_district`)
+- `POST /shiip/public-api/v2/shipping-order/fee` - tính cước (cần `service_type_id`, `to_district_id`, `to_ward_code`, `weight`, `dimensions`, `insurance_value`)
+- `POST /shiip/public-api/v2/shipping-order/create` - tạo đơn (đã có)
+
+**UI Layout:**
+- Dialog mở rộng `max-w-3xl`
+- Sử dụng Card sections với tiêu đề cho mỗi nhóm thông tin
+- Cước phí hiển thị trong bảng tóm tắt trước nút "Tạo đơn"
+- Badge hiển thị trạng thái tính cước (chưa tính / đang tính / đã tính)
 
