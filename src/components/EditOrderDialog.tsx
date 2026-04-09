@@ -63,7 +63,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
   const getDefaultDeliveryDate = () => {
     const createdDate = new Date(order.created_at);
     const defaultDate = new Date(createdDate);
-    defaultDate.setDate(createdDate.getDate() + 4);
+    defaultDate.setDate(createdDate.getDate() + 6);
     return format(defaultDate, 'yyyy-MM-dd');
   };
   

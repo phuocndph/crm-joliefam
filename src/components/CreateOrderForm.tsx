@@ -187,6 +187,9 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
+      const defaultDeliveryDate = new Date();
+      defaultDeliveryDate.setDate(defaultDeliveryDate.getDate() + 6);
+      
       const orderData = {
         order_number: generateOrderNumber(),
         customer_id: selectedCustomer || null,
@@ -197,6 +200,7 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
         items: JSON.stringify(orderItems),
         tenant_id: "default",
         manager_id: user?.id || null,
+        delivery_date: defaultDeliveryDate.toISOString(),
       };
 
       const { error } = await supabase

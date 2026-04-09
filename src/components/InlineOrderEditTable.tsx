@@ -245,54 +245,47 @@ export function InlineOrderEditTable({
     if (!amount) return "0 VNĐ";
     return `${amount.toLocaleString("vi-VN")} VNĐ`;
   };
-  const formatDateWithCountdown = (date: string | null) => {
-    if (!date) return {
+  const formatDateWithCountdown = (date: string | null, createdAt?: string) => {
+    let effectiveDate = date;
+    let isDefault = false;
+    
+    if (!effectiveDate && createdAt) {
+      const created = new Date(createdAt);
+      created.setDate(created.getDate() + 6);
+      effectiveDate = created.toISOString();
+      isDefault = true;
+    }
+    
+    if (!effectiveDate) return {
       text: "Chưa đặt",
       isUrgent: false
     };
 
-    // Validate and create Date object
-    const deliveryDate = new Date(date);
-
-    // Check if the date is valid
+    const deliveryDate = new Date(effectiveDate);
     if (isNaN(deliveryDate.getTime())) {
-      return {
-        text: "Ngày không hợp lệ",
-        isUrgent: false
-      };
+      return { text: "Ngày không hợp lệ", isUrgent: false };
     }
+    
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset về đầu ngày
-    deliveryDate.setHours(0, 0, 0, 0); // Reset về đầu ngày
+    today.setHours(0, 0, 0, 0);
+    deliveryDate.setHours(0, 0, 0, 0);
 
     const daysLeft = differenceInDays(deliveryDate, today);
-    let text = format(deliveryDate, "dd/MM/yyyy", {
-      locale: vi
-    });
+    let text = format(deliveryDate, "dd/MM/yyyy", { locale: vi });
+    const defaultTag = isDefault ? " (mặc định)" : "";
+    
     if (daysLeft < 0) {
-      text += ` (Quá hạn ${Math.abs(daysLeft)} ngày)`;
-      return {
-        text,
-        isUrgent: true
-      };
+      text += ` (Quá hạn ${Math.abs(daysLeft)} ngày)${defaultTag}`;
+      return { text, isUrgent: true };
     } else if (daysLeft === 0) {
-      text += " (Hôm nay)";
-      return {
-        text,
-        isUrgent: true
-      };
+      text += ` (Hôm nay)${defaultTag}`;
+      return { text, isUrgent: true };
     } else if (daysLeft <= 2) {
-      text += ` (Còn ${daysLeft} ngày)`;
-      return {
-        text,
-        isUrgent: true
-      };
+      text += ` (Còn ${daysLeft} ngày)${defaultTag}`;
+      return { text, isUrgent: true };
     } else {
-      text += ` (Còn ${daysLeft} ngày)`;
-      return {
-        text,
-        isUrgent: false
-      };
+      text += ` (Còn ${daysLeft} ngày)${defaultTag}`;
+      return { text, isUrgent: false };
     }
   };
   const getCellContent = (order: Order, field: string) => {
@@ -400,7 +393,7 @@ export function InlineOrderEditTable({
             </div>
           </div>;
       case "delivery_date":
-        const dateInfo = formatDateWithCountdown(order.delivery_date);
+        const dateInfo = formatDateWithCountdown(order.delivery_date, order.created_at);
         return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.delivery_date)}>
             <span className={cn("text-sm", dateInfo.isUrgent && "text-red-600 font-semibold")}>
               {dateInfo.text}
