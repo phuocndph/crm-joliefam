@@ -125,13 +125,84 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   const loadShops = async () => {
     setLoadingShops(true);
-    try { setShops(await callGHN('get_shops')); } catch (e) { console.error(e); } finally { setLoadingShops(false); }
+    try {
+      const data = await callGHN('get_shops');
+      setShops(data);
+      // Auto-select first shop
+      if (data?.length > 0 && !selectedShopId) {
+        setSelectedShopId(String(data[0]._id));
+      }
+    } catch (e) { console.error(e); } finally { setLoadingShops(false); }
   };
 
   const loadProvinces = async () => {
     setLoadingProvinces(true);
-    try { setProvinces(await callGHN('get_provinces')); } catch (e) { console.error(e); } finally { setLoadingProvinces(false); }
+    try {
+      const data = await callGHN('get_provinces');
+      setProvinces(data);
+    } catch (e) { console.error(e); } finally { setLoadingProvinces(false); }
   };
+
+  // Normalize Vietnamese text for fuzzy matching
+  const normalizeText = (text: string) => {
+    return text.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d").replace(/Đ/g, "D")
+      .replace(/\s+/g, " ").trim();
+  };
+
+  // Auto-match address to province/district/ward
+  const tryAutoMatchLocation = useCallback(async (provList: Province[], rawAddress: string) => {
+    if (!rawAddress || provList.length === 0) return;
+    const normalized = normalizeText(rawAddress);
+
+    // Match province
+    const matchedProv = provList.find(p => {
+      const name = normalizeText(p.ProvinceName);
+      // Try matching without "Tỉnh " or "Thành phố " prefix
+      const shortName = name.replace(/^(tinh |thanh pho )/, "");
+      return normalized.includes(shortName) || normalized.includes(name);
+    });
+
+    if (!matchedProv) return;
+    setProvinceId(String(matchedProv.ProvinceID));
+
+    // Load and match district
+    try {
+      const distList = await callGHN('get_districts', { provinceId: matchedProv.ProvinceID });
+      setDistricts(distList || []);
+
+      const matchedDist = (distList || []).find((d: District) => {
+        const name = normalizeText(d.DistrictName);
+        const shortName = name.replace(/^(quan |huyen |thi xa |thanh pho )/, "");
+        return normalized.includes(shortName) || normalized.includes(name);
+      });
+
+      if (!matchedDist) return;
+      setDistrictId(String(matchedDist.DistrictID));
+
+      // Load and match ward
+      const wardList = await callGHN('get_wards', { districtId: matchedDist.DistrictID });
+      setWards(wardList || []);
+
+      const matchedWard = (wardList || []).find((w: Ward) => {
+        const name = normalizeText(w.WardName);
+        const shortName = name.replace(/^(phuong |xa |thi tran )/, "");
+        return normalized.includes(shortName) || normalized.includes(name);
+      });
+
+      if (matchedWard) {
+        setWardCode(matchedWard.WardCode);
+      }
+    } catch (e) { console.error('Auto-match error:', e); }
+  }, [callGHN]);
+
+  // Trigger auto-match when provinces loaded and address available
+  useEffect(() => {
+    if (provinces.length > 0 && order?.customers?.address && open && !provinceId) {
+      tryAutoMatchLocation(provinces, order.customers.address);
+    }
+  }, [provinces, order, open]);
 
   const loadDistricts = async (provId: number) => {
     setLoadingDistricts(true);
@@ -145,21 +216,36 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setWards([]); setWardCode("");
     setFeeDetail(null); setFeeStatus("idle");
     try { setWards(await callGHN('get_wards', { districtId: distId })); } catch (e) { console.error(e); } finally { setLoadingWards(false); }
-    // Load services for this route
-    loadServices(distId);
   };
+
+  // Auto-load services when district changes
+  useEffect(() => {
+    if (districtId && selectedShopId) {
+      loadServices(parseInt(districtId));
+    }
+  }, [districtId, selectedShopId]);
 
   const loadServices = async (toDistrictId: number) => {
     setLoadingServices(true);
     setServices([]); setServiceTypeId("");
     try {
       const selectedShop = shops.find(s => String(s._id) === selectedShopId);
-      const fromDistrictId = selectedShop?.district_id || 1490; // default Hoàng Mai
+      const fromDistrictId = selectedShop?.district_id || 1490;
       const data = await callGHN('get_services', { fromDistrictId, toDistrictId, shopId: selectedShopId || undefined });
       setServices(data || []);
       if (data?.length > 0) setServiceTypeId(String(data[0].service_type_id));
     } catch (e) { console.error(e); } finally { setLoadingServices(false); }
   };
+
+  // Auto-calculate fee when all required fields are filled
+  useEffect(() => {
+    if (districtId && wardCode && serviceTypeId && weight > 0) {
+      const timer = setTimeout(() => {
+        calculateFee();
+      }, 500); // debounce
+      return () => clearTimeout(timer);
+    }
+  }, [districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount]);
 
   const calculateFee = async () => {
     if (!districtId || !wardCode || !serviceTypeId) {
