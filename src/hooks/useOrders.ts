@@ -46,7 +46,8 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
           *,
           customers!left(name, email, phone, company, customer_code),
           assignees(name),
-          quotes(quote_data)
+          quotes(quote_data),
+          ghn_tracking(ghn_order_code)
         `)
         .order('created_at', { ascending: false });
       

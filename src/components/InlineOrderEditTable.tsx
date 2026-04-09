@@ -56,6 +56,7 @@ interface Order {
     first_name: string | null;
     last_name: string | null;
   } | null;
+  ghn_tracking?: { ghn_order_code: string }[];
 }
 interface InlineOrderEditTableProps {
   orders: Order[];
