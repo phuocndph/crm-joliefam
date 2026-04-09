@@ -166,8 +166,47 @@ export default function AISettingsPage() {
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
 
+  const [beeknoeeModels, setBeeknoeeModels] = useState<Array<{value: string; label: string; desc: string; vision: boolean}>>(FALLBACK_MODELS);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+  }, []);
+
+  // Fetch models from Beeknoee
+  useEffect(() => {
+    const fetchModels = async () => {
+      setModelsLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('lookup-tax-code', {
+          body: { type: 'list_models' },
+        });
+        if (!error && data?.data) {
+          const chatModels = (data.data as BeeknoeeModel[])
+            .filter(isChatModel)
+            .map(m => ({
+              value: m.id,
+              label: m.id,
+              desc: `${m.owned_by}${m.context_window ? ` — ${Math.round(m.context_window / 1000)}K ctx` : ''}`,
+              vision: isVisionModel(m.id),
+            }))
+            .sort((a, b) => {
+              // Sort: google first, then by name
+              const ownerA = a.desc.split(' —')[0];
+              const ownerB = b.desc.split(' —')[0];
+              if (ownerA !== ownerB) return ownerA.localeCompare(ownerB);
+              return a.label.localeCompare(b.label);
+            });
+          if (chatModels.length > 0) {
+            setBeeknoeeModels(chatModels);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch Beeknoee models:', err);
+      }
+      setModelsLoading(false);
+    };
+    fetchModels();
   }, []);
 
   useEffect(() => {
