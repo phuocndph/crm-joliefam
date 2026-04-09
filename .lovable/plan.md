@@ -1,46 +1,25 @@
 
 
-## Tối ưu tốc độ OCR ảnh từ ~28s xuống 2-5s
+## Lỗi: `ReferenceError: hasImage is not defined`
 
-### Nguyên nhân chậm
-Model `gemini-2.5-flash` là model **"thinking"** — nó suy luận nội bộ trước khi trả lời, ngay cả với task đơn giản như OCR. Kết quả: 28.7s cho 6 dòng text.
+### Nguyên nhân
+Khi tách OCR thành bước riêng, biến `hasImage` bị xóa khai báo nhưng vẫn còn 2 chỗ tham chiếu:
 
-### Giải pháp: Dùng model nhanh hơn cho OCR
+1. **Line 1624**: `hasImage ? 'text' : undefined` — dùng trong `callAI` stepHint
+2. **Line 1650**: `if (hasImage && step1Start)` — dùng để thêm pipeline metadata
 
-**File: `supabase/functions/lookup-tax-code/index.ts` (line 1449)**
+Cả 2 đều crash vì `hasImage` không tồn tại.
 
-Đổi default OCR model từ `gemini-2.5-flash` sang `gemini-2.0-flash-lite`:
+### Sửa
 
-```typescript
-// TRƯỚC
-const ocrModel = aiConfig['ai_quote_ocr_model'] || "google/gemini-2.5-flash";
+**File: `supabase/functions/lookup-tax-code/index.ts`**
 
-// SAU
-const ocrModel = aiConfig['ai_quote_ocr_model'] || "google/gemini-2.0-flash-lite";
-```
+1. **Line 1624**: Thay `hasImage ? 'text' : undefined` → `'text'` (vì giờ luồng này chỉ xử lý text thuần, luôn là step text)
 
-`gemini-2.0-flash-lite` là model nhẹ, không có bước "thinking", phù hợp cho OCR thuần — trích xuất text từ ảnh không cần suy luận phức tạp. Tốc độ dự kiến: **2-5s** thay vì 28s.
-
-Nếu Beeknoee không hỗ trợ `gemini-2.0-flash-lite`, fallback sang `gemini-2.0-flash` (cũng nhanh hơn 2.5-flash rất nhiều cho OCR).
-
-**Thay đổi model chain cho OCR trong `callAI` (line 1021-1024):**
-
-```typescript
-const models = hasImage
-  ? [
-      { name: "gemini-2.0-flash-lite", timeout: 30000 },
-      { name: "gemini-2.0-flash", timeout: 45000 },
-      { name: "gemini-2.5-flash", timeout: 90000 },  // fallback cuối
-    ]
-```
-
-Thêm 2 model nhanh hơn vào đầu chain cho image tasks, giữ `gemini-2.5-flash` làm fallback cuối.
-
-### Cũng có thể cấu hình từ DB
-User có thể vào bảng `ai_config`, đổi key `ai_quote_ocr_model` thành `gemini-2.0-flash-lite` hoặc `gemini-2.0-flash` mà không cần deploy lại.
+2. **Line 1650**: Xóa block `if (hasImage && step1Start)` hoặc đổi thành `if (false)` — vì pipeline metadata chỉ có ý nghĩa khi chạy 2 bước liên tục, nhưng giờ OCR đã tách riêng nên không còn `step1Start` trong luồng này.
 
 ### Tóm tắt
-- Sửa 2 chỗ trong `lookup-tax-code/index.ts`: default model + model chain
-- Deploy lại edge function
-- Không thay đổi logic, chỉ đổi model
+- Sửa 2 dòng trong edge function
+- Deploy lại
+- Không thay đổi logic, chỉ xóa tham chiếu đến biến đã bị xóa
 
