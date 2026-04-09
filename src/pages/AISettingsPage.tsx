@@ -271,7 +271,7 @@ export default function AISettingsPage() {
           .from('ai_config')
           .upsert({
             config_key: key,
-            config_value: value,
+            config_value: cleanValue,
             updated_by: userData.user?.id,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'config_key' });
