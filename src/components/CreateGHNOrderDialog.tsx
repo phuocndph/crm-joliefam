@@ -113,6 +113,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setWardCode("");
       setDistricts([]);
       setWards([]);
+      setAutoMatchDone(false);
     }
     if (!open) {
       hasPrefilledRef.current = false;
