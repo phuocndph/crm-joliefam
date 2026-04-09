@@ -94,15 +94,16 @@ serve(async (req) => {
 
     // ==================== SERVICES ACTION ====================
     if (action === 'get_services') {
-      const ghnShopId = Deno.env.get('GHN_SHOP_ID');
-      if (!ghnShopId) throw new Error('GHN_SHOP_ID not configured');
-      const { fromDistrictId, toDistrictId } = requestBody;
+      const { fromDistrictId, toDistrictId, shopId } = requestBody;
+      const effectiveShopId = shopId || Deno.env.get('GHN_SHOP_ID');
+      if (!effectiveShopId) throw new Error('Shop ID not provided');
       const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/available-services', {
         method: 'POST',
-        headers: { 'Token': ghnApiKey, 'Content-Type': 'application/json', 'ShopId': ghnShopId },
-        body: JSON.stringify({ shop_id: parseInt(ghnShopId), from_district: fromDistrictId, to_district: toDistrictId }),
+        headers: { 'Token': ghnApiKey, 'Content-Type': 'application/json', 'ShopId': String(effectiveShopId) },
+        body: JSON.stringify({ shop_id: parseInt(String(effectiveShopId)), from_district: fromDistrictId, to_district: toDistrictId }),
       });
       const data = await response.json();
+      console.log('GHN services response:', JSON.stringify(data));
       return new Response(JSON.stringify({ success: true, data: data.data || [] }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -110,15 +111,16 @@ serve(async (req) => {
 
     // ==================== CALCULATE FEE ACTION ====================
     if (action === 'calculate_fee') {
-      const ghnShopId = Deno.env.get('GHN_SHOP_ID');
-      if (!ghnShopId) throw new Error('GHN_SHOP_ID not configured');
-      const { feeData } = requestBody;
+      const { feeData, shopId } = requestBody;
+      const effectiveShopId = shopId || Deno.env.get('GHN_SHOP_ID');
+      if (!effectiveShopId) throw new Error('Shop ID not provided');
       const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/fee', {
         method: 'POST',
-        headers: { 'Token': ghnApiKey, 'Content-Type': 'application/json', 'ShopId': ghnShopId },
-        body: JSON.stringify({ shop_id: parseInt(ghnShopId), ...feeData }),
+        headers: { 'Token': ghnApiKey, 'Content-Type': 'application/json', 'ShopId': String(effectiveShopId) },
+        body: JSON.stringify({ shop_id: parseInt(String(effectiveShopId)), ...feeData }),
       });
       const data = await response.json();
+      console.log('GHN fee response:', JSON.stringify(data));
       if (data.code !== 200) throw new Error(data.message || 'Cannot calculate fee');
       return new Response(JSON.stringify({ success: true, data: data.data }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
