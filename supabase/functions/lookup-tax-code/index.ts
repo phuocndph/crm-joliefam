@@ -15,8 +15,19 @@ const catalogCacheMap = new Map<string, { products: any[]; timestamp: number }>(
 const configCache: { data: Record<string, string> | null; timestamp: number } = { data: null, timestamp: 0 };
 const CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes default
 
-async function loadAIConfig(supabaseClient: any): Promise<Record<string, string>> {
-  if (configCache.data && Date.now() - configCache.timestamp < CONFIG_CACHE_TTL) {
+function cleanModelName(name?: string | null): string {
+  return name?.replace(/^google\//, '').trim() || '';
+}
+
+function invalidateAIConfigCache(reason = 'manual') {
+  configCache.data = null;
+  configCache.timestamp = 0;
+  console.log(`AI Config cache invalidated (${reason})`);
+}
+
+async function loadAIConfig(supabaseClient: any, options?: { forceRefresh?: boolean }): Promise<Record<string, string>> {
+  const forceRefresh = options?.forceRefresh === true;
+  if (!forceRefresh && configCache.data && Date.now() - configCache.timestamp < CONFIG_CACHE_TTL) {
     return configCache.data;
   }
   try {
@@ -26,7 +37,9 @@ async function loadAIConfig(supabaseClient: any): Promise<Record<string, string>
     if (!error && data) {
       const map: Record<string, string> = {};
       for (const row of data) {
-        map[row.config_key] = row.config_value;
+        map[row.config_key] = row.config_key.includes('_model')
+          ? cleanModelName(row.config_value)
+          : row.config_value;
       }
       configCache.data = map;
       configCache.timestamp = Date.now();
@@ -1009,7 +1022,7 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
     throw new Error("No AI API key configured (BEEKNOEE_API_KEY required)");
   }
 
-  const model = modelOverride || "gemini-2.5-flash";
+  const model = cleanModelName(modelOverride) || "gemini-2.5-flash";
   const payload = { model, messages };
   const callStart = Date.now();
 
@@ -1018,7 +1031,7 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
     console.log(`Falling back to Beeknoee API (hasImage: ${hasImage}, step: ${stepHint || 'default'})...`);
     
     // Different model orders based on step to avoid 429 concurrent limit
-    const models = hasImage
+    const fallbackModels = hasImage
       ? [
           { name: "gemini-2.5-flash-lite", timeout: 30000 },
           { name: "gemini-2.5-flash", timeout: 90000 },
@@ -1027,6 +1040,11 @@ async function callAI(messages: any[], hasImage = false, modelOverride?: string,
           { name: "gemini-2.5-flash-lite", timeout: 30000 },
           { name: "gemini-2.5-flash", timeout: 55000 },
         ];
+    const models = [
+      { name: model, timeout: hasImage ? 45000 : 35000 },
+      ...fallbackModels.filter(({ name }) => name !== model),
+    ];
+    console.log(`Beeknoee model chain: ${models.map(({ name }) => name).join(' -> ')}`);
     
     // Only 1 retry attempt (was 2), with shorter wait
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -1255,6 +1273,13 @@ serve(async (req) => {
       }
 
     // ==================== LIST MODELS ====================
+    } else if (type === "refresh_ai_config") {
+      invalidateAIConfigCache('edge-function request');
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+
+    // ==================== LIST MODELS ====================
     } else if (type === "list_models") {
       const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
       if (!BEEKNOEE_API_KEY) {
@@ -1452,7 +1477,7 @@ serve(async (req) => {
         const supabaseClient = createClient(supabaseUrl, supabaseKey, {
           global: { headers: { Authorization: authHeader || "" } },
         });
-        const aiConfig = await loadAIConfig(supabaseClient);
+        const aiConfig = await loadAIConfig(supabaseClient, { forceRefresh: true });
         
         const defaultOcrPrompt = `Trích xuất TOÀN BỘ bảng sản phẩm từ ảnh. Trả về dạng text thuần, mỗi sản phẩm 1 dòng theo format:
 [tên sản phẩm] [quy cách/kích thước] x[số lượng]
@@ -1470,7 +1495,7 @@ Giữ nguyên số liệu gốc. KHÔNG trả JSON. KHÔNG giải thích.`;
           },
         ];
         
-        const ocrModel = aiConfig['ai_quote_ocr_model'] || "gemini-2.5-flash-lite";
+        const ocrModel = cleanModelName(aiConfig['ai_quote_ocr_model']) || "gemini-2.5-flash-lite";
         const ocrResult = await callAI(ocrMessages, true, ocrModel, 'ocr');
         
         let ocrText = '';
@@ -1507,7 +1532,7 @@ Giữ nguyên số liệu gốc. KHÔNG trả JSON. KHÔNG giải thích.`;
       });
 
       // Load AI config from DB
-      const aiConfig = await loadAIConfig(supabaseClient);
+      const aiConfig = await loadAIConfig(supabaseClient, { forceRefresh: true });
       const customCacheTtl = aiConfig['ai_quote_cache_ttl'] ? parseInt(aiConfig['ai_quote_cache_ttl']) * 1000 : DEFAULT_CATALOG_CACHE_TTL;
 
       const cacheKey = priceListId || "__all__";
@@ -1633,7 +1658,6 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       const userContent = `Yêu cầu khách hàng:\n"""\n${effectiveRequest}\n"""`;
 
       // Always use text model now (image already processed in Step 1)
-      const cleanModelName = (n: string) => n?.replace(/^google\//, '') || '';
       const configTextModel = cleanModelName(aiConfig['ai_quote_text_model'] || '');
       const quoteModel = configTextModel || "gemini-2.5-flash";
       
@@ -1702,7 +1726,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       });
 
       // Load DB config (for defaults when no config passed from client)
-      const dbConfig = await loadAIConfig(supabaseClient);
+      const dbConfig = await loadAIConfig(supabaseClient, { forceRefresh: true });
 
       const { data: products, error: dbError } = await supabaseClient
         .from("products")
@@ -1734,8 +1758,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
       // Call AI with custom or default model — strip google/ prefix for Beeknoee compatibility
-      const cleanModelName2 = (n: string) => n?.replace(/^google\//, '') || '';
-      const textModel = cleanModelName2(config?.textModel || dbConfig['ai_quote_text_model'] || '') || "gemini-2.5-flash";
+      const textModel = cleanModelName(config?.textModel || dbConfig['ai_quote_text_model'] || '') || "gemini-2.5-flash";
       
       // Build prompt (same as ai_quote_fill)
       const productListText = filteredProducts.map((p: any) => 
