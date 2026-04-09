@@ -397,8 +397,7 @@ export function InlineOrderEditTable({
         return null;
     }
   };
-  return <div className="rounded-md border overflow-x-auto sticky bottom-0">
-      <div className="max-h-[600px] overflow-y-auto">
+  return <div className="rounded-md border max-h-[600px] overflow-auto">
       <Table>
         <TableHeader className="sticky top-0 bg-background z-10">
           <TableRow>
