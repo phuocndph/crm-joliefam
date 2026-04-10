@@ -73,6 +73,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [height, setHeight] = useState(10);
   const [codAmount, setCodAmount] = useState(0);
   const [insuranceValue, setInsuranceValue] = useState(0);
+  const [codFailedEnabled, setCodFailedEnabled] = useState(false);
+  const [codFailedAmount, setCodFailedAmount] = useState(20000);
+
+  // Sync insuranceValue = codAmount
+  useEffect(() => {
+    setInsuranceValue(codAmount);
+  }, [codAmount]);
   
   // Multi-product items
   const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number }>>([
@@ -844,23 +851,41 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   </div>
                 </div>
 
-                {/* COD & Insurance */}
+                {/* COD & Giao thất bại */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Tổng tiền thu hộ (COD)</Label>
                     <Input type="number" value={codAmount} onChange={e => setCodAmount(parseInt(e.target.value) || 0)} className="text-sm" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Mã đơn riêng khách hàng</Label>
-                    <Input value={order.display_order_number || order.order_number} readOnly className="text-sm bg-muted" placeholder="Nhập mã đơn riêng khách hàng (nếu có)" />
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Checkbox
+                        id="cod-failed"
+                        checked={codFailedEnabled}
+                        onCheckedChange={(v) => setCodFailedEnabled(!!v)}
+                      />
+                      <Label htmlFor="cod-failed" className="text-sm font-medium cursor-pointer">Giao thất bại thu tiền</Label>
+                    </div>
+                    <Input
+                      type="number"
+                      value={codFailedAmount}
+                      onChange={e => setCodFailedAmount(parseInt(e.target.value) || 0)}
+                      disabled={!codFailedEnabled}
+                      className="text-sm"
+                    />
                   </div>
                 </div>
 
+                {/* Giá trị hàng hóa & Mã đơn riêng */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Tổng giá trị hàng hóa</Label>
                     <Input type="number" value={insuranceValue} onChange={e => setInsuranceValue(parseInt(e.target.value) || 0)} className="text-sm" />
                     <p className="text-xs text-muted-foreground">Tổng giá trị hàng hóa sẽ là căn cứ để GHN bồi thường khi xảy ra mất mát, hư hỏng.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Mã đơn riêng khách hàng</Label>
+                    <Input value={order.display_order_number || order.order_number} readOnly className="text-sm bg-muted" placeholder="Nhập mã đơn riêng khách hàng (nếu có)" />
                   </div>
                 </div>
               </div>
