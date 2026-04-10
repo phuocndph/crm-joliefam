@@ -189,7 +189,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   }, []);
 
   useEffect(() => {
-    if (open) {
+    if (open && userTypingRef.current) {
       fetchAddressSuggestions(debouncedAddress, addressSelected);
     }
   }, [debouncedAddress, open, addressSelected, fetchAddressSuggestions]);
