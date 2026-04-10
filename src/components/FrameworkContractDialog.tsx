@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Printer, FileDown, FileText } from "lucide-react";
+import { Printer, FileDown, FileText, Save, Loader2 } from "lucide-react";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useUpdateContract } from "@/hooks/useContracts";
 import { useToast } from "@/hooks/use-toast";
