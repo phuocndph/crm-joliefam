@@ -178,7 +178,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       if (error) throw error;
       const suggestions = data?.data || [];
       setAddressSuggestions(suggestions);
-      if (suggestions.length > 0) setShowSuggestions(true);
+      if (suggestions.length > 0 && !addressSelected) setShowSuggestions(true);
     } catch (e) {
       console.error('Goong autocomplete error:', e);
     } finally {
