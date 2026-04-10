@@ -58,6 +58,7 @@ interface Order {
   assignees?: {
     name: string;
   } | null;
+  ghn_tracking?: { ghn_order_code: string }[] | null;
 }
 
 const statusConfig = {
