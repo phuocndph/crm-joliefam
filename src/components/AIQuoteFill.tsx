@@ -82,7 +82,7 @@ async function loadImageFiles(): Promise<{ name: string; folder: string }[]> {
   return imageCachePromise;
 }
 
-export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuoteFillProps) {
+export function AIQuoteFill({ products, onProductsSelected, onCustomerInfoExtracted, priceListId }: AIQuoteFillProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [request, setRequest] = useState("");
   const [isLoading, setIsLoading] = useState(false);
