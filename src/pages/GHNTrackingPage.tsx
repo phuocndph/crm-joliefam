@@ -758,15 +758,15 @@ export default function GHNTrackingPage() {
                       <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap min-w-[140px]">{formatDate(item.delivered_date)}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap min-w-[120px]">{formatCurrency(item.cod_amount)}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm min-w-[120px] sticky right-[80px] bg-background shadow-lg">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-blue-600 hover:text-blue-800 gap-1 p-0 h-auto"
-                          onClick={() => { setDetailOrderCode(item.ghn_order_code); setDetailDialogOpen(true); }}
+                        <a
+                          href={`https://donhang.ghn.vn/?order_code=${item.ghn_order_code}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 text-sm"
                         >
                           <Search className="h-3 w-3" />
                           Tra cứu
-                        </Button>
+                        </a>
                       </td>
                       <td className="border border-gray-300 px-4 py-3 text-sm min-w-[120px] sticky right-0 bg-background shadow-lg">
                         <div className="flex items-center gap-1">
