@@ -1,28 +1,19 @@
 
 
-## Tích hợp Goong Maps Autocomplete cho gợi ý địa chỉ GHN
+## Sửa lỗi API Goong Maps và GHN bị gọi tự động khi mở dialog
 
-### Tổng quan
-Thay thế gợi ý địa chỉ từ database khách hàng bằng Goong Maps Autocomplete API -- dịch vụ bản đồ Việt Nam cho kết quả chính xác như GHN.
+### Vấn đề
+Khi mở dialog tạo đơn GHN, địa chỉ được pre-fill từ đơn hàng → `debouncedAddress` thay đổi → tự động gọi Goong API. Tương tự, `debouncedAddressForMatch` cũng trigger `autoMatchFromText` gọi GHN API ngay lập tức. Tất cả xảy ra mà user chưa thao tác gì.
 
-### Yêu cầu
-- Bạn cần đăng ký API key miễn phí tại [goong.io](https://account.goong.io) (5000 request/ngày miễn phí)
-- Tôi sẽ thêm secret `GOONG_API_KEY` vào Supabase Edge Functions
+### Giải pháp
+Chỉ gọi API khi user **thực sự gõ/sửa** địa chỉ, không gọi khi pre-fill.
 
-### Các bước thực hiện
+### Thay đổi trong `CreateGHNOrderDialog.tsx`
 
-**1. Thêm action `address_autocomplete` vào edge function `ghn-tracking`**
-- Nhận `input` (chuỗi tìm kiếm) từ client
-- Gọi `https://rsapi.goong.io/Place/AutoComplete?input=...&api_key=...`
-- Trả về danh sách gợi ý (description, place_id, structured_formatting)
+1. **Thêm `userTyping` ref** -- chỉ bật `true` khi user gõ vào ô địa chỉ (onChange), tắt khi pre-fill hoặc chọn gợi ý
+2. **Goong API effect** -- thêm điều kiện `userTyping.current === true` trước khi gọi `fetchAddressSuggestions`
+3. **AutoMatch effect** -- thêm điều kiện tương tự, chỉ gọi `autoMatchFromText` khi user đang thao tác
+4. **Pre-fill effect** -- đảm bảo `userTyping` = false khi set address từ order data
 
-**2. Cập nhật `CreateGHNOrderDialog.tsx`**
-- Thay `fetchAddressSuggestions` (query bảng customers) bằng gọi edge function `address_autocomplete`
-- Debounce 400ms khi gõ
-- Hiển thị kết quả với icon MapPin đỏ giống GHN
-- Khi chọn gợi ý, điền địa chỉ và trigger auto-match Tỉnh/Quận/Phường từ GHN API (logic đã có sẵn)
-
-### Files thay đổi
-- `supabase/functions/ghn-tracking/index.ts` -- thêm action mới
-- `src/components/CreateGHNOrderDialog.tsx` -- thay logic gợi ý
+Kết quả: Mở dialog không gọi API nào. Chỉ khi user sửa ô địa chỉ mới trigger gợi ý và auto-match.
 
