@@ -36,7 +36,7 @@ interface CreateGHNOrderDialogProps {
     display_order_number?: string;
     total_amount: number | null;
     notes: string | null;
-    customers?: { name: string; phone: string | null; address?: string | null; } | null;
+    customers?: { name: string; phone: string | null; address?: string | null; addresses?: any[] | null; } | null;
   };
   remainingAmount: number;
   onSuccess: () => void;
