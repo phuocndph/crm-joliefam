@@ -210,7 +210,7 @@ export function CreateQuoteForm({
     defaultValues: {
       title: initialData?.title || "BẢNG BÁO GIÁ",
       quoteNumber: initialData?.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
-      quoteDate: new Date(), // Always use current date for quote date
+      quoteDate: initialData?.quoteDate ? new Date(initialData.quoteDate) : initialData?.created_at ? new Date(initialData.created_at) : new Date(),
       expiryDate: initialData ? parseDate(initialData.expiryDate || initialData.notes) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       customerName: initialData?.customerName || "",
       phone: initialData?.customerPhone || "",
@@ -364,7 +364,7 @@ export function CreateQuoteForm({
         form.reset({
           title: initialData.title || "BẢNG BÁO GIÁ",
           quoteNumber: initialData.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
-          quoteDate: initialData.quote_date ? new Date(initialData.quote_date) : new Date(),
+          quoteDate: initialData.quoteDate ? new Date(initialData.quoteDate) : initialData.created_at ? new Date(initialData.created_at) : new Date(),
           expiryDate: parseDate(initialData.expiryDate || initialData.notes),
           customerName: initialData.customerName || "",
           phone: initialData.customerPhone || "",
@@ -671,10 +671,15 @@ export function CreateQuoteForm({
     };
 
       if (initialData) {
-        // Update existing quote - không update created_at để tránh lỗi
+        // Update existing quote - also sync created_at with quoteDate
+        const adjustedQuoteDate = new Date(data.quoteDate);
+        adjustedQuoteDate.setHours(12, 0, 0, 0);
         const {
           error
-        } = await supabase.from("quotes").update(baseQuoteData).eq('id', initialData.id);
+        } = await supabase.from("quotes").update({
+          ...baseQuoteData,
+          created_at: adjustedQuoteDate.toISOString(),
+        }).eq('id', initialData.id);
         if (error) throw error;
 
         // Automatically push to orders if quote is approved

@@ -610,7 +610,7 @@ export default function QuotesPage() {
                               onSelect={async (date) => {
                                 if (!date) return;
                                 const currentNotes = quote.notes || '';
-                                const expiryDateStr = format(date, "yyyy-MM-dd");
+                                const expiryDateStr = format(date, "dd/MM/yyyy");
                                 let updatedNotes = currentNotes;
                                 if (/Ngày hết hạn:\s*.+/.test(currentNotes)) {
                                   updatedNotes = currentNotes.replace(/Ngày hết hạn:\s*.+/, `Ngày hết hạn: ${expiryDateStr}`);
