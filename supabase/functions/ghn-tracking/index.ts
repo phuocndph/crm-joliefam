@@ -539,8 +539,13 @@ async function fetchOrderLogs(ghnApiKey: string, orderCode: string) {
     const data = await response.json();
     if (data.code !== 200) return [];
     const order = data.data;
-    // GHN detail API includes log array
-    return order?.log || [];
+    // GHN detail API log array - normalize field names
+    const rawLogs = order?.log || [];
+    return rawLogs.map((l: any) => ({
+      status: l.status || '',
+      updated_date: l.updated_date || l.time || '',
+      comment: l.comment || l.description || l.reason || '',
+    }));
   } catch {
     return [];
   }
