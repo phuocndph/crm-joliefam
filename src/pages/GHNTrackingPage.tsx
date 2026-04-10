@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
-import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download } from 'lucide-react';
+import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
 import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
+import { EditGHNOrderDialog } from '@/components/EditGHNOrderDialog';
 import * as XLSX from 'xlsx';
 
 interface GHNTrackingData {
@@ -28,7 +29,10 @@ interface GHNTrackingData {
   ghn_status_text?: string;
   tracking_url?: string;
   last_updated_at?: string;
+  raw_data?: any;
 }
+
+const FINAL_STATUSES = ['delivered', 'cancel', 'returned', 'lost', 'damage'];
 
 // Map trạng thái và màu sắc
 const statusColors: { [key: string]: string } = {
@@ -80,6 +84,8 @@ export default function GHNTrackingPage() {
     sortBy: 'none',
     sortOrder: 'asc'
   });
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<GHNTrackingData | null>(null);
   const { role } = useUserRole(user);
 
   // Get current user
@@ -705,7 +711,7 @@ export default function GHNTrackingPage() {
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[140px]">NGÀY GIAO</th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">COD THU HỘ</th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px] sticky right-[80px] shadow-lg">TRA CỨU</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[80px] sticky right-0 shadow-lg">THAO TÁC</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px] sticky right-0 shadow-lg">THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
@@ -761,15 +767,28 @@ export default function GHNTrackingPage() {
                           </a>
                         )}
                       </td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm min-w-[80px] sticky right-0 bg-background shadow-lg">
-                        <Button
-                          onClick={() => removeTracking(item.id)}
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                      <td className="border border-gray-300 px-4 py-3 text-sm min-w-[120px] sticky right-0 bg-background shadow-lg">
+                        <div className="flex items-center gap-1">
+                          {!FINAL_STATUSES.includes(item.ghn_status || '') && (
+                            <Button
+                              onClick={() => { setEditingRecord(item); setEditDialogOpen(true); }}
+                              variant="ghost"
+                              size="sm"
+                              className="text-blue-600 hover:text-blue-800"
+                              title="Chỉnh sửa đơn hàng"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            onClick={() => removeTracking(item.id)}
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -789,6 +808,13 @@ export default function GHNTrackingPage() {
           )}
         </CardContent>
       </Card>
+
+      <EditGHNOrderDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        trackingRecord={editingRecord}
+        onSuccess={() => loadTrackingData()}
+      />
     </div>
   );
 }
