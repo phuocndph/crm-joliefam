@@ -259,6 +259,15 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
   }, [debouncedAddress, showAddressDialog, fetchAddressSuggestions]);
 
+  const callGHN = useCallback(async (action: string, body: Record<string, any> = {}) => {
+    const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+      body: { action, ...body }
+    });
+    if (error) throw error;
+    if (!data?.success) throw new Error(data?.error || 'GHN API error');
+    return data.data;
+  }, []);
+
   // Auto-match location when address text changes (free typing)
   const autoMatchFromText = useCallback(async (addressText: string) => {
     if (!addressText || addressText.length < 5 || provinces.length === 0) return;
