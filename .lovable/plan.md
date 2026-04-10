@@ -1,52 +1,43 @@
 
 
-## Vấn đề
+## Tính năng: Tự động điền thông tin khách hàng từ AI báo giá
 
-38 bản ghi trong bảng `order_payments` có `manager_id = NULL`. Nhân viên chỉ thấy được payments có `manager_id` trùng với manager của mình (theo RLS policy). Kết quả là nhân viên thấy số "Đã thanh toán" bị thiếu, dẫn đến "Còn lại" sai.
+Khi người dùng nhập nội dung có chứa tên khách, địa chỉ, SĐT, ngày báo giá — AI sẽ tự động trích xuất và điền vào các ô thông tin phía trên form.
 
-## Giải pháp
+## Cách thực hiện
 
-### 1. Backfill dữ liệu cũ
-Cập nhật 38 payments thiếu `manager_id` bằng cách lấy `manager_id` từ đơn hàng tương ứng:
+### 1. Cập nhật Edge Function (`supabase/functions/lookup-tax-code/index.ts`)
+- Thêm vào prompt AI yêu cầu trích xuất thông tin khách hàng nếu có trong nội dung:
+  ```
+  customerInfo: { name, phone, address, date }
+  ```
+- Thêm trường `customerInfo` vào JSON output format, bên cạnh `items`
+- Nếu không tìm thấy thông tin khách → trả `customerInfo: null`
 
-```sql
-UPDATE order_payments op
-SET manager_id = o.manager_id
-FROM orders o
-WHERE op.order_id = o.id
-AND op.manager_id IS NULL;
-```
+### 2. Cập nhật `AIQuoteFill.tsx`
+- Thêm callback prop `onCustomerInfoExtracted` để truyền thông tin khách lên form cha
+- Interface mới:
+  ```typescript
+  interface CustomerInfo {
+    name?: string;
+    phone?: string;
+    address?: string;
+    date?: string; // ISO date string
+  }
+  ```
+- Sau khi AI trả kết quả, nếu có `customerInfo` → gọi callback
 
-### 2. Thêm trigger tự động set `manager_id` cho `order_payments`
-Tạo trigger BEFORE INSERT trên `order_payments` để tự động copy `manager_id` từ order nếu chưa được set. Điều này đảm bảo mọi payment mới luôn có `manager_id` đúng, kể cả khi frontend không truyền vào.
+### 3. Cập nhật `CreateQuoteForm.tsx`
+- Truyền thêm prop `onCustomerInfoExtracted` vào `AIQuoteFill`
+- Khi nhận được `customerInfo`, dùng `form.setValue()` để điền vào các trường:
+  - `customerName` ← name
+  - `phone` ← phone  
+  - `address` ← address
+  - `quoteDate` ← date (parse thành Date)
+- Chỉ điền những trường có giá trị, không ghi đè trường đã có dữ liệu
 
-```sql
-CREATE OR REPLACE FUNCTION public.set_order_payment_manager_id()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  IF NEW.manager_id IS NULL THEN
-    SELECT manager_id INTO NEW.manager_id
-    FROM public.orders
-    WHERE id = NEW.order_id;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER set_order_payment_manager_id_trigger
-BEFORE INSERT ON public.order_payments
-FOR EACH ROW
-EXECUTE FUNCTION public.set_order_payment_manager_id();
-```
-
-### File cần chỉnh
-- 1 migration file duy nhất chứa cả backfill + trigger
-- Không cần sửa frontend code
-
-### Kết quả
-- Nhân viên sẽ thấy đúng số tiền đã thanh toán cho tất cả đơn hàng
-- Mọi payment mới sẽ tự động có `manager_id` đúng
+### Files cần sửa
+1. `supabase/functions/lookup-tax-code/index.ts` — thêm trích xuất customerInfo vào prompt
+2. `src/components/AIQuoteFill.tsx` — thêm prop callback + xử lý response
+3. `src/components/CreateQuoteForm.tsx` — nhận callback và điền form
 
