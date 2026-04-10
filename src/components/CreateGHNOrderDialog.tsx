@@ -210,44 +210,24 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     };
   }, [resetBodyDialogStyles]);
 
-  // Fetch address suggestions from customers table
+  // Fetch address suggestions from Goong Maps API
   const fetchAddressSuggestions = useCallback(async (searchText: string) => {
+    if (!searchText || searchText.length < 2) {
+      setAddressSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
     setLoadingSuggestions(true);
     try {
-      let query = supabase
-        .from('customers')
-        .select('name, phone, address, addresses')
-        .not('address', 'is', null);
-      
-      if (searchText && searchText.length >= 2) {
-        query = query.ilike('address', `%${searchText}%`);
-      }
-      
-      const { data } = await query.limit(10);
-      
-      const suggestions: Array<{ address: string; name: string; phone: string | null }> = [];
-      const seen = new Set<string>();
-      
-      (data || []).forEach(c => {
-        if (c.address && !seen.has(c.address)) {
-          seen.add(c.address);
-          suggestions.push({ address: c.address, name: c.name, phone: c.phone });
-        }
-        if (c.addresses && Array.isArray(c.addresses)) {
-          (c.addresses as any[]).forEach((addr: any) => {
-            const addrStr = typeof addr === 'string' ? addr : addr?.address;
-            if (addrStr && !seen.has(addrStr) && (!searchText || addrStr.toLowerCase().includes(searchText.toLowerCase()))) {
-              seen.add(addrStr);
-              suggestions.push({ address: addrStr, name: c.name, phone: c.phone });
-            }
-          });
-        }
+      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+        body: { action: 'address_autocomplete', input: searchText }
       });
-      
-      setAddressSuggestions(suggestions.slice(0, 8));
+      if (error) throw error;
+      const suggestions = data?.data || [];
+      setAddressSuggestions(suggestions);
       if (suggestions.length > 0) setShowSuggestions(true);
     } catch (e) {
-      console.error('Address suggestions error:', e);
+      console.error('Goong autocomplete error:', e);
     } finally {
       setLoadingSuggestions(false);
     }
