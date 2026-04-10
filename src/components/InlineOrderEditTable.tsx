@@ -396,9 +396,9 @@ export function InlineOrderEditTable({
             </div>
           </div>;
       case "delivery_date":
-        if (order.status === "shipped" || order.status === "self_delivered") {
-          const deliveredDate = order.delivered_date ? format(new Date(order.delivered_date), "dd/MM/yyyy", { locale: vi }) : format(new Date(), "dd/MM/yyyy", { locale: vi });
-          const deliveryLabel = order.status === "self_delivered" ? "Đã giao tự thu tiền" : "Đã giao";
+        if (order.status === "shipped" || order.status === "self_delivered" || order.status === "delivered") {
+          const deliveredDate = order.delivered_date ? format(new Date(order.delivered_date), "dd/MM/yyyy", { locale: vi }) : "—";
+          const deliveryLabel = order.status === "self_delivered" ? "Đã giao tự thu tiền" : order.status === "delivered" ? "Hoàn thành" : "Đã giao";
           return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, "delivered_date", order.delivered_date || new Date().toISOString())}>
               <div className="leading-tight">
                 <span className="text-sm font-medium block">{deliveredDate}</span>
