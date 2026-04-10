@@ -7,10 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
-import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil } from 'lucide-react';
+import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil, Search } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
 import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
 import { EditGHNOrderDialog } from '@/components/EditGHNOrderDialog';
+import { GHNOrderDetailDialog } from '@/components/GHNOrderDetailDialog';
 import * as XLSX from 'xlsx';
 
 interface GHNTrackingData {
@@ -86,6 +87,8 @@ export default function GHNTrackingPage() {
   });
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<GHNTrackingData | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [detailOrderCode, setDetailOrderCode] = useState('');
   const { role } = useUserRole(user);
 
   // Get current user
@@ -755,17 +758,15 @@ export default function GHNTrackingPage() {
                       <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap min-w-[140px]">{formatDate(item.delivered_date)}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm whitespace-nowrap min-w-[120px]">{formatCurrency(item.cod_amount)}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm min-w-[120px] sticky right-[80px] bg-background shadow-lg">
-                        {item.tracking_url && (
-                          <a
-                            href={item.tracking_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 flex items-center gap-1 whitespace-nowrap"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            Tra cứu
-                          </a>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-blue-600 hover:text-blue-800 gap-1 p-0 h-auto"
+                          onClick={() => { setDetailOrderCode(item.ghn_order_code); setDetailDialogOpen(true); }}
+                        >
+                          <Search className="h-3 w-3" />
+                          Tra cứu
+                        </Button>
                       </td>
                       <td className="border border-gray-300 px-4 py-3 text-sm min-w-[120px] sticky right-0 bg-background shadow-lg">
                         <div className="flex items-center gap-1">
@@ -814,6 +815,12 @@ export default function GHNTrackingPage() {
         onOpenChange={setEditDialogOpen}
         trackingRecord={editingRecord}
         onSuccess={() => loadTrackingData()}
+      />
+
+      <GHNOrderDetailDialog
+        ghnOrderCode={detailOrderCode}
+        open={detailDialogOpen}
+        onOpenChange={setDetailDialogOpen}
       />
     </div>
   );

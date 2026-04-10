@@ -281,7 +281,7 @@ serve(async (req) => {
       if (!orderCode) throw new Error('Order code is required');
 
       const order = await fetchOrderDetail(ghnApiKey, orderCode);
-      return new Response(JSON.stringify({ success: true, data: transformOrder(order) }), {
+      return new Response(JSON.stringify({ success: true, data: { ...transformOrder(order), rawData: order } }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
