@@ -131,6 +131,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
   const hasPrefilledRef = useRef(false);
+  const userTypingRef = useRef(false);
 
   // Pre-fill
   useEffect(() => {
