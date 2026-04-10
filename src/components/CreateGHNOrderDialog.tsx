@@ -100,6 +100,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const totalItemWeight = productItems.reduce((sum, item) => sum + item.weight * item.quantity, 0);
   const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
   const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
+
+  // Sync order weight with total product weight
+  useEffect(() => {
+    if (totalItemWeight > 0) {
+      setWeight(totalItemWeight);
+    }
+  }, [totalItemWeight]);
   const [note, setNote] = useState("");
   const [requiredNote, setRequiredNote] = useState("CHOTHUHANG");
   const [paymentTypeId, setPaymentTypeId] = useState("1");
