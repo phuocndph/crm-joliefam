@@ -11,10 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, ExternalLink, Printer, X, Info, ChevronRight, FileText, MessageSquare } from "lucide-react";
+import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, ExternalLink, Printer, X, Info, ChevronRight, FileText, MessageSquare, Search } from "lucide-react";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useDebounce } from "@/hooks/useDebounce";
 
 interface Province { ProvinceID: number; ProvinceName: string; NameExtension?: string[]; }
 interface District { DistrictID: number; DistrictName: string; NameExtension?: string[]; }
