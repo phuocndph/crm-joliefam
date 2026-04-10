@@ -772,70 +772,17 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                       type="button"
                       className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors border-b last:border-b-0 pointer-events-auto"
                       onClick={() => {
-                        setTempAddress(s.address);
+                        setTempAddress(s.description);
                         setShowSuggestions(false);
-                        // Auto-match location from selected address
-                        if (provinces.length > 0) {
-                          const normalizedAddr = normalizeText(s.address);
-                          const findBestMatch = (items: { id: any; names: string[] }[]): { id: any } | null => {
-                            const allPairs: { name: string; id: any }[] = [];
-                            for (const item of items) {
-                              for (const n of item.names) allPairs.push({ name: n, id: item.id });
-                            }
-                            allPairs.sort((a, b) => b.name.length - a.name.length);
-                            for (const pair of allPairs) {
-                              if (pair.name.length >= 2 && normalizedAddr.includes(pair.name)) return pair;
-                            }
-                            return null;
-                          };
-                          const provCandidates = provinces.map(p => ({
-                            id: p.ProvinceID,
-                            names: Array.from(new Set([
-                              normalizeText(p.ProvinceName),
-                              normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
-                              ...(p.NameExtension || []).map(n => normalizeText(n)),
-                            ]))
-                          }));
-                          const matchedProv = findBestMatch(provCandidates);
-                          if (matchedProv) {
-                            setTempProvinceId(String(matchedProv.id));
-                            callGHN('get_districts', { provinceId: matchedProv.id }).then(distList => {
-                              setTempDistricts(distList || []);
-                              const distCandidates = (distList || []).map((d: District) => ({
-                                id: d.DistrictID,
-                                names: Array.from(new Set([
-                                  normalizeText(d.DistrictName),
-                                  normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
-                                  ...(d.NameExtension || []).map(n => normalizeText(n)),
-                                ]))
-                              }));
-                              const matchedDist = findBestMatch(distCandidates);
-                              if (matchedDist) {
-                                setTempDistrictId(String(matchedDist.id));
-                                callGHN('get_wards', { districtId: matchedDist.id }).then(wardList => {
-                                  setTempWards(wardList || []);
-                                  const wardCandidates = (wardList || []).map((w: Ward) => ({
-                                    id: w.WardCode,
-                                    names: Array.from(new Set([
-                                      normalizeText(w.WardName),
-                                      normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
-                                      ...(w.NameExtension || []).map(n => normalizeText(n)),
-                                    ]))
-                                  }));
-                                  const matchedWard = findBestMatch(wardCandidates);
-                                  if (matchedWard) setTempWardCode(String(matchedWard.id));
-                                }).catch(console.error);
-                              }
-                            }).catch(console.error);
-                          }
-                        }
+                        // Auto-match location from selected Goong address
+                        autoMatchFromText(s.description);
                       }}
                     >
                       <div className="flex items-start gap-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <MapPin className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
                         <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{s.address}</p>
-                          <p className="text-xs text-muted-foreground">{s.name}{s.phone ? ` • ${s.phone}` : ''}</p>
+                          <p className="text-sm font-medium truncate">{s.main_text}</p>
+                          <p className="text-xs text-muted-foreground truncate">{s.secondary_text}</p>
                         </div>
                       </div>
                     </button>
