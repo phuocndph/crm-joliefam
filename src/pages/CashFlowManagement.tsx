@@ -112,7 +112,7 @@ export default function CashFlowManagement() {
     from: subYears(new Date(), 10),
     to: new Date()
   });
-  const [activeTab, setActiveTab] = useState("profit");
+  const [activeTab, setActiveTab] = useState("expenses");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
@@ -807,9 +807,9 @@ export default function CashFlowManagement() {
 
         {/* Tabs for Expense and Profit Management */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className={`grid w-full ${role === 'accountant' ? 'grid-cols-1' : 'grid-cols-2'}`}>
             <TabsTrigger value="expenses">Quản lý chi phí</TabsTrigger>
-            <TabsTrigger value="profit">Quản lý lợi nhuận</TabsTrigger>
+            {role !== 'accountant' && <TabsTrigger value="profit">Quản lý lợi nhuận</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="expenses" className="space-y-6">
