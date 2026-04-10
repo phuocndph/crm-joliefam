@@ -224,7 +224,7 @@ export function GHNOrderDetailDialog({ ghnOrderCode, open, onOpenChange }: GHNOr
                                   <td className="p-3 text-primary font-medium">
                                     {getStatusTextFromLog(log.status)}
                                   </td>
-                                  <td className="p-3 text-muted-foreground">{log.comment || "—"}</td>
+                                  <td className="p-3 text-muted-foreground">{log.comment || ""}</td>
                                   <td className="p-3 text-right font-medium">{fmtTime(log.updated_date)}</td>
                                 </tr>
                               ))}
