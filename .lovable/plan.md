@@ -1,37 +1,56 @@
 
+Mình đã rà soát phần `/quotes` và nguyên nhân chính không phải là “bấm không lưu”, mà là dữ liệu ngày đang bị đọc/ghi không nhất quán nên sau khi sửa xong vẫn hiện sai hoặc bị ghi đè lại.
 
-## Thêm Dialog tra cứu chi tiết đơn hàng GHN trong app
+1. Vấn đề đã tìm thấy
+- Ở `src/pages/QuotesPage.tsx`, chỉnh “Ngày tạo” đang update trực tiếp `quotes.created_at` và có toast thành công.
+- Nhưng ở `src/components/CreateQuoteForm.tsx`, khi mở báo giá để sửa lại, form lại lấy `initialData.quote_date` thay vì `created_at`. Nếu `quote_date` không có thì nó fallback về `new Date()`, tức là ngày hiện tại.
+- Kết quả: bạn vừa sửa ngày xong, nhưng lần sau mở form sửa báo giá hoặc lưu lại báo giá, ngày có thể bị trả về ngày hiện tại hoặc không đúng ngày đã chọn.
+- Với “Ngày hết hạn”, inline edit đang ghi vào `notes` theo format `yyyy-MM-dd`, trong khi phần tạo/sửa báo giá và preview chủ yếu đang dùng/parse theo format `dd/MM/yyyy`. Dữ liệu vẫn có thể lưu, nhưng hiển thị và parse về sau dễ lệch.
 
-### Tổng quan
-Thay link "Tra cứu" (mở web GHN) bằng nút mở dialog hiển thị chi tiết đơn hàng lấy từ GHN API `/v2/shipping-order/detail`, bao gồm timeline trạng thái, thông tin giao hàng, phí chi tiết.
+2. Kế hoạch sửa
+- Đồng bộ nguồn dữ liệu cho “Ngày tạo”:
+  - Trong `CreateQuoteForm`, khi reset form cho báo giá đang sửa, ưu tiên lấy ngày từ:
+    1) `initialData.quoteDate`
+    2) `initialData.created_at`
+    3) dữ liệu trong `quote_data.quoteDate` nếu có
+    4) cuối cùng mới fallback về ngày hiện tại
+- Đồng bộ cách lưu “Ngày tạo”:
+  - Khi cập nhật báo giá từ form edit, ghi lại `created_at` nếu người dùng đổi ngày báo giá.
+  - Tránh tình trạng inline edit sửa một nơi, còn form edit lại lưu theo chỗ khác.
+- Đồng bộ format “Ngày hết hạn”:
+  - Chọn một format chuẩn duy nhất cho `notes`, tốt nhất là `dd/MM/yyyy` để khớp toàn bộ logic hiện có trong form và preview.
+  - Cập nhật inline edit ở `QuotesPage` để ghi đúng format này.
+  - Giữ parser hỗ trợ cả `dd/MM/yyyy` và `yyyy-MM-dd` để không làm hỏng dữ liệu cũ.
+- Cải thiện phản hồi lỗi:
+  - Nếu update Supabase lỗi, hiển thị chi tiết `message`, `code`, `hint` trong toast thay vì báo lỗi chung chung, đúng theo pattern dự án đang yêu cầu.
+- Làm mới UI chắc chắn hơn:
+  - Sau khi update ngày, invalidate đúng query key hiện tại của quotes để danh sách reload đúng.
+  - Nếu cần, cập nhật optimistic/local display để người dùng thấy đổi ngay.
 
-### Các thay đổi
+3. File sẽ cần chỉnh
+- `src/pages/QuotesPage.tsx`
+- `src/components/CreateQuoteForm.tsx`
+- Có thể thêm chỉnh nhẹ ở:
+  - `src/hooks/useQuotes.ts` để parse ngày hết hạn ổn định hơn
+  - `src/components/QuotePreviewDialog.tsx` nếu cần chuẩn hóa cách đọc hạn báo giá
 
-**1. Component mới `GHNOrderDetailDialog.tsx`**:
-- Nhận `ghn_order_code` + `open/onOpenChange`
-- Khi mở: gọi edge function action `track_order` (đã có sẵn) để lấy data real-time từ GHN
-- Hiển thị:
-  - Header: mã GHN + badge trạng thái
-  - Thông tin người nhận: tên, SĐT, địa chỉ đầy đủ
-  - Thông tin đơn: cân nặng, kích thước, nội dung hàng, ghi chú
-  - Tài chính: COD, phí vận chuyển, phí bảo hiểm, tổng phí (từ `raw_data`)
-  - Timeline: ngày tạo → ngày lấy hàng → dự kiến giao → ngày giao thực tế
-  - Thông tin shop gửi (nếu có trong raw_data)
-  - Nút "Mở trên GHN" link ra trang web GHN (giữ lại)
-- Loading state khi đang fetch
+4. Kết quả mong đợi sau khi sửa
+- Sửa “Ngày tạo” xong sẽ giữ đúng ngày đã chọn.
+- Mở lại báo giá để sửa tiếp sẽ không tự nhảy về ngày hiện tại.
+- “Ngày hết hạn” sửa xong sẽ hiển thị lại đúng, không bị lệch format.
+- Nếu Supabase chặn hoặc lỗi thật, màn hình sẽ báo rõ nguyên nhân thay vì chỉ hiện “không thể cập nhật”.
 
-**2. Edge function `ghn-tracking/index.ts`** -- Mở rộng action `track_order`:
-- Trả về toàn bộ `raw_data` (hiện chỉ trả `transformOrder` đã lọc bớt field)
-- Thêm trả `rawData: order` trong response để dialog có đầy đủ thông tin phí
+5. Chi tiết kỹ thuật
+```text
+Hiện tại:
+inline edit created_at -> thành công
+nhưng form edit đọc quote_date -> thiếu dữ liệu -> fallback new Date()
+=> lưu lần sau bị ghi đè sai
 
-**3. Trang `GHNTrackingPage.tsx`**:
-- Import `GHNOrderDetailDialog`
-- Thêm state `detailOrderCode` + `detailDialogOpen`
-- Thay link `<a>Tra cứu</a>` bằng `<Button>` mở dialog
-- Render `GHNOrderDetailDialog` ở cuối trang (sibling, không nested)
+Hiện tại:
+expiry inline edit -> notes: yyyy-MM-dd
+create/edit/preview -> chủ yếu parse dd/MM/yyyy
+=> cùng 1 field nhưng 2 chuẩn ngày khác nhau
+```
 
-### Chi tiết kỹ thuật
-- Tái sử dụng `fetchOrderDetail` đã có trong edge function
-- GHN API detail trả đầy đủ: `cod_amount`, `insurance_value`, `coupon`, `total_fee` (phí ship), `main_service_fee`, `pick_station_fee`, `return_fee`, `r2s_fee`...
-- Dialog dùng layout 2 cột trên desktop, 1 cột trên mobile
-
+Khi bạn duyệt plan, mình sẽ sửa đồng bộ toàn bộ luồng này để ngày sửa xong lưu đúng như yêu cầu.
