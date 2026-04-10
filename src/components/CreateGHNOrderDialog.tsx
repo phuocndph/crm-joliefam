@@ -11,7 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, ExternalLink, Printer, X, Info, ChevronRight } from "lucide-react";
+import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, ExternalLink, Printer, X, Info, ChevronRight, FileText, MessageSquare } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Province { ProvinceID: number; ProvinceName: string; NameExtension?: string[]; }
 interface District { DistrictID: number; DistrictName: string; NameExtension?: string[]; }
@@ -660,7 +662,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   return (
     <Dialog open={open} onOpenChange={handleMainDialogOpenChange}>
       <DialogContent
-        className="max-w-4xl max-h-[90vh] overflow-hidden p-0"
+        className="max-w-5xl max-h-[90vh] overflow-hidden p-0"
         aria-describedby={undefined}
         onPointerDownOutside={(event) => {
           if (showAddressDialog) event.preventDefault();
@@ -670,7 +672,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         }}
       >
         {/* Header */}
-        <div className="px-6 pt-5 pb-3">
+        <div className="px-6 pt-5 pb-3 border-b">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Truck className="h-5 w-5 text-primary" /> Tạo đơn vận chuyển GHN
@@ -678,16 +680,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           </DialogHeader>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 h-[calc(90vh-80px)]">
-          {/* LEFT COLUMN - Form */}
-          <div className="lg:col-span-2 overflow-y-auto px-6 pb-6 space-y-4 border-r">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] h-[calc(90vh-80px)]">
+          {/* LEFT COLUMN - Form (scrollable) */}
+          <div className="overflow-y-auto">
 
-            {/* === BÊN GỬI === */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-primary">
-                <Store className="h-4 w-4" /> Bên gửi
-              </div>
-              <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+            {/* ===== 1. BÊN GỬI ===== */}
+            <div className="px-6 py-5 border-b">
+              <h3 className="text-sm font-bold mb-3">Bên gửi</h3>
+              <div className="space-y-3">
                 {loadingShops ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" /> Đang tải shop...
@@ -706,175 +706,199 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     </SelectContent>
                   </Select>
                 ) : selectedShop ? (
-                  <div className="space-y-1">
-                    <div className="text-sm font-medium">{selectedShop.name}</div>
-                    <div className="text-xs text-muted-foreground">{selectedShop.address}</div>
+                  <div>
+                    <div className="text-sm text-primary font-medium">{selectedShop.name} {selectedShop.phone && <span className="text-muted-foreground ml-2">📞 {selectedShop.phone}</span>}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{selectedShop.address}</div>
                   </div>
                 ) : null}
 
-                {/* Pickup type */}
-                <RadioGroup value={pickupType} onValueChange={setPickupType} className="flex gap-4 pt-1">
+                <RadioGroup value={pickupType} onValueChange={setPickupType} className="flex gap-6">
                   <div className="flex items-center gap-1.5">
                     <RadioGroupItem value="pickup" id="pt1" />
-                    <Label htmlFor="pt1" className="text-xs font-normal cursor-pointer">Lấy hàng tận nơi</Label>
+                    <Label htmlFor="pt1" className="text-sm font-normal cursor-pointer">Lấy hàng tận nơi</Label>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <RadioGroupItem value="dropoff" id="pt2" />
-                    <Label htmlFor="pt2" className="text-xs font-normal cursor-pointer">Gửi hàng tại bưu cục</Label>
+                    <Label htmlFor="pt2" className="text-sm font-normal cursor-pointer">Gửi hàng tại bưu cục</Label>
                   </div>
                 </RadioGroup>
               </div>
             </div>
 
-            <Separator />
-
-            {/* === BÊN NHẬN === */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-primary">
-                <MapPin className="h-4 w-4" /> Bên nhận
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Số điện thoại *</Label>
-                  <Input value={toPhone} onChange={e => setToPhone(e.target.value)} placeholder="Nhập SĐT" className="text-sm" />
+            {/* ===== 2. BÊN NHẬN ===== */}
+            <div className="px-6 py-5 border-b">
+              <h3 className="text-sm font-bold mb-3">Bên nhận</h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Số điện thoại <span className="text-destructive">*</span></Label>
+                    <Input value={toPhone} onChange={e => setToPhone(e.target.value)} placeholder="Nhập số điện thoại" className="text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Địa chỉ người nhận <span className="text-destructive">*</span></Label>
+                    <button
+                      type="button"
+                      onClick={openAddressDialog}
+                      className="w-full flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent/50 transition-colors text-left min-h-[40px]"
+                    >
+                      <span className={getAddressDisplayText() ? "text-foreground truncate" : "text-muted-foreground"}>
+                        {getAddressDisplayText() || "Nhấn để chọn địa chỉ..."}
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0 ml-2" />
+                    </button>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Họ tên *</Label>
+                <div className="space-y-1.5 max-w-[calc(50%-0.5rem)]">
+                  <Label className="text-sm font-medium">Họ tên <span className="text-destructive">*</span></Label>
                   <Input value={toName} onChange={e => setToName(e.target.value)} placeholder="Nhập họ tên" className="text-sm" />
                 </div>
               </div>
+            </div>
 
-              {/* Address button - opens sub-dialog */}
-              <div className="space-y-1">
-                <Label className="text-xs">Địa chỉ người nhận *</Label>
-                <button
-                  type="button"
-                  onClick={openAddressDialog}
-                  className="w-full flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent/50 transition-colors text-left min-h-[40px]"
-                >
-                  <span className={getAddressDisplayText() ? "text-foreground" : "text-muted-foreground"}>
-                    {getAddressDisplayText() || "Nhấn để chọn địa chỉ..."}
-                  </span>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                </button>
+            {/* ===== 3. THÔNG TIN SẢN PHẨM ===== */}
+            <div className="px-6 py-5 border-b">
+              <h3 className="text-sm font-bold mb-3">Thông tin sản phẩm</h3>
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center gap-3 mb-2">
+                  <Badge variant="outline" className="text-xs">SP 1</Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Sản phẩm <span className="text-destructive">*</span></Label>
+                    <Input value={itemContent} onChange={e => setItemContent(e.target.value)} placeholder="Nhập tên sản phẩm" className="text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
+                    <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Số lượng <span className="text-destructive">*</span></Label>
+                    <Input type="number" value={itemQuantity} onChange={e => setItemQuantity(parseInt(e.target.value) || 1)} min={1} className="text-sm" />
+                  </div>
+                </div>
               </div>
+            </div>
 
-              {/* Required note */}
-              <div className="space-y-1">
-                <Label className="text-xs">Yêu cầu khi giao</Label>
-                <RadioGroup value={requiredNote} onValueChange={setRequiredNote} className="flex flex-wrap gap-3">
-                  <div className="flex items-center gap-1.5"><RadioGroupItem value="CHOTHUHANG" id="rn1" /><Label htmlFor="rn1" className="text-xs font-normal cursor-pointer">Cho thử hàng</Label></div>
-                  <div className="flex items-center gap-1.5"><RadioGroupItem value="CHOXEMHANGKHONGTHU" id="rn2" /><Label htmlFor="rn2" className="text-xs font-normal cursor-pointer">Cho xem, không thử</Label></div>
-                  <div className="flex items-center gap-1.5"><RadioGroupItem value="KHONGCHOXEMHANG" id="rn3" /><Label htmlFor="rn3" className="text-xs font-normal cursor-pointer">Không cho xem</Label></div>
+            {/* ===== 4. THÔNG TIN ĐƠN HÀNG ===== */}
+            <div className="px-6 py-5 border-b">
+              <h3 className="text-sm font-bold mb-3">Thông tin đơn hàng</h3>
+              <div className="space-y-4">
+                {/* Dimensions row */}
+                <div className="rounded-lg border p-4">
+                  <div className="grid grid-cols-5 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
+                      <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
+                      <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
+                      <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
+                      <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm text-muted-foreground">KL quy đổi (gram)</Label>
+                      <div className="text-sm font-medium pt-2">{Math.ceil(length * width * height / 5000 * 1000)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* COD & Insurance */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Tổng tiền thu hộ (COD)</Label>
+                    <Input type="number" value={codAmount} onChange={e => setCodAmount(parseInt(e.target.value) || 0)} className="text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Mã đơn riêng khách hàng</Label>
+                    <Input value={order.display_order_number || order.order_number} readOnly className="text-sm bg-muted" placeholder="Nhập mã đơn riêng khách hàng (nếu có)" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Tổng giá trị hàng hóa</Label>
+                    <Input type="number" value={insuranceValue} onChange={e => setInsuranceValue(parseInt(e.target.value) || 0)} className="text-sm" />
+                    <p className="text-xs text-muted-foreground">Tổng giá trị hàng hóa sẽ là căn cứ để GHN bồi thường khi xảy ra mất mát, hư hỏng.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ===== 5. GÓI DỊCH VỤ ===== */}
+            <div className="px-6 py-5 border-b">
+              <h3 className="text-sm font-bold mb-3">Gói dịch vụ</h3>
+              {loadingServices ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Đang tải dịch vụ...
+                </div>
+              ) : services.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4">Vui lòng chọn địa chỉ nhận hàng trước để xem gói dịch vụ khả dụng.</p>
+              ) : (
+                <RadioGroup value={serviceTypeId} onValueChange={v => { setServiceTypeId(v); setFeeDetail(null); setFeeStatus("idle"); }} className="grid grid-cols-2 gap-4">
+                  {services.map(s => (
+                    <label
+                      key={s.service_id}
+                      htmlFor={`svc-${s.service_id}`}
+                      className={`relative flex flex-col rounded-lg border-2 p-4 cursor-pointer transition-colors ${
+                        serviceTypeId === String(s.service_type_id)
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value={String(s.service_type_id)} id={`svc-${s.service_id}`} />
+                        <span className="text-sm font-semibold">{s.short_name}</span>
+                      </div>
+                      {feeDetail && serviceTypeId === String(s.service_type_id) && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Cước phí: <span className="font-medium text-foreground">{fmt(feeDetail.total)}</span>
+                        </div>
+                      )}
+                    </label>
+                  ))}
                 </RadioGroup>
-              </div>
+              )}
             </div>
 
-            <Separator />
-
-            {/* === HÀNG HÓA === */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-primary">
-                <Package className="h-4 w-4" /> Hàng hóa
-              </div>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Cân nặng (g) *</Label>
-                  <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} className="text-sm" />
+            {/* ===== 6. LƯU Ý - GHI CHÚ ===== */}
+            <div className="px-6 py-5">
+              <h3 className="text-sm font-bold mb-3">Lưu ý - Ghi chú</h3>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Lưu ý giao hàng <span className="text-destructive">*</span></Label>
+                  <RadioGroup value={requiredNote} onValueChange={setRequiredNote} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="KHONGCHOXEMHANG" id="rn1" />
+                      <Label htmlFor="rn1" className="text-sm font-normal cursor-pointer">Không cho xem hàng</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="CHOXEMHANGKHONGTHU" id="rn2" />
+                      <Label htmlFor="rn2" className="text-sm font-normal cursor-pointer">Cho xem hàng không cho thử</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="CHOTHUHANG" id="rn3" />
+                      <Label htmlFor="rn3" className="text-sm font-normal cursor-pointer">Cho thử hàng</Label>
+                    </div>
+                  </RadioGroup>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Dài (cm)</Label>
-                  <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Rộng (cm)</Label>
-                  <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Cao (cm)</Label>
-                  <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Giá trị hàng (VNĐ)</Label>
-                  <Input type="number" value={insuranceValue} onChange={e => setInsuranceValue(parseInt(e.target.value) || 0)} className="text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Số lượng</Label>
-                  <Input type="number" value={itemQuantity} onChange={e => setItemQuantity(parseInt(e.target.value) || 1)} min={1} className="text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Nội dung</Label>
-                  <Input value={itemContent} onChange={e => setItemContent(e.target.value)} placeholder="Mô tả hàng" className="text-sm" />
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* === DỊCH VỤ & THANH TOÁN === */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-primary">
-                <CreditCard className="h-4 w-4" /> Dịch vụ & Thanh toán
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Dịch vụ vận chuyển *</Label>
-                  <Select value={serviceTypeId} onValueChange={v => { setServiceTypeId(v); setFeeDetail(null); setFeeStatus("idle"); }} disabled={services.length === 0}>
-                    <SelectTrigger className="text-sm">
-                      <SelectValue placeholder={loadingServices ? "Đang tải..." : services.length === 0 ? "Chọn địa chỉ trước" : "Chọn dịch vụ"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {services.map(s => <SelectItem key={s.service_id} value={String(s.service_type_id)}>{s.short_name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Người trả phí vận chuyển</Label>
-                  <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
-                    <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Người gửi trả</SelectItem>
-                      <SelectItem value="2">Người nhận trả</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Tiền COD (VNĐ)</Label>
-                  <Input type="number" value={codAmount} onChange={e => setCodAmount(parseInt(e.target.value) || 0)} className="text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Ghi chú giao hàng</Label>
-                  <Input value={note} onChange={e => setNote(e.target.value)} className="text-sm" />
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Ghi chú</Label>
+                  <Textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Nhập ghi chú" rows={4} className="text-sm resize-none" />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* RIGHT COLUMN - Fee Sidebar */}
-          <div className="lg:col-span-1 flex flex-col bg-muted/20">
-            <div className="p-4 space-y-4 flex-1">
-              {/* Total fee */}
-              <div className="text-center space-y-1">
-                <div className="text-xs text-muted-foreground uppercase tracking-wide">Tổng phí</div>
-                <div className="text-2xl font-bold text-primary">
-                  {feeStatus === "loading" ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    </span>
-                  ) : feeDetail ? (
-                    fmt(feeDetail.total)
-                  ) : (
-                    <span className="text-muted-foreground text-lg">-- đ</span>
-                  )}
-                </div>
-              </div>
-
-              <Separator />
-
+          {/* RIGHT COLUMN - Fee Sidebar (sticky) */}
+          <div className="flex flex-col border-l bg-muted/20">
+            <div className="p-4 space-y-3 flex-1 overflow-y-auto">
               {/* Fee breakdown */}
               {feeDetail && (
                 <div className="space-y-2 text-sm">
@@ -899,35 +923,58 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     </div>
                   )}
                   {feeDetail.coupon_value > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Giảm giá</span>
-                      <span className="text-green-600">-{fmt(feeDetail.coupon_value)}</span>
+                    <div className="flex justify-between text-green-600">
+                      <span>Giảm giá</span>
+                      <span>-{fmt(feeDetail.coupon_value)}</span>
                     </div>
                   )}
                 </div>
               )}
 
-              {!feeDetail && feeStatus === "idle" && (
-                <div className="text-xs text-muted-foreground text-center py-2">
-                  Cước phí sẽ tự động tính khi chọn đủ địa chỉ và dịch vụ
-                </div>
-              )}
+              {/* Total fee */}
+              <div className="flex justify-between items-baseline pt-1 border-t">
+                <span className="text-sm text-muted-foreground">Tổng phí:</span>
+                <span className="text-xl font-bold text-primary">
+                  {feeStatus === "loading" ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : feeDetail ? (
+                    fmt(feeDetail.total)
+                  ) : (
+                    <span className="text-muted-foreground text-base">-- đ</span>
+                  )}
+                </span>
+              </div>
 
               {/* Info note */}
               <div className="flex gap-2 rounded-md bg-blue-50 dark:bg-blue-950/30 p-2.5 text-xs text-blue-700 dark:text-blue-300">
                 <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-                <span>Tổng phí đã bao gồm phụ phí xăng dầu. Phí có thể thay đổi tùy theo khu vực giao hàng.</span>
+                <span>Tổng phí đã bao gồm phụ phí xăng dầu 10% giá cước vận chuyển</span>
+              </div>
+
+              <Separator />
+
+              {/* Payment type */}
+              <div className="space-y-1.5">
+                <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder="Vui lòng chọn bên trả phí" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Người gửi trả phí</SelectItem>
+                    <SelectItem value="2">Người nhận trả phí</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
             {/* Bottom actions */}
-            <div className="p-4 border-t space-y-2">
-              <Button className="w-full gap-2" onClick={handleSubmit} disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
-                {loading ? "Đang tạo đơn..." : "Tạo đơn GHN"}
-              </Button>
-              <Button variant="outline" className="w-full" onClick={() => handleMainDialogOpenChange(false)} disabled={loading}>
+            <div className="p-4 border-t flex gap-2">
+              <Button variant="outline" className="flex-1 text-primary border-primary hover:bg-primary/10" onClick={() => handleMainDialogOpenChange(false)} disabled={loading}>
                 Hủy
+              </Button>
+              <Button className="flex-1 gap-2" onClick={handleSubmit} disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
+                {loading ? "Đang tạo..." : "TẠO ĐƠN"}
               </Button>
             </div>
           </div>
