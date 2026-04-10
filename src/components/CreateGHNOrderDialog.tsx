@@ -453,13 +453,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     } catch (e) { console.error('Auto-match error:', e); }
   }, [callGHN]);
 
-  // Trigger auto-match
+  // Trigger auto-match immediately when customer has address data
   useEffect(() => {
-    if (provinces.length > 0 && selectedShopId && order?.customers?.address && open && !autoMatchDone) {
+    if (provinces.length > 0 && order?.customers?.address && open && !autoMatchDone) {
       setAutoMatchDone(true);
       tryAutoMatchLocation(provinces, order.customers.address);
     }
-  }, [provinces, selectedShopId, order, open, autoMatchDone]);
+  }, [provinces, order, open, autoMatchDone]);
 
   const loadDistricts = async (provId: number) => {
     setLoadingDistricts(true);
