@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreateContractForm } from "@/components/CreateContractForm";
 import { CreateFrameworkContractForm } from "@/components/CreateFrameworkContractForm";
 import { EditContractDialog } from "@/components/EditContractDialog";
+import { EditFrameworkContractDialog } from "@/components/EditFrameworkContractDialog";
 import { DeleteContractDialog } from "@/components/DeleteContractDialog";
 import { ContractPreviewDialog } from "@/components/ContractPreviewDialog";
 import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
@@ -45,6 +46,7 @@ const ContractManagement = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [showCreateFramework, setShowCreateFramework] = useState(false);
   const [editContract, setEditContract] = useState<any>(null);
+  const [editFrameworkContract, setEditFrameworkContract] = useState<any>(null);
   const [deleteContract, setDeleteContract] = useState<any>(null);
   const [previewContract, setPreviewContract] = useState<any>(null);
   const [frameworkPreview, setFrameworkPreview] = useState<any>(null);
@@ -219,7 +221,7 @@ const ContractManagement = () => {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => handleRowClick(c)}><Eye className="h-4 w-4 mr-2" />Xem</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setEditContract(c)}><Edit className="h-4 w-4 mr-2" />Sửa</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => isFrameworkContract(c) ? setEditFrameworkContract(c) : setEditContract(c)}><Edit className="h-4 w-4 mr-2" />Sửa</DropdownMenuItem>
                                 {!isFramework && (
                                   <>
                                     <DropdownMenuItem onClick={() => setHandoverContract(c)}><ClipboardCheck className="h-4 w-4 mr-2" />Biên bản bàn giao</DropdownMenuItem>
@@ -303,6 +305,9 @@ const ContractManagement = () => {
 
       {editContract && (
         <EditContractDialog open={!!editContract} onOpenChange={o => !o && setEditContract(null)} contract={editContract} />
+      )}
+      {editFrameworkContract && (
+        <EditFrameworkContractDialog open={!!editFrameworkContract} onOpenChange={o => !o && setEditFrameworkContract(null)} contract={editFrameworkContract} />
       )}
       {deleteContract && (
         <DeleteContractDialog open={!!deleteContract} onOpenChange={o => !o && setDeleteContract(null)} contract={deleteContract} />

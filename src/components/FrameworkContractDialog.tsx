@@ -8,8 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Printer, FileDown, FileText } from "lucide-react";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
+import { useUpdateContract } from "@/hooks/useContracts";
 import { useToast } from "@/hooks/use-toast";
 import { exportElementToPDF } from "@/lib/pdfUtils";
+import { Save } from "lucide-react";
 import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, AlignmentType, BorderStyle } from "docx";
 import { saveAs } from "file-saver";
 
@@ -49,6 +51,7 @@ const defaultArticles = [
 export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props) => {
   const printRef = useRef<HTMLDivElement>(null);
   const { settings: companySettings } = useTemplateSettings();
+  const updateContract = useUpdateContract();
   const { toast } = useToast();
   const [frameworkDate, setFrameworkDate] = useState(new Date().toISOString().split("T")[0]);
   const [validityMonths, setValidityMonths] = useState("12");
@@ -278,6 +281,17 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
           <Button size="sm" variant="outline" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />In</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadPDF}><FileDown className="h-4 w-4 mr-1" />Xuất PDF</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadWord}><FileText className="h-4 w-4 mr-1" />Xuất Word</Button>
+          <Button size="sm" onClick={async () => {
+            try {
+              await updateContract.mutateAsync({ id: contract.id, articles } as any);
+              toast({ title: "Đã lưu thay đổi điều khoản!" });
+            } catch (err: any) {
+              toast({ title: "Lỗi lưu", description: err.message, variant: "destructive" });
+            }
+          }} disabled={updateContract.isPending}>
+            {updateContract.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+            Lưu thay đổi
+          </Button>
           <div className="border-l mx-1 h-6" />
           <div className="flex items-center gap-2">
             <Switch checked={showOnlineStamp} onCheckedChange={setShowOnlineStamp} />
