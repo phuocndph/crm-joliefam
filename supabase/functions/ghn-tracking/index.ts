@@ -379,6 +379,95 @@ serve(async (req) => {
       });
     }
 
+    // ==================== UPDATE ORDER ACTION ====================
+    if (action === 'update_order') {
+      const { orderCode, updateData, shopId } = requestBody;
+      if (!orderCode) throw new Error('Order code is required');
+      const effectiveShopId = shopId || Deno.env.get('GHN_SHOP_ID');
+      if (!effectiveShopId) throw new Error('Shop ID not provided');
+
+      console.log('Updating GHN order:', orderCode);
+
+      const ghnPayload = {
+        order_code: orderCode,
+        ...updateData,
+      };
+
+      const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Token': ghnApiKey,
+          'ShopId': String(effectiveShopId),
+        },
+        body: JSON.stringify(ghnPayload),
+      });
+
+      const data = await response.json();
+      console.log('GHN update response:', JSON.stringify(data));
+
+      if (data.code !== 200) {
+        throw new Error(data.message || 'GHN update error');
+      }
+
+      // Update tracking record in DB
+      const updateFields: Record<string, any> = { last_updated_at: new Date().toISOString() };
+      if (updateData.to_name) updateFields.customer_name = updateData.to_name;
+      if (updateData.to_phone) updateFields.customer_phone = updateData.to_phone;
+      if (updateData.to_address) updateFields.customer_address = updateData.to_address;
+      if (updateData.weight) updateFields.package_weight = updateData.weight;
+
+      await supabase.from('ghn_tracking').update(updateFields).eq('ghn_order_code', orderCode);
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: `Đã cập nhật đơn hàng ${orderCode}`,
+        data: data.data,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ==================== UPDATE COD ACTION ====================
+    if (action === 'update_cod') {
+      const { orderCode, codAmount: newCod, shopId } = requestBody;
+      if (!orderCode) throw new Error('Order code is required');
+      const effectiveShopId = shopId || Deno.env.get('GHN_SHOP_ID');
+      if (!effectiveShopId) throw new Error('Shop ID not provided');
+
+      console.log('Updating COD for order:', orderCode, 'to:', newCod);
+
+      const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/updateCOD', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Token': ghnApiKey,
+          'ShopId': String(effectiveShopId),
+        },
+        body: JSON.stringify({ order_code: orderCode, cod_amount: newCod }),
+      });
+
+      const data = await response.json();
+      console.log('GHN updateCOD response:', JSON.stringify(data));
+
+      if (data.code !== 200) {
+        throw new Error(data.message || 'GHN updateCOD error');
+      }
+
+      await supabase.from('ghn_tracking').update({
+        cod_amount: newCod,
+        last_updated_at: new Date().toISOString(),
+      }).eq('ghn_order_code', orderCode);
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: `Đã cập nhật COD đơn hàng ${orderCode}`,
+        data: data.data,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     throw new Error('Invalid action specified');
 
   } catch (error) {
