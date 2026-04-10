@@ -1648,10 +1648,18 @@ Số <10 = mét (1.6→160, 2.0→200). "1m6"=160. 14p/14f=14cm. T200/T250...=ch
 ## GIÁ & SL
 Giá khách ghi → dùng giá khách. Không ghi → từ bảng giá. "x2"/"4 cái"→số lượng. Mặc định=1
 
+## TRÍCH XUẤT THÔNG TIN KHÁCH HÀNG
+Nếu trong yêu cầu có chứa thông tin khách hàng (tên, SĐT, địa chỉ, ngày báo giá), trích xuất vào trường "customerInfo".
+- name: tên khách hàng hoặc công ty
+- phone: số điện thoại
+- address: địa chỉ
+- date: ngày báo giá (format ISO yyyy-MM-dd, VD: "2026-04-10")
+Nếu KHÔNG tìm thấy thông tin khách → customerInfo: null
+
 ## OUTPUT — JSON thuần, KHÔNG markdown/backtick
 matchedProductId PHẢI là UUID chính xác từ CỘT ĐẦU bảng giá. TUYỆT ĐỐI KHÔNG bịa UUID.
-{"items":[{"matchedProductId":"uuid-từ-bảng-giá","customName":"tên SP kích thước ĐÚNG khách","quantity":1,"price":0,"specifications":"KT đúng khách, KHÔNG làm tròn","note":""}]}
-Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
+{"customerInfo":{"name":"","phone":"","address":"","date":""},"items":[{"matchedProductId":"uuid-từ-bảng-giá","customName":"tên SP kích thước ĐÚNG khách","quantity":1,"price":0,"specifications":"KT đúng khách, KHÔNG làm tròn","note":""}]}
+Không tìm thấy: {"items":[],"customerInfo":null}. Thiếu info: {"clarification":"câu hỏi"}`;
       }
 
       // Step 2b: Call text model (fast, cheap) with filtered catalog — NO image needed

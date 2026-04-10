@@ -30,9 +30,17 @@ interface AIMatchedItem {
   matchQuality?: 'exact' | 'fallback_size' | 'fallback_product' | 'uncertain';
 }
 
+export interface CustomerInfo {
+  name?: string;
+  phone?: string;
+  address?: string;
+  date?: string;
+}
+
 interface AIQuoteFillProps {
   products: Product[];
   onProductsSelected: (items: AIMatchedItem[]) => void;
+  onCustomerInfoExtracted?: (info: CustomerInfo) => void;
   priceListId?: string;
 }
 
