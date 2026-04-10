@@ -1,4 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { format } from "date-fns";
+import { vi } from "date-fns/locale";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { useQuotes, useDeleteQuote } from "@/hooks/useQuotes";
@@ -557,11 +561,75 @@ export default function QuotesPage() {
                           {statusLabels[quote.status]?.label || quote.status}
                         </Badge>
                       </TableCell>
-                       <TableCell>
-                         {new Date(quote.quoteDate || quote.created_at).toLocaleDateString("vi-VN")}
-                       </TableCell>
                       <TableCell>
-                        {new Date(quote.expiryDate).toLocaleDateString("vi-VN")}
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button className="text-left hover:underline cursor-pointer text-sm px-1 py-0.5 rounded hover:bg-muted transition-colors">
+                              {new Date(quote.quoteDate || quote.created_at).toLocaleDateString("vi-VN")}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <CalendarComponent
+                              mode="single"
+                              selected={new Date(quote.quoteDate || quote.created_at)}
+                              onSelect={async (date) => {
+                                if (!date) return;
+                                const { error } = await supabase
+                                  .from('quotes')
+                                  .update({ created_at: date.toISOString() })
+                                  .eq('id', quote.id);
+                                if (error) {
+                                  toast({ title: "Lỗi", description: "Không thể cập nhật ngày tạo", variant: "destructive" });
+                                } else {
+                                  queryClient.invalidateQueries({ queryKey: ['quotes'] });
+                                  toast({ title: "Đã cập nhật ngày tạo" });
+                                }
+                              }}
+                              initialFocus
+                              locale={vi}
+                              className="pointer-events-auto"
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </TableCell>
+                      <TableCell>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button className="text-left hover:underline cursor-pointer text-sm px-1 py-0.5 rounded hover:bg-muted transition-colors">
+                              {new Date(quote.expiryDate).toLocaleDateString("vi-VN")}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <CalendarComponent
+                              mode="single"
+                              selected={new Date(quote.expiryDate)}
+                              onSelect={async (date) => {
+                                if (!date) return;
+                                const currentNotes = quote.notes || '';
+                                const expiryDateStr = format(date, "yyyy-MM-dd");
+                                let updatedNotes = currentNotes;
+                                if (/Ngày hết hạn:\s*.+/.test(currentNotes)) {
+                                  updatedNotes = currentNotes.replace(/Ngày hết hạn:\s*.+/, `Ngày hết hạn: ${expiryDateStr}`);
+                                } else {
+                                  updatedNotes = currentNotes + `\nNgày hết hạn: ${expiryDateStr}`;
+                                }
+                                const { error } = await supabase
+                                  .from('quotes')
+                                  .update({ notes: updatedNotes })
+                                  .eq('id', quote.id);
+                                if (error) {
+                                  toast({ title: "Lỗi", description: "Không thể cập nhật ngày hết hạn", variant: "destructive" });
+                                } else {
+                                  queryClient.invalidateQueries({ queryKey: ['quotes'] });
+                                  toast({ title: "Đã cập nhật ngày hết hạn" });
+                                }
+                              }}
+                              initialFocus
+                              locale={vi}
+                              className="pointer-events-auto"
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </TableCell>
                       <TableCell>{quote.responsible}</TableCell>
                       <TableCell>
