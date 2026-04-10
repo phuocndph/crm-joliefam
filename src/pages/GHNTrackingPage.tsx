@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
-import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil } from 'lucide-react';
+import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil, Search } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
 import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
 import { EditGHNOrderDialog } from '@/components/EditGHNOrderDialog';
