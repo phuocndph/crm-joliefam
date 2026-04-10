@@ -1,28 +1,28 @@
 
 
-## Thêm chức năng chỉnh sửa và lưu Hợp đồng Nguyên tắc
+## Tích hợp Goong Maps Autocomplete cho gợi ý địa chỉ GHN
 
-### Vấn đề hiện tại
+### Tổng quan
+Thay thế gợi ý địa chỉ từ database khách hàng bằng Goong Maps Autocomplete API -- dịch vụ bản đồ Việt Nam cho kết quả chính xác như GHN.
 
-Khi bấm "Sửa" trên một HĐ Nguyên tắc, hệ thống mở `EditContractDialog` — dialog này chỉ dành cho HĐ Kinh tế (có bảng sản phẩm, VAT, đặt cọc...), không phù hợp với HĐ Nguyên tắc. Ngoài ra, `FrameworkContractDialog` (dialog xem trước) cho phép chỉnh sửa điều khoản nhưng **không lưu thay đổi về database**.
+### Yêu cầu
+- Bạn cần đăng ký API key miễn phí tại [goong.io](https://account.goong.io) (5000 request/ngày miễn phí)
+- Tôi sẽ thêm secret `GOONG_API_KEY` vào Supabase Edge Functions
 
-### Giải pháp
+### Các bước thực hiện
 
-Tạo component `EditFrameworkContractDialog` mới, dựa trên cấu trúc của `CreateFrameworkContractForm`, cho phép chỉnh sửa và lưu tất cả thông tin HĐ Nguyên tắc.
+**1. Thêm action `address_autocomplete` vào edge function `ghn-tracking`**
+- Nhận `input` (chuỗi tìm kiếm) từ client
+- Gọi `https://rsapi.goong.io/Place/AutoComplete?input=...&api_key=...`
+- Trả về danh sách gợi ý (description, place_id, structured_formatting)
 
-### Chi tiết thay đổi
+**2. Cập nhật `CreateGHNOrderDialog.tsx`**
+- Thay `fetchAddressSuggestions` (query bảng customers) bằng gọi edge function `address_autocomplete`
+- Debounce 400ms khi gõ
+- Hiển thị kết quả với icon MapPin đỏ giống GHN
+- Khi chọn gợi ý, điền địa chỉ và trigger auto-match Tỉnh/Quận/Phường từ GHN API (logic đã có sẵn)
 
-**1. Tạo file `src/components/EditFrameworkContractDialog.tsx`**
-- Dialog cho phép sửa: trạng thái, ngày ký, thông tin Bên A (người đại diện, chức vụ), thông tin Bên B (công ty, đại diện, chức vụ, địa chỉ, MST, ĐT), các điều khoản (thêm/xóa/sắp xếp/chỉnh nội dung), căn cứ pháp lý, ghi chú
-- Load dữ liệu từ `contract` prop vào state khi mở
-- Dùng `useUpdateContract` để lưu thay đổi
-- Giữ tra cứu MST giống form tạo mới
-
-**2. Sửa `src/pages/ContractManagement.tsx`**
-- Import `EditFrameworkContractDialog`
-- Khi bấm "Sửa" trên HĐ Nguyên tắc (`isFrameworkContract`), mở `EditFrameworkContractDialog` thay vì `EditContractDialog`
-- Thêm state `editFrameworkContract` riêng
-
-**3. Cập nhật `FrameworkContractDialog` (dialog xem trước)**
-- Thêm nút "Lưu thay đổi" để lưu các chỉnh sửa điều khoản ngay trong dialog xem trước về DB (dùng `useUpdateContract` cập nhật field `articles`)
+### Files thay đổi
+- `supabase/functions/ghn-tracking/index.ts` -- thêm action mới
+- `src/components/CreateGHNOrderDialog.tsx` -- thay logic gợi ý
 
