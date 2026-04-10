@@ -84,6 +84,8 @@ export default function GHNTrackingPage() {
     sortBy: 'none',
     sortOrder: 'asc'
   });
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<GHNTrackingData | null>(null);
   const { role } = useUserRole(user);
 
   // Get current user
