@@ -1,39 +1,37 @@
 
 
-## Thêm chức năng chỉnh sửa đơn hàng GHN (bao gồm COD)
+## Thêm Dialog tra cứu chi tiết đơn hàng GHN trong app
 
-### Phát hiện mới
-GHN có **2 API riêng biệt** để cập nhật:
-- `POST /v2/shipping-order/update` -- sửa thông tin chung (tên, SĐT, địa chỉ, cân nặng, kích thước...)
-- `POST /v2/shipping-order/updateCOD` -- sửa tiền thu hộ COD (tối đa 5.000.000đ)
-
-Cả hai đều sửa được, chỉ là dùng endpoint khác nhau. Dialog sẽ gọi cả 2 API khi cần.
+### Tổng quan
+Thay link "Tra cứu" (mở web GHN) bằng nút mở dialog hiển thị chi tiết đơn hàng lấy từ GHN API `/v2/shipping-order/detail`, bao gồm timeline trạng thái, thông tin giao hàng, phí chi tiết.
 
 ### Các thay đổi
 
-**1. Edge Function `ghn-tracking/index.ts`** -- Thêm 2 action mới:
-- `update_order`: gọi GHN API update thông tin đơn (tên, SĐT, địa chỉ, cân nặng, kích thước, ghi chú...)
-- `update_cod`: gọi GHN API updateCOD để sửa tiền thu hộ
-- Sau khi GHN trả thành công, cập nhật lại bản ghi trong bảng `ghn_tracking`
+**1. Component mới `GHNOrderDetailDialog.tsx`**:
+- Nhận `ghn_order_code` + `open/onOpenChange`
+- Khi mở: gọi edge function action `track_order` (đã có sẵn) để lấy data real-time từ GHN
+- Hiển thị:
+  - Header: mã GHN + badge trạng thái
+  - Thông tin người nhận: tên, SĐT, địa chỉ đầy đủ
+  - Thông tin đơn: cân nặng, kích thước, nội dung hàng, ghi chú
+  - Tài chính: COD, phí vận chuyển, phí bảo hiểm, tổng phí (từ `raw_data`)
+  - Timeline: ngày tạo → ngày lấy hàng → dự kiến giao → ngày giao thực tế
+  - Thông tin shop gửi (nếu có trong raw_data)
+  - Nút "Mở trên GHN" link ra trang web GHN (giữ lại)
+- Loading state khi đang fetch
 
-**2. Component mới `EditGHNOrderDialog.tsx`**:
-- Giao diện 2 cột giống hệt `CreateGHNOrderDialog` (form trái + sidebar phí phải)
-- Pre-fill toàn bộ dữ liệu từ `raw_data` trong bảng `ghn_tracking`
-- Các trường sửa được: tên, SĐT, địa chỉ (kèm Goong Maps + Tỉnh/Quận/Phường), cân nặng, kích thước, ghi chú, nội dung, COD, sản phẩm
-- Tính cước phí real-time khi thay đổi thông tin
-- Khi submit: gọi `update_order` + gọi thêm `update_cod` nếu COD thay đổi
-- Nút "CẬP NHẬT ĐƠN" thay vì "TẠO ĐƠN"
+**2. Edge function `ghn-tracking/index.ts`** -- Mở rộng action `track_order`:
+- Trả về toàn bộ `raw_data` (hiện chỉ trả `transformOrder` đã lọc bớt field)
+- Thêm trả `rawData: order` trong response để dialog có đầy đủ thông tin phí
 
 **3. Trang `GHNTrackingPage.tsx`**:
-- Thêm nút bút chì (Edit) trong cột THAO TÁC
-- Ẩn nút sửa cho đơn ở trạng thái cuối (`delivered`, `cancel`, `returned`, `lost`, `damage`)
-- Sau khi sửa thành công, refresh tracking data
+- Import `GHNOrderDetailDialog`
+- Thêm state `detailOrderCode` + `detailDialogOpen`
+- Thay link `<a>Tra cứu</a>` bằng `<Button>` mở dialog
+- Render `GHNOrderDetailDialog` ở cuối trang (sibling, không nested)
 
-### Trạng thái cho phép sửa
-`ready_to_pick`, `picking`, `storing`, `transporting`, `sorting`, `delivering`
-
-### Lưu ý kỹ thuật
-- COD tối đa 5.000.000đ (giới hạn của GHN)
-- Dialog tái sử dụng logic Goong Maps autocomplete + auto-match Tỉnh/Quận/Phường từ `CreateGHNOrderDialog`
-- Áp dụng cùng fix `userTypingRef` để không gọi API tự động khi pre-fill
+### Chi tiết kỹ thuật
+- Tái sử dụng `fetchOrderDetail` đã có trong edge function
+- GHN API detail trả đầy đủ: `cod_amount`, `insurance_value`, `coupon`, `total_fee` (phí ship), `main_service_fee`, `pick_station_fee`, `return_fee`, `r2s_fee`...
+- Dialog dùng layout 2 cột trên desktop, 1 cột trên mobile
 
