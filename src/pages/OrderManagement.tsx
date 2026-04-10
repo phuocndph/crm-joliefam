@@ -53,6 +53,7 @@ interface Order {
     company: string | null;
     customer_code: string | null;
     address?: string | null;
+    addresses?: any[] | null;
   } | null;
   assignees?: {
     name: string;
