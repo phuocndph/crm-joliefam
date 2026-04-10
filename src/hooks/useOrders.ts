@@ -44,7 +44,7 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
         .from('orders')
         .select(`
           *,
-          customers!left(name, email, phone, company, customer_code, address),
+          customers!left(name, email, phone, company, customer_code, address, addresses),
           assignees(name),
           quotes(quote_data),
           ghn_tracking(ghn_order_code)
