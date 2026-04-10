@@ -97,6 +97,23 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [tempWards, setTempWards] = useState<Ward[]>([]);
 
   const hasPrefilledRef = useRef(false);
+  const resetBodyDialogStyles = useCallback(() => {
+    document.body.style.pointerEvents = "";
+    document.body.style.overflow = "";
+  }, []);
+
+  const closeAddressDialog = useCallback(() => {
+    setShowAddressDialog(false);
+    resetBodyDialogStyles();
+  }, [resetBodyDialogStyles]);
+
+  const handleMainDialogOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setShowAddressDialog(false);
+      resetBodyDialogStyles();
+    }
+    onOpenChange(nextOpen);
+  }, [onOpenChange, resetBodyDialogStyles]);
 
   // Pre-fill
   useEffect(() => {
@@ -126,8 +143,32 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
     if (!open) {
       hasPrefilledRef.current = false;
+      setShowAddressDialog(false);
+      resetBodyDialogStyles();
     }
-  }, [order, open, remainingAmount]);
+  }, [order, open, remainingAmount, resetBodyDialogStyles]);
+
+  useEffect(() => {
+    if (!showAddressDialog) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const frame = requestAnimationFrame(() => {
+      document.body.style.pointerEvents = "";
+      document.body.style.overflow = "hidden";
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      document.body.style.pointerEvents = "";
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showAddressDialog]);
+
+  useEffect(() => {
+    return () => {
+      resetBodyDialogStyles();
+    };
+  }, [resetBodyDialogStyles]);
 
   // Load shops + provinces on open
   useEffect(() => {
@@ -376,6 +417,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setTempDistricts(districts);
     setTempWards(wards);
     setShowAddressDialog(true);
+    requestAnimationFrame(() => {
+      document.body.style.pointerEvents = "";
+      document.body.style.overflow = "hidden";
+    });
 
     // Auto-match if we have address but no province selected yet
     if (toAddress && !provinceId && provinces.length > 0) {
@@ -443,7 +488,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setWardCode(tempWardCode);
     setDistricts(tempDistricts);
     setWards(tempWards);
-    setShowAddressDialog(false);
+    closeAddressDialog();
   };
 
   // Get display text for selected address
@@ -464,8 +509,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   // ======== SUCCESS SCREEN ========
   if (success) {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg">
+      <Dialog open={open} onOpenChange={handleMainDialogOpenChange}>
+        <DialogContent className="max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-green-600">
               <CheckCircle className="h-5 w-5" /> Tạo đơn thành công
@@ -523,7 +568,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 </a>
               </Button>
             </div>
-            <Button className="w-full" onClick={() => onOpenChange(false)}>Đóng</Button>
+            <Button className="w-full" onClick={() => handleMainDialogOpenChange(false)}>Đóng</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -532,12 +577,12 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   // ======== ADDRESS SUB-DIALOG (rendered as overlay, not nested Dialog) ========
   const addressDialog = showAddressDialog ? (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onClick={() => setShowAddressDialog(false)}>
-      <div className="bg-background rounded-xl shadow-xl w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto" onClick={closeAddressDialog}>
+      <div className="relative z-[101] w-full max-w-lg mx-4 rounded-xl bg-background shadow-xl pointer-events-auto" onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h3 className="font-semibold text-base">Địa chỉ nhận</h3>
-          <button onClick={() => setShowAddressDialog(false)} className="rounded-full opacity-70 hover:opacity-100 p-1.5 hover:bg-muted transition-colors">
+          <button type="button" onClick={closeAddressDialog} className="rounded-full opacity-70 hover:opacity-100 p-1.5 hover:bg-muted transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -557,7 +602,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 value={tempAddress}
                 onChange={e => setTempAddress(e.target.value)}
                 placeholder="Số nhà, tên đường..."
-                className="text-sm"
+                className="text-sm pointer-events-auto"
               />
             </div>
 
@@ -566,7 +611,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">Tỉnh - Thành phố <span className="text-destructive">*</span></Label>
                 <Select value={tempProvinceId} onValueChange={v => { setTempProvinceId(v); loadTempDistricts(parseInt(v)); }}>
-                  <SelectTrigger className="text-sm">
+                  <SelectTrigger className="text-sm pointer-events-auto">
                     <SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} />
                   </SelectTrigger>
                   <SelectContent className="max-h-60 z-[110]">
@@ -577,7 +622,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">Quận - Huyện <span className="text-destructive">*</span></Label>
                 <Select value={tempDistrictId} onValueChange={v => { setTempDistrictId(v); loadTempWards(parseInt(v)); }} disabled={!tempProvinceId}>
-                  <SelectTrigger className="text-sm">
+                  <SelectTrigger className="text-sm pointer-events-auto">
                     <SelectValue placeholder={loadingDistricts ? "Tải..." : "Chọn"} />
                   </SelectTrigger>
                   <SelectContent className="max-h-60 z-[110]">
@@ -588,7 +633,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">Phường - Xã <span className="text-destructive">*</span></Label>
                 <Select value={tempWardCode} onValueChange={setTempWardCode} disabled={!tempDistrictId}>
-                  <SelectTrigger className="text-sm">
+                  <SelectTrigger className="text-sm pointer-events-auto">
                     <SelectValue placeholder={loadingWards ? "Tải..." : "Chọn"} />
                   </SelectTrigger>
                   <SelectContent className="max-h-60 z-[110]">
@@ -602,7 +647,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
         {/* Footer */}
         <div className="flex justify-end gap-3 px-5 py-4 border-t">
-          <Button variant="outline" onClick={() => setShowAddressDialog(false)}>Hủy</Button>
+          <Button variant="outline" onClick={closeAddressDialog}>Hủy</Button>
           <Button onClick={confirmAddress} disabled={!tempProvinceId || !tempDistrictId || !tempWardCode}>
             Xong
           </Button>
@@ -613,8 +658,17 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   // ======== MAIN FORM ========
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0">
+    <Dialog open={open} onOpenChange={handleMainDialogOpenChange}>
+      <DialogContent
+        className="max-w-4xl max-h-[90vh] overflow-hidden p-0"
+        aria-describedby={undefined}
+        onPointerDownOutside={(event) => {
+          if (showAddressDialog) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (showAddressDialog) event.preventDefault();
+        }}
+      >
         {/* Header */}
         <div className="px-6 pt-5 pb-3">
           <DialogHeader>
@@ -872,7 +926,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
                 {loading ? "Đang tạo đơn..." : "Tạo đơn GHN"}
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)} disabled={loading}>
+              <Button variant="outline" className="w-full" onClick={() => handleMainDialogOpenChange(false)} disabled={loading}>
                 Hủy
               </Button>
             </div>
