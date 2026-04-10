@@ -48,7 +48,7 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
           category: formData.category,
           person_name: formData.person_name || null,
           amount: formData.amount,
-          description: formData.description || null,
+          description: formData.description || '',
           expense_date: formData.expense_date,
           expense_code: expenseCode,
           manager_id: user?.id
