@@ -574,11 +574,15 @@ export default function QuotesPage() {
                               selected={new Date(quote.quoteDate || quote.created_at)}
                               onSelect={async (date) => {
                                 if (!date) return;
-                                const { error } = await supabase
+                                // Set to noon to avoid timezone shift issues
+                                const adjustedDate = new Date(date);
+                                adjustedDate.setHours(12, 0, 0, 0);
+                                const { data: updated, error } = await supabase
                                   .from('quotes')
-                                  .update({ created_at: date.toISOString() })
-                                  .eq('id', quote.id);
-                                if (error) {
+                                  .update({ created_at: adjustedDate.toISOString() })
+                                  .eq('id', quote.id)
+                                  .select();
+                                if (error || !updated?.length) {
                                   toast({ title: "Lỗi", description: "Không thể cập nhật ngày tạo", variant: "destructive" });
                                 } else {
                                   queryClient.invalidateQueries({ queryKey: ['quotes'] });
@@ -613,11 +617,12 @@ export default function QuotesPage() {
                                 } else {
                                   updatedNotes = currentNotes + `\nNgày hết hạn: ${expiryDateStr}`;
                                 }
-                                const { error } = await supabase
+                                const { data: updated, error } = await supabase
                                   .from('quotes')
                                   .update({ notes: updatedNotes })
-                                  .eq('id', quote.id);
-                                if (error) {
+                                  .eq('id', quote.id)
+                                  .select();
+                                if (error || !updated?.length) {
                                   toast({ title: "Lỗi", description: "Không thể cập nhật ngày hết hạn", variant: "destructive" });
                                 } else {
                                   queryClient.invalidateQueries({ queryKey: ['quotes'] });
