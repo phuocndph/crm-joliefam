@@ -128,11 +128,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [tempDistricts, setTempDistricts] = useState<District[]>([]);
   const [tempWards, setTempWards] = useState<Ward[]>([]);
 
-  // Address suggestions
-  const [addressSuggestions, setAddressSuggestions] = useState<Array<{ address: string; name: string; phone: string | null }>>([]);
+  // Address suggestions (Goong Maps)
+  const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const debouncedAddress = useDebounce(tempAddress, 300);
+  const debouncedAddress = useDebounce(tempAddress, 400);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
