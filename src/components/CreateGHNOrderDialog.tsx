@@ -707,7 +707,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   ref={addressInputRef}
                   value={tempAddress}
                   onChange={e => { setTempAddress(e.target.value); setShowSuggestions(true); }}
-                  onFocus={() => { if (addressSuggestions.length > 0) setShowSuggestions(true); }}
+                  onFocus={() => { if (addressSuggestions.length > 0) setShowSuggestions(true); else fetchAddressSuggestions(tempAddress); }}
                   placeholder="Nhập để tìm địa chỉ..."
                   className="text-sm pointer-events-auto pl-8"
                 />
