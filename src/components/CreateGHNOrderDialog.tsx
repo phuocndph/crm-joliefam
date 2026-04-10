@@ -11,10 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, ExternalLink, Printer, X, Info, ChevronRight, FileText, MessageSquare } from "lucide-react";
+import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, ExternalLink, Printer, X, Info, ChevronRight, FileText, MessageSquare, Search } from "lucide-react";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useDebounce } from "@/hooks/useDebounce";
 
 interface Province { ProvinceID: number; ProvinceName: string; NameExtension?: string[]; }
 interface District { DistrictID: number; DistrictName: string; NameExtension?: string[]; }
@@ -127,6 +128,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [tempDistricts, setTempDistricts] = useState<District[]>([]);
   const [tempWards, setTempWards] = useState<Ward[]>([]);
 
+  // Address suggestions
+  const [addressSuggestions, setAddressSuggestions] = useState<Array<{ address: string; name: string; phone: string | null }>>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const debouncedAddress = useDebounce(tempAddress, 300);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
   const hasPrefilledRef = useRef(false);
   const resetBodyDialogStyles = useCallback(() => {
     document.body.style.pointerEvents = "";
@@ -200,6 +209,69 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       resetBodyDialogStyles();
     };
   }, [resetBodyDialogStyles]);
+
+  // Fetch address suggestions from customers table
+  const fetchAddressSuggestions = useCallback(async (searchText: string) => {
+    setLoadingSuggestions(true);
+    try {
+      let query = supabase
+        .from('customers')
+        .select('name, phone, address, addresses')
+        .not('address', 'is', null);
+      
+      if (searchText && searchText.length >= 2) {
+        query = query.ilike('address', `%${searchText}%`);
+      }
+      
+      const { data } = await query.limit(10);
+      
+      const suggestions: Array<{ address: string; name: string; phone: string | null }> = [];
+      const seen = new Set<string>();
+      
+      (data || []).forEach(c => {
+        if (c.address && !seen.has(c.address)) {
+          seen.add(c.address);
+          suggestions.push({ address: c.address, name: c.name, phone: c.phone });
+        }
+        if (c.addresses && Array.isArray(c.addresses)) {
+          (c.addresses as any[]).forEach((addr: any) => {
+            const addrStr = typeof addr === 'string' ? addr : addr?.address;
+            if (addrStr && !seen.has(addrStr) && (!searchText || addrStr.toLowerCase().includes(searchText.toLowerCase()))) {
+              seen.add(addrStr);
+              suggestions.push({ address: addrStr, name: c.name, phone: c.phone });
+            }
+          });
+        }
+      });
+      
+      setAddressSuggestions(suggestions.slice(0, 8));
+      if (suggestions.length > 0) setShowSuggestions(true);
+    } catch (e) {
+      console.error('Address suggestions error:', e);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showAddressDialog) {
+      fetchAddressSuggestions(debouncedAddress);
+    }
+  }, [debouncedAddress, showAddressDialog, fetchAddressSuggestions]);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node) &&
+        addressInputRef.current && !addressInputRef.current.contains(e.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Load shops + provinces on open
   useEffect(() => {
@@ -627,14 +699,103 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
             </div>
             <Separator />
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 relative">
               <Label className="text-sm font-medium">Địa chỉ nhận <span className="text-destructive">*</span></Label>
-              <Input
-                value={tempAddress}
-                onChange={e => setTempAddress(e.target.value)}
-                placeholder="Số nhà, tên đường..."
-                className="text-sm pointer-events-auto"
-              />
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  ref={addressInputRef}
+                  value={tempAddress}
+                  onChange={e => { setTempAddress(e.target.value); setShowSuggestions(true); }}
+                  onFocus={() => { if (addressSuggestions.length > 0) setShowSuggestions(true); else fetchAddressSuggestions(tempAddress); }}
+                  placeholder="Nhập để tìm địa chỉ..."
+                  className="text-sm pointer-events-auto pl-8"
+                />
+                {loadingSuggestions && (
+                  <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              {showSuggestions && addressSuggestions.length > 0 && (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute left-0 right-0 top-full mt-1 z-[120] rounded-md border bg-popover shadow-lg max-h-60 overflow-y-auto"
+                >
+                  {addressSuggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors border-b last:border-b-0 pointer-events-auto"
+                      onClick={() => {
+                        setTempAddress(s.address);
+                        setShowSuggestions(false);
+                        // Auto-match location from selected address
+                        if (provinces.length > 0) {
+                          const normalizedAddr = normalizeText(s.address);
+                          const findBestMatch = (items: { id: any; names: string[] }[]): { id: any } | null => {
+                            const allPairs: { name: string; id: any }[] = [];
+                            for (const item of items) {
+                              for (const n of item.names) allPairs.push({ name: n, id: item.id });
+                            }
+                            allPairs.sort((a, b) => b.name.length - a.name.length);
+                            for (const pair of allPairs) {
+                              if (pair.name.length >= 2 && normalizedAddr.includes(pair.name)) return pair;
+                            }
+                            return null;
+                          };
+                          const provCandidates = provinces.map(p => ({
+                            id: p.ProvinceID,
+                            names: Array.from(new Set([
+                              normalizeText(p.ProvinceName),
+                              normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
+                              ...(p.NameExtension || []).map(n => normalizeText(n)),
+                            ]))
+                          }));
+                          const matchedProv = findBestMatch(provCandidates);
+                          if (matchedProv) {
+                            setTempProvinceId(String(matchedProv.id));
+                            callGHN('get_districts', { provinceId: matchedProv.id }).then(distList => {
+                              setTempDistricts(distList || []);
+                              const distCandidates = (distList || []).map((d: District) => ({
+                                id: d.DistrictID,
+                                names: Array.from(new Set([
+                                  normalizeText(d.DistrictName),
+                                  normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
+                                  ...(d.NameExtension || []).map(n => normalizeText(n)),
+                                ]))
+                              }));
+                              const matchedDist = findBestMatch(distCandidates);
+                              if (matchedDist) {
+                                setTempDistrictId(String(matchedDist.id));
+                                callGHN('get_wards', { districtId: matchedDist.id }).then(wardList => {
+                                  setTempWards(wardList || []);
+                                  const wardCandidates = (wardList || []).map((w: Ward) => ({
+                                    id: w.WardCode,
+                                    names: Array.from(new Set([
+                                      normalizeText(w.WardName),
+                                      normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
+                                      ...(w.NameExtension || []).map(n => normalizeText(n)),
+                                    ]))
+                                  }));
+                                  const matchedWard = findBestMatch(wardCandidates);
+                                  if (matchedWard) setTempWardCode(String(matchedWard.id));
+                                }).catch(console.error);
+                              }
+                            }).catch(console.error);
+                          }
+                        }
+                      }}
+                    >
+                      <div className="flex items-start gap-2">
+                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{s.address}</p>
+                          <p className="text-xs text-muted-foreground">{s.name}{s.phone ? ` • ${s.phone}` : ''}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* 3 selects in a row like GHN */}
