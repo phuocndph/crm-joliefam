@@ -8,7 +8,7 @@ import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical, S
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
-import { AIQuoteFill } from './AIQuoteFill';
+import { AIQuoteFill, CustomerInfo } from './AIQuoteFill';
 import { AssigneeManagement } from './AssigneeManagement';
 import { AuthStatusBadge } from './AuthStatusBadge';
 import { supabase } from "@/integrations/supabase/client";
