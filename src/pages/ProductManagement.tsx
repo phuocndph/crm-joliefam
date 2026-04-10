@@ -255,8 +255,8 @@ const ProductManagement = () => {
       const { saveAs } = await import('file-saver');
       
       const workbook = new ExcelJS.Workbook();
-      const priceListName = priceLists.find(p => p.id === selectedPriceList)?.name || 'Bảng giá';
-      const sheet = workbook.addWorksheet(priceListName);
+      const priceListName = (priceLists.find(p => p.id === selectedPriceList)?.name || 'Bảng giá').replace(/[*?:\\/\[\]]/g, '-');
+      const sheet = workbook.addWorksheet(priceListName.substring(0, 31));
 
       // Header row
       sheet.columns = [
