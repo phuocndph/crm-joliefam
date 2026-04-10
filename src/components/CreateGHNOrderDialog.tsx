@@ -124,6 +124,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   // Address suggestions (Goong Maps) - inline
   const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [addressSelected, setAddressSelected] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const debouncedAddress = useDebounce(toAddress, 400);
   const addressInputRef = useRef<HTMLInputElement>(null);
@@ -177,7 +178,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       if (error) throw error;
       const suggestions = data?.data || [];
       setAddressSuggestions(suggestions);
-      if (suggestions.length > 0) setShowSuggestions(true);
+      if (suggestions.length > 0 && !addressSelected) setShowSuggestions(true);
     } catch (e) {
       console.error('Goong autocomplete error:', e);
     } finally {
@@ -579,8 +580,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     <Input
                       ref={addressInputRef}
                       value={toAddress}
-                      onChange={e => { setToAddress(e.target.value); setShowSuggestions(true); }}
-                      onFocus={() => { if (addressSuggestions.length > 0) setShowSuggestions(true); }}
+                      onChange={e => { setToAddress(e.target.value); setAddressSelected(false); setShowSuggestions(true); }}
+                      onFocus={() => { if (addressSuggestions.length > 0 && !addressSelected) setShowSuggestions(true); }}
                       placeholder="Nhập để tìm địa chỉ..."
                       className="text-sm pl-8"
                     />
@@ -601,6 +602,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                           onClick={() => {
                             setToAddress(s.description);
                             setShowSuggestions(false);
+                            setAddressSelected(true);
                             autoMatchFromText(s.description);
                           }}
                         >
