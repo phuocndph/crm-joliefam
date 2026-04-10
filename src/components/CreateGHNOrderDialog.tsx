@@ -149,7 +149,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setInsuranceValue(order.total_amount || 0);
       const displayNum = order.display_order_number || order.order_number;
       setNote(`Đơn hàng ${displayNum}`);
-      setItemContent(`Đơn hàng ${displayNum}`);
+      setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1 }]);
       setSuccess(false);
       setCreatedOrderCode("");
       setCreatedOrderData(null);
