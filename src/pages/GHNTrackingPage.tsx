@@ -808,6 +808,13 @@ export default function GHNTrackingPage() {
           )}
         </CardContent>
       </Card>
+
+      <EditGHNOrderDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        trackingRecord={editingRecord}
+        onSuccess={() => loadTrackingData()}
+      />
     </div>
   );
 }
