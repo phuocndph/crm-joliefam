@@ -210,6 +210,67 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     };
   }, [resetBodyDialogStyles]);
 
+  // Fetch address suggestions from customers table
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (!debouncedAddress || debouncedAddress.length < 2) {
+        setAddressSuggestions([]);
+        return;
+      }
+      setLoadingSuggestions(true);
+      try {
+        const { data } = await supabase
+          .from('customers')
+          .select('name, phone, address, addresses')
+          .not('address', 'is', null)
+          .ilike('address', `%${debouncedAddress}%`)
+          .limit(10);
+        
+        const suggestions: Array<{ address: string; name: string; phone: string | null }> = [];
+        const seen = new Set<string>();
+        
+        (data || []).forEach(c => {
+          if (c.address && !seen.has(c.address)) {
+            seen.add(c.address);
+            suggestions.push({ address: c.address, name: c.name, phone: c.phone });
+          }
+          // Also check addresses JSON array
+          if (c.addresses && Array.isArray(c.addresses)) {
+            (c.addresses as any[]).forEach((addr: any) => {
+              const addrStr = typeof addr === 'string' ? addr : addr?.address;
+              if (addrStr && !seen.has(addrStr) && addrStr.toLowerCase().includes(debouncedAddress.toLowerCase())) {
+                seen.add(addrStr);
+                suggestions.push({ address: addrStr, name: c.name, phone: c.phone });
+              }
+            });
+          }
+        });
+        
+        setAddressSuggestions(suggestions.slice(0, 8));
+        if (suggestions.length > 0) setShowSuggestions(true);
+      } catch (e) {
+        console.error('Address suggestions error:', e);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    };
+    fetchSuggestions();
+  }, [debouncedAddress]);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node) &&
+        addressInputRef.current && !addressInputRef.current.contains(e.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   // Load shops + provinces on open
   useEffect(() => {
     if (open) {
