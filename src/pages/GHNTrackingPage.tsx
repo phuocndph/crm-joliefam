@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
-import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download } from 'lucide-react';
+import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
 import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
+import { EditGHNOrderDialog } from '@/components/EditGHNOrderDialog';
 import * as XLSX from 'xlsx';
 
 interface GHNTrackingData {
@@ -28,7 +29,10 @@ interface GHNTrackingData {
   ghn_status_text?: string;
   tracking_url?: string;
   last_updated_at?: string;
+  raw_data?: any;
 }
+
+const FINAL_STATUSES = ['delivered', 'cancel', 'returned', 'lost', 'damage'];
 
 // Map trạng thái và màu sắc
 const statusColors: { [key: string]: string } = {
