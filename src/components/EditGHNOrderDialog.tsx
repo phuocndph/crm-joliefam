@@ -147,6 +147,15 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       setNote(raw.note || "");
       setRequiredNote(raw.required_note || "CHOTHUHANG");
       setPaymentTypeId(String(raw.payment_type_id ?? 1));
+      // Pre-fill cod failed
+      const codFailed = raw.cod_failed_amount ?? 0;
+      if (codFailed > 0) {
+        setCodFailedEnabled(true);
+        setCodFailedAmount(codFailed);
+      } else {
+        setCodFailedEnabled(false);
+        setCodFailedAmount(20000);
+      }
       // Pre-fill shop from raw_data
       if (raw.shop_id) {
         setSelectedShopId(String(raw.shop_id));
