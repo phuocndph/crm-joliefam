@@ -73,8 +73,29 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [height, setHeight] = useState(10);
   const [codAmount, setCodAmount] = useState(0);
   const [insuranceValue, setInsuranceValue] = useState(0);
-  const [itemQuantity, setItemQuantity] = useState(1);
-  const [itemContent, setItemContent] = useState("");
+  
+  // Multi-product items
+  const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number }>>([
+    { name: "", weight: 200, quantity: 1 }
+  ]);
+
+  const addProductItem = () => {
+    setProductItems(prev => [...prev, { name: "", weight: 200, quantity: 1 }]);
+  };
+
+  const removeProductItem = (index: number) => {
+    if (productItems.length <= 1) return;
+    setProductItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateProductItem = (index: number, field: string, value: string | number) => {
+    setProductItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
+  };
+
+  // Derived values from product items
+  const totalItemWeight = productItems.reduce((sum, item) => sum + item.weight * item.quantity, 0);
+  const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
+  const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
   const [note, setNote] = useState("");
   const [requiredNote, setRequiredNote] = useState("CHOTHUHANG");
   const [paymentTypeId, setPaymentTypeId] = useState("1");
@@ -387,7 +408,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           note, required_note: requiredNote, content: itemContent,
           payment_type_id: parseInt(paymentTypeId),
           service_type_id: parseInt(serviceTypeId),
-          items: [{ name: itemContent || "Hàng hóa", quantity: itemQuantity, weight }],
+          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight })),
         },
         orderId: order.id,
         orderNumber: order.display_order_number || order.order_number,
@@ -757,26 +778,40 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
             {/* ===== 3. THÔNG TIN SẢN PHẨM ===== */}
             <div className="px-6 py-5 border-b">
-              <h3 className="text-sm font-bold mb-3">Thông tin sản phẩm</h3>
-              <div className="rounded-lg border p-4 space-y-3">
-                <div className="flex items-center gap-3 mb-2">
-                  <Badge variant="outline" className="text-xs">SP 1</Badge>
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">Sản phẩm <span className="text-destructive">*</span></Label>
-                    <Input value={itemContent} onChange={e => setItemContent(e.target.value)} placeholder="Nhập tên sản phẩm" className="text-sm" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
-                    <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} className="text-sm" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">Số lượng <span className="text-destructive">*</span></Label>
-                    <Input type="number" value={itemQuantity} onChange={e => setItemQuantity(parseInt(e.target.value) || 1)} min={1} className="text-sm" />
-                  </div>
-                </div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold">Thông tin sản phẩm</h3>
               </div>
+              <div className="space-y-3">
+                {productItems.map((item, index) => (
+                  <div key={index} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="outline" className="text-xs">SP {index + 1}</Badge>
+                      {productItems.length > 1 && (
+                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeProductItem(index)}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Sản phẩm <span className="text-destructive">*</span></Label>
+                        <Input value={item.name} onChange={e => updateProductItem(index, 'name', e.target.value)} placeholder="Nhập tên sản phẩm" className="text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
+                        <Input type="number" value={item.weight} onChange={e => updateProductItem(index, 'weight', parseInt(e.target.value) || 0)} className="text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Số lượng <span className="text-destructive">*</span></Label>
+                        <Input type="number" value={item.quantity} onChange={e => updateProductItem(index, 'quantity', parseInt(e.target.value) || 1)} min={1} className="text-sm" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button type="button" variant="outline" className="w-full mt-3" onClick={addProductItem}>
+                + Thêm 1 sản phẩm
+              </Button>
             </div>
 
             {/* ===== 4. THÔNG TIN ĐƠN HÀNG ===== */}
