@@ -164,7 +164,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   }, [order, open, remainingAmount]);
 
   // Fetch address suggestions from Goong Maps API
-  const fetchAddressSuggestions = useCallback(async (searchText: string) => {
+  const fetchAddressSuggestions = useCallback(async (searchText: string, isSelected: boolean) => {
+    if (isSelected) return;
     if (!searchText || searchText.length < 2) {
       setAddressSuggestions([]);
       setShowSuggestions(false);
@@ -178,7 +179,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       if (error) throw error;
       const suggestions = data?.data || [];
       setAddressSuggestions(suggestions);
-      if (suggestions.length > 0 && !addressSelected) setShowSuggestions(true);
+      if (suggestions.length > 0) setShowSuggestions(true);
     } catch (e) {
       console.error('Goong autocomplete error:', e);
     } finally {
@@ -188,9 +189,9 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   useEffect(() => {
     if (open) {
-      fetchAddressSuggestions(debouncedAddress);
+      fetchAddressSuggestions(debouncedAddress, addressSelected);
     }
-  }, [debouncedAddress, open, fetchAddressSuggestions]);
+  }, [debouncedAddress, open, addressSelected, fetchAddressSuggestions]);
 
   const callGHN = useCallback(async (action: string, body: Record<string, any> = {}) => {
     const { data, error } = await supabase.functions.invoke('ghn-tracking', {
