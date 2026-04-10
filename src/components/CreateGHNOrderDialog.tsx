@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, ExternalLink, Printer, X, Info, ChevronRight, FileText, MessageSquare } from "lucide-react";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -855,7 +856,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Tổng tiền thu hộ (COD)</Label>
-                    <Input type="number" value={codAmount} onChange={e => setCodAmount(parseInt(e.target.value) || 0)} className="text-sm" />
+                    <CurrencyInput value={codAmount} onChange={v => setCodAmount(v)} className="text-sm" />
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2 mb-1.5">
@@ -866,10 +867,9 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                       />
                       <Label htmlFor="cod-failed" className="text-sm font-medium cursor-pointer">Giao thất bại thu tiền</Label>
                     </div>
-                    <Input
-                      type="number"
+                    <CurrencyInput
                       value={codFailedAmount}
-                      onChange={e => setCodFailedAmount(parseInt(e.target.value) || 0)}
+                      onChange={v => setCodFailedAmount(v)}
                       disabled={!codFailedEnabled}
                       className="text-sm"
                     />
@@ -880,7 +880,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Tổng giá trị hàng hóa</Label>
-                    <Input type="number" value={insuranceValue} onChange={e => setInsuranceValue(parseInt(e.target.value) || 0)} className="text-sm" />
+                    <CurrencyInput value={insuranceValue} onChange={v => setInsuranceValue(v)} className="text-sm" />
                     <p className="text-xs text-muted-foreground">Tổng giá trị hàng hóa sẽ là căn cứ để GHN bồi thường khi xảy ra mất mát, hư hỏng.</p>
                   </div>
                   <div className="space-y-1.5">
