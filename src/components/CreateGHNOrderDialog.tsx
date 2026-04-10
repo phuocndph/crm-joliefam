@@ -346,14 +346,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
   }, [open]);
 
-  const callGHN = useCallback(async (action: string, body: Record<string, any> = {}) => {
-    const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-      body: { action, ...body }
-    });
-    if (error) throw error;
-    if (!data?.success) throw new Error(data?.error || 'GHN API error');
-    return data.data;
-  }, []);
 
   const loadShops = async () => {
     setLoadingShops(true);
