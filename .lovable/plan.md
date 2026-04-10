@@ -1,54 +1,28 @@
 
-Vấn đề hiện tại đã khá rõ.
 
-Do I know what the issue is? Có.
+## Thêm chức năng chỉnh sửa và lưu Hợp đồng Nguyên tắc
 
-Lỗi không nằm ở ô input tự nó, mà ở cách dialog địa chỉ đang được dựng:
+### Vấn đề hiện tại
 
-1. `CreateGHNOrderDialog` dùng Radix `Dialog` chính.
-2. Popup “Địa chỉ nhận” lại là một overlay custom được `createPortal(..., document.body)`.
-3. Với Radix modal dialog, mọi tương tác ngoài `DialogContent` gốc bị xem là “outside interaction”.
-4. Vì popup địa chỉ đang nằm ngoài `DialogContent`, nên click/focus vào input/select của popup bị parent dialog chặn hoặc trả sự kiện ra lớp phía sau, tạo cảm giác “click xuyên xuống form bên dưới”.
+Khi bấm "Sửa" trên một HĐ Nguyên tắc, hệ thống mở `EditContractDialog` — dialog này chỉ dành cho HĐ Kinh tế (có bảng sản phẩm, VAT, đặt cọc...), không phù hợp với HĐ Nguyên tắc. Ngoài ra, `FrameworkContractDialog` (dialog xem trước) cho phép chỉnh sửa điều khoản nhưng **không lưu thay đổi về database**.
 
-Trong code hiện tại, dấu hiệu rất rõ:
-- `addressDialog` render ngoài `DialogContent` ở cuối component.
-- Parent `DialogContent` chưa có chặn `onPointerDownOutside` / `onInteractOutside` khi popup địa chỉ đang mở.
-- Chưa có cleanup `document.body.style.pointerEvents` như pattern đang dùng ở `QuotePreviewDialog`.
-- Console cũng cho thấy dialog đang thiếu cấu trúc accessibility chuẩn (`DialogTitle` / `Description`) ở một nhánh, nghĩa là phần dialog này đang bị custom hóa khá mạnh và dễ xung đột với Radix behavior.
+### Giải pháp
 
-Kế hoạch sửa:
+Tạo component `EditFrameworkContractDialog` mới, dựa trên cấu trúc của `CreateFrameworkContractForm`, cho phép chỉnh sửa và lưu tất cả thông tin HĐ Nguyên tắc.
 
-1. Sửa `src/components/CreateGHNOrderDialog.tsx` theo hướng ổn định hơn:
-   - thêm cleanup/reset `document.body.style.pointerEvents = ''` khi đóng dialog chính, đóng address dialog, và khi component unmount.
-   - khi `showAddressDialog === true`, ép overlay + panel địa chỉ có `pointer-events-auto`.
-   - trên `DialogContent` chính, chặn outside interaction trong lúc address dialog đang mở:
-     - `onPointerDownOutside={(e) => showAddressDialog && e.preventDefault()}`
-     - `onInteractOutside={(e) => showAddressDialog && e.preventDefault()}`
-   - điều này ngăn Radix coi thao tác trong popup địa chỉ là click ra ngoài dialog chính.
+### Chi tiết thay đổi
 
-2. Nếu cần, điều chỉnh cấu trúc popup địa chỉ để an toàn hơn:
-   - giữ portal ra `document.body`,
-   - nhưng thêm lớp wrapper rõ ràng:
-     - overlay: `fixed inset-0 z-[100] pointer-events-auto`
-     - panel: `relative z-[101] pointer-events-auto`
-   - thêm `onMouseDown/onPointerDown` stopPropagation ở panel để tránh bubbling ngược vào lớp ngoài.
+**1. Tạo file `src/components/EditFrameworkContractDialog.tsx`**
+- Dialog cho phép sửa: trạng thái, ngày ký, thông tin Bên A (người đại diện, chức vụ), thông tin Bên B (công ty, đại diện, chức vụ, địa chỉ, MST, ĐT), các điều khoản (thêm/xóa/sắp xếp/chỉnh nội dung), căn cứ pháp lý, ghi chú
+- Load dữ liệu từ `contract` prop vào state khi mở
+- Dùng `useUpdateContract` để lưu thay đổi
+- Giữ tra cứu MST giống form tạo mới
 
-3. Vá phần accessibility của dialog chính:
-   - đảm bảo `DialogContent` luôn có `DialogTitle`
-   - thêm `DialogDescription` hoặc `aria-describedby={undefined}` nếu không dùng description
-   - việc này không trực tiếp sửa click bug, nhưng giúp Radix vận hành ít lỗi hơn.
+**2. Sửa `src/pages/ContractManagement.tsx`**
+- Import `EditFrameworkContractDialog`
+- Khi bấm "Sửa" trên HĐ Nguyên tắc (`isFrameworkContract`), mở `EditFrameworkContractDialog` thay vì `EditContractDialog`
+- Thêm state `editFrameworkContract` riêng
 
-4. Nếu sau bước trên vẫn còn hiện tượng click xuyên:
-   - chuyển popup địa chỉ từ overlay custom sang một dialog sibling độc lập theo pattern “sibling dialogs, not nested in content”
-   - tức là render một component dialog địa chỉ riêng, cùng cấp với GHN dialog, thay vì dialog con nằm logic bên trong form.
-   - đây là fallback an toàn nhất theo memory `ui/dialog-nesting-constraint`.
+**3. Cập nhật `FrameworkContractDialog` (dialog xem trước)**
+- Thêm nút "Lưu thay đổi" để lưu các chỉnh sửa điều khoản ngay trong dialog xem trước về DB (dùng `useUpdateContract` cập nhật field `articles`)
 
-Phạm vi file:
-- `src/components/CreateGHNOrderDialog.tsx`
-- có thể tham chiếu pattern cleanup từ `src/components/QuotePreviewDialog.tsx`
-
-Kết quả mong đợi sau khi sửa:
-- click vào ô “Địa chỉ nhận” nhập được bình thường
-- dropdown Tỉnh/Quận/Phường chọn được
-- không còn click xuyên xuống form phía sau
-- đóng/mở popup không để lại trạng thái body bị khóa chuột
