@@ -2,28 +2,51 @@
 
 ## Vấn đề
 
-Bảng `ai_config` chỉ có RLS policy cho `admin` và `manager` đọc dữ liệu. Khi nhân viên dùng tính năng AI báo giá, edge function `lookup-tax-code` truy vấn `ai_config` bằng token của nhân viên → bị RLS chặn → dùng model mặc định thay vì model mà quản lý đã cấu hình.
+38 bản ghi trong bảng `order_payments` có `manager_id = NULL`. Nhân viên chỉ thấy được payments có `manager_id` trùng với manager của mình (theo RLS policy). Kết quả là nhân viên thấy số "Đã thanh toán" bị thiếu, dẫn đến "Còn lại" sai.
 
 ## Giải pháp
 
-Thêm RLS policy cho phép tất cả `authenticated` users đọc `ai_config`, vì đây là cấu hình chung (không chứa dữ liệu nhạy cảm), tương tự cách `contract_template_settings` cho phép mọi người đọc.
+### 1. Backfill dữ liệu cũ
+Cập nhật 38 payments thiếu `manager_id` bằng cách lấy `manager_id` từ đơn hàng tương ứng:
 
-## Thực hiện
-
-1. **Tạo migration** thêm RLS policy SELECT cho `authenticated` trên bảng `ai_config`:
 ```sql
-CREATE POLICY "All authenticated users can read ai_config"
-ON public.ai_config
-FOR SELECT
-TO authenticated
-USING (true);
+UPDATE order_payments op
+SET manager_id = o.manager_id
+FROM orders o
+WHERE op.order_id = o.id
+AND op.manager_id IS NULL;
 ```
 
-Chỉ cần 1 file migration, không cần sửa code frontend hay edge function vì logic đọc đã đúng — chỉ bị RLS chặn.
+### 2. Thêm trigger tự động set `manager_id` cho `order_payments`
+Tạo trigger BEFORE INSERT trên `order_payments` để tự động copy `manager_id` từ order nếu chưa được set. Điều này đảm bảo mọi payment mới luôn có `manager_id` đúng, kể cả khi frontend không truyền vào.
 
-## Kỹ thuật
+```sql
+CREATE OR REPLACE FUNCTION public.set_order_payment_manager_id()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  IF NEW.manager_id IS NULL THEN
+    SELECT manager_id INTO NEW.manager_id
+    FROM public.orders
+    WHERE id = NEW.order_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
-- Policy hiện tại `admin_manager_read` vẫn giữ nguyên (không ảnh hưởng)
-- Policy mới chỉ mở SELECT, INSERT/UPDATE/DELETE vẫn giới hạn cho admin/manager
-- Edge function sẽ tự động đọc được config đúng khi nhân viên gọi
+CREATE TRIGGER set_order_payment_manager_id_trigger
+BEFORE INSERT ON public.order_payments
+FOR EACH ROW
+EXECUTE FUNCTION public.set_order_payment_manager_id();
+```
+
+### File cần chỉnh
+- 1 migration file duy nhất chứa cả backfill + trigger
+- Không cần sửa frontend code
+
+### Kết quả
+- Nhân viên sẽ thấy đúng số tiền đã thanh toán cho tất cả đơn hàng
+- Mọi payment mới sẽ tự động có `manager_id` đúng
 
