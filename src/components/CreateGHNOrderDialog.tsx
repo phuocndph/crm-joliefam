@@ -270,7 +270,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   // Debounced auto-match when user types freely
   const debouncedAddressForMatch = useDebounce(toAddress, 800);
   useEffect(() => {
-    if (open && debouncedAddressForMatch) {
+    if (open && debouncedAddressForMatch && userTypingRef.current) {
       autoMatchFromText(debouncedAddressForMatch);
     }
   }, [debouncedAddressForMatch, open, autoMatchFromText]);
@@ -582,7 +582,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     <Input
                       ref={addressInputRef}
                       value={toAddress}
-                      onChange={e => { setToAddress(e.target.value); setAddressSelected(false); setShowSuggestions(true); }}
+                      onChange={e => { userTypingRef.current = true; setToAddress(e.target.value); setAddressSelected(false); setShowSuggestions(true); }}
                       onFocus={() => { if (addressSuggestions.length > 0 && !addressSelected) setShowSuggestions(true); }}
                       placeholder="Nhập để tìm địa chỉ..."
                       className="text-sm pl-8"
@@ -605,6 +605,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                             setToAddress(s.description);
                             setShowSuggestions(false);
                             setAddressSelected(true);
+                            userTypingRef.current = false;
                             autoMatchFromText(s.description);
                           }}
                         >
