@@ -11,7 +11,6 @@ import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useUpdateContract } from "@/hooks/useContracts";
 import { useToast } from "@/hooks/use-toast";
 import { exportElementToPDF } from "@/lib/pdfUtils";
-import { Save } from "lucide-react";
 import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, AlignmentType, BorderStyle } from "docx";
 import { saveAs } from "file-saver";
 
