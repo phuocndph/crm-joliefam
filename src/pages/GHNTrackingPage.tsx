@@ -711,7 +711,7 @@ export default function GHNTrackingPage() {
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[140px]">NGÀY GIAO</th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">COD THU HỘ</th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px] sticky right-[80px] shadow-lg">TRA CỨU</th>
-                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[80px] sticky right-0 shadow-lg">THAO TÁC</th>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px] sticky right-0 shadow-lg">THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
@@ -767,15 +767,28 @@ export default function GHNTrackingPage() {
                           </a>
                         )}
                       </td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm min-w-[80px] sticky right-0 bg-background shadow-lg">
-                        <Button
-                          onClick={() => removeTracking(item.id)}
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                      <td className="border border-gray-300 px-4 py-3 text-sm min-w-[120px] sticky right-0 bg-background shadow-lg">
+                        <div className="flex items-center gap-1">
+                          {!FINAL_STATUSES.includes(item.ghn_status || '') && (
+                            <Button
+                              onClick={() => { setEditingRecord(item); setEditDialogOpen(true); }}
+                              variant="ghost"
+                              size="sm"
+                              className="text-blue-600 hover:text-blue-800"
+                              title="Chỉnh sửa đơn hàng"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            onClick={() => removeTracking(item.id)}
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))
