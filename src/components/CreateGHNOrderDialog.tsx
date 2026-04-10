@@ -128,6 +128,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [tempDistricts, setTempDistricts] = useState<District[]>([]);
   const [tempWards, setTempWards] = useState<Ward[]>([]);
 
+  // Address suggestions
+  const [addressSuggestions, setAddressSuggestions] = useState<Array<{ address: string; name: string; phone: string | null }>>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const debouncedAddress = useDebounce(tempAddress, 300);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
   const hasPrefilledRef = useRef(false);
   const resetBodyDialogStyles = useCallback(() => {
     document.body.style.pointerEvents = "";
