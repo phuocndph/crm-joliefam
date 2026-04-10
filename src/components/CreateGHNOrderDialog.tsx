@@ -128,11 +128,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [tempDistricts, setTempDistricts] = useState<District[]>([]);
   const [tempWards, setTempWards] = useState<Ward[]>([]);
 
-  // Address suggestions
-  const [addressSuggestions, setAddressSuggestions] = useState<Array<{ address: string; name: string; phone: string | null }>>([]);
+  // Address suggestions (Goong Maps)
+  const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const debouncedAddress = useDebounce(tempAddress, 300);
+  const debouncedAddress = useDebounce(tempAddress, 400);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -210,44 +210,24 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     };
   }, [resetBodyDialogStyles]);
 
-  // Fetch address suggestions from customers table
+  // Fetch address suggestions from Goong Maps API
   const fetchAddressSuggestions = useCallback(async (searchText: string) => {
+    if (!searchText || searchText.length < 2) {
+      setAddressSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
     setLoadingSuggestions(true);
     try {
-      let query = supabase
-        .from('customers')
-        .select('name, phone, address, addresses')
-        .not('address', 'is', null);
-      
-      if (searchText && searchText.length >= 2) {
-        query = query.ilike('address', `%${searchText}%`);
-      }
-      
-      const { data } = await query.limit(10);
-      
-      const suggestions: Array<{ address: string; name: string; phone: string | null }> = [];
-      const seen = new Set<string>();
-      
-      (data || []).forEach(c => {
-        if (c.address && !seen.has(c.address)) {
-          seen.add(c.address);
-          suggestions.push({ address: c.address, name: c.name, phone: c.phone });
-        }
-        if (c.addresses && Array.isArray(c.addresses)) {
-          (c.addresses as any[]).forEach((addr: any) => {
-            const addrStr = typeof addr === 'string' ? addr : addr?.address;
-            if (addrStr && !seen.has(addrStr) && (!searchText || addrStr.toLowerCase().includes(searchText.toLowerCase()))) {
-              seen.add(addrStr);
-              suggestions.push({ address: addrStr, name: c.name, phone: c.phone });
-            }
-          });
-        }
+      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+        body: { action: 'address_autocomplete', input: searchText }
       });
-      
-      setAddressSuggestions(suggestions.slice(0, 8));
+      if (error) throw error;
+      const suggestions = data?.data || [];
+      setAddressSuggestions(suggestions);
       if (suggestions.length > 0) setShowSuggestions(true);
     } catch (e) {
-      console.error('Address suggestions error:', e);
+      console.error('Goong autocomplete error:', e);
     } finally {
       setLoadingSuggestions(false);
     }
@@ -773,7 +753,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   ref={addressInputRef}
                   value={tempAddress}
                   onChange={e => { setTempAddress(e.target.value); setShowSuggestions(true); }}
-                  onFocus={() => { if (addressSuggestions.length > 0) setShowSuggestions(true); else fetchAddressSuggestions(tempAddress); }}
+                  onFocus={() => { if (addressSuggestions.length > 0) setShowSuggestions(true); }}
                   placeholder="Nhập để tìm địa chỉ..."
                   className="text-sm pointer-events-auto pl-8"
                 />
@@ -792,70 +772,17 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                       type="button"
                       className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors border-b last:border-b-0 pointer-events-auto"
                       onClick={() => {
-                        setTempAddress(s.address);
+                        setTempAddress(s.description);
                         setShowSuggestions(false);
-                        // Auto-match location from selected address
-                        if (provinces.length > 0) {
-                          const normalizedAddr = normalizeText(s.address);
-                          const findBestMatch = (items: { id: any; names: string[] }[]): { id: any } | null => {
-                            const allPairs: { name: string; id: any }[] = [];
-                            for (const item of items) {
-                              for (const n of item.names) allPairs.push({ name: n, id: item.id });
-                            }
-                            allPairs.sort((a, b) => b.name.length - a.name.length);
-                            for (const pair of allPairs) {
-                              if (pair.name.length >= 2 && normalizedAddr.includes(pair.name)) return pair;
-                            }
-                            return null;
-                          };
-                          const provCandidates = provinces.map(p => ({
-                            id: p.ProvinceID,
-                            names: Array.from(new Set([
-                              normalizeText(p.ProvinceName),
-                              normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
-                              ...(p.NameExtension || []).map(n => normalizeText(n)),
-                            ]))
-                          }));
-                          const matchedProv = findBestMatch(provCandidates);
-                          if (matchedProv) {
-                            setTempProvinceId(String(matchedProv.id));
-                            callGHN('get_districts', { provinceId: matchedProv.id }).then(distList => {
-                              setTempDistricts(distList || []);
-                              const distCandidates = (distList || []).map((d: District) => ({
-                                id: d.DistrictID,
-                                names: Array.from(new Set([
-                                  normalizeText(d.DistrictName),
-                                  normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
-                                  ...(d.NameExtension || []).map(n => normalizeText(n)),
-                                ]))
-                              }));
-                              const matchedDist = findBestMatch(distCandidates);
-                              if (matchedDist) {
-                                setTempDistrictId(String(matchedDist.id));
-                                callGHN('get_wards', { districtId: matchedDist.id }).then(wardList => {
-                                  setTempWards(wardList || []);
-                                  const wardCandidates = (wardList || []).map((w: Ward) => ({
-                                    id: w.WardCode,
-                                    names: Array.from(new Set([
-                                      normalizeText(w.WardName),
-                                      normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
-                                      ...(w.NameExtension || []).map(n => normalizeText(n)),
-                                    ]))
-                                  }));
-                                  const matchedWard = findBestMatch(wardCandidates);
-                                  if (matchedWard) setTempWardCode(String(matchedWard.id));
-                                }).catch(console.error);
-                              }
-                            }).catch(console.error);
-                          }
-                        }
+                        // Auto-match location from selected Goong address
+                        autoMatchFromText(s.description);
                       }}
                     >
                       <div className="flex items-start gap-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <MapPin className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
                         <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{s.address}</p>
-                          <p className="text-xs text-muted-foreground">{s.name}{s.phone ? ` • ${s.phone}` : ''}</p>
+                          <p className="text-sm font-medium truncate">{s.main_text}</p>
+                          <p className="text-xs text-muted-foreground truncate">{s.secondary_text}</p>
                         </div>
                       </div>
                     </button>

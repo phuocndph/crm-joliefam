@@ -41,6 +41,35 @@ serve(async (req) => {
     const { action } = requestBody;
     console.log(`Processing action: ${action}`);
 
+    // ==================== ADDRESS AUTOCOMPLETE (GOONG MAPS) ====================
+    if (action === 'address_autocomplete') {
+      const goongApiKey = Deno.env.get('GOONG_API_KEY');
+      if (!goongApiKey) {
+        throw new Error('GOONG_API_KEY not configured');
+      }
+      const { input } = requestBody;
+      if (!input || input.length < 2) {
+        return new Response(JSON.stringify({ success: true, data: [] }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const goongUrl = `https://rsapi.goong.io/Place/AutoComplete?api_key=${goongApiKey}&input=${encodeURIComponent(input)}`;
+      const response = await fetch(goongUrl);
+      const data = await response.json();
+      console.log('Goong autocomplete results:', data?.predictions?.length || 0);
+      return new Response(JSON.stringify({
+        success: true,
+        data: (data?.predictions || []).map((p: any) => ({
+          description: p.description,
+          place_id: p.place_id,
+          main_text: p.structured_formatting?.main_text || '',
+          secondary_text: p.structured_formatting?.secondary_text || '',
+        }))
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // ==================== LOCATION ACTIONS ====================
     if (action === 'get_provinces') {
       const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/master-data/province', {
