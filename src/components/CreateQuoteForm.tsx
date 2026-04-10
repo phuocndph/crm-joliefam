@@ -8,7 +8,7 @@ import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical, S
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
-import { AIQuoteFill } from './AIQuoteFill';
+import { AIQuoteFill, CustomerInfo } from './AIQuoteFill';
 import { AssigneeManagement } from './AssigneeManagement';
 import { AuthStatusBadge } from './AuthStatusBadge';
 import { supabase } from "@/integrations/supabase/client";
@@ -1288,6 +1288,25 @@ export function CreateQuoteForm({
                       <AIQuoteFill
                         products={products}
                         priceListId={watchedValues.priceList}
+                        onCustomerInfoExtracted={(info: CustomerInfo) => {
+                          if (info.name && !form.getValues('customerName')) {
+                            form.setValue('customerName', info.name);
+                          }
+                          if (info.phone && !form.getValues('phone')) {
+                            form.setValue('phone', info.phone);
+                          }
+                          if (info.address && !form.getValues('address')) {
+                            form.setValue('address', info.address);
+                          }
+                          if (info.date) {
+                            try {
+                              const parsed = new Date(info.date);
+                              if (!isNaN(parsed.getTime())) {
+                                form.setValue('quoteDate', parsed);
+                              }
+                            } catch {}
+                          }
+                        }}
                         onProductsSelected={async (items) => {
                           // Fetch all images from product-images bucket for auto-matching
                           let allImageFiles: { name: string; folder: string }[] = [];

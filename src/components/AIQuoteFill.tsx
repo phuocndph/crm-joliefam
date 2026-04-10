@@ -30,9 +30,17 @@ interface AIMatchedItem {
   matchQuality?: 'exact' | 'fallback_size' | 'fallback_product' | 'uncertain';
 }
 
+export interface CustomerInfo {
+  name?: string;
+  phone?: string;
+  address?: string;
+  date?: string;
+}
+
 interface AIQuoteFillProps {
   products: Product[];
   onProductsSelected: (items: AIMatchedItem[]) => void;
+  onCustomerInfoExtracted?: (info: CustomerInfo) => void;
   priceListId?: string;
 }
 
@@ -74,7 +82,7 @@ async function loadImageFiles(): Promise<{ name: string; folder: string }[]> {
   return imageCachePromise;
 }
 
-export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuoteFillProps) {
+export function AIQuoteFill({ products, onProductsSelected, onCustomerInfoExtracted, priceListId }: AIQuoteFillProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [request, setRequest] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -278,6 +286,15 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
       let items: AIMatchedItem[] = data?.items || [];
       const aiWarnings: string[] = data?.warnings || [];
       if (data?.warning && aiWarnings.length === 0) aiWarnings.push(data.warning);
+
+      // Extract customer info if available
+      if (data?.customerInfo && onCustomerInfoExtracted) {
+        const info = data.customerInfo;
+        if (info.name || info.phone || info.address || info.date) {
+          onCustomerInfoExtracted(info);
+          toast({ title: "✅ Đã tự động điền thông tin khách hàng" });
+        }
+      }
       
       if (items.length === 0) {
         toast({ title: "Không tìm thấy sản phẩm phù hợp", description: "AI không thể so khớp yêu cầu với bảng giá hiện tại" });
