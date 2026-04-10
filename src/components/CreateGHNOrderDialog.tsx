@@ -259,6 +259,71 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
   }, [debouncedAddress, showAddressDialog, fetchAddressSuggestions]);
 
+  // Auto-match location when address text changes (free typing)
+  const autoMatchFromText = useCallback(async (addressText: string) => {
+    if (!addressText || addressText.length < 5 || provinces.length === 0) return;
+    const normalizedAddr = normalizeText(addressText);
+    const findBestMatch = (items: { id: any; names: string[] }[]): { id: any } | null => {
+      const allPairs: { name: string; id: any }[] = [];
+      for (const item of items) {
+        for (const n of item.names) allPairs.push({ name: n, id: item.id });
+      }
+      allPairs.sort((a, b) => b.name.length - a.name.length);
+      for (const pair of allPairs) {
+        if (pair.name.length >= 2 && normalizedAddr.includes(pair.name)) return pair;
+      }
+      return null;
+    };
+    const provCandidates = provinces.map(p => ({
+      id: p.ProvinceID,
+      names: Array.from(new Set([
+        normalizeText(p.ProvinceName),
+        normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
+        ...(p.NameExtension || []).map(n => normalizeText(n)),
+      ]))
+    }));
+    const matchedProv = findBestMatch(provCandidates);
+    if (matchedProv) {
+      setTempProvinceId(String(matchedProv.id));
+      try {
+        const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
+        setTempDistricts(distList || []);
+        const distCandidates = (distList || []).map((d: District) => ({
+          id: d.DistrictID,
+          names: Array.from(new Set([
+            normalizeText(d.DistrictName),
+            normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
+            ...(d.NameExtension || []).map(n => normalizeText(n)),
+          ]))
+        }));
+        const matchedDist = findBestMatch(distCandidates);
+        if (matchedDist) {
+          setTempDistrictId(String(matchedDist.id));
+          const wardList = await callGHN('get_wards', { districtId: matchedDist.id });
+          setTempWards(wardList || []);
+          const wardCandidates = (wardList || []).map((w: Ward) => ({
+            id: w.WardCode,
+            names: Array.from(new Set([
+              normalizeText(w.WardName),
+              normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
+              ...(w.NameExtension || []).map(n => normalizeText(n)),
+            ]))
+          }));
+          const matchedWard = findBestMatch(wardCandidates);
+          if (matchedWard) setTempWardCode(String(matchedWard.id));
+        }
+      } catch (e) { console.error('Auto-match from text error:', e); }
+    }
+  }, [provinces, callGHN]);
+
+  // Debounced auto-match when user types freely
+  const debouncedAddressForMatch = useDebounce(tempAddress, 800);
+  useEffect(() => {
+    if (showAddressDialog && debouncedAddressForMatch) {
+      autoMatchFromText(debouncedAddressForMatch);
+    }
+  }, [debouncedAddressForMatch, showAddressDialog, autoMatchFromText]);
+
   // Close suggestions on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
