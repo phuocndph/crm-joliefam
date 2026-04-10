@@ -705,10 +705,12 @@ export default function OrderManagement() {
 
                 {/* Action Buttons */}
                 <div className="flex justify-end space-x-2 pt-4 border-t border-gray-300 mt-4">
-                  <Button onClick={() => setOrderToCreateGHN(selectedOrder)} variant="outline" className="gap-2">
-                    <Truck className="h-4 w-4" />
-                    Tạo đơn GHN
-                  </Button>
+                  {(!selectedOrder.ghn_tracking || (Array.isArray(selectedOrder.ghn_tracking) && selectedOrder.ghn_tracking.length === 0)) && (
+                    <Button onClick={() => setOrderToCreateGHN(selectedOrder)} variant="outline" className="gap-2">
+                      <Truck className="h-4 w-4" />
+                      Tạo đơn GHN
+                    </Button>
+                  )}
                   <Button onClick={() => setOrderToPayment(selectedOrder)} variant="default" className="gap-2">
                     <CreditCard className="h-4 w-4" />
                     Thêm thanh toán
