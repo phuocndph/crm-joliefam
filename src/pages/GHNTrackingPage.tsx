@@ -11,7 +11,7 @@ import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil, Searc
 import { User } from '@supabase/supabase-js';
 import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
 import { EditGHNOrderDialog } from '@/components/EditGHNOrderDialog';
-import { GHNOrderDetailDialog } from '@/components/GHNOrderDetailDialog';
+
 import * as XLSX from 'xlsx';
 
 interface GHNTrackingData {
@@ -815,11 +815,6 @@ export default function GHNTrackingPage() {
         onSuccess={() => loadTrackingData()}
       />
 
-      <GHNOrderDetailDialog
-        ghnOrderCode={detailOrderCode}
-        open={detailDialogOpen}
-        onOpenChange={setDetailDialogOpen}
-      />
     </div>
   );
 }
