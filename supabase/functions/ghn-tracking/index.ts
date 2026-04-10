@@ -280,8 +280,12 @@ serve(async (req) => {
       const { orderCode } = requestBody;
       if (!orderCode) throw new Error('Order code is required');
 
-      const order = await fetchOrderDetail(ghnApiKey, orderCode);
-      return new Response(JSON.stringify({ success: true, data: { ...transformOrder(order), rawData: order } }), {
+      // Fetch detail and logs in parallel
+      const [order, logs] = await Promise.all([
+        fetchOrderDetail(ghnApiKey, orderCode),
+        fetchOrderLogs(ghnApiKey, orderCode),
+      ]);
+      return new Response(JSON.stringify({ success: true, data: { ...transformOrder(order), rawData: order, logs } }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -522,6 +526,24 @@ function transformOrder(order: any) {
     codAmount: order.cod_amount,
     trackingUrl: `https://donhang.ghn.vn/?order_code=${order.order_code}`,
   };
+}
+
+async function fetchOrderLogs(ghnApiKey: string, orderCode: string) {
+  try {
+    const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Token': ghnApiKey },
+      body: JSON.stringify({ order_code: orderCode }),
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    if (data.code !== 200) return [];
+    const order = data.data;
+    // GHN detail API includes log array
+    return order?.log || [];
+  } catch {
+    return [];
+  }
 }
 
 function getStatusText(status: string): string {
