@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { createPortal } from "react-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Truck, Loader2, CheckCircle, Copy, Store, MapPin, Package, CreditCard, ExternalLink, Printer, X, Info, ChevronRight, FileText, MessageSquare, Search } from "lucide-react";
+import { Truck, Loader2, CheckCircle, Copy, MapPin, ExternalLink, Printer, X, Info, Search } from "lucide-react";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -78,11 +77,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [codFailedEnabled, setCodFailedEnabled] = useState(false);
   const [codFailedAmount, setCodFailedAmount] = useState(20000);
 
-  // Sync insuranceValue = codAmount
-  useEffect(() => {
-    setInsuranceValue(codAmount);
-  }, [codAmount]);
-  
+  useEffect(() => { setInsuranceValue(codAmount); }, [codAmount]);
+
   // Multi-product items
   const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number }>>([
     { name: "", weight: 200, quantity: 1 }
@@ -101,14 +97,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setProductItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
   };
 
-  // Derived values from product items
   const totalItemWeight = productItems.reduce((sum, item) => sum + item.weight * item.quantity, 0);
   const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
   const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
   const [note, setNote] = useState("");
   const [requiredNote, setRequiredNote] = useState("CHOTHUHANG");
   const [paymentTypeId, setPaymentTypeId] = useState("1");
-  const [pickupType, setPickupType] = useState("pickup"); // pickup | dropoff
+  const [pickupType, setPickupType] = useState("pickup");
 
   // Services & Fee
   const [services, setServices] = useState<GHNService[]>([]);
@@ -119,41 +114,15 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
   const [autoMatchDone, setAutoMatchDone] = useState(false);
 
-  // Address sub-dialog
-  const [showAddressDialog, setShowAddressDialog] = useState(false);
-  const [tempAddress, setTempAddress] = useState("");
-  const [tempProvinceId, setTempProvinceId] = useState("");
-  const [tempDistrictId, setTempDistrictId] = useState("");
-  const [tempWardCode, setTempWardCode] = useState("");
-  const [tempDistricts, setTempDistricts] = useState<District[]>([]);
-  const [tempWards, setTempWards] = useState<Ward[]>([]);
-
-  // Address suggestions (Goong Maps)
+  // Address suggestions (Goong Maps) - inline
   const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const debouncedAddress = useDebounce(tempAddress, 400);
+  const debouncedAddress = useDebounce(toAddress, 400);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
   const hasPrefilledRef = useRef(false);
-  const resetBodyDialogStyles = useCallback(() => {
-    document.body.style.pointerEvents = "";
-    document.body.style.overflow = "";
-  }, []);
-
-  const closeAddressDialog = useCallback(() => {
-    setShowAddressDialog(false);
-    resetBodyDialogStyles();
-  }, [resetBodyDialogStyles]);
-
-  const handleMainDialogOpenChange = useCallback((nextOpen: boolean) => {
-    if (!nextOpen) {
-      setShowAddressDialog(false);
-      resetBodyDialogStyles();
-    }
-    onOpenChange(nextOpen);
-  }, [onOpenChange, resetBodyDialogStyles]);
 
   // Pre-fill
   useEffect(() => {
@@ -183,32 +152,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
     if (!open) {
       hasPrefilledRef.current = false;
-      setShowAddressDialog(false);
-      resetBodyDialogStyles();
     }
-  }, [order, open, remainingAmount, resetBodyDialogStyles]);
-
-  useEffect(() => {
-    if (!showAddressDialog) return;
-
-    const previousOverflow = document.body.style.overflow;
-    const frame = requestAnimationFrame(() => {
-      document.body.style.pointerEvents = "";
-      document.body.style.overflow = "hidden";
-    });
-
-    return () => {
-      cancelAnimationFrame(frame);
-      document.body.style.pointerEvents = "";
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [showAddressDialog]);
-
-  useEffect(() => {
-    return () => {
-      resetBodyDialogStyles();
-    };
-  }, [resetBodyDialogStyles]);
+  }, [order, open, remainingAmount]);
 
   // Fetch address suggestions from Goong Maps API
   const fetchAddressSuggestions = useCallback(async (searchText: string) => {
@@ -234,10 +179,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   }, []);
 
   useEffect(() => {
-    if (showAddressDialog) {
+    if (open) {
       fetchAddressSuggestions(debouncedAddress);
     }
-  }, [debouncedAddress, showAddressDialog, fetchAddressSuggestions]);
+  }, [debouncedAddress, open, fetchAddressSuggestions]);
 
   const callGHN = useCallback(async (action: string, body: Record<string, any> = {}) => {
     const { data, error } = await supabase.functions.invoke('ghn-tracking', {
@@ -248,7 +193,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     return data.data;
   }, []);
 
-  // Auto-match location when address text changes (free typing)
+  const normalizeText = (text: string) => {
+    return text.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d").replace(/Đ/g, "D")
+      .replace(/\s+/g, " ").trim();
+  };
+
+  // Auto-match location from address text
   const autoMatchFromText = useCallback(async (addressText: string) => {
     if (!addressText || addressText.length < 5 || provinces.length === 0) return;
     const normalizedAddr = normalizeText(addressText);
@@ -273,10 +225,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }));
     const matchedProv = findBestMatch(provCandidates);
     if (matchedProv) {
-      setTempProvinceId(String(matchedProv.id));
+      setProvinceId(String(matchedProv.id));
       try {
         const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
-        setTempDistricts(distList || []);
+        setDistricts(distList || []);
         const distCandidates = (distList || []).map((d: District) => ({
           id: d.DistrictID,
           names: Array.from(new Set([
@@ -287,9 +239,9 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         }));
         const matchedDist = findBestMatch(distCandidates);
         if (matchedDist) {
-          setTempDistrictId(String(matchedDist.id));
+          setDistrictId(String(matchedDist.id));
           const wardList = await callGHN('get_wards', { districtId: matchedDist.id });
-          setTempWards(wardList || []);
+          setWards(wardList || []);
           const wardCandidates = (wardList || []).map((w: Ward) => ({
             id: w.WardCode,
             names: Array.from(new Set([
@@ -299,19 +251,19 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
             ]))
           }));
           const matchedWard = findBestMatch(wardCandidates);
-          if (matchedWard) setTempWardCode(String(matchedWard.id));
+          if (matchedWard) setWardCode(String(matchedWard.id));
         }
-      } catch (e) { console.error('Auto-match from text error:', e); }
+      } catch (e) { console.error('Auto-match error:', e); }
     }
   }, [provinces, callGHN]);
 
   // Debounced auto-match when user types freely
-  const debouncedAddressForMatch = useDebounce(tempAddress, 800);
+  const debouncedAddressForMatch = useDebounce(toAddress, 800);
   useEffect(() => {
-    if (showAddressDialog && debouncedAddressForMatch) {
+    if (open && debouncedAddressForMatch) {
       autoMatchFromText(debouncedAddressForMatch);
     }
-  }, [debouncedAddressForMatch, showAddressDialog, autoMatchFromText]);
+  }, [debouncedAddressForMatch, open, autoMatchFromText]);
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -335,7 +287,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
   }, [open]);
 
-
   const loadShops = async () => {
     setLoadingShops(true);
     try {
@@ -355,89 +306,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     } catch (e) { console.error(e); } finally { setLoadingProvinces(false); }
   };
 
-  const normalizeText = (text: string) => {
-    return text.toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/đ/g, "d").replace(/Đ/g, "D")
-      .replace(/\s+/g, " ").trim();
-  };
-
-  const tryAutoMatchLocation = useCallback(async (provList: Province[], rawAddress: string) => {
-    if (!rawAddress || provList.length === 0) return;
-    const normalizedAddr = normalizeText(rawAddress);
-
-    const findBestMatch = (items: { id: any; names: string[] }[]): { id: any } | null => {
-      const allPairs: { name: string; id: any }[] = [];
-      for (const item of items) {
-        for (const n of item.names) {
-          allPairs.push({ name: n, id: item.id });
-        }
-      }
-      allPairs.sort((a, b) => b.name.length - a.name.length);
-      for (const pair of allPairs) {
-        if (pair.name.length >= 2 && normalizedAddr.includes(pair.name)) {
-          return pair;
-        }
-      }
-      return null;
-    };
-
-    const provCandidates = provList.map(p => {
-      const names = [
-        normalizeText(p.ProvinceName),
-        normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
-        ...(p.NameExtension || []).map(n => normalizeText(n)),
-      ];
-      return { id: p.ProvinceID, names: Array.from(new Set(names)) };
-    });
-    const matchedProv = findBestMatch(provCandidates);
-    if (!matchedProv) return;
-
-    console.log('🗺️ Auto-matched province:', matchedProv.id);
-    setProvinceId(String(matchedProv.id));
-
-    try {
-      const distList: District[] = await callGHN('get_districts', { provinceId: matchedProv.id });
-      setDistricts(distList || []);
-
-      const distCandidates = (distList || []).map(d => {
-        const names = [
-          normalizeText(d.DistrictName),
-          normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
-          ...(d.NameExtension || []).map(n => normalizeText(n)),
-        ];
-        return { id: d.DistrictID, names: Array.from(new Set(names)) };
-      });
-      const matchedDist = findBestMatch(distCandidates);
-      if (!matchedDist) return;
-
-      console.log('🗺️ Auto-matched district:', matchedDist.id);
-      setDistrictId(String(matchedDist.id));
-
-      const wardList: Ward[] = await callGHN('get_wards', { districtId: matchedDist.id });
-      setWards(wardList || []);
-
-      const wardCandidates = (wardList || []).map(w => {
-        const names = [
-          normalizeText(w.WardName),
-          normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
-          ...(w.NameExtension || []).map(n => normalizeText(n)),
-        ];
-        return { id: w.WardCode, names: Array.from(new Set(names)) };
-      });
-      const matchedWard = findBestMatch(wardCandidates);
-      if (matchedWard) {
-        console.log('🗺️ Auto-matched ward:', matchedWard.id);
-        setWardCode(String(matchedWard.id));
-      }
-    } catch (e) { console.error('Auto-match error:', e); }
-  }, [callGHN]);
-
   // Trigger auto-match immediately when customer has address data
   useEffect(() => {
     if (provinces.length > 0 && order?.customers?.address && open && !autoMatchDone) {
       setAutoMatchDone(true);
-      tryAutoMatchLocation(provinces, order.customers.address);
+      autoMatchFromText(order.customers.address);
     }
   }, [provinces, order, open, autoMatchDone]);
 
@@ -453,19 +326,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setWards([]); setWardCode("");
     setFeeDetail(null); setFeeStatus("idle");
     try { setWards(await callGHN('get_wards', { districtId: distId })); } catch (e) { console.error(e); } finally { setLoadingWards(false); }
-  };
-
-  // Load temp districts/wards for address sub-dialog
-  const loadTempDistricts = async (provId: number) => {
-    setLoadingDistricts(true);
-    setTempDistricts([]); setTempWards([]); setTempDistrictId(""); setTempWardCode("");
-    try { setTempDistricts(await callGHN('get_districts', { provinceId: provId })); } catch (e) { console.error(e); } finally { setLoadingDistricts(false); }
-  };
-
-  const loadTempWards = async (distId: number) => {
-    setLoadingWards(true);
-    setTempWards([]); setTempWardCode("");
-    try { setTempWards(await callGHN('get_wards', { districtId: distId })); } catch (e) { console.error(e); } finally { setLoadingWards(false); }
   };
 
   // Auto-load services when district changes
@@ -557,108 +417,12 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   const fmt = (n: number) => n.toLocaleString("vi-VN") + " đ";
 
-  // Open address sub-dialog
-  const openAddressDialog = async () => {
-    setTempAddress(toAddress);
-    setTempProvinceId(provinceId);
-    setTempDistrictId(districtId);
-    setTempWardCode(wardCode);
-    setTempDistricts(districts);
-    setTempWards(wards);
-    setShowAddressDialog(true);
-    requestAnimationFrame(() => {
-      document.body.style.pointerEvents = "";
-      document.body.style.overflow = "hidden";
-    });
-
-    // Auto-match if we have address but no province selected yet
-    if (toAddress && !provinceId && provinces.length > 0) {
-      const normalizedAddr = normalizeText(toAddress);
-      const findBestMatch = (items: { id: any; names: string[] }[]): { id: any } | null => {
-        const allPairs: { name: string; id: any }[] = [];
-        for (const item of items) {
-          for (const n of item.names) allPairs.push({ name: n, id: item.id });
-        }
-        allPairs.sort((a, b) => b.name.length - a.name.length);
-        for (const pair of allPairs) {
-          if (pair.name.length >= 2 && normalizedAddr.includes(pair.name)) return pair;
-        }
-        return null;
-      };
-
-      const provCandidates = provinces.map(p => ({
-        id: p.ProvinceID,
-        names: Array.from(new Set([
-          normalizeText(p.ProvinceName),
-          normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
-          ...(p.NameExtension || []).map(n => normalizeText(n)),
-        ]))
-      }));
-      const matchedProv = findBestMatch(provCandidates);
-      if (matchedProv) {
-        setTempProvinceId(String(matchedProv.id));
-        try {
-          const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
-          setTempDistricts(distList || []);
-          const distCandidates = (distList || []).map((d: District) => ({
-            id: d.DistrictID,
-            names: Array.from(new Set([
-              normalizeText(d.DistrictName),
-              normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
-              ...(d.NameExtension || []).map(n => normalizeText(n)),
-            ]))
-          }));
-          const matchedDist = findBestMatch(distCandidates);
-          if (matchedDist) {
-            setTempDistrictId(String(matchedDist.id));
-            const wardList = await callGHN('get_wards', { districtId: matchedDist.id });
-            setTempWards(wardList || []);
-            const wardCandidates = (wardList || []).map((w: Ward) => ({
-              id: w.WardCode,
-              names: Array.from(new Set([
-                normalizeText(w.WardName),
-                normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
-                ...(w.NameExtension || []).map(n => normalizeText(n)),
-              ]))
-            }));
-            const matchedWard = findBestMatch(wardCandidates);
-            if (matchedWard) setTempWardCode(String(matchedWard.id));
-          }
-        } catch (e) { console.error('Address dialog auto-match error:', e); }
-      }
-    }
-  };
-
-  // Confirm address from sub-dialog
-  const confirmAddress = () => {
-    setToAddress(tempAddress);
-    setProvinceId(tempProvinceId);
-    setDistrictId(tempDistrictId);
-    setWardCode(tempWardCode);
-    setDistricts(tempDistricts);
-    setWards(tempWards);
-    closeAddressDialog();
-  };
-
-  // Get display text for selected address
-  const getAddressDisplayText = () => {
-    const parts: string[] = [];
-    if (toAddress) parts.push(toAddress);
-    const ward = wards.find(w => w.WardCode === wardCode);
-    if (ward) parts.push(ward.WardName);
-    const district = districts.find(d => String(d.DistrictID) === districtId);
-    if (district) parts.push(district.DistrictName);
-    const province = provinces.find(p => String(p.ProvinceID) === provinceId);
-    if (province) parts.push(province.ProvinceName);
-    return parts.length > 0 ? parts.join(", ") : "";
-  };
-
   const selectedShop = shops.find(s => String(s._id) === selectedShopId);
 
   // ======== SUCCESS SCREEN ========
   if (success) {
     return (
-      <Dialog open={open} onOpenChange={handleMainDialogOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-green-600">
@@ -717,142 +481,19 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 </a>
               </Button>
             </div>
-            <Button className="w-full" onClick={() => handleMainDialogOpenChange(false)}>Đóng</Button>
+            <Button className="w-full" onClick={() => onOpenChange(false)}>Đóng</Button>
           </div>
         </DialogContent>
       </Dialog>
     );
   }
 
-  // ======== ADDRESS SUB-DIALOG (rendered as overlay, not nested Dialog) ========
-  const addressDialog = showAddressDialog ? (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 pointer-events-auto" onClick={closeAddressDialog}>
-      <div className="relative z-[101] w-full max-w-lg mx-4 rounded-xl bg-background shadow-xl pointer-events-auto" onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b">
-          <h3 className="font-semibold text-base">Địa chỉ nhận</h3>
-          <button type="button" onClick={closeAddressDialog} className="rounded-full opacity-70 hover:opacity-100 p-1.5 hover:bg-muted transition-colors">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="p-5 space-y-4">
-          {/* Section card */}
-          <div className="rounded-lg border p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold">Bên nhận</span>
-            </div>
-            <Separator />
-
-            <div className="space-y-1.5 relative">
-              <Label className="text-sm font-medium">Địa chỉ nhận <span className="text-destructive">*</span></Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  ref={addressInputRef}
-                  value={tempAddress}
-                  onChange={e => { setTempAddress(e.target.value); setShowSuggestions(true); }}
-                  onFocus={() => { if (addressSuggestions.length > 0) setShowSuggestions(true); }}
-                  placeholder="Nhập để tìm địa chỉ..."
-                  className="text-sm pointer-events-auto pl-8"
-                />
-                {loadingSuggestions && (
-                  <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-                )}
-              </div>
-              {showSuggestions && addressSuggestions.length > 0 && (
-                <div
-                  ref={suggestionsRef}
-                  className="absolute left-0 right-0 top-full mt-1 z-[120] rounded-md border bg-popover shadow-lg max-h-60 overflow-y-auto"
-                >
-                  {addressSuggestions.map((s, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors border-b last:border-b-0 pointer-events-auto"
-                      onClick={() => {
-                        setTempAddress(s.description);
-                        setShowSuggestions(false);
-                        // Auto-match location from selected Goong address
-                        autoMatchFromText(s.description);
-                      }}
-                    >
-                      <div className="flex items-start gap-2">
-                        <MapPin className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{s.main_text}</p>
-                          <p className="text-xs text-muted-foreground truncate">{s.secondary_text}</p>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* 3 selects in a row like GHN */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Tỉnh - Thành phố <span className="text-destructive">*</span></Label>
-                <Select value={tempProvinceId} onValueChange={v => { setTempProvinceId(v); loadTempDistricts(parseInt(v)); }}>
-                  <SelectTrigger className="text-sm pointer-events-auto">
-                    <SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60 z-[110]">
-                    {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Quận - Huyện <span className="text-destructive">*</span></Label>
-                <Select value={tempDistrictId} onValueChange={v => { setTempDistrictId(v); loadTempWards(parseInt(v)); }} disabled={!tempProvinceId}>
-                  <SelectTrigger className="text-sm pointer-events-auto">
-                    <SelectValue placeholder={loadingDistricts ? "Tải..." : "Chọn"} />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60 z-[110]">
-                    {tempDistricts.map(d => <SelectItem key={d.DistrictID} value={String(d.DistrictID)}>{d.DistrictName}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Phường - Xã <span className="text-destructive">*</span></Label>
-                <Select value={tempWardCode} onValueChange={setTempWardCode} disabled={!tempDistrictId}>
-                  <SelectTrigger className="text-sm pointer-events-auto">
-                    <SelectValue placeholder={loadingWards ? "Tải..." : "Chọn"} />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60 z-[110]">
-                    {tempWards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-3 px-5 py-4 border-t">
-          <Button variant="outline" onClick={closeAddressDialog}>Hủy</Button>
-          <Button onClick={confirmAddress} disabled={!tempProvinceId || !tempDistrictId || !tempWardCode}>
-            Xong
-          </Button>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
   // ======== MAIN FORM ========
   return (
-    <Dialog open={open} onOpenChange={handleMainDialogOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-5xl max-h-[90vh] overflow-hidden p-0"
         aria-describedby={undefined}
-        onPointerDownOutside={(event) => {
-          if (showAddressDialog) event.preventDefault();
-        }}
-        onInteractOutside={(event) => {
-          if (showAddressDialog) event.preventDefault();
-        }}
       >
         {/* Header */}
         <div className="px-6 pt-5 pb-3 border-b">
@@ -918,22 +559,92 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     <Input value={toPhone} onChange={e => setToPhone(e.target.value)} placeholder="Nhập số điện thoại" className="text-sm" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Địa chỉ người nhận <span className="text-destructive">*</span></Label>
-                    <button
-                      type="button"
-                      onClick={openAddressDialog}
-                      className="w-full flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent/50 transition-colors text-left min-h-[40px]"
-                    >
-                      <span className={getAddressDisplayText() ? "text-foreground truncate" : "text-muted-foreground"}>
-                        {getAddressDisplayText() || "Nhấn để chọn địa chỉ..."}
-                      </span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0 ml-2" />
-                    </button>
+                    <Label className="text-sm font-medium">Họ tên <span className="text-destructive">*</span></Label>
+                    <Input value={toName} onChange={e => setToName(e.target.value)} placeholder="Nhập họ tên" className="text-sm" />
                   </div>
                 </div>
-                <div className="space-y-1.5 max-w-[calc(50%-0.5rem)]">
-                  <Label className="text-sm font-medium">Họ tên <span className="text-destructive">*</span></Label>
-                  <Input value={toName} onChange={e => setToName(e.target.value)} placeholder="Nhập họ tên" className="text-sm" />
+
+                {/* Address search inline */}
+                <div className="space-y-1.5 relative">
+                  <Label className="text-sm font-medium">Địa chỉ nhận <span className="text-destructive">*</span></Label>
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      ref={addressInputRef}
+                      value={toAddress}
+                      onChange={e => { setToAddress(e.target.value); setShowSuggestions(true); }}
+                      onFocus={() => { if (addressSuggestions.length > 0) setShowSuggestions(true); }}
+                      placeholder="Nhập để tìm địa chỉ..."
+                      className="text-sm pl-8"
+                    />
+                    {loadingSuggestions && (
+                      <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                    )}
+                  </div>
+                  {showSuggestions && addressSuggestions.length > 0 && (
+                    <div
+                      ref={suggestionsRef}
+                      className="absolute left-0 right-0 top-full mt-1 z-50 rounded-md border bg-popover shadow-lg max-h-60 overflow-y-auto"
+                    >
+                      {addressSuggestions.map((s, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors border-b last:border-b-0"
+                          onClick={() => {
+                            setToAddress(s.description);
+                            setShowSuggestions(false);
+                            autoMatchFromText(s.description);
+                          }}
+                        >
+                          <div className="flex items-start gap-2">
+                            <MapPin className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{s.main_text}</p>
+                              <p className="text-xs text-muted-foreground truncate">{s.secondary_text}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Province / District / Ward inline */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Tỉnh/TP <span className="text-destructive">*</span></Label>
+                    <Select value={provinceId} onValueChange={v => { setProvinceId(v); loadDistricts(parseInt(v)); }}>
+                      <SelectTrigger className="text-sm">
+                        <SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Quận/Huyện <span className="text-destructive">*</span></Label>
+                    <Select value={districtId} onValueChange={v => { setDistrictId(v); loadWards(parseInt(v)); }} disabled={!provinceId}>
+                      <SelectTrigger className="text-sm">
+                        <SelectValue placeholder={loadingDistricts ? "Tải..." : "Chọn"} />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {districts.map(d => <SelectItem key={d.DistrictID} value={String(d.DistrictID)}>{d.DistrictName}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Phường/Xã <span className="text-destructive">*</span></Label>
+                    <Select value={wardCode} onValueChange={setWardCode} disabled={!districtId}>
+                      <SelectTrigger className="text-sm">
+                        <SelectValue placeholder={loadingWards ? "Tải..." : "Chọn"} />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {wards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -980,7 +691,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
             <div className="px-6 py-5 border-b">
               <h3 className="text-sm font-bold mb-3">Thông tin đơn hàng</h3>
               <div className="space-y-4">
-                {/* Dimensions row */}
                 <div className="rounded-lg border p-4">
                   <div className="grid grid-cols-5 gap-3">
                     <div className="space-y-1.5">
@@ -1006,7 +716,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   </div>
                 </div>
 
-                {/* COD & Giao thất bại */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Tổng tiền thu hộ (COD)</Label>
@@ -1014,23 +723,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <Checkbox
-                        id="cod-failed"
-                        checked={codFailedEnabled}
-                        onCheckedChange={(v) => setCodFailedEnabled(!!v)}
-                      />
+                      <Checkbox id="cod-failed" checked={codFailedEnabled} onCheckedChange={(v) => setCodFailedEnabled(!!v)} />
                       <Label htmlFor="cod-failed" className="text-sm font-medium cursor-pointer">Giao thất bại thu tiền</Label>
                     </div>
-                    <CurrencyInput
-                      value={codFailedAmount}
-                      onChange={v => setCodFailedAmount(v)}
-                      disabled={!codFailedEnabled}
-                      className="text-sm"
-                    />
+                    <CurrencyInput value={codFailedAmount} onChange={v => setCodFailedAmount(v)} disabled={!codFailedEnabled} className="text-sm" />
                   </div>
                 </div>
 
-                {/* Giá trị hàng hóa & Mã đơn riêng */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Tổng giá trị hàng hóa</Label>
@@ -1039,7 +738,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Mã đơn riêng khách hàng</Label>
-                    <Input value={order.display_order_number || order.order_number} readOnly className="text-sm bg-muted" placeholder="Nhập mã đơn riêng khách hàng (nếu có)" />
+                    <Input value={order.display_order_number || order.order_number} readOnly className="text-sm bg-muted" />
                   </div>
                 </div>
               </div>
@@ -1113,7 +812,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           {/* RIGHT COLUMN - Fee Sidebar (sticky) */}
           <div className="flex flex-col border-l bg-muted/20">
             <div className="p-4 space-y-3 flex-1 overflow-y-auto">
-              {/* Fee breakdown */}
               {feeDetail && (
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
@@ -1145,7 +843,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 </div>
               )}
 
-              {/* Total fee */}
               <div className="flex justify-between items-baseline pt-1 border-t">
                 <span className="text-sm text-muted-foreground">Tổng phí:</span>
                 <span className="text-xl font-bold text-primary">
@@ -1159,7 +856,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 </span>
               </div>
 
-              {/* Info note */}
               <div className="flex gap-2 rounded-md bg-blue-50 dark:bg-blue-950/30 p-2.5 text-xs text-blue-700 dark:text-blue-300">
                 <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <span>Tổng phí đã bao gồm phụ phí xăng dầu 10% giá cước vận chuyển</span>
@@ -1167,7 +863,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
               <Separator />
 
-              {/* Payment type */}
               <div className="space-y-1.5">
                 <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
                   <SelectTrigger className="text-sm">
@@ -1181,9 +876,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
               </div>
             </div>
 
-            {/* Bottom actions */}
             <div className="p-4 border-t flex gap-2">
-              <Button variant="outline" className="flex-1 text-primary border-primary hover:bg-primary/10" onClick={() => handleMainDialogOpenChange(false)} disabled={loading}>
+              <Button variant="outline" className="flex-1 text-primary border-primary hover:bg-primary/10" onClick={() => onOpenChange(false)} disabled={loading}>
                 Hủy
               </Button>
               <Button className="flex-1 gap-2" onClick={handleSubmit} disabled={loading}>
@@ -1194,9 +888,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           </div>
         </div>
       </DialogContent>
-
-      {/* Address sub-dialog rendered via portal to bypass Radix body-lock */}
-      {addressDialog && createPortal(addressDialog, document.body)}
     </Dialog>
   );
 }
