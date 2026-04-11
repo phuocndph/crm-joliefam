@@ -178,8 +178,51 @@ export function CreatePaymentForm({
 
       console.log('✅ Transaction inserted successfully');
 
-      // Calculate new payment status
-      const newTotalPaid = totalPaid + data.paymentAmount;
+      // Create expense record if deduction exists
+      if (hasDeduction && deductionAmount > 0) {
+        const expenseCode = `CP-${orderNumber}-${Date.now().toString(36).toUpperCase()}`;
+        const expenseData = {
+          amount: deductionAmount,
+          category: 'shipping_fee',
+          description: deductionDescription || `Phí vận chuyển đơn hàng #${orderNumber}`,
+          expense_code: expenseCode,
+          expense_date: data.paymentDate.toISOString(),
+          tenant_id: 'default',
+          manager_id: managerId,
+        };
+
+        console.log('🚚 Creating expense:', expenseData);
+        const { error: expenseError } = await supabase.from('expenses').insert(expenseData);
+        if (expenseError) {
+          console.error('❌ Error inserting expense:', expenseError);
+          throw expenseError;
+        }
+        console.log('✅ Expense inserted successfully');
+
+        // Create expense transaction
+        const expenseTransactionData = {
+          amount: deductionAmount,
+          type: 'expense',
+          category: 'shipping_fee',
+          description: deductionDescription || `Phí vận chuyển đơn hàng #${orderNumber}`,
+          date: data.paymentDate.toISOString(),
+          order_id: orderId,
+          tenant_id: 'default',
+          manager_id: managerId,
+        };
+
+        console.log('📊 Creating expense transaction:', expenseTransactionData);
+        const { error: expTransError } = await supabase.from('transactions').insert(expenseTransactionData);
+        if (expTransError) {
+          console.error('❌ Error inserting expense transaction:', expTransError);
+          throw expTransError;
+        }
+        console.log('✅ Expense transaction inserted successfully');
+      }
+
+      // Calculate new payment status (deduction counts toward "paid" for the order)
+      const totalSettled = data.paymentAmount + (hasDeduction ? deductionAmount : 0);
+      const newTotalPaid = totalPaid + totalSettled;
       const newPaymentStatus = newTotalPaid >= totalAmount ? 'paid' : 
                               newTotalPaid > 0 ? 'partial' : 'pending';
 
