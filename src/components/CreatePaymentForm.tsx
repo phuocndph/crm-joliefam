@@ -467,19 +467,12 @@ export function CreatePaymentForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Loại thanh toán *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn loại thanh toán" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="bg-white z-50">
-                      <SelectItem value="deposit">Đặt cọc</SelectItem>
-                      <SelectItem value="payment_2">Thanh toán lần 2</SelectItem>
-                      <SelectItem value="payment_3">Thanh toán lần 3</SelectItem>
-                      <SelectItem value="full">Thanh toán toàn bộ</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FormControl>
+                    <Input 
+                      placeholder="VD: Đặt cọc, Thanh toán lần 2..."
+                      {...field}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
