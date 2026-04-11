@@ -71,6 +71,7 @@ const TransactionManagement = () => {
   const [orderPayments, setOrderPayments] = useState<OrderPayment[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedOrderPayments, setSelectedOrderPayments] = useState<OrderPayment[]>([]);
+  const [selectedOrderExpenses, setSelectedOrderExpenses] = useState<any[]>([]);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [loading, setLoading] = useState(true);
