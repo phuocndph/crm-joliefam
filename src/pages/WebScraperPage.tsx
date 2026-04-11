@@ -11,6 +11,20 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Globe, Play, Download, Loader2, CheckCircle, XCircle, Trash2 } from "lucide-react";
 
+const FALLBACK_MODELS = [
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+  "gemini-3-flash-preview",
+  "gemini-3.1-pro-preview",
+  "gpt-5-nano",
+  "gpt-5-mini",
+  "gpt-5",
+  "gpt-5.2",
+  "glm-4.5-flash",
+  "glm-4.7-flash",
+];
+
 const DEFAULT_PROMPT = `Trích xuất tất cả thông tin thành viên/doanh nghiệp từ nội dung sau thành JSON array.
 Mỗi phần tử gồm các trường: name (Họ tên), company (Công ty), profession (Ngành nghề), phone (SĐT), email (Email).
 Nếu không có thông tin thì để chuỗi rỗng "".
