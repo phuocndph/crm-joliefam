@@ -294,12 +294,6 @@ export function CreatePaymentForm({
     return amount.toLocaleString("vi-VN") + " VNĐ";
   };
 
-  const suggestedAmounts = [
-    { label: "Đặt cọc 30%", amount: Math.round(totalAmount * 0.3) },
-    { label: "Đặt cọc 50%", amount: Math.round(totalAmount * 0.5) },
-    { label: "Còn lại", amount: remainingAmount },
-    { label: "Toàn bộ", amount: totalAmount },
-  ];
 
   return (
     <>
@@ -343,29 +337,6 @@ export function CreatePaymentForm({
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
           
-          {/* Quick Amount Selection */}
-          <div className="space-y-2">
-            <Label>Chọn nhanh số tiền</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {suggestedAmounts.map((suggestion) => (
-                <Button
-                  key={suggestion.label}
-                  type="button"
-                  variant="outline"
-                  className="text-left justify-start"
-                  onClick={() => form.setValue("paymentAmount", suggestion.amount)}
-                  disabled={suggestion.amount > remainingAmount || suggestion.amount <= 0}
-                >
-                  <div>
-                    <div className="font-medium">{suggestion.label}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {formatCurrency(suggestion.amount)}
-                    </div>
-                  </div>
-                </Button>
-              ))}
-            </div>
-          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField
