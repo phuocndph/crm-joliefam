@@ -1,11 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { getOrderDisplayNumber } from "@/lib/orderUtils";
 
 interface CreateExpenseFormProps {
   onClose: () => void;
@@ -14,6 +17,8 @@ interface CreateExpenseFormProps {
 
 export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps) {
   const [loading, setLoading] = useState(false);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [selectedOrderId, setSelectedOrderId] = useState<string>("");
   const [formData, setFormData] = useState({
     category: "",
     person_name: "",
@@ -22,6 +27,19 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
     expense_date: new Date().toISOString().split('T')[0]
   });
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('id, order_number, display_order_number, customers!left(name)')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (data) setOrders(data);
+    };
+    fetchOrders();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +57,6 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
     try {
       const expenseCode = `CP-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Math.floor(Math.random() * 1000)}`;
       
-      // Get current user session to set manager_id
       const { data: { user } } = await supabase.auth.getUser();
       
       const { error } = await supabase
@@ -55,6 +72,30 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
         });
 
       if (error) throw error;
+
+      // If an order is selected, also create a transaction record
+      if (selectedOrderId) {
+        const { error: txError } = await supabase
+          .from('transactions')
+          .insert({
+            type: 'expense',
+            order_id: selectedOrderId,
+            amount: formData.amount,
+            description: formData.description || formData.category,
+            category: formData.category,
+            date: formData.expense_date,
+            manager_id: user?.id
+          });
+
+        if (txError) {
+          console.error('Error creating linked transaction:', txError);
+        } else {
+          // Invalidate transaction-related queries
+          queryClient.invalidateQueries({ queryKey: ['transactions'] });
+          queryClient.invalidateQueries({ queryKey: ['allOrderExpenses'] });
+          queryClient.invalidateQueries({ queryKey: ['orders'] });
+        }
+      }
 
       onSubmit();
       onClose();
@@ -125,6 +166,26 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
             value={formData.amount}
             onChange={(value) => handleInputChange('amount', value)}
           />
+        </div>
+
+        <div className="space-y-2 md:col-span-2">
+          <Label htmlFor="order_id">Đơn hàng liên quan (tùy chọn)</Label>
+          <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Chọn đơn hàng nếu chi phí liên quan đến đơn hàng" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">-- Không liên kết đơn hàng --</SelectItem>
+              {orders.map((order) => (
+                <SelectItem key={order.id} value={order.id}>
+                  #{getOrderDisplayNumber(order)} - {order.customers?.name || 'Không có KH'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Nếu chọn đơn hàng, chi phí sẽ được tính vào cột "Chi phí" của đơn hàng đó trong trang Thanh toán.
+          </p>
         </div>
       </div>
 
