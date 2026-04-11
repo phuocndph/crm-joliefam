@@ -272,7 +272,7 @@ export function CreatePaymentForm({
   const resetForm = () => {
     const defaultValues = {
       paymentAmount: 0,
-      paymentType: "deposit",
+      paymentType: "Đặt cọc",
       paymentMethod: "cash",
       paymentDate: new Date(),
       installmentNumber: 1,
