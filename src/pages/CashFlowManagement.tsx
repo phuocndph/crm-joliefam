@@ -537,6 +537,8 @@ export default function CashFlowManagement() {
   // Event handlers
   const handleCreateExpense = async () => {
     await queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    await queryClient.invalidateQueries({ queryKey: ['allOrderExpenses'] });
+    await queryClient.invalidateQueries({ queryKey: ['transactions'] });
     setShowCreateForm(false);
     toast({
       title: "Thành công",
