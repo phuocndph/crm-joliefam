@@ -55,6 +55,7 @@ interface CreatePaymentFormProps {
   totalAmount: number;
   totalPaid: number;
   remainingAmount: number;
+  orderExpenses?: number;
   onClose: () => void;
   onSubmit: () => void;
 }
@@ -65,15 +66,33 @@ export function CreatePaymentForm({
   totalAmount, 
   totalPaid, 
   remainingAmount,
+  orderExpenses = 0,
   onClose, 
   onSubmit 
 }: CreatePaymentFormProps) {
   const [loading, setLoading] = useState(false);
   const [managerId, setManagerId] = useState<string | null>(null);
+  const [fetchedExpenses, setFetchedExpenses] = useState<number | null>(null);
   const [hasDeduction, setHasDeduction] = useState(false);
   const [deductionAmount, setDeductionAmount] = useState(0);
   const [deductionDescription, setDeductionDescription] = useState(`Phí vận chuyển đơn hàng #${orderNumber}`);
   const { toast } = useToast();
+
+  const actualExpenses = orderExpenses !== undefined ? orderExpenses : (fetchedExpenses ?? 0);
+
+  // Fetch expenses if not provided via prop
+  React.useEffect(() => {
+    if (orderExpenses !== undefined) return;
+    const fetchExpenses = async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('order_id', orderId)
+        .eq('type', 'expense');
+      setFetchedExpenses(data?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0);
+    };
+    fetchExpenses();
+  }, [orderId, orderExpenses]);
 
   // Fetch order's manager_id
   React.useEffect(() => {
@@ -349,31 +368,40 @@ export function CreatePaymentForm({
       </DialogHeader>
       
       {/* Order Summary */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-lg font-bold text-blue-600">
+          <CardContent className="p-3 text-center">
+            <div className="text-base font-bold text-blue-600">
               {formatCurrency(totalAmount)}
             </div>
-            <div className="text-sm text-muted-foreground">Tổng tiền</div>
+            <div className="text-xs text-muted-foreground">Tổng tiền</div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-lg font-bold text-green-600">
+          <CardContent className="p-3 text-center">
+            <div className="text-base font-bold text-green-600">
               {formatCurrency(totalPaid)}
             </div>
-            <div className="text-sm text-muted-foreground">Đã thanh toán</div>
+            <div className="text-xs text-muted-foreground">Đã thanh toán</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3 text-center">
+            <div className="text-base font-bold text-orange-600">
+              {formatCurrency(actualExpenses)}
+            </div>
+            <div className="text-xs text-muted-foreground">Chi phí</div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-lg font-bold text-red-600">
+          <CardContent className="p-3 text-center">
+            <div className="text-base font-bold text-red-600">
               {formatCurrency(remainingAmount)}
             </div>
-            <div className="text-sm text-muted-foreground">Còn lại</div>
+            <div className="text-xs text-muted-foreground">Còn lại</div>
           </CardContent>
         </Card>
       </div>

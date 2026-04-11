@@ -881,6 +881,7 @@ const TransactionManagement = () => {
               orderNumber={getOrderDisplayNumber(selectedOrder)}
               totalAmount={selectedOrder.total_amount}
               totalPaid={calculatePaidAmount(selectedOrder.id)}
+              orderExpenses={calculateOrderExpenses(selectedOrder.id)}
               remainingAmount={calculateRemainingAmount(selectedOrder)}
               onClose={() => setShowPaymentForm(false)}
               onSubmit={() => {
