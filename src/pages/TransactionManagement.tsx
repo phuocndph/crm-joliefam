@@ -268,7 +268,10 @@ const TransactionManagement = () => {
         const paidAmount = orderPayments
           .filter(p => p.order_id === o.id)
           .reduce((paidSum, p) => paidSum + Number(p.payment_amount), 0);
-        return sum + (Number(o.total_amount) - paidAmount);
+        const expenses = allOrderExpenses
+          .filter(e => e.order_id === o.id)
+          .reduce((expSum, e) => expSum + Number(e.amount || 0), 0);
+        return sum + (Number(o.total_amount) - paidAmount - expenses);
       }, 0)
   };
 
