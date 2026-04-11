@@ -70,6 +70,9 @@ export function CreatePaymentForm({
 }: CreatePaymentFormProps) {
   const [loading, setLoading] = useState(false);
   const [managerId, setManagerId] = useState<string | null>(null);
+  const [hasDeduction, setHasDeduction] = useState(false);
+  const [deductionAmount, setDeductionAmount] = useState(0);
+  const [deductionDescription, setDeductionDescription] = useState(`Phí vận chuyển đơn hàng #${orderNumber}`);
   const { toast } = useToast();
 
   // Fetch order's manager_id
