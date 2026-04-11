@@ -176,14 +176,23 @@ const TransactionManagement = () => {
 
   const loadOrderPaymentDetails = async (orderId: string) => {
     try {
-      const { data, error } = await supabase
-        .from("order_payments")
-        .select("*")
-        .eq("order_id", orderId)
-        .order("payment_date", { ascending: true });
+      const [paymentsRes, expensesRes] = await Promise.all([
+        supabase
+          .from("order_payments")
+          .select("*")
+          .eq("order_id", orderId)
+          .order("payment_date", { ascending: true }),
+        supabase
+          .from("transactions")
+          .select("*")
+          .eq("order_id", orderId)
+          .eq("type", "expense")
+          .order("date", { ascending: true }),
+      ]);
       
-      if (error) throw error;
-      setSelectedOrderPayments(data || []);
+      if (paymentsRes.error) throw paymentsRes.error;
+      setSelectedOrderPayments(paymentsRes.data || []);
+      setSelectedOrderExpenses(expensesRes.data || []);
     } catch (error) {
       console.error('Error loading order payments:', error);
       toast({
