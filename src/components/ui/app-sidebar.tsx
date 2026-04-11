@@ -15,6 +15,7 @@ import {
   FileSignature,
   Receipt,
   Sparkles,
+  Globe,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -138,6 +139,13 @@ const menuItems = [
     url: "/ai-settings", 
     icon: Sparkles,
     description: "Cấu hình AI Quote Fill",
+    permission: "user_management" as const
+  },
+  { 
+    title: "Cào dữ liệu", 
+    url: "/web-scraper", 
+    icon: Globe,
+    description: "Trích xuất dữ liệu từ web",
     permission: "user_management" as const
   },
   { 
