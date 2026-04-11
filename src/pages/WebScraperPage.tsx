@@ -38,7 +38,7 @@ const WebScraperPage = () => {
   const [allRows, setAllRows] = useState<ScrapedRow[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
 
-  // Fetch models from Beeknoee
+  // Fetch models from Beeknoee - only chat/text models (have context_window)
   useEffect(() => {
     const fetchModels = async () => {
       try {
@@ -46,11 +46,17 @@ const WebScraperPage = () => {
           body: { action: "list_models" },
         });
         if (data?.data) {
-          const modelIds = data.data.map((m: any) => m.id).filter(Boolean).sort();
-          setModels(modelIds);
+          const chatModels = data.data
+            .filter((m: any) => m.id && m.context_window)
+            .map((m: any) => m.id)
+            .sort();
+          setModels(chatModels.length > 0 ? chatModels : FALLBACK_MODELS);
+        } else {
+          setModels(FALLBACK_MODELS);
         }
       } catch (e) {
         console.error("Failed to fetch models:", e);
+        setModels(FALLBACK_MODELS);
       }
     };
     fetchModels();
