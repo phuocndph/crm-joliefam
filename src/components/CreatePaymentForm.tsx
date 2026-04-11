@@ -450,9 +450,9 @@ export function CreatePaymentForm({
                     />
                   </FormControl>
                   <FormMessage />
-                  {watchedPaymentAmount > remainingAmount && (
+                  {(watchedPaymentAmount + (hasDeduction ? deductionAmount : 0)) > remainingAmount && (
                     <p className="text-sm text-red-600">
-                      Số tiền không thể lớn hơn {formatCurrency(remainingAmount)}
+                      Tổng thanh toán + chi phí không thể lớn hơn {formatCurrency(remainingAmount)}
                     </p>
                   )}
                 </FormItem>
