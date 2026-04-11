@@ -163,7 +163,7 @@ export function CreatePaymentForm({
         payment_type: data.paymentType,
         installment_number: data.installmentNumber,
         total_installments: 1,
-        remaining_amount: remainingAmount - data.paymentAmount,
+        remaining_amount: remainingAmount - data.paymentAmount - (hasDeduction ? deductionAmount : 0),
         tenant_id: 'default',
         manager_id: managerId,
       };
