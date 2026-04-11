@@ -74,7 +74,7 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
       if (error) throw error;
 
       // If an order is selected, also create a transaction record
-      if (selectedOrderId) {
+      if (selectedOrderId && selectedOrderId !== "none") {
         const { error: txError } = await supabase
           .from('transactions')
           .insert({
