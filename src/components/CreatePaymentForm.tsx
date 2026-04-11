@@ -598,16 +598,24 @@ export function CreatePaymentForm({
                   <span>Loại thanh toán:</span>
                   <span className="font-medium">{getPaymentTypeLabel(watchedPaymentType)}</span>
                 </div>
+                {hasDeduction && deductionAmount > 0 && (
+                  <div className="flex justify-between">
+                    <span>Chi phí phát sinh:</span>
+                    <span className="font-medium text-orange-600">
+                      -{formatCurrency(deductionAmount)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
-                  <span>Số tiền:</span>
+                  <span>Số tiền thu từ khách:</span>
                   <span className="font-medium text-green-600">
                     {formatCurrency(watchedPaymentAmount || 0)}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Còn lại sau thanh toán:</span>
+                <div className="flex justify-between border-t pt-2">
+                  <span className="font-medium">Còn lại sau thanh toán:</span>
                   <span className="font-medium text-red-600">
-                    {formatCurrency(remainingAmount - (watchedPaymentAmount || 0))}
+                    {formatCurrency(remainingAmount - (watchedPaymentAmount || 0) - (hasDeduction ? deductionAmount : 0))}
                   </span>
                 </div>
               </div>
