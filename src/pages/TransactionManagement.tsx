@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Search, DollarSign, Clock, CheckCircle, AlertCircle, Eye, Plus, Edit, Package, User, MapPin, Phone, Mail, Building, CalendarDays, FileText, Truck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
