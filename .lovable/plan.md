@@ -2,33 +2,39 @@
 
 ## Vấn đề
 
-Khi cần trả phí ship cho khách (ví dụ 100,000đ), hiện tại không có cách nào ghi nhận khoản này trong form thanh toán. Người dùng phải tự tay giảm số tiền thu và tạo chi phí riêng.
+1. **Bảng chính**: Cột "Còn lại" chỉ tính `Tổng tiền - Đã thanh toán`, chưa trừ chi phí đơn hàng
+2. **Bảng chính**: Thiếu cột "Chi phí" để người dùng thấy ngay chi phí của mỗi đơn
+3. **Detail dialog**: Đã đúng (có trừ chi phí)
 
 ## Giải pháp
 
-Thêm tính năng "Chi phí phát sinh" (ví dụ phí ship) ngay trong form thanh toán (`CreatePaymentForm.tsx`). Khi nhập chi phí này:
-- Số tiền thu từ khách tự động giảm tương ứng
-- Hệ thống tự động tạo bản ghi trong bảng `expenses` với category "Phí vận chuyển" và liên kết đến đơn hàng
+### 1. Load chi phí cho tất cả đơn hàng (không chỉ đơn đang xem)
 
-### Thay đổi trong `CreatePaymentForm.tsx`
+Thêm state `allOrderExpenses` và fetch tất cả expenses có `order_id` khi load trang, tương tự cách đang fetch `orderPayments`. Query từ bảng `transactions` với `type = 'expense'` và có `order_id`.
 
-1. Thêm field `deductionAmount` (số tiền chi phí phát sinh) và `deductionDescription` (mô tả, mặc định "Phí vận chuyển")
-2. Cập nhật hiển thị: "Còn lại" sẽ trừ thêm phần chi phí phát sinh
-3. Số tiền thanh toán mặc định = `remainingAmount - deductionAmount`
-4. Khi submit:
-   - Tạo payment với số tiền đã trừ chi phí
-   - Tạo transaction thu nhập với số tiền đã trừ
-   - Tự động tạo bản ghi `expenses` với số tiền chi phí, category "shipping_fee", ghi chú liên kết đơn hàng
-   - Tự động tạo transaction loại `expense` cho khoản chi phí này
+### 2. Thêm cột "Chi phí" vào bảng chính
 
-### UI bổ sung
+Thêm cột giữa "Đã thanh toán" và "Còn lại":
+- Header: `Chi phí`
+- Hiển thị tổng chi phí của đơn hàng đó (màu cam/đỏ)
 
-Thêm section có checkbox "Có chi phí phát sinh" phía trên phần số tiền thanh toán. Khi bật:
-- Hiện input số tiền chi phí
-- Hiện input mô tả chi phí (mặc định: "Phí vận chuyển đơn hàng #XXX")
-- Summary card cập nhật hiển thị: Tổng đơn → Chi phí phát sinh → Số tiền thu khách → Còn lại
+### 3. Cập nhật `calculateRemainingAmount`
 
-### Không cần thay đổi database
+Sửa hàm để trừ thêm chi phí:
+```
+Còn lại = Tổng tiền - Đã thanh toán - Chi phí đơn hàng
+```
 
-Sử dụng bảng `expenses` hiện có để lưu chi phí. Không cần migration.
+### 4. Cập nhật `calculateRemainingAmount` cho form thanh toán
+
+Đảm bảo form tạo thanh toán cũng nhận đúng số "Còn lại" đã trừ chi phí.
+
+### Thay đổi file
+
+- **`src/pages/TransactionManagement.tsx`**:
+  - Thêm fetch expenses cho tất cả orders (trong `fetchOrders` hoặc riêng)
+  - Thêm hàm `calculateOrderExpenses(orderId)`
+  - Sửa `calculateRemainingAmount` trừ chi phí
+  - Thêm cột "Chi phí" vào table header và body
+  - Cập nhật `colSpan` từ 8 → 9
 
