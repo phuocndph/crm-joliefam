@@ -75,6 +75,7 @@ const TransactionManagement = () => {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
+  const [allOrderExpenses, setAllOrderExpenses] = useState<any[]>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -160,6 +161,29 @@ const TransactionManagement = () => {
     refetchOnWindowFocus: true,
   });
 
+  // Use React Query for all order expenses
+  const { data: allOrderExpensesData = [] } = useQuery({
+    queryKey: ['all-order-expenses', selectedManagerId],
+    queryFn: async () => {
+      let query = supabase
+        .from("transactions")
+        .select("*")
+        .eq("type", "expense")
+        .not("order_id", "is", null);
+
+      if (selectedManagerId) {
+        query = query.eq('manager_id', selectedManagerId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  });
+
   useEffect(() => {
     // Sort orders by display order number (largest to smallest)
     const sortedOrders = [...ordersData].sort((a, b) => {
@@ -170,8 +194,9 @@ const TransactionManagement = () => {
     
     setOrders(sortedOrders);
     setOrderPayments(orderPaymentsData);
+    setAllOrderExpenses(allOrderExpensesData);
     setLoading(ordersLoading || paymentsLoading);
-  }, [ordersData, orderPaymentsData, ordersLoading, paymentsLoading]);
+  }, [ordersData, orderPaymentsData, allOrderExpensesData, ordersLoading, paymentsLoading]);
 
   const loadOrderPaymentDetails = async (orderId: string) => {
     try {
@@ -319,9 +344,16 @@ const TransactionManagement = () => {
       .reduce((sum, p) => sum + Number(p.payment_amount), 0);
   };
 
+  const calculateOrderExpenses = (orderId: string) => {
+    return allOrderExpenses
+      .filter(e => e.order_id === orderId)
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  };
+
   const calculateRemainingAmount = (order: Order) => {
     const paidAmount = calculatePaidAmount(order.id);
-    return Number(order.total_amount) - paidAmount;
+    const expenses = calculateOrderExpenses(order.id);
+    return Number(order.total_amount) - paidAmount - expenses;
   };
 
   return (
@@ -446,6 +478,7 @@ const TransactionManagement = () => {
                   <TableHead>Khách hàng</TableHead>
                   <TableHead>Tổng tiền</TableHead>
                   <TableHead>Đã thanh toán</TableHead>
+                  <TableHead>Chi phí</TableHead>
                   <TableHead>Còn lại</TableHead>
                   <TableHead>Trạng thái</TableHead>
                   <TableHead>Ngày tạo</TableHead>
@@ -455,11 +488,11 @@ const TransactionManagement = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">Đang tải...</TableCell>
+                    <TableCell colSpan={9} className="text-center py-8">Đang tải...</TableCell>
                   </TableRow>
                 ) : filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={9} className="text-center py-8">
                       <div className="flex flex-col items-center gap-2">
                         <DollarSign className="h-8 w-8 text-muted-foreground" />
                         <p className="text-muted-foreground">Không có đơn hàng nào</p>
@@ -469,6 +502,7 @@ const TransactionManagement = () => {
                 ) : (
                   filteredOrders.map((order) => {
                     const paidAmount = calculatePaidAmount(order.id);
+                    const orderExpenses = calculateOrderExpenses(order.id);
                     const remainingAmount = calculateRemainingAmount(order);
                     
                     return (
@@ -482,6 +516,11 @@ const TransactionManagement = () => {
                         </TableCell>
                         <TableCell>{formatCurrency(order.total_amount)}</TableCell>
                         <TableCell>{formatCurrency(paidAmount)}</TableCell>
+                        <TableCell>
+                          <span className={orderExpenses > 0 ? "text-orange-600" : "text-muted-foreground"}>
+                            {formatCurrency(orderExpenses)}
+                          </span>
+                        </TableCell>
                         <TableCell>
                           <span className={remainingAmount > 0 ? "text-red-600" : "text-green-600"}>
                             {formatCurrency(remainingAmount)}
