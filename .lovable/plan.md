@@ -2,39 +2,31 @@
 
 ## Vấn đề
 
-1. **Bảng chính**: Cột "Còn lại" chỉ tính `Tổng tiền - Đã thanh toán`, chưa trừ chi phí đơn hàng
-2. **Bảng chính**: Thiếu cột "Chi phí" để người dùng thấy ngay chi phí của mỗi đơn
-3. **Detail dialog**: Đã đúng (có trừ chi phí)
+Khi xóa chi phí trong bảng chi phí (CashFlowManagement), chỉ xóa bản ghi trong bảng `expenses`, nhưng bản ghi tương ứng trong bảng `transactions` (type: 'expense', có order_id) vẫn còn. Dẫn đến cột "Chi phí" trong TransactionManagement vẫn hiển thị số tiền cũ.
 
 ## Giải pháp
 
-### 1. Load chi phí cho tất cả đơn hàng (không chỉ đơn đang xem)
+Cập nhật hàm `handleDeleteExpense` trong `CashFlowManagement.tsx` để khi xóa expense, đồng thời xóa transaction liên quan.
 
-Thêm state `allOrderExpenses` và fetch tất cả expenses có `order_id` khi load trang, tương tự cách đang fetch `orderPayments`. Query từ bảng `transactions` với `type = 'expense'` và có `order_id`.
+### Cách xác định transaction liên quan
 
-### 2. Thêm cột "Chi phí" vào bảng chính
+Khi tạo expense từ form thanh toán, transaction được tạo với:
+- `type = 'expense'`
+- `category = expense.category` (vd: 'shipping_fee')
+- `description` chứa mã đơn hàng
+- `amount = expense.amount`
 
-Thêm cột giữa "Đã thanh toán" và "Còn lại":
-- Header: `Chi phí`
-- Hiển thị tổng chi phí của đơn hàng đó (màu cam/đỏ)
+Cách khớp tốt nhất: xóa transaction có `type = 'expense'`, `category` và `amount` trùng với expense, và `description` chứa cùng nội dung.
 
-### 3. Cập nhật `calculateRemainingAmount`
-
-Sửa hàm để trừ thêm chi phí:
-```
-Còn lại = Tổng tiền - Đã thanh toán - Chi phí đơn hàng
-```
-
-### 4. Cập nhật `calculateRemainingAmount` cho form thanh toán
-
-Đảm bảo form tạo thanh toán cũng nhận đúng số "Còn lại" đã trừ chi phí.
+Tuy nhiên cách an toàn hơn là khớp theo `description` chính xác + `amount` + `type = 'expense'`.
 
 ### Thay đổi file
 
-- **`src/pages/TransactionManagement.tsx`**:
-  - Thêm fetch expenses cho tất cả orders (trong `fetchOrders` hoặc riêng)
-  - Thêm hàm `calculateOrderExpenses(orderId)`
-  - Sửa `calculateRemainingAmount` trừ chi phí
-  - Thêm cột "Chi phí" vào table header và body
-  - Cập nhật `colSpan` từ 8 → 9
+**`src/pages/CashFlowManagement.tsx`** - Sửa `handleDeleteExpense`:
+1. Trước khi xóa expense, tìm và xóa transaction tương ứng trong bảng `transactions` dựa trên:
+   - `type = 'expense'`
+   - `amount = expense.amount`  
+   - `description = expense.description`
+2. Xóa expense như cũ
+3. Invalidate cả query `['transactions']` và `['allOrderExpenses']` để cập nhật UI
 
