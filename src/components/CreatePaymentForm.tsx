@@ -294,12 +294,6 @@ export function CreatePaymentForm({
     return amount.toLocaleString("vi-VN") + " VNĐ";
   };
 
-  const suggestedAmounts = [
-    { label: "Đặt cọc 30%", amount: Math.round(totalAmount * 0.3) },
-    { label: "Đặt cọc 50%", amount: Math.round(totalAmount * 0.5) },
-    { label: "Còn lại", amount: remainingAmount },
-    { label: "Toàn bộ", amount: totalAmount },
-  ];
 
   return (
     <>
