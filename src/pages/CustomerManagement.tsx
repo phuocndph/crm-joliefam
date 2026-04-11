@@ -102,23 +102,24 @@ interface CustomerQuote {
 
 // Component wrapper để tính toán payment info
 function PaymentWrapper({ order, onClose, onSubmit }: { order: any, onClose: () => void, onSubmit: () => void }) {
-  const [paymentInfo, setPaymentInfo] = useState<{totalPaid: number, remainingAmount: number} | null>(null);
+  const [paymentInfo, setPaymentInfo] = useState<{totalPaid: number, remainingAmount: number, orderExpenses: number} | null>(null);
   
   useEffect(() => {
     const fetchPaymentInfo = async () => {
       try {
-        const { data } = await supabase
-          .from('order_payments')
-          .select('payment_amount')
-          .eq('order_id', order.id);
+        const [paymentsRes, expensesRes] = await Promise.all([
+          supabase.from('order_payments').select('payment_amount').eq('order_id', order.id),
+          supabase.from('transactions').select('amount').eq('order_id', order.id).eq('type', 'expense'),
+        ]);
         
-        const totalPaid = data?.reduce((sum, payment) => sum + (payment.payment_amount || 0), 0) || 0;
-        const remainingAmount = (order.total_amount || 0) - totalPaid;
+        const totalPaid = paymentsRes.data?.reduce((sum, p) => sum + (p.payment_amount || 0), 0) || 0;
+        const orderExpenses = expensesRes.data?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0;
+        const remainingAmount = (order.total_amount || 0) - totalPaid - orderExpenses;
         
-        setPaymentInfo({ totalPaid, remainingAmount });
+        setPaymentInfo({ totalPaid, remainingAmount, orderExpenses });
       } catch (error) {
         console.error('Error fetching payment info:', error);
-        setPaymentInfo({ totalPaid: 0, remainingAmount: order.total_amount || 0 });
+        setPaymentInfo({ totalPaid: 0, remainingAmount: order.total_amount || 0, orderExpenses: 0 });
       }
     };
     
@@ -135,6 +136,7 @@ function PaymentWrapper({ order, onClose, onSubmit }: { order: any, onClose: () 
       orderNumber={getOrderDisplayNumber(order)}
       totalAmount={order.total_amount || 0}
       totalPaid={paymentInfo.totalPaid}
+      orderExpenses={paymentInfo.orderExpenses}
       remainingAmount={paymentInfo.remainingAmount}
       onClose={onClose}
       onSubmit={onSubmit}
