@@ -96,7 +96,7 @@ export function CreatePaymentForm({
     resolver: zodResolver(paymentFormSchema),
     defaultValues: {
       paymentAmount: remainingAmount,
-      paymentType: remainingAmount === totalAmount ? "full" : totalPaid === 0 ? "deposit" : "payment_2",
+      paymentType: remainingAmount === totalAmount ? "Thanh toán toàn bộ" : totalPaid === 0 ? "Đặt cọc" : "Thanh toán lần 2",
       paymentMethod: "cash",
       paymentDate: new Date(),
       installmentNumber: 1,
@@ -110,13 +110,13 @@ export function CreatePaymentForm({
   // Suggest payment type based on amount
   React.useEffect(() => {
     if (watchedPaymentAmount === totalAmount) {
-      form.setValue("paymentType", "full");
+      form.setValue("paymentType", "Thanh toán toàn bộ");
     } else if (totalPaid === 0 && watchedPaymentAmount < totalAmount) {
-      form.setValue("paymentType", "deposit");
+      form.setValue("paymentType", "Đặt cọc");
     } else if (totalPaid > 0 && watchedPaymentAmount < remainingAmount) {
-      form.setValue("paymentType", "payment_2");
+      form.setValue("paymentType", "Thanh toán lần 2");
     } else if (totalPaid > 0 && watchedPaymentAmount === remainingAmount) {
-      form.setValue("paymentType", "payment_3");
+      form.setValue("paymentType", "Thanh toán lần 3");
     }
   }, [watchedPaymentAmount, totalAmount, remainingAmount, totalPaid, form]);
 
@@ -266,19 +266,13 @@ export function CreatePaymentForm({
   };
 
   const getPaymentTypeLabel = (type: string) => {
-    switch (type) {
-      case 'deposit': return 'Đặt cọc';
-      case 'payment_2': return 'Thanh toán lần 2';
-      case 'payment_3': return 'Thanh toán lần 3';
-      case 'full': return 'Thanh toán toàn bộ';
-      default: return type;
-    }
+    return type || 'Không xác định';
   };
 
   const resetForm = () => {
     const defaultValues = {
       paymentAmount: 0,
-      paymentType: "deposit",
+      paymentType: "Đặt cọc",
       paymentMethod: "cash",
       paymentDate: new Date(),
       installmentNumber: 1,
@@ -467,19 +461,12 @@ export function CreatePaymentForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Loại thanh toán *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn loại thanh toán" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="bg-white z-50">
-                      <SelectItem value="deposit">Đặt cọc</SelectItem>
-                      <SelectItem value="payment_2">Thanh toán lần 2</SelectItem>
-                      <SelectItem value="payment_3">Thanh toán lần 3</SelectItem>
-                      <SelectItem value="full">Thanh toán toàn bộ</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FormControl>
+                    <Input 
+                      placeholder="VD: Đặt cọc, Thanh toán lần 2..."
+                      {...field}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
