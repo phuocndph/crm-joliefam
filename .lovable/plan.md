@@ -1,27 +1,42 @@
 
 
-## Vấn đề
+## Chức năng Cào dữ liệu từ Link (Web Scraper)
 
-Hiện tại, chi phí liên quan đến đơn hàng chỉ có thể tạo từ **form thanh toán** (CreatePaymentForm). Nếu muốn ghi nhận chi phí cho đơn hàng mà không cập nhật thanh toán, không có cách nào làm được.
+Tạo trang mới cho phép người dùng nhập nhiều URL, chọn model AI, tùy chỉnh prompt, và cào dữ liệu từ các trang web. Dữ liệu trích xuất sẽ hiển thị dạng bảng và có thể xuất CSV.
 
-Form tạo chi phí ở trang Chi phí (CashFlowManagement) chỉ tạo bản ghi trong bảng `expenses` - hoàn toàn độc lập, không liên kết với đơn hàng nào.
+### Cách hoạt động
 
-## Giải pháp
+```text
+Nhập URLs → Firecrawl scrape HTML/markdown → AI phân tích theo prompt → Bảng kết quả → Xuất CSV
+```
 
-Thêm trường **"Đơn hàng liên quan"** (tùy chọn) vào form tạo chi phí (`CreateExpenseForm`). Khi chọn đơn hàng:
-- Vẫn tạo bản ghi trong bảng `expenses` như bình thường
-- **Đồng thời** tạo bản ghi trong bảng `transactions` với `type = 'expense'` và `order_id` = đơn hàng đã chọn
-- Cột "Chi phí" và "Còn lại" trong trang Thanh toán sẽ tự động cập nhật
+### Thay đổi cụ thể
 
-Khi **không chọn** đơn hàng: hoạt động y như cũ (chỉ tạo expense, không ảnh hưởng đơn hàng nào).
+**1. Tạo Edge Function `supabase/functions/web-scraper/index.ts`**
+- Nhận danh sách URLs, model, prompt từ client
+- Dùng Firecrawl API scrape từng URL lấy markdown/html
+- Gửi nội dung đã scrape + prompt tùy chỉnh đến Beeknoee AI để trích xuất dữ liệu có cấu trúc (JSON)
+- Trả về kết quả đã parse cho từng URL
+- Hỗ trợ xử lý tuần tự với delay để tránh rate limit
 
-### Thay đổi file
+**2. Tạo trang `src/pages/WebScraperPage.tsx`**
+- Form nhập nhiều URL (textarea, mỗi dòng 1 link)
+- Dropdown chọn model AI (fetch từ Beeknoee giống AISettingsPage)
+- Textarea tùy chỉnh prompt (mặc định prompt trích xuất bảng: Tên, Công ty, Ngành nghề, SĐT, Email)
+- Nút "Bắt đầu cào" với progress bar
+- Bảng kết quả hiển thị dữ liệu đã trích xuất
+- Nút xuất CSV/Excel
 
-**`src/components/CreateExpenseForm.tsx`**:
-1. Thêm dropdown chọn đơn hàng (tùy chọn, không bắt buộc) - fetch danh sách đơn hàng từ bảng `orders`
-2. Khi submit, nếu có chọn đơn hàng → tạo thêm bản ghi `transactions` với `type: 'expense'`, `order_id`, `amount`, `description` trùng với expense
-3. Invalidate thêm queries `['transactions']` và `['allOrderExpenses']`
+**3. Cập nhật routing `src/App.tsx`**
+- Thêm route `/web-scraper`
 
-**`src/pages/CashFlowManagement.tsx`**:
-- Cập nhật `handleCreateExpense` để invalidate thêm `['allOrderExpenses']`
+**4. Cập nhật sidebar `src/components/ui/app-sidebar.tsx`**
+- Thêm menu item "Cào dữ liệu" với icon Globe
+
+**5. Cập nhật `supabase/config.toml`**
+- Khai báo function web-scraper
+
+### Prompt mặc định
+
+Prompt sẽ hướng dẫn AI trích xuất dữ liệu dạng bảng từ nội dung HTML/markdown, trả về JSON array với các trường tùy chỉnh. Mặc định sẽ trích xuất: Tên, Công ty, Ngành nghề, SĐT — khớp với dữ liệu mẫu trong ảnh.
 
