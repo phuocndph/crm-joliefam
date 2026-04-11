@@ -266,13 +266,7 @@ export function CreatePaymentForm({
   };
 
   const getPaymentTypeLabel = (type: string) => {
-    switch (type) {
-      case 'deposit': return 'Đặt cọc';
-      case 'payment_2': return 'Thanh toán lần 2';
-      case 'payment_3': return 'Thanh toán lần 3';
-      case 'full': return 'Thanh toán toàn bộ';
-      default: return type;
-    }
+    return type || 'Không xác định';
   };
 
   const resetForm = () => {
