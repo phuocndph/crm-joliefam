@@ -4,7 +4,10 @@ import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,6 +20,8 @@ interface CreateExpenseFormProps {
 
 export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps) {
   const [loading, setLoading] = useState(false);
+  const [orderPopoverOpen, setOrderPopoverOpen] = useState(false);
+  const [orderSearch, setOrderSearch] = useState("");
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string>("");
   const [formData, setFormData] = useState({
@@ -170,19 +175,60 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
 
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="order_id">Đơn hàng liên quan (tùy chọn)</Label>
-          <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Chọn đơn hàng nếu chi phí liên quan đến đơn hàng" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">-- Không liên kết đơn hàng --</SelectItem>
-              {orders.map((order) => (
-                <SelectItem key={order.id} value={order.id}>
-                  #{getOrderDisplayNumber(order)} - {order.customers?.name || 'Không có KH'}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover open={orderPopoverOpen} onOpenChange={setOrderPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={orderPopoverOpen}
+                className="w-full justify-between font-normal"
+              >
+                {selectedOrderId && selectedOrderId !== "none"
+                  ? (() => {
+                      const order = orders.find(o => o.id === selectedOrderId);
+                      return order ? `#${getOrderDisplayNumber(order)} - ${order.customers?.name || 'Không có KH'}` : 'Chọn đơn hàng...';
+                    })()
+                  : "Chọn đơn hàng nếu chi phí liên quan đến đơn hàng"}
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Tìm đơn hàng..." value={orderSearch} onValueChange={setOrderSearch} />
+                <CommandList>
+                  <CommandEmpty>Không tìm thấy đơn hàng</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      value="none"
+                      onSelect={() => {
+                        setSelectedOrderId("none");
+                        setOrderPopoverOpen(false);
+                      }}
+                    >
+                      <Check className={cn("mr-2 h-4 w-4", selectedOrderId === "none" || !selectedOrderId ? "opacity-100" : "opacity-0")} />
+                      -- Không liên kết đơn hàng --
+                    </CommandItem>
+                    {orders.map((order) => {
+                      const label = `#${getOrderDisplayNumber(order)} - ${order.customers?.name || 'Không có KH'}`;
+                      return (
+                        <CommandItem
+                          key={order.id}
+                          value={label}
+                          onSelect={() => {
+                            setSelectedOrderId(order.id);
+                            setOrderPopoverOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", selectedOrderId === order.id ? "opacity-100" : "opacity-0")} />
+                          {label}
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
           <p className="text-xs text-muted-foreground">
             Nếu chọn đơn hàng, chi phí sẽ được tính vào cột "Chi phí" của đơn hàng đó trong trang Thanh toán.
           </p>
