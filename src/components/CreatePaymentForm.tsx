@@ -123,8 +123,9 @@ export function CreatePaymentForm({
   const handleSubmit = async (data: PaymentFormData) => {
     setLoading(true);
     try {
-      if (data.paymentAmount > remainingAmount) {
-        throw new Error("Số tiền thanh toán không thể lớn hơn số tiền còn lại");
+      const effectiveRemaining = remainingAmount - (hasDeduction ? deductionAmount : 0);
+      if (data.paymentAmount > effectiveRemaining) {
+        throw new Error("Số tiền thanh toán không thể lớn hơn số tiền còn lại sau chi phí");
       }
 
       const paymentData = {
