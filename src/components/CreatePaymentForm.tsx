@@ -390,7 +390,7 @@ export function CreatePaymentForm({
         <Card>
           <CardContent className="p-3 text-center">
             <div className="text-base font-bold text-orange-600">
-              {formatCurrency(orderExpenses)}
+              {formatCurrency(actualExpenses)}
             </div>
             <div className="text-xs text-muted-foreground">Chi phí</div>
           </CardContent>
