@@ -285,8 +285,10 @@ export function CreatePaymentForm({
       notes: "",
     };
     
-    // Reset form completely
     form.reset(defaultValues);
+    setHasDeduction(false);
+    setDeductionAmount(0);
+    setDeductionDescription(`Phí vận chuyển đơn hàng #${orderNumber}`);
   };
 
   const deleteAllPayments = async () => {
