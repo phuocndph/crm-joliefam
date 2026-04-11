@@ -557,6 +557,14 @@ export default function CashFlowManagement() {
     if (!expenseToDelete) return;
     
     try {
+      // Also delete the corresponding transaction record (type='expense') if exists
+      await supabase
+        .from('transactions')
+        .delete()
+        .eq('type', 'expense')
+        .eq('amount', expenseToDelete.amount)
+        .eq('description', expenseToDelete.description);
+
       const { error } = await supabase
         .from('expenses')
         .delete()
@@ -564,7 +572,11 @@ export default function CashFlowManagement() {
 
       if (error) throw error;
 
-      await queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['expenses'] }),
+        queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+        queryClient.invalidateQueries({ queryKey: ['allOrderExpenses'] }),
+      ]);
       setExpenseToDelete(null);
       toast({
         title: "Thành công",
