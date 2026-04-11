@@ -385,6 +385,55 @@ export function CreatePaymentForm({
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
           
+          {/* Chi phí phát sinh */}
+          <Card className="border-dashed">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="hasDeduction" 
+                  checked={hasDeduction}
+                  onCheckedChange={(checked) => {
+                    setHasDeduction(!!checked);
+                    if (!checked) {
+                      setDeductionAmount(0);
+                    }
+                  }}
+                />
+                <Label htmlFor="hasDeduction" className="flex items-center gap-2 cursor-pointer">
+                  <Truck className="h-4 w-4" />
+                  Có chi phí phát sinh (phí ship, phí khác...)
+                </Label>
+              </div>
+              
+              {hasDeduction && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                  <div className="space-y-2">
+                    <Label>Số tiền chi phí</Label>
+                    <CurrencyInput
+                      placeholder="0"
+                      value={deductionAmount}
+                      onChange={(val) => {
+                        setDeductionAmount(val);
+                        // Auto-adjust payment amount
+                        const newPaymentAmount = remainingAmount - val;
+                        if (newPaymentAmount >= 0) {
+                          form.setValue("paymentAmount", newPaymentAmount);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Mô tả chi phí</Label>
+                    <Input
+                      placeholder="Phí vận chuyển..."
+                      value={deductionDescription}
+                      onChange={(e) => setDeductionDescription(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField
