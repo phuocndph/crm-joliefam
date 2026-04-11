@@ -110,13 +110,13 @@ export function CreatePaymentForm({
   // Suggest payment type based on amount
   React.useEffect(() => {
     if (watchedPaymentAmount === totalAmount) {
-      form.setValue("paymentType", "full");
+      form.setValue("paymentType", "Thanh toán toàn bộ");
     } else if (totalPaid === 0 && watchedPaymentAmount < totalAmount) {
-      form.setValue("paymentType", "deposit");
+      form.setValue("paymentType", "Đặt cọc");
     } else if (totalPaid > 0 && watchedPaymentAmount < remainingAmount) {
-      form.setValue("paymentType", "payment_2");
+      form.setValue("paymentType", "Thanh toán lần 2");
     } else if (totalPaid > 0 && watchedPaymentAmount === remainingAmount) {
-      form.setValue("paymentType", "payment_3");
+      form.setValue("paymentType", "Thanh toán lần 3");
     }
   }, [watchedPaymentAmount, totalAmount, remainingAmount, totalPaid, form]);
 
