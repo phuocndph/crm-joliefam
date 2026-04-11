@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      const res = await fetch("https://api.beeknoee.com/v1/models", {
+      const res = await fetch("https://platform.beeknoee.com/api/v1/models", {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       const data = await res.json();
@@ -115,7 +115,7 @@ CHỈ trả về JSON array, KHÔNG markdown, KHÔNG giải thích.`;
         console.log(`Scraped ${markdown.length} chars from ${formattedUrl}`);
 
         // Step 2: AI extraction via Beeknoee
-        const aiRes = await fetch("https://api.beeknoee.com/v1/chat/completions", {
+        const aiRes = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${beeknoeeKey}`,
