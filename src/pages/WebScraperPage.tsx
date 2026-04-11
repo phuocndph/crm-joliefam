@@ -95,26 +95,40 @@ const WebScraperPage = () => {
     setColumns([]);
 
     try {
-      // Process URLs in batches of 5 to show progress
-      const batchSize = 5;
+      // Send URLs in batches of 10 to edge function (which handles concurrency internally)
+      const batchSize = 10;
       const allResults: ScrapeResult[] = [];
 
+      // Fire all batches concurrently
+      const batchPromises: Promise<ScrapeResult[]>[] = [];
+      
       for (let i = 0; i < urlList.length; i += batchSize) {
         const batch = urlList.slice(i, i + batchSize);
-        setProgressText(`Đang xử lý ${i + 1}-${Math.min(i + batchSize, urlList.length)}/${urlList.length} URLs...`);
-        setProgress(((i) / urlList.length) * 100);
+        batchPromises.push(
+          supabase.functions.invoke("web-scraper", {
+            body: { urls: batch, model, prompt },
+          }).then(({ data, error }) => {
+            if (error) {
+              console.error("Batch error:", error);
+              return batch.map(u => ({ url: u, success: false, error: error.message, data: [] }));
+            }
+            return data?.results || [];
+          })
+        );
+      }
 
-        const { data, error } = await supabase.functions.invoke("web-scraper", {
-          body: { urls: batch, model, prompt },
-        });
-
-        if (error) {
-          toast({ title: "Lỗi", description: error.message, variant: "destructive" });
-          break;
-        }
-
-        if (data?.results) {
-          allResults.push(...data.results);
+      // Process results as they complete
+      let completed = 0;
+      const totalBatches = batchPromises.length;
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+      for (const result of batchResults) {
+        completed++;
+        setProgress((completed / totalBatches) * 100);
+        setProgressText(`Hoàn tất ${completed}/${totalBatches} batch...`);
+        
+        if (result.status === "fulfilled") {
+          allResults.push(...result.value);
         }
       }
 
