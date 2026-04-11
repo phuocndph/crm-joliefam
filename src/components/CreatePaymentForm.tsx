@@ -72,10 +72,27 @@ export function CreatePaymentForm({
 }: CreatePaymentFormProps) {
   const [loading, setLoading] = useState(false);
   const [managerId, setManagerId] = useState<string | null>(null);
+  const [fetchedExpenses, setFetchedExpenses] = useState<number | null>(null);
   const [hasDeduction, setHasDeduction] = useState(false);
   const [deductionAmount, setDeductionAmount] = useState(0);
   const [deductionDescription, setDeductionDescription] = useState(`Phí vận chuyển đơn hàng #${orderNumber}`);
   const { toast } = useToast();
+
+  const actualExpenses = orderExpenses !== undefined ? orderExpenses : (fetchedExpenses ?? 0);
+
+  // Fetch expenses if not provided via prop
+  React.useEffect(() => {
+    if (orderExpenses !== undefined) return;
+    const fetchExpenses = async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('order_id', orderId)
+        .eq('type', 'expense');
+      setFetchedExpenses(data?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0);
+    };
+    fetchExpenses();
+  }, [orderId, orderExpenses]);
 
   // Fetch order's manager_id
   React.useEffect(() => {
