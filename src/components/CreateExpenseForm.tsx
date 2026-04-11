@@ -20,6 +20,8 @@ interface CreateExpenseFormProps {
 
 export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps) {
   const [loading, setLoading] = useState(false);
+  const [orderPopoverOpen, setOrderPopoverOpen] = useState(false);
+  const [orderSearch, setOrderSearch] = useState("");
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string>("");
   const [formData, setFormData] = useState({
