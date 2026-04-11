@@ -62,97 +62,112 @@ Mỗi phần tử gồm các trường: name (Họ tên), company (Công ty), pr
 Nếu không có thông tin thì để chuỗi rỗng "".
 CHỈ trả về JSON array, KHÔNG markdown, KHÔNG giải thích.`;
 
-    const results: any[] = [];
+    const CONCURRENCY = 5; // Process 5 URLs at a time
 
-    for (let i = 0; i < urls.length; i++) {
-      const url = urls[i].trim();
-      if (!url) continue;
-
-      let formattedUrl = url;
+    async function processUrl(url: string): Promise<any> {
+      let formattedUrl = url.trim();
+      if (!formattedUrl) return null;
       if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
         formattedUrl = `https://${formattedUrl}`;
       }
 
-      console.log(`[${i + 1}/${urls.length}] Scraping: ${formattedUrl}`);
+      console.log(`Scraping: ${formattedUrl}`);
 
       try {
-        // Step 1: Firecrawl scrape
-        const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${firecrawlKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url: formattedUrl,
-            formats: ["markdown"],
-            onlyMainContent: true,
-          }),
-        });
+        // Step 1: Firecrawl scrape with retry
+        let scrapeData: any = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${firecrawlKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                url: formattedUrl,
+                formats: ["markdown"],
+                onlyMainContent: true,
+                waitFor: 2000,
+              }),
+            });
 
-        const scrapeData = await scrapeRes.json();
-        if (!scrapeRes.ok || !scrapeData.success) {
-          results.push({
+            scrapeData = await scrapeRes.json();
+            if (scrapeRes.ok && scrapeData.success) break;
+            
+            if (attempt === 0) {
+              console.log(`Retry scrape for ${formattedUrl}`);
+              await new Promise((r) => setTimeout(r, 1000));
+            }
+          } catch (e) {
+            if (attempt === 1) throw e;
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+        }
+
+        if (!scrapeData?.success) {
+          return {
             url: formattedUrl,
             success: false,
-            error: scrapeData.error || `Scrape failed: ${scrapeRes.status}`,
+            error: scrapeData?.error || "Scrape failed after retries",
             data: [],
-          });
-          continue;
+          };
         }
 
         const markdown = scrapeData.data?.markdown || scrapeData.markdown || "";
         if (!markdown || markdown.length < 10) {
-          results.push({
+          return {
             url: formattedUrl,
             success: false,
             error: "No content found on page",
             data: [],
-          });
-          continue;
+          };
         }
 
         console.log(`Scraped ${markdown.length} chars from ${formattedUrl}`);
 
-        // Step 2: AI extraction via Beeknoee
-        const aiRes = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${beeknoeeKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: [
-              {
-                role: "system",
-                content: "Bạn là trợ lý trích xuất dữ liệu. Chỉ trả về JSON array hợp lệ, không markdown, không giải thích.",
+        // Step 2: AI extraction via Beeknoee with retry
+        let aiData: any = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const aiRes = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${beeknoeeKey}`,
+                "Content-Type": "application/json",
               },
-              {
-                role: "user",
-                content: `${userPrompt}\n\n--- NỘI DUNG TRANG WEB ---\n${markdown.substring(0, 50000)}`,
-              },
-            ],
-            temperature: 0.1,
-          }),
-        });
+              body: JSON.stringify({
+                model: selectedModel,
+                messages: [
+                  {
+                    role: "system",
+                    content: "Bạn là trợ lý trích xuất dữ liệu. Chỉ trả về JSON array hợp lệ, không markdown, không giải thích.",
+                  },
+                  {
+                    role: "user",
+                    content: `${userPrompt}\n\n--- NỘI DUNG TRANG WEB ---\n${markdown.substring(0, 50000)}`,
+                  },
+                ],
+                temperature: 0.1,
+              }),
+            });
 
-        const aiData = await aiRes.json();
-        if (!aiRes.ok) {
-          results.push({
-            url: formattedUrl,
-            success: false,
-            error: `AI error: ${aiData.error?.message || aiRes.status}`,
-            data: [],
-          });
-          continue;
+            aiData = await aiRes.json();
+            if (aiRes.ok) break;
+            
+            if (attempt === 0) {
+              console.log(`Retry AI for ${formattedUrl}`);
+              await new Promise((r) => setTimeout(r, 1000));
+            }
+          } catch (e) {
+            if (attempt === 1) throw e;
+            await new Promise((r) => setTimeout(r, 1000));
+          }
         }
 
-        const content = aiData.choices?.[0]?.message?.content || "[]";
-        // Parse JSON from AI response
+        const content = aiData?.choices?.[0]?.message?.content || "[]";
         let parsed: any[] = [];
         try {
-          // Try to find JSON array in response
           const jsonMatch = content.match(/\[[\s\S]*\]/);
           if (jsonMatch) {
             parsed = JSON.parse(jsonMatch[0]);
@@ -161,24 +176,43 @@ CHỈ trả về JSON array, KHÔNG markdown, KHÔNG giải thích.`;
           console.error("JSON parse error:", e, "Content:", content.substring(0, 200));
         }
 
-        results.push({
+        return {
           url: formattedUrl,
           success: true,
           data: Array.isArray(parsed) ? parsed : [],
-        });
+        };
       } catch (err) {
         console.error(`Error processing ${formattedUrl}:`, err);
-        results.push({
+        return {
           url: formattedUrl,
           success: false,
           error: err instanceof Error ? err.message : "Unknown error",
           data: [],
-        });
+        };
       }
+    }
 
-      // Delay between requests to avoid rate limiting
-      if (i < urls.length - 1) {
-        await new Promise((r) => setTimeout(r, 1500));
+    // Process URLs in parallel batches of CONCURRENCY
+    const results: any[] = [];
+    const validUrls = urls.filter((u: string) => u.trim().length > 0);
+    
+    for (let i = 0; i < validUrls.length; i += CONCURRENCY) {
+      const batch = validUrls.slice(i, i + CONCURRENCY);
+      console.log(`Processing batch ${Math.floor(i / CONCURRENCY) + 1}: ${batch.length} URLs`);
+      
+      const batchResults = await Promise.allSettled(batch.map((u: string) => processUrl(u)));
+      
+      for (const result of batchResults) {
+        if (result.status === "fulfilled" && result.value) {
+          results.push(result.value);
+        } else if (result.status === "rejected") {
+          results.push({ url: "unknown", success: false, error: result.reason?.message || "Unknown", data: [] });
+        }
+      }
+      
+      // Small delay between batches
+      if (i + CONCURRENCY < validUrls.length) {
+        await new Promise((r) => setTimeout(r, 500));
       }
     }
 
