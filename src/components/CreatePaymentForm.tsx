@@ -96,7 +96,7 @@ export function CreatePaymentForm({
     resolver: zodResolver(paymentFormSchema),
     defaultValues: {
       paymentAmount: remainingAmount,
-      paymentType: remainingAmount === totalAmount ? "full" : totalPaid === 0 ? "deposit" : "payment_2",
+      paymentType: remainingAmount === totalAmount ? "Thanh toán toàn bộ" : totalPaid === 0 ? "Đặt cọc" : "Thanh toán lần 2",
       paymentMethod: "cash",
       paymentDate: new Date(),
       installmentNumber: 1,
