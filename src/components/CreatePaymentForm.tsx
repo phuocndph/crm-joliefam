@@ -8,7 +8,8 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CalendarIcon, Plus, CreditCard } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CalendarIcon, Plus, CreditCard, Truck } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -69,6 +70,9 @@ export function CreatePaymentForm({
 }: CreatePaymentFormProps) {
   const [loading, setLoading] = useState(false);
   const [managerId, setManagerId] = useState<string | null>(null);
+  const [hasDeduction, setHasDeduction] = useState(false);
+  const [deductionAmount, setDeductionAmount] = useState(0);
+  const [deductionDescription, setDeductionDescription] = useState(`Phí vận chuyển đơn hàng #${orderNumber}`);
   const { toast } = useToast();
 
   // Fetch order's manager_id
@@ -119,8 +123,9 @@ export function CreatePaymentForm({
   const handleSubmit = async (data: PaymentFormData) => {
     setLoading(true);
     try {
-      if (data.paymentAmount > remainingAmount) {
-        throw new Error("Số tiền thanh toán không thể lớn hơn số tiền còn lại");
+      const effectiveRemaining = remainingAmount - (hasDeduction ? deductionAmount : 0);
+      if (data.paymentAmount > effectiveRemaining) {
+        throw new Error("Số tiền thanh toán không thể lớn hơn số tiền còn lại sau chi phí");
       }
 
       const paymentData = {
@@ -158,7 +163,7 @@ export function CreatePaymentForm({
         payment_type: data.paymentType,
         installment_number: data.installmentNumber,
         total_installments: 1,
-        remaining_amount: remainingAmount - data.paymentAmount,
+        remaining_amount: remainingAmount - data.paymentAmount - (hasDeduction ? deductionAmount : 0),
         tenant_id: 'default',
         manager_id: managerId,
       };
@@ -173,8 +178,51 @@ export function CreatePaymentForm({
 
       console.log('✅ Transaction inserted successfully');
 
-      // Calculate new payment status
-      const newTotalPaid = totalPaid + data.paymentAmount;
+      // Create expense record if deduction exists
+      if (hasDeduction && deductionAmount > 0) {
+        const expenseCode = `CP-${orderNumber}-${Date.now().toString(36).toUpperCase()}`;
+        const expenseData = {
+          amount: deductionAmount,
+          category: 'shipping_fee',
+          description: deductionDescription || `Phí vận chuyển đơn hàng #${orderNumber}`,
+          expense_code: expenseCode,
+          expense_date: data.paymentDate.toISOString(),
+          tenant_id: 'default',
+          manager_id: managerId,
+        };
+
+        console.log('🚚 Creating expense:', expenseData);
+        const { error: expenseError } = await supabase.from('expenses').insert(expenseData);
+        if (expenseError) {
+          console.error('❌ Error inserting expense:', expenseError);
+          throw expenseError;
+        }
+        console.log('✅ Expense inserted successfully');
+
+        // Create expense transaction
+        const expenseTransactionData = {
+          amount: deductionAmount,
+          type: 'expense',
+          category: 'shipping_fee',
+          description: deductionDescription || `Phí vận chuyển đơn hàng #${orderNumber}`,
+          date: data.paymentDate.toISOString(),
+          order_id: orderId,
+          tenant_id: 'default',
+          manager_id: managerId,
+        };
+
+        console.log('📊 Creating expense transaction:', expenseTransactionData);
+        const { error: expTransError } = await supabase.from('transactions').insert(expenseTransactionData);
+        if (expTransError) {
+          console.error('❌ Error inserting expense transaction:', expTransError);
+          throw expTransError;
+        }
+        console.log('✅ Expense transaction inserted successfully');
+      }
+
+      // Calculate new payment status (deduction counts toward "paid" for the order)
+      const totalSettled = data.paymentAmount + (hasDeduction ? deductionAmount : 0);
+      const newTotalPaid = totalPaid + totalSettled;
       const newPaymentStatus = newTotalPaid >= totalAmount ? 'paid' : 
                               newTotalPaid > 0 ? 'partial' : 'pending';
 
@@ -237,8 +285,10 @@ export function CreatePaymentForm({
       notes: "",
     };
     
-    // Reset form completely
     form.reset(defaultValues);
+    setHasDeduction(false);
+    setDeductionAmount(0);
+    setDeductionDescription(`Phí vận chuyển đơn hàng #${orderNumber}`);
   };
 
   const deleteAllPayments = async () => {
@@ -337,6 +387,55 @@ export function CreatePaymentForm({
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
           
+          {/* Chi phí phát sinh */}
+          <Card className="border-dashed">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="hasDeduction" 
+                  checked={hasDeduction}
+                  onCheckedChange={(checked) => {
+                    setHasDeduction(!!checked);
+                    if (!checked) {
+                      setDeductionAmount(0);
+                    }
+                  }}
+                />
+                <Label htmlFor="hasDeduction" className="flex items-center gap-2 cursor-pointer">
+                  <Truck className="h-4 w-4" />
+                  Có chi phí phát sinh (phí ship, phí khác...)
+                </Label>
+              </div>
+              
+              {hasDeduction && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                  <div className="space-y-2">
+                    <Label>Số tiền chi phí</Label>
+                    <CurrencyInput
+                      placeholder="0"
+                      value={deductionAmount}
+                      onChange={(val) => {
+                        setDeductionAmount(val);
+                        // Auto-adjust payment amount
+                        const newPaymentAmount = remainingAmount - val;
+                        if (newPaymentAmount >= 0) {
+                          form.setValue("paymentAmount", newPaymentAmount);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Mô tả chi phí</Label>
+                    <Input
+                      placeholder="Phí vận chuyển..."
+                      value={deductionDescription}
+                      onChange={(e) => setDeductionDescription(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField
@@ -353,9 +452,9 @@ export function CreatePaymentForm({
                     />
                   </FormControl>
                   <FormMessage />
-                  {watchedPaymentAmount > remainingAmount && (
+                  {(watchedPaymentAmount + (hasDeduction ? deductionAmount : 0)) > remainingAmount && (
                     <p className="text-sm text-red-600">
-                      Số tiền không thể lớn hơn {formatCurrency(remainingAmount)}
+                      Tổng thanh toán + chi phí không thể lớn hơn {formatCurrency(remainingAmount)}
                     </p>
                   )}
                 </FormItem>
@@ -501,16 +600,24 @@ export function CreatePaymentForm({
                   <span>Loại thanh toán:</span>
                   <span className="font-medium">{getPaymentTypeLabel(watchedPaymentType)}</span>
                 </div>
+                {hasDeduction && deductionAmount > 0 && (
+                  <div className="flex justify-between">
+                    <span>Chi phí phát sinh:</span>
+                    <span className="font-medium text-orange-600">
+                      -{formatCurrency(deductionAmount)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
-                  <span>Số tiền:</span>
+                  <span>Số tiền thu từ khách:</span>
                   <span className="font-medium text-green-600">
                     {formatCurrency(watchedPaymentAmount || 0)}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Còn lại sau thanh toán:</span>
+                <div className="flex justify-between border-t pt-2">
+                  <span className="font-medium">Còn lại sau thanh toán:</span>
                   <span className="font-medium text-red-600">
-                    {formatCurrency(remainingAmount - (watchedPaymentAmount || 0))}
+                    {formatCurrency(remainingAmount - (watchedPaymentAmount || 0) - (hasDeduction ? deductionAmount : 0))}
                   </span>
                 </div>
               </div>
@@ -537,7 +644,7 @@ export function CreatePaymentForm({
               <Button type="button" variant="outline" onClick={onClose}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={loading || !watchedPaymentAmount || watchedPaymentAmount > remainingAmount}>
+              <Button type="submit" disabled={loading || !watchedPaymentAmount || (watchedPaymentAmount + (hasDeduction ? deductionAmount : 0)) > remainingAmount}>
                 {loading ? "Đang lưu..." : "Thêm thanh toán"}
               </Button>
             </div>
