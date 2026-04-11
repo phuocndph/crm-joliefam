@@ -642,7 +642,7 @@ export function CreatePaymentForm({
               <Button type="button" variant="outline" onClick={onClose}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={loading || !watchedPaymentAmount || watchedPaymentAmount > remainingAmount}>
+              <Button type="submit" disabled={loading || !watchedPaymentAmount || (watchedPaymentAmount + (hasDeduction ? deductionAmount : 0)) > remainingAmount}>
                 {loading ? "Đang lưu..." : "Thêm thanh toán"}
               </Button>
             </div>
