@@ -701,32 +701,43 @@ const TransactionManagement = () => {
               <Separator />
 
               {/* Payment Summary */}
-              <div>
-                <h4 className="font-semibold mb-3 flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  Thanh toán
-                </h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
+              {(() => {
+                const paidAmount = calculatePaidAmount(selectedOrder.id);
+                const totalExpenses = selectedOrderExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+                const remaining = Number(selectedOrder.total_amount) - paidAmount - totalExpenses;
+                return (
                   <div>
-                    <p className="text-sm text-muted-foreground">Tổng tiền</p>
-                    <p className="font-semibold">{formatCurrency(selectedOrder.total_amount)}</p>
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <DollarSign className="h-4 w-4" />
+                      Thanh toán
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4 bg-muted rounded-lg">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Tổng tiền</p>
+                        <p className="font-semibold">{formatCurrency(selectedOrder.total_amount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Đã thanh toán</p>
+                        <p className="font-semibold text-green-600">-{formatCurrency(paidAmount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Chi phí</p>
+                        <p className="font-semibold text-orange-600">-{formatCurrency(totalExpenses)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Còn lại</p>
+                        <p className="font-semibold text-red-600">{formatCurrency(Math.max(0, remaining))}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Trạng thái</p>
+                        <Badge className={getPaymentStatusColor(selectedOrder.payment_status)}>
+                          {getPaymentStatusLabel(selectedOrder.payment_status)}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Đã thanh toán</p>
-                    <p className="font-semibold text-green-600">{formatCurrency(calculatePaidAmount(selectedOrder.id))}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Còn lại</p>
-                    <p className="font-semibold text-red-600">{formatCurrency(calculateRemainingAmount(selectedOrder))}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Trạng thái</p>
-                    <Badge className={getPaymentStatusColor(selectedOrder.payment_status)}>
-                      {getPaymentStatusLabel(selectedOrder.payment_status)}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Payment History */}
               <div>
