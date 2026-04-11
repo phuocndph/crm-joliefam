@@ -2,51 +2,33 @@
 
 ## Vấn đề
 
-38 bản ghi trong bảng `order_payments` có `manager_id = NULL`. Nhân viên chỉ thấy được payments có `manager_id` trùng với manager của mình (theo RLS policy). Kết quả là nhân viên thấy số "Đã thanh toán" bị thiếu, dẫn đến "Còn lại" sai.
+Khi cần trả phí ship cho khách (ví dụ 100,000đ), hiện tại không có cách nào ghi nhận khoản này trong form thanh toán. Người dùng phải tự tay giảm số tiền thu và tạo chi phí riêng.
 
 ## Giải pháp
 
-### 1. Backfill dữ liệu cũ
-Cập nhật 38 payments thiếu `manager_id` bằng cách lấy `manager_id` từ đơn hàng tương ứng:
+Thêm tính năng "Chi phí phát sinh" (ví dụ phí ship) ngay trong form thanh toán (`CreatePaymentForm.tsx`). Khi nhập chi phí này:
+- Số tiền thu từ khách tự động giảm tương ứng
+- Hệ thống tự động tạo bản ghi trong bảng `expenses` với category "Phí vận chuyển" và liên kết đến đơn hàng
 
-```sql
-UPDATE order_payments op
-SET manager_id = o.manager_id
-FROM orders o
-WHERE op.order_id = o.id
-AND op.manager_id IS NULL;
-```
+### Thay đổi trong `CreatePaymentForm.tsx`
 
-### 2. Thêm trigger tự động set `manager_id` cho `order_payments`
-Tạo trigger BEFORE INSERT trên `order_payments` để tự động copy `manager_id` từ order nếu chưa được set. Điều này đảm bảo mọi payment mới luôn có `manager_id` đúng, kể cả khi frontend không truyền vào.
+1. Thêm field `deductionAmount` (số tiền chi phí phát sinh) và `deductionDescription` (mô tả, mặc định "Phí vận chuyển")
+2. Cập nhật hiển thị: "Còn lại" sẽ trừ thêm phần chi phí phát sinh
+3. Số tiền thanh toán mặc định = `remainingAmount - deductionAmount`
+4. Khi submit:
+   - Tạo payment với số tiền đã trừ chi phí
+   - Tạo transaction thu nhập với số tiền đã trừ
+   - Tự động tạo bản ghi `expenses` với số tiền chi phí, category "shipping_fee", ghi chú liên kết đơn hàng
+   - Tự động tạo transaction loại `expense` cho khoản chi phí này
 
-```sql
-CREATE OR REPLACE FUNCTION public.set_order_payment_manager_id()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  IF NEW.manager_id IS NULL THEN
-    SELECT manager_id INTO NEW.manager_id
-    FROM public.orders
-    WHERE id = NEW.order_id;
-  END IF;
-  RETURN NEW;
-END;
-$$;
+### UI bổ sung
 
-CREATE TRIGGER set_order_payment_manager_id_trigger
-BEFORE INSERT ON public.order_payments
-FOR EACH ROW
-EXECUTE FUNCTION public.set_order_payment_manager_id();
-```
+Thêm section có checkbox "Có chi phí phát sinh" phía trên phần số tiền thanh toán. Khi bật:
+- Hiện input số tiền chi phí
+- Hiện input mô tả chi phí (mặc định: "Phí vận chuyển đơn hàng #XXX")
+- Summary card cập nhật hiển thị: Tổng đơn → Chi phí phát sinh → Số tiền thu khách → Còn lại
 
-### File cần chỉnh
-- 1 migration file duy nhất chứa cả backfill + trigger
-- Không cần sửa frontend code
+### Không cần thay đổi database
 
-### Kết quả
-- Nhân viên sẽ thấy đúng số tiền đã thanh toán cho tất cả đơn hàng
-- Mọi payment mới sẽ tự động có `manager_id` đúng
+Sử dụng bảng `expenses` hiện có để lưu chi phí. Không cần migration.
 
