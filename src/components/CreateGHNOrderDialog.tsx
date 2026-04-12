@@ -25,6 +25,20 @@ interface FeeDetail {
   service_fee: number; insurance_fee: number; cod_fee: number; r2s_fee: number;
   coupon_value: number; total: number; [key: string]: number;
 }
+// Parse shop name to extract weight range (kg) - outside component for performance
+const parseWeightRange = (name: string): { min: number; max: number } => {
+  const n = name.toLowerCase().replace(/\s+/g, ' ');
+  // "10-19kg" → min=10, max=20 (exclusive upper bound)
+  const rangeMatch = n.match(/(\d+)\s*[-–]\s*(\d+)\s*kg/);
+  if (rangeMatch) return { min: parseInt(rangeMatch[1]), max: parseInt(rangeMatch[2]) + 1 };
+  // "từ 20kg trở lên"
+  const fromMatch = n.match(/(?:từ|>=?|trên)\s*(\d+)\s*kg/);
+  if (fromMatch) return { min: parseInt(fromMatch[1]), max: Infinity };
+  // "dưới 5kg"
+  const underMatch = n.match(/(?:dưới|<=?|under)\s*(\d+)\s*kg/);
+  if (underMatch) return { min: 0, max: parseInt(underMatch[1]) };
+  return { min: 0, max: Infinity };
+};
 
 interface CreateGHNOrderDialogProps {
   open: boolean;
@@ -101,24 +115,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
   const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
 
-  // Parse shop name to extract weight range (kg)
-  const parseWeightRange = (name: string): { min: number; max: number } => {
-    const normalized = name.toLowerCase().replace(/\s+/g, ' ');
-    // Pattern: "10-19kg" or "10 - 19 kg"
-    const rangeMatch = normalized.match(/(\d+)\s*[-–]\s*(\d+)\s*kg/);
-    if (rangeMatch) return { min: parseInt(rangeMatch[1]), max: parseInt(rangeMatch[2]) };
-    // Pattern: "từ 20kg trở lên" or ">= 20kg"
-    const fromMatch = normalized.match(/(?:từ|>=?|trên)\s*(\d+)\s*kg/);
-    if (fromMatch) return { min: parseInt(fromMatch[1]), max: Infinity };
-    // Pattern: "dưới 5kg" or "<= 5kg"  
-    const underMatch = normalized.match(/(?:dưới|<=?|under)\s*(\d+)\s*kg/);
-    if (underMatch) return { min: 0, max: parseInt(underMatch[1]) - 1 };
-    // Pattern: just a number like "5kg"
-    const singleMatch = normalized.match(/(\d+)\s*kg/);
-    if (singleMatch) return { min: parseInt(singleMatch[1]), max: parseInt(singleMatch[1]) };
-    return { min: 0, max: Infinity };
-  };
-
   // Calculate effective weight (kg) = max(actual, dimensional)
   const dimensionalWeightGram = Math.ceil(length * width * height / 6000 * 1000);
   const effectiveWeightGram = Math.max(weight, dimensionalWeightGram);
@@ -127,12 +123,28 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   // Auto-select shop based on effective weight
   useEffect(() => {
     if (shops.length === 0) return;
+    
+    // Try exact match first
     const matchingShop = shops.find(shop => {
       const { min, max } = parseWeightRange(shop.name);
-      return effectiveWeightKg >= min && effectiveWeightKg <= max;
+      return effectiveWeightKg >= min && effectiveWeightKg < max;
     });
+    
     if (matchingShop) {
       setSelectedShopId(String(matchingShop._id));
+      return;
+    }
+
+    // Fallback: pick shop with highest min that is still <= effectiveWeightKg
+    const fallbackShop = shops
+      .map(shop => ({ shop, range: parseWeightRange(shop.name) }))
+      .filter(({ range }) => range.min <= effectiveWeightKg)
+      .sort((a, b) => b.range.min - a.range.min)[0];
+    
+    if (fallbackShop) {
+      setSelectedShopId(String(fallbackShop.shop._id));
+    } else {
+      console.warn('Không tìm được shop phù hợp cho', effectiveWeightKg, 'kg');
     }
   }, [effectiveWeightKg, shops]);
 
