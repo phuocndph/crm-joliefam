@@ -131,7 +131,7 @@ export default function OrderManagement() {
   const [activeTab, setActiveTab] = useState("orders");
   const [bulkSyncing, setBulkSyncing] = useState(false);
   const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
-  const [printA5Url, setPrintA5Url] = useState<string | null>(null);
+  
   const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
@@ -717,7 +717,8 @@ export default function OrderManagement() {
                           });
                           if (error) throw error;
                           if (data.success && data.data?.printUrl) {
-                            setPrintA5Url(data.data.printUrl);
+                            window.open(data.data.printUrl, '_blank');
+                            toast.success("Đang mở trang in phiếu A5...");
                           } else {
                             throw new Error(data.error || 'Không thể tạo link in phiếu');
                           }
@@ -823,22 +824,6 @@ export default function OrderManagement() {
         />
       )}
 
-      {/* Print A5 Dialog */}
-      <Dialog open={!!printA5Url} onOpenChange={open => !open && setPrintA5Url(null)}>
-        <DialogContent className="max-w-5xl max-h-[95vh] p-0">
-          <DialogHeader className="p-4 pb-0">
-            <DialogTitle>In phiếu vận đơn A5</DialogTitle>
-          </DialogHeader>
-          {printA5Url && (
-            <iframe
-              src={printA5Url}
-              className="w-full border-0"
-              style={{ height: 'calc(95vh - 80px)' }}
-              title="Phiếu vận đơn A5"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
