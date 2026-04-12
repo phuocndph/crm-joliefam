@@ -455,11 +455,139 @@ export function InlineOrderEditTable({
         return null;
     }
   };
-  return <div className="rounded-md border max-h-[600px] overflow-auto order-table-scroll">
+  return <div className="rounded-xl border shadow-sm max-h-[calc(100vh-220px)] overflow-auto order-table-scroll">
       <Table disableWrapper className="min-w-max">
-        <TableHeader className="sticky top-0 bg-background z-10">
-          <TableRow>
-            <TableHead className="min-w-[120px] bg-primary text-primary-foreground">Mã đơn hàng</TableHead>
+        <TableHeader className="sticky top-0 z-10">
+          <TableRow className="border-b-2 border-gray-300">
+            <TableHead className="min-w-[110px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Mã đơn</TableHead>
+            <TableHead className="min-w-[130px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Mã vận đơn</TableHead>
+            <TableHead className="min-w-[100px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Ngày tạo</TableHead>
+            <TableHead className="min-w-[140px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Ngày hẹn trả</TableHead>
+            <TableHead className="min-w-[110px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Trạng thái</TableHead>
+            <TableHead className="min-w-[180px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Khách hàng</TableHead>
+            <TableHead className="min-w-[200px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Tài chính</TableHead>
+            <TableHead className="min-w-[140px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Phân công</TableHead>
+            <TableHead className="min-w-[220px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Ghi chú</TableHead>
+            <TableHead className="min-w-[80px] sticky right-0 bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide shadow-lg">⋯</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {orders.map((order, index) => {
+            const borderClass = statusBorderColor[order.status] || 'border-l-gray-300';
+            const zebraBg = index % 2 === 0 ? 'bg-white' : 'bg-gray-50/60';
+            const totalPaid = order.total_paid || 0;
+            const remaining = Math.max(0, (order.total_amount || 0) - totalPaid);
+            
+            return <TableRow 
+              key={order.id} 
+              className={cn(
+                "transition-colors group border-l-4 hover:bg-blue-50/50",
+                borderClass,
+                zebraBg
+              )}
+            >
+              <TableCell className="font-medium min-w-[110px] bg-gray-50/40">
+                {getCellContent(order, "order_number")}
+              </TableCell>
+              <TableCell className="min-w-[130px]">
+                {editingCell === `${order.id}-ghn_tracking` ? (
+                  <GhnTrackingEditCell
+                    orderId={order.id}
+                    initialCodes={order.ghn_tracking?.map(t => t.ghn_order_code) || []}
+                    onDone={() => { setEditingCell(null); }}
+                  />
+                ) : (
+                  <div className="flex flex-col gap-0.5 cursor-pointer min-h-[24px]" onClick={() => setEditingCell(`${order.id}-ghn_tracking`)}>
+                    {order.ghn_tracking && order.ghn_tracking.length > 0 ? (
+                      order.ghn_tracking.map((t, i) => (
+                        <span key={i} className="text-xs font-mono">{t.ghn_order_code}</span>
+                      ))
+                    ) : (
+                      <span className="text-xs opacity-50 italic">—</span>
+                    )}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell className="min-w-[100px]">
+                {getCellContent(order, "created_at")}
+              </TableCell>
+              <TableCell className="min-w-[140px]">
+                {getCellContent(order, "delivery_date")}
+              </TableCell>
+              <TableCell className="min-w-[110px]">
+                {getCellContent(order, "status")}
+              </TableCell>
+              <TableCell className="min-w-[180px]">
+                <div>
+                  <div className="font-medium text-sm">{order.customers?.name || 'Khách lẻ'}</div>
+                  {order.customers?.phone && <div className="text-xs text-muted-foreground">{order.customers.phone}</div>}
+                  {order.customers?.customer_code && <div className="text-xs text-muted-foreground font-mono">{order.customers.customer_code}</div>}
+                </div>
+              </TableCell>
+              <TableCell className="min-w-[200px]">
+                <div className="flex flex-col gap-0.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tổng:</span>
+                    <span className="font-mono font-medium text-right">{formatCurrency(order.total_amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Đã TT:</span>
+                    <span className={cn("font-mono font-medium text-right", totalPaid > 0 ? "text-green-600" : "text-muted-foreground")}>{formatCurrency(totalPaid)}</span>
+                  </div>
+                  {remaining > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Còn:</span>
+                      <span className={cn("font-mono font-bold text-right", remaining > 10_000_000 ? "text-red-600" : "text-orange-600")}>{formatCurrency(remaining)}</span>
+                    </div>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell className="min-w-[140px]">
+                <div className="flex flex-col gap-0.5">
+                  <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, "assignee_id", order.assignee_id || "unassigned")}>
+                    {order.assignees?.name ? (
+                      <span className="text-xs font-medium text-blue-600">{order.assignees.name}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">Chưa phân công</span>
+                    )}
+                  </div>
+                  {order.manager_id && (
+                    <span className="text-xs text-muted-foreground">
+                      QL: {managerMap.get(order.manager_id) || '—'}
+                    </span>
+                  )}
+                </div>
+                {editingCell === `${order.id}-assignee_id` && getCellContent(order, "assignee_id")}
+              </TableCell>
+              <TableCell className="min-w-[220px]">
+                {getCellContent(order, "notes")}
+              </TableCell>
+              <TableCell className="min-w-[80px] sticky right-0 shadow-lg" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="h-8 w-8 p-0">
+                      <span className="sr-only">Mở menu</span>
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {onViewOrderDetail && <DropdownMenuItem onClick={() => onViewOrderDetail(order)} className="text-blue-600 hover:text-blue-900">
+                        <Eye className="mr-2 h-4 w-4" />
+                        Xem chi tiết
+                      </DropdownMenuItem>}
+                    <DropdownMenuItem onClick={() => onDeleteOrder(order)} className="text-red-600 hover:text-red-900">
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Xóa đơn hàng
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>;
+          })}
+        </TableBody>
+      </Table>
+    </div>;
+}
             <TableHead className="min-w-[140px] bg-primary text-primary-foreground">Mã vận đơn</TableHead>
             <TableHead className="min-w-[110px] bg-primary text-primary-foreground">Ngày tạo đơn</TableHead>
             <TableHead className="min-w-[180px] bg-primary text-primary-foreground">Ngày hẹn trả</TableHead>
