@@ -90,6 +90,7 @@ export default function GHNTrackingPage() {
   const [editingRecord, setEditingRecord] = useState<GHNTrackingData | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [printing, setPrinting] = useState(false);
+  const [printA5Url, setPrintA5Url] = useState<string | null>(null);
   const { role } = useUserRole(user);
 
   // Get current user
@@ -598,7 +599,7 @@ export default function GHNTrackingPage() {
       });
       if (error) throw error;
       if (data.success && data.data?.printUrl) {
-        window.open(data.data.printUrl, '_blank');
+        setPrintA5Url(data.data.printUrl);
       } else {
         throw new Error(data.error || 'Không thể tạo link in phiếu');
       }
