@@ -446,10 +446,12 @@ export function InlineOrderEditTable({
             return line && <div key={index} className="mb-1">{line}</div>;
           }).filter(Boolean);
         };
-        return <div className="cursor-pointer truncate max-w-[120px]" onClick={() => handleCellEdit(order.id, field, order.notes)} title={order.notes || ''}>
-            <span className="text-sm whitespace-nowrap overflow-hidden text-ellipsis block">
-              {order.notes || '—'}
-            </span>
+        const isAutoNote = order.notes?.startsWith('Được tạo từ báo giá');
+        const displayNotes = (!order.notes || isAutoNote) ? '' : order.notes;
+        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.notes)}>
+            <div className="text-sm whitespace-pre-wrap break-words">
+              {displayNotes || '—'}
+            </div>
           </div>;
       default:
         return null;
