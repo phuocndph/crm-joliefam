@@ -25,8 +25,22 @@ interface FeeDetail {
   service_fee: number; insurance_fee: number; cod_fee: number; r2s_fee: number;
   coupon_value: number; total: number; [key: string]: number;
 }
+// Parse shop name to extract weight range (kg) - outside component for performance
+const parseWeightRange = (name: string): { min: number; max: number } => {
+  const n = name.toLowerCase().replace(/\s+/g, ' ');
+  // "10-19kg" → min=10, max=20 (exclusive upper bound)
+  const rangeMatch = n.match(/(\d+)\s*[-–]\s*(\d+)\s*kg/);
+  if (rangeMatch) return { min: parseInt(rangeMatch[1]), max: parseInt(rangeMatch[2]) + 1 };
+  // "từ 20kg trở lên"
+  const fromMatch = n.match(/(?:từ|>=?|trên)\s*(\d+)\s*kg/);
+  if (fromMatch) return { min: parseInt(fromMatch[1]), max: Infinity };
+  // "dưới 5kg"
+  const underMatch = n.match(/(?:dưới|<=?|under)\s*(\d+)\s*kg/);
+  if (underMatch) return { min: 0, max: parseInt(underMatch[1]) };
+  return { min: 0, max: Infinity };
+};
 
-interface CreateGHNOrderDialogProps {
+
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: {
