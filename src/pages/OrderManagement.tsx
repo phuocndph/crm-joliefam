@@ -496,7 +496,6 @@ export default function OrderManagement() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsContent value="orders">
           {/* Table */}
-            <CardContent>
               {loading ? (
                 <div className="text-center py-8">Đang tải...</div>
               ) : (
@@ -504,7 +503,6 @@ export default function OrderManagement() {
                   orders={sortedOrders}
                   onOrderUpdate={async (orderId, updates) => {
                     try {
-                      // Update order
                       const { error } = await supabase
                         .from('orders')
                         .update(updates)
@@ -512,7 +510,6 @@ export default function OrderManagement() {
                       
                       if (error) throw error;
                       
-                      // Sync assignee_id to customer if it was updated
                       if ('assignee_id' in updates) {
                         const order = sortedOrders.find(o => o.id === orderId);
                         if (order?.customer_id) {
@@ -541,8 +538,6 @@ export default function OrderManagement() {
                   onViewOrderDetail={order => setSelectedOrder(order)}
                 />
               )}
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 
