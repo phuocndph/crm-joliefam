@@ -444,7 +444,7 @@ export function InlineOrderEditTable({
   };
   return <div className="rounded-xl border shadow-sm max-h-[calc(100vh-220px)] overflow-auto order-table-scroll relative z-0">
       <Table disableWrapper className="min-w-max">
-        <TableHeader className="sticky top-0 z-10">
+        <TableHeader className="sticky top-0 z-30">
           <TableRow className="border-b-2 border-gray-300">
             <TableHead className="min-w-[110px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Mã đơn</TableHead>
             <TableHead className="min-w-[130px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Mã vận đơn</TableHead>
