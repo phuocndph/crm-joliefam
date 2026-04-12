@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -90,6 +91,7 @@ export default function GHNTrackingPage() {
   const [editingRecord, setEditingRecord] = useState<GHNTrackingData | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [printing, setPrinting] = useState(false);
+  const [printA5Url, setPrintA5Url] = useState<string | null>(null);
   const { role } = useUserRole(user);
 
   // Get current user
@@ -598,7 +600,7 @@ export default function GHNTrackingPage() {
       });
       if (error) throw error;
       if (data.success && data.data?.printUrl) {
-        window.open(data.data.printUrl, '_blank');
+        setPrintA5Url(data.data.printUrl);
       } else {
         throw new Error(data.error || 'Không thể tạo link in phiếu');
       }
@@ -900,6 +902,23 @@ export default function GHNTrackingPage() {
         trackingRecord={editingRecord}
         onSuccess={() => loadTrackingData()}
       />
+
+      {/* Print A5 Dialog */}
+      <Dialog open={!!printA5Url} onOpenChange={open => !open && setPrintA5Url(null)}>
+        <DialogContent className="max-w-5xl max-h-[95vh] p-0">
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle>In phiếu vận đơn A5</DialogTitle>
+          </DialogHeader>
+          {printA5Url && (
+            <iframe
+              src={printA5Url}
+              className="w-full border-0"
+              style={{ height: 'calc(95vh - 80px)' }}
+              title="Phiếu vận đơn A5"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
