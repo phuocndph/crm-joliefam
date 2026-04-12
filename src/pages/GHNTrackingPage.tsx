@@ -762,6 +762,13 @@ export default function GHNTrackingPage() {
             <table className="w-full border-collapse min-w-[1800px]">
               <thead className="sticky top-0 z-10">
                 <tr>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-2 py-4 text-center text-sm font-semibold min-w-[50px]">
+                    <Checkbox
+                      checked={filteredData.length > 0 && selectedOrders.size === filteredData.length}
+                      onCheckedChange={toggleSelectAll}
+                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-blue-800"
+                    />
+                  </th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[80px]">STT</th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[150px]">MÃ GHN</th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">MÃ ĐƠN HÀNG</th>
