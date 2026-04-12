@@ -431,21 +431,6 @@ export function InlineOrderEditTable({
             <span className="text-sm font-medium">{getOrderDisplayNumber(order)}</span>
           </div>;
       case "notes":
-        const formatNotes = (notes: string | null) => {
-          if (!notes) return null;
-
-          // Split by lines and format each line that starts with "•"
-          const lines = notes.split('\n');
-          return lines.map((line, index) => {
-            if (line.trim().startsWith('•')) {
-              return <div key={index} className="flex items-start gap-1 mb-1">
-                  <span className="text-blue-600 font-bold text-base leading-none mt-0.5">•</span>
-                  <span className="flex-1">{line.replace('•', '').trim()}</span>
-                </div>;
-            }
-            return line && <div key={index} className="mb-1">{line}</div>;
-          }).filter(Boolean);
-        };
         const isAutoNote = order.notes?.startsWith('Được tạo từ báo giá');
         const displayNotes = (!order.notes || isAutoNote) ? '' : order.notes;
         return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.notes)} title={displayNotes || '—'}>
