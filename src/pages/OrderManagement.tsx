@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw, MapPin, Navigation, Zap } from "lucide-react";
+import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw, MapPin, Navigation, Zap, Printer } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useOrders } from "@/hooks/useOrders";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -706,6 +706,31 @@ export default function OrderManagement() {
 
                 {/* Action Buttons */}
                 <div className="flex justify-end space-x-2 pt-4 border-t border-gray-300 mt-4">
+                  {selectedOrder?.ghn_tracking && Array.isArray(selectedOrder.ghn_tracking) && selectedOrder.ghn_tracking.length > 0 && (
+                    <Button
+                      onClick={async () => {
+                        const codes = selectedOrder.ghn_tracking!.map((t: any) => t.ghn_order_code);
+                        try {
+                          const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+                            body: { action: 'print_a5', orderCodes: codes }
+                          });
+                          if (error) throw error;
+                          if (data.success && data.data?.printUrl) {
+                            window.open(data.data.printUrl, '_blank');
+                          } else {
+                            throw new Error(data.error || 'Không thể tạo link in phiếu');
+                          }
+                        } catch (err: any) {
+                          toast({ title: "Lỗi", description: err.message || "Lỗi in phiếu A5", variant: "destructive" });
+                        }
+                      }}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      <Printer className="h-4 w-4" />
+                      In vận đơn A5
+                    </Button>
+                  )}
                   {(!selectedOrder?.ghn_tracking || (Array.isArray(selectedOrder?.ghn_tracking) && selectedOrder.ghn_tracking.length === 0)) && (
                     <Button onClick={() => setOrderToCreateGHN(selectedOrder)} variant="outline" className="gap-2">
                       <Truck className="h-4 w-4" />

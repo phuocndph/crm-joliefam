@@ -472,6 +472,45 @@ serve(async (req) => {
       });
     }
 
+    // ==================== PRINT A5 ACTION ====================
+    if (action === 'print_a5') {
+      const { orderCodes } = requestBody;
+      if (!orderCodes || !Array.isArray(orderCodes) || orderCodes.length === 0) {
+        throw new Error('orderCodes array is required');
+      }
+
+      console.log('Generating A5 print token for:', orderCodes);
+
+      const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/a5/gen-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Token': ghnApiKey,
+        },
+        body: JSON.stringify({ order_codes: orderCodes }),
+      });
+
+      const data = await response.json();
+      console.log('GHN gen-token response:', JSON.stringify(data));
+
+      if (data.code !== 200) {
+        throw new Error(data.message || 'Cannot generate print token');
+      }
+
+      const token = data.data?.token;
+      if (!token) throw new Error('No token returned from GHN');
+
+      const printUrl = `https://online-gateway.ghn.vn/a5/public-api/printA5?token=${token}`;
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: `Đã tạo link in phiếu A5 cho ${orderCodes.length} đơn hàng`,
+        data: { printUrl, token },
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     throw new Error('Invalid action specified');
 
   } catch (error) {

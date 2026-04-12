@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
-import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil, Search } from 'lucide-react';
+import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil, Search, Printer } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { User } from '@supabase/supabase-js';
 import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
 import { EditGHNOrderDialog } from '@/components/EditGHNOrderDialog';
@@ -87,6 +88,8 @@ export default function GHNTrackingPage() {
   });
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<GHNTrackingData | null>(null);
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [printing, setPrinting] = useState(false);
   const { role } = useUserRole(user);
 
   // Get current user
@@ -586,6 +589,44 @@ export default function GHNTrackingPage() {
     setFilters(newFilters);
   }, []);
 
+  const printA5 = async (orderCodes: string[]) => {
+    if (orderCodes.length === 0) return;
+    setPrinting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+        body: { action: 'print_a5', orderCodes }
+      });
+      if (error) throw error;
+      if (data.success && data.data?.printUrl) {
+        window.open(data.data.printUrl, '_blank');
+      } else {
+        throw new Error(data.error || 'Không thể tạo link in phiếu');
+      }
+    } catch (error: any) {
+      console.error('Error printing A5:', error);
+      toast.error(error.message || 'Lỗi in phiếu A5');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const toggleSelectOrder = (orderCode: string) => {
+    setSelectedOrders(prev => {
+      const next = new Set(prev);
+      if (next.has(orderCode)) next.delete(orderCode);
+      else next.add(orderCode);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedOrders.size === filteredData.length) {
+      setSelectedOrders(new Set());
+    } else {
+      setSelectedOrders(new Set(filteredData.map(d => d.ghn_order_code)));
+    }
+  };
+
   return (
     <div className="container mx-auto py-6 space-y-6 max-w-full">
       <Card className="w-full">
@@ -630,17 +671,28 @@ export default function GHNTrackingPage() {
                   </Button>
                 </div>
                 <div className="flex gap-4 items-center">
-                  <span className="text-sm text-gray-600">
-                    Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
-                  </span>
-                  <Button
-                    onClick={updateAllTracking}
-                    disabled={loading || trackingData.length === 0}
-                    variant="outline"
-                  >
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                    Cập nhật tất cả
-                  </Button>
+                     <span className="text-sm text-gray-600">
+                       Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
+                     </span>
+                     {selectedOrders.size > 0 && (
+                       <Button
+                         onClick={() => printA5(Array.from(selectedOrders))}
+                         disabled={printing}
+                         variant="outline"
+                         className="gap-2"
+                       >
+                         {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                         In A5 ({selectedOrders.size})
+                       </Button>
+                     )}
+                     <Button
+                       onClick={updateAllTracking}
+                       disabled={loading || trackingData.length === 0}
+                       variant="outline"
+                     >
+                       {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                       Cập nhật tất cả
+                     </Button>
                 </div>
               </div>
             ) : (
@@ -670,17 +722,28 @@ export default function GHNTrackingPage() {
                     </Button>
                   </div>
                   <div className="flex gap-4 items-center">
-                    <span className="text-sm text-gray-600">
-                      Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
-                    </span>
-                    <Button
-                      onClick={updateAllTracking}
-                      disabled={loading || trackingData.length === 0}
-                      variant="outline"
-                    >
-                      {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                      Cập nhật tất cả
-                    </Button>
+                     <span className="text-sm text-gray-600">
+                       Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
+                     </span>
+                     {selectedOrders.size > 0 && (
+                       <Button
+                         onClick={() => printA5(Array.from(selectedOrders))}
+                         disabled={printing}
+                         variant="outline"
+                         className="gap-2"
+                       >
+                         {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                         In A5 ({selectedOrders.size})
+                       </Button>
+                     )}
+                     <Button
+                       onClick={updateAllTracking}
+                       disabled={loading || trackingData.length === 0}
+                       variant="outline"
+                     >
+                       {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                       Cập nhật tất cả
+                     </Button>
                   </div>
                 </div>
               </div>
@@ -699,6 +762,13 @@ export default function GHNTrackingPage() {
             <table className="w-full border-collapse min-w-[1800px]">
               <thead className="sticky top-0 z-10">
                 <tr>
+                  <th className="bg-blue-800 text-white border border-gray-300 px-2 py-4 text-center text-sm font-semibold min-w-[50px]">
+                    <Checkbox
+                      checked={filteredData.length > 0 && selectedOrders.size === filteredData.length}
+                      onCheckedChange={toggleSelectAll}
+                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-blue-800"
+                    />
+                  </th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[80px]">STT</th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[150px]">MÃ GHN</th>
                   <th className="bg-blue-800 text-white border border-gray-300 px-4 py-4 text-left text-sm font-semibold min-w-[120px]">MÃ ĐƠN HÀNG</th>
@@ -718,13 +788,19 @@ export default function GHNTrackingPage() {
               <tbody>
                 {filteredData.length === 0 ? (
                   <tr>
-                    <td colSpan={14} className="border border-gray-300 px-3 py-4 text-center text-gray-500">
+                    <td colSpan={15} className="border border-gray-300 px-3 py-4 text-center text-gray-500">
                       {trackingData.length === 0 ? 'Chưa có dữ liệu tracking' : 'Không tìm thấy kết quả phù hợp với bộ lọc'}
                     </td>
                   </tr>
                 ) : (
                   filteredData.map((item, index) => (
                     <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="border border-gray-300 px-2 py-3 text-center min-w-[50px]">
+                        <Checkbox
+                          checked={selectedOrders.has(item.ghn_order_code)}
+                          onCheckedChange={() => toggleSelectOrder(item.ghn_order_code)}
+                        />
+                      </td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-medium text-center min-w-[80px]">{index + 1}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[150px]">{item.ghn_order_code}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[120px]">{item.internal_order_code || '-'}</td>
@@ -768,6 +844,16 @@ export default function GHNTrackingPage() {
                       </td>
                       <td className="border border-gray-300 px-4 py-3 text-sm min-w-[120px] sticky right-0 bg-background shadow-lg">
                         <div className="flex items-center gap-1">
+                          <Button
+                            onClick={() => printA5([item.ghn_order_code])}
+                            variant="ghost"
+                            size="sm"
+                            className="text-green-600 hover:text-green-800"
+                            title="In phiếu A5"
+                            disabled={printing}
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
                           {!FINAL_STATUSES.includes(item.ghn_status || '') && (
                             <Button
                               onClick={() => { setEditingRecord(item); setEditDialogOpen(true); }}
