@@ -433,8 +433,8 @@ export function InlineOrderEditTable({
       case "notes":
         const isAutoNote = order.notes?.startsWith('Được tạo từ báo giá');
         const displayNotes = (!order.notes || isAutoNote) ? '' : order.notes;
-        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.notes)} title={displayNotes || '—'}>
-            <div className="text-sm truncate max-w-[90px]">
+        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.notes)}>
+            <div className="text-sm whitespace-pre-wrap break-words">
               {displayNotes || '—'}
             </div>
           </div>;
