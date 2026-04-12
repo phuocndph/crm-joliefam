@@ -718,7 +718,7 @@ export default function OrderManagement() {
                           if (error) throw error;
                           if (data.success && data.data?.printUrl) {
                             window.open(data.data.printUrl, '_blank');
-                            toast.success("Đang mở trang in phiếu A5...");
+                            toast({ title: "Đang mở trang in phiếu A5..." });
                           } else {
                             throw new Error(data.error || 'Không thể tạo link in phiếu');
                           }
