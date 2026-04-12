@@ -1,12 +1,18 @@
 
 
-## Thu gọn cột Ghi chú
+## Sửa cột Ghi chú + bỏ auto-note từ báo giá
 
-### Thay đổi trong `src/components/InlineOrderEditTable.tsx`
+### Thay đổi
 
-1. **Giảm min-width** từ `220px` xuống `140px` (cả header dòng 470 và cell dòng 562)
-2. **Thêm truncate** cho nội dung ghi chú: text bị cắt với `...` khi quá dài, hover để xem tooltip đầy đủ
-3. **Giảm right offset** của cột Ghi chú từ `right-[80px]` xuống `right-[60px]` và cột hành động từ `min-w-[80px]` xuống `min-w-[60px]` để tiết kiệm thêm
+**1. `src/components/InlineOrderEditTable.tsx`** — Sửa hiển thị notes (dòng 449-453):
+- Bỏ `truncate`, `max-w-[120px]`, `whitespace-nowrap`, `overflow-hidden`, `text-ellipsis`
+- Cho phép xuống dòng tự do (`whitespace-pre-wrap`, `break-words`)
+- Lọc bỏ notes bắt đầu bằng `Được tạo từ báo giá` — coi như trống, hiển thị `—`
+- Notes trống hoặc chỉ có auto-note → hiển thị `—`
 
-Kết quả: cột Ghi chú chỉ chiếm ~140px thay vì 220px, nội dung dài sẽ hiển thị truncated với tooltip khi hover.
+**2. `src/components/CreateQuoteForm.tsx`** (dòng 761) — Bỏ ghi chú tự động khi tạo đơn từ báo giá, set `notes: null`
+
+**3. `src/pages/QuotesPage.tsx`** (dòng 234) — Tương tự, set `notes: null`
+
+**4. `src/components/QuoteSupplementDialog.tsx`** (dòng 248) — Tương tự, set `notes: null`
 
