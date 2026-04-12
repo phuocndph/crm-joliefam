@@ -180,13 +180,24 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       setFeeDetail(null);
       setFeeStatus("idle");
       setServices([]);
-      setServiceTypeId("");
+      
+      // Pre-fill location IDs from raw_data instead of resetting
+      const rawDistrictId = raw.to_district_id ? String(raw.to_district_id) : "";
+      const rawWardCode = raw.to_ward_code || "";
+      const rawServiceTypeId = raw.service_type_id ? String(raw.service_type_id) : "";
+      
+      prefillDistrictIdRef.current = rawDistrictId;
+      prefillWardCodeRef.current = rawWardCode;
+      prefillServiceTypeIdRef.current = rawServiceTypeId;
+      
+      setDistrictId(rawDistrictId);
+      setWardCode(rawWardCode);
+      setServiceTypeId(rawServiceTypeId);
       setProvinceId("");
-      setDistrictId("");
-      setWardCode("");
       setDistricts([]);
       setWards([]);
       setAutoMatchDone(false);
+      setPrefillLocationDone(false);
     }
     if (!open) {
       hasPrefilledRef.current = false;
