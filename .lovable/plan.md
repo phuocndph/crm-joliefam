@@ -1,17 +1,13 @@
 
 
-## Dọn dẹp cột Ghi chú
+## Sửa cột Ghi chú: wrap text thay vì truncate
 
-### Vấn đề phát hiện
-Không có lỗi compile hay runtime. Tuy nhiên có 2 vấn đề nhỏ cần sửa:
+### Vấn đề
+Cột Ghi chú đang dùng `truncate` nên text bị cắt và che lên thanh tab khi cuộn. Cần cho text tự xuống dòng để nhìn thấy toàn bộ nội dung.
 
-1. **Dead code**: Hàm `formatNotes` (dòng 434-448) được định nghĩa nhưng không bao giờ được sử dụng — nên xóa bỏ để code sạch hơn
-2. **Cột hoạt động bình thường**: truncate + tooltip + sticky đều đang chạy đúng
+### Thay đổi trong `src/components/InlineOrderEditTable.tsx`
 
-### Thay đổi
+**1. Nội dung ghi chú (dòng 436-440):** Bỏ `truncate max-w-[90px]`, thay bằng `whitespace-pre-wrap break-words` để text tự xuống dòng. Bỏ `title` tooltip (không cần nữa vì đã hiện đầy đủ).
 
-**File: `src/components/InlineOrderEditTable.tsx`**
-
-- Xóa hàm `formatNotes` không sử dụng (dòng 434-448) trong case `"notes"`
-- Giữ nguyên logic hiển thị hiện tại (truncate, auto-note filter, tooltip)
+**2. Giữ nguyên** width cột `min-w-[110px]` và sticky positioning.
 
