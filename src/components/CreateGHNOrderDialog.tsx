@@ -101,6 +101,41 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
   const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
 
+  // Parse shop name to extract weight range (kg)
+  const parseWeightRange = (name: string): { min: number; max: number } => {
+    const normalized = name.toLowerCase().replace(/\s+/g, ' ');
+    // Pattern: "10-19kg" or "10 - 19 kg"
+    const rangeMatch = normalized.match(/(\d+)\s*[-–]\s*(\d+)\s*kg/);
+    if (rangeMatch) return { min: parseInt(rangeMatch[1]), max: parseInt(rangeMatch[2]) };
+    // Pattern: "từ 20kg trở lên" or ">= 20kg"
+    const fromMatch = normalized.match(/(?:từ|>=?|trên)\s*(\d+)\s*kg/);
+    if (fromMatch) return { min: parseInt(fromMatch[1]), max: Infinity };
+    // Pattern: "dưới 5kg" or "<= 5kg"  
+    const underMatch = normalized.match(/(?:dưới|<=?|under)\s*(\d+)\s*kg/);
+    if (underMatch) return { min: 0, max: parseInt(underMatch[1]) - 1 };
+    // Pattern: just a number like "5kg"
+    const singleMatch = normalized.match(/(\d+)\s*kg/);
+    if (singleMatch) return { min: parseInt(singleMatch[1]), max: parseInt(singleMatch[1]) };
+    return { min: 0, max: Infinity };
+  };
+
+  // Calculate effective weight (kg) = max(actual, dimensional)
+  const dimensionalWeightGram = Math.ceil(length * width * height / 6000 * 1000);
+  const effectiveWeightGram = Math.max(weight, dimensionalWeightGram);
+  const effectiveWeightKg = effectiveWeightGram / 1000;
+
+  // Auto-select shop based on effective weight
+  useEffect(() => {
+    if (shops.length === 0) return;
+    const matchingShop = shops.find(shop => {
+      const { min, max } = parseWeightRange(shop.name);
+      return effectiveWeightKg >= min && effectiveWeightKg <= max;
+    });
+    if (matchingShop) {
+      setSelectedShopId(String(matchingShop._id));
+    }
+  }, [effectiveWeightKg, shops]);
+
   // Sync order weight with total product weight
   useEffect(() => {
     if (totalItemWeight > 0) {
@@ -722,8 +757,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                       <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-sm text-muted-foreground">KL quy đổi (gram)</Label>
-                      <div className="text-sm font-medium pt-2">{Math.ceil(length * width * height / 5000 * 1000)}</div>
+                     <Label className="text-sm text-muted-foreground">KL quy đổi (gram)</Label>
+                      <div className="text-sm font-medium pt-2">{dimensionalWeightGram.toLocaleString('vi-VN')}</div>
                     </div>
                   </div>
                 </div>
