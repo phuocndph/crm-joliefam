@@ -360,59 +360,142 @@ export default function OrderManagement() {
     if (amount >= 1_000) return `${(amount / 1_000).toFixed(0)}k`;
     return amount.toString();
   };
+
+  const statusFilterChips = [
+    { value: 'all', label: 'Tất cả' },
+    { value: 'pending', label: 'Chờ xử lý' },
+    { value: 'processing', label: 'Đang xử lý' },
+    { value: 'shipped', label: 'Đã giao' },
+    { value: 'self_delivered', label: 'Tự giao' },
+    { value: 'delivered', label: 'Hoàn thành' },
+    { value: 'returned', label: 'Hoàn hàng' },
+    { value: 'cancelled', label: 'Đã hủy' },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {/* Header + Stats Compact Bar */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <h1 className="text-xl font-bold text-foreground">Quản lý Đơn hàng</h1>
+          <div className="flex items-center gap-2">
+            {(userRole === 'admin' || userRole === 'accountant') && (
+              <ManagerSelector
+                selectedManagerId={selectedManagerId}
+                onManagerChange={setSelectedManagerId}
+              />
+            )}
+            <Button onClick={() => navigate('/quotes?create=true')} size="sm" className="gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              Tạo báo giá
+            </Button>
+          </div>
+        </div>
+
+        {/* Compact Stats Bar */}
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg border text-sm">
+          <div className="flex items-center gap-1.5">
+            <Package className="h-3.5 w-3.5 text-blue-600" />
+            <span className="font-semibold">{orders.length}</span>
+            <span className="text-muted-foreground">đơn</span>
+          </div>
+          <span className="text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5 text-yellow-600" />
+            <span className="font-semibold">{pendingCount}</span>
+            <span className="text-muted-foreground">chờ xử lý</span>
+          </div>
+          <span className="text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 text-blue-600" />
+            <span className="font-semibold">{processingCount}</span>
+            <span className="text-muted-foreground">đang xử lý</span>
+          </div>
+          {overdueCount > 0 && (
+            <>
+              <span className="text-muted-foreground/40">|</span>
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5 text-red-600 animate-pulse" />
+                <span className="font-semibold text-red-600">{overdueCount}</span>
+                <span className="text-red-600">quá hạn</span>
+              </div>
+            </>
+          )}
+          <span className="text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5">
+            <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+            <span className="font-semibold">{completedCount}</span>
+            <span className="text-muted-foreground">hoàn thành</span>
+          </div>
+          <span className="text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5">
+            <DollarSign className="h-3.5 w-3.5 text-orange-600" />
+            <span className="text-muted-foreground">Chờ thu:</span>
+            <span className="font-semibold text-orange-600">{formatCompactCurrency(totalReceivable)}</span>
+          </div>
+          <span className="text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5">
+            <DollarSign className="h-3.5 w-3.5 text-green-600" />
+            <span className="text-muted-foreground">Tổng HT:</span>
+            <span className="font-semibold text-green-600">{formatCompactCurrency(totalValue)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Search + Filter Chips */}
+      <div className="flex flex-col lg:flex-row gap-3">
+        <div className="relative w-full lg:w-72">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Input placeholder="Tìm mã đơn, khách hàng, SĐT..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 h-9" />
+        </div>
+        <div className="flex gap-1.5 flex-wrap items-center">
+          {statusFilterChips.map(chip => (
+            <button
+              key={chip.value}
+              onClick={() => setStatusFilter(chip.value)}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-medium transition-colors border",
+                statusFilter === chip.value
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+              )}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 ml-auto">
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-44 h-9">
+              <SelectValue placeholder="Sắp xếp theo" />
+            </SelectTrigger>
+            <SelectContent className="bg-white z-50">
+              <SelectItem value="created_at">Ngày tạo mới nhất</SelectItem>
+              <SelectItem value="order_number">Mã đơn hàng</SelectItem>
+              <SelectItem value="customer_name">Tên khách hàng</SelectItem>
+              <SelectItem value="total_amount">Giá trị đơn</SelectItem>
+              <SelectItem value="delivery_date">Hẹn giao hàng</SelectItem>
+              <SelectItem value="payment_date">Ngày thanh toán</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+            <SelectTrigger className="w-40 h-9">
+              <SelectValue placeholder="Thanh toán" />
+            </SelectTrigger>
+            <SelectContent className="bg-white z-50">
+              <SelectItem value="all">Tất cả TT</SelectItem>
+              <SelectItem value="pending">Chưa thanh toán</SelectItem>
+              <SelectItem value="partial">Thanh toán 1 phần</SelectItem>
+              <SelectItem value="paid">Đã thanh toán</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsContent value="orders">
-          {/* Search and Filter */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Danh sách Đơn hàng</CardTitle>
-              <div className="flex flex-col lg:flex-row gap-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                  <Input placeholder="Tìm kiếm theo mã đơn, khách hàng..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <Select value={sortBy} onValueChange={setSortBy}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="Sắp xếp theo" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white z-50">
-                      <SelectItem value="created_at">Ngày tạo mới nhất</SelectItem>
-                      <SelectItem value="order_number">Mã đơn hàng</SelectItem>
-                      <SelectItem value="customer_name">Tên khách hàng</SelectItem>
-                      <SelectItem value="total_amount">Giá trị đơn</SelectItem>
-                      <SelectItem value="delivery_date">Hẹn giao hàng</SelectItem>
-                      <SelectItem value="payment_date">Ngày thanh toán</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Trạng thái" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white z-50">
-                      <SelectItem value="all">Tất cả</SelectItem>
-                      <SelectItem value="pending">Chờ xử lý</SelectItem>
-                      <SelectItem value="processing">Đang xử lý</SelectItem>
-                      <SelectItem value="shipped">Đã giao</SelectItem>
-                      <SelectItem value="delivered">Hoàn thành</SelectItem>
-                      <SelectItem value="cancelled">Đã hủy</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={paymentFilter} onValueChange={setPaymentFilter}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Thanh toán" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white z-50">
-                      <SelectItem value="all">Tất cả</SelectItem>
-                      <SelectItem value="pending">Chưa thanh toán</SelectItem>
-                      <SelectItem value="partial">Thanh toán 1 phần</SelectItem>
-                      <SelectItem value="paid">Đã thanh toán</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardHeader>
+          {/* Table */}
             <CardContent>
               {loading ? (
                 <div className="text-center py-8">Đang tải...</div>
