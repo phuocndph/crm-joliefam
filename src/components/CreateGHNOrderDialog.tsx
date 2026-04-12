@@ -336,10 +336,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setLoadingShops(true);
     try {
       const data = await callGHN('get_shops');
-      setShops(data);
-      if (data?.length > 0 && !selectedShopId) {
-        setSelectedShopId(String(data[0]._id));
-      }
+      setShops(data || []);
     } catch (e) { console.error(e); } finally { setLoadingShops(false); }
   };
 
