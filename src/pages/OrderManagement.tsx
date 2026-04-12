@@ -131,6 +131,7 @@ export default function OrderManagement() {
   const [activeTab, setActiveTab] = useState("orders");
   const [bulkSyncing, setBulkSyncing] = useState(false);
   const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
+  const [printA5Url, setPrintA5Url] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
@@ -716,7 +717,7 @@ export default function OrderManagement() {
                           });
                           if (error) throw error;
                           if (data.success && data.data?.printUrl) {
-                            window.open(data.data.printUrl, '_blank');
+                            setPrintA5Url(data.data.printUrl);
                           } else {
                             throw new Error(data.error || 'Không thể tạo link in phiếu');
                           }
