@@ -446,10 +446,10 @@ export function InlineOrderEditTable({
             return line && <div key={index} className="mb-1">{line}</div>;
           }).filter(Boolean);
         };
-        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.notes)}>
-            <div className="text-sm break-words leading-relaxed space-y-1">
-              {formatNotes(order.notes)}
-            </div>
+        return <div className="cursor-pointer truncate max-w-[120px]" onClick={() => handleCellEdit(order.id, field, order.notes)} title={order.notes || ''}>
+            <span className="text-sm whitespace-nowrap overflow-hidden text-ellipsis block">
+              {order.notes || '—'}
+            </span>
           </div>;
       default:
         return null;
@@ -467,8 +467,8 @@ export function InlineOrderEditTable({
             <TableHead className="min-w-[180px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Khách hàng</TableHead>
             <TableHead className="min-w-[200px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Tài chính</TableHead>
             <TableHead className="min-w-[140px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Phân công</TableHead>
-            <TableHead className="min-w-[220px] sticky right-[80px] z-20 bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Ghi chú</TableHead>
-            <TableHead className="min-w-[80px] sticky right-0 z-20 bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide shadow-lg">⋯</TableHead>
+            <TableHead className="min-w-[140px] sticky right-[60px] z-20 bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Ghi chú</TableHead>
+            <TableHead className="min-w-[60px] sticky right-0 z-20 bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide shadow-lg">⋯</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -559,10 +559,10 @@ export function InlineOrderEditTable({
                 </div>
                 {editingCell === `${order.id}-assignee_id` && getCellContent(order, "assignee_id")}
               </TableCell>
-              <TableCell className="min-w-[220px] sticky right-[80px] z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
+              <TableCell className="min-w-[140px] sticky right-[60px] z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
                 {getCellContent(order, "notes")}
               </TableCell>
-              <TableCell className="min-w-[80px] sticky right-0 shadow-lg" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
+              <TableCell className="min-w-[60px] sticky right-0 shadow-lg" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="h-8 w-8 p-0">
