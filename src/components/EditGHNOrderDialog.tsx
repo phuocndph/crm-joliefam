@@ -115,6 +115,10 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const [loadingFee, setLoadingFee] = useState(false);
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
   const [autoMatchDone, setAutoMatchDone] = useState(false);
+  const [prefillLocationDone, setPrefillLocationDone] = useState(false);
+  const prefillDistrictIdRef = useRef<string>("");
+  const prefillWardCodeRef = useRef<string>("");
+  const prefillServiceTypeIdRef = useRef<string>("");
 
   // Address suggestions
   const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
@@ -176,13 +180,24 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       setFeeDetail(null);
       setFeeStatus("idle");
       setServices([]);
-      setServiceTypeId("");
+      
+      // Pre-fill location IDs from raw_data instead of resetting
+      const rawDistrictId = raw.to_district_id ? String(raw.to_district_id) : "";
+      const rawWardCode = raw.to_ward_code || "";
+      const rawServiceTypeId = raw.service_type_id ? String(raw.service_type_id) : "";
+      
+      prefillDistrictIdRef.current = rawDistrictId;
+      prefillWardCodeRef.current = rawWardCode;
+      prefillServiceTypeIdRef.current = rawServiceTypeId;
+      
+      setDistrictId(rawDistrictId);
+      setWardCode(rawWardCode);
+      setServiceTypeId(rawServiceTypeId);
       setProvinceId("");
-      setDistrictId("");
-      setWardCode("");
       setDistricts([]);
       setWards([]);
       setAutoMatchDone(false);
+      setPrefillLocationDone(false);
     }
     if (!open) {
       hasPrefilledRef.current = false;
@@ -317,14 +332,62 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
     try { setProvinces(await callGHN('get_provinces')); } catch (e) { console.error(e); } finally { setLoadingProvinces(false); }
   };
 
-  // Auto-match on open when provinces loaded
+  // Pre-fill location from raw_data when provinces loaded
   useEffect(() => {
-    if (provinces.length > 0 && trackingRecord && open && !autoMatchDone) {
-      setAutoMatchDone(true);
-      const addr = trackingRecord.raw_data?.to_address || trackingRecord.customer_address || "";
-      if (addr) autoMatchFromText(addr);
+    if (provinces.length > 0 && open && !prefillLocationDone) {
+      setPrefillLocationDone(true);
+      const targetDistrictId = prefillDistrictIdRef.current;
+      const targetWardCode = prefillWardCodeRef.current;
+      
+      if (targetDistrictId) {
+        // Use address text matching to find province only, then set district/ward from raw_data
+        const addr = trackingRecord?.raw_data?.to_address || trackingRecord?.customer_address || "";
+        const normalizedAddr = normalizeText(addr);
+        
+        // Find province from address text
+        const findProvince = () => {
+          const allPairs: { name: string; id: number }[] = [];
+          for (const p of provinces) {
+            const names = Array.from(new Set([
+              normalizeText(p.ProvinceName),
+              normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
+              ...(p.NameExtension || []).map(n => normalizeText(n)),
+            ]));
+            for (const n of names) allPairs.push({ name: n, id: p.ProvinceID });
+          }
+          allPairs.sort((a, b) => b.name.length - a.name.length);
+          for (const pair of allPairs) {
+            if (pair.name.length >= 2 && normalizedAddr.includes(pair.name)) return pair.id;
+          }
+          return null;
+        };
+        
+        const matchedProvId = findProvince();
+        if (matchedProvId) {
+          setProvinceId(String(matchedProvId));
+          // Load districts for province, then set pre-filled districtId (don't reset it)
+          (async () => {
+            try {
+              const distList = await callGHN('get_districts', { provinceId: matchedProvId });
+              setDistricts(distList || []);
+              setDistrictId(targetDistrictId); // Restore from raw_data
+              // Load wards for pre-filled district
+              const wardList = await callGHN('get_wards', { districtId: parseInt(targetDistrictId) });
+              setWards(wardList || []);
+              if (targetWardCode) setWardCode(targetWardCode); // Restore from raw_data
+            } catch (e) { console.error('Pre-fill location error:', e); }
+          })();
+        }
+      } else {
+        // No raw_data district, fallback to autoMatch from address text
+        if (!autoMatchDone) {
+          setAutoMatchDone(true);
+          const addr = trackingRecord?.raw_data?.to_address || trackingRecord?.customer_address || "";
+          if (addr) autoMatchFromText(addr);
+        }
+      }
     }
-  }, [provinces, trackingRecord, open, autoMatchDone]);
+  }, [provinces, open, prefillLocationDone, callGHN, autoMatchDone, autoMatchFromText, trackingRecord]);
 
   const loadDistricts = async (provId: number) => {
     setLoadingDistricts(true);
@@ -343,13 +406,20 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   }, [districtId, selectedShopId]);
 
   const loadServices = async (toDistrictId: number) => {
-    setLoadingServices(true); setServices([]); setServiceTypeId("");
+    setLoadingServices(true); setServices([]);
+    const savedServiceTypeId = prefillServiceTypeIdRef.current;
     try {
       const selectedShop = shops.find(s => String(s._id) === selectedShopId);
       const fromDistrictId = selectedShop?.district_id || 1490;
       const data = await callGHN('get_services', { fromDistrictId, toDistrictId, shopId: selectedShopId || undefined });
       setServices(data || []);
-      if (data?.length > 0) setServiceTypeId(String(data[0].service_type_id));
+      // Prefer pre-filled serviceTypeId if it exists in the loaded services
+      if (savedServiceTypeId && data?.some((s: GHNService) => String(s.service_type_id) === savedServiceTypeId)) {
+        setServiceTypeId(savedServiceTypeId);
+        prefillServiceTypeIdRef.current = ""; // Only use once
+      } else if (data?.length > 0) {
+        setServiceTypeId(String(data[0].service_type_id));
+      }
     } catch (e) { console.error(e); } finally { setLoadingServices(false); }
   };
 
