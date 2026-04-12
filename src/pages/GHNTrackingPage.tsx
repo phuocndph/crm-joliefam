@@ -788,13 +788,19 @@ export default function GHNTrackingPage() {
               <tbody>
                 {filteredData.length === 0 ? (
                   <tr>
-                    <td colSpan={14} className="border border-gray-300 px-3 py-4 text-center text-gray-500">
+                    <td colSpan={15} className="border border-gray-300 px-3 py-4 text-center text-gray-500">
                       {trackingData.length === 0 ? 'Chưa có dữ liệu tracking' : 'Không tìm thấy kết quả phù hợp với bộ lọc'}
                     </td>
                   </tr>
                 ) : (
                   filteredData.map((item, index) => (
                     <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="border border-gray-300 px-2 py-3 text-center min-w-[50px]">
+                        <Checkbox
+                          checked={selectedOrders.has(item.ghn_order_code)}
+                          onCheckedChange={() => toggleSelectOrder(item.ghn_order_code)}
+                        />
+                      </td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-medium text-center min-w-[80px]">{index + 1}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[150px]">{item.ghn_order_code}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[120px]">{item.internal_order_code || '-'}</td>
