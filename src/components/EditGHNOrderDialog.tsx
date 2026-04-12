@@ -334,37 +334,57 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
 
   // Pre-fill location from raw_data when provinces loaded
   useEffect(() => {
-    if (provinces.length > 0 && open && !prefillLocationDone && prefillDistrictIdRef.current) {
+    if (provinces.length > 0 && open && !prefillLocationDone) {
       setPrefillLocationDone(true);
-      const targetDistrictId = parseInt(prefillDistrictIdRef.current);
+      const targetDistrictId = prefillDistrictIdRef.current;
       const targetWardCode = prefillWardCodeRef.current;
       
-      // Find province by iterating and loading districts for each until we find the one containing our district
-      (async () => {
-        for (const prov of provinces) {
-          try {
-            const distList = await callGHN('get_districts', { provinceId: prov.ProvinceID });
-            const found = (distList || []).find((d: District) => d.DistrictID === targetDistrictId);
-            if (found) {
-              setProvinceId(String(prov.ProvinceID));
-              setDistricts(distList || []);
-              setDistrictId(String(targetDistrictId));
-              // Load wards for the pre-filled district
-              const wardList = await callGHN('get_wards', { districtId: targetDistrictId });
-              setWards(wardList || []);
-              if (targetWardCode) setWardCode(targetWardCode);
-              break;
-            }
-          } catch (e) { console.error('Pre-fill province search error:', e); }
-        }
-      })();
-    } else if (provinces.length > 0 && open && !prefillLocationDone && !prefillDistrictIdRef.current) {
-      // No raw_data district, fallback to autoMatch from address text
-      setPrefillLocationDone(true);
-      if (!autoMatchDone) {
-        setAutoMatchDone(true);
+      if (targetDistrictId) {
+        // Use address text matching to find province only, then set district/ward from raw_data
         const addr = trackingRecord?.raw_data?.to_address || trackingRecord?.customer_address || "";
-        if (addr) autoMatchFromText(addr);
+        const normalizedAddr = normalizeText(addr);
+        
+        // Find province from address text
+        const findProvince = () => {
+          const allPairs: { name: string; id: number }[] = [];
+          for (const p of provinces) {
+            const names = Array.from(new Set([
+              normalizeText(p.ProvinceName),
+              normalizeText(p.ProvinceName).replace(/^(tinh |thanh pho )/, ""),
+              ...(p.NameExtension || []).map(n => normalizeText(n)),
+            ]));
+            for (const n of names) allPairs.push({ name: n, id: p.ProvinceID });
+          }
+          allPairs.sort((a, b) => b.name.length - a.name.length);
+          for (const pair of allPairs) {
+            if (pair.name.length >= 2 && normalizedAddr.includes(pair.name)) return pair.id;
+          }
+          return null;
+        };
+        
+        const matchedProvId = findProvince();
+        if (matchedProvId) {
+          setProvinceId(String(matchedProvId));
+          // Load districts for province, then set pre-filled districtId (don't reset it)
+          (async () => {
+            try {
+              const distList = await callGHN('get_districts', { provinceId: matchedProvId });
+              setDistricts(distList || []);
+              setDistrictId(targetDistrictId); // Restore from raw_data
+              // Load wards for pre-filled district
+              const wardList = await callGHN('get_wards', { districtId: parseInt(targetDistrictId) });
+              setWards(wardList || []);
+              if (targetWardCode) setWardCode(targetWardCode); // Restore from raw_data
+            } catch (e) { console.error('Pre-fill location error:', e); }
+          })();
+        }
+      } else {
+        // No raw_data district, fallback to autoMatch from address text
+        if (!autoMatchDone) {
+          setAutoMatchDone(true);
+          const addr = trackingRecord?.raw_data?.to_address || trackingRecord?.customer_address || "";
+          if (addr) autoMatchFromText(addr);
+        }
       }
     }
   }, [provinces, open, prefillLocationDone, callGHN, autoMatchDone, autoMatchFromText, trackingRecord]);
