@@ -1,57 +1,43 @@
 
 
-## Phân tích lỗi logic chọn Shop theo cân nặng
+## Sửa logic Edit GHN Order: giữ nguyên dữ liệu từ lúc tạo đơn
 
-### Các lỗi phát hiện
+### Vấn đề hiện tại
 
-**1. Pattern "dưới Xkg" bị sai boundary**
-- Code: `max: parseInt(underMatch[1]) - 1` → "dưới 5kg" → max=4
-- Lỗi: đơn 4.5kg sẽ không khớp vì 4.5 > 4
-- Sửa: dùng `max: parseInt(underMatch[1]) - 0.01` hoặc đổi logic so sánh thành `< max` thay vì `<= max`
+Khi mở dialog sửa đơn GHN, code **reset** `provinceId`, `districtId`, `wardCode` về rỗng (dòng 180-184), rồi dựa vào `autoMatchFromText` để đoán lại tỉnh/quận/phường từ chuỗi địa chỉ. Điều này:
+- Chậm (phải gọi API lấy provinces → match text → gọi districts → match → gọi wards → match)
+- Có thể sai nếu địa chỉ không match đúng
+- `serviceTypeId` cũng bị reset, phải load lại
 
-**2. Pattern "10-19kg" không cover số lẻ**
-- Code: max=19, nhưng đơn 19.5kg sẽ không match (19.5 > 19)
-- Thực tế "10-19kg" nghĩa là từ 10 đến dưới 20kg
-- Sửa: `max: parseInt(rangeMatch[2]) + 0.99` hoặc đổi thành `< max + 1`
-
-**3. Pattern "Xkg" đơn lẻ quá hẹp**
-- Code: min=max=5, chỉ match chính xác 5.000kg
-- Sửa: bỏ pattern này hoặc cho range rộng hơn
-
-**4. Không có fallback khi không match**
-- Nếu cân nặng rơi vào khoảng trống giữa các shop, shop cũ vẫn giữ nguyên (có thể sai)
-- Sửa: chọn shop gần nhất nếu không có exact match
-
-**5. `parseWeightRange` tạo mới mỗi render**
-- Nên đưa ra ngoài component hoặc wrap bằng `useCallback`
+Trong khi đó, `raw_data` đã lưu sẵn `to_district_id`, `to_ward_code`, `shop_id`, `service_type_id` từ lúc tạo đơn.
 
 ### Giải pháp
 
-**File: `src/components/CreateGHNOrderDialog.tsx`**
+**File: `src/components/EditGHNOrderDialog.tsx`**
 
-1. Đưa `parseWeightRange` ra ngoài component (pure function)
-2. Sửa logic boundary:
-   - Range "10-19kg" → `{ min: 10, max: 19.99 }`
-   - "dưới 5kg" → `{ min: 0, max: 4.99 }`
-   - Bỏ pattern singleMatch hoặc cho margin ±0.5
-3. Thêm fallback: nếu không exact match, chọn shop có min gần nhất nhưng <= effectiveWeight (shop lớn nhất mà đơn vượt qua ngưỡng min)
-4. Log console.warn khi không tìm được shop phù hợp
+1. **Pre-fill trực tiếp từ raw_data** thay vì reset rỗng:
+   - `districtId` ← `raw_data.to_district_id`
+   - `wardCode` ← `raw_data.to_ward_code`  
+   - `serviceTypeId` ← `raw_data.service_type_id`
 
-### Code minh hoạ
+2. **Load districts/wards tương ứng** sau khi pre-fill:
+   - Khi provinces load xong, tìm province chứa district đó (gọi API hoặc dùng province từ raw_data nếu có)
+   - Load danh sách districts theo province, load danh sách wards theo district
+   - Không cần chạy autoMatchFromText nữa
 
-```typescript
-// Ngoài component
-const parseWeightRange = (name: string): { min: number; max: number } => {
-  const n = name.toLowerCase().replace(/\s+/g, ' ');
-  const rangeMatch = n.match(/(\d+)\s*[-–]\s*(\d+)\s*kg/);
-  if (rangeMatch) return { min: parseInt(rangeMatch[1]), max: parseInt(rangeMatch[2]) + 0.99 };
-  const fromMatch = n.match(/(?:từ|>=?|trên)\s*(\d+)\s*kg/);
-  if (fromMatch) return { min: parseInt(fromMatch[1]), max: Infinity };
-  const underMatch = n.match(/(?:dưới|<=?|under)\s*(\d+)\s*kg/);
-  if (underMatch) return { min: 0, max: parseInt(underMatch[1]) - 0.01 };
-  return { min: 0, max: Infinity };
-};
+3. **Bỏ autoMatchFromText khi mở dialog** (chỉ giữ khi user gõ địa chỉ mới):
+   - Xóa useEffect autoMatchDone (dòng 321-327)
+   - Thay bằng logic load trực tiếp: provinces → find province from districtId → load districts → load wards
+
+4. **Flow mới khi mở dialog**:
+```text
+Pre-fill form fields từ raw_data (bao gồm districtId, wardCode, serviceTypeId)
+  → Load provinces (để dropdown hoạt động)
+  → Load shops (để dropdown hoạt động)  
+  → Tìm provinceId từ districtId (gọi GHN get_districts với từng province hoặc lưu sẵn)
+  → Load districts theo province → Load wards theo district
+  → Load services + tính phí tự động
 ```
 
-Fallback: nếu không match chính xác, sort shops theo min descending, chọn shop đầu tiên có `min <= effectiveWeightKg`.
+Vì GHN API không có endpoint "get province by district", cách đơn giản nhất là **lưu thêm provinceId vào raw_data khi tạo đơn** hoặc duyệt provinces tìm district. Phương án thực tế: dùng auto-match chỉ để tìm provinceId, sau đó set districtId/wardCode trực tiếp từ raw_data thay vì match lại.
 
