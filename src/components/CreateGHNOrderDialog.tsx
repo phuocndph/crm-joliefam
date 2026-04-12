@@ -761,6 +761,12 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                       <div className="text-sm font-medium pt-2">{dimensionalWeightGram.toLocaleString('vi-VN')}</div>
                     </div>
                   </div>
+                  {effectiveWeightGram > weight && (
+                    <div className="col-span-5 flex items-center gap-1.5 text-xs text-amber-600">
+                      <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span>KL tính cước: <strong>{effectiveWeightKg.toFixed(1)}kg</strong> (quy đổi &gt; thực tế) → Shop: <strong>{selectedShop?.name || '...'}</strong></span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
