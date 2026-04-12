@@ -231,7 +231,7 @@ export default function QuotesPage() {
           total_amount: quote.total_amount,
           status: 'pending',
           items: typeof quote.items === 'string' ? JSON.parse(quote.items) : quote.items,
-          notes: `Được tạo từ báo giá ${quote.quote_number}`,
+          notes: null,
           tenant_id: 'default',
           quote_id: quote.id, // Link directly to quote
           created_at: quote.quoteDate || quote.created_at, // Use quote date as order creation date

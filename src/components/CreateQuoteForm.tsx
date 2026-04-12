@@ -758,7 +758,7 @@ export function CreateQuoteForm({
               total_amount: orderTotal,
               status: 'pending',
               items: JSON.stringify(selectedProducts),
-              notes: `Được tạo từ báo giá ${data.quoteNumber} (${new Date().toLocaleString('vi-VN')})\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nNgày báo giá: ${format(data.quoteDate, "dd/MM/yyyy", { locale: vi })}`,
+              notes: null,
               tenant_id: 'default',
               quote_id: initialData.id
             });

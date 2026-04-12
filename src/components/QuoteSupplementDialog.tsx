@@ -245,7 +245,7 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
             total_amount: orderTotal,
             status: 'pending',
             items: quote.items,
-            notes: `Được tạo từ báo giá ${quote.quote_number} (${new Date().toLocaleString('vi-VN')})`,
+            notes: null,
             tenant_id: 'default',
             quote_id: quote.id,
           });
