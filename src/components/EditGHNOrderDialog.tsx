@@ -115,6 +115,10 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const [loadingFee, setLoadingFee] = useState(false);
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
   const [autoMatchDone, setAutoMatchDone] = useState(false);
+  const [prefillLocationDone, setPrefillLocationDone] = useState(false);
+  const prefillDistrictIdRef = useRef<string>("");
+  const prefillWardCodeRef = useRef<string>("");
+  const prefillServiceTypeIdRef = useRef<string>("");
 
   // Address suggestions
   const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
