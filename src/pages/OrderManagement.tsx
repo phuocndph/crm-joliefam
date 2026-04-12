@@ -372,6 +372,7 @@ export default function OrderManagement() {
     return Math.max(0, (order.total_amount || 0) - calculateTotalPaid(order));
   };
 
+  const statusFilterChips = [
     { value: 'all', label: 'Tất cả' },
     { value: 'pending', label: 'Chờ xử lý' },
     { value: 'processing', label: 'Đang xử lý' },
