@@ -588,7 +588,6 @@ export function InlineOrderEditTable({
       </Table>
     </div>;
 }
-            <TableHead className="min-w-[140px] bg-primary text-primary-foreground">Mã vận đơn</TableHead>
             <TableHead className="min-w-[110px] bg-primary text-primary-foreground">Ngày tạo đơn</TableHead>
             <TableHead className="min-w-[180px] bg-primary text-primary-foreground">Ngày hẹn trả</TableHead>
             <TableHead className="min-w-[120px] bg-primary text-primary-foreground">Tình trạng đơn</TableHead>
