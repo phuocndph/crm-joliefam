@@ -386,13 +386,20 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   }, [districtId, selectedShopId]);
 
   const loadServices = async (toDistrictId: number) => {
-    setLoadingServices(true); setServices([]); setServiceTypeId("");
+    setLoadingServices(true); setServices([]);
+    const savedServiceTypeId = prefillServiceTypeIdRef.current;
     try {
       const selectedShop = shops.find(s => String(s._id) === selectedShopId);
       const fromDistrictId = selectedShop?.district_id || 1490;
       const data = await callGHN('get_services', { fromDistrictId, toDistrictId, shopId: selectedShopId || undefined });
       setServices(data || []);
-      if (data?.length > 0) setServiceTypeId(String(data[0].service_type_id));
+      // Prefer pre-filled serviceTypeId if it exists in the loaded services
+      if (savedServiceTypeId && data?.some((s: GHNService) => String(s.service_type_id) === savedServiceTypeId)) {
+        setServiceTypeId(savedServiceTypeId);
+        prefillServiceTypeIdRef.current = ""; // Only use once
+      } else if (data?.length > 0) {
+        setServiceTypeId(String(data[0].service_type_id));
+      }
     } catch (e) { console.error(e); } finally { setLoadingServices(false); }
   };
 
