@@ -442,7 +442,7 @@ export function InlineOrderEditTable({
         return null;
     }
   };
-  return <div className="rounded-xl border shadow-sm max-h-[calc(100vh-220px)] overflow-auto order-table-scroll">
+  return <div className="rounded-xl border shadow-sm max-h-[calc(100vh-220px)] overflow-auto order-table-scroll relative z-0">
       <Table disableWrapper className="min-w-max">
         <TableHeader className="sticky top-0 z-10">
           <TableRow className="border-b-2 border-gray-300">
@@ -546,7 +546,7 @@ export function InlineOrderEditTable({
                 </div>
                 {editingCell === `${order.id}-assignee_id` && getCellContent(order, "assignee_id")}
               </TableCell>
-              <TableCell className="w-[160px] min-w-[160px] max-w-[160px] sticky right-[60px] z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
+              <TableCell className="w-[160px] min-w-[160px] max-w-[160px] overflow-hidden sticky right-[60px] z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
                 {getCellContent(order, "notes")}
               </TableCell>
               <TableCell className="min-w-[60px] sticky right-0 shadow-lg" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
