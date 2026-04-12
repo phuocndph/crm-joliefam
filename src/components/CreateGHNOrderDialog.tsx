@@ -40,8 +40,8 @@ const parseWeightRange = (name: string): { min: number; max: number } => {
   return { min: 0, max: Infinity };
 };
 
-
-  interface CreateGHNOrderDialogProps {
+interface CreateGHNOrderDialogProps {
+  open: boolean;
   onOpenChange: (open: boolean) => void;
   order: {
     id: string;
