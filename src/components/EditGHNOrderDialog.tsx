@@ -332,14 +332,42 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
     try { setProvinces(await callGHN('get_provinces')); } catch (e) { console.error(e); } finally { setLoadingProvinces(false); }
   };
 
-  // Auto-match on open when provinces loaded
+  // Pre-fill location from raw_data when provinces loaded
   useEffect(() => {
-    if (provinces.length > 0 && trackingRecord && open && !autoMatchDone) {
-      setAutoMatchDone(true);
-      const addr = trackingRecord.raw_data?.to_address || trackingRecord.customer_address || "";
-      if (addr) autoMatchFromText(addr);
+    if (provinces.length > 0 && open && !prefillLocationDone && prefillDistrictIdRef.current) {
+      setPrefillLocationDone(true);
+      const targetDistrictId = parseInt(prefillDistrictIdRef.current);
+      const targetWardCode = prefillWardCodeRef.current;
+      
+      // Find province by iterating and loading districts for each until we find the one containing our district
+      (async () => {
+        for (const prov of provinces) {
+          try {
+            const distList = await callGHN('get_districts', { provinceId: prov.ProvinceID });
+            const found = (distList || []).find((d: District) => d.DistrictID === targetDistrictId);
+            if (found) {
+              setProvinceId(String(prov.ProvinceID));
+              setDistricts(distList || []);
+              setDistrictId(String(targetDistrictId));
+              // Load wards for the pre-filled district
+              const wardList = await callGHN('get_wards', { districtId: targetDistrictId });
+              setWards(wardList || []);
+              if (targetWardCode) setWardCode(targetWardCode);
+              break;
+            }
+          } catch (e) { console.error('Pre-fill province search error:', e); }
+        }
+      })();
+    } else if (provinces.length > 0 && open && !prefillLocationDone && !prefillDistrictIdRef.current) {
+      // No raw_data district, fallback to autoMatch from address text
+      setPrefillLocationDone(true);
+      if (!autoMatchDone) {
+        setAutoMatchDone(true);
+        const addr = trackingRecord?.raw_data?.to_address || trackingRecord?.customer_address || "";
+        if (addr) autoMatchFromText(addr);
+      }
     }
-  }, [provinces, trackingRecord, open, autoMatchDone]);
+  }, [provinces, open, prefillLocationDone, callGHN, autoMatchDone, autoMatchFromText, trackingRecord]);
 
   const loadDistricts = async (provId: number) => {
     setLoadingDistricts(true);
