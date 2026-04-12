@@ -903,6 +903,23 @@ export default function GHNTrackingPage() {
         onSuccess={() => loadTrackingData()}
       />
 
+      {/* Print A5 Dialog */}
+      <Dialog open={!!printA5Url} onOpenChange={open => !open && setPrintA5Url(null)}>
+        <DialogContent className="max-w-5xl max-h-[95vh] p-0">
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle>In phiếu vận đơn A5</DialogTitle>
+          </DialogHeader>
+          {printA5Url && (
+            <iframe
+              src={printA5Url}
+              className="w-full border-0"
+              style={{ height: 'calc(95vh - 80px)' }}
+              title="Phiếu vận đơn A5"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
