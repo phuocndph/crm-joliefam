@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
 import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw, MapPin, Navigation, Zap, Printer } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useOrders } from "@/hooks/useOrders";
@@ -335,187 +336,177 @@ export default function OrderManagement() {
   };
 
   // Calculate stats
-  const stats = [{
-    title: "Tổng đơn hàng",
-    value: orders.length,
-    icon: Package,
-    color: "text-blue-600",
-    bgColor: "bg-blue-100"
-  }, {
-    title: "Chờ xử lý",
-    value: orders.filter(order => order.status === 'pending').length,
-    icon: Clock,
-    color: "text-yellow-600",
-    bgColor: "bg-yellow-100"
-  }, {
-    title: "Hoàn thành",
-    value: orders.filter(order => order.status === 'delivered').length,
-    icon: CheckCircle,
-    color: "text-green-600",
-    bgColor: "bg-green-100"
-  }, {
-    title: "Tổng giá trị",
-    value: `${orders.filter(order => order.status === 'delivered').reduce((sum, order) => sum + (order.total_amount || 0), 0).toLocaleString("vi-VN")} VNĐ`,
-    icon: DollarSign,
-    color: "text-purple-600",
-    bgColor: "bg-purple-100"
-  }];
+  const pendingCount = orders.filter(order => order.status === 'pending').length;
+  const processingCount = orders.filter(order => order.status === 'processing').length;
+  const completedCount = orders.filter(order => order.status === 'delivered').length;
+  const overdueCount = orders.filter(order => {
+    if (order.status === 'delivered' || order.status === 'shipped' || order.status === 'cancelled') return false;
+    const deliveryDate = order.delivery_date || (() => {
+      const d = new Date(order.created_at);
+      d.setDate(d.getDate() + 6);
+      return d.toISOString();
+    })();
+    return new Date(deliveryDate) < new Date();
+  }).length;
+  const totalReceivable = orders.reduce((sum, order) => {
+    const paid = (order as any).total_paid || 0;
+    const remaining = Math.max(0, (order.total_amount || 0) - paid);
+    return sum + remaining;
+  }, 0);
+  const totalValue = orders.filter(order => order.status === 'delivered').reduce((sum, order) => sum + (order.total_amount || 0), 0);
 
-  const getDefaultDeliveryDate = (createdAt: string) => {
-    const orderDate = new Date(createdAt);
-    const deliveryDate = new Date(orderDate);
-    deliveryDate.setDate(orderDate.getDate() + 4);
-    return deliveryDate.toISOString().split('T')[0];
+  const formatCompactCurrency = (amount: number) => {
+    if (amount >= 1_000_000_000) return `${(amount / 1_000_000_000).toFixed(1)}tỷ`;
+    if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(0)}tr`;
+    if (amount >= 1_000) return `${(amount / 1_000).toFixed(0)}k`;
+    return amount.toString();
   };
 
-  const isDeliveryDateNear = (deliveryDate: string | null, status: string) => {
-    if (!deliveryDate || status === 'delivered' || status === 'shipped') return false;
-    const delivery = new Date(deliveryDate);
-    const today = new Date();
-    const diffTime = delivery.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays <= 2;
-  };
-
-  const getDaysUntilDelivery = (deliveryDate: string) => {
-    const today = new Date();
-    const delivery = new Date(deliveryDate);
-    const diffTime = delivery.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
-  // Get delivery tracking orders
-  const deliveryOrders = orders.filter(order => order.status === 'processing' || order.status === 'shipped' || order.status === 'delivered' && order.delivered_date && new Date().getTime() - new Date(order.delivered_date).getTime() < 7 * 24 * 60 * 60 * 1000 // Last 7 days
-  );
-
-  const getDeliveryStatus = (order: Order) => {
-    if (order.status === 'delivered') return 'Đã giao thành công';
-    if (order.status === 'shipped') return 'Đang vận chuyển';
-    if (order.status === 'processing') return 'Đang chuẩn bị hàng';
-    return 'Chờ xử lý';
-  };
-
-  const getDeliveryStatusColor = (order: Order) => {
-    if (order.status === 'delivered') return 'bg-green-100 text-green-800';
-    if (order.status === 'shipped') return 'bg-blue-100 text-blue-800';
-    if (order.status === 'processing') return 'bg-yellow-100 text-yellow-800';
-    return 'bg-gray-100 text-gray-800';
-  };
-
-  // Calculate payment totals
   const calculateTotalPaid = (order: Order | null): number => {
     if (!order) return 0;
-    // Use total_paid from useOrders hook which calculates correctly
     return (order as any).total_paid || 0;
   };
 
   const calculateRemainingAmount = (order: Order | null): number => {
     if (!order) return 0;
-    const totalAmount = order.total_amount || 0;
-    const totalPaid = calculateTotalPaid(order);
-    return Math.max(0, totalAmount - totalPaid);
+    return Math.max(0, (order.total_amount || 0) - calculateTotalPaid(order));
   };
 
+  const statusFilterChips = [
+    { value: 'all', label: 'Tất cả' },
+    { value: 'pending', label: 'Chờ xử lý' },
+    { value: 'processing', label: 'Đang xử lý' },
+    { value: 'shipped', label: 'Đã giao' },
+    { value: 'self_delivered', label: 'Tự giao' },
+    { value: 'delivered', label: 'Hoàn thành' },
+    { value: 'returned', label: 'Hoàn hàng' },
+    { value: 'cancelled', label: 'Đã hủy' },
+  ];
+
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Quản lý Đơn hàng</h1>
-          <p className="text-muted-foreground">
-            Theo dõi và quản lý đơn hàng, thanh toán và giao hàng
-          </p>
+    <div className="space-y-3">
+      {/* Header + Stats Compact Bar */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <h1 className="text-xl font-bold text-foreground">Quản lý Đơn hàng</h1>
+          <div className="flex items-center gap-2">
+            {(userRole === 'admin' || userRole === 'accountant') && (
+              <ManagerSelector
+                selectedManagerId={selectedManagerId}
+                onManagerChange={setSelectedManagerId}
+              />
+            )}
+            <Button onClick={() => navigate('/quotes?create=true')} size="sm" className="gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              Tạo báo giá
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {(userRole === 'admin' || userRole === 'accountant') && (
-            <ManagerSelector
-              selectedManagerId={selectedManagerId}
-              onManagerChange={setSelectedManagerId}
-            />
+
+        {/* Compact Stats Bar */}
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg border text-sm">
+          <div className="flex items-center gap-1.5">
+            <Package className="h-3.5 w-3.5 text-blue-600" />
+            <span className="font-semibold">{orders.length}</span>
+            <span className="text-muted-foreground">đơn</span>
+          </div>
+          <span className="text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5 text-yellow-600" />
+            <span className="font-semibold">{pendingCount}</span>
+            <span className="text-muted-foreground">chờ xử lý</span>
+          </div>
+          <span className="text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 text-blue-600" />
+            <span className="font-semibold">{processingCount}</span>
+            <span className="text-muted-foreground">đang xử lý</span>
+          </div>
+          {overdueCount > 0 && (
+            <>
+              <span className="text-muted-foreground/40">|</span>
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5 text-red-600 animate-pulse" />
+                <span className="font-semibold text-red-600">{overdueCount}</span>
+                <span className="text-red-600">quá hạn</span>
+              </div>
+            </>
           )}
-          <Button onClick={() => navigate('/quotes?create=true')} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Tạo báo giá
-          </Button>
+          <span className="text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5">
+            <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+            <span className="font-semibold">{completedCount}</span>
+            <span className="text-muted-foreground">hoàn thành</span>
+          </div>
+          <span className="text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5">
+            <DollarSign className="h-3.5 w-3.5 text-orange-600" />
+            <span className="text-muted-foreground">Chờ thu:</span>
+            <span className="font-semibold text-orange-600">{formatCompactCurrency(totalReceivable)}</span>
+          </div>
+          <span className="text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5">
+            <DollarSign className="h-3.5 w-3.5 text-green-600" />
+            <span className="text-muted-foreground">Tổng HT:</span>
+            <span className="font-semibold text-green-600">{formatCompactCurrency(totalValue)}</span>
+          </div>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, index) => (
-          <Card key={index}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {stat.title}
-                  </p>
-                  <p className="text-2xl font-bold">{stat.value}</p>
-                </div>
-                <div className={`p-3 rounded-full ${stat.bgColor}`}>
-                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      {/* Search + Filter Chips */}
+      <div className="flex flex-col lg:flex-row gap-3">
+        <div className="relative w-full lg:w-72">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Input placeholder="Tìm mã đơn, khách hàng, SĐT..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 h-9" />
+        </div>
+        <div className="flex gap-1.5 flex-wrap items-center">
+          {statusFilterChips.map(chip => (
+            <button
+              key={chip.value}
+              onClick={() => setStatusFilter(chip.value)}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-medium transition-colors border",
+                statusFilter === chip.value
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+              )}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 ml-auto">
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-44 h-9">
+              <SelectValue placeholder="Sắp xếp theo" />
+            </SelectTrigger>
+            <SelectContent className="bg-white z-50">
+              <SelectItem value="created_at">Ngày tạo mới nhất</SelectItem>
+              <SelectItem value="order_number">Mã đơn hàng</SelectItem>
+              <SelectItem value="customer_name">Tên khách hàng</SelectItem>
+              <SelectItem value="total_amount">Giá trị đơn</SelectItem>
+              <SelectItem value="delivery_date">Hẹn giao hàng</SelectItem>
+              <SelectItem value="payment_date">Ngày thanh toán</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+            <SelectTrigger className="w-40 h-9">
+              <SelectValue placeholder="Thanh toán" />
+            </SelectTrigger>
+            <SelectContent className="bg-white z-50">
+              <SelectItem value="all">Tất cả TT</SelectItem>
+              <SelectItem value="pending">Chưa thanh toán</SelectItem>
+              <SelectItem value="partial">Thanh toán 1 phần</SelectItem>
+              <SelectItem value="paid">Đã thanh toán</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsContent value="orders">
-          {/* Search and Filter */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Danh sách Đơn hàng</CardTitle>
-              <div className="flex flex-col lg:flex-row gap-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                  <Input placeholder="Tìm kiếm theo mã đơn, khách hàng..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <Select value={sortBy} onValueChange={setSortBy}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="Sắp xếp theo" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white z-50">
-                      <SelectItem value="created_at">Ngày tạo mới nhất</SelectItem>
-                      <SelectItem value="order_number">Mã đơn hàng</SelectItem>
-                      <SelectItem value="customer_name">Tên khách hàng</SelectItem>
-                      <SelectItem value="total_amount">Giá trị đơn</SelectItem>
-                      <SelectItem value="delivery_date">Hẹn giao hàng</SelectItem>
-                      <SelectItem value="payment_date">Ngày thanh toán</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Trạng thái" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white z-50">
-                      <SelectItem value="all">Tất cả</SelectItem>
-                      <SelectItem value="pending">Chờ xử lý</SelectItem>
-                      <SelectItem value="processing">Đang xử lý</SelectItem>
-                      <SelectItem value="shipped">Đã giao</SelectItem>
-                      <SelectItem value="delivered">Hoàn thành</SelectItem>
-                      <SelectItem value="cancelled">Đã hủy</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={paymentFilter} onValueChange={setPaymentFilter}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Thanh toán" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white z-50">
-                      <SelectItem value="all">Tất cả</SelectItem>
-                      <SelectItem value="pending">Chưa thanh toán</SelectItem>
-                      <SelectItem value="partial">Thanh toán 1 phần</SelectItem>
-                      <SelectItem value="paid">Đã thanh toán</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
+          {/* Table */}
               {loading ? (
                 <div className="text-center py-8">Đang tải...</div>
               ) : (
@@ -523,7 +514,6 @@ export default function OrderManagement() {
                   orders={sortedOrders}
                   onOrderUpdate={async (orderId, updates) => {
                     try {
-                      // Update order
                       const { error } = await supabase
                         .from('orders')
                         .update(updates)
@@ -531,7 +521,6 @@ export default function OrderManagement() {
                       
                       if (error) throw error;
                       
-                      // Sync assignee_id to customer if it was updated
                       if ('assignee_id' in updates) {
                         const order = sortedOrders.find(o => o.id === orderId);
                         if (order?.customer_id) {
@@ -560,8 +549,6 @@ export default function OrderManagement() {
                   onViewOrderDetail={order => setSelectedOrder(order)}
                 />
               )}
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 
