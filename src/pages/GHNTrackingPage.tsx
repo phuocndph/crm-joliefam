@@ -844,6 +844,16 @@ export default function GHNTrackingPage() {
                       </td>
                       <td className="border border-gray-300 px-4 py-3 text-sm min-w-[120px] sticky right-0 bg-background shadow-lg">
                         <div className="flex items-center gap-1">
+                          <Button
+                            onClick={() => printA5([item.ghn_order_code])}
+                            variant="ghost"
+                            size="sm"
+                            className="text-green-600 hover:text-green-800"
+                            title="In phiếu A5"
+                            disabled={printing}
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
                           {!FINAL_STATUSES.includes(item.ghn_status || '') && (
                             <Button
                               onClick={() => { setEditingRecord(item); setEditDialogOpen(true); }}
