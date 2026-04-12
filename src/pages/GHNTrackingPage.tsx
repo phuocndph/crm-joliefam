@@ -671,17 +671,28 @@ export default function GHNTrackingPage() {
                   </Button>
                 </div>
                 <div className="flex gap-4 items-center">
-                  <span className="text-sm text-gray-600">
-                    Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
-                  </span>
-                  <Button
-                    onClick={updateAllTracking}
-                    disabled={loading || trackingData.length === 0}
-                    variant="outline"
-                  >
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                    Cập nhật tất cả
-                  </Button>
+                     <span className="text-sm text-gray-600">
+                       Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
+                     </span>
+                     {selectedOrders.size > 0 && (
+                       <Button
+                         onClick={() => printA5(Array.from(selectedOrders))}
+                         disabled={printing}
+                         variant="outline"
+                         className="gap-2"
+                       >
+                         {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                         In A5 ({selectedOrders.size})
+                       </Button>
+                     )}
+                     <Button
+                       onClick={updateAllTracking}
+                       disabled={loading || trackingData.length === 0}
+                       variant="outline"
+                     >
+                       {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                       Cập nhật tất cả
+                     </Button>
                 </div>
               </div>
             ) : (
@@ -711,17 +722,28 @@ export default function GHNTrackingPage() {
                     </Button>
                   </div>
                   <div className="flex gap-4 items-center">
-                    <span className="text-sm text-gray-600">
-                      Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
-                    </span>
-                    <Button
-                      onClick={updateAllTracking}
-                      disabled={loading || trackingData.length === 0}
-                      variant="outline"
-                    >
-                      {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                      Cập nhật tất cả
-                    </Button>
+                     <span className="text-sm text-gray-600">
+                       Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
+                     </span>
+                     {selectedOrders.size > 0 && (
+                       <Button
+                         onClick={() => printA5(Array.from(selectedOrders))}
+                         disabled={printing}
+                         variant="outline"
+                         className="gap-2"
+                       >
+                         {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                         In A5 ({selectedOrders.size})
+                       </Button>
+                     )}
+                     <Button
+                       onClick={updateAllTracking}
+                       disabled={loading || trackingData.length === 0}
+                       variant="outline"
+                     >
+                       {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                       Cập nhật tất cả
+                     </Button>
                   </div>
                 </div>
               </div>
