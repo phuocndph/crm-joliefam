@@ -589,6 +589,44 @@ export default function GHNTrackingPage() {
     setFilters(newFilters);
   }, []);
 
+  const printA5 = async (orderCodes: string[]) => {
+    if (orderCodes.length === 0) return;
+    setPrinting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+        body: { action: 'print_a5', orderCodes }
+      });
+      if (error) throw error;
+      if (data.success && data.data?.printUrl) {
+        window.open(data.data.printUrl, '_blank');
+      } else {
+        throw new Error(data.error || 'Không thể tạo link in phiếu');
+      }
+    } catch (error: any) {
+      console.error('Error printing A5:', error);
+      toast.error(error.message || 'Lỗi in phiếu A5');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const toggleSelectOrder = (orderCode: string) => {
+    setSelectedOrders(prev => {
+      const next = new Set(prev);
+      if (next.has(orderCode)) next.delete(orderCode);
+      else next.add(orderCode);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedOrders.size === filteredData.length) {
+      setSelectedOrders(new Set());
+    } else {
+      setSelectedOrders(new Set(filteredData.map(d => d.ghn_order_code)));
+    }
+  };
+
   return (
     <div className="container mx-auto py-6 space-y-6 max-w-full">
       <Card className="w-full">
