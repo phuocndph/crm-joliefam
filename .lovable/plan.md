@@ -1,29 +1,37 @@
 
 
-## Vấn đề hiện tại
+## Tự động chọn Shop theo cân nặng
 
-Có 2 lỗi chính:
+### Vấn đề
+Hiện tại shop được chọn mặc định là shop đầu tiên trong danh sách. Người dùng muốn hệ thống tự động chọn shop phù hợp dựa trên cân nặng thực tế hoặc cân nặng quy đổi (lấy giá trị lớn hơn).
 
-### 1. GHN chặn iframe (X-Frame-Options)
-URL `https://online-gateway.ghn.vn/a5/public-api/printA5?token=...` bị GHN chặn hiển thị trong iframe do header `X-Frame-Options: DENY` hoặc `SAMEORIGIN`. Kết quả: dialog mở nhưng iframe trắng, không hiển thị phiếu.
+### Cách tính cân nặng quy đổi GHN
+```text
+Cân nặng quy đổi (g) = Dài(cm) × Rộng(cm) × Cao(cm) / 6000 × 1000
+Cân nặng tính cước = MAX(cân nặng thực, cân nặng quy đổi)
+```
 
-### 2. Dialog thiếu `aria-describedby`
-Console warning: `Missing Description or aria-describedby={undefined}` cho DialogContent của print A5.
+### Giải pháp
 
-## Giải pháp
+**File: `src/components/CreateGHNOrderDialog.tsx`**
 
-**Thay iframe bằng mở tab mới** — vì GHN không cho phép nhúng iframe, cách duy nhất là mở URL in phiếu trong tab mới. Bỏ dialog print A5, thay bằng `window.open()`.
+1. **Thêm hàm parse tên shop để trích xuất khoảng cân nặng**
+   - Parse tên shop (ví dụ "đơn hàng từ 20kg trở lên" → min=20, max=Infinity)
+   - Các pattern: "10-19kg", "từ 20kg trở lên", "dưới 5kg", v.v.
 
-### Thay đổi cụ thể
+2. **Thêm hàm tính cân nặng quy đổi**
+   - `convertedWeight = length * width * height / 6000` (kg)
+   - `effectiveWeight = Math.max(weight/1000, convertedWeight)` (kg)
 
-**1. `src/pages/OrderManagement.tsx`**
-- Xóa state `printA5Url` và dialog Print A5 (dòng 826-841)
-- Thay `setPrintA5Url(data.data.printUrl)` bằng `window.open(data.data.printUrl, '_blank')`
-- Hiển thị toast thành công khi mở link
+3. **Thêm useEffect tự động chọn shop khi weight/length/width/height thay đổi**
+   - Tính `effectiveWeight` (kg)
+   - Duyệt danh sách shops, tìm shop có khoảng cân phù hợp
+   - Gọi `setSelectedShopId(...)` nếu tìm được shop khớp
 
-**2. `src/pages/GHNTrackingPage.tsx`**
-- Tương tự: xóa state `printA5Url` và dialog Print A5 (dòng 906-919)
-- Thay tất cả `setPrintA5Url(...)` bằng `window.open(..., '_blank')`
+4. **Hiển thị cân nặng quy đổi trong UI** (tùy chọn)
+   - Thêm dòng nhỏ bên dưới phần kích thước hiển thị: "KL quy đổi: 12kg → Shop: 10-19kg"
 
-Lý do không dùng iframe: GHN server gửi header chặn embedding, không có cách nào bypass từ phía client.
+### Ví dụ
+- Đơn 9kg thực tế, kích thước quy đổi ra 12kg → chọn shop "10-19kg"  
+- Đơn 25kg thực tế, kích thước quy đổi ra 15kg → chọn shop "từ 20kg trở lên"
 
