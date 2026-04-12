@@ -454,7 +454,7 @@ export function InlineOrderEditTable({
             <TableHead className="min-w-[180px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Khách hàng</TableHead>
             <TableHead className="min-w-[200px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Tài chính</TableHead>
             <TableHead className="min-w-[140px] bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide">Phân công</TableHead>
-            <TableHead className="min-w-[110px] sticky right-[60px] z-20 bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Ghi chú</TableHead>
+            <TableHead className="w-[220px] min-w-[220px] sticky right-[60px] z-20 bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Ghi chú</TableHead>
             <TableHead className="min-w-[60px] sticky right-0 z-20 bg-gray-100 text-gray-700 font-semibold uppercase text-xs tracking-wide shadow-lg">⋯</TableHead>
           </TableRow>
         </TableHeader>
@@ -546,7 +546,7 @@ export function InlineOrderEditTable({
                 </div>
                 {editingCell === `${order.id}-assignee_id` && getCellContent(order, "assignee_id")}
               </TableCell>
-              <TableCell className="min-w-[110px] sticky right-[60px] z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
+              <TableCell className="w-[220px] min-w-[220px] sticky right-[60px] z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
                 {getCellContent(order, "notes")}
               </TableCell>
               <TableCell className="min-w-[60px] sticky right-0 shadow-lg" style={{ backgroundColor: index % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }}>
