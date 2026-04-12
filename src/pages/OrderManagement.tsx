@@ -362,7 +362,16 @@ export default function OrderManagement() {
     return amount.toString();
   };
 
-  const statusFilterChips = [
+  const calculateTotalPaid = (order: Order | null): number => {
+    if (!order) return 0;
+    return (order as any).total_paid || 0;
+  };
+
+  const calculateRemainingAmount = (order: Order | null): number => {
+    if (!order) return 0;
+    return Math.max(0, (order.total_amount || 0) - calculateTotalPaid(order));
+  };
+
     { value: 'all', label: 'Tất cả' },
     { value: 'pending', label: 'Chờ xử lý' },
     { value: 'processing', label: 'Đang xử lý' },
