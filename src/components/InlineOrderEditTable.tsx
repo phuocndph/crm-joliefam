@@ -98,21 +98,19 @@ const statusConfig = {
   }
 };
 
-// Row color mapping by status
-const statusRowStyles: Record<string, { bg: string; text: string; hoverBg: string }> = {
-  pending:        { bg: '#C8F7C5', text: '#212121', hoverBg: '#B5E4B2' },
-  processing:     { bg: '#FFF9C4', text: '#212121', hoverBg: '#F5EFA0' },
-  shipped:        { bg: '#FFCDD2', text: '#212121', hoverBg: '#F3B8BD' },
-  delivered:      { bg: '#FFFFFF', text: '#212121', hoverBg: '#EBEBEB' },
-  cancelled:      { bg: '#B3E5FC', text: '#212121', hoverBg: '#9FD4EA' },
-  self_delivered:  { bg: '#FFCDD2', text: '#212121', hoverBg: '#F3B8BD' },
-  returned:       { bg: '#FFE0B2', text: '#212121', hoverBg: '#ECCF9E' },
+// Status left border colors
+const statusBorderColor: Record<string, string> = {
+  pending:        'border-l-yellow-500',
+  processing:     'border-l-blue-500',
+  shipped:        'border-l-orange-500',
+  delivered:      'border-l-green-500',
+  cancelled:      'border-l-red-500',
+  self_delivered:  'border-l-purple-500',
+  returned:       'border-l-orange-400',
 };
 
 export function applyRowColor(status: string): React.CSSProperties {
-  const style = statusRowStyles[status];
-  if (!style) return {};
-  return { backgroundColor: style.bg, color: style.text };
+  return {};
 }
 const paymentStatusConfig = {
   pending: {
