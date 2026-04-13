@@ -14,6 +14,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounce } from "@/hooks/useDebounce";
+import { generateGHNContent } from "@/lib/orderItemUtils";
 
 interface Province { ProvinceID: number; ProvinceName: string; NameExtension?: string[]; }
 interface District { DistrictID: number; DistrictName: string; NameExtension?: string[]; }
@@ -97,7 +98,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   };
 
   const totalItemWeight = productItems.reduce((sum, item) => sum + item.weight * item.quantity, 0);
-  const itemContent = productItems.map(p => p.name).filter(Boolean).join("\n") || "Hàng hóa";
+  const itemContent = generateGHNContent(productItems);
 
   useEffect(() => {
     if (totalItemWeight > 0) setWeight(totalItemWeight);
