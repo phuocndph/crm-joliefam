@@ -290,7 +290,17 @@ export default function OrderManagement() {
 
   const handlePaymentAdded = async () => {
     try {
-      await loadOrders();
+      const result = await loadOrders();
+      const updatedOrders = result?.data || [];
+      
+      // Cập nhật selectedOrder từ dữ liệu mới ngay lập tức
+      if (selectedOrder) {
+        const updatedOrder = updatedOrders.find((o: any) => o.id === selectedOrder.id);
+        if (updatedOrder) {
+          setSelectedOrder(updatedOrder);
+        }
+      }
+      
       toast({
         title: "Thành công",
         description: "Thanh toán đã được thêm thành công"
@@ -726,10 +736,12 @@ export default function OrderManagement() {
                       Tạo đơn GHN
                     </Button>
                   )}
-                  <Button onClick={() => setOrderToPayment(selectedOrder)} variant="default" className="gap-2">
-                    <CreditCard className="h-4 w-4" />
-                    Thêm thanh toán
-                  </Button>
+                  {calculateRemainingAmount(selectedOrder) > 0 && (
+                    <Button onClick={() => setOrderToPayment(selectedOrder)} variant="default" className="gap-2">
+                      <CreditCard className="h-4 w-4" />
+                      Thêm thanh toán
+                    </Button>
+                  )}
                   <Button onClick={() => setSelectedOrder(null)} variant="outline">
                     Đóng
                   </Button>
