@@ -1,33 +1,30 @@
 
 
-## Cải thiện thông tin sản phẩm & tên shop khi tạo đơn GHN
+## Gộp sản phẩm thành 1 dòng duy nhất
+
+### Vấn đề
+Hiện tại mỗi sản phẩm trong đơn hàng tạo thành 1 productItem riêng → GHN tính thành nhiều kiện hàng. Cần gộp tất cả thành 1 item duy nhất với tên ngắn gọn.
 
 ### Thay đổi
 
-**File: `src/components/CreateGHNOrderDialog.tsx`**
+**File: `src/components/CreateGHNOrderDialog.tsx`** (line 195-204)
 
-1. **Pre-fill sản phẩm từ `order.items`** (line ~194): Thay vì hardcode `"Đơn hàng XXX"`, parse `order.items` (JSON array với `name`, `quantity`) để tạo danh sách productItems thực tế. Mỗi item hiển thị tên sản phẩm + số lượng. Fallback về "Đơn hàng XXX" nếu items rỗng.
-
-2. **Thêm tên shop vào note** (line ~193): Đổi note từ `"Đơn hàng ${displayNum}"` thành `"Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}"`. Tên shop hardcode theo yêu cầu.
-
-3. **Cập nhật interface `order`** (line ~46-53): Thêm `items?: any` vào interface props để TypeScript không báo lỗi.
-
-### Chi tiết logic pre-fill
+Thay logic map từng item thành logic gộp:
 
 ```typescript
-// Note
-setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
-
-// Product items
 const parsedItems = Array.isArray(order.items) ? order.items : [];
 if (parsedItems.length > 0) {
-  setProductItems(parsedItems.map(item => ({
-    name: `${item.name} x${item.quantity}`,
+  const summary = parsedItems.map((item: any) => item.name).join(' - ');
+  const totalQty = parsedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
+  setProductItems([{
+    name: summary,
     weight: 200,
-    quantity: item.quantity || 1
-  })));
+    quantity: totalQty
+  }]);
 } else {
   setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1 }]);
 }
 ```
+
+Kết quả: Thay vì 3 dòng riêng, chỉ còn 1 dòng duy nhất ví dụ: `"Vỏ chăn LTH sọc 200x220 - Ga chun ks T225 sọc 150x190 - Vỏ gối 45x65"` với tổng số lượng.
 
