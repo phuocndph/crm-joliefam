@@ -9,10 +9,10 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Search, Pencil, Trash2, Phone, X } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Phone, X, MapPin, Copy } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const emptyForm = { name: '', phone: '', address: '', areas: [] as string[], contact_person: '', notes: '' };
+const emptyForm = { name: '', phone: '', address: '', areas: [] as string[], contact_person: '', notes: '', google_maps_url: '' };
 
 const ShippingCompanyPage = () => {
   const { companies, loading, createCompany, updateCompany, deleteCompany } = useShippingCompanies();
@@ -40,7 +40,7 @@ const ShippingCompanyPage = () => {
   const openCreate = () => { setEditingId(null); setForm(emptyForm); setAreaInput(''); setDialogOpen(true); };
   const openEdit = (c: ShippingCompany) => {
     setEditingId(c.id);
-    setForm({ name: c.name, phone: c.phone || '', address: c.address || '', areas: c.areas || [], contact_person: c.contact_person || '', notes: c.notes || '' });
+    setForm({ name: c.name, phone: c.phone || '', address: c.address || '', areas: c.areas || [], contact_person: c.contact_person || '', notes: c.notes || '', google_maps_url: c.google_maps_url || '' });
     setAreaInput('');
     setDialogOpen(true);
   };
@@ -136,7 +136,23 @@ const ShippingCompanyPage = () => {
                         {c.areas?.map(a => <Badge key={a} variant="secondary" className="text-xs">{a}</Badge>)}
                       </div>
                     </TableCell>
-                    <TableCell className="max-w-[150px] truncate text-muted-foreground text-xs">{c.notes || '-'}</TableCell>
+                    <TableCell className="max-w-[200px]">
+                      <div className="space-y-1">
+                        {c.notes && <span className="text-xs text-muted-foreground block truncate">{c.notes}</span>}
+                        {c.google_maps_url && (
+                          <div className="flex items-center gap-1">
+                            <a href={c.google_maps_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                              <MapPin className="h-3.5 w-3.5" />
+                            </a>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
+                              navigator.clipboard.writeText(c.google_maps_url!);
+                              toast({ title: 'Đã sao chép link Google Maps' });
+                            }}><Copy className="h-3 w-3" /></Button>
+                          </div>
+                        )}
+                        {!c.notes && !c.google_maps_url && '-'}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
@@ -162,6 +178,7 @@ const ShippingCompanyPage = () => {
               <div><Label>Người liên hệ</Label><Input value={form.contact_person} onChange={e => setForm(f => ({ ...f, contact_person: e.target.value }))} placeholder="Anh Minh" /></div>
             </div>
             <div><Label>Địa chỉ</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="123 Nguyễn Trãi, Q.1, TP.HCM" /></div>
+            <div><Label>Link Google Maps</Label><Input value={form.google_maps_url} onChange={e => setForm(f => ({ ...f, google_maps_url: e.target.value }))} placeholder="https://maps.google.com/..." /></div>
             <div>
               <Label>Khu vực giao hàng</Label>
               <div className="flex gap-2 mt-1">

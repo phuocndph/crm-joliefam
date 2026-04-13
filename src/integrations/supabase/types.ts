@@ -1693,6 +1693,7 @@ export type Database = {
           areas: string[] | null
           contact_person: string | null
           created_at: string
+          google_maps_url: string | null
           id: string
           manager_id: string | null
           name: string
@@ -1706,6 +1707,7 @@ export type Database = {
           areas?: string[] | null
           contact_person?: string | null
           created_at?: string
+          google_maps_url?: string | null
           id?: string
           manager_id?: string | null
           name: string
@@ -1719,6 +1721,7 @@ export type Database = {
           areas?: string[] | null
           contact_person?: string | null
           created_at?: string
+          google_maps_url?: string | null
           id?: string
           manager_id?: string | null
           name?: string

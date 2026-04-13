@@ -10,6 +10,7 @@ export interface ShippingCompany {
   areas: string[];
   contact_person: string | null;
   notes: string | null;
+  google_maps_url: string | null;
   created_at: string;
   updated_at: string;
 }
