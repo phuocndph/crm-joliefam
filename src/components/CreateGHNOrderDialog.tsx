@@ -15,6 +15,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounce } from "@/hooks/useDebounce";
+import { parseOrderItems, generateGHNContent } from "@/lib/orderItemUtils";
 
 interface Province { ProvinceID: number; ProvinceName: string; NameExtension?: string[]; }
 interface District { DistrictID: number; DistrictName: string; NameExtension?: string[]; }
@@ -115,7 +116,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   const totalItemWeight = productItems.reduce((sum, item) => sum + item.weight * item.quantity, 0);
   const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
-  const itemContent = productItems.map(p => p.name).filter(Boolean).join("\n") || "Hàng hóa";
+  const itemContent = generateGHNContent(productItems);
 
   // Calculate effective weight (kg) = max(actual, dimensional)
   const dimensionalWeightGram = Math.ceil(length * width * height / 6000 * 1000);
@@ -199,15 +200,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setInsuranceValue(order.total_amount || 0);
       
       setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
-      const parsedItems = Array.isArray(order.items) ? order.items : [];
-      if (parsedItems.length > 0) {
-        const summary = parsedItems.map((item: any) => item.name).join('\n');
-        const totalQty = parsedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
-        setProductItems([{
-          name: summary,
-          weight: 200,
-          quantity: totalQty
-        }]);
+      const normalizedItems = parseOrderItems(order.items);
+      if (normalizedItems.length > 0) {
+        setProductItems(normalizedItems);
+        const totalQty = normalizedItems.reduce((sum, item) => sum + item.quantity, 0);
         // Ước tính ~1kg/sản phẩm để auto-select shop chính xác hơn
         setWeight(totalQty * 1000);
       } else {
