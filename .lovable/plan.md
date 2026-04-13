@@ -1,21 +1,33 @@
 
 
-## Thêm trường Google Maps link cho Nhà xe
+## Cải thiện thông tin sản phẩm & tên shop khi tạo đơn GHN
 
 ### Thay đổi
 
-**1. Database: Thêm cột `google_maps_url` vào bảng `shipping_companies`**
-- Migration: `ALTER TABLE shipping_companies ADD COLUMN google_maps_url TEXT;`
+**File: `src/components/CreateGHNOrderDialog.tsx`**
 
-**2. `src/hooks/useShippingCompanies.ts`**
-- Thêm `google_maps_url: string | null` vào interface `ShippingCompany`
+1. **Pre-fill sản phẩm từ `order.items`** (line ~194): Thay vì hardcode `"Đơn hàng XXX"`, parse `order.items` (JSON array với `name`, `quantity`) để tạo danh sách productItems thực tế. Mỗi item hiển thị tên sản phẩm + số lượng. Fallback về "Đơn hàng XXX" nếu items rỗng.
 
-**3. `src/integrations/supabase/types.ts`**
-- Cập nhật type cho bảng `shipping_companies` thêm trường `google_maps_url`
+2. **Thêm tên shop vào note** (line ~193): Đổi note từ `"Đơn hàng ${displayNum}"` thành `"Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}"`. Tên shop hardcode theo yêu cầu.
 
-**4. `src/pages/ShippingCompanyPage.tsx`**
-- **Form**: Thêm input "Link Google Maps" trong dialog thêm/sửa, đặt cạnh ô Địa chỉ, placeholder `https://maps.google.com/...`
-- **emptyForm**: Thêm `google_maps_url: ''`
-- **openEdit**: Map thêm `google_maps_url`
-- **Cột Ghi chú trong bảng**: Hiển thị cả ghi chú lẫn link Google Maps. Nếu có link, hiện icon bản đồ + nút sao chép link (copy to clipboard) ngay bên cạnh. Click icon mở link trong tab mới, click nút copy thì sao chép link và toast "Đã sao chép".
+3. **Cập nhật interface `order`** (line ~46-53): Thêm `items?: any` vào interface props để TypeScript không báo lỗi.
+
+### Chi tiết logic pre-fill
+
+```typescript
+// Note
+setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
+
+// Product items
+const parsedItems = Array.isArray(order.items) ? order.items : [];
+if (parsedItems.length > 0) {
+  setProductItems(parsedItems.map(item => ({
+    name: `${item.name} x${item.quantity}`,
+    weight: 200,
+    quantity: item.quantity || 1
+  })));
+} else {
+  setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1 }]);
+}
+```
 
