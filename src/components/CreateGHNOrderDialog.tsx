@@ -191,12 +191,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   useEffect(() => {
     if (order && open && !hasPrefilledRef.current) {
       hasPrefilledRef.current = true;
-      setToName(order.customers?.name || "");
+      const displayNum = order.display_order_number || order.order_number;
+      setToName(`${order.customers?.name || ""}_${displayNum}p`);
       setToPhone(order.customers?.phone || "");
       setToAddress((order.customers as any)?.address || "");
       setCodAmount(remainingAmount);
       setInsuranceValue(order.total_amount || 0);
-      const displayNum = order.display_order_number || order.order_number;
+      
       setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
       const parsedItems = Array.isArray(order.items) ? order.items : [];
       if (parsedItems.length > 0) {
