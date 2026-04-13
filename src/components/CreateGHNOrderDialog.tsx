@@ -115,7 +115,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   const totalItemWeight = productItems.reduce((sum, item) => sum + item.weight * item.quantity, 0);
   const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
-  const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
+  const itemContent = productItems.map(p => p.name).filter(Boolean).join("\n") || "Hàng hóa";
 
   // Calculate effective weight (kg) = max(actual, dimensional)
   const dimensionalWeightGram = Math.ceil(length * width * height / 6000 * 1000);
@@ -201,7 +201,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
       const parsedItems = Array.isArray(order.items) ? order.items : [];
       if (parsedItems.length > 0) {
-        const summary = parsedItems.map((item: any) => item.name).join(' - ');
+        const summary = parsedItems.map((item: any) => item.name).join('\n');
         const totalQty = parsedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
         setProductItems([{
           name: summary,
