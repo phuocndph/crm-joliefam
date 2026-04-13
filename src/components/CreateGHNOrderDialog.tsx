@@ -49,6 +49,7 @@ interface CreateGHNOrderDialogProps {
     display_order_number?: string;
     total_amount: number | null;
     notes: string | null;
+    items?: any;
     customers?: { name: string; phone: string | null; address?: string | null; addresses?: any[] | null; } | null;
   };
   remainingAmount: number;
@@ -190,8 +191,17 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setCodAmount(remainingAmount);
       setInsuranceValue(order.total_amount || 0);
       const displayNum = order.display_order_number || order.order_number;
-      setNote(`Đơn hàng ${displayNum}`);
-      setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1 }]);
+      setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
+      const parsedItems = Array.isArray(order.items) ? order.items : [];
+      if (parsedItems.length > 0) {
+        setProductItems(parsedItems.map((item: any) => ({
+          name: `${item.name} x${item.quantity || 1}`,
+          weight: 200,
+          quantity: item.quantity || 1
+        })));
+      } else {
+        setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1 }]);
+      }
       setSuccess(false);
       setCreatedOrderCode("");
       setCreatedOrderData(null);
