@@ -18,7 +18,8 @@ export type PermissionType =
   | 'ghn_tracking'
   | 'quote_approval'
   | 'knowledge_base'
-  | 'contracts';
+  | 'contracts'
+  | 'shipping_companies';
 
 export interface EmployeePermission {
   permission_type: PermissionType;
