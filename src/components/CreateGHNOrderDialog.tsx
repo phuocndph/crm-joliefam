@@ -126,6 +126,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   useEffect(() => {
     if (shops.length === 0) return;
     
+    // Debug: log all shops with parsed weight ranges
+    const shopRanges = shops.map(shop => ({
+      name: shop.name,
+      id: shop._id,
+      ...parseWeightRange(shop.name)
+    }));
+    console.log('[GHN Auto-select] effectiveWeightKg:', effectiveWeightKg, 'Shops:', shopRanges);
+    
     // Try exact match first
     const matchingShop = shops.find(shop => {
       const { min, max } = parseWeightRange(shop.name);
@@ -133,6 +141,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     });
     
     if (matchingShop) {
+      console.log('[GHN Auto-select] ✓ Matched:', matchingShop.name, '(id:', matchingShop._id, ')');
       setSelectedShopId(String(matchingShop._id));
       return;
     }
@@ -144,9 +153,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       .sort((a, b) => b.range.min - a.range.min)[0];
     
     if (fallbackShop) {
+      console.log('[GHN Auto-select] ⚠ Fallback:', fallbackShop.shop.name);
       setSelectedShopId(String(fallbackShop.shop._id));
     } else {
-      console.warn('Không tìm được shop phù hợp cho', effectiveWeightKg, 'kg');
+      console.warn('[GHN Auto-select] ✗ Không tìm được shop phù hợp cho', effectiveWeightKg, 'kg');
     }
   }, [effectiveWeightKg, shops]);
 
@@ -626,6 +636,28 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     <Info className="h-3.5 w-3.5 flex-shrink-0" />
                     <span>KL tính cước: <strong className="text-foreground">{effectiveWeightKg.toFixed(1)}kg</strong> → Shop: <strong className="text-foreground">{selectedShop.name}</strong></span>
                   </div>
+                )}
+                {shops.length > 0 && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
+                      Xem tất cả shop & khoảng KG ({shops.length} shop)
+                    </summary>
+                    <div className="mt-1.5 space-y-1 pl-2 border-l-2 border-muted">
+                      {shops.map(s => {
+                        const range = parseWeightRange(s.name);
+                        const isActive = String(s._id) === selectedShopId;
+                        return (
+                          <div key={s._id} className={`flex items-center gap-2 py-0.5 ${isActive ? 'text-primary font-semibold' : 'text-muted-foreground'}`}>
+                            <span>{isActive ? '●' : '○'}</span>
+                            <span>{s.name}</span>
+                            <span className="text-[10px] bg-muted rounded px-1">
+                              {range.min}kg – {range.max === Infinity ? '∞' : `${range.max}kg`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
                 )}
 
                 <RadioGroup value={pickupType} onValueChange={setPickupType} className="flex gap-6">
