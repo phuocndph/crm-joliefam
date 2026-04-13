@@ -1687,6 +1687,48 @@ export type Database = {
           },
         ]
       }
+      shipping_companies: {
+        Row: {
+          address: string | null
+          areas: string[] | null
+          contact_person: string | null
+          created_at: string
+          id: string
+          manager_id: string | null
+          name: string
+          notes: string | null
+          phone: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          areas?: string[] | null
+          contact_person?: string | null
+          created_at?: string
+          id?: string
+          manager_id?: string | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          areas?: string[] | null
+          contact_person?: string | null
+          created_at?: string
+          id?: string
+          manager_id?: string | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
