@@ -97,7 +97,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   };
 
   const totalItemWeight = productItems.reduce((sum, item) => sum + item.weight * item.quantity, 0);
-  const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
+  const itemContent = productItems.map(p => p.name).filter(Boolean).join("\n") || "Hàng hóa";
 
   useEffect(() => {
     if (totalItemWeight > 0) setWeight(totalItemWeight);
