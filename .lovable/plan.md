@@ -1,30 +1,42 @@
 
 
-## Gộp sản phẩm thành 1 dòng duy nhất
+## Sửa lỗi "In phiếu gửi" khi tạo đơn GHN xong
 
 ### Vấn đề
-Hiện tại mỗi sản phẩm trong đơn hàng tạo thành 1 productItem riêng → GHN tính thành nhiều kiện hàng. Cần gộp tất cả thành 1 item duy nhất với tên ngắn gọn.
+Nút "In phiếu gửi" trong dialog tạo đơn thành công đang dùng URL sai: `https://5sao.ghn.dev/order/print/${orderCode}` — đây là URL môi trường dev/staging của GHN, gây lỗi khi truy cập.
+
+Trong khi đó, trang "Theo dõi đơn GHN" đã có logic in phiếu A5 chuẩn: gọi API GHN `gen-token` qua edge function `ghn-tracking`, rồi mở URL `https://online-gateway.ghn.vn/a5/public-api/printA5?token=...` trong tab mới.
+
+### Giải pháp
+Thay thế link tĩnh sai bằng logic gọi API in phiếu A5 giống trang tracking.
 
 ### Thay đổi
 
-**File: `src/components/CreateGHNOrderDialog.tsx`** (line 195-204)
+**File: `src/components/CreateGHNOrderDialog.tsx`**
 
-Thay logic map từng item thành logic gộp:
+1. Thêm state `printing` và import `supabase`.
+2. Thêm hàm `printA5` gọi edge function `ghn-tracking` với `action: 'print_a5'` và `orderCodes: [createdOrderCode]`, rồi mở `printUrl` trong tab mới.
+3. Thay nút `<a href="https://5sao.ghn.dev/...">` bằng `<Button onClick={printA5}>` có loading state.
 
 ```typescript
-const parsedItems = Array.isArray(order.items) ? order.items : [];
-if (parsedItems.length > 0) {
-  const summary = parsedItems.map((item: any) => item.name).join(' - ');
-  const totalQty = parsedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
-  setProductItems([{
-    name: summary,
-    weight: 200,
-    quantity: totalQty
-  }]);
-} else {
-  setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1 }]);
-}
+const printA5 = async () => {
+  if (!createdOrderCode) return;
+  setPrintingA5(true);
+  try {
+    const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+      body: { action: 'print_a5', orderCodes: [createdOrderCode] }
+    });
+    if (error) throw error;
+    if (data.success && data.data?.printUrl) {
+      window.open(data.data.printUrl, '_blank');
+    } else {
+      throw new Error(data.error || 'Không thể tạo link in phiếu');
+    }
+  } catch (err: any) {
+    toast.error(err.message || 'Lỗi in phiếu A5');
+  } finally {
+    setPrintingA5(false);
+  }
+};
 ```
-
-Kết quả: Thay vì 3 dòng riêng, chỉ còn 1 dòng duy nhất ví dụ: `"Vỏ chăn LTH sọc 200x220 - Ga chun ks T225 sọc 150x190 - Vỏ gối 45x65"` với tổng số lượng.
 
