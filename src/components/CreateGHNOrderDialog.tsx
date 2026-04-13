@@ -155,7 +155,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
   }, [totalItemWeight]);
   const [note, setNote] = useState("");
-  const [requiredNote, setRequiredNote] = useState("CHOTHUHANG");
+  const [requiredNote, setRequiredNote] = useState("CHOXEMHANGKHONGTHU");
   const [paymentTypeId, setPaymentTypeId] = useState("1");
   const [pickupType, setPickupType] = useState("pickup");
 
