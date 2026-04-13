@@ -194,11 +194,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
       const parsedItems = Array.isArray(order.items) ? order.items : [];
       if (parsedItems.length > 0) {
-        setProductItems(parsedItems.map((item: any) => ({
-          name: `${item.name} x${item.quantity || 1}`,
+        const summary = parsedItems.map((item: any) => item.name).join(' - ');
+        const totalQty = parsedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
+        setProductItems([{
+          name: summary,
           weight: 200,
-          quantity: item.quantity || 1
-        })));
+          quantity: totalQty
+        }]);
       } else {
         setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1 }]);
       }
