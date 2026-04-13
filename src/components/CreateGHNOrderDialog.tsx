@@ -150,12 +150,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
   }, [effectiveWeightKg, shops]);
 
-  // Sync order weight with total product weight
-  useEffect(() => {
-    if (totalItemWeight > 0) {
-      setWeight(totalItemWeight);
-    }
-  }, [totalItemWeight]);
+  // Removed: sync weight from totalItemWeight was overwriting manual edits
   const [note, setNote] = useState("");
   const [requiredNote, setRequiredNote] = useState("CHOXEMHANGKHONGTHU");
   const [paymentTypeId, setPaymentTypeId] = useState("1");
@@ -202,8 +197,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           weight: 200,
           quantity: totalQty
         }]);
+        // Ước tính ~1kg/sản phẩm để auto-select shop chính xác hơn
+        setWeight(totalQty * 1000);
       } else {
         setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1 }]);
+        setWeight(500);
       }
       setSuccess(false);
       setCreatedOrderCode("");
@@ -623,6 +621,12 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     <div className="text-xs text-muted-foreground mt-0.5">{selectedShop.address}</div>
                   </div>
                 ) : null}
+                {selectedShop && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+                    <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>KL tính cước: <strong className="text-foreground">{effectiveWeightKg.toFixed(1)}kg</strong> → Shop: <strong className="text-foreground">{selectedShop.name}</strong></span>
+                  </div>
+                )}
 
                 <RadioGroup value={pickupType} onValueChange={setPickupType} className="flex gap-6">
                   <div className="flex items-center gap-1.5">
