@@ -27,6 +27,7 @@ import GHNTrackingPage from "./pages/GHNTrackingPage";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import AISettingsPage from "./pages/AISettingsPage";
 import WebScraperPage from "./pages/WebScraperPage";
+import ShippingCompanyPage from "./pages/ShippingCompanyPage";
 import MainLayout from "./components/layout/MainLayout";
 import MobileLayout from "./components/layout/MobileLayout";
 import NotFound from "./pages/NotFound";
@@ -124,6 +125,7 @@ const AppRoutes = () => {
         <Route path="knowledge-base" element={<KnowledgeBase />} />
         <Route path="ai-settings" element={<AISettingsPage />} />
         <Route path="web-scraper" element={<WebScraperPage />} />
+        <Route path="shipping-companies" element={<ShippingCompanyPage />} />
       </Route>
       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
       <Route path="*" element={<NotFound />} />
