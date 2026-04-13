@@ -163,7 +163,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   // Removed: sync weight from totalItemWeight was overwriting manual edits
   const [note, setNote] = useState("");
   const [requiredNote, setRequiredNote] = useState("CHOXEMHANGKHONGTHU");
-  const [paymentTypeId, setPaymentTypeId] = useState("1");
+  const [paymentTypeId, setPaymentTypeId] = useState("2");
   const [pickupType, setPickupType] = useState("dropoff");
 
   // Services & Fee
