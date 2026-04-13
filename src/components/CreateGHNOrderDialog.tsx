@@ -67,6 +67,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [shops, setShops] = useState<GHNShop[]>([]);
   const [selectedShopId, setSelectedShopId] = useState<string>("");
   const [loadingShops, setLoadingShops] = useState(false);
+  const [printingA5, setPrintingA5] = useState(false);
 
   // Location
   const [provinces, setProvinces] = useState<Province[]>([]);
@@ -541,10 +542,31 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   <ExternalLink className="h-4 w-4" /> Theo dõi đơn
                 </a>
               </Button>
-              <Button variant="outline" className="flex-1 gap-2" asChild>
-                <a href={`https://5sao.ghn.dev/order/print/${createdOrderCode}`} target="_blank" rel="noopener noreferrer">
-                  <Printer className="h-4 w-4" /> In phiếu gửi
-                </a>
+              <Button 
+                variant="outline" 
+                className="flex-1 gap-2" 
+                disabled={printingA5}
+                onClick={async () => {
+                  if (!createdOrderCode) return;
+                  setPrintingA5(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+                      body: { action: 'print_a5', orderCodes: [createdOrderCode] }
+                    });
+                    if (error) throw error;
+                    if (data?.success && data.data?.printUrl) {
+                      window.open(data.data.printUrl, '_blank');
+                    } else {
+                      throw new Error(data?.error || 'Không thể tạo link in phiếu');
+                    }
+                  } catch (err: any) {
+                    toast({ title: "Lỗi in phiếu A5", description: err.message, variant: "destructive" });
+                  } finally {
+                    setPrintingA5(false);
+                  }
+                }}
+              >
+                {printingA5 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} In phiếu gửi
               </Button>
             </div>
             <Button className="w-full" onClick={() => onOpenChange(false)}>Đóng</Button>
