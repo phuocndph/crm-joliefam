@@ -16,6 +16,7 @@ import {
   Receipt,
   Sparkles,
   Globe,
+  Container,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -147,6 +148,13 @@ const menuItems = [
     icon: Globe,
     description: "Trích xuất dữ liệu từ web",
     permission: "user_management" as const
+  },
+  { 
+    title: "Nhà xe", 
+    url: "/shipping-companies", 
+    icon: Container,
+    description: "Quản lý nhà xe vận chuyển",
+    permission: "shipping_companies" as const
   },
   { 
     title: "Quản lý nhân viên", 
