@@ -28,8 +28,8 @@ interface FeeDetail {
 // Parse shop name to extract weight range (kg) - outside component for performance
 const parseWeightRange = (name: string): { min: number; max: number } => {
   const n = name.toLowerCase().replace(/\s+/g, ' ');
-  // "10-19kg" → min=10, max=20 (exclusive upper bound)
-  const rangeMatch = n.match(/(\d+)\s*[-–]\s*(\d+)\s*kg/);
+  // "3kg - 9kg" or "3kg-9kg" or "3-9kg" or "10kg - 19kg"
+  const rangeMatch = n.match(/(\d+)\s*kg?\s*[-–]\s*(\d+)\s*kg/);
   if (rangeMatch) return { min: parseInt(rangeMatch[1]), max: parseInt(rangeMatch[2]) + 1 };
   // "từ 20kg trở lên"
   const fromMatch = n.match(/(?:từ|>=?|trên)\s*(\d+)\s*kg/);
