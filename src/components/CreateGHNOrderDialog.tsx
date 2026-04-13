@@ -197,7 +197,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setToAddress((order.customers as any)?.address || "");
       setCodAmount(remainingAmount);
       setInsuranceValue(order.total_amount || 0);
-      const displayNum = order.display_order_number || order.order_number;
+      
       setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
       const parsedItems = Array.isArray(order.items) ? order.items : [];
       if (parsedItems.length > 0) {
