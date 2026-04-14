@@ -1040,7 +1040,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                         </Button>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className={isOverweight ? "grid grid-cols-2 gap-4" : "grid grid-cols-3 gap-3"}>
                       <div className="space-y-1.5">
                         <Label className="text-sm">Sản phẩm <span className="text-destructive">*</span></Label>
                         <Input value={item.name} onChange={e => updateProductItem(index, 'name', e.target.value)} placeholder="Nhập tên sản phẩm" className="text-sm" />
@@ -1049,25 +1049,33 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                         <Label className="text-sm">Số lượng <span className="text-destructive">*</span></Label>
                         <Input type="number" value={item.quantity} onChange={e => updateProductItem(index, 'quantity', parseInt(e.target.value) || 1)} min={1} className="text-sm" />
                       </div>
+                      {!isOverweight && (
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={item.weight} onChange={e => updateProductItem(index, 'weight', parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                      )}
                     </div>
-                    <div className="grid grid-cols-4 gap-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
-                        <Input type="number" value={item.weight} onChange={e => updateProductItem(index, 'weight', parseInt(e.target.value) || 0)} className="text-sm" />
+                    {isOverweight && (
+                      <div className="grid grid-cols-4 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={item.weight} onChange={e => updateProductItem(index, 'weight', parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={item.length} onChange={e => updateProductItem(index, 'length', parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={item.width} onChange={e => updateProductItem(index, 'width', parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={item.height} onChange={e => updateProductItem(index, 'height', parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
                       </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">Dài (cm)</Label>
-                        <Input type="number" value={item.length} onChange={e => updateProductItem(index, 'length', parseInt(e.target.value) || 0)} className="text-sm" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">Rộng (cm)</Label>
-                        <Input type="number" value={item.width} onChange={e => updateProductItem(index, 'width', parseInt(e.target.value) || 0)} className="text-sm" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">Cao (cm)</Label>
-                        <Input type="number" value={item.height} onChange={e => updateProductItem(index, 'height', parseInt(e.target.value) || 0)} className="text-sm" />
-                      </div>
-                    </div>
+                    )}
                   </div>
                 ))}
               </div>
