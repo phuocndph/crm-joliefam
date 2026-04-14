@@ -94,6 +94,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [insuranceValue, setInsuranceValue] = useState(0);
   const [codFailedEnabled, setCodFailedEnabled] = useState(false);
   const [codFailedAmount, setCodFailedAmount] = useState(20000);
+  // New address mode (skip district)
+  const [newAddressMode, setNewAddressMode] = useState(false);
+  const [allWardsFlat, setAllWardsFlat] = useState<Array<Ward & { districtId: number; districtName: string }>>([]);
+  const [loadingAllWards, setLoadingAllWards] = useState(false);
 
   useEffect(() => { setInsuranceValue(codAmount); }, [codAmount]);
 
