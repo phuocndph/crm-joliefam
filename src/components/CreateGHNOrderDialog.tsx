@@ -23,6 +23,82 @@ interface District { DistrictID: number; DistrictName: string; NameExtension?: s
 interface Ward { WardCode: string; WardName: string; NameExtension?: string[]; }
 interface GHNShop { _id: number; name: string; address: string; district_id: number; phone?: string; }
 interface GHNService { service_id: number; short_name: string; service_type_id: number; }
+
+// Searchable location dropdown (Popover-based, works inside Dialog)
+function SearchableLocationSelect({ 
+  value, onValueChange, options, placeholder, disabled, loading 
+}: { 
+  value: string; 
+  onValueChange: (v: string) => void; 
+  options: { value: string; label: string; sub?: string }[]; 
+  placeholder?: string; 
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const normalizeSearch = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+  const normalizedSearch = normalizeSearch(search);
+  const filtered = normalizedSearch 
+    ? options.filter(o => normalizeSearch(o.label).includes(normalizedSearch) || (o.sub && normalizeSearch(o.sub).includes(normalizedSearch)))
+    : options;
+
+  const selectedLabel = options.find(o => o.value === value)?.label;
+
+  useEffect(() => {
+    if (open && inputRef.current) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+    if (!open) setSearch("");
+  }, [open]);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(!open)}
+        className={`flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${!selectedLabel ? 'text-muted-foreground' : ''}`}
+      >
+        <span className="truncate">{loading ? "Tải..." : selectedLabel || placeholder || "Chọn"}</span>
+        <Search className="h-3.5 w-3.5 shrink-0 opacity-50" />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-[9999] rounded-md border bg-popover shadow-lg pointer-events-auto">
+          <div className="p-2 border-b">
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onMouseDown={e => e.stopPropagation()}
+              placeholder="Tìm kiếm..."
+              className="w-full text-sm px-2 py-1.5 rounded border border-input bg-background outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div ref={listRef} className="max-h-[240px] overflow-y-auto overscroll-contain">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted-foreground">Không tìm thấy</div>
+            ) : filtered.map(o => (
+              <button
+                key={o.value}
+                type="button"
+                onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+                onClick={() => { onValueChange(o.value); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors ${o.value === value ? 'bg-accent font-medium' : ''}`}
+              >
+                {o.label}{o.sub && <span className="text-muted-foreground ml-1 text-xs">({o.sub})</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {open && <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />}
+    </div>
+  );
+}
 interface FeeDetail {
   service_fee: number; insurance_fee: number; cod_fee: number; r2s_fee: number;
   coupon_value: number; total: number; [key: string]: number;
@@ -847,39 +923,28 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-sm font-medium">Tỉnh/Thành phố <span className="text-destructive">*</span></Label>
-                      <Select value={provinceId} onValueChange={v => { setProvinceId(v); loadAllWardsForProvince(parseInt(v)); }}>
-                        <SelectTrigger className="text-sm">
-                          <SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-60">
-                          {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <SearchableLocationSelect
+                        value={provinceId}
+                        onValueChange={v => { setProvinceId(v); loadAllWardsForProvince(parseInt(v)); }}
+                        options={provinces.map(p => ({ value: String(p.ProvinceID), label: p.ProvinceName }))}
+                        placeholder="Chọn tỉnh/TP"
+                        loading={loadingProvinces}
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm font-medium">Phường/Xã <span className="text-destructive">*</span></Label>
-                      <Select
+                      <SearchableLocationSelect
                         value={wardCode}
                         onValueChange={v => {
                           setWardCode(v);
                           const matched = allWardsFlat.find(w => w.WardCode === v);
-                          if (matched) {
-                            setDistrictId(String(matched.districtId));
-                          }
+                          if (matched) setDistrictId(String(matched.districtId));
                         }}
+                        options={allWardsFlat.map(w => ({ value: w.WardCode, label: w.WardName, sub: w.districtName }))}
+                        placeholder="Chọn phường/xã"
                         disabled={!provinceId || loadingAllWards}
-                      >
-                        <SelectTrigger className="text-sm">
-                          <SelectValue placeholder={loadingAllWards ? "Đang tải phường/xã..." : "Chọn"} />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-60">
-                          {allWardsFlat.map(w => (
-                            <SelectItem key={`${w.districtId}-${w.WardCode}`} value={w.WardCode}>
-                              {w.WardName} <span className="text-muted-foreground">({w.districtName})</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        loading={loadingAllWards}
+                      />
                       {loadingAllWards && (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <Loader2 className="h-3 w-3 animate-spin" /> Đang tải tất cả phường/xã...
@@ -891,36 +956,35 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-sm font-medium">Tỉnh/TP <span className="text-destructive">*</span></Label>
-                      <Select value={provinceId} onValueChange={v => { setProvinceId(v); loadDistricts(parseInt(v)); }}>
-                        <SelectTrigger className="text-sm">
-                          <SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-60">
-                          {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <SearchableLocationSelect
+                        value={provinceId}
+                        onValueChange={v => { setProvinceId(v); loadDistricts(parseInt(v)); }}
+                        options={provinces.map(p => ({ value: String(p.ProvinceID), label: p.ProvinceName }))}
+                        placeholder="Chọn tỉnh/TP"
+                        loading={loadingProvinces}
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm font-medium">Quận/Huyện <span className="text-destructive">*</span></Label>
-                      <Select value={districtId} onValueChange={v => { setDistrictId(v); loadWards(parseInt(v)); }} disabled={!provinceId}>
-                        <SelectTrigger className="text-sm">
-                          <SelectValue placeholder={loadingDistricts ? "Tải..." : "Chọn"} />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-60">
-                          {districts.map(d => <SelectItem key={d.DistrictID} value={String(d.DistrictID)}>{d.DistrictName}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <SearchableLocationSelect
+                        value={districtId}
+                        onValueChange={v => { setDistrictId(v); loadWards(parseInt(v)); }}
+                        options={districts.map(d => ({ value: String(d.DistrictID), label: d.DistrictName }))}
+                        placeholder="Chọn quận/huyện"
+                        disabled={!provinceId}
+                        loading={loadingDistricts}
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm font-medium">Phường/Xã <span className="text-destructive">*</span></Label>
-                      <Select value={wardCode} onValueChange={setWardCode} disabled={!districtId}>
-                        <SelectTrigger className="text-sm">
-                          <SelectValue placeholder={loadingWards ? "Tải..." : "Chọn"} />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-60">
-                          {wards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <SearchableLocationSelect
+                        value={wardCode}
+                        onValueChange={setWardCode}
+                        options={wards.map(w => ({ value: w.WardCode, label: w.WardName }))}
+                        placeholder="Chọn phường/xã"
+                        disabled={!districtId}
+                        loading={loadingWards}
+                      />
                     </div>
                   </div>
                 )}
