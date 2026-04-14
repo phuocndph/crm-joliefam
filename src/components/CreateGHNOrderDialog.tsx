@@ -311,24 +311,30 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     const matchedProv = findBestMatch(provCandidates);
     if (matchedProv) {
       setProvinceId(String(matchedProv.id));
-      try {
-        const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
-        setDistricts(distList || []);
-        const distCandidates = (distList || []).map((d: District) => ({
-          id: d.DistrictID,
-          names: Array.from(new Set([
-            normalizeText(d.DistrictName),
-            normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
-            ...(d.NameExtension || []).map(n => normalizeText(n)),
-          ]))
-        }));
-        const matchedDist = findBestMatch(distCandidates);
-        if (matchedDist) {
-          setDistrictId(String(matchedDist.id));
-          const wardList = await callGHN('get_wards', { districtId: matchedDist.id });
-          setWards(wardList || []);
-          const wardCandidates = (wardList || []).map((w: Ward) => ({
+
+      if (newAddressMode) {
+        // In new address mode: load all wards flat, then match ward directly
+        try {
+          const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
+          setDistricts(distList || []);
+          const allWards: Array<Ward & { districtId: number; districtName: string }> = [];
+          const batchSize = 5;
+          for (let i = 0; i < distList.length; i += batchSize) {
+            const batch = distList.slice(i, i + batchSize);
+            const results = await Promise.all(
+              batch.map((d: District) => callGHN('get_wards', { districtId: d.DistrictID }).catch(() => []))
+            );
+            results.forEach((wardList: Ward[], idx: number) => {
+              const dist = batch[idx];
+              (wardList || []).forEach((w: Ward) => {
+                allWards.push({ ...w, districtId: dist.DistrictID, districtName: dist.DistrictName });
+              });
+            });
+          }
+          setAllWardsFlat(allWards);
+          const wardCandidates = allWards.map(w => ({
             id: w.WardCode,
+            districtId: w.districtId,
             names: Array.from(new Set([
               normalizeText(w.WardName),
               normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
@@ -336,11 +342,45 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
             ]))
           }));
           const matchedWard = findBestMatch(wardCandidates);
-          if (matchedWard) setWardCode(String(matchedWard.id));
-        }
-      } catch (e) { console.error('Auto-match error:', e); }
+          if (matchedWard) {
+            setWardCode(String(matchedWard.id));
+            const wardData = allWards.find(w => w.WardCode === String(matchedWard.id));
+            if (wardData) setDistrictId(String(wardData.districtId));
+          }
+        } catch (e) { console.error('Auto-match (new addr) error:', e); }
+      } else {
+        // Normal mode: Province → District → Ward
+        try {
+          const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
+          setDistricts(distList || []);
+          const distCandidates = (distList || []).map((d: District) => ({
+            id: d.DistrictID,
+            names: Array.from(new Set([
+              normalizeText(d.DistrictName),
+              normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
+              ...(d.NameExtension || []).map(n => normalizeText(n)),
+            ]))
+          }));
+          const matchedDist = findBestMatch(distCandidates);
+          if (matchedDist) {
+            setDistrictId(String(matchedDist.id));
+            const wardList = await callGHN('get_wards', { districtId: matchedDist.id });
+            setWards(wardList || []);
+            const wardCandidates = (wardList || []).map((w: Ward) => ({
+              id: w.WardCode,
+              names: Array.from(new Set([
+                normalizeText(w.WardName),
+                normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
+                ...(w.NameExtension || []).map(n => normalizeText(n)),
+              ]))
+            }));
+            const matchedWard = findBestMatch(wardCandidates);
+            if (matchedWard) setWardCode(String(matchedWard.id));
+          }
+        } catch (e) { console.error('Auto-match error:', e); }
+      }
     }
-  }, [provinces, callGHN]);
+  }, [provinces, callGHN, newAddressMode]);
 
   // Debounced auto-match when user types freely
   const debouncedAddressForMatch = useDebounce(toAddress, 800);
