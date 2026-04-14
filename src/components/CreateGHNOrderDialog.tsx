@@ -199,9 +199,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
   const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
 
-  // Weight manual override: when user edits total weight manually, stop auto-calc
-  const [weightManualOverride, setWeightManualOverride] = useState(false);
-  const displayWeight = weightManualOverride ? weight : totalItemWeight;
+  // Total weight always derived from product items (read-only)
+  const displayWeight = totalItemWeight;
 
   // Calculate effective weight (kg) = max(actual, dimensional)
   // GHN formula: dimensional weight (gram) = (L × W × H) / 5
@@ -329,7 +328,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setDistricts([]);
       setWards([]);
       setAutoMatchDone(false);
-      setWeightManualOverride(false);
+      
     }
     if (!open) {
       hasPrefilledRef.current = false;
@@ -1097,7 +1096,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   <div className="grid grid-cols-5 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={displayWeight} onChange={e => { setWeight(parseInt(e.target.value) || 0); setWeightManualOverride(true); }} className="text-sm" />
+                      <Input type="number" value={displayWeight} readOnly className="text-sm bg-muted cursor-not-allowed" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
