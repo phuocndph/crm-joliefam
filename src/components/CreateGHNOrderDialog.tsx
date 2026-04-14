@@ -269,6 +269,17 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
   const [autoMatchDone, setAutoMatchDone] = useState(false);
 
+  // Heavy cargo detection: service_type_id = 5
+  const isHeavyCargo = serviceTypeId === "5";
+
+  // For heavy cargo, auto-calc package dimensions from items
+  const heavyCargoCalc = isHeavyCargo ? {
+    totalWeight: productItems.reduce((sum, p) => sum + p.weight * p.quantity, 0),
+    maxLength: Math.max(...productItems.map(p => p.length)),
+    maxWidth: Math.max(...productItems.map(p => p.width)),
+    sumHeight: productItems.reduce((sum, p) => sum + p.height * p.quantity, 0),
+  } : null;
+
   // Address suggestions (Goong Maps) - inline
   const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
