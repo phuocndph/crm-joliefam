@@ -10,7 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Truck, Loader2, CheckCircle, Copy, MapPin, ExternalLink, Printer, X, Info, Search } from "lucide-react";
+import { Truck, Loader2, CheckCircle, Copy, MapPin, ExternalLink, Printer, X, Info, Search, HelpCircle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -92,6 +94,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [insuranceValue, setInsuranceValue] = useState(0);
   const [codFailedEnabled, setCodFailedEnabled] = useState(false);
   const [codFailedAmount, setCodFailedAmount] = useState(20000);
+  // New address mode (skip district)
+  const [newAddressMode, setNewAddressMode] = useState(false);
+  const [allWardsFlat, setAllWardsFlat] = useState<Array<Ward & { districtId: number; districtName: string }>>([]);
+  const [loadingAllWards, setLoadingAllWards] = useState(false);
 
   useEffect(() => { setInsuranceValue(codAmount); }, [codAmount]);
 
@@ -305,24 +311,30 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     const matchedProv = findBestMatch(provCandidates);
     if (matchedProv) {
       setProvinceId(String(matchedProv.id));
-      try {
-        const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
-        setDistricts(distList || []);
-        const distCandidates = (distList || []).map((d: District) => ({
-          id: d.DistrictID,
-          names: Array.from(new Set([
-            normalizeText(d.DistrictName),
-            normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
-            ...(d.NameExtension || []).map(n => normalizeText(n)),
-          ]))
-        }));
-        const matchedDist = findBestMatch(distCandidates);
-        if (matchedDist) {
-          setDistrictId(String(matchedDist.id));
-          const wardList = await callGHN('get_wards', { districtId: matchedDist.id });
-          setWards(wardList || []);
-          const wardCandidates = (wardList || []).map((w: Ward) => ({
+
+      if (newAddressMode) {
+        // In new address mode: load all wards flat, then match ward directly
+        try {
+          const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
+          setDistricts(distList || []);
+          const allWards: Array<Ward & { districtId: number; districtName: string }> = [];
+          const batchSize = 5;
+          for (let i = 0; i < distList.length; i += batchSize) {
+            const batch = distList.slice(i, i + batchSize);
+            const results = await Promise.all(
+              batch.map((d: District) => callGHN('get_wards', { districtId: d.DistrictID }).catch(() => []))
+            );
+            results.forEach((wardList: Ward[], idx: number) => {
+              const dist = batch[idx];
+              (wardList || []).forEach((w: Ward) => {
+                allWards.push({ ...w, districtId: dist.DistrictID, districtName: dist.DistrictName });
+              });
+            });
+          }
+          setAllWardsFlat(allWards);
+          const wardCandidates = allWards.map(w => ({
             id: w.WardCode,
+            districtId: w.districtId,
             names: Array.from(new Set([
               normalizeText(w.WardName),
               normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
@@ -330,11 +342,45 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
             ]))
           }));
           const matchedWard = findBestMatch(wardCandidates);
-          if (matchedWard) setWardCode(String(matchedWard.id));
-        }
-      } catch (e) { console.error('Auto-match error:', e); }
+          if (matchedWard) {
+            setWardCode(String(matchedWard.id));
+            const wardData = allWards.find(w => w.WardCode === String(matchedWard.id));
+            if (wardData) setDistrictId(String(wardData.districtId));
+          }
+        } catch (e) { console.error('Auto-match (new addr) error:', e); }
+      } else {
+        // Normal mode: Province → District → Ward
+        try {
+          const distList = await callGHN('get_districts', { provinceId: matchedProv.id });
+          setDistricts(distList || []);
+          const distCandidates = (distList || []).map((d: District) => ({
+            id: d.DistrictID,
+            names: Array.from(new Set([
+              normalizeText(d.DistrictName),
+              normalizeText(d.DistrictName).replace(/^(quan |huyen |thi xa |thanh pho )/, ""),
+              ...(d.NameExtension || []).map(n => normalizeText(n)),
+            ]))
+          }));
+          const matchedDist = findBestMatch(distCandidates);
+          if (matchedDist) {
+            setDistrictId(String(matchedDist.id));
+            const wardList = await callGHN('get_wards', { districtId: matchedDist.id });
+            setWards(wardList || []);
+            const wardCandidates = (wardList || []).map((w: Ward) => ({
+              id: w.WardCode,
+              names: Array.from(new Set([
+                normalizeText(w.WardName),
+                normalizeText(w.WardName).replace(/^(phuong |xa |thi tran )/, ""),
+                ...(w.NameExtension || []).map(n => normalizeText(n)),
+              ]))
+            }));
+            const matchedWard = findBestMatch(wardCandidates);
+            if (matchedWard) setWardCode(String(matchedWard.id));
+          }
+        } catch (e) { console.error('Auto-match error:', e); }
+      }
     }
-  }, [provinces, callGHN]);
+  }, [provinces, callGHN, newAddressMode]);
 
   // Debounced auto-match when user types freely
   const debouncedAddressForMatch = useDebounce(toAddress, 800);
@@ -404,7 +450,50 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     try { setWards(await callGHN('get_wards', { districtId: distId })); } catch (e) { console.error(e); } finally { setLoadingWards(false); }
   };
 
-  // Auto-load services when district changes
+  // Load all wards for a province (new address mode)
+  const loadAllWardsForProvince = async (provId: number) => {
+    setLoadingAllWards(true);
+    setAllWardsFlat([]);
+    setWardCode(""); setDistrictId("");
+    setServices([]); setServiceTypeId(""); setFeeDetail(null); setFeeStatus("idle");
+    try {
+      const distList = await callGHN('get_districts', { provinceId: provId });
+      setDistricts(distList || []);
+      const allWards: Array<Ward & { districtId: number; districtName: string }> = [];
+      // Load wards for each district in parallel (batch of 5)
+      const batchSize = 5;
+      for (let i = 0; i < distList.length; i += batchSize) {
+        const batch = distList.slice(i, i + batchSize);
+        const results = await Promise.all(
+          batch.map((d: District) => callGHN('get_wards', { districtId: d.DistrictID }).catch(() => []))
+        );
+        results.forEach((wardList: Ward[], idx: number) => {
+          const dist = batch[idx];
+          (wardList || []).forEach((w: Ward) => {
+            allWards.push({ ...w, districtId: dist.DistrictID, districtName: dist.DistrictName });
+          });
+        });
+      }
+      setAllWardsFlat(allWards);
+      console.log(`[GHN New Address] Loaded ${allWards.length} wards for province ${provId}`);
+    } catch (e) { console.error('Load all wards error:', e); }
+    finally { setLoadingAllWards(false); }
+  };
+
+  // Handle new address mode toggle
+  const handleNewAddressModeChange = (enabled: boolean) => {
+    setNewAddressMode(enabled);
+    setWardCode(""); setDistrictId("");
+    setServices([]); setServiceTypeId(""); setFeeDetail(null); setFeeStatus("idle");
+    if (enabled && provinceId) {
+      loadAllWardsForProvince(parseInt(provinceId));
+    } else {
+      setAllWardsFlat([]);
+      setWards([]);
+    }
+  };
+
+
   useEffect(() => {
     if (districtId && selectedShopId) {
       loadServices(parseInt(districtId));
@@ -676,7 +765,23 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
             {/* ===== 2. BÊN NHẬN ===== */}
             <div className="px-6 py-5 border-b">
-              <h3 className="text-sm font-bold mb-3">Bên nhận</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold">Bên nhận</h3>
+                <div className="flex items-center gap-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[250px]">
+                        <p className="text-xs">Dùng cho địa chỉ đã sáp nhập phường/xã, không qua Quận/Huyện (VD: TP trực thuộc trung ương)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <Label htmlFor="new-addr-mode" className="text-xs text-muted-foreground cursor-pointer">Địa chỉ mới</Label>
+                  <Switch id="new-addr-mode" checked={newAddressMode} onCheckedChange={handleNewAddressModeChange} className="scale-75" />
+                </div>
+              </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -738,41 +843,87 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 </div>
 
                 {/* Province / District / Ward inline */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Tỉnh/TP <span className="text-destructive">*</span></Label>
-                    <Select value={provinceId} onValueChange={v => { setProvinceId(v); loadDistricts(parseInt(v)); }}>
-                      <SelectTrigger className="text-sm">
-                        <SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                {newAddressMode ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium">Tỉnh/Thành phố <span className="text-destructive">*</span></Label>
+                      <Select value={provinceId} onValueChange={v => { setProvinceId(v); loadAllWardsForProvince(parseInt(v)); }}>
+                        <SelectTrigger className="text-sm">
+                          <SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium">Phường/Xã <span className="text-destructive">*</span></Label>
+                      <Select
+                        value={wardCode}
+                        onValueChange={v => {
+                          setWardCode(v);
+                          const matched = allWardsFlat.find(w => w.WardCode === v);
+                          if (matched) {
+                            setDistrictId(String(matched.districtId));
+                          }
+                        }}
+                        disabled={!provinceId || loadingAllWards}
+                      >
+                        <SelectTrigger className="text-sm">
+                          <SelectValue placeholder={loadingAllWards ? "Đang tải phường/xã..." : "Chọn"} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {allWardsFlat.map(w => (
+                            <SelectItem key={`${w.districtId}-${w.WardCode}`} value={w.WardCode}>
+                              {w.WardName} <span className="text-muted-foreground">({w.districtName})</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {loadingAllWards && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" /> Đang tải tất cả phường/xã...
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Quận/Huyện <span className="text-destructive">*</span></Label>
-                    <Select value={districtId} onValueChange={v => { setDistrictId(v); loadWards(parseInt(v)); }} disabled={!provinceId}>
-                      <SelectTrigger className="text-sm">
-                        <SelectValue placeholder={loadingDistricts ? "Tải..." : "Chọn"} />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {districts.map(d => <SelectItem key={d.DistrictID} value={String(d.DistrictID)}>{d.DistrictName}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium">Tỉnh/TP <span className="text-destructive">*</span></Label>
+                      <Select value={provinceId} onValueChange={v => { setProvinceId(v); loadDistricts(parseInt(v)); }}>
+                        <SelectTrigger className="text-sm">
+                          <SelectValue placeholder={loadingProvinces ? "Tải..." : "Chọn"} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {provinces.map(p => <SelectItem key={p.ProvinceID} value={String(p.ProvinceID)}>{p.ProvinceName}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium">Quận/Huyện <span className="text-destructive">*</span></Label>
+                      <Select value={districtId} onValueChange={v => { setDistrictId(v); loadWards(parseInt(v)); }} disabled={!provinceId}>
+                        <SelectTrigger className="text-sm">
+                          <SelectValue placeholder={loadingDistricts ? "Tải..." : "Chọn"} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {districts.map(d => <SelectItem key={d.DistrictID} value={String(d.DistrictID)}>{d.DistrictName}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium">Phường/Xã <span className="text-destructive">*</span></Label>
+                      <Select value={wardCode} onValueChange={setWardCode} disabled={!districtId}>
+                        <SelectTrigger className="text-sm">
+                          <SelectValue placeholder={loadingWards ? "Tải..." : "Chọn"} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {wards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Phường/Xã <span className="text-destructive">*</span></Label>
-                    <Select value={wardCode} onValueChange={setWardCode} disabled={!districtId}>
-                      <SelectTrigger className="text-sm">
-                        <SelectValue placeholder={loadingWards ? "Tải..." : "Chọn"} />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {wards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 
