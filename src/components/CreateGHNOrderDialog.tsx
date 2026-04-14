@@ -552,8 +552,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           });
         });
       }
-      setAllWardsFlat(allWards);
-      console.log(`[GHN New Address] Loaded ${allWards.length} wards for province ${provId}`);
+      // Deduplicate by WardCode and sort alphabetically
+      const uniqueWards = allWards.filter((w, i, arr) => arr.findIndex(x => x.WardCode === w.WardCode) === i);
+      uniqueWards.sort((a, b) => a.WardName.localeCompare(b.WardName, 'vi'));
+      setAllWardsFlat(uniqueWards);
+      console.log(`[GHN New Address] Loaded ${allWards.length} wards, ${uniqueWards.length} unique for province ${provId}`);
     } catch (e) { console.error('Load all wards error:', e); }
     finally { setLoadingAllWards(false); }
   };
@@ -942,7 +945,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                           const matched = allWardsFlat.find(w => w.WardCode === v);
                           if (matched) setDistrictId(String(matched.districtId));
                         }}
-                        options={allWardsFlat.map(w => ({ value: w.WardCode, label: w.WardName, sub: w.districtName }))}
+                        options={allWardsFlat.map(w => ({ value: w.WardCode, label: w.WardName }))}
                         placeholder="Chọn phường/xã"
                         disabled={!provinceId || loadingAllWards}
                         loading={loadingAllWards}
