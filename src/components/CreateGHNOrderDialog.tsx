@@ -206,7 +206,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   // Calculate effective weight (kg) = max(actual, dimensional)
   // GHN formula: dimensional weight (gram) = (L × W × H) / 5
   const dimensionalWeightGram = Math.ceil(length * width * height / 5);
-  const effectiveWeightGram = Math.max(weight, dimensionalWeightGram);
+  const effectiveWeightGram = Math.max(displayWeight, dimensionalWeightGram);
   const effectiveWeightKg = effectiveWeightGram / 1000;
 
   // Auto-select shop based on effective weight
@@ -1097,7 +1097,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   <div className={`grid ${isOverweight ? 'grid-cols-5' : 'grid-cols-2'} gap-3`}>
                     <div className="space-y-1.5">
                       <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={displayWeight} onChange={e => { setWeight(parseInt(e.target.value) || 0); setWeightManualOverride(true); }} className="text-sm" />
                     </div>
                     {isOverweight && (
                       <>
