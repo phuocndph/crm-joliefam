@@ -1,34 +1,43 @@
 
 
-## Cập nhật "Thông tin sản phẩm" theo chuẩn GHN cho đơn hàng nặng
+## Fix logic thông tin sản phẩm theo đúng chuẩn GHN API
 
-### Vấn đề
-Hiện tại mỗi sản phẩm chỉ có 3 trường: Tên, KL (gram), Số lượng. GHN API cho phép truyền thêm `length`, `width`, `height` cho từng item trong mảng `items`. Đối với đơn hàng nặng (>20kg), thông tin kích thước là bắt buộc để tính cước chính xác.
+### Vấn đề phát hiện
+
+1. **Công thức KL quy đổi sai**: Code hiện tại dùng `(L×W×H)/6000*1000` nhưng GHN API docs ghi rõ: `(L×W×H)/5` (kết quả tính bằng gram). Ví dụ: 50×40×20 = 40000/5 = 8000g (đúng) vs 40000/6000*1000 = 6667g (sai).
+
+2. **Thiếu trường `code` và `price` trong items**: GHN API hỗ trợ thêm `code` (mã SP) và `price` (giá SP) cho mỗi item. Không bắt buộc nhưng nên truyền để GHN quản lý tốt hơn.
+
+3. **Hàng nặng vs Hàng nhẹ**: Khi `service_type_id = 5` (hàng nặng), GHN tính cước từ `items[]` chứ không phải từ level đơn hàng. Mỗi item = 1 kiện hàng. Công thức: `Max(length), Max(width), Sum(height)`. Hiện code chưa phân biệt rõ 2 chế độ này.
+
+4. **Weight mặc định 200g quá thấp** cho chăn ga gối — nên tăng lên 1000g.
 
 ### Giải pháp
 
 **File: `src/components/CreateGHNOrderDialog.tsx`**
 
-1. **Mở rộng interface productItems** thêm 3 trường: `length`, `width`, `height` (cm) cho mỗi sản phẩm, với giá trị mặc định hợp lý (30, 20, 10 cm).
+1. **Sửa công thức KL quy đổi** từ `(L*W*H)/6000*1000` thành `(L*W*H)/5` đúng theo GHN docs.
 
-2. **Cập nhật UI mỗi sản phẩm** từ 3 cột thành 2 hàng:
-   - Hàng 1: Tên sản phẩm (rộng hơn), Số lượng
-   - Hàng 2: KL (gram), Dài (cm), Rộng (cm), Cao (cm)
+2. **Tăng weight mặc định** từ 200g lên 1000g cho phù hợp với sản phẩm chăn ga gối.
 
-3. **Cập nhật `handleSubmit`** để truyền `length`, `width`, `height` cho mỗi item khi gọi GHN API:
-   ```
-   items: productItems.map(p => ({
-     name: p.name, quantity: p.quantity, weight: p.weight,
-     length: p.length, width: p.width, height: p.height
-   }))
-   ```
+3. **Thêm hiển thị chế độ hàng nặng**: Khi `service_type_id = 5`, hiển thị thông báo cho user biết GHN sẽ tính cước từ items (mỗi item = 1 kiện hàng), và tự tính tổng hiển thị: `Max(length), Max(width), Sum(height), Sum(weight)`.
 
-4. **Cập nhật pre-fill** để set default dimensions cho items khi load từ đơn hàng.
+4. **Truyền thêm `price`** cho mỗi item khi gọi API (lấy từ insurance_value chia đều hoặc 0).
 
-5. **Auto-sync tổng kích thước**: Khi chỉ có 1 sản phẩm, tự động sync dimensions từ item lên phần "Thông tin đơn hàng" (weight, length, width, height tổng). Khi có nhiều sản phẩm, giữ nguyên cho user tự nhập tổng.
+5. **Cập nhật pre-fill weight** từ 200g → 1000g.
 
 ### Chi tiết kỹ thuật
-- Interface mới: `{ name: string; weight: number; quantity: number; length: number; width: number; height: number }`
-- Default values: `length: 30, width: 20, height: 10`
-- Layout: grid `grid-cols-2` cho hàng 1, `grid-cols-4` cho hàng 2
+
+```text
+Hiện tại:  dimensionalWeightGram = Math.round((length * width * height) / 6000 * 1000)
+Sửa thành: dimensionalWeightGram = Math.round((length * width * height) / 5)
+
+Default weight: 200 → 1000
+
+items payload: thêm price: 0 (optional)
+
+Khi service_type_id = 5 (hàng nặng):
+  - Hiển thị note: "Hàng nặng: GHN tính cước từ kích thước mỗi kiện hàng"
+  - Auto-calc tổng: Max(items.length), Max(items.width), Sum(items.height), Sum(items.weight)
+```
 
