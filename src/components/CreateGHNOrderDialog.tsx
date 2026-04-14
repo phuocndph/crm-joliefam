@@ -23,6 +23,82 @@ interface District { DistrictID: number; DistrictName: string; NameExtension?: s
 interface Ward { WardCode: string; WardName: string; NameExtension?: string[]; }
 interface GHNShop { _id: number; name: string; address: string; district_id: number; phone?: string; }
 interface GHNService { service_id: number; short_name: string; service_type_id: number; }
+
+// Searchable location dropdown (Popover-based, works inside Dialog)
+function SearchableLocationSelect({ 
+  value, onValueChange, options, placeholder, disabled, loading 
+}: { 
+  value: string; 
+  onValueChange: (v: string) => void; 
+  options: { value: string; label: string; sub?: string }[]; 
+  placeholder?: string; 
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const normalizeSearch = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+  const normalizedSearch = normalizeSearch(search);
+  const filtered = normalizedSearch 
+    ? options.filter(o => normalizeSearch(o.label).includes(normalizedSearch) || (o.sub && normalizeSearch(o.sub).includes(normalizedSearch)))
+    : options;
+
+  const selectedLabel = options.find(o => o.value === value)?.label;
+
+  useEffect(() => {
+    if (open && inputRef.current) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+    if (!open) setSearch("");
+  }, [open]);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(!open)}
+        className={`flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${!selectedLabel ? 'text-muted-foreground' : ''}`}
+      >
+        <span className="truncate">{loading ? "Tải..." : selectedLabel || placeholder || "Chọn"}</span>
+        <Search className="h-3.5 w-3.5 shrink-0 opacity-50" />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-[9999] rounded-md border bg-popover shadow-lg pointer-events-auto">
+          <div className="p-2 border-b">
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onMouseDown={e => e.stopPropagation()}
+              placeholder="Tìm kiếm..."
+              className="w-full text-sm px-2 py-1.5 rounded border border-input bg-background outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div ref={listRef} className="max-h-[240px] overflow-y-auto overscroll-contain">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted-foreground">Không tìm thấy</div>
+            ) : filtered.map(o => (
+              <button
+                key={o.value}
+                type="button"
+                onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+                onClick={() => { onValueChange(o.value); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors ${o.value === value ? 'bg-accent font-medium' : ''}`}
+              >
+                {o.label}{o.sub && <span className="text-muted-foreground ml-1 text-xs">({o.sub})</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {open && <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />}
+    </div>
+  );
+}
 interface FeeDetail {
   service_fee: number; insurance_fee: number; cod_fee: number; r2s_fee: number;
   coupon_value: number; total: number; [key: string]: number;
