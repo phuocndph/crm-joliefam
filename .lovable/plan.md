@@ -1,32 +1,34 @@
 
 
-## Thêm tính năng "Địa chỉ mới" - bỏ Quận/Huyện
+## Phân tích lỗi "Phường/Xã đang lấy sai"
 
-### Vấn đề
-Việt Nam đang thay đổi hành chính, nhiều nơi sáp nhập phường/xã trực thuộc Tỉnh/TP mà không qua Quận/Huyện. GHN đã hỗ trợ chế độ "Địa chỉ mới" cho phép chọn trực tiếp Tỉnh/TP → Phường/Xã.
+### Nguyên nhân có thể
 
-### Giải pháp
-Thêm toggle "Địa chỉ mới" vào phần "Bên nhận", giống giao diện GHN trong ảnh tham khảo.
+Dựa trên session replay, user đang ở **chế độ Địa chỉ mới** (province 201, loaded 612 wards). Có 2 vấn đề:
 
-### Thay đổi trong `src/components/CreateGHNOrderDialog.tsx`
+1. **Search không tìm được khi gõ không dấu**: Hàm `normalizeSearch` trong `SearchableLocationSelect` xử lý tốt ký tự có dấu → không dấu, nhưng khi user gõ "hoan " (có dấu cách cuối), nó không match "hoang" vì `"hoan "` ≠ chuỗi con của `"hoang"`. Tuy nhiên đây là hành vi đúng — "hoan" khác "hoang".
 
-1. **Thêm state `newAddressMode`** (boolean, default false)
+2. **Ward list bị sai — có thể GHN API trả về null cho một số district**: Trong `loadAllWardsForProvince`, API `get_wards` được gọi cho từng district. Nếu GHN trả về `null` thay vì mảng rỗng cho district nào đó, code `(wardList || [])` đã handle. Nhưng nếu API trả về data sai hoặc trùng WardCode giữa các district, ward dropdown có thể hiển thị sai.
 
-2. **Thêm toggle UI** ngay cạnh tiêu đề "Bên nhận":
-   - Switch/toggle với label "Địa chỉ mới" + icon info tooltip giải thích "Dùng cho địa chỉ đã sáp nhập phường xã, không qua Quận/Huyện"
+3. **Nguyên nhân chính khả năng cao nhất**: Khi user ở chế độ **bình thường** (không bật Địa chỉ mới), auto-match có thể chọn sai district → load sai danh sách ward. Ví dụ: địa chỉ có "Hoàng Mai" — đây vừa là tên quận vừa là tên phường ở nhiều nơi.
 
-3. **Khi bật "Địa chỉ mới"**: Ẩn dropdown Quận/Huyện, đổi layout từ 3 cột thành 2 cột (Tỉnh/TP + Phường/Xã). Khi chọn Tỉnh/TP, load **tất cả wards** của tỉnh đó (gọi API lấy tất cả quận → lấy wards của từng quận, hoặc nếu GHN API hỗ trợ thì gọi trực tiếp).
+### Giải pháp đề xuất
 
-4. **Logic load wards khi bật "Địa chỉ mới"**: Sau khi chọn Tỉnh, load tất cả districts → load wards của từng district → gộp thành 1 danh sách flat cho user chọn. Lưu lại `districtId` tương ứng với ward được chọn (cần thiết cho API tạo đơn).
+**File: `src/components/CreateGHNOrderDialog.tsx`**
 
-5. **Khi tắt "Địa chỉ mới"**: Quay lại flow 3 bước cũ (Tỉnh → Quận → Phường), reset districtId và wardCode.
+1. **Thêm console.log debug** vào `loadWards` và ward dropdown để log rõ: district nào đang được chọn, ward list trả về có bao nhiêu item, và ward nào được auto-match.
 
-6. **Auto-match**: Khi bật new address mode, hàm `autoMatchFromText` sẽ skip bước match district, thay vào đó tìm ward trực tiếp trong danh sách gộp.
+2. **Fix tiềm ẩn**: Trong `loadAllWardsForProvince`, thêm validation kiểm tra `WardCode` và `WardName` không undefined trước khi push vào `allWardsFlat`.
+
+3. **Cải thiện search**: Trim trailing spaces trong search input để "hoan " match giống "hoan".
+
+4. **Thêm hiển thị debug nhỏ**: Hiển thị số lượng ward đã load bên cạnh label "Phường/Xã" (ví dụ: "Phường/Xã (612)") để user thấy data đã load đúng.
 
 ### Chi tiết kỹ thuật
 
-- State mới: `newAddressMode: boolean`, `allWardsFlat: Array<Ward & { districtId: number }>`, `loadingAllWards: boolean`
-- Khi chọn ward trong mode mới, tự động set `districtId` từ ward data (ẩn nhưng vẫn truyền cho API)
-- GHN API vẫn yêu cầu `to_district_id` khi tạo đơn → cần lưu district tương ứng
-- UI toggle dùng component `Switch` có sẵn trong project
+- `normalizeSearch`: thêm `.trim()` cuối cùng để loại bỏ trailing spaces
+- `loadAllWardsForProvince`: filter `allWards` chỉ giữ entry có `WardCode` và `WardName` hợp lệ
+- Thêm `console.log` tại `loadWards` và `onValueChange` của ward select để debug
+
+Nếu bạn cho biết cụ thể hơn (ví dụ: chọn tỉnh nào, quận nào, và phường nào bị sai), tôi có thể fix chính xác hơn.
 
