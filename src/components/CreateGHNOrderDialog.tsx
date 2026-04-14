@@ -629,6 +629,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const handleNewAddressModeChange = (enabled: boolean) => {
     setNewAddressMode(enabled);
     setWardCode(""); setDistrictId("");
+    setVietmapWardSearch(""); setVietmapResults([]); setSelectedVietmapWard(""); setShowVietmapResults(false);
     setServices([]); setServiceTypeId(""); setFeeDetail(null); setFeeStatus("idle");
     if (enabled && provinceId) {
       loadAllWardsForProvince(parseInt(provinceId));
