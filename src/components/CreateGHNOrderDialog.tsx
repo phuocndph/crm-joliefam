@@ -269,8 +269,9 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
   const [autoMatchDone, setAutoMatchDone] = useState(false);
 
-  // Heavy cargo detection: service_type_id = 5
-  const isHeavyCargo = serviceTypeId === "5";
+  // Heavy cargo detection: total weight >= 20kg or service_type_id = 5
+  const isOverweight = totalItemWeight >= 20000;
+  const isHeavyCargo = serviceTypeId === "5" || isOverweight;
 
   // For heavy cargo, auto-calc package dimensions from items
   const heavyCargoCalc = isHeavyCargo ? {
