@@ -1108,6 +1108,18 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                       <span>KL tính cước: <strong>{effectiveWeightKg.toFixed(1)}kg</strong> (quy đổi &gt; thực tế) → Shop: <strong>{selectedShop?.name || '...'}</strong></span>
                     </div>
                   )}
+                  {isHeavyCargo && heavyCargoCalc && (
+                    <div className="col-span-5 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                      <div className="flex items-center gap-1.5 font-medium mb-1">
+                        <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                        Hàng nặng (Service 5): GHN tính cước từ kích thước mỗi kiện hàng
+                      </div>
+                      <div className="ml-5 space-y-0.5">
+                        <div>Tổng KL: <strong>{(heavyCargoCalc.totalWeight / 1000).toFixed(1)}kg</strong></div>
+                        <div>Kích thước tính: <strong>{heavyCargoCalc.maxLength}×{heavyCargoCalc.maxWidth}×{heavyCargoCalc.sumHeight} cm</strong> (Max D × Max R × Tổng C)</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
