@@ -199,16 +199,9 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
   const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
 
-  // Auto-sync dimensions from single product to order dimensions
-  useEffect(() => {
-    if (productItems.length === 1) {
-      const item = productItems[0];
-      setWeight(item.weight * item.quantity);
-      setLength(item.length);
-      setWidth(item.width);
-      setHeight(item.height);
-    }
-  }, [productItems]);
+  // Weight manual override: when user edits total weight manually, stop auto-calc
+  const [weightManualOverride, setWeightManualOverride] = useState(false);
+  const displayWeight = weightManualOverride ? weight : totalItemWeight;
 
   // Calculate effective weight (kg) = max(actual, dimensional)
   // GHN formula: dimensional weight (gram) = (L × W × H) / 5
@@ -318,10 +311,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           height: 10
         }]);
         // Ước tính ~1kg/sản phẩm để auto-select shop chính xác hơn
-        setWeight(totalQty * 1000);
+        // weight auto-calculated from productItems (totalQty * 1000g)
       } else {
         setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
-        setWeight(500);
+        // weight auto-calculated from productItems (1 * 1000g)
       }
       setSuccess(false);
       setCreatedOrderCode("");
@@ -336,6 +329,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setDistricts([]);
       setWards([]);
       setAutoMatchDone(false);
+      setWeightManualOverride(false);
     }
     if (!open) {
       hasPrefilledRef.current = false;
