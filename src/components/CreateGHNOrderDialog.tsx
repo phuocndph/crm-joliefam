@@ -1094,27 +1094,23 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
               <h3 className="text-sm font-bold mb-3">Thông tin đơn hàng</h3>
               <div className="space-y-4">
                 <div className="rounded-lg border p-4">
-                  <div className={`grid ${isOverweight ? 'grid-cols-5' : 'grid-cols-2'} gap-3`}>
+                  <div className="grid grid-cols-5 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
                       <Input type="number" value={displayWeight} onChange={e => { setWeight(parseInt(e.target.value) || 0); setWeightManualOverride(true); }} className="text-sm" />
                     </div>
-                    {isOverweight && (
-                      <>
-                        <div className="space-y-1.5">
-                          <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
-                          <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
-                          <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
-                          <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
-                        </div>
-                      </>
-                    )}
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
+                      <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
+                      <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
+                      <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                    </div>
                     <div className="space-y-1.5">
                      <Label className="text-sm text-muted-foreground">KL quy đổi (gram)</Label>
                       <div className="text-sm font-medium pt-2">{dimensionalWeightGram.toLocaleString('vi-VN')}</div>
