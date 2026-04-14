@@ -589,6 +589,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   }, [productItems]);
 
 
+
   useEffect(() => {
     if (districtId && selectedShopId) {
       loadServices(parseInt(districtId));
