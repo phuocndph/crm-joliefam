@@ -633,7 +633,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           service_type_id: parseInt(serviceTypeId),
           to_district_id: parseInt(districtId),
           to_ward_code: wardCode,
-          weight, length, width, height,
+          weight: displayWeight, length, width, height,
           insurance_value: insuranceValue,
           cod_value: codAmount,
         }
@@ -657,7 +657,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         orderData: {
           to_name: toName, to_phone: toPhone, to_address: toAddress,
           to_district_id: parseInt(districtId), to_ward_code: wardCode,
-          weight, length, width, height,
+          weight: displayWeight, length, width, height,
           cod_amount: codAmount, insurance_value: insuranceValue,
           note, required_note: requiredNote, content: itemContent,
           payment_type_id: parseInt(paymentTypeId),
