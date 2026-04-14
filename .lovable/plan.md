@@ -1,57 +1,32 @@
 
 
-## Phân tích logic "Hàng nặng" và chuyển đổi shop theo KG
+## Thêm tính năng "Địa chỉ mới" - bỏ Quận/Huyện
 
-### 1. "Hàng nặng" / "Hàng nhẹ" là gì?
+### Vấn đề
+Việt Nam đang thay đổi hành chính, nhiều nơi sáp nhập phường/xã trực thuộc Tỉnh/TP mà không qua Quận/Huyện. GHN đã hỗ trợ chế độ "Địa chỉ mới" cho phép chọn trực tiếp Tỉnh/TP → Phường/Xã.
 
-Đây là **gói dịch vụ** do GHN API trả về (endpoint `available-services`), không phải logic của app. GHN tự quyết định dịch vụ nào khả dụng dựa trên quận gửi/nhận. App chỉ hiển thị kết quả API -- không cần sửa gì ở đây.
+### Giải pháp
+Thêm toggle "Địa chỉ mới" vào phần "Bên nhận", giống giao diện GHN trong ảnh tham khảo.
 
-### 2. Logic chuyển đổi shop theo KG hiện tại
+### Thay đổi trong `src/components/CreateGHNOrderDialog.tsx`
 
-**Hàm `parseWeightRange`** (line 29-41) parse tên shop để xác định khoảng KG:
+1. **Thêm state `newAddressMode`** (boolean, default false)
 
-```text
-Tên shop             → min   max (exclusive)
-─────────────────────────────────────────────
-"0-2kg"              → 0     3    (bao phủ 0 - 2.99kg)
-"3-9kg"              → 3     10   (bao phủ 3 - 9.99kg)
-"10-19kg"            → 10    20   (bao phủ 10 - 19.99kg)
-"từ 20kg trở lên"    → 20    ∞    (20kg+)
-"dưới 5kg"           → 0     5
-```
+2. **Thêm toggle UI** ngay cạnh tiêu đề "Bên nhận":
+   - Switch/toggle với label "Địa chỉ mới" + icon info tooltip giải thích "Dùng cho địa chỉ đã sáp nhập phường xã, không qua Quận/Huyện"
 
-**Vấn đề phát hiện**: Logic `max = parseInt(rangeMatch[2]) + 1` trên line 33 có thể SAI nếu tên shop thực tế là:
-- **"0-2kg"** → max thành 3 (đúng, vì 2kg vẫn nằm trong shop này)
-- **"3-9kg"** → max thành 10 (đúng)
-- Nhưng nếu tên shop là **"0-3kg"** và **"3-9kg"** → 3kg sẽ rơi vào shop "0-3kg" (max=4) thay vì "3-9kg" (min=3) -- ưu tiên shop tìm thấy trước (find)
+3. **Khi bật "Địa chỉ mới"**: Ẩn dropdown Quận/Huyện, đổi layout từ 3 cột thành 2 cột (Tỉnh/TP + Phường/Xã). Khi chọn Tỉnh/TP, load **tất cả wards** của tỉnh đó (gọi API lấy tất cả quận → lấy wards của từng quận, hoặc nếu GHN API hỗ trợ thì gọi trực tiếp).
 
-### 3. Logic auto-select (line 126-151)
+4. **Logic load wards khi bật "Địa chỉ mới"**: Sau khi chọn Tỉnh, load tất cả districts → load wards của từng district → gộp thành 1 danh sách flat cho user chọn. Lưu lại `districtId` tương ứng với ward được chọn (cần thiết cho API tạo đơn).
 
-```text
-effectiveWeightKg = max(weight, dimensionalWeight) / 1000
+5. **Khi tắt "Địa chỉ mới"**: Quay lại flow 3 bước cũ (Tỉnh → Quận → Phường), reset districtId và wardCode.
 
-1. Tìm shop có min <= weight < max → chọn shop đó
-2. Nếu không tìm thấy → fallback: chọn shop có min cao nhất mà <= weight
-```
+6. **Auto-match**: Khi bật new address mode, hàm `autoMatchFromText` sẽ skip bước match district, thay vào đó tìm ward trực tiếp trong danh sách gộp.
 
-### 4. Đề xuất kiểm tra và cải thiện
+### Chi tiết kỹ thuật
 
-Cần xác minh tên shop thực tế trên tài khoản GHN của bạn để đảm bảo logic parse đúng. Ngoài ra có thể cải thiện:
-
-**a) Thêm debug log hiển thị tất cả shop và range đã parse** -- để dễ kiểm tra:
-- Trong auto-select useEffect, log `shops.map(s => ({ name: s.name, ...parseWeightRange(s.name) }))` ra console
-
-**b) Sửa logic biên** nếu tên shop dùng format liền mạch (ví dụ "0-2kg", "3-9kg"):
-- Hiện tại `max = số_cuối + 1` → "0-2kg" bao phủ đến 2.99kg. Nếu muốn "0-2kg" chỉ bao phủ đến **dưới 3kg** thì logic đúng. Nhưng nếu shop "3-9kg" bắt đầu từ 3kg thì không có gap.
-
-**c) Hiển thị bảng shop + range trong UI** để user dễ kiểm chứng -- thêm tooltip hoặc expandable section hiển thị danh sách shop cùng khoảng KG tương ứng.
-
-### Thay đổi đề xuất
-
-**File: `src/components/CreateGHNOrderDialog.tsx`**
-
-1. Thêm console.log debug trong auto-select useEffect để log toàn bộ shop + range đã parse
-2. Thêm hiển thị nhỏ (expandable) danh sách tất cả shop kèm khoảng KG tại phần "Bên gửi", giúp user thấy rõ shop nào đang active và tại sao
-
-Nếu bạn cho tôi biết **tên chính xác các shop** trên tài khoản GHN, tôi sẽ xác nhận logic parse có đúng hay cần sửa.
+- State mới: `newAddressMode: boolean`, `allWardsFlat: Array<Ward & { districtId: number }>`, `loadingAllWards: boolean`
+- Khi chọn ward trong mode mới, tự động set `districtId` từ ward data (ẩn nhưng vẫn truyền cho API)
+- GHN API vẫn yêu cầu `to_district_id` khi tạo đơn → cần lưu district tương ứng
+- UI toggle dùng component `Switch` có sẵn trong project
 
