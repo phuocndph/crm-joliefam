@@ -265,11 +265,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const isHeavyCargo = serviceTypeId === "5" || isOverweight;
 
   // For heavy cargo, auto-calc package dimensions from items
+  // Heavy cargo: dimensions are per-parcel, NOT multiplied by quantity
   const heavyCargoCalc = isHeavyCargo ? {
     totalWeight: productItems.reduce((sum, p) => sum + p.weight * p.quantity, 0),
     maxLength: Math.max(...productItems.map(p => p.length)),
     maxWidth: Math.max(...productItems.map(p => p.width)),
-    sumHeight: productItems.reduce((sum, p) => sum + p.height * p.quantity, 0),
+    // Each productItem represents a parcel, height = max height (not sum * qty)
+    sumHeight: productItems.reduce((sum, p) => sum + p.height, 0),
   } : null;
 
   // Address suggestions (Goong Maps) - inline
@@ -296,31 +298,40 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setInsuranceValue(order.total_amount || 0);
       
       setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
-      const parsedItems = Array.isArray(order.items) ? order.items : [];
-      if (parsedItems.length > 0) {
-        // Map từng sản phẩm riêng biệt, giữ nguyên quantity từ đơn hàng
-        const mappedItems = parsedItems.map((item: any) => ({
-          name: item.name || 'Sản phẩm',
-          weight: item.weight || 1000,
+      // Normalize order.items - handle both JSON string and array, and nested product objects
+      let rawItems: any[] = [];
+      if (typeof order.items === 'string') {
+        try { rawItems = JSON.parse(order.items); } catch { rawItems = []; }
+      } else if (Array.isArray(order.items)) {
+        rawItems = order.items;
+      }
+
+      if (rawItems.length > 0) {
+        // Map từng sản phẩm riêng biệt - normalize name from various shapes
+        const mappedItems = rawItems.map((item: any) => ({
+          name: item.name || item.product?.name || 'Sản phẩm',
+          weight: item.weight || item.product?.weight || 0,
           quantity: item.quantity || 1,
-          length: item.length || 30,
-          width: item.width || 20,
-          height: item.height || 10,
+          length: item.length || item.product?.length || 30,
+          width: item.width || item.product?.width || 20,
+          height: item.height || item.product?.height || 10,
         }));
-        // Gộp thành 1 dòng duy nhất cho GHN (tránh tính nhiều kiện)
-        const summaryName = parsedItems.map((item: any) => item.name).join(' - ');
-        const totalQty = mappedItems.reduce((sum, item) => sum + item.quantity, 0);
-        // Dùng weight trung bình có trọng số thay vì mặc định 1000g cho tất cả
-        const avgWeight = totalQty > 0
-          ? Math.round(mappedItems.reduce((sum, item) => sum + item.weight * item.quantity, 0) / totalQty)
-          : 1000;
+        // Gộp thành 1 dòng cho GHN (tránh GHN tính nhiều kiện)
+        // QUAN TRỌNG: quantity ở GHN = 1 (1 kiện hàng), không phải số lượng bán hàng
+        const summaryName = mappedItems.map(i => i.name).filter(Boolean).join(' - ');
+        // Tổng KL thật = sum(weight * qty) nhưng nếu không có weight thì dùng mặc định hợp lý
+        const totalRealWeight = mappedItems.reduce((sum, item) => sum + (item.weight || 500) * item.quantity, 0);
+        // Kích thước: lấy max vì đóng chung 1 kiện
+        const maxLength = Math.max(...mappedItems.map(i => i.length));
+        const maxWidth = Math.max(...mappedItems.map(i => i.width));
+        const maxHeight = Math.max(...mappedItems.map(i => i.height));
         setProductItems([{
           name: summaryName,
-          weight: avgWeight,
-          quantity: totalQty,
-          length: Math.max(...mappedItems.map(i => i.length)),
-          width: Math.max(...mappedItems.map(i => i.width)),
-          height: Math.max(...mappedItems.map(i => i.height)),
+          weight: totalRealWeight, // tổng gram của toàn bộ đơn
+          quantity: 1,             // 1 kiện hàng duy nhất
+          length: maxLength,
+          width: maxWidth,
+          height: maxHeight,
         }]);
       } else {
         setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
