@@ -40,7 +40,7 @@ function SearchableLocationSelect({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const normalizeSearch = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+  const normalizeSearch = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "d").trim();
   const normalizedSearch = normalizeSearch(search);
   const filtered = normalizedSearch 
     ? options.filter(o => normalizeSearch(o.label).includes(normalizedSearch) || (o.sub && normalizeSearch(o.sub).includes(normalizedSearch)))
@@ -546,7 +546,9 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         results.forEach((wardList: Ward[], idx: number) => {
           const dist = batch[idx];
           (wardList || []).forEach((w: Ward) => {
-            allWards.push({ ...w, districtId: dist.DistrictID, districtName: dist.DistrictName });
+            if (w.WardCode && w.WardName) {
+              allWards.push({ ...w, districtId: dist.DistrictID, districtName: dist.DistrictName });
+            }
           });
         });
       }
@@ -932,7 +934,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-sm font-medium">Phường/Xã <span className="text-destructive">*</span></Label>
+                      <Label className="text-sm font-medium">Phường/Xã {allWardsFlat.length > 0 && <span className="text-muted-foreground font-normal">({allWardsFlat.length})</span>} <span className="text-destructive">*</span></Label>
                       <SearchableLocationSelect
                         value={wardCode}
                         onValueChange={v => {
