@@ -1,74 +1,104 @@
 
-## Chỗ đang sai
+## Gốc rễ thật sự
 
-1. **Sai ở bước prefill sản phẩm** trong `src/components/CreateGHNOrderDialog.tsx` (đoạn prefill khi mở dialog):
-- Code đang **gộp toàn bộ `order.items` thành 1 dòng sản phẩm**
-- Sau đó gán mặc định:
-  - `weight: 1000`
-  - `length: 30`
-  - `width: 20`
-  - `height: 10`
-  - `quantity: totalQty`
-- Nghĩa là hệ thống đang hiểu: “có `totalQty` kiện, mỗi kiện 1000g, cao 10cm”
+Không phải ô KL tự nhảy ngẫu nhiên. Hiện có 3 lớp sai chồng nhau:
 
-2. **Vì vậy phần “Thông tin đơn hàng” không sai cách tính, mà sai từ dữ liệu đầu vào**
-- `KL (gram)` ở đây đang lấy từ:
-  - `displayWeight = totalItemWeight`
-  - `totalItemWeight = sum(item.weight * item.quantity)`
-- Tức là nó đang bám đúng theo “Thông tin sản phẩm”
-- Nhưng “Thông tin sản phẩm” hiện bị prefill kiểu giả lập, nên nhìn thành “nhảy linh tinh”
+1. **Sai contract dữ liệu `order.items` giữa các luồng tạo đơn**
+   - `CreateOrderForm.tsx` lưu `items` = `JSON.stringify(orderItems)` và mỗi item có dạng:
+     `product + quantity + price + total...`
+     => không có `name`, `weight`, `length`, `width`, `height` ở top-level.
+   - `QuotesPage.tsx` lại lưu `items` theo shape khác.
+   - `CreateGHNOrderDialog.tsx` đang giả định `order.items` là array và item có sẵn `name/weight/length/...`.
+   - Kết quả: cùng là đơn hàng nhưng đầu vào GHN không đồng nhất.
 
-3. **Có thêm 1 bug phụ**
-- State `weight` cũ vẫn còn tồn tại
-- Effect tính phí vẫn đang phụ thuộc `weight`, trong khi UI và payload đã chuyển sang `displayWeight`
-- Điều này dễ làm tính phí/shop cập nhật không khớp với gram đang hiển thị
+2. **Dialog GHN đang tự đoán dữ liệu logistics**
+   - Khi thiếu dữ liệu, code fallback:
+     - `weight = 1000`
+     - `length = 30`
+     - `width = 20`
+     - `height = 10`
+   - Với đơn số lượng lớn, các số fallback này làm tổng KG/KT phình rất mạnh.
 
-## Vì sao ảnh của bạn ra 213kg và 2130cm
+3. **Logic hiện tại đang gộp toàn bộ sản phẩm thành 1 dòng giả**
+   - Trong `CreateGHNOrderDialog.tsx`, sau khi map item, code lại `setProductItems([ ... ])` thành **1 dòng duy nhất**:
+     - `quantity = totalQty`
+     - `weight = avgWeight`
+     - `length/width/height = max`
+   - Sau đó:
+     - `totalItemWeight = weight * quantity`
+     - `heavyCargoCalc.sumHeight = height * quantity`
+   - Đây chính là lý do ra kiểu `2130cm`.
+
+## Vì sao ảnh của bạn ra sai
+
+Với dữ liệu đang hiển thị:
 
 ```text
+1 dòng GHN
 quantity = 213
-weight mặc định mỗi dòng = 1000g
-=> totalItemWeight = 213 * 1000 = 213000g = 213.0kg
+weight = 2000g
+height = 10cm
 
-height mặc định = 10cm
-=> sumHeight = 213 * 10 = 2130cm
-=> Kích thước tính = 30 × 20 × 2130
+=> KL tổng = 213 × 2000 = 426000g
+=> Tổng cao = 213 × 10 = 2130cm
 ```
 
-Nói ngắn gọn: **nó không tự nhảy ngẫu nhiên**, mà đang tính rất “đúng” trên một bộ dữ liệu prefill đang bị dựng sai.
+Tức là hệ thống đang dùng **số lượng bán hàng** như **số kiện vận chuyển**. Đây mới là lỗi gốc.
+
+## Kết luận
+
+Bug không nằm riêng ở ô “Thông tin đơn hàng”.
+
+Gốc rễ là:
+- dữ liệu `order.items` không đồng nhất,
+- nhiều đơn không có logistics thật,
+- và dialog GHN đang biến `quantity` thành số kiện bằng cách gộp sai.
 
 ## Kế hoạch sửa
 
-1. **Sửa prefill `order.items`**
-- Không gộp tất cả thành 1 dòng tổng hợp nữa
-- Map từng sản phẩm từ đơn hàng sang `productItems`
-- Nếu item có sẵn gram/kích thước thì lấy giá trị thật
-- Chỉ fallback `1000 / 30 / 20 / 10` khi item thiếu dữ liệu
+1. **Thêm bước normalize `order.items`**
+   - Parse được cả:
+     - chuỗi JSON
+     - array object
+     - item dạng `{ product: {...} }`
+     - item dạng `{ name, quantity, ... }`
+   - Lấy tên từ `item.name || item.product?.name`.
 
-2. **Giữ KL đơn hàng luôn read-only**
-- Ô KL ở “Thông tin đơn hàng” vẫn chỉ hiển thị tổng gram từ `productItems`
-- Không cho sửa tay
-- Khi “Thông tin sản phẩm” đúng thì KL tổng sẽ tự đúng
+2. **Bỏ gộp `productItems` thành 1 dòng giả**
+   - “Thông tin sản phẩm” phải giữ **đủ từng dòng thật** từ đơn hàng.
+   - KL đơn hàng = tổng `weight × quantity` của các dòng đã normalize.
 
-3. **Dọn state `weight` dư thừa**
-- Xóa `weight` state cũ
-- Sửa effect tính phí để theo dõi `displayWeight` hoặc `totalItemWeight`
-- Tránh lệch giữa UI, tính cước và chọn shop
+3. **Tách khái niệm `số lượng sản phẩm` và `số kiện GHN`**
+   - Không dùng `quantity` bán hàng để cộng `sumHeight`.
+   - Với hàng nặng:
+     - либо thêm `parcelCount`,
+     - hoặc mặc định mỗi dòng là 1 kiện nếu chưa có dữ liệu kiện thật.
+   - Nếu chưa có dữ liệu kiện, bắt user nhập rõ số kiện/kích thước kiện.
 
-4. **Rà lại phần hàng nặng**
-- `heavyCargoCalc` phải tính từ dữ liệu kiện hàng thực
-- Sau khi prefill đúng, cảnh báo “Tổng KL / Kích thước tính” sẽ hết ra số vô lý như `2130cm`
+4. **Chỉ gộp ở bước tạo payload GHN nếu business vẫn cần**
+   - Có thể vẫn gộp `content/items` khi submit,
+   - nhưng không dùng dữ liệu gộp đó để tính KL/KT trong form.
 
-## Điểm cần sửa trong file
+5. **Bỏ fallback gây hiểu lầm**
+   - Nếu thiếu weight/dimension thật:
+     - để trống hoặc cảnh báo “chưa có dữ liệu logistics”
+     - không tự nhét `1000 / 30 / 20 / 10` rồi tính như dữ liệu thật.
 
-`src/components/CreateGHNOrderDialog.tsx`
-- Prefill khi mở dialog: khoảng `289-336`
-- State `weight` cũ: khoảng `165`
-- Effect auto-calculate fee: khoảng `617-623`
-- `heavyCargoCalc`: khoảng `268-274`
+## File cần sửa
 
-## Kết quả mong đợi
+- `src/components/CreateGHNOrderDialog.tsx`
+  - normalize `order.items`
+  - bỏ `setProductItems([summary])`
+  - sửa `heavyCargoCalc`
+  - giữ KL đơn hàng bám đúng theo sản phẩm
+- `src/components/CreateOrderForm.tsx`
+  - chuẩn hóa schema `items` khi lưu order
+- `src/pages/QuotesPage.tsx`
+  - đảm bảo cùng 1 schema `items` với order tạo tay
 
-- KL trong “Thông tin đơn hàng” luôn bám đúng gram ở “Thông tin sản phẩm”
-- Không còn bị đội lên kiểu `213kg` chỉ vì tổng số lượng lớn
-- Không còn xuất hiện kích thước vô lý như `30×20×2130`
+## Kết quả mong muốn
+
+- “Thông tin sản phẩm” hiện đúng từng dòng sản phẩm gốc
+- “Thông tin đơn hàng” chỉ bám theo dữ liệu đã normalize
+- Không còn ra số vô lý như `426kg` hay `2130cm` chỉ vì số lượng bán hàng lớn
+- Hệ thống phân biệt rõ **sản phẩm bán ra** với **kiện vận chuyển**
