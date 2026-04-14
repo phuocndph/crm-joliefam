@@ -477,6 +477,53 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
   }, [debouncedAddressForMatch, open, autoMatchFromText]);
 
+  // VietMap ward search effect
+  useEffect(() => {
+    if (!debouncedVietmapSearch || debouncedVietmapSearch.length < 2 || !provinceId || !newAddressMode) {
+      setVietmapResults([]);
+      setShowVietmapResults(false);
+      return;
+    }
+    const selectedProvince = provinces.find(p => String(p.ProvinceID) === provinceId);
+    if (!selectedProvince) return;
+
+    const fetchVietmap = async () => {
+      setLoadingVietmap(true);
+      try {
+        // Use province name to filter results
+        const provinceName = selectedProvince.ProvinceName;
+        const searchText = `${debouncedVietmapSearch}, ${provinceName}`;
+        const url = `https://maps.vietmap.vn/api/autocomplete/v3?apikey=${VIETMAP_KEY}&text=${encodeURIComponent(searchText)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        console.log('[VietMap] Search:', searchText, 'Results:', data);
+        
+        if (data && Array.isArray(data)) {
+          // Filter results that belong to the selected province
+          const normalizedProvince = normalizeText(provinceName);
+          const filtered = data
+            .filter((item: any) => {
+              const itemText = normalizeText(item.display || '');
+              return itemText.includes(normalizedProvince);
+            })
+            .slice(0, 10)
+            .map((item: any) => ({
+              name: item.name || '',
+              ref_id: item.ref_id || '',
+              display: item.display || item.name || '',
+            }));
+          setVietmapResults(filtered);
+          if (filtered.length > 0) setShowVietmapResults(true);
+        }
+      } catch (e) {
+        console.error('[VietMap] Error:', e);
+      } finally {
+        setLoadingVietmap(false);
+      }
+    };
+    fetchVietmap();
+  }, [debouncedVietmapSearch, provinceId, newAddressMode, provinces]);
+
   // Close suggestions on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -485,6 +532,12 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         addressInputRef.current && !addressInputRef.current.contains(e.target as Node)
       ) {
         setShowSuggestions(false);
+      }
+      if (
+        vietmapResultsRef.current && !vietmapResultsRef.current.contains(e.target as Node) &&
+        vietmapInputRef.current && !vietmapInputRef.current.contains(e.target as Node)
+      ) {
+        setShowVietmapResults(false);
       }
     };
     document.addEventListener('mousedown', handler);
