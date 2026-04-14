@@ -1099,7 +1099,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                           <Loader2 className="h-3 w-3 animate-spin" /> Đang tải dữ liệu GHN...
                         </div>
                       )}
-                      )}
                     </div>
                   </div>
                 ) : (
