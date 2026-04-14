@@ -1000,24 +1000,105 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                         loading={loadingProvinces}
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-sm font-medium">Phường/Xã {allWardsFlat.length > 0 && <span className="text-muted-foreground font-normal">({allWardsFlat.length})</span>} <span className="text-destructive">*</span></Label>
-                      <SearchableLocationSelect
-                        value={wardCode}
-                        onValueChange={v => {
-                          setWardCode(v);
-                          const matched = allWardsFlat.find(w => w.WardCode === v);
-                          if (matched) setDistrictId(String(matched.districtId));
-                        }}
-                        options={allWardsFlat.map(w => ({ value: w.WardCode, label: w.WardName }))}
-                        placeholder="Chọn phường/xã"
-                        disabled={!provinceId || loadingAllWards}
-                        loading={loadingAllWards}
-                      />
+                    <div className="space-y-1.5 relative">
+                      <Label className="text-sm font-medium">
+                        Phường/Xã (VietMap) 
+                        {selectedVietmapWard && <span className="text-muted-foreground font-normal ml-1">✓</span>}
+                        <span className="text-destructive"> *</span>
+                      </Label>
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                          ref={vietmapInputRef}
+                          value={vietmapWardSearch}
+                          onChange={e => {
+                            setVietmapWardSearch(e.target.value);
+                            setShowVietmapResults(true);
+                            setSelectedVietmapWard("");
+                          }}
+                          onFocus={() => { if (vietmapResults.length > 0) setShowVietmapResults(true); }}
+                          placeholder={!provinceId ? "Chọn tỉnh trước..." : "Gõ tên phường/xã..."}
+                          disabled={!provinceId}
+                          className="text-sm pl-8"
+                        />
+                        {loadingVietmap && (
+                          <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
+                      {showVietmapResults && vietmapResults.length > 0 && (
+                        <div
+                          ref={vietmapResultsRef}
+                          className="absolute left-0 right-0 top-full mt-1 z-[9999] rounded-md border bg-popover shadow-lg max-h-60 overflow-y-auto"
+                        >
+                          {vietmapResults.map((r, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              className="w-full text-left px-3 py-2 hover:bg-accent transition-colors border-b last:border-b-0 text-sm"
+                              onClick={() => {
+                                setSelectedVietmapWard(r.name);
+                                setVietmapWardSearch(r.name);
+                                setShowVietmapResults(false);
+                                // Match with GHN wards
+                                const normalizedName = normalizeText(r.name);
+                                const matched = allWardsFlat.find(w => {
+                                  const wName = normalizeText(w.WardName);
+                                  const wNameShort = wName.replace(/^(phuong |xa |thi tran )/, "");
+                                  const rShort = normalizedName.replace(/^(phuong |xa |thi tran )/, "");
+                                  return wName === normalizedName || wNameShort === rShort;
+                                });
+                                if (matched) {
+                                  setWardCode(matched.WardCode);
+                                  setDistrictId(String(matched.districtId));
+                                  console.log('[VietMap→GHN] Matched:', r.name, '→', matched.WardName, 'WardCode:', matched.WardCode);
+                                } else {
+                                  console.warn('[VietMap→GHN] No match for:', r.name, 'in', allWardsFlat.length, 'wards');
+                                  toast({ title: "Không tìm thấy phường/xã tương ứng trong GHN", description: `"${r.name}" — Hãy chọn thủ công từ dropdown bên dưới`, variant: "destructive" });
+                                }
+                              }}
+                            >
+                              <div className="flex items-start gap-2">
+                                <MapPin className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="font-medium truncate">{r.name}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{r.display}</p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {/* Fallback: GHN dropdown */}
+                      {allWardsFlat.length > 0 && (
+                        <details className="text-xs mt-1">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                            Chọn thủ công từ GHN ({allWardsFlat.length} phường/xã)
+                          </summary>
+                          <div className="mt-1">
+                            <SearchableLocationSelect
+                              value={wardCode}
+                              onValueChange={v => {
+                                setWardCode(v);
+                                const matched = allWardsFlat.find(w => w.WardCode === v);
+                                if (matched) {
+                                  setDistrictId(String(matched.districtId));
+                                  setSelectedVietmapWard(matched.WardName);
+                                  setVietmapWardSearch(matched.WardName);
+                                }
+                              }}
+                              options={allWardsFlat.map(w => ({ value: w.WardCode, label: w.WardName }))}
+                              placeholder="Chọn phường/xã"
+                              disabled={loadingAllWards}
+                              loading={loadingAllWards}
+                            />
+                          </div>
+                        </details>
+                      )}
                       {loadingAllWards && (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Loader2 className="h-3 w-3 animate-spin" /> Đang tải tất cả phường/xã...
+                          <Loader2 className="h-3 w-3 animate-spin" /> Đang tải dữ liệu GHN...
                         </div>
+                      )}
                       )}
                     </div>
                   </div>
