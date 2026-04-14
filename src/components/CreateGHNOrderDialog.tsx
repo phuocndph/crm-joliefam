@@ -179,11 +179,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   // Multi-product items
   const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number; length: number; width: number; height: number }>>([
-    { name: "", weight: 200, quantity: 1, length: 30, width: 20, height: 10 }
+    { name: "", weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }
   ]);
 
   const addProductItem = () => {
-    setProductItems(prev => [...prev, { name: "", weight: 200, quantity: 1, length: 30, width: 20, height: 10 }]);
+    setProductItems(prev => [...prev, { name: "", weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
   };
 
   const removeProductItem = (index: number) => {
@@ -211,7 +211,8 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   }, [productItems]);
 
   // Calculate effective weight (kg) = max(actual, dimensional)
-  const dimensionalWeightGram = Math.ceil(length * width * height / 6000 * 1000);
+  // GHN formula: dimensional weight (gram) = (L × W × H) / 5
+  const dimensionalWeightGram = Math.ceil(length * width * height / 5);
   const effectiveWeightGram = Math.max(weight, dimensionalWeightGram);
   const effectiveWeightKg = effectiveWeightGram / 1000;
 
@@ -268,6 +269,17 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
   const [autoMatchDone, setAutoMatchDone] = useState(false);
 
+  // Heavy cargo detection: service_type_id = 5
+  const isHeavyCargo = serviceTypeId === "5";
+
+  // For heavy cargo, auto-calc package dimensions from items
+  const heavyCargoCalc = isHeavyCargo ? {
+    totalWeight: productItems.reduce((sum, p) => sum + p.weight * p.quantity, 0),
+    maxLength: Math.max(...productItems.map(p => p.length)),
+    maxWidth: Math.max(...productItems.map(p => p.width)),
+    sumHeight: productItems.reduce((sum, p) => sum + p.height * p.quantity, 0),
+  } : null;
+
   // Address suggestions (Goong Maps) - inline
   const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -298,7 +310,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         const totalQty = parsedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
         setProductItems([{
           name: summary,
-          weight: 200,
+          weight: 1000,
           quantity: totalQty,
           length: 30,
           width: 20,
@@ -307,7 +319,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         // Ước tính ~1kg/sản phẩm để auto-select shop chính xác hơn
         setWeight(totalQty * 1000);
       } else {
-        setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1, length: 30, width: 20, height: 10 }]);
+        setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
         setWeight(500);
       }
       setSuccess(false);
@@ -655,7 +667,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           note, required_note: requiredNote, content: itemContent,
           payment_type_id: parseInt(paymentTypeId),
           service_type_id: parseInt(serviceTypeId),
-          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height })),
+          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height, price: 0 })),
         },
         orderId: order.id,
         orderNumber: order.display_order_number || order.order_number,
@@ -1094,6 +1106,18 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     <div className="col-span-5 flex items-center gap-1.5 text-xs text-amber-600">
                       <Info className="h-3.5 w-3.5 flex-shrink-0" />
                       <span>KL tính cước: <strong>{effectiveWeightKg.toFixed(1)}kg</strong> (quy đổi &gt; thực tế) → Shop: <strong>{selectedShop?.name || '...'}</strong></span>
+                    </div>
+                  )}
+                  {isHeavyCargo && heavyCargoCalc && (
+                    <div className="col-span-5 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                      <div className="flex items-center gap-1.5 font-medium mb-1">
+                        <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                        Hàng nặng (Service 5): GHN tính cước từ kích thước mỗi kiện hàng
+                      </div>
+                      <div className="ml-5 space-y-0.5">
+                        <div>Tổng KL: <strong>{(heavyCargoCalc.totalWeight / 1000).toFixed(1)}kg</strong></div>
+                        <div>Kích thước tính: <strong>{heavyCargoCalc.maxLength}×{heavyCargoCalc.maxWidth}×{heavyCargoCalc.sumHeight} cm</strong> (Max D × Max R × Tổng C)</div>
+                      </div>
                     </div>
                   )}
                 </div>
