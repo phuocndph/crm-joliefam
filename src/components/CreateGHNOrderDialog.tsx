@@ -410,7 +410,50 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     try { setWards(await callGHN('get_wards', { districtId: distId })); } catch (e) { console.error(e); } finally { setLoadingWards(false); }
   };
 
-  // Auto-load services when district changes
+  // Load all wards for a province (new address mode)
+  const loadAllWardsForProvince = async (provId: number) => {
+    setLoadingAllWards(true);
+    setAllWardsFlat([]);
+    setWardCode(""); setDistrictId("");
+    setServices([]); setServiceTypeId(""); setFeeDetail(null); setFeeStatus("idle");
+    try {
+      const distList = await callGHN('get_districts', { provinceId: provId });
+      setDistricts(distList || []);
+      const allWards: Array<Ward & { districtId: number; districtName: string }> = [];
+      // Load wards for each district in parallel (batch of 5)
+      const batchSize = 5;
+      for (let i = 0; i < distList.length; i += batchSize) {
+        const batch = distList.slice(i, i + batchSize);
+        const results = await Promise.all(
+          batch.map((d: District) => callGHN('get_wards', { districtId: d.DistrictID }).catch(() => []))
+        );
+        results.forEach((wardList: Ward[], idx: number) => {
+          const dist = batch[idx];
+          (wardList || []).forEach((w: Ward) => {
+            allWards.push({ ...w, districtId: dist.DistrictID, districtName: dist.DistrictName });
+          });
+        });
+      }
+      setAllWardsFlat(allWards);
+      console.log(`[GHN New Address] Loaded ${allWards.length} wards for province ${provId}`);
+    } catch (e) { console.error('Load all wards error:', e); }
+    finally { setLoadingAllWards(false); }
+  };
+
+  // Handle new address mode toggle
+  const handleNewAddressModeChange = (enabled: boolean) => {
+    setNewAddressMode(enabled);
+    setWardCode(""); setDistrictId("");
+    setServices([]); setServiceTypeId(""); setFeeDetail(null); setFeeStatus("idle");
+    if (enabled && provinceId) {
+      loadAllWardsForProvince(parseInt(provinceId));
+    } else {
+      setAllWardsFlat([]);
+      setWards([]);
+    }
+  };
+
+
   useEffect(() => {
     if (districtId && selectedShopId) {
       loadServices(parseInt(districtId));
