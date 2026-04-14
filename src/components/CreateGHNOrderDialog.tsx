@@ -213,17 +213,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   // Calculate effective weight (kg) = max(actual, dimensional)
   // GHN formula: dimensional weight (gram) = (L × W × H) / 5
   const dimensionalWeightGram = Math.ceil(length * width * height / 5);
-
-  // Heavy cargo detection: service_type_id = 5
-  const isHeavyCargo = serviceTypeId === "5";
-
-  // For heavy cargo, auto-calc package dimensions from items
-  const heavyCargoCalc = isHeavyCargo ? {
-    totalWeight: productItems.reduce((sum, p) => sum + p.weight * p.quantity, 0),
-    maxLength: Math.max(...productItems.map(p => p.length)),
-    maxWidth: Math.max(...productItems.map(p => p.width)),
-    sumHeight: productItems.reduce((sum, p) => sum + p.height * p.quantity, 0),
-  } : null;
   const effectiveWeightGram = Math.max(weight, dimensionalWeightGram);
   const effectiveWeightKg = effectiveWeightGram / 1000;
 
