@@ -1,34 +1,34 @@
 
 
-## Fix: Phường/Xã trong chế độ "Địa chỉ mới" đang lấy sai
+## Cập nhật "Thông tin sản phẩm" theo chuẩn GHN cho đơn hàng nặng
 
 ### Vấn đề
-Khi bật "Địa chỉ mới", hệ thống vẫn load phường/xã qua cấu trúc quận/huyện cũ (gọi API lấy từng quận → lấy ward). Kết quả là danh sách phường/xã vẫn theo hành chính cũ, không phản ánh đúng cấu trúc mới (sáp nhập phường/xã, bỏ quận/huyện).
+Hiện tại mỗi sản phẩm chỉ có 3 trường: Tên, KL (gram), Số lượng. GHN API cho phép truyền thêm `length`, `width`, `height` cho từng item trong mảng `items`. Đối với đơn hàng nặng (>20kg), thông tin kích thước là bắt buộc để tính cước chính xác.
 
 ### Giải pháp
 
 **File: `src/components/CreateGHNOrderDialog.tsx`**
 
-1. **Bỏ hiển thị tên quận/huyện trong dropdown phường/xã** khi ở chế độ Địa chỉ mới - vì chế độ này không còn quận/huyện:
-   - Xóa `sub: w.districtName` khỏi options của ward dropdown trong new address mode
-   - Chỉ hiển thị `WardName` thuần túy
+1. **Mở rộng interface productItems** thêm 3 trường: `length`, `width`, `height` (cm) cho mỗi sản phẩm, với giá trị mặc định hợp lý (30, 20, 10 cm).
 
-2. **Loại bỏ ward trùng lặp**: Khi gộp ward từ nhiều quận, có thể có ward trùng tên. Thêm logic deduplicate theo `WardCode` để tránh hiển thị trùng.
+2. **Cập nhật UI mỗi sản phẩm** từ 3 cột thành 2 hàng:
+   - Hàng 1: Tên sản phẩm (rộng hơn), Số lượng
+   - Hàng 2: KL (gram), Dài (cm), Rộng (cm), Cao (cm)
 
-3. **Sắp xếp ward theo alphabet** để dễ tìm hơn thay vì theo thứ tự quận.
+3. **Cập nhật `handleSubmit`** để truyền `length`, `width`, `height` cho mỗi item khi gọi GHN API:
+   ```
+   items: productItems.map(p => ({
+     name: p.name, quantity: p.quantity, weight: p.weight,
+     length: p.length, width: p.width, height: p.height
+   }))
+   ```
 
-4. **Thêm log chi tiết hơn** để debug: log số ward mỗi quận, tổng số, và danh sách ward đầu tiên.
+4. **Cập nhật pre-fill** để set default dimensions cho items khi load từ đơn hàng.
 
-### Chi tiết thay đổi
+5. **Auto-sync tổng kích thước**: Khi chỉ có 1 sản phẩm, tự động sync dimensions từ item lên phần "Thông tin đơn hàng" (weight, length, width, height tổng). Khi có nhiều sản phẩm, giữ nguyên cho user tự nhập tổng.
 
-```
-// Ward options trong new address mode - bỏ sub district name
-options={allWardsFlat.map(w => ({ value: w.WardCode, label: w.WardName }))}
-
-// Sort alphabetically  
-allWards.sort((a, b) => a.WardName.localeCompare(b.WardName, 'vi'));
-
-// Deduplicate by WardCode
-const uniqueWards = allWards.filter((w, i, arr) => arr.findIndex(x => x.WardCode === w.WardCode) === i);
-```
+### Chi tiết kỹ thuật
+- Interface mới: `{ name: string; weight: number; quantity: number; length: number; width: number; height: number }`
+- Default values: `length: 30, width: 20, height: 10`
+- Layout: grid `grid-cols-2` cho hàng 1, `grid-cols-4` cho hàng 2
 
