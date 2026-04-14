@@ -179,11 +179,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   // Multi-product items
   const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number; length: number; width: number; height: number }>>([
-    { name: "", weight: 200, quantity: 1, length: 30, width: 20, height: 10 }
+    { name: "", weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }
   ]);
 
   const addProductItem = () => {
-    setProductItems(prev => [...prev, { name: "", weight: 200, quantity: 1, length: 30, width: 20, height: 10 }]);
+    setProductItems(prev => [...prev, { name: "", weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
   };
 
   const removeProductItem = (index: number) => {
@@ -211,7 +211,19 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   }, [productItems]);
 
   // Calculate effective weight (kg) = max(actual, dimensional)
-  const dimensionalWeightGram = Math.ceil(length * width * height / 6000 * 1000);
+  // GHN formula: dimensional weight (gram) = (L × W × H) / 5
+  const dimensionalWeightGram = Math.ceil(length * width * height / 5);
+
+  // Heavy cargo detection: service_type_id = 5
+  const isHeavyCargo = serviceTypeId === "5";
+
+  // For heavy cargo, auto-calc package dimensions from items
+  const heavyCargoCalc = isHeavyCargo ? {
+    totalWeight: productItems.reduce((sum, p) => sum + p.weight * p.quantity, 0),
+    maxLength: Math.max(...productItems.map(p => p.length)),
+    maxWidth: Math.max(...productItems.map(p => p.width)),
+    sumHeight: productItems.reduce((sum, p) => sum + p.height * p.quantity, 0),
+  } : null;
   const effectiveWeightGram = Math.max(weight, dimensionalWeightGram);
   const effectiveWeightKg = effectiveWeightGram / 1000;
 
@@ -298,7 +310,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         const totalQty = parsedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
         setProductItems([{
           name: summary,
-          weight: 200,
+          weight: 1000,
           quantity: totalQty,
           length: 30,
           width: 20,
@@ -307,7 +319,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         // Ước tính ~1kg/sản phẩm để auto-select shop chính xác hơn
         setWeight(totalQty * 1000);
       } else {
-        setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1, length: 30, width: 20, height: 10 }]);
+        setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
         setWeight(500);
       }
       setSuccess(false);
@@ -655,7 +667,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           note, required_note: requiredNote, content: itemContent,
           payment_type_id: parseInt(paymentTypeId),
           service_type_id: parseInt(serviceTypeId),
-          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height })),
+          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height, price: 0 })),
         },
         orderId: order.id,
         orderNumber: order.display_order_number || order.order_number,
