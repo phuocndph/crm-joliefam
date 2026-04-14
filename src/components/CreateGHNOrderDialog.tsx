@@ -577,17 +577,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
   };
 
-  // Auto-sync dimensions from single product to order dimensions
-  useEffect(() => {
-    if (productItems.length === 1) {
-      const item = productItems[0];
-      setWeight(item.weight * item.quantity);
-      setLength(item.length);
-      setWidth(item.width);
-      setHeight(item.height);
-    }
-  }, [productItems]);
-
 
 
   useEffect(() => {
