@@ -1,35 +1,33 @@
 
 
-## Điều chỉnh thông tin sản phẩm theo logic GHN: ẩn/hiện kích thước theo trọng lượng
+## Fix: KL tự điền linh tinh do useEffect auto-sync ghi đè
 
-### Vấn đề
-Hiện tại, mỗi sản phẩm luôn hiển thị 4 trường: KL, Dài, Rộng, Cao. Nhưng theo GHN:
-- **Đơn nhỏ hơn 20kg**: Không cần điền kích thước từng sản phẩm (chỉ cần KL và số lượng)
-- **Đơn lớn hơn 20kg**: Tự động chuyển sang hàng nặng, cần điền Dài/Rộng/Cao từng kiện
+### Nguyên nhân
+`useEffect` ở line 203-211 chạy mỗi khi `productItems` thay đổi (bất kỳ field nào: tên, số lượng, KL...) và luôn ghi đè `weight`, `length`, `width`, `height` của "Thông tin đơn hàng". Khi user sửa tay KL tổng, nó bị đè ngay lập tức.
 
 ### Giải pháp
 
 **File: `src/components/CreateGHNOrderDialog.tsx`**
 
-1. **Tính tổng KL realtime** từ `productItems` để xác định ngưỡng 20kg:
-   ```
-   const totalWeightKg = totalItemWeight / 1000;
-   const isOverweight = totalWeightKg >= 20;
-   ```
+1. **Bỏ useEffect auto-sync** (line 202-211) — không tự động ghi đè weight/length/width/height từ productItems nữa.
 
-2. **Ẩn cột Dài/Rộng/Cao** trong phần sản phẩm khi tổng KL < 20kg:
-   - Chỉ hiện: Tên SP, Số lượng, KL (gram) — layout `grid-cols-3`
-   - Khi >= 20kg: hiện thêm Dài, Rộng, Cao — layout 2 hàng như hiện tại
+2. **Tính KL tổng tự động** thay vì dùng state riêng: Thay ô input `weight` bằng giá trị tính từ `totalItemWeight` (sum of item.weight * item.quantity). User điều chỉnh KL ở từng sản phẩm, KL tổng tự cập nhật.
 
-3. **Hiển thị thông báo** khi tổng KL vượt 20kg: "Tổng KL >= 20kg → Hàng nặng. Vui lòng điền kích thước từng kiện."
+3. **Giữ cho user override**: Thêm flag `weightManualOverride`. Khi user chưa sửa tay → hiện `totalItemWeight`. Khi user sửa tay → giữ giá trị user nhập, không bị đè.
 
-4. **Giữ nguyên giá trị mặc định** cho length/width/height (30/20/10) để khi chuyển sang hàng nặng, user không phải nhập từ đầu.
-
-5. **Phần "Thông tin đơn hàng"** (weight/length/width/height tổng): cũng ẩn Dài/Rộng/Cao khi < 20kg, chỉ hiện KL.
+4. **Sửa pre-fill**: Bỏ `setWeight(500)` và `setWeight(totalQty * 1000)` riêng — weight sẽ tự tính từ productItems (mỗi item weight=1000, quantity=totalQty → totalItemWeight = totalQty * 1000).
 
 ### Chi tiết kỹ thuật
 
-- Dùng `isOverweight` (totalItemWeight >= 20000) để toggle hiển thị
-- Product item UI: conditional render hàng 2 (grid-cols-4 với Dài/Rộng/Cao) chỉ khi `isOverweight`
-- Khi không phải hàng nặng, vẫn gửi length/width/height mặc định trong payload (GHN chấp nhận)
+```text
+Xóa: useEffect trên [productItems] set weight/length/width/height (line 202-211)
+Xóa: setWeight(totalQty * 1000) và setWeight(500) trong pre-fill (line 321, 324)
+
+Thêm: const [weightManualOverride, setWeightManualOverride] = useState(false);
+Sửa: weight hiển thị = weightManualOverride ? weight : totalItemWeight
+Sửa: onChange của input weight → setWeight(val) + setWeightManualOverride(true)
+Sửa: Reset weightManualOverride = false khi dialog mở lại
+```
+
+Kết quả: KL tổng = tổng (KL × SL) từ sản phẩm, user vẫn có thể sửa tay nếu cần.
 
