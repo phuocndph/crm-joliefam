@@ -269,8 +269,9 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
   const [autoMatchDone, setAutoMatchDone] = useState(false);
 
-  // Heavy cargo detection: service_type_id = 5
-  const isHeavyCargo = serviceTypeId === "5";
+  // Heavy cargo detection: total weight >= 20kg or service_type_id = 5
+  const isOverweight = totalItemWeight >= 20000;
+  const isHeavyCargo = serviceTypeId === "5" || isOverweight;
 
   // For heavy cargo, auto-calc package dimensions from items
   const heavyCargoCalc = isHeavyCargo ? {
@@ -1027,7 +1028,18 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
             <div className="px-6 py-5 border-b">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold">Thông tin sản phẩm</h3>
+                {isOverweight && (
+                  <Badge variant="destructive" className="text-xs">⚠ Hàng nặng ≥ 20kg</Badge>
+                )}
               </div>
+              {isOverweight && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 mb-3">
+                  <div className="flex items-center gap-1.5">
+                    <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>Tổng KL ≥ 20kg ({(totalItemWeight / 1000).toFixed(1)}kg) → <strong>Hàng nặng</strong>. Vui lòng điền kích thước (Dài/Rộng/Cao) từng kiện.</span>
+                  </div>
+                </div>
+              )}
               <div className="space-y-3">
                 {productItems.map((item, index) => (
                   <div key={index} className="rounded-lg border p-4 space-y-3">
@@ -1039,7 +1051,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                         </Button>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className={isOverweight ? "grid grid-cols-2 gap-4" : "grid grid-cols-3 gap-3"}>
                       <div className="space-y-1.5">
                         <Label className="text-sm">Sản phẩm <span className="text-destructive">*</span></Label>
                         <Input value={item.name} onChange={e => updateProductItem(index, 'name', e.target.value)} placeholder="Nhập tên sản phẩm" className="text-sm" />
@@ -1048,25 +1060,33 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                         <Label className="text-sm">Số lượng <span className="text-destructive">*</span></Label>
                         <Input type="number" value={item.quantity} onChange={e => updateProductItem(index, 'quantity', parseInt(e.target.value) || 1)} min={1} className="text-sm" />
                       </div>
+                      {!isOverweight && (
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={item.weight} onChange={e => updateProductItem(index, 'weight', parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                      )}
                     </div>
-                    <div className="grid grid-cols-4 gap-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
-                        <Input type="number" value={item.weight} onChange={e => updateProductItem(index, 'weight', parseInt(e.target.value) || 0)} className="text-sm" />
+                    {isOverweight && (
+                      <div className="grid grid-cols-4 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={item.weight} onChange={e => updateProductItem(index, 'weight', parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={item.length} onChange={e => updateProductItem(index, 'length', parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={item.width} onChange={e => updateProductItem(index, 'width', parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={item.height} onChange={e => updateProductItem(index, 'height', parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
                       </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">Dài (cm)</Label>
-                        <Input type="number" value={item.length} onChange={e => updateProductItem(index, 'length', parseInt(e.target.value) || 0)} className="text-sm" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">Rộng (cm)</Label>
-                        <Input type="number" value={item.width} onChange={e => updateProductItem(index, 'width', parseInt(e.target.value) || 0)} className="text-sm" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">Cao (cm)</Label>
-                        <Input type="number" value={item.height} onChange={e => updateProductItem(index, 'height', parseInt(e.target.value) || 0)} className="text-sm" />
-                      </div>
-                    </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1080,23 +1100,27 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
               <h3 className="text-sm font-bold mb-3">Thông tin đơn hàng</h3>
               <div className="space-y-4">
                 <div className="rounded-lg border p-4">
-                  <div className="grid grid-cols-5 gap-3">
+                  <div className={`grid ${isOverweight ? 'grid-cols-5' : 'grid-cols-2'} gap-3`}>
                     <div className="space-y-1.5">
                       <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
                       <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} className="text-sm" />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
-                    </div>
+                    {isOverweight && (
+                      <>
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
+                          <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                        </div>
+                      </>
+                    )}
                     <div className="space-y-1.5">
                      <Label className="text-sm text-muted-foreground">KL quy đổi (gram)</Label>
                       <div className="text-sm font-medium pt-2">{dimensionalWeightGram.toLocaleString('vi-VN')}</div>
