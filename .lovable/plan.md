@@ -1,38 +1,34 @@
 
 
-## Tích hợp VietMap API v4 cho tìm kiếm Phường/Xã mới
+## Fix: Phường/Xã trong chế độ "Địa chỉ mới" đang lấy sai
 
-### Ý tưởng
-Thay vì load toàn bộ wards từ GHN API (chậm, nhiều request), dùng **VietMap Autocomplete v4** với `display_type=1` (format mới 2 cấp: Phường → Tỉnh) để user gõ tên phường/xã và nhận gợi ý realtime. VietMap v4 đã hỗ trợ sẵn cấu trúc hành chính mới.
+### Vấn đề
+Khi bật "Địa chỉ mới", hệ thống vẫn load phường/xã qua cấu trúc quận/huyện cũ (gọi API lấy từng quận → lấy ward). Kết quả là danh sách phường/xã vẫn theo hành chính cũ, không phản ánh đúng cấu trúc mới (sáp nhập phường/xã, bỏ quận/huyện).
 
-### Cách hoạt động
+### Giải pháp
 
-Khi bật "Địa chỉ mới":
-1. User chọn **Tỉnh/TP** từ dropdown GHN (giữ nguyên)
-2. Ô **Phường/Xã** đổi thành input gõ tìm kiếm → gọi VietMap Autocomplete v4 với `cityId` filter + `display_type=1`
-3. Hiển thị gợi ý (tối đa 10 kết quả), user chọn → lấy `ward_id` từ VietMap
-4. Map ngược `ward_id` VietMap sang `WardCode` GHN (hoặc load all wards 1 lần rồi match theo tên)
+**File: `src/components/CreateGHNOrderDialog.tsx`**
 
-### Thay đổi trong `CreateGHNOrderDialog.tsx`
+1. **Bỏ hiển thị tên quận/huyện trong dropdown phường/xã** khi ở chế độ Địa chỉ mới - vì chế độ này không còn quận/huyện:
+   - Xóa `sub: w.districtName` khỏi options của ward dropdown trong new address mode
+   - Chỉ hiển thị `WardName` thuần túy
 
-1. **Thêm hàm `searchWardVietMap`**: Gọi `https://maps.vietmap.vn/api/autocomplete/v4?apikey=...&text={input}&cityId={id}&display_type=1` trực tiếp từ client (API key public, CORS ok)
+2. **Loại bỏ ward trùng lặp**: Khi gộp ward từ nhiều quận, có thể có ward trùng tên. Thêm logic deduplicate theo `WardCode` để tránh hiển thị trùng.
 
-2. **Thay thế `SearchableLocationSelect` phường/xã** trong new address mode bằng input có debounce + dropdown gợi ý từ VietMap
+3. **Sắp xếp ward theo alphabet** để dễ tìm hơn thay vì theo thứ tự quận.
 
-3. **Map kết quả VietMap → GHN**: Khi user chọn ward từ VietMap, tìm ward tương ứng trong `allWardsFlat` (vẫn load ngầm từ GHN) theo tên để lấy `WardCode` và `districtId` cho API tạo đơn GHN
+4. **Thêm log chi tiết hơn** để debug: log số ward mỗi quận, tổng số, và danh sách ward đầu tiên.
 
-4. **Lưu API key**: `d08740d57f41f6103c473655441e2c6c10eed55a91e4df49` — đây là public API key, lưu trực tiếp trong code
+### Chi tiết thay đổi
 
-### Vấn đề cần lưu ý
+```
+// Ward options trong new address mode - bỏ sub district name
+options={allWardsFlat.map(w => ({ value: w.WardCode, label: w.WardName }))}
 
-- Cần map `cityId` của VietMap với `ProvinceID` của GHN (có thể khác nhau) — giải pháp: filter bằng tên tỉnh thay vì ID, hoặc tạo mapping table
-- Vẫn cần load wards từ GHN ngầm để có `WardCode` cho API tạo đơn — VietMap chỉ dùng để tìm kiếm nhanh
-- Fallback: nếu VietMap không trả kết quả hoặc lỗi, vẫn dùng dropdown cũ từ GHN data
+// Sort alphabetically  
+allWards.sort((a, b) => a.WardName.localeCompare(b.WardName, 'vi'));
 
-### Chi tiết kỹ thuật
-
-- API call trực tiếp từ frontend (public key, không cần edge function)
-- Debounce 300ms khi gõ
-- Hiển thị kết quả dạng dropdown với địa chỉ đầy đủ từ VietMap
-- Sau khi chọn, match tên ward với `allWardsFlat` để lấy GHN WardCode
+// Deduplicate by WardCode
+const uniqueWards = allWards.filter((w, i, arr) => arr.findIndex(x => x.WardCode === w.WardCode) === i);
+```
 
