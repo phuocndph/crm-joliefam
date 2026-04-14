@@ -1,17 +1,17 @@
 
 
-## Fix: Thông tin đơn hàng luôn hiện đầy đủ Dài/Rộng/Cao
+## Fix: KL đơn hàng luôn đồng bộ từ sản phẩm, không cho sửa tay
 
 ### Vấn đề
-Hiện tại phần "Thông tin đơn hàng" ẩn các trường Dài, Rộng, Cao khi tổng KL < 20kg (do điều kiện `isOverweight`). User muốn phần này luôn hiện đầy đủ.
+Ô KL (gram) ở "Thông tin đơn hàng" có thể bị nhảy linh tinh vì cơ chế `weightManualOverride` — khi user vô tình click vào ô weight, override bật lên và weight ngừng đồng bộ từ sản phẩm.
 
 ### Giải pháp
 
 **File: `src/components/CreateGHNOrderDialog.tsx`**
 
-1. **Bỏ điều kiện `isOverweight`** ở phần "Thông tin đơn hàng" (line 1097-1117):
-   - Grid luôn dùng `grid-cols-5`
-   - Bỏ `{isOverweight && (...)}` wrapper quanh Dài/Rộng/Cao → luôn hiển thị
+1. **Bỏ `weightManualOverride`** — KL đơn hàng luôn = `totalItemWeight` (tổng KL × SL từ sản phẩm)
+2. **Đổi ô KL thành read-only** — hiển thị `totalItemWeight`, không cho sửa tay. User muốn thay đổi KL thì sửa ở từng sản phẩm.
+3. **Cập nhật payload và tính toán** dùng `totalItemWeight` trực tiếp thay vì `displayWeight`.
 
-Chỉ giữ logic ẩn/hiện kích thước ở phần **sản phẩm** (mỗi item) — phần "Thông tin đơn hàng" luôn đầy đủ.
+Kết quả: KL đơn hàng luôn khớp chính xác với tổng KL sản phẩm, không bao giờ nhảy linh tinh.
 
