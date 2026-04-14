@@ -304,7 +304,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         setProductItems([{
           name: summary,
           weight: 1000,
-          quantity: totalQty,
+          quantity: 1,
           length: 30,
           width: 20,
           height: 10
