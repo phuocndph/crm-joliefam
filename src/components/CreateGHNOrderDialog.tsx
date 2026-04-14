@@ -199,6 +199,17 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
   const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
 
+  // Auto-sync dimensions from single product to order dimensions
+  useEffect(() => {
+    if (productItems.length === 1) {
+      const item = productItems[0];
+      setWeight(item.weight * item.quantity);
+      setLength(item.length);
+      setWidth(item.width);
+      setHeight(item.height);
+    }
+  }, [productItems]);
+
   // Calculate effective weight (kg) = max(actual, dimensional)
   const dimensionalWeightGram = Math.ceil(length * width * height / 6000 * 1000);
   const effectiveWeightGram = Math.max(weight, dimensionalWeightGram);
