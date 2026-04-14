@@ -162,7 +162,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [provinceId, setProvinceId] = useState("");
   const [districtId, setDistrictId] = useState("");
   const [wardCode, setWardCode] = useState("");
-  const [weight, setWeight] = useState(500);
   const [length, setLength] = useState(30);
   const [width, setWidth] = useState(20);
   const [height, setHeight] = useState(10);
@@ -299,21 +298,32 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
       const parsedItems = Array.isArray(order.items) ? order.items : [];
       if (parsedItems.length > 0) {
-        const summary = parsedItems.map((item: any) => item.name).join(' - ');
-        const totalQty = parsedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
+        // Map từng sản phẩm riêng biệt, giữ nguyên quantity từ đơn hàng
+        const mappedItems = parsedItems.map((item: any) => ({
+          name: item.name || 'Sản phẩm',
+          weight: item.weight || 1000,
+          quantity: item.quantity || 1,
+          length: item.length || 30,
+          width: item.width || 20,
+          height: item.height || 10,
+        }));
+        // Gộp thành 1 dòng duy nhất cho GHN (tránh tính nhiều kiện)
+        const summaryName = parsedItems.map((item: any) => item.name).join(' - ');
+        const totalQty = mappedItems.reduce((sum, item) => sum + item.quantity, 0);
+        // Dùng weight trung bình có trọng số thay vì mặc định 1000g cho tất cả
+        const avgWeight = totalQty > 0
+          ? Math.round(mappedItems.reduce((sum, item) => sum + item.weight * item.quantity, 0) / totalQty)
+          : 1000;
         setProductItems([{
-          name: summary,
-          weight: 1000,
+          name: summaryName,
+          weight: avgWeight,
           quantity: totalQty,
-          length: 30,
-          width: 20,
-          height: 10
+          length: Math.max(...mappedItems.map(i => i.length)),
+          width: Math.max(...mappedItems.map(i => i.width)),
+          height: Math.max(...mappedItems.map(i => i.height)),
         }]);
-        // Ước tính ~1kg/sản phẩm để auto-select shop chính xác hơn
-        // weight auto-calculated from productItems (totalQty * 1000g)
       } else {
         setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
-        // weight auto-calculated from productItems (1 * 1000g)
       }
       setSuccess(false);
       setCreatedOrderCode("");
@@ -616,11 +626,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   // Auto-calculate fee
   useEffect(() => {
-    if (districtId && wardCode && serviceTypeId && weight > 0) {
+    if (districtId && wardCode && serviceTypeId && displayWeight > 0) {
       const timer = setTimeout(() => { calculateFee(); }, 500);
       return () => clearTimeout(timer);
     }
-  }, [districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount]);
+  }, [districtId, wardCode, serviceTypeId, displayWeight, insuranceValue, codAmount]);
 
   const calculateFee = async () => {
     if (!districtId || !wardCode || !serviceTypeId) return;
