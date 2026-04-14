@@ -175,6 +175,17 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const [allWardsFlat, setAllWardsFlat] = useState<Array<Ward & { districtId: number; districtName: string }>>([]);
   const [loadingAllWards, setLoadingAllWards] = useState(false);
 
+  // VietMap ward search
+  const VIETMAP_KEY = "d08740d57f41f6103c473655441e2c6c10eed55a91e4df49";
+  const [vietmapWardSearch, setVietmapWardSearch] = useState("");
+  const [vietmapResults, setVietmapResults] = useState<Array<{ name: string; ref_id: string; display: string }>>([]);
+  const [loadingVietmap, setLoadingVietmap] = useState(false);
+  const [showVietmapResults, setShowVietmapResults] = useState(false);
+  const [selectedVietmapWard, setSelectedVietmapWard] = useState("");
+  const vietmapInputRef = useRef<HTMLInputElement>(null);
+  const vietmapResultsRef = useRef<HTMLDivElement>(null);
+  const debouncedVietmapSearch = useDebounce(vietmapWardSearch, 300);
+
   useEffect(() => { setInsuranceValue(codAmount); }, [codAmount]);
 
   // Multi-product items
