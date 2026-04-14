@@ -199,21 +199,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   const totalItemQuantity = productItems.reduce((sum, item) => sum + item.quantity, 0);
   const itemContent = productItems.map(p => p.name).filter(Boolean).join(", ") || "Hàng hóa";
 
-  // Auto-sync dimensions from single product to order dimensions
-  useEffect(() => {
-    if (productItems.length === 1) {
-      const item = productItems[0];
-      setWeight(item.weight * item.quantity);
-      setLength(item.length);
-      setWidth(item.width);
-      setHeight(item.height);
-    }
-  }, [productItems]);
+  // Weight manual override: when user edits total weight manually, stop auto-calc
+  const [weightManualOverride, setWeightManualOverride] = useState(false);
+  const displayWeight = weightManualOverride ? weight : totalItemWeight;
 
   // Calculate effective weight (kg) = max(actual, dimensional)
   // GHN formula: dimensional weight (gram) = (L × W × H) / 5
   const dimensionalWeightGram = Math.ceil(length * width * height / 5);
-  const effectiveWeightGram = Math.max(weight, dimensionalWeightGram);
+  const effectiveWeightGram = Math.max(displayWeight, dimensionalWeightGram);
   const effectiveWeightKg = effectiveWeightGram / 1000;
 
   // Auto-select shop based on effective weight
@@ -318,10 +311,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           height: 10
         }]);
         // Ước tính ~1kg/sản phẩm để auto-select shop chính xác hơn
-        setWeight(totalQty * 1000);
+        // weight auto-calculated from productItems (totalQty * 1000g)
       } else {
         setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
-        setWeight(500);
+        // weight auto-calculated from productItems (1 * 1000g)
       }
       setSuccess(false);
       setCreatedOrderCode("");
@@ -336,6 +329,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setDistricts([]);
       setWards([]);
       setAutoMatchDone(false);
+      setWeightManualOverride(false);
     }
     if (!open) {
       hasPrefilledRef.current = false;
@@ -639,7 +633,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           service_type_id: parseInt(serviceTypeId),
           to_district_id: parseInt(districtId),
           to_ward_code: wardCode,
-          weight, length, width, height,
+          weight: displayWeight, length, width, height,
           insurance_value: insuranceValue,
           cod_value: codAmount,
         }
@@ -663,7 +657,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         orderData: {
           to_name: toName, to_phone: toPhone, to_address: toAddress,
           to_district_id: parseInt(districtId), to_ward_code: wardCode,
-          weight, length, width, height,
+          weight: displayWeight, length, width, height,
           cod_amount: codAmount, insurance_value: insuranceValue,
           note, required_note: requiredNote, content: itemContent,
           payment_type_id: parseInt(paymentTypeId),
@@ -1103,7 +1097,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   <div className={`grid ${isOverweight ? 'grid-cols-5' : 'grid-cols-2'} gap-3`}>
                     <div className="space-y-1.5">
                       <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={displayWeight} onChange={e => { setWeight(parseInt(e.target.value) || 0); setWeightManualOverride(true); }} className="text-sm" />
                     </div>
                     {isOverweight && (
                       <>
@@ -1126,7 +1120,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                       <div className="text-sm font-medium pt-2">{dimensionalWeightGram.toLocaleString('vi-VN')}</div>
                     </div>
                   </div>
-                  {effectiveWeightGram > weight && (
+                  {effectiveWeightGram > displayWeight && (
                     <div className="col-span-5 flex items-center gap-1.5 text-xs text-amber-600">
                       <Info className="h-3.5 w-3.5 flex-shrink-0" />
                       <span>KL tính cước: <strong>{effectiveWeightKg.toFixed(1)}kg</strong> (quy đổi &gt; thực tế) → Shop: <strong>{selectedShop?.name || '...'}</strong></span>
