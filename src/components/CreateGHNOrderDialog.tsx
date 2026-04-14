@@ -934,7 +934,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-sm font-medium">Phường/Xã <span className="text-destructive">*</span></Label>
+                      <Label className="text-sm font-medium">Phường/Xã {allWardsFlat.length > 0 && <span className="text-muted-foreground font-normal">({allWardsFlat.length})</span>} <span className="text-destructive">*</span></Label>
                       <SearchableLocationSelect
                         value={wardCode}
                         onValueChange={v => {
