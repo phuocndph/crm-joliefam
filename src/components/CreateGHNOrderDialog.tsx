@@ -178,12 +178,12 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   useEffect(() => { setInsuranceValue(codAmount); }, [codAmount]);
 
   // Multi-product items
-  const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number }>>([
-    { name: "", weight: 200, quantity: 1 }
+  const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number; length: number; width: number; height: number }>>([
+    { name: "", weight: 200, quantity: 1, length: 30, width: 20, height: 10 }
   ]);
 
   const addProductItem = () => {
-    setProductItems(prev => [...prev, { name: "", weight: 200, quantity: 1 }]);
+    setProductItems(prev => [...prev, { name: "", weight: 200, quantity: 1, length: 30, width: 20, height: 10 }]);
   };
 
   const removeProductItem = (index: number) => {
@@ -288,12 +288,15 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         setProductItems([{
           name: summary,
           weight: 200,
-          quantity: totalQty
+          quantity: totalQty,
+          length: 30,
+          width: 20,
+          height: 10
         }]);
         // Ước tính ~1kg/sản phẩm để auto-select shop chính xác hơn
         setWeight(totalQty * 1000);
       } else {
-        setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1 }]);
+        setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 200, quantity: 1, length: 30, width: 20, height: 10 }]);
         setWeight(500);
       }
       setSuccess(false);
@@ -640,7 +643,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           note, required_note: requiredNote, content: itemContent,
           payment_type_id: parseInt(paymentTypeId),
           service_type_id: parseInt(serviceTypeId),
-          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight })),
+          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height })),
         },
         orderId: order.id,
         orderNumber: order.display_order_number || order.order_number,
@@ -1012,18 +1015,32 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                         </Button>
                       )}
                     </div>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <Label className="text-sm">Sản phẩm <span className="text-destructive">*</span></Label>
                         <Input value={item.name} onChange={e => updateProductItem(index, 'name', e.target.value)} placeholder="Nhập tên sản phẩm" className="text-sm" />
                       </div>
                       <div className="space-y-1.5">
+                        <Label className="text-sm">Số lượng <span className="text-destructive">*</span></Label>
+                        <Input type="number" value={item.quantity} onChange={e => updateProductItem(index, 'quantity', parseInt(e.target.value) || 1)} min={1} className="text-sm" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-3">
+                      <div className="space-y-1.5">
                         <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
                         <Input type="number" value={item.weight} onChange={e => updateProductItem(index, 'weight', parseInt(e.target.value) || 0)} className="text-sm" />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-sm">Số lượng <span className="text-destructive">*</span></Label>
-                        <Input type="number" value={item.quantity} onChange={e => updateProductItem(index, 'quantity', parseInt(e.target.value) || 1)} min={1} className="text-sm" />
+                        <Label className="text-sm">Dài (cm)</Label>
+                        <Input type="number" value={item.length} onChange={e => updateProductItem(index, 'length', parseInt(e.target.value) || 0)} className="text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Rộng (cm)</Label>
+                        <Input type="number" value={item.width} onChange={e => updateProductItem(index, 'width', parseInt(e.target.value) || 0)} className="text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Cao (cm)</Label>
+                        <Input type="number" value={item.height} onChange={e => updateProductItem(index, 'height', parseInt(e.target.value) || 0)} className="text-sm" />
                       </div>
                     </div>
                   </div>
