@@ -197,10 +197,7 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
         cost_price: calculateCostPrice(),
         status: 'pending',
         notes: notes.trim() || null,
-        items: JSON.stringify(orderItems.map(item => ({
-          ...item,
-          name: item.product.name,
-        }))),
+        items: JSON.stringify(orderItems),
         tenant_id: "default",
         manager_id: user?.id || null,
         delivery_date: defaultDeliveryDate.toISOString(),
