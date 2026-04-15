@@ -150,7 +150,10 @@ serve(async (req) => {
       });
       const data = await response.json();
       console.log('GHN fee response:', JSON.stringify(data));
-      if (data.code !== 200) throw new Error(data.message || 'Cannot calculate fee');
+      if (data.code !== 200) {
+        const detail = data.code_message_value ? JSON.stringify(data.code_message_value) : '';
+        throw new Error(`${data.message || 'Lỗi tính cước GHN'}${detail ? ` - Chi tiết: ${detail}` : ''}`);
+      }
       return new Response(JSON.stringify({ success: true, data: data.data }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -183,7 +186,8 @@ serve(async (req) => {
       console.log('GHN create response:', JSON.stringify(data));
 
       if (data.code !== 200) {
-        throw new Error(data.message || 'GHN API error');
+        const detail = data.code_message_value ? JSON.stringify(data.code_message_value) : '';
+        throw new Error(`${data.message || 'Lỗi tạo đơn GHN'}${detail ? ` - Chi tiết: ${detail}` : ''}`);
       }
 
       const orderCode = data.data?.order_code;
@@ -411,7 +415,8 @@ serve(async (req) => {
       console.log('GHN update response:', JSON.stringify(data));
 
       if (data.code !== 200) {
-        throw new Error(data.message || 'GHN update error');
+        const detail = data.code_message_value ? JSON.stringify(data.code_message_value) : '';
+        throw new Error(`${data.message || 'Lỗi cập nhật đơn GHN'}${detail ? ` - Chi tiết: ${detail}` : ''}`);
       }
 
       // Update tracking record in DB
@@ -455,7 +460,8 @@ serve(async (req) => {
       console.log('GHN updateCOD response:', JSON.stringify(data));
 
       if (data.code !== 200) {
-        throw new Error(data.message || 'GHN updateCOD error');
+        const detail = data.code_message_value ? JSON.stringify(data.code_message_value) : '';
+        throw new Error(`${data.message || 'Lỗi cập nhật COD'}${detail ? ` - Chi tiết: ${detail}` : ''}`);
       }
 
       await supabase.from('ghn_tracking').update({
@@ -494,7 +500,8 @@ serve(async (req) => {
       console.log('GHN gen-token response:', JSON.stringify(data));
 
       if (data.code !== 200) {
-        throw new Error(data.message || 'Cannot generate print token');
+        const detail = data.code_message_value ? JSON.stringify(data.code_message_value) : '';
+        throw new Error(`${data.message || 'Lỗi tạo phiếu in'}${detail ? ` - Chi tiết: ${detail}` : ''}`);
       }
 
       const token = data.data?.token;
