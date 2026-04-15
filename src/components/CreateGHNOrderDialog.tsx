@@ -640,7 +640,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setFeeDetail(data);
       setFeeStatus("done");
     } catch (e: any) {
-      toast({ title: "Lỗi tính cước", description: e.message, variant: "destructive" });
+      toast({ title: "Lỗi tính cước", description: e.message, variant: "destructive", duration: 8000 });
       setFeeStatus("idle");
     } finally { setLoadingFee(false); }
   };
@@ -673,7 +673,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       toast({ title: "Tạo đơn GHN thành công!", description: `Mã vận đơn: ${data?.order_code}` });
       onSuccess();
     } catch (e: any) {
-      toast({ title: "Lỗi tạo đơn GHN", description: e.message, variant: "destructive" });
+      toast({ title: "Lỗi tạo đơn GHN", description: e.message, variant: "destructive", duration: 8000 });
     } finally { setLoading(false); }
   };
 
@@ -760,7 +760,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                       throw new Error(data?.error || 'Không thể tạo link in phiếu');
                     }
                   } catch (err: any) {
-                    toast({ title: "Lỗi in phiếu A5", description: err.message, variant: "destructive" });
+                    toast({ title: "Lỗi in phiếu A5", description: err.message, variant: "destructive", duration: 8000 });
                   } finally {
                     setPrintingA5(false);
                   }

@@ -447,7 +447,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       });
       setFeeDetail(data); setFeeStatus("done");
     } catch (e: any) {
-      toast({ title: "Lỗi tính cước", description: e.message, variant: "destructive" });
+      toast({ title: "Lỗi tính cước", description: e.message, variant: "destructive", duration: 8000 });
       setFeeStatus("idle");
     } finally { setLoadingFee(false); }
   };
@@ -492,7 +492,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       onSuccess();
       onOpenChange(false);
     } catch (e: any) {
-      toast({ title: "Lỗi cập nhật đơn GHN", description: e.message, variant: "destructive" });
+      toast({ title: "Lỗi cập nhật đơn GHN", description: e.message, variant: "destructive", duration: 8000 });
     } finally { setLoading(false); }
   };
 
