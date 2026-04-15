@@ -513,7 +513,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     try {
       const data = await callGHN('get_shops');
       setShops(data || []);
-    } catch (e) { console.error(e); } finally { setLoadingShops(false); }
+    } catch (e: any) { console.error(e); toast({ title: "Lỗi tải danh sách shop", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingShops(false); }
   };
 
   const loadProvinces = async () => {
@@ -521,7 +521,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     try {
       const data = await callGHN('get_provinces');
       setProvinces(data);
-    } catch (e) { console.error(e); } finally { setLoadingProvinces(false); }
+    } catch (e: any) { console.error(e); toast({ title: "Lỗi tải tỉnh/thành", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingProvinces(false); }
   };
 
   // Trigger auto-match immediately when customer has address data
@@ -536,14 +536,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     setLoadingDistricts(true);
     setDistricts([]); setWards([]); setDistrictId(""); setWardCode("");
     setServices([]); setServiceTypeId(""); setFeeDetail(null); setFeeStatus("idle");
-    try { setDistricts(await callGHN('get_districts', { provinceId: provId })); } catch (e) { console.error(e); } finally { setLoadingDistricts(false); }
+    try { setDistricts(await callGHN('get_districts', { provinceId: provId })); } catch (e: any) { console.error(e); toast({ title: "Lỗi tải quận/huyện", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingDistricts(false); }
   };
 
   const loadWards = async (distId: number) => {
     setLoadingWards(true);
     setWards([]); setWardCode("");
     setFeeDetail(null); setFeeStatus("idle");
-    try { setWards(await callGHN('get_wards', { districtId: distId })); } catch (e) { console.error(e); } finally { setLoadingWards(false); }
+    try { setWards(await callGHN('get_wards', { districtId: distId })); } catch (e: any) { console.error(e); toast({ title: "Lỗi tải phường/xã", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingWards(false); }
   };
 
   // Load all wards for a province (new address mode)
