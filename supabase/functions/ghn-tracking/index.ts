@@ -500,7 +500,8 @@ serve(async (req) => {
       console.log('GHN gen-token response:', JSON.stringify(data));
 
       if (data.code !== 200) {
-        throw new Error(data.message || 'Cannot generate print token');
+        const detail = data.code_message_value ? JSON.stringify(data.code_message_value) : '';
+        throw new Error(`${data.message || 'Lỗi tạo phiếu in'}${detail ? ` - Chi tiết: ${detail}` : ''}`);
       }
 
       const token = data.data?.token;
