@@ -369,7 +369,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     const { data, error } = await supabase.functions.invoke('ghn-tracking', {
       body: { action, ...body }
     });
-    if (error) throw error;
+    if (error) {
+      const detailMessage = data?.error || error.message;
+      throw new Error(detailMessage);
+    }
     if (!data?.success) throw new Error(data?.error || 'GHN API error');
     return data.data;
   }, []);
