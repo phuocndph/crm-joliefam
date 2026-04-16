@@ -165,12 +165,16 @@ export default function AISettingsPage() {
   const [testInput, setTestInput] = useState('');
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
+  const [testPriceListId, setTestPriceListId] = useState<string>('');
+  const [priceLists, setPriceLists] = useState<Array<{id: string; name: string; year: number}>>([]);
 
   const [beeknoeeModels, setBeeknoeeModels] = useState<Array<{value: string; label: string; desc: string; vision: boolean}>>(FALLBACK_MODELS);
   const [modelsLoading, setModelsLoading] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    supabase.from('price_lists').select('id, name, year').eq('status', 'active').order('year', { ascending: false })
+      .then(({ data }) => { if (data) setPriceLists(data); });
   }, []);
 
   // Fetch models from Beeknoee
@@ -324,6 +328,7 @@ export default function AISettingsPage() {
               productKeywords: settings.ai_quote_product_keywords ? JSON.parse(settings.ai_quote_product_keywords) : undefined,
               materialKeywords: settings.ai_quote_material_keywords ? JSON.parse(settings.ai_quote_material_keywords) : undefined,
               cacheTtl: parseInt(settings.ai_quote_cache_ttl) || 300,
+              priceListId: testPriceListId && testPriceListId !== 'all' ? testPriceListId : undefined,
             }
           }
         }
@@ -816,14 +821,30 @@ export default function AISettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label>Input yêu cầu</Label>
-                  <Textarea
-                    value={testInput}
-                    onChange={(e) => setTestInput(e.target.value)}
-                    placeholder={"Vải T250 trắng sọc:\n4c Vỏ chăn 200x220\n4c Ga chun 160x200x12cm\n8c Vỏ gối 45x65"}
-                    className="min-h-[120px]"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
+                  <div>
+                    <Label>Input yêu cầu</Label>
+                    <Textarea
+                      value={testInput}
+                      onChange={(e) => setTestInput(e.target.value)}
+                      placeholder={"Vải T250 trắng sọc:\n4c Vỏ chăn 200x220\n4c Ga chun 160x200x12cm\n8c Vỏ gối 45x65"}
+                      className="min-h-[120px]"
+                    />
+                  </div>
+                  <div>
+                    <Label>Bảng giá</Label>
+                    <Select value={testPriceListId} onValueChange={setTestPriceListId}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Tất cả sản phẩm" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tất cả sản phẩm</SelectItem>
+                        {priceLists.map(pl => (
+                          <SelectItem key={pl.id} value={pl.id}>{pl.name} ({pl.year})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <Button onClick={handleTest} disabled={testing} className="gap-2">
                   {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}

@@ -1717,7 +1717,7 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       // Override globals temporarily if custom keywords provided
       // (parseRequestSegments uses module-level PRODUCT_TYPE_KEYWORDS)
 
-      // Fetch products
+      // Fetch products (filter by priceListId like the real flow)
       const authHeader = req.headers.get("Authorization");
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -1728,11 +1728,17 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
       // Load DB config (for defaults when no config passed from client)
       const dbConfig = await loadAIConfig(supabaseClient, { forceRefresh: true });
 
-      const { data: products, error: dbError } = await supabaseClient
+      const priceListIdDebug = config?.priceListId || null;
+      let query = supabaseClient
         .from("products")
         .select("id, name, specifications, description, price, category")
-        .eq("in_stock", true)
-        .order("category");
+        .eq("in_stock", true);
+      
+      if (priceListIdDebug) {
+        query = query.eq("price_list_id", priceListIdDebug);
+      }
+
+      const { data: products, error: dbError } = await query.order("category");
 
       if (dbError) {
         return new Response(JSON.stringify({ error: "DB error: " + dbError.message }), {
@@ -1765,6 +1771,8 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
         `${p.id}|${p.name}|${p.specifications || ''}|${p.price || 0}`
       ).join("\n");
 
+      const catalogHeader = "ID|Tên|Quy cách|Giá";
+
       let segmentInstruction = '';
       if (segments.length > 0) {
         const segLines = segments.map((s, i) => {
@@ -1772,21 +1780,32 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
           if (s.material) parts.push(s.material);
           if (s.pattern) parts.push(s.pattern);
           if (s.size) parts.push(s.size);
+          if (s.note) parts.push(`(${s.note})`);
           if (s.quantity > 1) parts.push(`x${s.quantity}`);
           return `${i + 1}. ${parts.join(' ')}`;
         }).join('\n');
-        segmentInstruction = `\n## YÊU CẦU ĐÃ PHÂN TÍCH (${segments.length} sản phẩm):\n${segLines}\n`;
+        segmentInstruction = `\n## YÊU CẦU ĐÃ PHÂN TÍCH (${segments.length} sản phẩm):\n${segLines}\nMỗi dòng trên PHẢI có ÍT NHẤT 1 item tương ứng trong kết quả. KHÔNG được bỏ sót dòng nào.\n`;
       }
 
       const defaultPrompt = `Bạn là chuyên gia báo giá nội thất phòng ngủ VN.
 
-## BẢNG GIÁ (ID|Tên|Quy cách|Giá)
+## BẢNG GIÁ (${catalogHeader})
 ${productListText}
 ${segmentInstruction}
 ## OUTPUT — JSON thuần
 {"items":[{"matchedProductId":"uuid","customName":"tên","quantity":1,"price":0,"specifications":"","note":""}]}`;
 
-      const systemPrompt = config?.customPrompt || defaultPrompt;
+      // Interpolate custom prompt properly (same as ai_quote_fill flow)
+      let systemPrompt: string;
+      if (config?.customPrompt) {
+        systemPrompt = config.customPrompt
+          .replace(/\$\{catalogHeader\}/g, catalogHeader)
+          .replace(/\$\{productListText\}/g, productListText)
+          .replace(/\$\{segmentInstruction\}/g, segmentInstruction);
+        console.log('AI Quote Debug: using CUSTOM prompt with interpolation');
+      } else {
+        systemPrompt = defaultPrompt;
+      }
 
       const parsed = await callAI([
         { role: "system", content: systemPrompt },
