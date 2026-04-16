@@ -165,12 +165,16 @@ export default function AISettingsPage() {
   const [testInput, setTestInput] = useState('');
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
+  const [testPriceListId, setTestPriceListId] = useState<string>('');
+  const [priceLists, setPriceLists] = useState<Array<{id: string; name: string; year: number}>>([]);
 
   const [beeknoeeModels, setBeeknoeeModels] = useState<Array<{value: string; label: string; desc: string; vision: boolean}>>(FALLBACK_MODELS);
   const [modelsLoading, setModelsLoading] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    supabase.from('price_lists').select('id, name, year').eq('status', 'active').order('year', { ascending: false })
+      .then(({ data }) => { if (data) setPriceLists(data); });
   }, []);
 
   // Fetch models from Beeknoee
