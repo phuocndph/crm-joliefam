@@ -821,14 +821,30 @@ export default function AISettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label>Input yêu cầu</Label>
-                  <Textarea
-                    value={testInput}
-                    onChange={(e) => setTestInput(e.target.value)}
-                    placeholder={"Vải T250 trắng sọc:\n4c Vỏ chăn 200x220\n4c Ga chun 160x200x12cm\n8c Vỏ gối 45x65"}
-                    className="min-h-[120px]"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
+                  <div>
+                    <Label>Input yêu cầu</Label>
+                    <Textarea
+                      value={testInput}
+                      onChange={(e) => setTestInput(e.target.value)}
+                      placeholder={"Vải T250 trắng sọc:\n4c Vỏ chăn 200x220\n4c Ga chun 160x200x12cm\n8c Vỏ gối 45x65"}
+                      className="min-h-[120px]"
+                    />
+                  </div>
+                  <div>
+                    <Label>Bảng giá</Label>
+                    <Select value={testPriceListId} onValueChange={setTestPriceListId}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Tất cả sản phẩm" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tất cả sản phẩm</SelectItem>
+                        {priceLists.map(pl => (
+                          <SelectItem key={pl.id} value={pl.id}>{pl.name} ({pl.year})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <Button onClick={handleTest} disabled={testing} className="gap-2">
                   {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
