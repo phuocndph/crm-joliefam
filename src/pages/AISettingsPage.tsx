@@ -328,7 +328,7 @@ export default function AISettingsPage() {
               productKeywords: settings.ai_quote_product_keywords ? JSON.parse(settings.ai_quote_product_keywords) : undefined,
               materialKeywords: settings.ai_quote_material_keywords ? JSON.parse(settings.ai_quote_material_keywords) : undefined,
               cacheTtl: parseInt(settings.ai_quote_cache_ttl) || 300,
-              priceListId: testPriceListId || undefined,
+              priceListId: testPriceListId && testPriceListId !== 'all' ? testPriceListId : undefined,
             }
           }
         }
