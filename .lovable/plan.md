@@ -1,35 +1,43 @@
 
 
-## Fix: Hiển thị lỗi GHN chi tiết thay vì "Edge Function returned a non-2xx status code"
+## Fix: Test & Debug chưa dùng đúng prompt và catalog
 
-### Nguyên nhân gốc
-- Edge function trả `status: 400` khi có lỗi GHN
-- `supabase.functions.invoke()` khi nhận non-2xx: đặt `error` = generic message "Edge Function returned a non-2xx status code", nhưng response body (chứa message chi tiết) vẫn nằm trong `data`
-- Client code (line 372): `if (error) throw error` → throw message generic, bỏ qua `data.error` chứa chi tiết
+### Vấn đề phát hiện
+
+**Bug 1 — Custom prompt không được interpolate đúng (line 1789)**
+Khi có `config.customPrompt`, debug mode dùng nó trực tiếp làm system prompt mà KHÔNG thay thế `${productListText}`, `${segmentInstruction}`, `${catalogHeader}`. Kết quả: AI nhận prompt có placeholder text thô thay vì danh sách sản phẩm thực tế.
+
+Trong khi flow thật (`ai_quote_fill`, line 1616-1619) có `.replace()` đúng cách.
+
+**Bug 2 — Catalog không lọc theo bảng giá (line 1731-1735)**
+Debug mode fetch ALL products (`products.eq("in_stock", true)`) mà không lọc theo `priceListId`. Flow thật dùng `priceListId` để chỉ lấy sản phẩm thuộc bảng giá đang dùng.
+
+**Bug 3 — Thiếu `catalogHeader` variable**
+Debug mode không khai báo `catalogHeader`, nên khi interpolate custom prompt sẽ bị `undefined`.
 
 ### Giải pháp
 
-**File: `src/components/CreateGHNOrderDialog.tsx`** - Sửa hàm `callGHN` (line 368-375):
+**File: `supabase/functions/lookup-tax-code/index.ts`** — Sửa phần `ai_quote_debug` (line 1700-1821):
 
-Thay đổi logic xử lý lỗi: ưu tiên đọc `data?.error` trước, chỉ dùng `error.message` khi không có data:
+1. **Thêm `priceListId` từ client config** và lọc products theo nó (giống flow thật)
+2. **Thêm `catalogHeader`** = `"ID|Tên|Quy cách|Giá"`
+3. **Interpolate custom prompt** giống flow thật (line 1616-1619):
+   ```typescript
+   let systemPrompt: string;
+   if (config?.customPrompt) {
+     systemPrompt = config.customPrompt
+       .replace(/\$\{catalogHeader\}/g, catalogHeader)
+       .replace(/\$\{productListText\}/g, productListText)
+       .replace(/\$\{segmentInstruction\}/g, segmentInstruction);
+   } else {
+     systemPrompt = defaultPrompt;
+   }
+   ```
 
-```typescript
-const callGHN = useCallback(async (action: string, body: Record<string, any> = {}) => {
-  const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-    body: { action, ...body }
-  });
-  if (error) {
-    // Khi status non-2xx, data vẫn chứa response body với error chi tiết
-    const detailMessage = data?.error || error.message;
-    throw new Error(detailMessage);
-  }
-  if (!data?.success) throw new Error(data?.error || 'GHN API error');
-  return data.data;
-}, []);
-```
-
-**File: `src/components/EditGHNOrderDialog.tsx`** - Sửa tương tự hàm `callGHN` nếu có cùng pattern.
+**File: `src/pages/AISettingsPage.tsx`** — Truyền `priceListId` vào config (line 314-329):
+- Thêm dropdown chọn bảng giá cho test (hoặc tự detect bảng giá mặc định)
+- Truyền `priceListId` trong body để debug dùng đúng catalog
 
 ### Kết quả
-Lỗi từ GHN như "Giá trị khai giá vượt quá mức cho phép: 8000000 - Chi tiết: Giá trị khai giá vượt mức cho phép" sẽ hiển thị đầy đủ trong toast thay vì message generic.
+Test & Debug sẽ sử dụng chính xác prompt đã cập nhật (với sản phẩm được inject vào) và catalog đúng bảng giá, cho kết quả giống hệt flow thật.
 
