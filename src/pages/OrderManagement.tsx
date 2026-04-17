@@ -394,6 +394,18 @@ export default function OrderManagement() {
     { value: 'cancelled', label: 'Đã hủy' },
   ];
 
+  // Detect duplicate display_order_number để cảnh báo (gây lỗi auto-link GHN)
+  const duplicateOrderNumbers = React.useMemo(() => {
+    const counts = new Map<string, typeof orders>();
+    orders.forEach((o: any) => {
+      const num = o.display_order_number || '';
+      if (!num || !/^\d+$/.test(num)) return;
+      if (!counts.has(num)) counts.set(num, []);
+      counts.get(num)!.push(o);
+    });
+    return Array.from(counts.entries()).filter(([, arr]) => arr.length > 1);
+  }, [orders]);
+
   return (
     <div className="space-y-3">
       {/* Header + Stats Compact Bar */}
