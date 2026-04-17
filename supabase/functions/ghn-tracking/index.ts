@@ -544,11 +544,13 @@ async function fetchOrderDetail(ghnApiKey: string, orderCode: string) {
 }
 
 function extractOrderNumber(toName: string): string {
-  const patterns = [/_(\d+)/, /(\d{4,})/, /\b(\d+)\b/];
-  for (const pattern of patterns) {
-    const match = toName.match(pattern);
-    if (match) return match[1];
-  }
+  if (!toName) return '';
+  // Ưu tiên: _<số>p (hoặc P/h/H) ở cuối tên - đây là quy ước user dùng (vd: ..._2588p)
+  let m = toName.match(/_(\d{3,5})[pPhH]?\s*$/);
+  if (m) return m[1];
+  // Fallback: _<số> bất kỳ trong tên
+  m = toName.match(/_(\d{3,5})\b/);
+  if (m) return m[1];
   return '';
 }
 

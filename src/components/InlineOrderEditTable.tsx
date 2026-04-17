@@ -155,12 +155,19 @@ const GhnTrackingEditCell = ({ orderId, initialCodes, onDone }: { orderId: strin
     // Delete existing tracking records for this order
     await supabase.from('ghn_tracking').delete().eq('order_id', orderId);
 
-    // Insert new ones
+    // Insert new ones - lấy đúng số đơn nội bộ từ DB
     if (newCodes.length > 0) {
+      const { data: orderData } = await supabase
+        .from('orders')
+        .select('display_order_number, order_number')
+        .eq('id', orderId)
+        .maybeSingle();
+      const internalCode = orderData?.display_order_number || orderData?.order_number || null;
+
       const inserts = newCodes.map(code => ({
         ghn_order_code: code,
         order_id: orderId,
-        internal_order_code: code,
+        internal_order_code: internalCode,
       }));
       await supabase.from('ghn_tracking').insert(inserts);
     }
