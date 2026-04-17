@@ -476,6 +476,24 @@ export default function OrderManagement() {
         </div>
       </div>
 
+      {/* Cảnh báo trùng số đơn (gây lỗi auto-link mã GHN) */}
+      {duplicateOrderNumbers.length > 0 && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Phát hiện {duplicateOrderNumbers.length} số đơn bị trùng</AlertTitle>
+          <AlertDescription>
+            <p className="mb-2 text-sm">Các số đơn dưới đây đang bị dùng cho nhiều đơn khác nhau, sẽ khiến mã vận đơn GHN không tự liên kết được. Vui lòng sửa số đơn cho 1 trong các đơn để mỗi số là duy nhất:</p>
+            <ul className="list-disc pl-5 space-y-1 text-sm">
+              {duplicateOrderNumbers.map(([num, list]) => (
+                <li key={num}>
+                  <strong>Số {num}</strong>: {list.length} đơn — {list.map((o: any) => `${o.customers?.name || 'Không tên'} (${formatCompactCurrency(o.total_amount || 0)})`).join(' • ')}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Search + Filter Chips */}
       <div className="flex flex-col lg:flex-row gap-3">
         <div className="relative w-full lg:w-72">
