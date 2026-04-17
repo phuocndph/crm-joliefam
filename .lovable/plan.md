@@ -1,43 +1,122 @@
 
 
-## Fix: Test & Debug chưa dùng đúng prompt và catalog
+## Kết quả kiểm tra: Có sai sót thực sự, đã tìm thấy 6+ trường hợp gán nhầm mã GHN cho đơn sai
 
-### Vấn đề phát hiện
+### Bằng chứng từ DB (sample query 30 records gần nhất)
 
-**Bug 1 — Custom prompt không được interpolate đúng (line 1789)**
-Khi có `config.customPrompt`, debug mode dùng nó trực tiếp làm system prompt mà KHÔNG thay thế `${productListText}`, `${segmentInstruction}`, `${catalogHeader}`. Kết quả: AI nhận prompt có placeholder text thô thay vì danh sách sản phẩm thực tế.
+| Mã GHN | Tên KH chứa | Đang gán cho đơn | Đúng phải là |
+|---|---|---|---|
+| GYKAEKBF | Hoàng Thị Huyên_**2619**p | đơn **2620** ❌ | đơn 2619 |
+| GYKMXLUR | Hạnh Window Hotel_**2602**p | đơn **2603** ❌ | đơn 2602 |
+| GYKWPU6T | Ngọc Tây..._**2601**p | đơn **2602** ❌ | đơn 2601 |
+| GYKHH3AN | Vang Trang Khuyet_**2611**p | đơn **2612** ❌ | đơn 2611 |
+| GYKTLTF9 | Minh Hoà..._**2600**p | đơn **2601** ❌ | đơn 2600 |
+| GYK89YK3 | Khách Sạn Bảo Trân..._**2588**p | đơn **2513** ❌ | đơn 2588 |
 
-Trong khi flow thật (`ai_quote_fill`, line 1616-1619) có `.replace()` đúng cách.
+### 4 nguyên nhân gốc
 
-**Bug 2 — Catalog không lọc theo bảng giá (line 1731-1735)**
-Debug mode fetch ALL products (`products.eq("in_stock", true)`) mà không lọc theo `priceListId`. Flow thật dùng `priceListId` để chỉ lấy sản phẩm thuộc bảng giá đang dùng.
+**Nguyên nhân 1 — Trigger auto-link dùng `LIMIT 1` không có `ORDER BY`** (`auto_link_ghn_tracking_to_order`)
+```sql
+SELECT id INTO NEW.order_id
+FROM public.orders
+WHERE display_order_number = NEW.internal_order_code
+LIMIT 1;  -- Có 2 đơn cùng số 2248 → random
+```
+Phát hiện 1 cặp `display_order_number = 2248` trùng nhau → bất kỳ mã GHN nào có internal_code='2248' sẽ được gán random.
 
-**Bug 3 — Thiếu `catalogHeader` variable**
-Debug mode không khai báo `catalogHeader`, nên khi interpolate custom prompt sẽ bị `undefined`.
+**Nguyên nhân 2 — `extractOrderNumber` quá lỏng lẻo** (`ghn-tracking/index.ts` line 546-553)
+```typescript
+const patterns = [/_(\d+)/, /(\d{4,})/, /\b(\d+)\b/];
+```
+- Match số sau dấu `_` đầu tiên: nếu tên KH có `Tài_2588p` thì OK, nhưng nếu là `Trịnh_ Hằng Kế Toán_2600p` → match `_` sai chỗ.
+- Cụ thể `Khách Sạn Bảo Trân ( anh Văn Trọng Điền )_2588p` được link sang đơn 2513 → có thể do match số khác trong tên.
 
-### Giải pháp
+**Nguyên nhân 3 — Bug nghiêm trọng trong `InlineOrderEditTable.tsx` line 160-164**
+```typescript
+const inserts = newCodes.map(code => ({
+  ghn_order_code: code,
+  order_id: orderId,
+  internal_order_code: code,  // ❌ Gán GHN code làm internal_order_code!
+}));
+```
+Khi user chỉnh sửa thủ công mã GHN trong bảng đơn hàng, `internal_order_code` bị gán = mã GHN (vd: `GYWFCVTY`) thay vì số đơn nội bộ. Sau này nếu có ai chạy lại trigger auto-link, sẽ tìm `display_order_number = 'GYWFCVTY'` → không match → giữ nguyên `order_id`. May là không gây nhầm trực tiếp, nhưng làm hỏng dữ liệu `internal_order_code`.
 
-**File: `supabase/functions/lookup-tax-code/index.ts`** — Sửa phần `ai_quote_debug` (line 1700-1821):
+**Nguyên nhân 4 — `save_tracking` action không truyền `order_id`** (`ghn-tracking/index.ts` line 304-322)
+Khi sync từ GHN list, chỉ set `internal_order_code` mà không set `order_id` → phụ thuộc 100% vào trigger để link, mà trigger lại có 2 lỗi trên.
 
-1. **Thêm `priceListId` từ client config** và lọc products theo nó (giống flow thật)
-2. **Thêm `catalogHeader`** = `"ID|Tên|Quy cách|Giá"`
-3. **Interpolate custom prompt** giống flow thật (line 1616-1619):
-   ```typescript
-   let systemPrompt: string;
-   if (config?.customPrompt) {
-     systemPrompt = config.customPrompt
-       .replace(/\$\{catalogHeader\}/g, catalogHeader)
-       .replace(/\$\{productListText\}/g, productListText)
-       .replace(/\$\{segmentInstruction\}/g, segmentInstruction);
-   } else {
-     systemPrompt = defaultPrompt;
-   }
-   ```
+### Giải pháp đề xuất
 
-**File: `src/pages/AISettingsPage.tsx`** — Truyền `priceListId` vào config (line 314-329):
-- Thêm dropdown chọn bảng giá cho test (hoặc tự detect bảng giá mặc định)
-- Truyền `priceListId` trong body để debug dùng đúng catalog
+**Fix 1 — Sửa trigger an toàn hơn** (migration)
+```sql
+CREATE OR REPLACE FUNCTION auto_link_ghn_tracking_to_order()
+RETURNS trigger AS $$
+DECLARE
+  v_count int;
+  v_order_id uuid;
+BEGIN
+  IF NEW.order_id IS NULL AND NEW.internal_order_code IS NOT NULL 
+     AND NEW.internal_order_code ~ '^[0-9]+$' THEN  -- Chỉ link khi là số thuần
+    SELECT COUNT(*), MIN(id) INTO v_count, v_order_id
+    FROM public.orders
+    WHERE display_order_number = NEW.internal_order_code;
+    
+    IF v_count = 1 THEN  -- Chỉ link khi DUY NHẤT 1 đơn match
+      NEW.order_id := v_order_id;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+```
 
-### Kết quả
-Test & Debug sẽ sử dụng chính xác prompt đã cập nhật (với sản phẩm được inject vào) và catalog đúng bảng giá, cho kết quả giống hệt flow thật.
+**Fix 2 — Cải thiện `extractOrderNumber`** (`ghn-tracking/index.ts`)
+Ưu tiên pattern `_<số>p` (suffix với p/P) ở **cuối tên**, đây là quy ước user dùng:
+```typescript
+function extractOrderNumber(toName: string): string {
+  // Ưu tiên: _<số>p ở cuối tên (vd: ..._2588p)
+  let m = toName.match(/_(\d{3,5})[pPhH]?\s*$/);
+  if (m) return m[1];
+  // Fallback: _<số> bất kỳ
+  m = toName.match(/_(\d{3,5})\b/);
+  if (m) return m[1];
+  return '';
+}
+```
+
+**Fix 3 — Sửa `InlineOrderEditTable.tsx` line 160-164**
+```typescript
+// Lấy display_order_number của order để dùng làm internal_order_code
+const order = orders.find(o => o.id === orderId);
+const internalCode = order?.display_order_number || order?.order_number || null;
+
+const inserts = newCodes.map(code => ({
+  ghn_order_code: code,
+  order_id: orderId,
+  internal_order_code: internalCode,  // ✅ Số đơn nội bộ thật
+}));
+```
+
+**Fix 4 — Script sửa dữ liệu cũ** (migration)
+```sql
+-- Sửa lại các bản ghi đã link sai
+UPDATE ghn_tracking gt
+SET order_id = correct.id
+FROM (
+  SELECT gt2.id as tracking_id, o.id
+  FROM ghn_tracking gt2
+  JOIN orders o ON o.display_order_number = gt2.internal_order_code
+  WHERE gt2.internal_order_code ~ '^[0-9]+$'
+    AND (SELECT COUNT(*) FROM orders WHERE display_order_number = gt2.internal_order_code) = 1
+    AND (gt2.order_id IS NULL 
+      OR gt2.order_id != (SELECT id FROM orders WHERE display_order_number = gt2.internal_order_code LIMIT 1))
+) correct
+WHERE gt.id = correct.tracking_id;
+```
+
+**Fix 5 — Resolve duplicate `display_order_number = 2248`**: Cảnh báo user về 2 đơn trùng số để xử lý thủ công (không tự gộp).
+
+### Phạm vi thay đổi
+- 1 migration (Fix 1 + Fix 4 + check duplicate)
+- `supabase/functions/ghn-tracking/index.ts` (Fix 2)
+- `src/components/InlineOrderEditTable.tsx` (Fix 3)
 
