@@ -484,7 +484,10 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           from_district_id: selectedShop?.district_id,
           to_district_id: parseInt(districtId),
           to_ward_code: wardCode,
-          weight, length, width, height,
+          weight: totalItemWeight || weight,
+          length: effectiveDims.length,
+          width: effectiveDims.width,
+          height: effectiveDims.height,
           insurance_value: insuranceValue,
           cod_value: codAmount,
           cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
@@ -492,6 +495,9 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
             name: p.name || "Hàng hóa",
             quantity: p.quantity,
             weight: p.weight,
+            length: p.length,
+            width: p.width,
+            height: p.height,
           })),
         }
       });
