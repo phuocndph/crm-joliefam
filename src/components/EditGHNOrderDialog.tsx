@@ -530,13 +530,16 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           to_address: toAddress,
           to_district_id: parseInt(districtId),
           to_ward_code: wardCode,
-          weight, length, width, height,
+          weight: totalItemWeight || weight,
+          length: effectiveDims.length,
+          width: effectiveDims.width,
+          height: effectiveDims.height,
           note,
           required_note: requiredNote,
           content: itemContent,
           insurance_value: insuranceValue,
           cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
-          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight })),
+          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height })),
         }
       });
 
