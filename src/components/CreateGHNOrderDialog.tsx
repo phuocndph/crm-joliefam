@@ -320,15 +320,24 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       }
 
       if (parsedItems.length > 0) {
-        // Map MỖI item gốc thành 1 productItem riêng, KHÔNG gộp
-        setProductItems(parsedItems.map((item: any) => ({
-          name: item.name || item.product_name || "Hàng hóa",
-          weight: Number(item.weight) > 0 ? Number(item.weight) : 1000,
-          quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
-          length: Number(item.length) > 0 ? Number(item.length) : 10,
-          width: Number(item.width) > 0 ? Number(item.width) : 10,
-          height: Number(item.height) > 0 ? Number(item.height) : 10,
-        })));
+        // Gộp TẤT CẢ sản phẩm thành 1 kiện duy nhất theo quy tắc GHN của project
+        const mergedName = parsedItems
+          .map((item: any) => item.name || item.product_name || "Hàng hóa")
+          .filter(Boolean)
+          .join(" - ");
+        const totalWeight = parsedItems.reduce((sum: number, item: any) => {
+          const w = Number(item.weight) > 0 ? Number(item.weight) : 1000;
+          const q = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
+          return sum + w * q;
+        }, 0);
+        setProductItems([{
+          name: mergedName || `Đơn hàng ${displayNum}`,
+          weight: totalWeight > 0 ? totalWeight : 1000,
+          quantity: 1,
+          length: 10,
+          width: 10,
+          height: 10,
+        }]);
       } else {
         setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }]);
       }
@@ -1354,13 +1363,6 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <span>Cước GHN cuối cùng có thể chênh lệch nhẹ tùy theo thực tế cân/đo tại bưu cục</span>
               </div>
-
-              {isOverweight && productItems.every(p => p.length === 10 && p.width === 10 && p.height === 10) && (
-                <div className="flex gap-2 rounded-md bg-destructive/10 border border-destructive/40 p-2.5 text-xs text-destructive">
-                  <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-                  <span><strong>Đơn nặng dùng kích thước mặc định 10×10×10cm</strong> → cước có thể sai lớn. Vui lòng nhập kích thước thực của từng kiện.</span>
-                </div>
-              )}
 
               {serviceTypeId && (
                 <div className="flex gap-2 rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
