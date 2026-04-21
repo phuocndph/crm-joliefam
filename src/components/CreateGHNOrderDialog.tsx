@@ -630,7 +630,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       const fromDistrictId = selectedShop?.district_id || 1490;
       const data = await callGHN('get_services', { fromDistrictId, toDistrictId, shopId: selectedShopId || undefined });
       setServices(data || []);
-      if (data?.length > 0) setServiceTypeId(String(data[0].service_type_id));
+      if (data?.length > 0) {
+        // Đơn nặng (≥20kg) → ưu tiên service_type_id = 5 (Hàng nặng)
+        const preferHeavy = isOverweight;
+        const heavySvc = data.find((s: GHNService) => s.service_type_id === 5);
+        const chosen = preferHeavy && heavySvc ? heavySvc : data[0];
+        console.log('[GHN Service Auto-select]', { preferHeavy, totalKg: totalItemWeight / 1000, chosenServiceId: chosen.service_id, chosenTypeId: chosen.service_type_id, available: data.map((s: GHNService) => ({ id: s.service_id, type: s.service_type_id, name: s.short_name })) });
+        setServiceTypeId(String(chosen.service_type_id));
+      }
     } catch (e) { console.error(e); } finally { setLoadingServices(false); }
   };
 
