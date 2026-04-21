@@ -454,7 +454,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         setServiceTypeId(savedServiceTypeId);
         prefillServiceTypeIdRef.current = ""; // Only use once
       } else if (data?.length > 0) {
-        setServiceTypeId(String(data[0].service_type_id));
+        // Đơn nặng → ưu tiên Service 5 nếu có
+        const heavySvc = data.find((s: GHNService) => s.service_type_id === 5);
+        const chosen = isOverweight && heavySvc ? heavySvc : data[0];
+        console.log('[GHN Edit Service Auto-select]', { isOverweight, totalKg: totalItemWeight / 1000, chosenTypeId: chosen.service_type_id });
+        setServiceTypeId(String(chosen.service_type_id));
       }
     } catch (e) { console.error(e); } finally { setLoadingServices(false); }
   };
