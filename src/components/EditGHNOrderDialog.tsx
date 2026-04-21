@@ -196,14 +196,9 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           .map((it: any) => it.name || "Hàng hóa")
           .filter(Boolean)
           .join(" - ");
-        const totalWeight = parsedItems.reduce((sum: number, it: any) => {
-          const w = Number(it.weight) > 0 ? Number(it.weight) : 1000;
-          const q = Number(it.quantity) > 0 ? Number(it.quantity) : 1;
-          return sum + w * q;
-        }, 0);
         setProductItems([{
           name: mergedName || raw.content || "Hàng hóa",
-          weight: totalWeight > 0 ? totalWeight : (raw.weight || 1000),
+          weight: raw.weight || 1000,
           quantity: 1,
           length: raw.length || 10,
           width: raw.width || 10,
