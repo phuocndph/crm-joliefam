@@ -191,14 +191,24 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         console.warn('[GHN Edit] Parse items failed:', err);
       }
       if (parsedItems.length > 0) {
-        setProductItems(parsedItems.map((it: any) => ({
-          name: it.name || "Hàng hóa",
-          weight: Number(it.weight) > 0 ? Number(it.weight) : 1000,
-          quantity: Number(it.quantity) > 0 ? Number(it.quantity) : 1,
-          length: Number(it.length) > 0 ? Number(it.length) : 10,
-          width: Number(it.width) > 0 ? Number(it.width) : 10,
-          height: Number(it.height) > 0 ? Number(it.height) : 10,
-        })));
+        // Gộp TẤT CẢ sản phẩm thành 1 kiện duy nhất theo quy tắc GHN của project
+        const mergedName = parsedItems
+          .map((it: any) => it.name || "Hàng hóa")
+          .filter(Boolean)
+          .join(" - ");
+        const totalWeight = parsedItems.reduce((sum: number, it: any) => {
+          const w = Number(it.weight) > 0 ? Number(it.weight) : 1000;
+          const q = Number(it.quantity) > 0 ? Number(it.quantity) : 1;
+          return sum + w * q;
+        }, 0);
+        setProductItems([{
+          name: mergedName || raw.content || "Hàng hóa",
+          weight: totalWeight > 0 ? totalWeight : (raw.weight || 1000),
+          quantity: 1,
+          length: raw.length || 10,
+          width: raw.width || 10,
+          height: raw.height || 10,
+        }]);
       } else {
         setProductItems([{
           name: raw.content || "Hàng hóa",
@@ -897,13 +907,6 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                 <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <span>Cước GHN cuối cùng có thể chênh lệch nhẹ tùy theo thực tế cân/đo tại bưu cục</span>
               </div>
-
-              {isOverweight && productItems.every(p => p.length === 10 && p.width === 10 && p.height === 10) && (
-                <div className="flex gap-2 rounded-md bg-destructive/10 border border-destructive/40 p-2.5 text-xs text-destructive">
-                  <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-                  <span><strong>Đơn nặng dùng kích thước mặc định 10×10×10cm</strong> → cước có thể sai lớn. Hãy nhập kích thước thực từng kiện.</span>
-                </div>
-              )}
 
               {serviceTypeId && (
                 <div className="flex gap-2 rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
