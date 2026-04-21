@@ -273,6 +273,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     sumHeight: productItems.reduce((sum, p) => sum + p.height * p.quantity, 0),
   } : null;
 
+  // Effective dimensions sent to GHN: heavy cargo uses calculated package dims
+  const effectiveDims = isHeavyCargo && heavyCargoCalc
+    ? { length: heavyCargoCalc.maxLength, width: heavyCargoCalc.maxWidth, height: heavyCargoCalc.sumHeight }
+    : { length, width, height };
+
   // Address suggestions (Goong Maps) - inline
   const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
