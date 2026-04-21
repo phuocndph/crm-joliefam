@@ -325,14 +325,9 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           .map((item: any) => item.name || item.product_name || "Hàng hóa")
           .filter(Boolean)
           .join(" - ");
-        const totalWeight = parsedItems.reduce((sum: number, item: any) => {
-          const w = Number(item.weight) > 0 ? Number(item.weight) : 1000;
-          const q = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
-          return sum + w * q;
-        }, 0);
         setProductItems([{
           name: mergedName || `Đơn hàng ${displayNum}`,
-          weight: totalWeight > 0 ? totalWeight : 1000,
+          weight: 1000,
           quantity: 1,
           length: 10,
           width: 10,
