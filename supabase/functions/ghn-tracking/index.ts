@@ -143,6 +143,7 @@ serve(async (req) => {
       const { feeData, shopId } = requestBody;
       const effectiveShopId = shopId || Deno.env.get('GHN_SHOP_ID');
       if (!effectiveShopId) throw new Error('Shop ID not provided');
+      console.log('GHN fee request payload:', JSON.stringify({ shop_id: parseInt(String(effectiveShopId)), ...feeData }));
       const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/fee', {
         method: 'POST',
         headers: { 'Token': ghnApiKey, 'Content-Type': 'application/json', 'ShopId': String(effectiveShopId) },

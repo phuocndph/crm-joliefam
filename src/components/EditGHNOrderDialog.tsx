@@ -431,21 +431,31 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       const timer = setTimeout(() => calculateFee(), 500);
       return () => clearTimeout(timer);
     }
-  }, [districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount]);
+  }, [districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount, length, width, height, codFailedEnabled, codFailedAmount, productItems]);
 
   const calculateFee = async () => {
     if (!districtId || !wardCode || !serviceTypeId) return;
     setLoadingFee(true); setFeeStatus("loading");
     try {
+      const selectedShop = shops.find(s => String(s._id) === selectedShopId);
+      const selectedService = services.find(s => s.service_type_id === parseInt(serviceTypeId));
       const data = await callGHN('calculate_fee', {
         shopId: selectedShopId || undefined,
         feeData: {
           service_type_id: parseInt(serviceTypeId),
+          service_id: selectedService?.service_id,
+          from_district_id: selectedShop?.district_id,
           to_district_id: parseInt(districtId),
           to_ward_code: wardCode,
           weight, length, width, height,
           insurance_value: insuranceValue,
           cod_value: codAmount,
+          cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
+          items: productItems.map(p => ({
+            name: p.name || "Hàng hóa",
+            quantity: p.quantity,
+            weight: p.weight,
+          })),
         }
       });
       setFeeDetail(data); setFeeStatus("done");
@@ -482,6 +492,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           required_note: requiredNote,
           content: itemContent,
           insurance_value: insuranceValue,
+          cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
           items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight })),
         }
       });

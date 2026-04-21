@@ -627,16 +627,20 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       const timer = setTimeout(() => { calculateFee(); }, 500);
       return () => clearTimeout(timer);
     }
-  }, [districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount, effectiveDims.length, effectiveDims.width, effectiveDims.height, displayWeight]);
+  }, [districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount, effectiveDims.length, effectiveDims.width, effectiveDims.height, displayWeight, codFailedEnabled, codFailedAmount, productItems]);
 
   const calculateFee = async () => {
     if (!districtId || !wardCode || !serviceTypeId) return;
     setLoadingFee(true); setFeeStatus("loading");
     try {
+      const selectedShop = shops.find(s => String(s._id) === selectedShopId);
+      const selectedService = services.find(s => s.service_type_id === parseInt(serviceTypeId));
       const data = await callGHN('calculate_fee', {
         shopId: selectedShopId || undefined,
         feeData: {
           service_type_id: parseInt(serviceTypeId),
+          service_id: selectedService?.service_id,
+          from_district_id: selectedShop?.district_id,
           to_district_id: parseInt(districtId),
           to_ward_code: wardCode,
           weight: displayWeight,
@@ -645,6 +649,15 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           height: effectiveDims.height,
           insurance_value: insuranceValue,
           cod_value: codAmount,
+          cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
+          items: productItems.map(p => ({
+            name: p.name || "Hàng hóa",
+            quantity: p.quantity,
+            weight: p.weight,
+            length: p.length,
+            width: p.width,
+            height: p.height,
+          })),
         }
       });
       setFeeDetail(data);
@@ -679,6 +692,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           width: effectiveDims.width,
           height: effectiveDims.height,
           cod_amount: codAmount, insurance_value: insuranceValue,
+          cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
           note, required_note: requiredNote, content: itemContent,
           payment_type_id: parseInt(paymentTypeId),
           service_type_id: parseInt(serviceTypeId),
@@ -1299,6 +1313,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
               <div className="flex gap-2 rounded-md bg-blue-50 dark:bg-blue-950/30 p-2.5 text-xs text-blue-700 dark:text-blue-300">
                 <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <span>Tổng phí đã bao gồm phụ phí xăng dầu 10% giá cước vận chuyển</span>
+              </div>
+
+              <div className="flex gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-300">
+                <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <span>Cước GHN cuối cùng có thể chênh lệch nhẹ tùy theo thực tế cân/đo tại bưu cục</span>
               </div>
 
               <Separator />
