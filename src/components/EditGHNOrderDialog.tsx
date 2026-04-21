@@ -67,8 +67,8 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const [districtId, setDistrictId] = useState("");
   const [wardCode, setWardCode] = useState("");
   const [weight, setWeight] = useState(500);
-  const [length, setLength] = useState(30);
-  const [width, setWidth] = useState(20);
+  const [length, setLength] = useState(10);
+  const [width, setWidth] = useState(10);
   const [height, setHeight] = useState(10);
   const [codAmount, setCodAmount] = useState(0);
   const [initialCodAmount, setInitialCodAmount] = useState(0);
