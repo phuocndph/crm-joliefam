@@ -302,22 +302,35 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setInsuranceValue(order.total_amount || 0);
       
       setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
-      const parsedItems = Array.isArray(order.items) ? order.items : [];
+      // Parse order.items safely (supports array OR JSON string)
+      let parsedItems: any[] = [];
+      try {
+        const raw = order.items;
+        if (Array.isArray(raw)) {
+          parsedItems = raw;
+        } else if (typeof raw === 'string' && raw.trim()) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) parsedItems = parsed;
+        } else if (raw && typeof raw === 'object') {
+          parsedItems = [raw];
+        }
+      } catch (err) {
+        console.warn('[GHN] Failed to parse order.items, falling back to default:', err);
+        parsedItems = [];
+      }
+
       if (parsedItems.length > 0) {
-        const summary = parsedItems.map((item: any) => item.name).join(' - ');
-        const totalQty = parsedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
-        setProductItems([{
-          name: summary,
-          weight: 1000,
-          quantity: 1,
-          length: 10,
-          width: 10,
-          height: 10
-        }]);
-        // Ước tính ~1kg/sản phẩm: tổng KL = totalQty × 1000g (auto-calc từ productItems)
+        // Map MỖI item gốc thành 1 productItem riêng, KHÔNG gộp
+        setProductItems(parsedItems.map((item: any) => ({
+          name: item.name || item.product_name || "Hàng hóa",
+          weight: Number(item.weight) > 0 ? Number(item.weight) : 1000,
+          quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+          length: Number(item.length) > 0 ? Number(item.length) : 10,
+          width: Number(item.width) > 0 ? Number(item.width) : 10,
+          height: Number(item.height) > 0 ? Number(item.height) : 10,
+        })));
       } else {
         setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }]);
-        // weight auto-calculated from productItems (1 * 1000g)
       }
       setSuccess(false);
       setCreatedOrderCode("");
@@ -617,7 +630,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       const fromDistrictId = selectedShop?.district_id || 1490;
       const data = await callGHN('get_services', { fromDistrictId, toDistrictId, shopId: selectedShopId || undefined });
       setServices(data || []);
-      if (data?.length > 0) setServiceTypeId(String(data[0].service_type_id));
+      if (data?.length > 0) {
+        // Đơn nặng (≥20kg) → ưu tiên service_type_id = 5 (Hàng nặng)
+        const preferHeavy = isOverweight;
+        const heavySvc = data.find((s: GHNService) => s.service_type_id === 5);
+        const chosen = preferHeavy && heavySvc ? heavySvc : data[0];
+        console.log('[GHN Service Auto-select]', { preferHeavy, totalKg: totalItemWeight / 1000, chosenServiceId: chosen.service_id, chosenTypeId: chosen.service_type_id, available: data.map((s: GHNService) => ({ id: s.service_id, type: s.service_type_id, name: s.short_name })) });
+        setServiceTypeId(String(chosen.service_type_id));
+      }
     } catch (e) { console.error(e); } finally { setLoadingServices(false); }
   };
 
@@ -1200,7 +1220,22 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
             {/* ===== 5. GÓI DỊCH VỤ ===== */}
             <div className="px-6 py-5 border-b">
-              <h3 className="text-sm font-bold mb-3">Gói dịch vụ</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold">Gói dịch vụ</h3>
+                {serviceTypeId && (
+                  <Badge variant={serviceTypeId === "5" ? "default" : "secondary"} className="text-xs">
+                    {serviceTypeId === "5" ? "📦 Hàng nặng (Service 5)" : `📮 Hàng nhẹ (Service ${serviceTypeId})`}
+                  </Badge>
+                )}
+              </div>
+              {isOverweight && serviceTypeId && serviceTypeId !== "5" && (
+                <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                  <div className="flex items-center gap-1.5">
+                    <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>⚠ Đơn ≥ 20kg ({(totalItemWeight / 1000).toFixed(1)}kg) nhưng đang dùng dịch vụ <strong>Hàng nhẹ</strong> → cước GHN có thể sai. Hãy chọn <strong>Hàng nặng</strong> nếu khả dụng.</span>
+                  </div>
+                </div>
+              )}
               {loadingServices ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
                   <Loader2 className="h-4 w-4 animate-spin" /> Đang tải dịch vụ...
@@ -1319,6 +1354,20 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <span>Cước GHN cuối cùng có thể chênh lệch nhẹ tùy theo thực tế cân/đo tại bưu cục</span>
               </div>
+
+              {isOverweight && productItems.every(p => p.length === 10 && p.width === 10 && p.height === 10) && (
+                <div className="flex gap-2 rounded-md bg-destructive/10 border border-destructive/40 p-2.5 text-xs text-destructive">
+                  <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <span><strong>Đơn nặng dùng kích thước mặc định 10×10×10cm</strong> → cước có thể sai lớn. Vui lòng nhập kích thước thực của từng kiện.</span>
+                </div>
+              )}
+
+              {serviceTypeId && (
+                <div className="flex gap-2 rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
+                  <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <span>Dịch vụ tính cước: <strong className="text-foreground">{serviceTypeId === "5" ? "Hàng nặng" : "Hàng nhẹ"}</strong> (type {serviceTypeId})</span>
+                </div>
+              )}
 
               <Separator />
 

@@ -79,12 +79,12 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   useEffect(() => { setInsuranceValue(codAmount); }, [codAmount]);
 
   // Multi-product items
-  const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number }>>([
-    { name: "", weight: 200, quantity: 1 }
+  const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number; length: number; width: number; height: number }>>([
+    { name: "", weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }
   ]);
 
   const addProductItem = () => {
-    setProductItems(prev => [...prev, { name: "", weight: 200, quantity: 1 }]);
+    setProductItems(prev => [...prev, { name: "", weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }]);
   };
 
   const removeProductItem = (index: number) => {
@@ -119,6 +119,19 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const prefillDistrictIdRef = useRef<string>("");
   const prefillWardCodeRef = useRef<string>("");
   const prefillServiceTypeIdRef = useRef<string>("");
+
+  // Heavy cargo detection
+  const isOverweight = totalItemWeight >= 20000;
+  const isHeavyCargo = serviceTypeId === "5" || isOverweight;
+  const heavyCargoCalc = isHeavyCargo && productItems.length > 0 ? {
+    totalWeight: totalItemWeight,
+    maxLength: Math.max(...productItems.map(p => p.length)),
+    maxWidth: Math.max(...productItems.map(p => p.width)),
+    sumHeight: productItems.reduce((sum, p) => sum + p.height * p.quantity, 0),
+  } : null;
+  const effectiveDims = isHeavyCargo && heavyCargoCalc
+    ? { length: heavyCargoCalc.maxLength, width: heavyCargoCalc.maxWidth, height: heavyCargoCalc.sumHeight }
+    : { length, width, height };
 
   // Address suggestions
   const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
@@ -166,15 +179,35 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       }
       
       // Pre-fill products from raw items
-      const items = raw.items;
-      if (items && Array.isArray(items) && items.length > 0) {
-        setProductItems(items.map((it: any) => ({
-          name: it.name || "",
-          weight: it.weight || 200,
-          quantity: it.quantity || 1,
+      let parsedItems: any[] = [];
+      try {
+        const rawItems = raw.items;
+        if (Array.isArray(rawItems)) parsedItems = rawItems;
+        else if (typeof rawItems === 'string' && rawItems.trim()) {
+          const p = JSON.parse(rawItems);
+          if (Array.isArray(p)) parsedItems = p;
+        }
+      } catch (err) {
+        console.warn('[GHN Edit] Parse items failed:', err);
+      }
+      if (parsedItems.length > 0) {
+        setProductItems(parsedItems.map((it: any) => ({
+          name: it.name || "Hàng hóa",
+          weight: Number(it.weight) > 0 ? Number(it.weight) : 1000,
+          quantity: Number(it.quantity) > 0 ? Number(it.quantity) : 1,
+          length: Number(it.length) > 0 ? Number(it.length) : 10,
+          width: Number(it.width) > 0 ? Number(it.width) : 10,
+          height: Number(it.height) > 0 ? Number(it.height) : 10,
         })));
       } else {
-        setProductItems([{ name: raw.content || "Hàng hóa", weight: raw.weight || 200, quantity: 1 }]);
+        setProductItems([{
+          name: raw.content || "Hàng hóa",
+          weight: raw.weight || 1000,
+          quantity: 1,
+          length: raw.length || 10,
+          width: raw.width || 10,
+          height: raw.height || 10,
+        }]);
       }
 
       setFeeDetail(null);
@@ -421,7 +454,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         setServiceTypeId(savedServiceTypeId);
         prefillServiceTypeIdRef.current = ""; // Only use once
       } else if (data?.length > 0) {
-        setServiceTypeId(String(data[0].service_type_id));
+        // Đơn nặng → ưu tiên Service 5 nếu có
+        const heavySvc = data.find((s: GHNService) => s.service_type_id === 5);
+        const chosen = isOverweight && heavySvc ? heavySvc : data[0];
+        console.log('[GHN Edit Service Auto-select]', { isOverweight, totalKg: totalItemWeight / 1000, chosenTypeId: chosen.service_type_id });
+        setServiceTypeId(String(chosen.service_type_id));
       }
     } catch (e) { console.error(e); } finally { setLoadingServices(false); }
   };
@@ -447,7 +484,10 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           from_district_id: selectedShop?.district_id,
           to_district_id: parseInt(districtId),
           to_ward_code: wardCode,
-          weight, length, width, height,
+          weight: totalItemWeight || weight,
+          length: effectiveDims.length,
+          width: effectiveDims.width,
+          height: effectiveDims.height,
           insurance_value: insuranceValue,
           cod_value: codAmount,
           cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
@@ -455,6 +495,9 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
             name: p.name || "Hàng hóa",
             quantity: p.quantity,
             weight: p.weight,
+            length: p.length,
+            width: p.width,
+            height: p.height,
           })),
         }
       });
@@ -487,13 +530,16 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           to_address: toAddress,
           to_district_id: parseInt(districtId),
           to_ward_code: wardCode,
-          weight, length, width, height,
+          weight: totalItemWeight || weight,
+          length: effectiveDims.length,
+          width: effectiveDims.width,
+          height: effectiveDims.height,
           note,
           required_note: requiredNote,
           content: itemContent,
           insurance_value: insuranceValue,
           cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
-          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight })),
+          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height })),
         }
       });
 
@@ -635,7 +681,18 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
 
             {/* THÔNG TIN SẢN PHẨM */}
             <div className="px-6 py-5 border-b">
-              <h3 className="text-sm font-bold mb-3">Thông tin sản phẩm</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold">Thông tin sản phẩm</h3>
+                {isOverweight && <Badge variant="destructive" className="text-xs">⚠ Hàng nặng ≥ 20kg</Badge>}
+              </div>
+              {isOverweight && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 mb-3">
+                  <div className="flex items-center gap-1.5">
+                    <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>Tổng KL ≥ 20kg ({(totalItemWeight / 1000).toFixed(1)}kg) → <strong>Hàng nặng</strong>. Vui lòng điền kích thước (Dài/Rộng/Cao) từng kiện.</span>
+                  </div>
+                </div>
+              )}
               <div className="space-y-3">
                 {productItems.map((item, index) => (
                   <div key={index} className="rounded-lg border p-4 space-y-3">
@@ -661,6 +718,20 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                         <Input type="number" value={item.quantity} onChange={e => updateProductItem(index, 'quantity', parseInt(e.target.value) || 1)} min={1} className="text-sm" />
                       </div>
                     </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
+                        <Input type="number" value={item.length} onChange={e => updateProductItem(index, 'length', parseInt(e.target.value) || 0)} className="text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
+                        <Input type="number" value={item.width} onChange={e => updateProductItem(index, 'width', parseInt(e.target.value) || 0)} className="text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
+                        <Input type="number" value={item.height} onChange={e => updateProductItem(index, 'height', parseInt(e.target.value) || 0)} className="text-sm" />
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -675,25 +746,37 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                   <div className="grid grid-cols-5 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={totalItemWeight || weight} readOnly className="text-sm bg-muted cursor-not-allowed" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Dài (cm)</Label>
-                      <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxLength : length} onChange={e => setLength(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Rộng (cm)</Label>
-                      <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxWidth : width} onChange={e => setWidth(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Cao (cm)</Label>
-                      <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.sumHeight : height} onChange={e => setHeight(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm text-muted-foreground">KL quy đổi</Label>
-                      <div className="text-sm font-medium pt-2">{Math.ceil(length * width * height / 5000 * 1000)}</div>
+                      <div className="text-sm font-medium pt-2">{Math.ceil(effectiveDims.length * effectiveDims.width * effectiveDims.height / 5)}</div>
                     </div>
                   </div>
+                  {isHeavyCargo && heavyCargoCalc && (
+                    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                      <div className="flex items-center gap-1.5 font-medium mb-1">
+                        <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                        Hàng nặng (Service 5): GHN tính cước từ kích thước mỗi kiện
+                      </div>
+                      <div className="ml-5 space-y-0.5">
+                        <div>Tổng KL: <strong>{(heavyCargoCalc.totalWeight / 1000).toFixed(1)}kg</strong></div>
+                        <div>Kích thước tính: <strong>{heavyCargoCalc.maxLength}×{heavyCargoCalc.maxWidth}×{heavyCargoCalc.sumHeight} cm</strong> (Max D × Max R × Tổng C)</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -727,7 +810,22 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
 
             {/* GÓI DỊCH VỤ */}
             <div className="px-6 py-5 border-b">
-              <h3 className="text-sm font-bold mb-3">Gói dịch vụ</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold">Gói dịch vụ</h3>
+                {serviceTypeId && (
+                  <Badge variant={serviceTypeId === "5" ? "default" : "secondary"} className="text-xs">
+                    {serviceTypeId === "5" ? "📦 Hàng nặng (Service 5)" : `📮 Hàng nhẹ (Service ${serviceTypeId})`}
+                  </Badge>
+                )}
+              </div>
+              {isOverweight && serviceTypeId && serviceTypeId !== "5" && (
+                <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                  <div className="flex items-center gap-1.5">
+                    <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>⚠ Đơn ≥ 20kg ({(totalItemWeight / 1000).toFixed(1)}kg) nhưng đang dùng <strong>Hàng nhẹ</strong> → cước có thể sai. Hãy chọn <strong>Hàng nặng</strong> nếu khả dụng.</span>
+                  </div>
+                </div>
+              )}
               {loadingServices ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-4"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải dịch vụ...</div>
               ) : services.length === 0 ? (
@@ -794,6 +892,25 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                 <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <span>Tổng phí đã bao gồm phụ phí xăng dầu 10% giá cước vận chuyển</span>
               </div>
+
+              <div className="flex gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-300">
+                <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <span>Cước GHN cuối cùng có thể chênh lệch nhẹ tùy theo thực tế cân/đo tại bưu cục</span>
+              </div>
+
+              {isOverweight && productItems.every(p => p.length === 10 && p.width === 10 && p.height === 10) && (
+                <div className="flex gap-2 rounded-md bg-destructive/10 border border-destructive/40 p-2.5 text-xs text-destructive">
+                  <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <span><strong>Đơn nặng dùng kích thước mặc định 10×10×10cm</strong> → cước có thể sai lớn. Hãy nhập kích thước thực từng kiện.</span>
+                </div>
+              )}
+
+              {serviceTypeId && (
+                <div className="flex gap-2 rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
+                  <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <span>Dịch vụ tính cước: <strong className="text-foreground">{serviceTypeId === "5" ? "Hàng nặng" : "Hàng nhẹ"}</strong> (type {serviceTypeId})</span>
+                </div>
+              )}
 
               <Separator />
 
