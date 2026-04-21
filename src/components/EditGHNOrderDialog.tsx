@@ -810,7 +810,22 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
 
             {/* GÓI DỊCH VỤ */}
             <div className="px-6 py-5 border-b">
-              <h3 className="text-sm font-bold mb-3">Gói dịch vụ</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold">Gói dịch vụ</h3>
+                {serviceTypeId && (
+                  <Badge variant={serviceTypeId === "5" ? "default" : "secondary"} className="text-xs">
+                    {serviceTypeId === "5" ? "📦 Hàng nặng (Service 5)" : `📮 Hàng nhẹ (Service ${serviceTypeId})`}
+                  </Badge>
+                )}
+              </div>
+              {isOverweight && serviceTypeId && serviceTypeId !== "5" && (
+                <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                  <div className="flex items-center gap-1.5">
+                    <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>⚠ Đơn ≥ 20kg ({(totalItemWeight / 1000).toFixed(1)}kg) nhưng đang dùng <strong>Hàng nhẹ</strong> → cước có thể sai. Hãy chọn <strong>Hàng nặng</strong> nếu khả dụng.</span>
+                  </div>
+                </div>
+              )}
               {loadingServices ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-4"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải dịch vụ...</div>
               ) : services.length === 0 ? (
@@ -877,6 +892,25 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                 <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <span>Tổng phí đã bao gồm phụ phí xăng dầu 10% giá cước vận chuyển</span>
               </div>
+
+              <div className="flex gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-300">
+                <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <span>Cước GHN cuối cùng có thể chênh lệch nhẹ tùy theo thực tế cân/đo tại bưu cục</span>
+              </div>
+
+              {isOverweight && productItems.every(p => p.length === 10 && p.width === 10 && p.height === 10) && (
+                <div className="flex gap-2 rounded-md bg-destructive/10 border border-destructive/40 p-2.5 text-xs text-destructive">
+                  <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <span><strong>Đơn nặng dùng kích thước mặc định 10×10×10cm</strong> → cước có thể sai lớn. Hãy nhập kích thước thực từng kiện.</span>
+                </div>
+              )}
+
+              {serviceTypeId && (
+                <div className="flex gap-2 rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
+                  <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <span>Dịch vụ tính cước: <strong className="text-foreground">{serviceTypeId === "5" ? "Hàng nặng" : "Hàng nhẹ"}</strong> (type {serviceTypeId})</span>
+                </div>
+              )}
 
               <Separator />
 
