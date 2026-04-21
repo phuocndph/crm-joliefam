@@ -302,22 +302,35 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       setInsuranceValue(order.total_amount || 0);
       
       setNote(`Shop: Chăn ga gối Joliefam | Đơn hàng ${displayNum}`);
-      const parsedItems = Array.isArray(order.items) ? order.items : [];
+      // Parse order.items safely (supports array OR JSON string)
+      let parsedItems: any[] = [];
+      try {
+        const raw = order.items;
+        if (Array.isArray(raw)) {
+          parsedItems = raw;
+        } else if (typeof raw === 'string' && raw.trim()) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) parsedItems = parsed;
+        } else if (raw && typeof raw === 'object') {
+          parsedItems = [raw];
+        }
+      } catch (err) {
+        console.warn('[GHN] Failed to parse order.items, falling back to default:', err);
+        parsedItems = [];
+      }
+
       if (parsedItems.length > 0) {
-        const summary = parsedItems.map((item: any) => item.name).join(' - ');
-        const totalQty = parsedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
-        setProductItems([{
-          name: summary,
-          weight: 1000,
-          quantity: 1,
-          length: 10,
-          width: 10,
-          height: 10
-        }]);
-        // Ước tính ~1kg/sản phẩm: tổng KL = totalQty × 1000g (auto-calc từ productItems)
+        // Map MỖI item gốc thành 1 productItem riêng, KHÔNG gộp
+        setProductItems(parsedItems.map((item: any) => ({
+          name: item.name || item.product_name || "Hàng hóa",
+          weight: Number(item.weight) > 0 ? Number(item.weight) : 1000,
+          quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+          length: Number(item.length) > 0 ? Number(item.length) : 10,
+          width: Number(item.width) > 0 ? Number(item.width) : 10,
+          height: Number(item.height) > 0 ? Number(item.height) : 10,
+        })));
       } else {
         setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }]);
-        // weight auto-calculated from productItems (1 * 1000g)
       }
       setSuccess(false);
       setCreatedOrderCode("");
