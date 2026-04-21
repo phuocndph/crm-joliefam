@@ -1121,15 +1121,15 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxLength : length} onChange={e => setLength(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxWidth : width} onChange={e => setWidth(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.sumHeight : height} onChange={e => setHeight(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                      <Label className="text-sm text-muted-foreground">KL quy đổi (gram)</Label>
