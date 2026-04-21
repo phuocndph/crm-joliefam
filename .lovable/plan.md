@@ -1,51 +1,74 @@
 
 
-## Còn 3 vấn đề tồn đọng
+## Phân tích lỗi tính giá cước GHN khi tạo đơn
 
-### 1. Mismatch còn sót: `GYKTLTF9` link sai sang đơn 2601 (đáng ra là 2600)
-- `internal_order_code='2600'` nhưng **không có đơn 2600** trong DB nữa (có thể đã bị xoá/đổi số).
-- Đang link sai sang đơn 2601 từ trước khi migration chạy. Fix 4 không bắt được vì khi check `match_count=0` (không có đơn 2600) → không update.
-- **Hành động**: Set `order_id = NULL` cho record này (vì không tìm được đơn đúng), để user gán thủ công.
+### 4 nguyên nhân khiến cước tính sai
 
-### 2. 4 record có đủ điều kiện link nhưng vẫn `NULL`
-- `GYC4L4DE → 2161`, `GYC4LTBX → 2162`, `GYUH4DWT → 2084`, `GYVF7APP → 2084`
-- Cả 4 đều có **đúng 1 đơn match** nhưng `order_id` vẫn `NULL` (Fix 4 trước có thể bỏ sót do điều kiện `OR` lồng nhau).
-- **Hành động**: Re-run cleanup đơn giản hơn cho các record `order_id IS NULL`.
+**Nguyên nhân 1 — Hàng nặng (≥20kg / Service 5): KHÔNG truyền kích thước đã tính** (`CreateGHNOrderDialog.tsx` line 268-274, 638)
 
-### 3. Duplicate `display_order_number = 2248` (Fix 5 trong plan trước chưa xử lý)
-- 2 đơn khác khách hàng cùng số `2248`:
-  - `ORD-1761796292919` — KH `9a9b64c5...` — 5,250,000đ
-  - `ORD-1761967106633` — KH `6d1888bc...` — 6,900,000đ
-- Hiện không có mã GHN nào dùng số `2248` → tạm thời an toàn. Nhưng nếu sau này có mã GHN `_2248p` thì trigger sẽ KHÔNG link (vì `count=2`) → user phải gán tay.
-- **Hành động**: Tạo cảnh báo UI ở trang đơn hàng khi phát hiện duplicate, hoặc để user tự sửa số đơn 1 trong 2.
+Khi đơn là hàng nặng, code đã tính sẵn `heavyCargoCalc` = {Max(Dài) × Max(Rộng) × Sum(Cao)} đúng theo memory. Nhưng khi gọi `calculate_fee` và `create_order`, code vẫn gửi `length, width, height` từ state thủ công ban đầu (mặc định 30×20×10) → **GHN tính cước theo kích thước nhỏ → cước thấp giả**, hoặc khi tạo đơn thật thì GHN dùng items để recalc → ra cước cao hơn nhiều so với màn hình tính cước.
+
+→ Hậu quả: số tiền hiển thị `feeDetail.total` ≠ cước thực GHN trừ.
+
+**Nguyên nhân 2 — `weight` truyền vào fee là KL thực, không phải KL tính cước** (line 638)
+
+Code gửi `weight: displayWeight` (KL thực) nhưng đã tính sẵn `effectiveWeightGram = max(displayWeight, dimensionalWeight)`. GHN API yêu cầu truyền KL thực + Dài/Rộng/Cao và **GHN tự quy đổi**, nên về lý thuyết OK. NHƯNG với hàng nặng (Service 5), GHN tính theo `items[].weight × quantity` → nếu items có `weight` nhỏ/sai, cước sai.
+
+Cụ thể: ở line 304-311 (auto-fill khi mở dialog), `productItems` được set với `weight: 1000` cho **toàn bộ summary** thay vì từng item → tổng KL = 1kg dù đơn 5 sản phẩm. Người dùng phải sửa tay, nếu quên sẽ tính cước sai.
+
+**Nguyên nhân 3 — `cod_value` thay vì `cod_amount`** (line 640)
+
+API GHN `/v2/shipping-order/fee` nhận tham số `cod_value` ✓ đúng — không sai chỗ này.
+Nhưng `/v2/shipping-order/create` lại nhận `cod_amount` (line 663) ✓ — đúng cho create.
+**Vấn đề**: 2 tên khác nhau cùng nghĩa, dễ nhầm khi đối chiếu fee vs reality.
+
+**Nguyên nhân 4 — `insurance_value` ảnh hưởng cước nhưng không được validate** (line 639, 663)
+
+Khi user nhập `insurance_value` lớn (>1tr), GHN tính thêm phí bảo hiểm. Nhưng khi tạo đơn thật, `insurance_value` mặc định `0` (state line 170) → user thường quên nhập → cước hiển thị (có insurance) ≠ cước thực (không insurance) hoặc ngược lại.
 
 ### Giải pháp
 
-**Migration mới** (`fix_remaining_ghn_links.sql`):
+**Fix 1 — Truyền đúng kích thước hàng nặng vào fee/create** (`CreateGHNOrderDialog.tsx` + `EditGHNOrderDialog.tsx`)
 
-```sql
--- Sửa GYKTLTF9: clear link sai (không có đơn 2600 để link đến)
-UPDATE ghn_tracking 
-SET order_id = NULL 
-WHERE ghn_order_code = 'GYKTLTF9' 
-  AND order_id = '39ed0bcf-8d29-4b2e-83f3-36e17c910f71';
+```typescript
+// Helper: chọn kích thước hiệu lực
+const effectiveDims = isHeavyCargo && heavyCargoCalc
+  ? { length: heavyCargoCalc.maxLength, width: heavyCargoCalc.maxWidth, height: heavyCargoCalc.sumHeight }
+  : { length, width, height };
 
--- Re-link 4 record bị bỏ sót: chỉ xét NULL, exact 1 match
-UPDATE ghn_tracking gt
-SET order_id = (
-  SELECT o.id FROM orders o 
-  WHERE o.display_order_number = gt.internal_order_code 
-  LIMIT 1
-)
-WHERE gt.order_id IS NULL
-  AND gt.internal_order_code ~ '^[0-9]+$'
-  AND (SELECT COUNT(*) FROM orders WHERE display_order_number = gt.internal_order_code) = 1;
+// calculate_fee
+weight: displayWeight, ...effectiveDims,
+
+// create_order  
+weight: displayWeight, ...effectiveDims,
 ```
 
-**UI cảnh báo duplicate** (`src/pages/OrderManagement.tsx`):
-- Thêm banner cảnh báo nhỏ ở đầu trang khi `useOrders` phát hiện 2+ đơn có cùng `display_order_number`. Hiển thị danh sách đơn trùng để user sửa.
+Cũng cập nhật UI hiển thị: khi hàng nặng, ô Dài/Rộng/Cao trong "Thông tin đơn hàng" auto-fill từ `heavyCargoCalc` và disable (read-only) để user thấy chính xác con số GHN dùng.
 
-### Phạm vi
-- 1 migration (sửa data còn sót)
-- `src/pages/OrderManagement.tsx` (banner cảnh báo duplicate)
+**Fix 2 — Phân bổ KL khi auto-fill từ đơn nhiều sản phẩm** (line 297-317)
+
+Hiện gộp tất cả thành 1 dòng `weight: 1000`. Sửa thành: tạo nhiều `productItems`, mỗi item giữ KL riêng hoặc ít nhất `weight: 1000 * totalQty / items.length`. Hoặc đơn giản hơn: set `weight: 1000`, `quantity: totalQty` để tổng KL = `1000 × totalQty` (gram) thay vì cố định 1kg.
+
+**Fix 3 — Cảnh báo khi feeDetail dùng input khác với create payload**
+
+Thêm useEffect theo dõi `length/width/height/weight/insurance_value/codAmount`: nếu thay đổi sau khi tính cước → reset `feeDetail = null` và `feeStatus = "idle"` + hiển thị badge "Cần tính lại cước". Hiện đã có dependency array (line 626) nhưng chỉ debounce 500ms — user click "Tạo đơn" trong khi đang debounce sẽ submit với fee cũ.
+
+Thêm guard ở `handleSubmit`:
+```typescript
+if (feeStatus !== "done" || loadingFee) {
+  toast({ title: "Vui lòng đợi tính cước xong", variant: "destructive" });
+  return;
+}
+```
+
+**Fix 4 — Auto-fill `insurance_value` từ `codAmount`** 
+
+Khi `codAmount` thay đổi và `insuranceValue === 0`, set `insuranceValue = codAmount` (giống pattern `EditGHNOrderDialog.tsx` line 146 đã làm). Tránh user quên nhập → cước fee bị thấp giả → khi GHN trừ cước thật cao hơn.
+
+### Phạm vi thay đổi
+- `src/components/CreateGHNOrderDialog.tsx` — Fix 1, 2, 3, 4
+- `src/components/EditGHNOrderDialog.tsx` — Fix 1, 3 (đã có Fix 4)
+
+### Kết quả
+Cước hiển thị trên dialog = cước GHN thực sự trừ khi tạo đơn. Loại bỏ hoàn toàn chênh lệch do truyền sai kích thước hàng nặng hoặc submit khi fee chưa cập nhật.
 
