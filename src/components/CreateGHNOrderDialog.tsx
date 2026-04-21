@@ -1220,7 +1220,22 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
             {/* ===== 5. GÓI DỊCH VỤ ===== */}
             <div className="px-6 py-5 border-b">
-              <h3 className="text-sm font-bold mb-3">Gói dịch vụ</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold">Gói dịch vụ</h3>
+                {serviceTypeId && (
+                  <Badge variant={serviceTypeId === "5" ? "default" : "secondary"} className="text-xs">
+                    {serviceTypeId === "5" ? "📦 Hàng nặng (Service 5)" : `📮 Hàng nhẹ (Service ${serviceTypeId})`}
+                  </Badge>
+                )}
+              </div>
+              {isOverweight && serviceTypeId && serviceTypeId !== "5" && (
+                <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                  <div className="flex items-center gap-1.5">
+                    <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>⚠ Đơn ≥ 20kg ({(totalItemWeight / 1000).toFixed(1)}kg) nhưng đang dùng dịch vụ <strong>Hàng nhẹ</strong> → cước GHN có thể sai. Hãy chọn <strong>Hàng nặng</strong> nếu khả dụng.</span>
+                  </div>
+                </div>
+              )}
               {loadingServices ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
                   <Loader2 className="h-4 w-4 animate-spin" /> Đang tải dịch vụ...
