@@ -309,14 +309,14 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         setProductItems([{
           name: summary,
           weight: 1000,
-          quantity: Math.max(1, totalQty),
-          length: 30,
-          width: 20,
+          quantity: 1,
+          length: 10,
+          width: 10,
           height: 10
         }]);
         // Ước tính ~1kg/sản phẩm: tổng KL = totalQty × 1000g (auto-calc từ productItems)
       } else {
-        setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
+        setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }]);
         // weight auto-calculated from productItems (1 * 1000g)
       }
       setSuccess(false);
