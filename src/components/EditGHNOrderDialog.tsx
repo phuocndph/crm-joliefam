@@ -120,6 +120,19 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const prefillWardCodeRef = useRef<string>("");
   const prefillServiceTypeIdRef = useRef<string>("");
 
+  // Heavy cargo detection
+  const isOverweight = totalItemWeight >= 20000;
+  const isHeavyCargo = serviceTypeId === "5" || isOverweight;
+  const heavyCargoCalc = isHeavyCargo && productItems.length > 0 ? {
+    totalWeight: totalItemWeight,
+    maxLength: Math.max(...productItems.map(p => p.length)),
+    maxWidth: Math.max(...productItems.map(p => p.width)),
+    sumHeight: productItems.reduce((sum, p) => sum + p.height * p.quantity, 0),
+  } : null;
+  const effectiveDims = isHeavyCargo && heavyCargoCalc
+    ? { length: heavyCargoCalc.maxLength, width: heavyCargoCalc.maxWidth, height: heavyCargoCalc.sumHeight }
+    : { length, width, height };
+
   // Address suggestions
   const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
