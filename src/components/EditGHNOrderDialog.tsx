@@ -79,12 +79,12 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   useEffect(() => { setInsuranceValue(codAmount); }, [codAmount]);
 
   // Multi-product items
-  const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number }>>([
-    { name: "", weight: 200, quantity: 1 }
+  const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number; length: number; width: number; height: number }>>([
+    { name: "", weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }
   ]);
 
   const addProductItem = () => {
-    setProductItems(prev => [...prev, { name: "", weight: 200, quantity: 1 }]);
+    setProductItems(prev => [...prev, { name: "", weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }]);
   };
 
   const removeProductItem = (index: number) => {
