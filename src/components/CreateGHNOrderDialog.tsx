@@ -1355,6 +1355,20 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 <span>Cước GHN cuối cùng có thể chênh lệch nhẹ tùy theo thực tế cân/đo tại bưu cục</span>
               </div>
 
+              {isOverweight && productItems.every(p => p.length === 10 && p.width === 10 && p.height === 10) && (
+                <div className="flex gap-2 rounded-md bg-destructive/10 border border-destructive/40 p-2.5 text-xs text-destructive">
+                  <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <span><strong>Đơn nặng dùng kích thước mặc định 10×10×10cm</strong> → cước có thể sai lớn. Vui lòng nhập kích thước thực của từng kiện.</span>
+                </div>
+              )}
+
+              {serviceTypeId && (
+                <div className="flex gap-2 rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
+                  <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <span>Dịch vụ tính cước: <strong className="text-foreground">{serviceTypeId === "5" ? "Hàng nặng" : "Hàng nhẹ"}</strong> (type {serviceTypeId})</span>
+                </div>
+              )}
+
               <Separator />
 
               <div className="space-y-1.5">
