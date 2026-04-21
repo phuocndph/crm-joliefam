@@ -179,11 +179,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   // Multi-product items
   const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number; length: number; width: number; height: number }>>([
-    { name: "", weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }
+    { name: "", weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }
   ]);
 
   const addProductItem = () => {
-    setProductItems(prev => [...prev, { name: "", weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
+    setProductItems(prev => [...prev, { name: "", weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }]);
   };
 
   const removeProductItem = (index: number) => {
