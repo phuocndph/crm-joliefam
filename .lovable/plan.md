@@ -1,92 +1,135 @@
 
+Mình đã đối chiếu code hiện tại với log mới nhất, và đúng là có lý do để bạn “không thấy thay đổi gì”: các fix trước đã vào payload fee, nhưng luồng chọn dịch vụ và dữ liệu item mặc định vẫn làm GHN tính sai nên kết quả nhìn như cũ.
 
-## Lý do giá cước GHN tính trên dialog vẫn lệch với GHN thực tế
+## Nguyên nhân còn sót
 
-Sau khi đối chiếu giữa payload hiện tại (`CreateGHNOrderDialog.tsx`) và tài liệu API GHN (`/v2/shipping-order/fee` vs `/v2/shipping-order/create`), tìm ra **5 nguyên nhân** khiến cước hiển thị ≠ cước GHN trừ thật:
+### 1. Đơn nặng vẫn đang bị chọn nhầm sang dịch vụ nhẹ
+Trong `CreateGHNOrderDialog.tsx`, sau khi gọi `get_services`, code đang luôn chọn:
+- `data[0].service_type_id`
 
-### 1. Thiếu `items[]` khi gọi `calculate_fee` (NGUYÊN NHÂN CHÍNH)
-- Hiện `calculate_fee` chỉ gửi `weight + length + width + height` ở mức tổng package.
-- Nhưng `create_order` lại gửi kèm `items[]` (mỗi item có L/W/H/weight/quantity riêng).
-- Với **Service 5 (hàng nặng)**, GHN tính cước **dựa trên `items[]`** (weight × quantity của từng item, hoặc max dim từng item), KHÔNG dùng package dim.
-- Hậu quả: preview thấy cước thấp (vì dim 10×10×10 nhỏ) → khi tạo thật, GHN dùng items thật → cước cao hơn nhiều.
+Trong log hiện tại shop 20kg+ trả về:
+- `service_id: 53322`, `service_type_id: 2` = Hàng nhẹ
+- `service_id: 100039`, `service_type_id: 5` = Hàng nặng
 
-### 2. Thiếu `service_id` cho cước hàng nặng
-- Đang gửi `service_type_id: 5` (generic). 
-- API fee yêu cầu **`service_id`** (vd `100039`) để áp đúng `config_fee_id` của shop (mỗi shop có bảng giá hàng nặng riêng — log cho thấy `config_fee_id` thay đổi theo response).
-- Khi thiếu `service_id`, GHN tính theo bảng giá mặc định, không khớp với bảng giá của shop được chọn.
+Nhưng code lại auto-pick service đầu tiên, nên payload fee đang gửi:
+- `service_type_id: 2`
+- `service_id: 53322`
 
-### 3. `cod_failed_amount` không được gửi
-- UI có checkbox "Giao thất bại thu tiền" + ô nhập `codFailedAmount` (mặc định 20000).
-- Nhưng **không truyền** vào cả `calculate_fee` lẫn `create_order` → GHN tự tính phí giao thất bại theo policy mặc định → chênh lệch cước.
+Dù đơn là 70–72kg. Đây là sai lệch lớn nhất.
 
-### 4. `coupon` không được hỗ trợ
-- Nếu shop có coupon áp dụng tự động phía GHN, preview không phản ánh.
-- Tuy ít gặp, vẫn cần fetch `coupon` từ shop config để khớp.
+### 2. Dữ liệu sản phẩm đang bị gộp thành 1 kiện giả 10×10×10
+Khi prefill từ `order.items`, code hiện đang gộp toàn bộ đơn thành 1 dòng:
+- `quantity: 1`
+- `weight: 72000`
+- `length/width/height: 10/10/10`
 
-### 5. `pick_station_id` / `from_district_id` không truyền
-- `calculate_fee` thiếu `from_district_id`. GHN sẽ dùng district mặc định của shop, nhưng nếu shop có nhiều warehouse hoặc address khác, kết quả lệch.
-- Hiện trong `loadServices` đã có `fromDistrictId` nhưng KHÔNG truyền vào `calculate_fee`.
+Nghĩa là với đơn rất nặng, GHN vẫn nhận 1 kiện 72kg kích thước 10×10×10. Payload đã “đúng cấu trúc”, nhưng dữ liệu đầu vào vẫn sai thực tế nên cước vẫn sai.
 
----
+### 3. `order.items` chỉ đọc được khi là array, không parse khi là JSON string
+Trong project này nhiều chỗ khác đã parse:
+- `typeof order.items === 'string' ? JSON.parse(order.items) : order.items`
 
-## Giải pháp
+Nhưng `CreateGHNOrderDialog.tsx` hiện chỉ dùng:
+- `Array.isArray(order.items) ? order.items : []`
 
-### Fix 1 — Truyền `items[]` vào `calculate_fee` (`CreateGHNOrderDialog.tsx` line 636-649 + `EditGHNOrderDialog.tsx`)
+Nếu `order.items` đang lưu dạng string JSON thì dialog GHN bỏ qua toàn bộ item gốc, rồi rơi về default giả. Đây là thêm một lý do khiến bạn không thấy fee thay đổi đúng theo đơn thật.
 
-```typescript
-const data = await callGHN('calculate_fee', {
-  shopId: selectedShopId || undefined,
-  feeData: {
-    service_type_id: parseInt(serviceTypeId),
-    service_id: services.find(s => s.service_type_id === parseInt(serviceTypeId))?.service_id, // NEW
-    from_district_id: selectedShop?.district_id, // NEW
-    to_district_id: parseInt(districtId),
-    to_ward_code: wardCode,
-    weight: displayWeight,
-    length: effectiveDims.length,
-    width: effectiveDims.width,
-    height: effectiveDims.height,
-    insurance_value: insuranceValue,
-    cod_value: codAmount,
-    cod_failed_amount: codFailedEnabled ? codFailedAmount : 0, // NEW
-    items: productItems.map(p => ({  // NEW - khớp với create_order
-      name: p.name || "Hàng hóa",
-      quantity: p.quantity,
-      weight: p.weight,
-      length: p.length,
-      width: p.width,
-      height: p.height,
-    })),
-  }
-});
-```
+### 4. `EditGHNOrderDialog` vẫn chưa đồng bộ hoàn toàn
+Dialog sửa GHN vẫn còn:
+- default `length=30`, `width=20`
+- `items` không có `length/width/height`
+- chưa có heavy-cargo dimension logic như dialog tạo mới
 
-### Fix 2 — Truyền `cod_failed_amount` vào `create_order` (line 673-690)
+Nên dù dialog tạo đã sửa một phần, dialog sửa vẫn cho kết quả khác.
 
-```typescript
-cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
-```
+## Điều sẽ sửa
 
-### Fix 3 — Đảm bảo `EditGHNOrderDialog` cũng đồng bộ
-Áp dụng Fix 1 + Fix 2 cho `EditGHNOrderDialog.tsx` (kiểm tra payload tương tự).
+### A. Ưu tiên auto-chọn Service 5 khi đơn nặng
+Trong cả create/edit dialog:
+- nếu `isOverweight` hoặc `isHeavyCargo` thì ưu tiên service có `service_type_id === 5`
+- chỉ fallback sang service đầu tiên nếu shop đó thật sự không có Service 5
 
-### Fix 4 — Hiển thị cảnh báo nếu cước có thể lệch
-Thêm chú thích nhỏ dưới ô cước hiển thị: *"Cước GHN cuối cùng có thể chênh lệch nhẹ tùy theo thực tế cân/đo tại bưu cục"* — để user biết preview là chính xác cao nhưng không phải tuyệt đối.
+Kết quả:
+- đơn 70kg sẽ dùng `service_id 100039 / service_type_id 5`
+- không còn tính nhầm theo “Hàng nhẹ”
 
-### Fix 5 — Log payload + response để debug tiếp nếu vẫn lệch
-Trong `ghn-tracking/index.ts` action `calculate_fee`, log thêm `feeData` đầu vào để khi user báo lệch, ta đối chiếu được payload chính xác đã gửi.
+### B. Parse đúng `order.items` từ DB
+Trong `CreateGHNOrderDialog.tsx`:
+- hỗ trợ cả 2 dạng `order.items` là array hoặc JSON string
+- nếu parse lỗi thì mới fallback về default
 
-```typescript
-console.log('GHN fee request payload:', JSON.stringify(feeData));
-```
+Kết quả:
+- dialog sẽ lấy đúng danh sách sản phẩm gốc thay vì coi như không có item
 
----
+### C. Không gộp item thành 1 kiện giả nữa
+Khi mở dialog tạo GHN:
+- map từng item của đơn hàng thành từng `productItem`
+- mỗi item mặc định:
+  - `quantity: 1`
+  - `length: 10`
+  - `width: 10`
+  - `height: 10`
+- nhưng tổng quantity/weight phải phản ánh đúng đơn gốc, không bị “1 kiện 72kg”
 
-## Phạm vi thay đổi
-- `src/components/CreateGHNOrderDialog.tsx` — Fix 1, 2, 4
-- `src/components/EditGHNOrderDialog.tsx` — Fix 1, 2 (đồng bộ)
-- `supabase/functions/ghn-tracking/index.ts` — Fix 5 (log payload)
+Nếu item gốc không có weight/dims:
+- giữ default 1000g, 10×10×10 để user chỉnh
+- đồng thời hiển thị cảnh báo rằng đây chỉ là giá trị tạm
+
+### D. Cảnh báo rõ khi đơn nặng nhưng vẫn đang dùng dữ liệu placeholder
+Trong create dialog, nếu:
+- tổng cân nặng lớn
+- nhưng item dims vẫn toàn 10×10×10
+
+thì thêm badge/cảnh báo nổi bật:
+- “Đơn nặng đang dùng kích thước mặc định 10×10×10, cước GHN có thể sai lớn. Vui lòng nhập kích thước từng kiện.”
+
+Như vậy user sẽ thấy ngay lý do fee chưa đáng tin.
+
+### E. Đồng bộ `EditGHNOrderDialog`
+Áp dụng cùng logic cho dialog sửa:
+- parse item đầy đủ
+- item có `length/width/height`
+- heavy cargo calc
+- effective dimensions
+- auto chọn Service 5 cho đơn nặng
+- fee payload và update payload cùng một nguồn dữ liệu
+
+### F. Hiển thị rõ dịch vụ GHN đang được dùng để tính cước
+Trong phần “Gói dịch vụ” và sidebar phí:
+- hiển thị rõ service hiện tại là “Hàng nhẹ” hay “Hàng nặng”
+- nếu đơn ≥ 20kg mà service hiện tại không phải type 5 thì show cảnh báo đỏ
+
+Cái này giúp bạn nhìn phát biết hệ thống có đang dùng đúng luồng GHN chưa.
+
+## File sẽ cập nhật
+- `src/components/CreateGHNOrderDialog.tsx`
+- `src/components/EditGHNOrderDialog.tsx`
 
 ## Kết quả mong đợi
-Cước hiển thị trên dialog tạo/sửa GHN sẽ **khớp** với cước GHN thực sự trừ, đặc biệt với đơn hàng nặng (≥20kg) nơi GHN tính theo `items[]` thay vì package dim.
+Sau khi sửa:
+- đơn 20kg+ sẽ không còn bị auto tính bằng service nhẹ
+- fee preview sẽ thay đổi thấy rõ khi đổi item/dims thật
+- dialog sẽ không còn “trông như không có gì đổi” vì service hiện tại và cảnh báo placeholder được hiện rõ
+- create và edit GHN sẽ cho kết quả nhất quán hơn
 
+## Chi tiết kỹ thuật
+Các thay đổi chính:
+1. Thay `setServiceTypeId(String(data[0].service_type_id))` bằng logic chọn service ưu tiên theo trọng lượng.
+2. Parse `order.items` an toàn từ cả `array` và `string`.
+3. Prefill `productItems` từ item thật thay vì gộp summary thành 1 dòng.
+4. Bổ sung heavy-cargo logic đầy đủ cho dialog edit.
+5. Thêm UI warning khi fee đang dựa trên dữ liệu mặc định, không phải dữ liệu kiện thực.
+
+Sơ đồ logic mới:
+
+```text
+Load items from order
+  -> parse array/string
+  -> build productItems thực
+  -> compute total weight
+  -> if total >= 20kg
+       prefer service_type_id = 5
+       compute heavy dims from items
+       warn if item dims still placeholder
+  -> calculate_fee with matched service + item data thực
+```
