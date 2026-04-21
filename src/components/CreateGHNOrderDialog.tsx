@@ -273,6 +273,11 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     sumHeight: productItems.reduce((sum, p) => sum + p.height * p.quantity, 0),
   } : null;
 
+  // Effective dimensions sent to GHN: heavy cargo uses calculated package dims
+  const effectiveDims = isHeavyCargo && heavyCargoCalc
+    ? { length: heavyCargoCalc.maxLength, width: heavyCargoCalc.maxWidth, height: heavyCargoCalc.sumHeight }
+    : { length, width, height };
+
   // Address suggestions (Goong Maps) - inline
   const [addressSuggestions, setAddressSuggestions] = useState<Array<{ description: string; place_id: string; main_text: string; secondary_text: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -304,13 +309,12 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
         setProductItems([{
           name: summary,
           weight: 1000,
-          quantity: 1,
+          quantity: Math.max(1, totalQty),
           length: 30,
           width: 20,
           height: 10
         }]);
-        // Ước tính ~1kg/sản phẩm để auto-select shop chính xác hơn
-        // weight auto-calculated from productItems (totalQty * 1000g)
+        // Ước tính ~1kg/sản phẩm: tổng KL = totalQty × 1000g (auto-calc từ productItems)
       } else {
         setProductItems([{ name: `Đơn hàng ${displayNum}`, weight: 1000, quantity: 1, length: 30, width: 20, height: 10 }]);
         // weight auto-calculated from productItems (1 * 1000g)
@@ -623,7 +627,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       const timer = setTimeout(() => { calculateFee(); }, 500);
       return () => clearTimeout(timer);
     }
-  }, [districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount]);
+  }, [districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount, effectiveDims.length, effectiveDims.width, effectiveDims.height, displayWeight]);
 
   const calculateFee = async () => {
     if (!districtId || !wardCode || !serviceTypeId) return;
@@ -635,7 +639,10 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           service_type_id: parseInt(serviceTypeId),
           to_district_id: parseInt(districtId),
           to_ward_code: wardCode,
-          weight: displayWeight, length, width, height,
+          weight: displayWeight,
+          length: effectiveDims.length,
+          width: effectiveDims.width,
+          height: effectiveDims.height,
           insurance_value: insuranceValue,
           cod_value: codAmount,
         }
@@ -653,13 +660,24 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
       toast({ title: "Thiếu thông tin", description: "Vui lòng điền đầy đủ thông tin bắt buộc", variant: "destructive" });
       return;
     }
+    if (loadingFee || feeStatus === "loading") {
+      toast({ title: "Vui lòng đợi tính cước xong", description: "Hệ thống đang tính cước, vui lòng thử lại sau giây lát", variant: "destructive" });
+      return;
+    }
+    if (feeStatus !== "done" || !feeDetail) {
+      toast({ title: "Chưa có cước phí", description: "Vui lòng đợi hệ thống tính cước trước khi tạo đơn", variant: "destructive" });
+      return;
+    }
     setLoading(true);
     try {
       const data = await callGHN('create_order', {
         orderData: {
           to_name: toName, to_phone: toPhone, to_address: toAddress,
           to_district_id: parseInt(districtId), to_ward_code: wardCode,
-          weight: displayWeight, length, width, height,
+          weight: displayWeight,
+          length: effectiveDims.length,
+          width: effectiveDims.width,
+          height: effectiveDims.height,
           cod_amount: codAmount, insurance_value: insuranceValue,
           note, required_note: requiredNote, content: itemContent,
           payment_type_id: parseInt(paymentTypeId),
@@ -1103,15 +1121,15 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxLength : length} onChange={e => setLength(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxWidth : width} onChange={e => setWidth(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.sumHeight : height} onChange={e => setHeight(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                      <Label className="text-sm text-muted-foreground">KL quy đổi (gram)</Label>

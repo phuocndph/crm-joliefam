@@ -461,6 +461,10 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       toast({ title: "Thiếu thông tin", description: "Vui lòng điền đầy đủ thông tin bắt buộc", variant: "destructive" });
       return;
     }
+    if (loadingFee || feeStatus === "loading") {
+      toast({ title: "Vui lòng đợi tính cước xong", description: "Hệ thống đang tính cước, vui lòng thử lại sau giây lát", variant: "destructive" });
+      return;
+    }
     setLoading(true);
     try {
       // 1. Update order info
