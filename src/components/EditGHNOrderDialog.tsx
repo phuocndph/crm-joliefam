@@ -746,25 +746,37 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                   <div className="grid grid-cols-5 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
-                      <Input type="number" value={weight} onChange={e => setWeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={totalItemWeight || weight} readOnly className="text-sm bg-muted cursor-not-allowed" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Dài (cm)</Label>
-                      <Input type="number" value={length} onChange={e => setLength(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxLength : length} onChange={e => setLength(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Rộng (cm)</Label>
-                      <Input type="number" value={width} onChange={e => setWidth(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxWidth : width} onChange={e => setWidth(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Cao (cm)</Label>
-                      <Input type="number" value={height} onChange={e => setHeight(parseInt(e.target.value) || 0)} className="text-sm" />
+                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.sumHeight : height} onChange={e => setHeight(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm text-muted-foreground">KL quy đổi</Label>
-                      <div className="text-sm font-medium pt-2">{Math.ceil(length * width * height / 5000 * 1000)}</div>
+                      <div className="text-sm font-medium pt-2">{Math.ceil(effectiveDims.length * effectiveDims.width * effectiveDims.height / 5)}</div>
                     </div>
                   </div>
+                  {isHeavyCargo && heavyCargoCalc && (
+                    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                      <div className="flex items-center gap-1.5 font-medium mb-1">
+                        <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                        Hàng nặng (Service 5): GHN tính cước từ kích thước mỗi kiện
+                      </div>
+                      <div className="ml-5 space-y-0.5">
+                        <div>Tổng KL: <strong>{(heavyCargoCalc.totalWeight / 1000).toFixed(1)}kg</strong></div>
+                        <div>Kích thước tính: <strong>{heavyCargoCalc.maxLength}×{heavyCargoCalc.maxWidth}×{heavyCargoCalc.sumHeight} cm</strong> (Max D × Max R × Tổng C)</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
