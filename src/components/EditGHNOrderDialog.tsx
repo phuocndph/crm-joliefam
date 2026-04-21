@@ -166,15 +166,35 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       }
       
       // Pre-fill products from raw items
-      const items = raw.items;
-      if (items && Array.isArray(items) && items.length > 0) {
-        setProductItems(items.map((it: any) => ({
-          name: it.name || "",
-          weight: it.weight || 200,
-          quantity: it.quantity || 1,
+      let parsedItems: any[] = [];
+      try {
+        const rawItems = raw.items;
+        if (Array.isArray(rawItems)) parsedItems = rawItems;
+        else if (typeof rawItems === 'string' && rawItems.trim()) {
+          const p = JSON.parse(rawItems);
+          if (Array.isArray(p)) parsedItems = p;
+        }
+      } catch (err) {
+        console.warn('[GHN Edit] Parse items failed:', err);
+      }
+      if (parsedItems.length > 0) {
+        setProductItems(parsedItems.map((it: any) => ({
+          name: it.name || "Hàng hóa",
+          weight: Number(it.weight) > 0 ? Number(it.weight) : 1000,
+          quantity: Number(it.quantity) > 0 ? Number(it.quantity) : 1,
+          length: Number(it.length) > 0 ? Number(it.length) : 10,
+          width: Number(it.width) > 0 ? Number(it.width) : 10,
+          height: Number(it.height) > 0 ? Number(it.height) : 10,
         })));
       } else {
-        setProductItems([{ name: raw.content || "Hàng hóa", weight: raw.weight || 200, quantity: 1 }]);
+        setProductItems([{
+          name: raw.content || "Hàng hóa",
+          weight: raw.weight || 1000,
+          quantity: 1,
+          length: raw.length || 10,
+          width: raw.width || 10,
+          height: raw.height || 10,
+        }]);
       }
 
       setFeeDetail(null);
