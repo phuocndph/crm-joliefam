@@ -301,11 +301,6 @@ export default function OrderManagement() {
           setSelectedOrder(updatedOrder);
         }
       }
-      
-      toast({
-        title: "Thành công",
-        description: "Thanh toán đã được thêm thành công"
-      });
     } catch (error) {
       console.error('Error refreshing orders:', error);
     } finally {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -71,6 +71,7 @@ export function CreatePaymentForm({
   onSubmit 
 }: CreatePaymentFormProps) {
   const [loading, setLoading] = useState(false);
+  const submittedRef = useRef(false);
   const [managerId, setManagerId] = useState<string | null>(null);
   const [fetchedExpenses, setFetchedExpenses] = useState<number | null>(null);
   const [hasDeduction, setHasDeduction] = useState(false);
@@ -140,6 +141,12 @@ export function CreatePaymentForm({
   }, [watchedPaymentAmount, totalAmount, remainingAmount, totalPaid, form]);
 
   const handleSubmit = async (data: PaymentFormData) => {
+    // Double-submit protection: block if already submitted or in flight
+    if (submittedRef.current || loading) {
+      console.warn('⚠️ Payment submit blocked: already submitted or in flight');
+      return;
+    }
+    submittedRef.current = true;
     setLoading(true);
     try {
       const effectiveRemaining = remainingAmount - (hasDeduction ? deductionAmount : 0);
@@ -274,6 +281,8 @@ export function CreatePaymentForm({
       onClose();
     } catch (error: any) {
       console.error("❌ Error creating payment:", error);
+      // Allow retry if there was an error
+      submittedRef.current = false;
       toast({
         title: "Lỗi", 
         description: error.message || "Không thể tạo thanh toán",
