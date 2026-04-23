@@ -69,17 +69,22 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
       let paymentsData: any[] = [];
       
       if (orderIds.length > 0) {
-        const { data: payments, error: paymentsError } = await supabase
-          .from('order_payments')
-          .select('order_id, payment_amount, payment_date, payment_type')
-          .in('order_id', orderIds);
-        
-        if (paymentsError) {
-          console.error('❌ Error fetching payments:', paymentsError);
-        } else {
-          paymentsData = payments || [];
-          console.log(`💰 Fetched ${paymentsData.length} payments for ${orderIds.length} orders`);
+        // Chunk to avoid PostgREST URL length limits when there are many orders
+        const CHUNK_SIZE = 200;
+        for (let i = 0; i < orderIds.length; i += CHUNK_SIZE) {
+          const chunk = orderIds.slice(i, i + CHUNK_SIZE);
+          const { data: payments, error: paymentsError } = await supabase
+            .from('order_payments')
+            .select('order_id, payment_amount, payment_date, payment_type')
+            .in('order_id', chunk);
+          
+          if (paymentsError) {
+            console.error('❌ Error fetching payments chunk:', paymentsError);
+            throw paymentsError;
+          }
+          if (payments) paymentsData.push(...payments);
         }
+        console.log(`💰 Fetched ${paymentsData.length} payments for ${orderIds.length} orders (in ${Math.ceil(orderIds.length / CHUNK_SIZE)} chunk(s))`);
       }
       
       // Calculate total_paid for each order
