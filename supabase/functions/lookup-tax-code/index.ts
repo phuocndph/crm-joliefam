@@ -719,7 +719,14 @@ function parseRequestSegments(request: string): RequestSegment[] {
     const leadingBareQtyMatch = !leadingQtyMatch ? leadingText.match(/^(\d+)\s*$/) : null;
     // Also check beginning of fullChunk for "N product_name" pattern
     const fullChunkBareQtyMatch = !leadingQtyMatch && !leadingBareQtyMatch ? fullChunk.match(/^(\d+)\s+\S/) : null;
-    const chunkQtyMatch = chunk.match(/[x×]\s*(\d+)\s*$/) || chunk.match(qtyRegexes[0]) || chunk.match(qtyRegexes[1]);
+    // Quantity must come AFTER the size, with explicit "x" or "c" prefix.
+    // Strip the size from chunk first to avoid matching size dimensions as quantity.
+    const chunkWithoutSize = sizeMatch
+      ? chunk.replace(sizeMatch[0], ' ')
+      : chunk;
+    const chunkQtyMatch = chunkWithoutSize.match(/[x×]\s*(\d+)\s*$/)
+      || chunkWithoutSize.match(qtyRegexes[0])
+      || chunkWithoutSize.match(qtyRegexes[1]);
     
     
     
@@ -935,7 +942,8 @@ function filterProductsBySegments(products: any[], segments: RequestSegment[], c
       const cat  = (p.category || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
       const id   = (p.id || '').toString().toLowerCase();
-      return cats.some(c => cat.includes(c) || name.includes(c) || id.includes(c));
+      const desc = (p.description || '').toLowerCase();
+      return cats.some(c => cat.includes(c) || name.includes(c) || id.includes(c) || desc.includes(c));
     });
 
     // Step 2: If needs fabric and has material, narrow
@@ -945,7 +953,8 @@ function filterProductsBySegments(products: any[], segments: RequestSegment[], c
         const cat  = (p.category || '').toLowerCase();
         const name = (p.name || '').toLowerCase();
         const id   = (p.id || '').toString().toLowerCase();
-        return cat.includes(matLower) || name.includes(matLower) || id.includes(matLower);
+        const desc = (p.description || '').toLowerCase();
+        return cat.includes(matLower) || name.includes(matLower) || id.includes(matLower) || desc.includes(matLower);
       });
       if (narrowed.length > 0) segProducts = narrowed;
     }
@@ -957,7 +966,8 @@ function filterProductsBySegments(products: any[], segments: RequestSegment[], c
         const cat  = (p.category || '').toLowerCase();
         const name = (p.name || '').toLowerCase();
         const id   = (p.id || '').toString().toLowerCase();
-        return cat.includes(patLower) || name.includes(patLower) || id.includes(patLower);
+        const desc = (p.description || '').toLowerCase();
+        return cat.includes(patLower) || name.includes(patLower) || id.includes(patLower) || desc.includes(patLower);
       });
       if (narrowed.length > 0) segProducts = narrowed;
     }
@@ -979,7 +989,8 @@ function filterProductsBySegments(products: any[], segments: RequestSegment[], c
       const cat  = (p.category || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
       const id   = (p.id || '').toString().toLowerCase();
-      return allCats.some(c => cat.includes(c) || name.includes(c) || id.includes(c));
+      const desc = (p.description || '').toLowerCase();
+      return allCats.some(c => cat.includes(c) || name.includes(c) || id.includes(c) || desc.includes(c));
     });
     if (fallback.length > 0) return fallback;
     console.log(`Fallback also empty, returning full catalog`);
@@ -1047,7 +1058,8 @@ function filterProductsByCategory(products: any[], categories: string[], materia
     filtered = products.filter(p => {
       const cat = (p.category || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
-      return categories.some(pat => cat.includes(pat) || name.includes(pat));
+      const desc = (p.description || '').toLowerCase();
+      return categories.some(pat => cat.includes(pat) || name.includes(pat) || desc.includes(pat));
     });
   }
 
@@ -1055,7 +1067,8 @@ function filterProductsByCategory(products: any[], categories: string[], materia
     const materialFiltered = filtered.filter(p => {
       const cat = (p.category || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
-      return materials.some(mat => cat.includes(mat.toLowerCase()) || name.includes(mat.toLowerCase()));
+      const desc = (p.description || '').toLowerCase();
+      return materials.some(mat => cat.includes(mat.toLowerCase()) || name.includes(mat.toLowerCase()) || desc.includes(mat.toLowerCase()));
     });
     if (materialFiltered.length >= 30) filtered = materialFiltered;
   }
