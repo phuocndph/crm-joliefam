@@ -686,11 +686,20 @@ function parseRequestSegments(request: string): RequestSegment[] {
     const fullChunk = (leadingText + ' ' + chunk).trim();
 
     // Size
-    const sizeMatch = chunk.match(/(\d+\.?\d*)\s*[x×*]\s*(\d+\.?\d*)(?:\s*[x×*]\s*(\d+\.?\d*)\s*(p|f|cm)?)?/i);
+    // 3rd dimension MUST have unit (p/f/cm) OR be attached without space.
+    // This prevents "1m6x20 x10" being read as 3-dim size instead of "1m6x20" + qty 10.
+    const sizeMatch = chunk.match(
+      /(\d+\.?\d*)\s*[x×*]\s*(\d+\.?\d*)(?:[x×*](\d+\.?\d*)(p|f|cm)?|\s*[x×*]\s*(\d+\.?\d*)\s*(p|f|cm))?/i
+    );
     let size = '';
     if (sizeMatch) {
       const dims = [sizeMatch[1], sizeMatch[2]];
-      if (sizeMatch[3]) dims.push(sizeMatch[3] + (sizeMatch[4] ? 'cm' : ''));
+      // Group 3 = attached 3rd dim (e.g. "20x200x10cm"), Group 5 = spaced 3rd dim with required unit (e.g. "20 x 200 x 10cm")
+      const dim3 = sizeMatch[3] || sizeMatch[5];
+      const unit3 = sizeMatch[4] || sizeMatch[6];
+      if (dim3) {
+        dims.push(dim3 + (unit3 ? 'cm' : ''));
+      }
       size = dims.map(d => {
         const n = parseFloat(d.replace(/cm$/i, ''));
         if (d.match(/cm$/i)) return d;
@@ -701,10 +710,15 @@ function parseRequestSegments(request: string): RequestSegment[] {
 
     // Local material from chunk
     let localMaterial = '';
-    const localMatMatch = chunk.match(/\bt\s*(\d{3})\b/i);
-    if (localMatMatch) localMaterial = 'T' + localMatMatch[1];
-    for (const [re, name] of NAMED_MATERIALS) {
-      if (re.test(chunk)) { localMaterial = name; break; }
+    // PRIORITY: "chống thấm" overrides any other material
+    if (/\bchong\s*tham\b/i.test(chunk)) {
+      localMaterial = 'chống thấm';
+    } else {
+      const localMatMatch = chunk.match(/\bt\s*(\d{3})\b/i);
+      if (localMatMatch) localMaterial = 'T' + localMatMatch[1];
+      for (const [re, name] of NAMED_MATERIALS) {
+        if (re.test(chunk)) { localMaterial = name; break; }
+      }
     }
 
     // Local pattern from chunk (using smart detection)
@@ -768,7 +782,10 @@ function parseRequestSegments(request: string): RequestSegment[] {
     console.log(`  Section assign: "${seg.type}" pos=${segPos} → section=${section ? `${section.material}/${section.pattern} [${section.startIdx}-${section.endIdx}]` : 'NONE'} (already has material=${seg.material})`);
 
     if (!seg.material) {
-      if (section && section.material) {
+      // If chunk has "chong tham", use it as material override (highest priority)
+      if (/\bchong\s*tham\b/i.test(seg.rawText)) {
+        seg.material = 'chống thấm';
+      } else if (section && section.material) {
         seg.material = section.material;
       } else {
         // Global fallback
