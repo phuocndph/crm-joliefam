@@ -818,6 +818,26 @@ const TYPE_TO_CATEGORY: Record<string, string[]> = {
 };
 
 // Build dynamic TYPE_TO_CATEGORY from DB config JSON
+// Map technical TYPE keys to Vietnamese segment.type strings used by parseRequestSegments
+const SEGMENT_TYPE_ALIASES: Record<string, string[]> = {
+  'GA_CHUN':         ['ga chun', 'ga'],
+  'GA_TAM_PHU':      ['ga tấm phủ', 'ga phủ', 'ga'],
+  'CHAN_HE':         ['chăn hè chần', 'chăn hè'],
+  'VO_CHAN':         ['vỏ chăn', 'chăn'],
+  'VO_CHAN_CHAN':    ['vỏ chăn chần', 'chăn đông'],
+  'BAO_VE_NEM':      ['bảo vệ nệm', 'bảo vệ'],
+  'VO_GOI':          ['vỏ gối', 'gối'],
+  'RUOT_CHAN':       ['ruột chăn'],
+  'RUOT_GOI':        ['ruột gối'],
+  'TOPPER':          ['topper'],
+  'TAM_TRANG_TRI':   ['tấm trang trí'],
+  'VAY_GIUONG':      ['váy giường', 'váy'],
+  'KHAN':            ['khăn tắm', 'khăn'],
+  'DEM':             ['đệm'],
+  'DIVAN':           ['divan'],
+  'AO_CHOANG_TAM':   ['áo choàng'],
+};
+
 function buildTypeToCategory(configJson: string | null): Record<string, string[]> | null {
   if (!configJson) return null;
   try {
@@ -825,23 +845,74 @@ function buildTypeToCategory(configJson: string | null): Record<string, string[]
     const mapping: Record<string, string[]> = {};
     const typeToCat = parsed?.TYPE_TO_CATEGORY || parsed;
     if (!typeToCat || typeof typeToCat !== 'object') return null;
-    
+
     for (const key in typeToCat) {
       const entry = typeToCat[key];
-      if (!entry || !entry.categories) continue;
-      const normalizedCategories = entry.categories.map((cat: string) => cat.toLowerCase());
-      if (entry.exact_keywords && Array.isArray(entry.exact_keywords)) {
-        for (const kw of entry.exact_keywords) {
-          mapping[kw.toLowerCase()] = normalizedCategories;
+      if (!entry || typeof entry !== 'object') continue;
+
+      // 1) Collect main categories from level-1
+      const mainCats: string[] = Array.isArray(entry.categories)
+        ? entry.categories.map((c: string) => String(c).toLowerCase())
+        : [];
+
+      // 2) Collect categories from sub_types (merge into main set)
+      const subTypeCats: string[] = [];
+      if (entry.sub_types && typeof entry.sub_types === 'object') {
+        for (const stKey in entry.sub_types) {
+          const st = entry.sub_types[stKey];
+          if (st && Array.isArray(st.categories)) {
+            for (const c of st.categories) {
+              subTypeCats.push(String(c).toLowerCase());
+            }
+          }
         }
       }
-      // Also add the key itself as a mapping (lowercased, replacing underscores with spaces)
+
+      // Final categories list = union of main + sub_types
+      const allCats = [...new Set([...mainCats, ...subTypeCats])];
+      if (allCats.length === 0) continue;
+
+      // 3) Build keyword list:
+      //    - exact_keywords (level-1)
+      //    - fallback_keywords (level-1)
+      //    - all keywords inside sub_types
+      //    - segment-type aliases for the technical key (VO_GOI → "vỏ gối", "gối")
+      const allKeywords: string[] = [];
+
+      if (Array.isArray(entry.exact_keywords)) {
+        for (const kw of entry.exact_keywords) allKeywords.push(String(kw).toLowerCase());
+      }
+      if (Array.isArray(entry.fallback_keywords)) {
+        for (const kw of entry.fallback_keywords) allKeywords.push(String(kw).toLowerCase());
+      }
+      if (entry.sub_types && typeof entry.sub_types === 'object') {
+        for (const stKey in entry.sub_types) {
+          const st = entry.sub_types[stKey];
+          if (st && Array.isArray(st.keywords)) {
+            for (const kw of st.keywords) allKeywords.push(String(kw).toLowerCase());
+          }
+        }
+      }
+
+      // Aliases for technical key (so that parseRequestSegments output matches)
+      const aliases = SEGMENT_TYPE_ALIASES[key] || [];
+      for (const al of aliases) allKeywords.push(al.toLowerCase());
+
+      // Also add the lowercased+spaced version of the key itself
       const keyNorm = key.toLowerCase().replace(/_/g, ' ');
-      if (!mapping[keyNorm]) {
-        mapping[keyNorm] = normalizedCategories;
+      allKeywords.push(keyNorm);
+
+      // Register all keywords → allCats
+      for (const kw of [...new Set(allKeywords)]) {
+        if (!kw) continue;
+        if (!mapping[kw]) {
+          mapping[kw] = allCats;
+        } else {
+          mapping[kw] = [...new Set([...mapping[kw], ...allCats])];
+        }
       }
     }
-    console.log(`buildTypeToCategory: built ${Object.keys(mapping).length} keyword mappings from DB config`);
+    console.log(`buildTypeToCategory: built ${Object.keys(mapping).length} keyword mappings from DB config (with sub_types + aliases)`);
     return Object.keys(mapping).length > 0 ? mapping : null;
   } catch (e) {
     console.error('Error parsing TYPE_TO_CATEGORY config:', e);
