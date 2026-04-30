@@ -444,6 +444,10 @@ const NAMED_MATERIALS: [RegExp, string][] = [
 
 // Ordered product keyword detection (longer matches first)
 const PRODUCT_KEYWORDS: [RegExp, string, boolean][] = [
+  [/\bga\s*chun\s*chong\s*tham\b/i, 'ga chun chống thấm', false],
+  [/\bga\s*chong\s*tham\b/i, 'ga chun chống thấm', false],
+  [/\bga\s*ct\b/i, 'ga chun chống thấm', false],
+  [/\bbao\s*ve\s*nem\s*chong\s*tham\b/i, 'bảo vệ nệm chống thấm', false],
   [/\bga\s*chun/i, 'ga chun', true],
   [/\bga\s*tam\s*phu/i, 'ga tấm phủ', true],
   [/\bga\s*phu/i, 'ga phủ', true],
@@ -484,12 +488,14 @@ function normalizeVN(text: string): string {
 // Smart pattern detection: "trang soc" = sọc (white + striped), NOT trơn
 function detectPattern(text: string): string {
   const norm = text.toLowerCase();
+  // "trang trí" is decoration, not a pattern — must be checked first
+  if (/\btrang\s*tri\b/.test(norm)) return '';
   // Check "soc" or "ke" first — these are definitive
   if (/\b(soc|ke)\b/.test(norm)) return 'sọc';
   // "tron" or "trang tinh" = trơn
   if (/\b(tron|trang\s*tinh)\b/.test(norm)) return 'trơn';
   // "trang" alone (without "soc" nearby) = trơn (white = plain)
-  if (/\btrang\b/.test(norm) && !/\bsoc\b/.test(norm)) return 'trơn';
+  if (/\btrang\b/.test(norm) && !/\bsoc\b/.test(norm) && !/\btri\b/.test(norm)) return 'trơn';
   return '';
 }
 
@@ -855,18 +861,20 @@ function filterProductsBySegments(products: any[], segments: RequestSegment[], c
 
     // Step 1: Filter by category
     let segProducts = products.filter(p => {
-      const cat = (p.category || '').toLowerCase();
+      const cat  = (p.category || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
-      return cats.some(c => cat.includes(c) || name.includes(c));
+      const id   = (p.id || '').toString().toLowerCase();
+      return cats.some(c => cat.includes(c) || name.includes(c) || id.includes(c));
     });
 
     // Step 2: If needs fabric and has material, narrow
     if (seg.needsFabric && seg.material && segProducts.length > 20) {
       const matLower = seg.material.toLowerCase();
       const narrowed = segProducts.filter(p => {
-        const cat = (p.category || '').toLowerCase();
+        const cat  = (p.category || '').toLowerCase();
         const name = (p.name || '').toLowerCase();
-        return cat.includes(matLower) || name.includes(matLower);
+        const id   = (p.id || '').toString().toLowerCase();
+        return cat.includes(matLower) || name.includes(matLower) || id.includes(matLower);
       });
       if (narrowed.length > 0) segProducts = narrowed;
     }
@@ -875,9 +883,10 @@ function filterProductsBySegments(products: any[], segments: RequestSegment[], c
     if (seg.pattern && segProducts.length > 20) {
       const patLower = seg.pattern.toLowerCase();
       const narrowed = segProducts.filter(p => {
-        const cat = (p.category || '').toLowerCase();
+        const cat  = (p.category || '').toLowerCase();
         const name = (p.name || '').toLowerCase();
-        return cat.includes(patLower) || name.includes(patLower);
+        const id   = (p.id || '').toString().toLowerCase();
+        return cat.includes(patLower) || name.includes(patLower) || id.includes(patLower);
       });
       if (narrowed.length > 0) segProducts = narrowed;
     }
@@ -892,16 +901,20 @@ function filterProductsBySegments(products: any[], segments: RequestSegment[], c
     console.log(`Segment "${seg.type}" (${seg.material} ${seg.pattern}): ${segProducts.length} products`);
   }
 
-  if (results.length < 5) {
-    console.log(`Segment filter too narrow (${results.length}), falling back`);
+  if (results.length === 0) {
+    console.log(`Segment filter returned 0, falling back to category-only`);
     const allCats = segments.flatMap(s => effectiveMapping[s.type] || TYPE_TO_CATEGORY[s.type] || [s.type]);
     const fallback = products.filter(p => {
-      const cat = (p.category || '').toLowerCase();
+      const cat  = (p.category || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
-      return allCats.some(c => cat.includes(c) || name.includes(c));
+      const id   = (p.id || '').toString().toLowerCase();
+      return allCats.some(c => cat.includes(c) || name.includes(c) || id.includes(c));
     });
-    return fallback.length >= 5 ? fallback : products;
+    if (fallback.length > 0) return fallback;
+    console.log(`Fallback also empty, returning full catalog`);
+    return products;
   }
+  // results has at least 1 — return as-is (no more "if < 5 return all" rule)
 
   return results;
 }
