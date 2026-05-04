@@ -112,10 +112,10 @@ export const useFabricTypes = () => {
       console.log('✅ [useFabricTypes] Fetched', data?.length || 0, 'fabric types');
       return data;
     },
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 2 * 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -205,10 +205,10 @@ export const useFabricVariants = () => {
       console.log('✅ [useFabricVariants] Fetched', data?.length || 0, 'fabric variants');
       return data;
     },
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 2 * 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -259,10 +259,10 @@ export const useFabricWidths = () => {
       if (error) throw error;
       return data;
     },
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 2 * 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -302,10 +302,10 @@ export const useWarehouses = () => {
       if (error) throw error;
       return data;
     },
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 2 * 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -336,10 +336,10 @@ export const useFabricInventory = () => {
       console.log('✅ [useFabricInventory] Fetched', data?.length || 0, 'inventory records');
       return data;
     },
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 2 * 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -423,10 +423,10 @@ export const useFabricTransactions = () => {
       if (error) throw error;
       return data;
     },
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 2 * 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -533,10 +533,10 @@ export const useFabricTransfers = () => {
       if (error) throw error;
       return data;
     },
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 2 * 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -623,10 +623,10 @@ export const useFabricUsage = () => {
       if (error) throw error;
       return data;
     },
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 2 * 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -656,10 +656,10 @@ export const useFabricUsageByOrder = (orderId?: string) => {
       return data;
     },
     enabled: !!orderId,
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 2 * 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 

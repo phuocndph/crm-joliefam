@@ -76,7 +76,7 @@ export const useManagers = () => {
       console.log('useManagers - final managers:', managers);
       return managers as Manager[];
     },
-    staleTime: 0, // Always fresh
-    refetchOnMount: 'always',
+    staleTime: 60 * 1000, // Always fresh
+    refetchOnMount: true,
   });
 };

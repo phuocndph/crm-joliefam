@@ -67,9 +67,9 @@ export const useTransactions = (managerId?: string | null) => {
       if (error) throw error;
       return data as Transaction[];
     },
-    staleTime: 0, // Always fetch fresh data
+    staleTime: 60 * 1000, // Always fetch fresh data
     gcTime: 2 * 60 * 1000, // 2 minutes
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
