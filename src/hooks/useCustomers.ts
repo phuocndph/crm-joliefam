@@ -22,60 +22,26 @@ export const useCustomers = () => {
       console.log(`✅ Customers fetched: ${data?.length || 0}`);
       return data;
     },
-    staleTime: 0, // Always fetch fresh data
-    gcTime: 0, // Don't cache
-    refetchOnWindowFocus: true,
-    refetchOnMount: 'always',
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
   });
 
   // Set up real-time synchronization
   useEffect(() => {
     console.log('🔧 Setting up real-time customer synchronization...');
     
+    // Egress optimization: INSERT/DELETE only, no UPDATE payloads, no toasts (silent sync)
     const channel = supabase
-      .channel('customers-sync-' + Date.now()) // Unique channel name
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
-          schema: 'public',
-          table: 'customers'
-        },
-        (payload) => {
-          console.log('🔄 Real-time customer change detected:', payload.eventType, payload);
-          
-          // Force refetch immediately with background refetch
-          queryClient.refetchQueries({ 
-            queryKey: ['customers'],
-            type: 'active'
-          });
-          
-          // Also invalidate to ensure fresh data
-          queryClient.invalidateQueries({ queryKey: ['customers'] });
-          
-          // Show synchronization notifications
-          if (payload.eventType === 'INSERT') {
-            toast.success('🔄 Khách hàng mới đã được đồng bộ từ tài khoản khác');
-          } else if (payload.eventType === 'UPDATE') {
-            toast.info('🔄 Thông tin khách hàng đã được đồng bộ cập nhật');
-          } else if (payload.eventType === 'DELETE') {
-            toast.warning('🔄 Khách hàng đã được xóa và đồng bộ');
-          }
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 Real-time subscription status:', status);
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Real-time customer synchronization ACTIVE');
-          toast.success('✅ Đồng bộ thời gian thực đã được kích hoạt');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Real-time subscription error');
-          toast.error('❌ Lỗi kết nối đồng bộ thời gian thực');
-        } else if (status === 'TIMED_OUT') {
-          console.error('⏰ Real-time subscription timed out');
-          toast.error('⏰ Kết nối đồng bộ bị timeout');
-        }
-      });
+      .channel('customers-sync-' + Date.now())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'customers' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['customers'] });
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'customers' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['customers'] });
+      })
+      .subscribe();
 
     return () => {
       console.log('🧹 Cleaning up real-time customer subscription...');
