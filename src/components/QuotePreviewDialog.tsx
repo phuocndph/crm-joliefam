@@ -24,6 +24,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { QuoteSupplementDialog } from './QuoteSupplementDialog';
+import { fetchQuoteData } from '@/hooks/useQuotes';
 
 interface QuotePreviewDialogProps {
   open: boolean;
@@ -36,6 +37,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
   const [showQuoteSupplementDialog, setShowQuoteSupplementDialog] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  // Egress optimization: quote_data is no longer in list query — fetch on open
+  const [quoteDataRaw, setQuoteDataRaw] = useState<string | null>(null);
   
   const [user, setUser] = useState<any>(null);
   const { toast } = useToast();
@@ -56,11 +59,20 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     if (open) {
       refetchTemplateSettings();
       setLogoError(false);
+      // Fetch heavy quote_data JSONB only when dialog opens
+      if (quote?.id) {
+        if (quote.quote_data) {
+          setQuoteDataRaw(typeof quote.quote_data === 'string' ? quote.quote_data : JSON.stringify(quote.quote_data));
+        } else {
+          fetchQuoteData(quote.id).then(setQuoteDataRaw);
+        }
+      }
     } else {
       // Reset all internal states when dialog closes to prevent overlay conflicts
       setShowSupplement(false);
       setShowTemplateSettings(false);
       setShowQuoteSupplementDialog(false);
+      setQuoteDataRaw(null);
     }
   }, [open, refetchTemplateSettings]);
 
@@ -93,8 +105,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
     }
   ];
   
-  // Parse quote data for VAT and payment info
-  const quoteData = quote.quote_data ? JSON.parse(quote.quote_data) : {};
+  // Parse quote data for VAT and payment info (fetched on-demand)
+  const quoteData = quoteDataRaw ? JSON.parse(quoteDataRaw) : (quote.quote_data ? JSON.parse(quote.quote_data) : {});
   console.log('QuotePreviewDialog - quote:', quote);
   console.log('QuotePreviewDialog - quoteData:', quoteData);
   
