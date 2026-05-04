@@ -16,30 +16,8 @@ interface DashboardStats {
 }
 
 export const useDashboardStats = () => {
-  const queryClient = useQueryClient();
-
-  // Set up real-time synchronization
-  useEffect(() => {
-    console.log('🔧 Setting up dashboard real-time sync...');
-    
-    const channel = supabase
-      .channel('dashboard-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotes' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
-
+  // Egress optimization: removed realtime (Dashboard doesn't need instant updates).
+  // Stats refetch on mount + every 5 minutes is plenty.
   return useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: async (): Promise<DashboardStats> => {
@@ -102,9 +80,10 @@ export const useDashboardStats = () => {
         monthlyCustomers,
       };
     },
-    staleTime: 0, // Always fresh
-    gcTime: 2 * 60 * 1000, // 2 minutes
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchInterval: 5 * 60 * 1000,
   });
 };
