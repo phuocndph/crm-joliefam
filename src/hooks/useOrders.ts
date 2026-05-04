@@ -34,13 +34,15 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
       console.log('🔍 Fetching orders with manager filter:', opts?.managerId);
       
       // First, get all orders
+      // Egress optimization: removed heavy `quotes(quote_data)` join from list query.
+      // quote_data is only needed as a fallback for orders without order_payments,
+      // which is fetched lazily below for those rare cases.
       let ordersQuery = supabase
         .from('orders')
         .select(`
           *,
           customers!left(name, email, phone, company, customer_code, address, addresses),
           assignees(name),
-          quotes(quote_data),
           ghn_tracking(ghn_order_code)
         `)
         .order('created_at', { ascending: false });
@@ -81,31 +83,51 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
         console.log(`💰 Fetched ${paymentsData.length} payments for ${orderIds.length} orders (in ${Math.ceil(orderIds.length / CHUNK_SIZE)} chunk(s))`);
       }
       
+      // Lazy-fetch quote_data ONLY for orders missing order_payments but linked to a quote
+      const orderPaymentMap = new Map<string, any[]>();
+      paymentsData.forEach(p => {
+        const arr = orderPaymentMap.get(p.order_id) || [];
+        arr.push(p);
+        orderPaymentMap.set(p.order_id, arr);
+      });
+
+      const fallbackQuoteIds = (ordersData || [])
+        .filter(o => o.quote_id && !orderPaymentMap.has(o.id))
+        .map(o => o.quote_id as string);
+
+      const quoteDataById = new Map<string, any>();
+      if (fallbackQuoteIds.length > 0) {
+        const CHUNK_SIZE = 200;
+        for (let i = 0; i < fallbackQuoteIds.length; i += CHUNK_SIZE) {
+          const chunk = fallbackQuoteIds.slice(i, i + CHUNK_SIZE);
+          const { data: qrows } = await supabase
+            .from('quotes')
+            .select('id, quote_data')
+            .in('id', chunk);
+          (qrows || []).forEach((q: any) => quoteDataById.set(q.id, q.quote_data));
+        }
+      }
+
       // Calculate total_paid for each order
       const ordersWithPayments = ordersData?.map(order => {
-        const orderPayments = paymentsData.filter(payment => payment.order_id === order.id);
-        let total_paid = orderPayments.reduce((sum: number, payment: any) => 
+        const orderPayments = orderPaymentMap.get(order.id) || [];
+        let total_paid = orderPayments.reduce((sum: number, payment: any) =>
           sum + (payment.payment_amount || 0), 0);
-        
-        // If no order payments but has quote data with payment1, use that
-        if (total_paid === 0 && order.quotes && order.quotes.quote_data) {
-          try {
-            const quoteDataStr = typeof order.quotes.quote_data === 'string' 
-              ? order.quotes.quote_data 
-              : JSON.stringify(order.quotes.quote_data);
-            const quoteData = JSON.parse(quoteDataStr);
-            const payment1 = quoteData.payment1 || 0;
-            if (payment1 > 0) {
-              total_paid = payment1;
-              console.log(`💰 Order ${order.order_number}: Using quote payment ${payment1} (no order payments found)`);
+
+        // Fallback to quote.payment1 if no order_payments
+        if (total_paid === 0 && order.quote_id && quoteDataById.has(order.quote_id)) {
+          const raw = quoteDataById.get(order.quote_id);
+          if (raw) {
+            try {
+              const quoteData = typeof raw === 'string' ? JSON.parse(raw) : raw;
+              const payment1 = quoteData?.payment1 || 0;
+              if (payment1 > 0) total_paid = payment1;
+            } catch (e) {
+              console.error('Error parsing quote_data:', e);
             }
-          } catch (error) {
-            console.error('Error parsing quote_data:', error);
           }
         }
-        
-        console.log(`💰 Order ${order.order_number}: ${orderPayments.length} payments, total: ${total_paid}`);
-        
+
         return {
           ...order,
           order_payments: orderPayments,
