@@ -693,7 +693,11 @@ export default function QuotesPage() {
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem
-                              onClick={() => setEditingQuote(quote)}
+                              onClick={async () => {
+                                // Egress optimization: fetch heavy quote_data only when editing
+                                const quoteDataRaw = await fetchQuoteData(quote.id);
+                                setEditingQuote({ ...quote, quote_data: quoteDataRaw });
+                              }}
                               className="hover:bg-primary hover:text-primary-foreground transition-colors"
                             >
                               <Edit className="mr-2 h-4 w-4" />
