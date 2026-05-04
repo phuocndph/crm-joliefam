@@ -21,6 +21,7 @@ import * as ExcelJS from 'exceljs';
 
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
+import { transformImageUrl } from "@/lib/imageUrl";
 import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { QuoteSupplementDialog } from './QuoteSupplementDialog';
@@ -1184,9 +1185,10 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                        <TableCell className="border border-gray-400 text-center">
                          {item.selectedImage ? (
                            <img 
-                             src={item.selectedImage} 
+                             src={transformImageUrl(item.selectedImage, { width: 120, quality: 70 })} 
                              alt="Product" 
                              className="w-16 h-12 object-cover mx-auto rounded"
+                             loading="lazy"
                            />
                          ) : (
                            <div className="w-16 h-12 bg-gray-100 mx-auto rounded flex items-center justify-center">

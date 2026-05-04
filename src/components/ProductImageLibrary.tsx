@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Upload, Folder, Image, Trash2, Plus, FolderOpen, Edit2, Eye, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { transformImageUrl } from '@/lib/imageUrl';
 
 interface ProductImage {
   id: string;
@@ -748,9 +749,11 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
             <CardContent className="p-2">
               <div className="relative group">
                 <img
-                  src={image.url}
+                  src={transformImageUrl(image.url, { width: 300, quality: 65 })}
                   alt={image.name}
                   className="w-full h-32 object-contain bg-muted rounded"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded flex items-center justify-center gap-2 transition-all">
                   <Button

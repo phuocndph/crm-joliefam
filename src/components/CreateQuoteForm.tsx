@@ -8,6 +8,7 @@ import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical, S
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
+import { transformImageUrl } from '@/lib/imageUrl';
 import { AIQuoteFill } from './AIQuoteFill';
 import { AssigneeManagement } from './AssigneeManagement';
 import { AuthStatusBadge } from './AuthStatusBadge';
@@ -1656,7 +1657,7 @@ export function CreateQuoteForm({
                         }}>
                               <DialogTrigger asChild>
                                  <Button variant="outline" size="sm" className="h-12 w-16 border-2 border-dashed border-gray-300 hover:border-blue-500 flex flex-col items-center justify-center gap-1" type="button">
-                                  {item.selectedImage ? <img src={item.selectedImage} alt="Selected" className="w-12 h-12 object-cover rounded" /> : <>
+                                  {item.selectedImage ? <img src={transformImageUrl(item.selectedImage, { width: 100, quality: 70 })} alt="Selected" className="w-12 h-12 object-cover rounded" loading="lazy" /> : <>
                                       <Image className="h-4 w-4 text-gray-400" />
                                       <span className="text-xs text-gray-500">Chọn ảnh</span>
                                     </>}
