@@ -768,6 +768,15 @@ export default function QuotesPage() {
               </TableBody>
             </Table>
           </div>
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-10 flex items-center justify-center">
+            {isFetchingNextPage && (
+              <span className="text-sm text-muted-foreground">Đang tải thêm...</span>
+            )}
+            {!hasNextPage && quotes.length > 0 && (
+              <span className="text-xs text-muted-foreground">Đã tải hết</span>
+            )}
+          </div>
         </CardContent>
       </Card>
 
