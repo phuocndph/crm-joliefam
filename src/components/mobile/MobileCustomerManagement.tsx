@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
-import { useCustomers } from "@/hooks/useCustomers";
+import { useInfiniteCustomers } from "@/hooks/useInfiniteCustomers";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -15,22 +16,28 @@ import { toast } from "@/hooks/use-toast";
 const ITEMS_PER_PAGE = 10;
 
 const MobileCustomerManagement: React.FC = () => {
-  const { data: customers = [], isLoading: loading, error, refetch: loadCustomers } = useCustomers();
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearch = useDebounce(searchTerm, 350);
+  const {
+    data: pages,
+    isLoading: loading,
+    error,
+    refetch: loadCustomers,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteCustomers({ search: debouncedSearch });
+  const customers = (pages?.pages || []).flat();
   const [sortBy, setSortBy] = useState<"name" | "created_at" | "total_spent">("created_at");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [displayedItems, setDisplayedItems] = useState(ITEMS_PER_PAGE);
 
   // Filter and sort customers
   const filteredCustomers = useMemo(() => {
-    let filtered = customers.filter(customer =>
-      customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.phone?.includes(searchTerm)
-    );
+    // Server already filters; sort locally
+    let filtered = [...customers];
 
     // Sort customers
     filtered.sort((a, b) => {
@@ -46,15 +53,14 @@ const MobileCustomerManagement: React.FC = () => {
     });
 
     return filtered;
-  }, [customers, searchTerm, sortBy]);
+  }, [customers, sortBy]);
 
-  const displayedCustomers = filteredCustomers.slice(0, displayedItems);
-  const hasMore = displayedItems < filteredCustomers.length;
+  const displayedCustomers = filteredCustomers;
+  const hasMore = !!hasNextPage;
 
   const handleRefresh = async () => {
     try {
       await loadCustomers();
-      setDisplayedItems(ITEMS_PER_PAGE);
       toast({
         title: "Đã cập nhật",
         description: "Danh sách khách hàng đã được làm mới",
@@ -69,7 +75,7 @@ const MobileCustomerManagement: React.FC = () => {
   };
 
   const handleLoadMore = () => {
-    setDisplayedItems(prev => prev + ITEMS_PER_PAGE);
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
   };
 
   const handleEditCustomer = (customer: any) => {
