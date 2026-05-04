@@ -6,15 +6,16 @@ export const useQuotes = (opts?: { managerId?: string | null }) => {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Egress optimization: only listen to INSERT/DELETE (UPDATE just invalidates cache)
     const channel = supabase
       .channel('quotes-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotes' }, (payload) => {
-        console.log('📝 Quotes real-time update received:', payload.eventType, payload.new);
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'quotes' }, () => {
         queryClient.invalidateQueries({ queryKey: ['quotes'] });
       })
-      .subscribe((status) => {
-        console.log('📝 Quotes real-time subscription status:', status);
-      });
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'quotes' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      })
+      .subscribe();
 
     return () => {
       console.log('📝 Cleaning up quotes real-time subscription');
@@ -107,10 +108,10 @@ export const useQuotes = (opts?: { managerId?: string | null }) => {
 
       return formattedQuotes;
     },
-    staleTime: 0,
-    gcTime: 2 * 60 * 1000,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 
