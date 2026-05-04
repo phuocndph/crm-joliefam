@@ -28,6 +28,26 @@ serve(async (req) => {
   }
 
   try {
+    // Auth check: require valid Supabase JWT
+    const authHeader = req.headers.get('Authorization')?.replace('Bearer ', '');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const authClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+    const { data: userData, error: authError } = await authClient.auth.getUser(authHeader);
+    if (authError || !userData?.user) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const ghnApiKey = Deno.env.get('GHN_API_KEY');
     if (!ghnApiKey) {
       throw new Error('GHN API key not configured');

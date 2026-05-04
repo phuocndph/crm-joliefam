@@ -13,12 +13,27 @@ serve(async (req) => {
   }
 
   try {
-    const { customer, action_type = 'next_action' } = await req.json()
+    // Auth check: require valid Supabase JWT
+    const authHeader = req.headers.get('Authorization')?.replace('Bearer ', '');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? 'https://kmxfljxsmnozvvgypdei.supabase.co',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(authHeader);
+    if (authError || !userData?.user) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    const supabaseClient = createClient(
-      'https://kmxfljxsmnozvvgypdei.supabase.co',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    )
+    const { customer, action_type = 'next_action' } = await req.json()
 
     // Get the Gemini API key
     const geminiApiKey = Deno.env.get('GOOGLE_GEMINI_API_KEY')
