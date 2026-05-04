@@ -21,6 +21,7 @@ import * as ExcelJS from 'exceljs';
 
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
+import { transformImageUrl } from "@/lib/imageUrl";
 import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { QuoteSupplementDialog } from './QuoteSupplementDialog';
