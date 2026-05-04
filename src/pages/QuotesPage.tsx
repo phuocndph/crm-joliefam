@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { useQuotes, useDeleteQuote } from "@/hooks/useQuotes";
+import { useQuotes, useDeleteQuote, fetchQuoteData } from "@/hooks/useQuotes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -242,7 +242,9 @@ export default function QuotesPage() {
       if (orderError) throw orderError;
 
       // Transfer payment information from quote to order if exists
-      const quoteData = quote.quote_data ? JSON.parse(quote.quote_data) : {};
+      // Egress optimization: quote_data is no longer in list query — fetch on-demand
+      const quoteDataRaw = await fetchQuoteData(quote.id);
+      const quoteData = quoteDataRaw ? JSON.parse(quoteDataRaw) : {};
       const payment1 = quoteData.payment1 || 0;
       
       if (payment1 > 0) {
@@ -344,6 +346,9 @@ export default function QuotesPage() {
       const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       const newQuoteNumber = `BG-${dateStr}-${randomSuffix}`;
 
+      // Egress optimization: fetch quote_data on-demand (not in list query)
+      const quoteDataRaw = await fetchQuoteData(quote.id);
+
       // Copy data from original quote (exclude auto-generated fields)
       const duplicate = {
         quote_number: newQuoteNumber,
@@ -360,7 +365,7 @@ export default function QuotesPage() {
         notes: quote.notes 
           ? `[Nhân bản từ ${quote.quote_number}] ${quote.notes}` 
           : `Nhân bản từ ${quote.quote_number}`,
-        quote_data: quote.quote_data,
+        quote_data: quoteDataRaw,
         status: 'draft',
         tenant_id: 'default',
       };
@@ -688,7 +693,11 @@ export default function QuotesPage() {
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem
-                              onClick={() => setEditingQuote(quote)}
+                              onClick={async () => {
+                                // Egress optimization: fetch heavy quote_data only when editing
+                                const quoteDataRaw = await fetchQuoteData(quote.id);
+                                setEditingQuote({ ...quote, quote_data: quoteDataRaw });
+                              }}
                               className="hover:bg-primary hover:text-primary-foreground transition-colors"
                             >
                               <Edit className="mr-2 h-4 w-4" />

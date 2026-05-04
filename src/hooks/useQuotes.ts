@@ -28,20 +28,16 @@ export const useQuotes = (opts?: { managerId?: string | null }) => {
     queryFn: async () => {
       console.log('🔍 Fetching quotes with manager filter:', opts?.managerId);
       
+      // Egress optimization: exclude heavy `quote_data` JSONB from list query.
+      // Fetch it on-demand via fetchQuoteData() when approving/duplicating/previewing.
       let query = supabase
         .from('quotes')
         .select(`
-          *,
-          customers (
-            name,
-            email,
-            phone,
-            address,
-            company
-          ),
-          assignees (
-            name
-          )
+          id, quote_number, customer_id, manager_id, assignee_id, price_list_id,
+          items, total_amount, subtotal, vat_amount, include_vat, vat_rate,
+          status, notes, created_at, updated_at, tenant_id,
+          customers ( name, email, phone, address, company ),
+          assignees ( name )
         `)
         .order('created_at', { ascending: false });
 
@@ -153,4 +149,21 @@ export const useDeleteQuote = () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
     },
   });
+};
+
+/**
+ * Fetch the heavy `quote_data` JSONB for a single quote on-demand.
+ * Used when approving, duplicating, or previewing — keeps list queries light.
+ */
+export const fetchQuoteData = async (quoteId: string): Promise<string | null> => {
+  const { data, error } = await supabase
+    .from('quotes')
+    .select('quote_data')
+    .eq('id', quoteId)
+    .single();
+  if (error) {
+    console.error('❌ Error fetching quote_data:', error);
+    return null;
+  }
+  return (data?.quote_data as string | null) ?? null;
 };
