@@ -6,11 +6,11 @@ export const useContracts = (opts?: { managerId?: string | null }) => {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['contracts'] });
     const channel = supabase
       .channel('contracts-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['contracts'] });
-      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contracts' }, invalidate)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'contracts' }, invalidate)
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };

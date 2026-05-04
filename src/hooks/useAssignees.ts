@@ -46,9 +46,9 @@ export const useAssignees = () => {
       if (error) throw error;
       return data as Assignee[];
     },
-    staleTime: 0, // Always fresh
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 60 * 1000, // Always fresh
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 

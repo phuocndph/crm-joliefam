@@ -1,79 +1,78 @@
+# Kế hoạch tối ưu egress Supabase (mục tiêu < 5GB/tháng)
 
+Dựa trên review code, có 4 nhóm nguyên nhân chính gây tốn egress. Sẽ xử lý theo thứ tự ưu tiên (impact cao → thấp).
 
-## Lỗi: Thêm thanh toán báo "Thành công" nhưng UI không cập nhật
+## Nhóm 1: Giảm dung lượng query (impact lớn nhất ~40-50%)
 
-### Nguyên nhân (đã verify trên DB)
+**Vấn đề**: Nhiều hook `select('*')` kéo về toàn bộ cột kể cả JSONB lớn (`quote_data`, `addresses`, `items`, `request_data`, `response_data`...) cho mọi user mỗi lần load page.
 
-Tôi đã trace từ console + DB:
+**Sửa**:
+1. `useQuotes.ts` — chỉ select các cột cần cho list view (id, quote_number, status, total_amount, created_at, customer_id, manager_id, assignee_id, notes). Khi mở chi tiết/preview mới fetch `quote_data` riêng.
+2. `useOrders.ts` — bỏ `select(*)`, chỉ lấy cột list cần. JSONB `quote_data` chỉ fetch khi mở dialog chi tiết.
+3. `useDashboard.ts` — đã select theo cột nhưng kéo TẤT CẢ orders/quotes/customers. Đổi sang **aggregate qua RPC** (tạo function `get_dashboard_stats()` trả về 1 row số liệu thay vì kéo hàng nghìn dòng).
+4. `useCustomers`, `useContracts`, `useFabrics`, `useEInvoices`, `useTransactions` — tương tự: select cột tối thiểu cho list, JSONB lazy load.
 
-1. **Insert vẫn chạy đúng** — DB `order_payments` đang có 6 bản ghi cho đơn `ORD-1776907591288` (mỗi cái 2.900.000đ, total = 17.400.000đ) và 2 bản ghi cho `ORD-1776908189519`. Bạn bấm "Thêm thanh toán" 6 lần liên tiếp vì tưởng không có tác dụng → đã tạo 6 payment trùng lặp.
+## Nhóm 2: Phân trang (impact ~20-30%)
 
-2. **UI vẫn hiển thị `0 payments, total: 0`** vì `useOrders` SELECT không trả payment về.
+Hiện tất cả list (`quotes`, `orders`, `customers`, `fabric_transactions`) load toàn bộ. Với 879 quotes + orders + transactions, mỗi lần mở page = vài MB.
 
-3. **Root cause**: trong `useOrders.ts` (line 71-75), query lấy payments dùng:
-   ```ts
-   supabase.from('order_payments').select('...').in('order_id', orderIds);
-   ```
-   **Không có filter `manager_id`**. RLS policy cho role `manager` là `manager_id = auth.uid()::text OR manager_id IS NULL`. Lẽ ra phải pass — NHƯNG client-side query đang chạy với 630 order IDs trong `.in(...)`, có khả năng vượt URL length limit của PostgREST → request fail âm thầm hoặc trả empty (vì `paymentsError` chỉ log, không throw).
+**Sửa**:
+- Thêm pagination server-side (`.range(from, to)`) mặc định 50 dòng/trang cho `quotes`, `orders`, `customers`, `contracts`, `fabric_transactions`, `einvoices`, `expenses`.
+- Search/filter cũng đẩy lên server (`.ilike`, `.eq`) thay vì filter client.
 
-   Verified: payment_count = 6 trong DB nhưng client log `0 payments`.
+## Nhóm 3: Realtime (impact ~15-20%)
 
-4. **Hệ quả phụ**: `handlePaymentAdded` dựa vào `loadOrders()` returnvalue (`result.data`) để cập nhật `selectedOrder` ngay — nhưng vì payment data về rỗng nên dialog đóng, status "paid" cập nhật ở bảng `orders` (do code update cuối hàm), nhưng **số "Đã thanh toán" trong dialog vẫn 0** → user tưởng chưa lưu → bấm tiếp.
+**Vấn đề**: Nhiều hook subscribe `event: '*'` trên các bảng lớn. Mỗi UPDATE đẩy full row payload qua WebSocket cho TẤT CẢ tab đang mở.
 
-5. **Bonus bug**: không có chống double-submit ở UI level → cho phép tạo nhiều payment trùng trong vài giây.
+**Sửa**:
+1. `useQuotes`, `useOrders`, `useDashboard`, `useRealtimeSubscription` — đổi `event: '*'` thành chỉ `INSERT` + `DELETE` (không cần full row cho UPDATE; UPDATE chỉ cần invalidate query).
+2. Hoặc dùng `event: 'UPDATE'` với `filter` cụ thể (theo `manager_id`) để giới hạn bản ghi.
+3. Bỏ realtime trên các bảng ít thay đổi (`fabric_types`, `fabric_widths`, `contract_templates`, `assignees`) — chỉ refetch khi mount.
+4. `useDashboard` — bỏ realtime hoàn toàn, chỉ refetch mỗi 5 phút (dashboard không cần real-time tức thời).
 
-### Giải pháp
+## Nhóm 4: Cache & refetch (impact ~10-15%)
 
-#### 1. Sửa `src/hooks/useOrders.ts` — fetch payments theo batch + xử lý error đúng
+**Vấn đề**: `staleTime: 0` + `refetchOnWindowFocus: true` + `refetchOnMount: 'always'` → mỗi lần switch tab/route đều refetch toàn bộ.
 
-- Khi có nhiều order (>200), chia `orderIds` thành nhiều batch 200/lần để tránh URL quá dài làm PostgREST trả empty.
-- Nếu `paymentsError` xảy ra → throw, không nuốt lỗi.
-- Log số payment thực tế khớp với DB.
+**Sửa**:
+- Đổi `staleTime` = 60_000 (1 phút) cho các hook hiện đang để 0.
+- `refetchOnWindowFocus: false` cho data ít thay đổi (customers, products, fabrics).
+- Giữ realtime để invalidate khi có thay đổi thực sự (đã có sẵn).
 
-```text
-fetchPayments(orderIds):
-  chunks = chunk(orderIds, 200)
-  results = []
-  for each chunk:
-    rows = supabase.from('order_payments')
-             .select('order_id, payment_amount, payment_date, payment_type')
-             .in('order_id', chunk)
-    if error → throw
-    results.push(...rows)
-  return results
+## Nhóm 5: Edge function & cron (impact ~5-10%)
+
+- `ghn-auto-update`: kiểm tra schedule, chỉ chạy khi có đơn đang tracking (`status NOT IN ('delivered','cancelled')`).
+- Auto-refresh session interval mỗi 60s trong `App.tsx` — giữ nguyên (cần cho UX), nhưng đảm bảo không refetch data kèm theo.
+
+## Nhóm 6: Storage/ảnh
+
+- Dùng Supabase image transform (`?width=400&quality=70`) cho ảnh sản phẩm, logo, chữ ký — giảm 70-80% egress ảnh.
+- Set cache headers cho bucket public.
+
+## Thứ tự thực hiện (đề xuất)
+
+```
+Bước 1 (impact cao, rủi ro thấp):
+  - Tăng staleTime + tắt refetchOnWindowFocus cho hook ổn định
+  - Đổi realtime '*' → INSERT/DELETE
+  - Bỏ realtime ở Dashboard
+
+Bước 2 (impact cao, cần test kỹ):
+  - useQuotes / useOrders: select cột tối thiểu, lazy load JSONB
+  - Tạo RPC get_dashboard_stats()
+
+Bước 3:
+  - Pagination server-side cho list lớn
+
+Bước 4:
+  - Image transform cho storage
+  - Audit ghn-auto-update
 ```
 
-#### 2. Sửa `src/pages/OrderManagement.tsx` — `handlePaymentAdded` gọn lại
+## Ước tính
 
-- Bỏ toast "Thanh toán đã được thêm thành công" thứ 2 (đã có trong `CreatePaymentForm`), tránh hiển thị 2 lần gây hiểu lầm.
-- `loadOrders()` (refetch của react-query) trả về `{ data }` mới nhất → dùng nó cập nhật `selectedOrder` (đã đúng) — chỉ cần đảm bảo data về có payment.
-- Vẫn giữ `setOrderToPayment(null)` trong `finally`.
+Với ~10 user/ngày, sau Bước 1+2 có thể giảm 50-60% egress ngay. Hoàn tất cả 4 bước thường về dưới 3-4GB/tháng → an toàn dưới 5GB.
 
-#### 3. Sửa `src/components/CreatePaymentForm.tsx` — chống double-submit
+## Câu hỏi xác nhận
 
-- Disable nút "Thêm thanh toán" khi `loading=true` (kiểm tra xem nút đang dùng `disabled={loading}` chưa, nếu chưa thì thêm).
-- Khi submit thành công, set một flag `submitted` để chặn click thêm lần nữa trong cùng phiên dialog (an toàn kép trước khi `onClose` chạy).
-
-#### 4. Cleanup data rác đã tạo do bug
-
-- 5 payment trùng cho `56c3d565-21c5-4ceb-bd58-3ffd7918bad1` (giữ lại bản gốc đầu tiên, xóa 5 bản sau).
-- 1 payment trùng cho `be39ff90-8d7b-4558-9b0e-e74a3b006c2d` (giữ lại 1, xóa 1).
-- Đồng thời xóa các bản `transactions` tương ứng (cùng `order_id` + `category='order_payment'` + cùng `payment_amount`/`payment_date`).
-- Sẽ cần migration với DELETE cụ thể theo `id` để bạn duyệt.
-
-### Phạm vi file
-- `src/hooks/useOrders.ts` — chunk payment query + throw error
-- `src/pages/OrderManagement.tsx` — bỏ toast trùng trong `handlePaymentAdded`
-- `src/components/CreatePaymentForm.tsx` — chống double-submit
-- Migration SQL — xóa 6 payment trùng + transaction trùng
-
-### Không đụng vào
-- Toàn bộ logic GHN (dialog tạo/sửa, fee, dimensions) đã chốt trước đó.
-- RLS policies (chúng đã đúng).
-- Schema `order_payments` / `transactions`.
-
-### Kết quả mong đợi
-- Bấm "Thêm thanh toán" 1 lần → dialog đóng, ô "Đã thanh toán" trong dialog đơn hàng cập nhật đúng số tiền vừa nhập, status đổi sang "Đã thanh toán" / "Thanh toán 1 phần".
-- Không bấm được lần 2 trong khi đang loading.
-- Console log `💰 Order ...: N payments, total: ...` khớp với DB.
-
+Tôi sẽ làm **Bước 1 trước** (an toàn, không đổi UI/logic) rồi báo lại số liệu để bạn quyết Bước 2-4. Bạn đồng ý approach này không, hay muốn làm hết một lượt?

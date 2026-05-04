@@ -32,18 +32,15 @@ export const useRealtimeSubscription = (
     const channelName = channelNameRef.current;
     let channel: RealtimeChannel = supabase.channel(channelName);
 
-    // Subscribe to each table using the same pattern as working hooks
+    // Egress optimization: subscribe only to INSERT/DELETE (UPDATE only invalidates cache,
+    // we don't need full row payload — refetch will pull fresh data when needed)
+    const handler = () => {
+      queryKeys.forEach(key => queryClient.invalidateQueries({ queryKey: key }));
+    };
     tables.forEach(({ table }) => {
-      channel = channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table },
-        () => {
-          console.log(`🔄 ${table} change detected`);
-          queryKeys.forEach(key => {
-            queryClient.invalidateQueries({ queryKey: key });
-          });
-        }
-      );
+      channel = channel
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table }, handler)
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table }, handler);
     });
 
     channel.subscribe((status) => {
