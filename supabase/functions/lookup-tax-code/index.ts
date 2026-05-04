@@ -944,6 +944,33 @@ function buildTypeToCategory(configJson: string | null): Record<string, string[]
   }
 }
 
+function buildSkipCategories(configJson: string | null): string[] {
+  if (!configJson) return [];
+  try {
+    const parsed = JSON.parse(configJson);
+    const skipNode = parsed?.SKIP_CATEGORIES;
+    if (!skipNode) return [];
+
+    const cats: string[] = Array.isArray(skipNode.categories)
+      ? skipNode.categories
+      : Array.isArray(skipNode)
+        ? skipNode
+        : [];
+
+    const normalized = cats
+      .map(c => String(c).trim().toLowerCase())
+      .filter(c => c.length > 0);
+
+    if (normalized.length > 0) {
+      console.log(`buildSkipCategories: ${normalized.length} skip categories loaded:`, normalized);
+    }
+    return normalized;
+  } catch (e) {
+    console.error('Error parsing SKIP_CATEGORIES config:', e);
+    return [];
+  }
+}
+
 function filterProductsBySegments(products: any[], segments: RequestSegment[], customTypeToCategory?: Record<string, string[]> | null): any[] {
   if (segments.length === 0) return products;
 
@@ -1682,6 +1709,18 @@ Giữ nguyên số liệu gốc. KHÔNG trả JSON. KHÔNG giải thích.`;
 
       // Build custom TYPE_TO_CATEGORY from DB config
       const customTypeToCategory = buildTypeToCategory(aiConfig['ai_quote_type_categories'] || null);
+      const skipCategories = buildSkipCategories(aiConfig['ai_quote_type_categories'] || null);
+
+      // Apply skip filter on the master catalog BEFORE any segment filtering.
+      // Products in SKIP_CATEGORIES never reach AI (e.g. "Bộ nhập", "Lẻ", "Tem").
+      if (skipCategories.length > 0) {
+        const beforeSkip = allProducts.length;
+        allProducts = allProducts.filter(p => {
+          const cat = (p.category || '').trim().toLowerCase();
+          return !skipCategories.some(skip => cat === skip || cat.includes(skip));
+        });
+        console.log(`AI Quote Fill: skip filter ${beforeSkip} → ${allProducts.length} (removed ${beforeSkip - allProducts.length} products in SKIP_CATEGORIES)`);
+      }
 
       // Use request directly (no more image processing here — OCR is done separately)
       let effectiveRequest = request || '';
@@ -1860,10 +1899,17 @@ Không tìm thấy: {"items":[]}. Thiếu info: {"clarification":"câu hỏi"}`;
         });
       }
 
-      const allProducts = products || [];
+      let allProducts = products || [];
 
       // Build custom TYPE_TO_CATEGORY from DB config
       const customTypeToCategoryDebug = buildTypeToCategory(dbConfig['ai_quote_type_categories'] || null);
+      const skipCategoriesDebug = buildSkipCategories(dbConfig['ai_quote_type_categories'] || null);
+      if (skipCategoriesDebug.length > 0) {
+        allProducts = allProducts.filter(p => {
+          const cat = (p.category || '').trim().toLowerCase();
+          return !skipCategoriesDebug.some(skip => cat === skip || cat.includes(skip));
+        });
+      }
 
       // Parse segments
       const segments = parseRequestSegments(request);
