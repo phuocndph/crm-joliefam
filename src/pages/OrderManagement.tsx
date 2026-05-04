@@ -2,7 +2,10 @@ import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, CheckCircle, Clock, XCircle, AlertCircle, DollarSign, CalendarDays, Truck, CreditCard, Edit3, RotateCcw, MapPin, Navigation, Zap, Printer } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { useOrders } from "@/hooks/useOrders";
+import { useInfiniteOrders } from "@/hooks/useInfiniteOrders";
+import { useOrdersStats } from "@/hooks/useOrdersStats";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { useUserRole } from "@/hooks/useUserRole";
 import { ManagerSelector } from "@/components/ManagerSelector";
 
@@ -153,7 +156,18 @@ export default function OrderManagement() {
     ? selectedManagerId
     : (userRole === 'manager' && (user as any)?.id) ? (user as any).id : undefined;
   console.log('[Orders] role:', userRole, 'selectedManagerId:', selectedManagerId, 'managerFilter:', managerFilter);
-  const { data: orders = [], isLoading: loading, refetch: loadOrders } = useOrders({ managerId: managerFilter }) as any;
+  const debouncedSearch = useDebounce(searchTerm, 350);
+  const {
+    data: ordersPages,
+    isLoading: loading,
+    refetch: loadOrders,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteOrders({ managerId: managerFilter, search: debouncedSearch }) as any;
+  const orders = ((ordersPages?.pages || []) as any[]).flat();
+  const sentinelRef = useInfiniteScroll(hasNextPage, isFetchingNextPage, fetchNextPage);
+  const { data: orderStats } = useOrdersStats(managerFilter);
   console.log('[Orders] fetched:', orders.length, 'unique managers:', Array.from(new Set(orders.map((o:any)=>o.manager_id))).length);
   const { toast } = useToast();
 
@@ -341,25 +355,14 @@ export default function OrderManagement() {
     }
   };
 
-  // Calculate stats
-  const pendingCount = orders.filter(order => order.status === 'pending').length;
-  const processingCount = orders.filter(order => order.status === 'processing').length;
-  const completedCount = orders.filter(order => order.status === 'delivered').length;
-  const overdueCount = orders.filter(order => {
-    if (order.status === 'delivered' || order.status === 'shipped' || order.status === 'cancelled') return false;
-    const deliveryDate = order.delivery_date || (() => {
-      const d = new Date(order.created_at);
-      d.setDate(d.getDate() + 6);
-      return d.toISOString();
-    })();
-    return new Date(deliveryDate) < new Date();
-  }).length;
-  const totalReceivable = orders.reduce((sum, order) => {
-    const paid = (order as any).total_paid || 0;
-    const remaining = Math.max(0, (order.total_amount || 0) - paid);
-    return sum + remaining;
-  }, 0);
-  const totalValue = orders.filter(order => order.status === 'delivered').reduce((sum, order) => sum + (order.total_amount || 0), 0);
+  // Stats from server-side aggregation (covers ALL orders, not just loaded pages)
+  const pendingCount = orderStats?.pendingCount ?? 0;
+  const processingCount = orderStats?.processingCount ?? 0;
+  const completedCount = orderStats?.completedCount ?? 0;
+  const overdueCount = orderStats?.overdueCount ?? 0;
+  const totalReceivable = orderStats?.totalReceivable ?? 0;
+  const totalValue = orderStats?.totalValue ?? 0;
+  const totalOrders = orderStats?.total ?? orders.length;
 
   const formatCompactCurrency = (amount: number) => {
     if (amount >= 1_000_000_000) return `${(amount / 1_000_000_000).toFixed(1)}tỷ`;
@@ -389,17 +392,8 @@ export default function OrderManagement() {
     { value: 'cancelled', label: 'Đã hủy' },
   ];
 
-  // Detect duplicate display_order_number để cảnh báo (gây lỗi auto-link GHN)
-  const duplicateOrderNumbers = React.useMemo(() => {
-    const counts = new Map<string, typeof orders>();
-    orders.forEach((o: any) => {
-      const num = o.display_order_number || '';
-      if (!num || !/^\d+$/.test(num)) return;
-      if (!counts.has(num)) counts.set(num, []);
-      counts.get(num)!.push(o);
-    });
-    return Array.from(counts.entries()).filter(([, arr]) => arr.length > 1);
-  }, [orders]);
+  // Duplicate display_order_number warning (server-side stats)
+  const duplicateOrderNumbers = (orderStats?.duplicateOrderNumbers ?? []) as Array<[string, number]>;
 
   return (
     <div className="space-y-3">
@@ -425,7 +419,7 @@ export default function OrderManagement() {
         <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg border text-sm">
           <div className="flex items-center gap-1.5">
             <Package className="h-3.5 w-3.5 text-blue-600" />
-            <span className="font-semibold">{orders.length}</span>
+            <span className="font-semibold">{totalOrders}</span>
             <span className="text-muted-foreground">đơn</span>
           </div>
           <span className="text-muted-foreground/40">|</span>
@@ -479,9 +473,9 @@ export default function OrderManagement() {
           <AlertDescription>
             <p className="mb-2 text-sm">Các số đơn dưới đây đang bị dùng cho nhiều đơn khác nhau, sẽ khiến mã vận đơn GHN không tự liên kết được. Vui lòng sửa số đơn cho 1 trong các đơn để mỗi số là duy nhất:</p>
             <ul className="list-disc pl-5 space-y-1 text-sm">
-              {duplicateOrderNumbers.map(([num, list]) => (
+              {duplicateOrderNumbers.map(([num, count]) => (
                 <li key={num}>
-                  <strong>Số {num}</strong>: {list.length} đơn — {list.map((o: any) => `${o.customers?.name || 'Không tên'} (${formatCompactCurrency(o.total_amount || 0)})`).join(' • ')}
+                  <strong>Số {num}</strong>: {count} đơn trùng
                 </li>
               ))}
             </ul>
