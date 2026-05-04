@@ -7,20 +7,14 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
   useEffect(() => {
     // Use unique channel name to prevent conflicts across multiple tabs
     const channelName = `orders-payments-quotes-${Date.now()}`;
+    // Egress optimization: only listen to INSERT/DELETE — UPDATE just invalidates cache
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['orders'] });
     const channel = supabase
       .channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
-        console.log('📦 Orders real-time update received:', payload.eventType, payload.new);
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_payments' }, (payload) => {
-        console.log('💰 Order payments real-time update received:', payload.eventType, payload.new);
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotes' }, (payload) => {
-        console.log('📝 Quotes real-time update received:', payload.eventType, payload.new);
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, invalidate)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, invalidate)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'order_payments' }, invalidate)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'order_payments' }, invalidate)
       .subscribe((status) => {
         console.log(`📦 ${channelName} subscription status:`, status);
         if (status === 'CHANNEL_ERROR') {
@@ -121,10 +115,10 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
       
       return ordersWithPayments;
     },
-    staleTime: 0, // Always fetch fresh data after invalidation
-    gcTime: 2 * 60 * 1000, // 2 minutes
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 };
 
