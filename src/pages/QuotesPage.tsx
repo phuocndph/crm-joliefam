@@ -5,7 +5,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { useQuotes, useDeleteQuote, fetchQuoteData } from "@/hooks/useQuotes";
+import { useDeleteQuote, fetchQuoteData } from "@/hooks/useQuotes";
+import { useInfiniteQuotes } from "@/hooks/useInfiniteQuotes";
+import { useQuotesStats } from "@/hooks/useQuotesStats";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -92,11 +96,26 @@ export default function QuotesPage() {
   const { hasPermission } = useEmployeePermissions(user, userRole);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  
-  // Use React Query for quotes with real-time updates
-  const { data: quotes = [], isLoading: loading, refetch: refetchQuotes } = useQuotes({ 
-    managerId: userRole === 'manager' ? user?.id : 'all' 
-  });
+
+  const debouncedSearch = useDebounce(searchTerm, 350);
+  const managerFilter = userRole === 'manager' ? user?.id : 'all';
+
+  // Server-side paginated quotes (egress optimization)
+  const {
+    data: quotesPages,
+    isLoading: loading,
+    refetch: refetchQuotes,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuotes({ managerId: managerFilter, search: debouncedSearch });
+
+  const quotes = (quotesPages?.pages || []).flat();
+  const sentinelRef = useInfiniteScroll(hasNextPage, isFetchingNextPage, fetchNextPage);
+
+  // Lightweight stats (separate query so they reflect ALL quotes, not just loaded pages)
+  const { data: statsData } = useQuotesStats(managerFilter);
+
   const deleteQuoteMutation = useDeleteQuote();
 
   useEffect(() => {
@@ -116,13 +135,17 @@ export default function QuotesPage() {
 
   // Real-time subscription is now handled in useQuotes hook
 
+  // Server already filters by quote_number/notes; client-side narrows by customer name
   const filteredQuotes = quotes
-    .filter(
-      (quote) =>
-        quote.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        quote.quote_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        quote.status.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    .filter((quote) => {
+      if (!debouncedSearch) return true;
+      const q = debouncedSearch.toLowerCase();
+      return (
+        quote.customerName?.toLowerCase().includes(q) ||
+        quote.quote_number?.toLowerCase().includes(q) ||
+        quote.status?.toLowerCase().includes(q)
+      );
+    })
     .sort((a, b) => {
       // Draft quotes first
       if (a.status === 'draft' && b.status !== 'draft') return -1;
@@ -400,31 +423,29 @@ export default function QuotesPage() {
     }
   };
 
-  // Calculate stats
+  // Calculate stats from lightweight stats query (covers all quotes, not just loaded pages)
   const stats = [
     {
       title: "Tổng báo giá",
-      value: quotes.length,
+      value: statsData?.total ?? 0,
       icon: FileText,
       color: "text-blue-600",
     },
     {
       title: "Đã gửi",
-      value: quotes.filter((q) => q.status === "sent").length,
+      value: statsData?.sent ?? 0,
       icon: Clock,
       color: "text-yellow-600",
     },
     {
       title: "Được duyệt",
-      value: quotes.filter((q) => q.status === "approved").length,
+      value: statsData?.approved ?? 0,
       icon: CheckCircle,
       color: "text-green-600",
     },
     {
       title: "Tổng giá trị",
-      value: `${quotes
-        .reduce((sum, quote) => sum + (quote.total_amount || 0), 0)
-        .toLocaleString("vi-VN")} VNĐ`,
+      value: `${(statsData?.totalValue ?? 0).toLocaleString("vi-VN")} VNĐ`,
       icon: AlertCircle,
       color: "text-purple-600",
     },
