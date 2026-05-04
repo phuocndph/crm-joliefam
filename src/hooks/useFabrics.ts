@@ -14,7 +14,7 @@ const useFabricRealtime = () => {
       .channel('fabrics-sync-' + Date.now())
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'fabric_types' },
+        { event: 'INSERT', schema: 'public', table: 'fabric_types' },
         () => {
           console.log('🔄 Real-time fabric_types change');
           queryClient.invalidateQueries({ queryKey: ['fabric-types'] });
@@ -22,7 +22,7 @@ const useFabricRealtime = () => {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'fabric_variants' },
+        { event: 'INSERT', schema: 'public', table: 'fabric_variants' },
         () => {
           console.log('🔄 Real-time fabric_variants change');
           queryClient.invalidateQueries({ queryKey: ['fabric-variants'] });
@@ -31,7 +31,7 @@ const useFabricRealtime = () => {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'fabric_widths' },
+        { event: 'INSERT', schema: 'public', table: 'fabric_widths' },
         () => {
           console.log('🔄 Real-time fabric_widths change');
           queryClient.invalidateQueries({ queryKey: ['fabric-widths'] });
@@ -39,7 +39,7 @@ const useFabricRealtime = () => {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'fabric_inventory' },
+        { event: 'INSERT', schema: 'public', table: 'fabric_inventory' },
         () => {
           console.log('🔄 Real-time fabric_inventory change');
           queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
@@ -47,7 +47,7 @@ const useFabricRealtime = () => {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'fabric_transactions' },
+        { event: 'INSERT', schema: 'public', table: 'fabric_transactions' },
         () => {
           console.log('🔄 Real-time fabric_transactions change');
           queryClient.invalidateQueries({ queryKey: ['fabric-transactions'] });
@@ -56,7 +56,7 @@ const useFabricRealtime = () => {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'fabric_transfers' },
+        { event: 'INSERT', schema: 'public', table: 'fabric_transfers' },
         () => {
           console.log('🔄 Real-time fabric_transfers change');
           queryClient.invalidateQueries({ queryKey: ['fabric-transfers'] });
@@ -65,7 +65,7 @@ const useFabricRealtime = () => {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'fabric_usage' },
+        { event: 'INSERT', schema: 'public', table: 'fabric_usage' },
         () => {
           console.log('🔄 Real-time fabric_usage change');
           queryClient.invalidateQueries({ queryKey: ['fabric-usage'] });
@@ -74,7 +74,7 @@ const useFabricRealtime = () => {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'warehouses' },
+        { event: 'INSERT', schema: 'public', table: 'warehouses' },
         () => {
           console.log('🔄 Real-time warehouses change');
           queryClient.invalidateQueries({ queryKey: ['warehouses'] });
