@@ -8,6 +8,7 @@ import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical, S
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import ProductImageLibrary from './ProductImageLibrary';
+import { transformImageUrl } from '@/lib/imageUrl';
 import { AIQuoteFill } from './AIQuoteFill';
 import { AssigneeManagement } from './AssigneeManagement';
 import { AuthStatusBadge } from './AuthStatusBadge';
