@@ -415,7 +415,20 @@ function validateAndRepairItems(
           }
           const typeMismatchHard = matchedProduct && segType && productType && productType !== segType;
 
-          if (priceOutlier || typeMismatchHard) {
+          // Patch 18: nếu segment yêu cầu material cụ thể (T200/T250/T300/LTH/Tencel...) và SP có material KHÁC → reject
+          const segMaterial = (segments[bestSegIdx].material || '').toLowerCase().replace(/\s+/g, '');
+          const segMaterialNorm = removeVietnameseTones(segMaterial);
+          const prodMaterial = matchedProduct
+            ? getMaterial((matchedProduct.name || '') + ' ' + (matchedProduct.specifications || ''))
+            : '';
+          const materialMismatchHard = !!(
+            segMaterialNorm && prodMaterial
+            && segMaterialNorm !== prodMaterial
+            && !(segMaterialNorm === 'lth' && prodMaterial === 't225')
+            && !(segMaterialNorm === 't225' && prodMaterial === 'lth')
+          );
+
+          if (priceOutlier || typeMismatchHard || materialMismatchHard) {
             const seg = segments[bestSegIdx];
             const segCandidates = candidates.length > 0 ? candidates : allProducts;
             const constraints = { material: seg.material, pattern: seg.pattern };
@@ -425,7 +438,9 @@ function validateAndRepairItems(
               item.matchedProductId = match.product.id;
               item.price = match.product.price || item.price;
               item.matchQuality = match.matchQuality;
-              const reason = priceOutlier ? 'giá bất thường' : 'sai loại sản phẩm';
+              const reason = priceOutlier
+                ? 'giá bất thường'
+                : (materialMismatchHard ? `sai chất liệu (cần ${seg.material})` : 'sai loại sản phẩm');
               item.note = (item.note ? item.note + '. ' : '') + `Sửa (${reason}): ${match.product.name} (thay ${oldProduct?.name || id})`;
               console.warn(`🔧 Sanity-fix [${reason}]: "${item.customName}" ${oldProduct?.name} → ${match.product.name}`);
               warnings.push(`"${item.customName}": AI chọn ${oldProduct?.name || 'SP sai'} (${reason}), đã thay bằng ${match.product.name}`);
