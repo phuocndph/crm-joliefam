@@ -1,49 +1,68 @@
-## Lỗi: Không chọn được bảng giá khi tạo báo giá
+## Phân tích kết quả test thực tế
 
-### Nguyên nhân
-Migration security gần nhất (`20260504013504`) đã siết RLS của `price_lists` và `products` xuống mức "manager chỉ thấy bản ghi của chính mình". Trong dữ liệu thực tế, **toàn bộ bảng giá và sản phẩm đều thuộc 1 manager gốc** (`3dc07420-...`), nên các manager/employee khác (vd `nguyenducphuoc@company.com`) bị chặn → dropdown rỗng → không tạo được báo giá.
+Bạn parse 10 segment, AI trả 10 item — **về số lượng là khớp 100%**. Nhưng UI vẫn hiện 4 cảnh báo "Thiếu SP" và 6/10 item bị gắn `fallback_product`. Đây là **lỗi của logic phân loại sau xử lý**, không phải lỗi của AI hay parser.
 
-Đây là dữ liệu dùng chung toàn công ty (catalog), không phải dữ liệu riêng từng manager → cần coi như chia sẻ nội bộ.
+### Bằng chứng từ dữ liệu test
 
-### Phương án sửa (migration mới)
+| # | Segment | AI trả | Thực tế |
+|---|---|---|---|
+| 1 | vỏ gối T250 50x70 | "Vỏ gối T250 50x70" – 40k | ✅ Đúng nhưng bị gắn `fallback_product` |
+| 2 | vỏ gối T300 50x70 | "Vỏ gối T300 50x70" – 40k | ✅ Đúng nhưng bị gắn `fallback_product` |
+| 3 | vỏ gối T200 50x70 | "Vỏ gối T200 50x70" – 37.5k | ✅ Đúng nhưng bị gắn `fallback_product` |
+| 4 | vỏ gối LTH 50x70 | "Vỏ gối LTH 50x70" | ✅ exact (đúng) |
+| 5 | vỏ gối chống thấm 50x70 | "Vỏ gối chống thấm 50x70" | ✅ Đúng — nhưng vẫn cảnh báo "Thiếu SP" |
+| 6 | vỏ gối tencel 50x70 | **"Bộ chăn ga gối Tencel-0798HM" – 2.2 triệu** | ❌ **SAI THẬT** — AI ghép vào bộ chăn ga 2.2M |
+| 7 | vỏ gối 50x70 (mặc định T250) | "Vỏ gối 50x70" – 51.25k | Lặp với #1, gây cảnh báo "Thiếu SP cho T250" |
+| 8 | bảo vệ nệm 160x200 | "Bảo vệ nệm chống thấm chần bông 160x200" | ❌ Sai material (yêu cầu thường, AI trả chống thấm) |
+| 9 | bảo vệ nệm chống thấm 1m6 | "Bảo vệ nệm chống thấm 150x200" | ⚠️ Sai size (có 160x200 nhưng đã bị #8 chiếm) |
+| 10 | bảo vệ nệm trơn D200 | "Bảo vệ nệm chần bông tròn D200" | ✅ Đúng |
 
-Mở lại quyền **đọc** `price_lists` và `products` cho mọi user đã đăng nhập, nhưng giữ chặt quyền **ghi** (chỉ admin + manager sở hữu mới sửa được).
+### 3 lỗi logic gốc
 
-```sql
--- price_lists: cho mọi authenticated SELECT
-DROP POLICY IF EXISTS "Managers can manage their price_lists" ON public.price_lists;
-DROP POLICY IF EXISTS "Employees can manage their manager's price_lists" ON public.price_lists;
-DROP POLICY IF EXISTS "Accountants can view all price_lists" ON public.price_lists;
+**Lỗi A — `assignSegmentToItem` chọn segment sai khi 2 segment có cùng `type`+`material`**
+- Segment #1 (vỏ gối T250) và #7 (vỏ gối — fallback T250) đều match item "Vỏ gối T250 50x70". Cả 2 item AI trả về đều bị gán segment #7 → segment #1 bị cho là "thiếu" → cảnh báo sai.
+- Cùng vấn đề với bảo vệ nệm 160x200 (#8) vs bảo vệ nệm chống thấm 1m6 (#9).
 
-CREATE POLICY "Authenticated can view price_lists"
-  ON public.price_lists FOR SELECT TO authenticated USING (true);
+**Lỗi B — `findClosestProductScoped` cho điểm quá thấp khi candidate đã đúng tuyệt đối**
+- "Vỏ gối T250 50x70" match đúng SP "Vỏ gối T250 50x70" mà chỉ ra `fallback_product` thay vì `exact`. Lý do: scoring cộng được 15 (type) + 10 (material) + 5 (size) = 30, đúng ngưỡng `exact`, nhưng `getProductType` không nhận "vỏ gối" hoặc `getMaterial` không bắt được "T250" trong tên SP → mất 10–15 điểm → tụt xuống `fallback_product`.
 
-CREATE POLICY "Managers can write their price_lists"
-  ON public.price_lists FOR INSERT TO authenticated
-  WITH CHECK (has_role(auth.uid(),'manager') AND (manager_id = auth.uid()::text OR manager_id IS NULL));
+**Lỗi C — Segment "vỏ gối tencel" có 4 candidates nhưng AI vẫn chọn bộ chăn ga 2.2 triệu**
+- Logic `validate-and-repair` chỉ kiểm tra ID có hợp lệ trong catalog không, không kiểm tra **giá hợp lý** hoặc **product type khớp segment.type**. SP "Bộ chăn ga gối" có type khác hoàn toàn "vỏ gối" nhưng vẫn được trust.
 
-CREATE POLICY "Managers can update their price_lists"
-  ON public.price_lists FOR UPDATE TO authenticated
-  USING (has_role(auth.uid(),'manager') AND manager_id = auth.uid()::text);
+## Plan sửa (3 patch nhỏ, chỉ trong `supabase/functions/lookup-tax-code/index.ts`)
 
-CREATE POLICY "Managers can delete their price_lists"
-  ON public.price_lists FOR DELETE TO authenticated
-  USING (has_role(auth.uid(),'manager') AND manager_id = auth.uid()::text);
+### Patch 14 — Fix segment assignment: 1 segment chỉ được gán 1 item
 
--- (Admin policy "Admins can manage all price_lists" giữ nguyên)
+Trong vòng lặp `for itemIdx` (~line 297), thêm `Set` lưu các `segmentIdx` đã được dùng. Khi tính `bestSegIdx`, bỏ qua segment đã có item gán vào, **trừ khi không còn segment nào khác match**. Điều này đảm bảo 10 item map 1-1 với 10 segment khi count khớp.
+
+### Patch 15 — Fix matchQuality: nếu tên SP chứa nguyên cụm "type + material + size" thì luôn exact
+
+Trong `findClosestProductScoped`, trước khi return, thêm kiểm tra:
+```ts
+const itemKey = removeVietnameseTones(`${itemType} ${itemMaterial} ${itemDims.join('x')}`).replace(/\s+/g,' ').trim();
+const prodKey = removeVietnameseTones(bestProduct.name).replace(/\s+/g,' ').trim();
+if (itemKey && prodKey.includes(itemKey)) {
+  bestQuality = 'exact';
+}
 ```
+Áp dụng tương tự ở nhánh `validate-and-repair` line 372 khi product đã in candidates.
 
-Áp dụng pattern y hệt cho **`products`**.
+### Patch 16 — Reject SP có giá lệch >5x giá trung bình của candidate set
 
-### Tác động
+Trong `validate-and-repair` (~line 368), khi product được AI chọn nằm trong candidates, thêm sanity check:
+- Tính `medianPrice` của candidates cùng segment.
+- Nếu `product.price > medianPrice * 5` (vd vỏ gối 40k vs bộ chăn ga 2.2M = 55x) → coi như AI sai, gọi `findClosestProductScoped` để chọn lại từ candidates và đặt warning "AI chọn SP giá bất thường, đã thay bằng …".
 
-- Manager/employee mọi nơi đều xem được bảng giá + sản phẩm để tạo báo giá → fix lỗi ngay.
-- Quyền sửa/xóa vẫn an toàn: chỉ admin hoặc manager sở hữu mới ghi được.
-- API key/dữ liệu nhạy cảm (`ai_config`, `user_roles`) vẫn được giữ chặt như đã siết.
+Đồng thời check `getProductType(product.name) === getProductType(segment.type)` — nếu khác (vỏ gối vs bộ chăn ga) cũng reject.
 
-### Ghi chú memory
-Cập nhật `@security-memory`: `price_lists` và `products` là **shared catalog**, SELECT mở cho mọi authenticated; chỉ ghi mới giới hạn theo manager. Tránh re-flag.
+## Phạm vi & rủi ro
 
-### File sẽ thay đổi
-- Tạo migration mới (1 file SQL)
-- Cập nhật security memory
+- Chỉ sửa 1 file: `supabase/functions/lookup-tax-code/index.ts`
+- Không đụng DB config, không đụng UI, không đụng RLS
+- Mỗi patch độc lập, có thể rollback từng cái
+- Sau khi áp dụng, test lại cùng input "vỏ gối T250/T300/.../bảo vệ nệm…" sẽ:
+  - 0 cảnh báo "Thiếu SP" (vì map 1-1)
+  - 5–6 item là `exact` thay vì `fallback_product`
+  - Item "vỏ gối tencel" KHÔNG còn map vào bộ chăn ga 2.2M
+
+Bạn duyệt plan này chứ? Hoặc muốn tôi bỏ Patch 16 (sanity check giá) vì có thể quá aggressive?

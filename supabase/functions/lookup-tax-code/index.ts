@@ -220,6 +220,19 @@ function findClosestProductScoped(
   }
 
   if (!bestProduct || bestScore < 5) return null;
+
+  // Patch 15: if product name fully contains "type + material + size" key, treat as exact
+  try {
+    const dimsKey = itemDims.length > 0 ? itemDims.join('x') : '';
+    const itemKey = removeVietnameseTones(`${itemType || ''} ${itemMaterial || ''} ${dimsKey}`)
+      .replace(/\s+/g, ' ').trim();
+    const prodKey = removeVietnameseTones(`${bestProduct.name || ''} ${bestProduct.specifications || ''}`)
+      .replace(/\s+/g, ' ').trim();
+    if (itemKey && prodKey && itemKey.length >= 6 && prodKey.includes(itemKey)) {
+      bestQuality = 'exact';
+    }
+  } catch (_) { /* ignore */ }
+
   return { product: bestProduct, score: bestScore, matchQuality: bestQuality };
 }
 
@@ -294,6 +307,9 @@ function validateAndRepairItems(
   const segmentMatches: { segmentIdx: number; itemIdx: number; quality: string }[] = [];
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+  // Patch 14: track segments already assigned so 1 item maps to 1 segment when possible
+  const usedSegments = new Set<number>();
+
   // For each item, validate and repair
   for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
     const item = items[itemIdx];
@@ -307,6 +323,8 @@ function validateAndRepairItems(
       const itemNorm = removeVietnameseTones(item.customName || '');
       const itemType = getProductType(item.customName || '');
       let bestSegScore = -1;
+      let bestSegIdxFallback = -1;
+      let bestSegScoreFallback = -1;
       for (let si = 0; si < segments.length; si++) {
         const seg = segments[si];
         const segNorm = removeVietnameseTones(seg.type);
@@ -324,10 +342,23 @@ function validateAndRepairItems(
         if (seg.material && itemNorm.includes(seg.material.toLowerCase())) score += 3;
         // Size match
         if (seg.size && itemNorm.includes(seg.size)) score += 2;
-        if (score > bestSegScore) {
-          bestSegScore = score;
-          bestSegIdx = si;
+        // Patch 14: prefer unused segments; fallback to used only if no unused matches
+        if (!usedSegments.has(si)) {
+          if (score > bestSegScore) {
+            bestSegScore = score;
+            bestSegIdx = si;
+          }
         }
+        if (score > bestSegScoreFallback) {
+          bestSegScoreFallback = score;
+          bestSegIdxFallback = si;
+        }
+      }
+      // If no unused segment matched at all, fall back to the best (used) one
+      if (bestSegIdx === -1) {
+        bestSegIdx = bestSegIdxFallback;
+      } else {
+        usedSegments.add(bestSegIdx);
       }
     }
 
@@ -367,7 +398,36 @@ function validateAndRepairItems(
         
         if (isInCandidates || (productMatchesItem && typeMatchesSegment)) {
           // Product is in candidates OR product type matches both item and segment — trust it
-          if (matchedProduct) {
+          // Patch 16: sanity check — reject if product type ≠ segment type, or price >5x median of candidates
+          let priceOutlier = false;
+          if (matchedProduct && candidates.length >= 2) {
+            const prices = candidates.map((c: any) => Number(c.price) || 0).filter((p: number) => p > 0).sort((a, b) => a - b);
+            if (prices.length >= 2) {
+              const median = prices[Math.floor(prices.length / 2)];
+              const myPrice = Number(matchedProduct.price) || 0;
+              if (median > 0 && myPrice > median * 5) priceOutlier = true;
+            }
+          }
+          const typeMismatchHard = matchedProduct && segType && productType && productType !== segType;
+
+          if (priceOutlier || typeMismatchHard) {
+            const seg = segments[bestSegIdx];
+            const segCandidates = candidates.length > 0 ? candidates : allProducts;
+            const constraints = { material: seg.material, pattern: seg.pattern };
+            const match = findClosestProductScoped(item.customName || '', segCandidates, allProducts, constraints);
+            if (match && match.product.id !== id) {
+              const oldProduct = matchedProduct;
+              item.matchedProductId = match.product.id;
+              item.price = match.product.price || item.price;
+              item.matchQuality = match.matchQuality;
+              const reason = priceOutlier ? 'giá bất thường' : 'sai loại sản phẩm';
+              item.note = (item.note ? item.note + '. ' : '') + `Sửa (${reason}): ${match.product.name} (thay ${oldProduct?.name || id})`;
+              console.warn(`🔧 Sanity-fix [${reason}]: "${item.customName}" ${oldProduct?.name} → ${match.product.name}`);
+              warnings.push(`"${item.customName}": AI chọn ${oldProduct?.name || 'SP sai'} (${reason}), đã thay bằng ${match.product.name}`);
+            } else {
+              item.matchQuality = 'fallback_product';
+            }
+          } else if (matchedProduct) {
             const constraints = { material: segments[bestSegIdx].material, pattern: segments[bestSegIdx].pattern };
             const result = findClosestProductScoped(item.customName || '', [matchedProduct], allProducts, constraints);
             item.matchQuality = result?.matchQuality || 'exact';
