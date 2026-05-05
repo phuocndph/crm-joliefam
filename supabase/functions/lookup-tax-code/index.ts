@@ -294,6 +294,9 @@ function validateAndRepairItems(
   const segmentMatches: { segmentIdx: number; itemIdx: number; quality: string }[] = [];
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+  // Patch 14: track segments already assigned so 1 item maps to 1 segment when possible
+  const usedSegments = new Set<number>();
+
   // For each item, validate and repair
   for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
     const item = items[itemIdx];
@@ -307,6 +310,8 @@ function validateAndRepairItems(
       const itemNorm = removeVietnameseTones(item.customName || '');
       const itemType = getProductType(item.customName || '');
       let bestSegScore = -1;
+      let bestSegIdxFallback = -1;
+      let bestSegScoreFallback = -1;
       for (let si = 0; si < segments.length; si++) {
         const seg = segments[si];
         const segNorm = removeVietnameseTones(seg.type);
@@ -324,10 +329,23 @@ function validateAndRepairItems(
         if (seg.material && itemNorm.includes(seg.material.toLowerCase())) score += 3;
         // Size match
         if (seg.size && itemNorm.includes(seg.size)) score += 2;
-        if (score > bestSegScore) {
-          bestSegScore = score;
-          bestSegIdx = si;
+        // Patch 14: prefer unused segments; fallback to used only if no unused matches
+        if (!usedSegments.has(si)) {
+          if (score > bestSegScore) {
+            bestSegScore = score;
+            bestSegIdx = si;
+          }
         }
+        if (score > bestSegScoreFallback) {
+          bestSegScoreFallback = score;
+          bestSegIdxFallback = si;
+        }
+      }
+      // If no unused segment matched at all, fall back to the best (used) one
+      if (bestSegIdx === -1) {
+        bestSegIdx = bestSegIdxFallback;
+      } else {
+        usedSegments.add(bestSegIdx);
       }
     }
 
