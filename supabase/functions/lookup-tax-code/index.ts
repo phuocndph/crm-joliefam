@@ -72,15 +72,20 @@ function extractSizeDimensions(text: string): number[] {
 }
 
 const PRODUCT_TYPE_KEYWORDS = [
+  // Patch 17: thêm các loại "bộ" để phân biệt với SP đơn lẻ
+  'bo chan ga goi', 'bo chan ga', 'bo ga goi', 'bo drap',
   'chan he', 'chan dong', 'vo chan', 'ga chun', 'ga phu', 'ga goi',
-  'vo goi', 'goi trang tri', 'bao ve nem', 'bvn', 'tam trang tri',
+  'vo goi', 'goi trang tri', 'bao ve nem chong tham', 'bao ve nem',
+  'bvn', 'tam trang tri',
   'tham chan', 'tham', 'khan tam', 'khan mat', 'chan', 'ga', 'goi',
   'drap', 'rap', 'nem', 'ruot chan', 'ruot goi', 'ao goi',
 ];
 
 function getProductType(text: string): string {
   const norm = removeVietnameseTones(text);
-  for (const kw of PRODUCT_TYPE_KEYWORDS) {
+  // Patch 17: ưu tiên keyword DÀI nhất để "bo chan ga goi" thắng "vo goi"/"goi"
+  const sorted = [...PRODUCT_TYPE_KEYWORDS].sort((a, b) => b.length - a.length);
+  for (const kw of sorted) {
     if (norm.includes(kw)) return kw;
   }
   return '';
