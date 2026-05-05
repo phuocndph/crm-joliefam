@@ -398,7 +398,36 @@ function validateAndRepairItems(
         
         if (isInCandidates || (productMatchesItem && typeMatchesSegment)) {
           // Product is in candidates OR product type matches both item and segment — trust it
-          if (matchedProduct) {
+          // Patch 16: sanity check — reject if product type ≠ segment type, or price >5x median of candidates
+          let priceOutlier = false;
+          if (matchedProduct && candidates.length >= 2) {
+            const prices = candidates.map((c: any) => Number(c.price) || 0).filter((p: number) => p > 0).sort((a, b) => a - b);
+            if (prices.length >= 2) {
+              const median = prices[Math.floor(prices.length / 2)];
+              const myPrice = Number(matchedProduct.price) || 0;
+              if (median > 0 && myPrice > median * 5) priceOutlier = true;
+            }
+          }
+          const typeMismatchHard = matchedProduct && segType && productType && productType !== segType;
+
+          if (priceOutlier || typeMismatchHard) {
+            const seg = segments[bestSegIdx];
+            const segCandidates = candidates.length > 0 ? candidates : allProducts;
+            const constraints = { material: seg.material, pattern: seg.pattern };
+            const match = findClosestProductScoped(item.customName || '', segCandidates, allProducts, constraints);
+            if (match && match.product.id !== id) {
+              const oldProduct = matchedProduct;
+              item.matchedProductId = match.product.id;
+              item.price = match.product.price || item.price;
+              item.matchQuality = match.matchQuality;
+              const reason = priceOutlier ? 'giá bất thường' : 'sai loại sản phẩm';
+              item.note = (item.note ? item.note + '. ' : '') + `Sửa (${reason}): ${match.product.name} (thay ${oldProduct?.name || id})`;
+              console.warn(`🔧 Sanity-fix [${reason}]: "${item.customName}" ${oldProduct?.name} → ${match.product.name}`);
+              warnings.push(`"${item.customName}": AI chọn ${oldProduct?.name || 'SP sai'} (${reason}), đã thay bằng ${match.product.name}`);
+            } else {
+              item.matchQuality = 'fallback_product';
+            }
+          } else if (matchedProduct) {
             const constraints = { material: segments[bestSegIdx].material, pattern: segments[bestSegIdx].pattern };
             const result = findClosestProductScoped(item.customName || '', [matchedProduct], allProducts, constraints);
             item.matchQuality = result?.matchQuality || 'exact';
