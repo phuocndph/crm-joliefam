@@ -1767,46 +1767,11 @@ Giữ nguyên số liệu gốc. KHÔNG trả JSON. KHÔNG giải thích.`;
       }
 
       // Build catalog text (always text-only format now since OCR already extracted text)
-      // Include material excerpt from description so AI can disambiguate between
-      // products with identical names (e.g. VGMCR-50 vs VGT250-50 both named
-      // "Vỏ gối 50x70" but different materials).
-      function extractMaterialExcerpt(desc: string): string {
-        if (!desc) return '';
-        const norm = desc.toLowerCase();
+      const productListText = filteredProducts.map((p: any) =>
+        `${p.id}|${p.name}|${p.specifications || ''}|${p.price || 0}`
+      ).join("\n");
 
-        // Priority 1: explicit T-numbers (T200/T225/T250/T300/T350/T400)
-        const tMatch = norm.match(/\bt\s*(200|225|250|300|350|400)\b/);
-        if (tMatch) {
-          const tnum = 'T' + tMatch[1];
-          const pctMatch = norm.match(/(\d{2,3}%\s*cotton[^,.]*)/);
-          return pctMatch ? `${tnum} ${pctMatch[1].trim()}` : tnum;
-        }
-
-        // Priority 2: named materials
-        if (/\btencel\s*micro\b/.test(norm)) return 'Tencel Micro';
-        if (/\btencel\b/.test(norm)) return 'Tencel';
-        if (/\bmicrofiber\b/.test(norm)) return 'Microfiber';
-        if (/\bchong\s*tham|chống thấm\b/.test(norm) || /\bcao\s*su\s*non\b/.test(norm)) return 'Chống thấm';
-        if (/\bbong\s*ep|bông\s*ép\b/.test(norm)) return 'Bông ép';
-        if (/\bcao\s*su\s*thien\s*nhien|cao su thiên nhiên\b/.test(norm)) return 'Cao su TN';
-        if (/\bcao\s*su\s*tong\s*hop|cao su tổng hợp\b/.test(norm)) return 'Cao su TH';
-        if (/\blo\s*xo|lò xo\b/.test(norm)) return 'Lò xo';
-        if (/\b3d\b/.test(norm) && /bong|bông/.test(norm)) return 'Bông 3D';
-        if (/\b6oz\b/.test(norm)) return 'Bông 6OZ';
-        if (/\b10oz\b/.test(norm)) return 'Bông 10OZ';
-        if (/\bcotton\b/.test(norm)) {
-          const pctMatch = norm.match(/(\d{2,3}%\s*cotton[^,.]*)/);
-          return pctMatch ? pctMatch[1].trim() : 'Cotton';
-        }
-        return '';
-      }
-
-      const productListText = filteredProducts.map((p: any) => {
-        const matExcerpt = extractMaterialExcerpt(p.description || '');
-        return `${p.id}|${p.name}|${p.specifications || ''}|${p.price || 0}|${matExcerpt}`;
-      }).join("\n");
-
-      const catalogHeader = "ID|Tên|Quy cách|Giá|Chất liệu";
+      const catalogHeader = "ID|Tên|Quy cách|Giá";
 
       // Build segment instruction for AI
       let segmentInstruction = '';
