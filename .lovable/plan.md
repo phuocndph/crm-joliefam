@@ -1,68 +1,77 @@
-## Phân tích kết quả test thực tế
+## Phân tích sau Patch 14-16
 
-Bạn parse 10 segment, AI trả 10 item — **về số lượng là khớp 100%**. Nhưng UI vẫn hiện 4 cảnh báo "Thiếu SP" và 6/10 item bị gắn `fallback_product`. Đây là **lỗi của logic phân loại sau xử lý**, không phải lỗi của AI hay parser.
+Kết quả test mới đã đỡ hơn nhiều (0 cảnh báo "Thiếu SP", 5s thay vì 40s), nhưng còn 2 lỗi thật do logic phân loại quá thô.
 
-### Bằng chứng từ dữ liệu test
+### Lỗi gốc thật sự
 
-| # | Segment | AI trả | Thực tế |
-|---|---|---|---|
-| 1 | vỏ gối T250 50x70 | "Vỏ gối T250 50x70" – 40k | ✅ Đúng nhưng bị gắn `fallback_product` |
-| 2 | vỏ gối T300 50x70 | "Vỏ gối T300 50x70" – 40k | ✅ Đúng nhưng bị gắn `fallback_product` |
-| 3 | vỏ gối T200 50x70 | "Vỏ gối T200 50x70" – 37.5k | ✅ Đúng nhưng bị gắn `fallback_product` |
-| 4 | vỏ gối LTH 50x70 | "Vỏ gối LTH 50x70" | ✅ exact (đúng) |
-| 5 | vỏ gối chống thấm 50x70 | "Vỏ gối chống thấm 50x70" | ✅ Đúng — nhưng vẫn cảnh báo "Thiếu SP" |
-| 6 | vỏ gối tencel 50x70 | **"Bộ chăn ga gối Tencel-0798HM" – 2.2 triệu** | ❌ **SAI THẬT** — AI ghép vào bộ chăn ga 2.2M |
-| 7 | vỏ gối 50x70 (mặc định T250) | "Vỏ gối 50x70" – 51.25k | Lặp với #1, gây cảnh báo "Thiếu SP cho T250" |
-| 8 | bảo vệ nệm 160x200 | "Bảo vệ nệm chống thấm chần bông 160x200" | ❌ Sai material (yêu cầu thường, AI trả chống thấm) |
-| 9 | bảo vệ nệm chống thấm 1m6 | "Bảo vệ nệm chống thấm 150x200" | ⚠️ Sai size (có 160x200 nhưng đã bị #8 chiếm) |
-| 10 | bảo vệ nệm trơn D200 | "Bảo vệ nệm chần bông tròn D200" | ✅ Đúng |
+**1. `getProductType` trả ra keyword đầu tiên match → "vỏ gối" và "bộ chăn ga gối" bị coi là cùng type**
 
-### 3 lỗi logic gốc
-
-**Lỗi A — `assignSegmentToItem` chọn segment sai khi 2 segment có cùng `type`+`material`**
-- Segment #1 (vỏ gối T250) và #7 (vỏ gối — fallback T250) đều match item "Vỏ gối T250 50x70". Cả 2 item AI trả về đều bị gán segment #7 → segment #1 bị cho là "thiếu" → cảnh báo sai.
-- Cùng vấn đề với bảo vệ nệm 160x200 (#8) vs bảo vệ nệm chống thấm 1m6 (#9).
-
-**Lỗi B — `findClosestProductScoped` cho điểm quá thấp khi candidate đã đúng tuyệt đối**
-- "Vỏ gối T250 50x70" match đúng SP "Vỏ gối T250 50x70" mà chỉ ra `fallback_product` thay vì `exact`. Lý do: scoring cộng được 15 (type) + 10 (material) + 5 (size) = 30, đúng ngưỡng `exact`, nhưng `getProductType` không nhận "vỏ gối" hoặc `getMaterial` không bắt được "T250" trong tên SP → mất 10–15 điểm → tụt xuống `fallback_product`.
-
-**Lỗi C — Segment "vỏ gối tencel" có 4 candidates nhưng AI vẫn chọn bộ chăn ga 2.2 triệu**
-- Logic `validate-and-repair` chỉ kiểm tra ID có hợp lệ trong catalog không, không kiểm tra **giá hợp lý** hoặc **product type khớp segment.type**. SP "Bộ chăn ga gối" có type khác hoàn toàn "vỏ gối" nhưng vẫn được trust.
-
-## Plan sửa (3 patch nhỏ, chỉ trong `supabase/functions/lookup-tax-code/index.ts`)
-
-### Patch 14 — Fix segment assignment: 1 segment chỉ được gán 1 item
-
-Trong vòng lặp `for itemIdx` (~line 297), thêm `Set` lưu các `segmentIdx` đã được dùng. Khi tính `bestSegIdx`, bỏ qua segment đã có item gán vào, **trừ khi không còn segment nào khác match**. Điều này đảm bảo 10 item map 1-1 với 10 segment khi count khớp.
-
-### Patch 15 — Fix matchQuality: nếu tên SP chứa nguyên cụm "type + material + size" thì luôn exact
-
-Trong `findClosestProductScoped`, trước khi return, thêm kiểm tra:
+Code hiện tại tại line 81-87:
 ```ts
-const itemKey = removeVietnameseTones(`${itemType} ${itemMaterial} ${itemDims.join('x')}`).replace(/\s+/g,' ').trim();
-const prodKey = removeVietnameseTones(bestProduct.name).replace(/\s+/g,' ').trim();
-if (itemKey && prodKey.includes(itemKey)) {
-  bestQuality = 'exact';
+function getProductType(text: string): string {
+  const norm = removeVietnameseTones(text);
+  for (const kw of PRODUCT_TYPE_KEYWORDS) {
+    if (norm.includes(kw)) return kw;
+  }
+  return '';
 }
 ```
-Áp dụng tương tự ở nhánh `validate-and-repair` line 372 khi product đã in candidates.
+- `PRODUCT_TYPE_KEYWORDS` có cả `'vo goi'` và `'goi'` và `'chan'` riêng lẻ
+- "Bộ chăn ga gối Tencel" → norm "bo chan ga goi tencel" → match "vo goi"? KHÔNG. Match "chan" trước (xuất hiện sau trong array). Tùy thứ tự.
+- Thực tế: array có "vo chan" trước "vo goi", và "chan" rất cuối → "Bộ chăn ga gối" sẽ match "ga goi" (nếu có) hoặc "goi". Cả "vỏ gối" cũng match "goi" hoặc "vo goi".
+- Kết quả: cả 2 product khác type hoàn toàn nhưng `getProductType` ra giá trị giống nhau → Patch 16 typeMismatchHard không trigger.
 
-### Patch 16 — Reject SP có giá lệch >5x giá trung bình của candidate set
+**2. AI nhầm lẫn ID giữa các SP rất giống nhau (T200 / T250 / T300)**
 
-Trong `validate-and-repair` (~line 368), khi product được AI chọn nằm trong candidates, thêm sanity check:
-- Tính `medianPrice` của candidates cùng segment.
-- Nếu `product.price > medianPrice * 5` (vd vỏ gối 40k vs bộ chăn ga 2.2M = 55x) → coi như AI sai, gọi `findClosestProductScoped` để chọn lại từ candidates và đặt warning "AI chọn SP giá bất thường, đã thay bằng …".
+AI chọn ID dựa trên prompt ngắn `ID|Name|Specs|Price`. 3 SP "Vỏ gối T200/T250/T300 50x70" trông gần như giống hệt → AI gán nhầm ID. Đây là vấn đề mà sanity check theo material có thể catch: nếu segment yêu cầu T250 mà product được chọn có "T200" trong tên thì sai.
 
-Đồng thời check `getProductType(product.name) === getProductType(segment.type)` — nếu khác (vỏ gối vs bộ chăn ga) cũng reject.
+Hiện tại `getMaterial` có "t200/t250/t300" nhưng Patch 16 chỉ check `getProductType !== segType`, KHÔNG check material.
 
-## Phạm vi & rủi ro
+### Plan sửa (2 patch nhỏ, vẫn chỉ trong `lookup-tax-code/index.ts`)
 
-- Chỉ sửa 1 file: `supabase/functions/lookup-tax-code/index.ts`
-- Không đụng DB config, không đụng UI, không đụng RLS
-- Mỗi patch độc lập, có thể rollback từng cái
-- Sau khi áp dụng, test lại cùng input "vỏ gối T250/T300/.../bảo vệ nệm…" sẽ:
-  - 0 cảnh báo "Thiếu SP" (vì map 1-1)
-  - 5–6 item là `exact` thay vì `fallback_product`
-  - Item "vỏ gối tencel" KHÔNG còn map vào bộ chăn ga 2.2M
+#### Patch 17 — Cải thiện `getProductType`: ưu tiên keyword DÀI nhất
 
-Bạn duyệt plan này chứ? Hoặc muốn tôi bỏ Patch 16 (sanity check giá) vì có thể quá aggressive?
+Sửa hàm `getProductType` để duyệt theo **độ dài giảm dần** của keyword, đồng thời thêm các type cha rõ ràng:
+```ts
+function getProductType(text: string): string {
+  const norm = removeVietnameseTones(text);
+  // Sort keywords by length DESC so "bao ve nem chong tham" beats "bao ve nem", "vo goi" beats "goi"
+  const sorted = [...PRODUCT_TYPE_KEYWORDS].sort((a, b) => b.length - a.length);
+  for (const kw of sorted) {
+    if (norm.includes(kw)) return kw;
+  }
+  return '';
+}
+```
+Đồng thời thêm vào `PRODUCT_TYPE_KEYWORDS`: `'bo chan ga goi'`, `'bo chan ga'`, `'bo ga goi'` để "Bộ chăn ga gối Tencel" được phân loại thành `bo chan ga goi`, KHÁC với segment `vo goi` → Patch 16 sẽ catch được và tự thay.
+
+#### Patch 18 — Sanity check material trong validate-and-repair
+
+Trong khối `if (isInCandidates || (productMatchesItem && typeMatchesSegment))` của Patch 16 (~line 399), thêm điều kiện reject:
+
+```ts
+// Patch 18: nếu segment có material cụ thể (T200/T250/...) và product chứa material KHÁC → reject
+const segMaterial = (segments[bestSegIdx].material || '').toLowerCase();
+const prodMaterial = matchedProduct ? getMaterial(matchedProduct.name + ' ' + (matchedProduct.specifications || '')) : '';
+const materialMismatchHard = segMaterial && prodMaterial 
+  && segMaterial !== prodMaterial 
+  && !(segMaterial === 'lth' && prodMaterial === 't225')
+  && !(segMaterial === 't225' && prodMaterial === 'lth');
+```
+Cộng `materialMismatchHard` vào điều kiện trigger sanity-fix:
+```ts
+if (priceOutlier || typeMismatchHard || materialMismatchHard) { ... }
+```
+
+Khi trigger, `findClosestProductScoped` sẽ tự tìm SP đúng material trong candidates (đã có scoring -20 cho material mismatch).
+
+### Phạm vi & rủi ro
+
+- 1 file `supabase/functions/lookup-tax-code/index.ts`, 2 patch độc lập
+- Không đụng DB, RLS, UI, config
+- Sau khi áp dụng, cùng input test sẽ:
+  - Vỏ gối T200/T250/T300 sẽ được tự sửa về đúng SP (hoặc warning rõ "AI chọn sai material")
+  - Vỏ gối Tencel sẽ KHÔNG còn map vào bộ chăn ga 2.2M (Patch 17 phân loại đúng → Patch 16 type-mismatch trigger)
+  - Có thể xuất hiện warning "AI chọn ... (sai loại sản phẩm), đã thay bằng ..." — đây là behavior mong muốn
+
+Bạn duyệt không?
