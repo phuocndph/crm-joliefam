@@ -212,11 +212,12 @@ const ProductManagement = () => {
       setTotalProducts(count || 0);
       setTotalPages(Math.ceil((count || 0) / itemsPerPage));
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching products:', error);
+      const detail = [error?.message, error?.hint, error?.code].filter(Boolean).join(' | ');
       toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách sản phẩm",
+        title: "Lỗi tải sản phẩm",
+        description: detail || "Không thể tải danh sách sản phẩm",
         variant: "destructive",
       });
     } finally {
