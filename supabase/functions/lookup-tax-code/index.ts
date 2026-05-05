@@ -220,6 +220,19 @@ function findClosestProductScoped(
   }
 
   if (!bestProduct || bestScore < 5) return null;
+
+  // Patch 15: if product name fully contains "type + material + size" key, treat as exact
+  try {
+    const dimsKey = itemDims.length > 0 ? itemDims.join('x') : '';
+    const itemKey = removeVietnameseTones(`${itemType || ''} ${itemMaterial || ''} ${dimsKey}`)
+      .replace(/\s+/g, ' ').trim();
+    const prodKey = removeVietnameseTones(`${bestProduct.name || ''} ${bestProduct.specifications || ''}`)
+      .replace(/\s+/g, ' ').trim();
+    if (itemKey && prodKey && itemKey.length >= 6 && prodKey.includes(itemKey)) {
+      bestQuality = 'exact';
+    }
+  } catch (_) { /* ignore */ }
+
   return { product: bestProduct, score: bestScore, matchQuality: bestQuality };
 }
 
