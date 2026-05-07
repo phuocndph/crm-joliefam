@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { User } from '@supabase/supabase-js';
 import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
 import { EditGHNOrderDialog } from '@/components/EditGHNOrderDialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import * as XLSX from 'xlsx';
 
@@ -91,6 +92,8 @@ export default function GHNTrackingPage() {
   const [editingRecord, setEditingRecord] = useState<GHNTrackingData | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [printing, setPrinting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   
   const { role } = useUserRole(user);
 
@@ -589,6 +592,7 @@ export default function GHNTrackingPage() {
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
+    setCurrentPage(1);
   }, []);
 
   const printA5 = async (orderCodes: string[]) => {
