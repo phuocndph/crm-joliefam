@@ -783,7 +783,7 @@ export default function GHNTrackingPage() {
                 <tr>
                   <th className="bg-blue-800 text-white border border-gray-300 px-2 py-4 text-center text-sm font-semibold min-w-[50px]">
                     <Checkbox
-                      checked={filteredData.length > 0 && selectedOrders.size === filteredData.length}
+                      checked={paginatedData.length > 0 && paginatedData.every(d => selectedOrders.has(d.ghn_order_code))}
                       onCheckedChange={toggleSelectAll}
                       className="border-white data-[state=checked]:bg-white data-[state=checked]:text-blue-800"
                     />
@@ -805,14 +805,14 @@ export default function GHNTrackingPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredData.length === 0 ? (
+                {paginatedData.length === 0 ? (
                   <tr>
                     <td colSpan={15} className="border border-gray-300 px-3 py-4 text-center text-gray-500">
                       {trackingData.length === 0 ? 'Chưa có dữ liệu tracking' : 'Không tìm thấy kết quả phù hợp với bộ lọc'}
                     </td>
                   </tr>
                 ) : (
-                  filteredData.map((item, index) => (
+                  paginatedData.map((item, index) => (
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="border border-gray-300 px-2 py-3 text-center min-w-[50px]">
                         <Checkbox
@@ -820,7 +820,7 @@ export default function GHNTrackingPage() {
                           onCheckedChange={() => toggleSelectOrder(item.ghn_order_code)}
                         />
                       </td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm font-medium text-center min-w-[80px]">{index + 1}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm font-medium text-center min-w-[80px]">{(safePage - 1) * pageSize + index + 1}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[150px]">{item.ghn_order_code}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[120px]">{item.internal_order_code || '-'}</td>
                        <td className="border border-gray-300 px-4 py-3 text-sm min-w-[180px]">
@@ -902,12 +902,26 @@ export default function GHNTrackingPage() {
           </div>
 
           {trackingData.length > 0 && (
-            <div className="mt-4 text-sm text-gray-500">
-              {filteredData.length !== trackingData.length ? (
-                `Hiển thị ${filteredData.length} / ${trackingData.length} đơn hàng`
-              ) : (
-                `Tổng cộng: ${trackingData.length} đơn hàng đang được theo dõi`
-              )}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
+              <div className="flex items-center gap-2">
+                <span>Số dòng/trang:</span>
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                  <SelectTrigger className="h-8 w-20"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[25, 50, 100, 200].map(n => (
+                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span>Hiển thị {startIdx}-{endIdx} / {filteredData.length} đơn hàng</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={safePage === 1}>«</Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safePage === 1}>‹ Trước</Button>
+                <span className="px-2">Trang {safePage} / {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>Sau ›</Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={safePage === totalPages}>»</Button>
+              </div>
             </div>
           )}
         </CardContent>
