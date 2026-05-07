@@ -525,27 +525,35 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
     }
     setLoading(true);
     try {
+      // GHN không cho sửa field `items` khi đơn đã qua trạng thái lấy hàng
+      const currentStatus = (trackingRecord.ghn_status || '').toLowerCase();
+      const canEditItems = ['ready_to_pick', 'picking'].includes(currentStatus);
+
+      const updateData: any = {
+        to_name: toName,
+        to_phone: toPhone,
+        to_address: toAddress,
+        to_district_id: parseInt(districtId),
+        to_ward_code: wardCode,
+        weight: totalItemWeight || weight,
+        length: effectiveDims.length,
+        width: effectiveDims.width,
+        height: effectiveDims.height,
+        note,
+        required_note: requiredNote,
+        content: itemContent,
+        insurance_value: insuranceValue,
+        cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
+      };
+      if (canEditItems) {
+        updateData.items = productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height }));
+      }
+
       // 1. Update order info
       await callGHN('update_order', {
         orderCode: trackingRecord.ghn_order_code,
         shopId: selectedShopId || undefined,
-        updateData: {
-          to_name: toName,
-          to_phone: toPhone,
-          to_address: toAddress,
-          to_district_id: parseInt(districtId),
-          to_ward_code: wardCode,
-          weight: totalItemWeight || weight,
-          length: effectiveDims.length,
-          width: effectiveDims.width,
-          height: effectiveDims.height,
-          note,
-          required_note: requiredNote,
-          content: itemContent,
-          insurance_value: insuranceValue,
-          cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
-          items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height })),
-        }
+        updateData,
       });
 
       // 2. Update COD if changed
