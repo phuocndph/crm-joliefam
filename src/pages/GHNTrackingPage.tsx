@@ -627,12 +627,24 @@ export default function GHNTrackingPage() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedOrders.size === filteredData.length) {
-      setSelectedOrders(new Set());
-    } else {
-      setSelectedOrders(new Set(filteredData.map(d => d.ghn_order_code)));
-    }
+    const pageCodes = paginatedData.map(d => d.ghn_order_code);
+    const allSelected = pageCodes.every(c => selectedOrders.has(c));
+    setSelectedOrders(prev => {
+      const next = new Set(prev);
+      if (allSelected) pageCodes.forEach(c => next.delete(c));
+      else pageCodes.forEach(c => next.add(c));
+      return next;
+    });
   };
+
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedData = useMemo(
+    () => filteredData.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [filteredData, safePage, pageSize]
+  );
+  const startIdx = filteredData.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const endIdx = Math.min(safePage * pageSize, filteredData.length);
 
   return (
     <div className="container mx-auto py-6 space-y-6 max-w-full">
