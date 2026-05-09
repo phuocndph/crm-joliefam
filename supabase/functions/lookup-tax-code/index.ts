@@ -1265,72 +1265,89 @@ Nếu không tìm thấy trường nào thì để chuỗi rỗng "". Chỉ tr�
 
 async function callAI(messages: any[], hasImage = false, modelOverride?: string, stepHint?: 'ocr' | 'text') {
   const BEEKNOEE_API_KEY = Deno.env.get("BEEKNOEE_API_KEY");
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
-  if (!BEEKNOEE_API_KEY) {
-    throw new Error("No AI API key configured (BEEKNOEE_API_KEY required)");
+  if (!BEEKNOEE_API_KEY && !LOVABLE_API_KEY) {
+    throw new Error("No AI API key configured (BEEKNOEE_API_KEY or LOVABLE_API_KEY required)");
   }
 
   const model = cleanModelName(modelOverride) || "gemini-2.5-flash";
   const payload = { model, messages };
   const callStart = Date.now();
 
-  // Direct Beeknoee with model chain (no Lovable AI)
+  // 1) Try Beeknoee with a SHORT chain, NO retry round 2 (was up to ~4 minutes worst case)
   if (BEEKNOEE_API_KEY) {
-    console.log(`Falling back to Beeknoee API (hasImage: ${hasImage}, step: ${stepHint || 'default'})...`);
-    
-    // Different model orders based on step to avoid 429 concurrent limit
+    console.log(`Beeknoee call (hasImage: ${hasImage}, step: ${stepHint || 'default'})...`);
+
     const fallbackModels = hasImage
-      ? [
-          { name: "gemini-2.5-flash-lite", timeout: 30000 },
-          { name: "gemini-2.5-flash", timeout: 90000 },
-        ]
-      : [
-          { name: "gemini-2.5-flash-lite", timeout: 30000 },
-          { name: "gemini-2.5-flash", timeout: 55000 },
-        ];
+      ? [{ name: "gemini-2.5-flash-lite", timeout: 20000 }]
+      : [{ name: "gemini-2.5-flash-lite", timeout: 18000 }];
     const models = [
-      { name: model, timeout: hasImage ? 45000 : 35000 },
+      { name: model, timeout: hasImage ? 25000 : 20000 },
       ...fallbackModels.filter(({ name }) => name !== model),
     ];
     console.log(`Beeknoee model chain: ${models.map(({ name }) => name).join(' -> ')}`);
-    
-    // Only 1 retry attempt (was 2), with shorter wait
-    for (let attempt = 0; attempt < 2; attempt++) {
-      for (const { name: model, timeout } of models) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), timeout);
-          const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ ...payload, model }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
 
-          if (response.ok) {
-            console.log(`AI response from: Beeknoee (${model}) (${Date.now() - callStart}ms)`);
-            return parseAIResponse(await response.json());
-          }
+    for (const { name: m, timeout } of models) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        const response = await fetch("https://platform.beeknoee.com/api/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${BEEKNOEE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, model: m }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
 
-          const errText = await response.text();
-          console.warn(`Beeknoee ${model} failed (${response.status}): ${errText.substring(0, 150)}`);
-          if (response.status === 429) {
-            // Short delay for concurrent limit
-            await new Promise(r => setTimeout(r, 2000));
-          }
-        } catch (e) {
-          console.warn(`Beeknoee ${model} error:`, e instanceof Error ? e.message : e);
+        if (response.ok) {
+          console.log(`AI response from: Beeknoee (${m}) (${Date.now() - callStart}ms)`);
+          return parseAIResponse(await response.json());
         }
+
+        const errText = await response.text();
+        console.warn(`Beeknoee ${m} failed (${response.status}): ${errText.substring(0, 150)}`);
+      } catch (e) {
+        console.warn(`Beeknoee ${m} error:`, e instanceof Error ? e.message : e);
       }
-      if (attempt === 0) {
-        console.log("All models failed on first attempt, retrying after 2s...");
-        await new Promise(r => setTimeout(r, 2000));
+    }
+    console.warn("Beeknoee chain exhausted, trying Lovable AI Gateway fallback...");
+  }
+
+  // 2) Fallback to Lovable AI Gateway (stable, OAuth-managed)
+  if (LOVABLE_API_KEY) {
+    const gatewayModels = hasImage
+      ? ["google/gemini-3-flash-preview", "google/gemini-2.5-flash"]
+      : ["google/gemini-3-flash-preview", "google/gemini-2.5-flash-lite"];
+    for (const gm of gatewayModels) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), hasImage ? 30000 : 25000);
+        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: gm, messages }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          console.log(`AI response from: Lovable AI (${gm}) (${Date.now() - callStart}ms)`);
+          return parseAIResponse(await response.json());
+        }
+        if (response.status === 429 || response.status === 402) {
+          const errText = await response.text();
+          throw new Error(`Lovable AI ${response.status}: ${errText.substring(0, 200)}`);
+        }
+        const errText = await response.text();
+        console.warn(`Lovable AI ${gm} failed (${response.status}): ${errText.substring(0, 150)}`);
+      } catch (e) {
+        console.warn(`Lovable AI ${gm} error:`, e instanceof Error ? e.message : e);
       }
     }
   }
 
-  throw new Error("All AI providers failed");
+  throw new Error("All AI providers failed (Beeknoee + Lovable AI Gateway)");
 }
 
 function parseAIResponse(result: any) {
