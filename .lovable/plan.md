@@ -1,48 +1,35 @@
-## Nguyên nhân AI phân tích báo giá chậm
+## Vấn đề
 
-Dựa trên log edge function `lookup-tax-code` (mới nhất) và code tại `supabase/functions/lookup-tax-code/index.ts` (hàm `callAI`, dòng 1266–1334).
+Khi duyệt báo giá ở trang **Báo giá**, đơn hàng mới đã được tạo trong DB nhưng trang **Đơn hàng** không cập nhật ngay — phải F5 mới thấy.
 
-### Bằng chứng từ log thực tế (1 request gần nhất)
+## Nguyên nhân
 
-```
-T+0s    AI Quote Fill: Step 2 — text matching, model=gemini-2.5-flash
-T+0s    Beeknoee model chain: gemini-2.5-flash -> gemini-2.5-flash-lite
-T+35s   Beeknoee gemini-2.5-flash error: The signal has been aborted   ← timeout 35s
-T+65s   Beeknoee gemini-2.5-flash-lite error: The signal has been aborted ← timeout 30s
-T+65s   All models failed on first attempt, retrying after 2s...
-T+67s+  (retry vòng 2 với cùng chain)
+Trong `src/pages/QuotesPage.tsx` (hàm `handleApproveQuote`, ~dòng 319–323), sau khi tạo đơn hàng, code chỉ invalidate các queryKey cũ:
+
+```ts
+queryClient.invalidateQueries({ queryKey: ['quotes'] });
+queryClient.invalidateQueries({ queryKey: ['orders'] });
 ```
 
-Tức là **provider Beeknoee đang phản hồi rất chậm hoặc treo**, không trả lời trong timeout, nên hệ thống chạy hết chain rồi retry → tổng thời gian có thể lên 2–3 phút trước khi báo lỗi hoặc trả kết quả.
+Nhưng trang Đơn hàng (`OrderManagement.tsx`) hiện dùng `useInfiniteOrders` với queryKey `['orders-infinite', ...]`, và thẻ thống kê dùng `['orders-stats', ...]`, `['quotes-stats', ...]`. Hai key `['orders']` / `['quotes']` cũ không khớp nên cache không được làm mới.
 
-### Các nguyên nhân chính
+Realtime subscription của `useInfiniteOrders` có lắng nghe `INSERT` trên `orders`, nhưng chỉ chạy khi user đang **mở** trang Đơn hàng (hook đã mount). Nếu user duyệt xong rồi mới chuyển sang trang Đơn hàng, dữ liệu trả về là cache cũ (staleTime = 60s) → phải reload.
 
-1. **Provider AI (Beeknoee) bị treo / quá tải**
-   Cả 2 model `gemini-2.5-flash` và `gemini-2.5-flash-lite` đều bị abort do hết timeout. Đây là nguyên nhân số 1 hôm nay. Có thể do Beeknoee bị rate-limit nội bộ, hoặc đang downtime cục bộ.
+## Giải pháp
 
-2. **Pipeline 2 bước (OCR + Text matching) chạy tuần tự**
-   Khi user dán ảnh báo giá: bước OCR gọi Beeknoee 1 lần, rồi bước matching gọi Beeknoee lần 2. Nếu mỗi bước 20–30s → tổng 40–60s là bình thường ngay cả khi không lỗi.
+Cập nhật danh sách invalidate trong `handleApproveQuote` (và `handleRejectQuote` cho đồng bộ) trong `src/pages/QuotesPage.tsx`:
 
-3. **Chain fallback + retry cộng dồn timeout**
-   Code hiện tại: `[model chính 35s] → [flash-lite 30s] → [flash 55s]`, rồi **retry toàn bộ chain 1 lần nữa**. Trường hợp xấu nhất: 35+30+55 = 120s × 2 vòng = **~240s** trước khi fail. Đây là lý do dù chỉ 1 request user vẫn thấy "treo lâu".
+```ts
+queryClient.invalidateQueries({ queryKey: ['quotes'] });
+queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
+queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
+queryClient.invalidateQueries({ queryKey: ['orders'] });
+queryClient.invalidateQueries({ queryKey: ['orders-infinite'] });
+queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+```
 
-4. **Prompt + danh sách sản phẩm lớn**
-   Log cho thấy lọc 920 → 880 → 58 sản phẩm theo segment. Nếu segment matching không thu hẹp tốt (vd. segment lạ), payload gửi AI sẽ rất to → model xử lý lâu, dễ timeout.
+Việc này đảm bảo khi user mở trang Đơn hàng (dù đang mở sẵn hay chuyển vào sau), danh sách và bộ đếm thống kê đều refetch ngay, không cần F5.
 
-5. **Không dùng Lovable AI Gateway**
-   Comment trong code: `// Direct Beeknoee with model chain (no Lovable AI)`. Toàn bộ traffic đang đi qua một provider thứ 3 (Beeknoee) thay vì Lovable AI Gateway có sẵn — nên độ ổn định phụ thuộc vào provider đó.
+## Phạm vi sửa
 
-### Điều có thể làm để cải thiện (tóm tắt, chưa thực hiện trong plan mode)
-
-- **Giảm timeout chain + bỏ retry vòng 2** → khi provider treo sẽ fail nhanh trong 30–40s thay vì 2–4 phút.
-- **Thêm Lovable AI Gateway làm fallback** (`google/gemini-3-flash-preview`) — khi Beeknoee chậm/lỗi sẽ tự chuyển sang gateway ổn định.
-- **Stream response** thay vì đợi xong — user thấy kết quả gõ ra dần thay vì chờ trống.
-- **Cache kết quả OCR theo hash ảnh** để paste lại cùng ảnh không phải gọi AI lần 2.
-- **Cắt ngắn payload sản phẩm**: với segment đã lọc còn ~58 sản phẩm vẫn ổn, nhưng đảm bảo không gửi field thừa (mô tả dài, ảnh base64…) trong messages.
-- **Pattern bất đồng bộ (job queue)** chỉ cần khi yêu cầu chạm trần 150s của edge function. Hiện tại chưa cần thiết — sửa timeout + thêm fallback gateway là đủ.
-
-### Kết luận
-
-Nguyên nhân chính lúc này: **Beeknoee provider đang treo / timeout**, cộng với chain fallback + retry dài (tới ~4 phút worst-case) khiến mỗi request chậm hoặc đứng. Không phải do code logic AI Quote sai, mà do thiết kế retry quá rộng và phụ thuộc 1 provider không ổn định.
-
-Khi bạn muốn, mình sẽ sang chế độ build để: (1) rút gọn timeout chain + bỏ retry vòng 2, (2) thêm Lovable AI Gateway làm fallback ngoài cùng.
+- 1 file: `src/pages/QuotesPage.tsx` — chỉ thêm các dòng `invalidateQueries` cho key mới. Không đụng tới logic nghiệp vụ, không đổi DB, không đổi UI.
