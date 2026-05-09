@@ -38,6 +38,7 @@ interface EditGHNOrderDialogProps {
     cod_amount?: number;
     package_weight?: number;
     raw_data?: any;
+    ghn_status?: string;
   } | null;
   onSuccess: () => void;
 }
