@@ -320,7 +320,11 @@ export default function QuotesPage() {
       
       // Also invalidate orders cache since we created a new order
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-infinite'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
       
       toast({
         title: "Thành công",
@@ -347,6 +351,8 @@ export default function QuotesPage() {
 
       await refetchQuotes();
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
       toast({
         title: "Thành công",
         description: "Báo giá đã được từ chối",
