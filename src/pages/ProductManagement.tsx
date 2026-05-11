@@ -174,44 +174,52 @@ const ProductManagement = () => {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const offset = (currentPage - 1) * itemsPerPage;
-      
-      let query = supabase
+      const buildQuery = (page: number) => {
+        const offset = (page - 1) * itemsPerPage;
+        let q = supabase
         .from('products' as any)
         .select('*', { count: 'exact' });
+        if (selectedPriceList) q = q.eq('price_list_id', selectedPriceList);
+        if (activeSearchTerm) {
+          q = q.or(`name.ilike.%${activeSearchTerm}%,sku.ilike.%${activeSearchTerm}%,description.ilike.%${activeSearchTerm}%`);
+        }
+        if (categoryFilter && categoryFilter !== 'all') q = q.eq('category', categoryFilter);
+        if (stockFilter && stockFilter !== 'all') {
+          q = q.eq('in_stock', stockFilter === 'in-stock');
+        }
+        return q
+          .range(offset, offset + itemsPerPage - 1)
+          .order('category', { ascending: true })
+          .order('sku', { ascending: true });
+      };
 
-      // Apply filters at database level
-      if (selectedPriceList) {
-        query = query.eq('price_list_id', selectedPriceList);
+      let { data, error, count } = await buildQuery(currentPage);
+
+      // If we requested a page beyond the available range, retry on the last valid page
+      if (error && (error as any).code === 'PGRST103') {
+        const headCheck = await supabase
+          .from('products' as any)
+          .select('id', { count: 'exact', head: true })
+          .eq('price_list_id', selectedPriceList || '');
+        const realCount = headCheck.count || 0;
+        const lastPage = Math.max(1, Math.ceil(realCount / itemsPerPage));
+        if (lastPage !== currentPage) {
+          setCurrentPage(lastPage);
+          return;
+        }
+        ({ data, error, count } = await buildQuery(1));
+        if (!error) setCurrentPage(1);
       }
-
-      if (activeSearchTerm) {
-        query = query.or(`name.ilike.%${activeSearchTerm}%,sku.ilike.%${activeSearchTerm}%,description.ilike.%${activeSearchTerm}%`);
-      }
-
-      if (categoryFilter && categoryFilter !== 'all') {
-        query = query.eq('category', categoryFilter);
-      }
-
-      if (stockFilter && stockFilter !== 'all') {
-        const inStock = stockFilter === 'in-stock';
-        query = query.eq('in_stock', inStock);
-      }
-
-      // Add pagination
-      query = query
-        .range(offset, offset + itemsPerPage - 1)
-        .order('category', { ascending: true })
-        .order('sku', { ascending: true });
-
-      const { data, error, count } = await query;
 
       if (error) throw error;
-      
+
       setProducts((data as unknown as Product[]) || []);
       setTotalProducts(count || 0);
-      setTotalPages(Math.ceil((count || 0) / itemsPerPage));
-      
+      const newTotalPages = Math.max(1, Math.ceil((count || 0) / itemsPerPage));
+      setTotalPages(newTotalPages);
+      if (currentPage > newTotalPages) {
+        setCurrentPage(newTotalPages);
+      }
     } catch (error: any) {
       console.error('Error fetching products:', error);
       const detail = [error?.message, error?.hint, error?.code].filter(Boolean).join(' | ');
