@@ -1,33 +1,42 @@
-## Kế hoạch sửa lỗi nhân đôi sản phẩm
+## Vấn đề thực tế
 
-### Vấn đề đang thấy
-- Bảng giá **“Từ 01/5 Năm 2025 Đến Nay”** hiện có đúng **920 dòng** trong database, nhưng bị chia theo nhiều `manager_id`: 890 + 29 + 1.
-- Chính sách vừa thêm **“Authenticated can view products = true”** làm người dùng nhìn thấy sản phẩm của nhiều manager trong cùng một bảng giá, nên giao diện trông như bị nhân đôi / lẫn dữ liệu.
-- Ảnh bạn gửi có các dòng cùng nhóm sản phẩm nhưng giá/quy cách khác nhau; phần này có thể là dữ liệu từ các manager khác bị lộ chung vào một bảng giá, không phải lỗi render của bảng.
+Trang không còn lỗi PGRST103, nhưng số sản phẩm đang sai vì dữ liệu của bảng giá **“Từ 01/5 Năm 2025 Đến Nay”** đang nằm trong cùng một `price_list_id` nhưng bị chia theo nhiều `manager_id`:
 
-### Cách sửa
-1. **Thu hồi chính sách xem quá rộng trên `products`**
-   - Xóa policy cho phép toàn bộ user đăng nhập xem toàn bộ sản phẩm.
-   - Khôi phục phạm vi đúng theo vai trò:
-     - Admin/Accountant: xem toàn bộ nếu đúng nghiệp vụ hiện tại.
-     - Manager: xem sản phẩm của chính mình.
-     - Employee/Staff: xem sản phẩm thuộc manager được phân công.
+- `4b2f1f05...`: 890 sản phẩm
+- `6a1faecc...`: 29 sản phẩm
+- `3dc07420...`: 1 sản phẩm
+- Tổng đúng trong bảng giá: 920 sản phẩm
 
-2. **Đồng bộ dữ liệu bảng giá “Từ 01/5 Năm 2025 Đến Nay” theo đúng owner**
-   - Kiểm tra manager sở hữu bảng giá là `3dc07420...` nhưng 890 sản phẩm đang thuộc `4b2f1f05...` và 29 sản phẩm thuộc `6a1faecc...`.
-   - Chọn hướng an toàn: chỉ hiển thị theo `manager_id` hợp lệ với người dùng hiện tại; không xóa dữ liệu ngay.
-   - Nếu cần sửa dữ liệu thật sau khi bạn xác nhận, sẽ chuyển các sản phẩm đúng về cùng manager của bảng giá hoặc tách bảng giá theo manager.
+RLS hiện tại cho manager chỉ thấy sản phẩm có `manager_id = auth.uid()`, nên user đang đăng nhập thuộc manager có 29 sản phẩm thì UI chỉ hiện **29**, không thể hiện 920.
 
-3. **Sửa truy vấn trang Quản lý sản phẩm để không cộng lẫn dữ liệu giữa các manager**
-   - Với user không phải Admin/Accountant, query sản phẩm sẽ lọc theo `manager_id` phù hợp với role.
-   - Count phân trang cũng dùng cùng điều kiện lọc để không còn báo sai tổng số.
-   - PGRST103 vẫn được giữ xử lý fallback trang hợp lệ.
+## Kế hoạch sửa
 
-4. **Kiểm tra lại sau sửa**
-   - Vào bảng giá “Từ 01/5 Năm 2025 Đến Nay”.
-   - Xác nhận tổng sản phẩm không còn cộng lẫn 890 + 29 + 1.
-   - Kiểm tra các mã ví dụ như `BVDCBT-1M`, `BVDCBT-1M2`, `BVDCBT-1M4` không bị hiện thêm dòng từ manager khác.
+1. **Không mở lại policy quá rộng kiểu `true`**
+   - Không dùng lại policy “Authenticated can view all products” vì đó là nguyên nhân trước làm lẫn/nhân đôi dữ liệu giữa manager.
 
-### Ghi chú cần bạn xác nhận khi triển khai
-- Nếu mục tiêu của bạn là bảng giá này phải có **đúng 920 sản phẩm cho tất cả người dùng**, thì phải chuẩn hóa lại `manager_id` của dữ liệu.
-- Nếu mục tiêu là mỗi manager chỉ thấy sản phẩm của mình, thì sau sửa một số user sẽ thấy **890**, user khác thấy **29**, chứ không cộng thành 920 nữa.
+2. **Sửa quyền xem sản phẩm theo bảng giá được phép xem**
+   - Nếu user đã được phép xem một bảng giá trong `price_lists`, thì user cũng được xem tất cả sản phẩm thuộc `price_list_id` đó.
+   - Admin/accountant vẫn xem được toàn bộ.
+   - Manager vẫn quản lý/sửa/xóa theo quyền hiện có, nhưng quyền xem sẽ không bị giới hạn sai bởi `products.manager_id` khi sản phẩm thuộc cùng bảng giá.
+
+3. **Giữ chống nhân đôi bằng truy vấn đúng `price_list_id`**
+   - Trang ProductManagement đã lọc sản phẩm theo `selectedPriceList`; sau khi RLS được sửa theo bảng giá, bảng “Từ 01/5 Năm 2025 Đến Nay” sẽ trả đúng 920 dòng thuộc đúng bảng giá đó, không cộng từ bảng giá khác.
+
+4. **Sửa fallback PGRST103 nếu cần**
+   - Đảm bảo nhánh retry khi page vượt quá tổng số cũng dùng cùng bộ lọc hiện tại, để không còn lệch count khi search/category/stock filter.
+
+5. **Kiểm tra lại bằng SQL và preview**
+   - Kiểm tra count bảng giá này trả về 920 theo `price_list_id`.
+   - Kiểm tra policy không còn `qual: true` trên `products`.
+   - Kiểm tra giao diện thống kê hiển thị tổng 920 và phân trang khoảng 19 trang với 50 sản phẩm/trang.
+
+## Thay đổi dự kiến
+
+- Tạo migration sửa RLS policy `products` cho quyền xem theo `price_lists`.
+- Có thể chỉnh nhẹ `src/pages/ProductManagement.tsx` để fallback PGRST103 dùng đầy đủ filter hiện tại.
+
+## Kết quả mong muốn
+
+- Trang **“Từ 01/5 Năm 2025 Đến Nay”** hiển thị đủ **920 sản phẩm**.
+- Không còn lỗi **PGRST103** khi đổi filter/trang.
+- Không còn tình trạng mở policy quá rộng làm lẫn dữ liệu ngoài bảng giá.
