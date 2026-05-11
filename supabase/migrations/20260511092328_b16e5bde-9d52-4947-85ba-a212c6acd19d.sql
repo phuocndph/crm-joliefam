@@ -1,0 +1,1 @@
+ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS document_overrides jsonb NOT NULL DEFAULT '{}'::jsonb;

@@ -1,42 +1,83 @@
-## Vấn đề thực tế
+## Mục tiêu
 
-Trang không còn lỗi PGRST103, nhưng số sản phẩm đang sai vì dữ liệu của bảng giá **“Từ 01/5 Năm 2025 Đến Nay”** đang nằm trong cùng một `price_list_id` nhưng bị chia theo nhiều `manager_id`:
+Cho phép chỉnh sửa **tự do toàn bộ nội dung** của 3 biểu mẫu trong trang Hợp đồng:
+- Đề nghị Tạm ứng (ĐNTU)
+- Biên bản Bàn giao (BBBG)
+- Đề nghị Thanh toán (ĐNTT)
 
-- `4b2f1f05...`: 890 sản phẩm
-- `6a1faecc...`: 29 sản phẩm
-- `3dc07420...`: 1 sản phẩm
-- Tổng đúng trong bảng giá: 920 sản phẩm
+Nội dung sau khi chỉnh sửa được **lưu vào hợp đồng**, lần sau mở lại vẫn còn (giống như cách chỉnh sửa Hợp đồng mua bán hiện tại).
 
-RLS hiện tại cho manager chỉ thấy sản phẩm có `manager_id = auth.uid()`, nên user đang đăng nhập thuộc manager có 29 sản phẩm thì UI chỉ hiện **29**, không thể hiện 920.
+## Cách tiếp cận
 
-## Kế hoạch sửa
+Mỗi biểu mẫu hiện chỉ cho sửa vài trường (ngày, số tiền, ghi chú). Sẽ nâng cấp thành **form đầy đủ tất cả các trường** trong biểu mẫu + thêm nút **"Lưu"** để ghi vào DB. Khi mở lại dialog, đọc dữ liệu đã lưu để hiển thị.
 
-1. **Không mở lại policy quá rộng kiểu `true`**
-   - Không dùng lại policy “Authenticated can view all products” vì đó là nguyên nhân trước làm lẫn/nhân đôi dữ liệu giữa manager.
+Lý do không dùng rich text editor: giữ được layout chuẩn (header, bảng, chữ ký) khi In/PDF/Word; vẫn cho phép chỉnh sửa mọi đoạn văn quan trọng.
 
-2. **Sửa quyền xem sản phẩm theo bảng giá được phép xem**
-   - Nếu user đã được phép xem một bảng giá trong `price_lists`, thì user cũng được xem tất cả sản phẩm thuộc `price_list_id` đó.
-   - Admin/accountant vẫn xem được toàn bộ.
-   - Manager vẫn quản lý/sửa/xóa theo quyền hiện có, nhưng quyền xem sẽ không bị giới hạn sai bởi `products.manager_id` khi sản phẩm thuộc cùng bảng giá.
+## Thay đổi Database
 
-3. **Giữ chống nhân đôi bằng truy vấn đúng `price_list_id`**
-   - Trang ProductManagement đã lọc sản phẩm theo `selectedPriceList`; sau khi RLS được sửa theo bảng giá, bảng “Từ 01/5 Năm 2025 Đến Nay” sẽ trả đúng 920 dòng thuộc đúng bảng giá đó, không cộng từ bảng giá khác.
+Thêm 1 cột JSONB vào bảng `contracts` để lưu nội dung tuỳ chỉnh của 3 biểu mẫu:
 
-4. **Sửa fallback PGRST103 nếu cần**
-   - Đảm bảo nhánh retry khi page vượt quá tổng số cũng dùng cùng bộ lọc hiện tại, để không còn lệch count khi search/category/stock filter.
+```sql
+ALTER TABLE public.contracts
+  ADD COLUMN document_overrides jsonb DEFAULT '{}'::jsonb;
+```
 
-5. **Kiểm tra lại bằng SQL và preview**
-   - Kiểm tra count bảng giá này trả về 920 theo `price_list_id`.
-   - Kiểm tra policy không còn `qual: true` trên `products`.
-   - Kiểm tra giao diện thống kê hiển thị tổng 920 và phân trang khoảng 19 trang với 50 sản phẩm/trang.
+Cấu trúc:
+```json
+{
+  "advance_request": { "request_date": "...", "amount": 0, "title": "...", "intro": "...", "rows": [...], "bank_info_text": "...", "notes": "...", "signature_label": "..." },
+  "handover_report": { "handover_date": "...", "intro": "...", "seller": {...}, "buyer": {...}, "items": [...], "conclusion": "...", "notes": "...", "footer_note": "..." },
+  "payment_request": { "document_number": "...", "request_date": "...", "phase": "...", "amount": 0, "to_recipient": "...", "to_address": "...", "intro": "...", "rows": [...], "bank_info_text": "...", "notes": "...", "closing": "..." }
+}
+```
 
-## Thay đổi dự kiến
+RLS: dùng chung policy hiện có của `contracts` (không thêm policy mới).
 
-- Tạo migration sửa RLS policy `products` cho quyền xem theo `price_lists`.
-- Có thể chỉnh nhẹ `src/pages/ProductManagement.tsx` để fallback PGRST103 dùng đầy đủ filter hiện tại.
+## Thay đổi Frontend
 
-## Kết quả mong muốn
+### Mở rộng 3 dialog
+Cho từng dialog (`AdvanceRequestDialog`, `HandoverReportDialog`, `PaymentRequestDialog`):
 
-- Trang **“Từ 01/5 Năm 2025 Đến Nay”** hiển thị đủ **920 sản phẩm**.
-- Không còn lỗi **PGRST103** khi đổi filter/trang.
-- Không còn tình trạng mở policy quá rộng làm lẫn dữ liệu ngoài bảng giá.
+1. Thêm **tab "Chỉnh sửa nội dung"** (hoặc accordion) bên cạnh khu vực form hiện tại, gồm input/textarea cho **mọi đoạn văn** trong biểu mẫu:
+   - Tiêu đề lớn (vd "ĐỀ NGHỊ TẠM ỨNG")
+   - Câu mở đầu ("Căn cứ Hợp đồng số...")
+   - Người nhận (Kính gửi)
+   - Các dòng trong bảng (label + giá trị) — cho phép thêm/xoá dòng
+   - Thông tin chuyển khoản (textarea nhiều dòng)
+   - Câu kết
+   - Label chữ ký 2 bên
+   - Ghi chú
+
+2. Khởi tạo state từ `contract.document_overrides?.<form_key>` nếu có, ngược lại dùng giá trị mặc định (sinh từ data hợp đồng + companySettings như hiện nay).
+
+3. **Preview** (vùng `printRef`) render theo state đã chỉnh, không còn dùng trực tiếp `contract.*` cho các đoạn văn.
+
+4. Export PDF/Word đọc từ state đã chỉnh → file xuất ra cũng theo nội dung mới.
+
+### Nút Lưu
+Thêm nút **"Lưu"** trên thanh công cụ. Khi bấm:
+```ts
+await supabase
+  .from('contracts')
+  .update({ document_overrides: { ...contract.document_overrides, [form_key]: currentState } })
+  .eq('id', contract.id);
+queryClient.invalidateQueries({ queryKey: ['contracts'] });
+toast("Đã lưu nội dung biểu mẫu");
+```
+
+### Nút "Khôi phục mặc định"
+Xoá `document_overrides[form_key]` để biểu mẫu trở về sinh tự động từ dữ liệu hợp đồng.
+
+## Files dự kiến chỉnh sửa
+
+- `supabase/migrations/<new>.sql` — thêm cột `document_overrides`
+- `src/components/AdvanceRequestDialog.tsx` — thêm form đầy đủ + Lưu/Khôi phục
+- `src/components/HandoverReportDialog.tsx` — tương tự
+- `src/components/PaymentRequestDialog.tsx` — tương tự
+- (Không sửa `src/integrations/supabase/types.ts` — tự sinh sau migration)
+
+## Phạm vi không làm
+
+- Không đụng tới Hợp đồng mua bán (đã có editor riêng).
+- Không thêm rich text/bold/italic — chỉ là plain text trong các ô; format (in đậm, màu) vẫn theo template cố định.
+- Không lưu lịch sử các phiên bản chỉnh sửa.
