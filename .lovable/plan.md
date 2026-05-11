@@ -1,24 +1,33 @@
-## Kết quả kiểm tra
+## Kế hoạch sửa lỗi nhân đôi sản phẩm
 
-- Bảng giá **“Từ 01/5 Năm 2025 Đến Nay”** hiện có **920 sản phẩm** trong database.
-- Lỗi ảnh chụp **`Requested range not satisfiable | PGRST103`** xảy ra khi app đang yêu cầu một trang sản phẩm vượt quá số trang hợp lệ của kết quả hiện tại.
-- Nguyên nhân rất có khả năng nằm ở logic phân trang trong `ProductManagement.tsx`: khi đổi bảng giá / bộ lọc, code vừa reset `currentPage` về 1 vừa gọi tải sản phẩm ngay, nên có lúc vẫn dùng số trang cũ để `.range(...)`.
+### Vấn đề đang thấy
+- Bảng giá **“Từ 01/5 Năm 2025 Đến Nay”** hiện có đúng **920 dòng** trong database, nhưng bị chia theo nhiều `manager_id`: 890 + 29 + 1.
+- Chính sách vừa thêm **“Authenticated can view products = true”** làm người dùng nhìn thấy sản phẩm của nhiều manager trong cùng một bảng giá, nên giao diện trông như bị nhân đôi / lẫn dữ liệu.
+- Ảnh bạn gửi có các dòng cùng nhóm sản phẩm nhưng giá/quy cách khác nhau; phần này có thể là dữ liệu từ các manager khác bị lộ chung vào một bảng giá, không phải lỗi render của bảng.
 
-## Kế hoạch sửa
+### Cách sửa
+1. **Thu hồi chính sách xem quá rộng trên `products`**
+   - Xóa policy cho phép toàn bộ user đăng nhập xem toàn bộ sản phẩm.
+   - Khôi phục phạm vi đúng theo vai trò:
+     - Admin/Accountant: xem toàn bộ nếu đúng nghiệp vụ hiện tại.
+     - Manager: xem sản phẩm của chính mình.
+     - Employee/Staff: xem sản phẩm thuộc manager được phân công.
 
-1. **Sửa logic tải sản phẩm**
-   - Chỉ gọi `fetchProducts` khi đã có `user`.
-   - Khi đổi bảng giá, tìm kiếm, danh mục hoặc tình trạng: reset về trang 1 rồi để effect phân trang tải lại dữ liệu bằng trang mới.
-   - Tránh gọi tải sản phẩm bằng `currentPage` cũ.
+2. **Đồng bộ dữ liệu bảng giá “Từ 01/5 Năm 2025 Đến Nay” theo đúng owner**
+   - Kiểm tra manager sở hữu bảng giá là `3dc07420...` nhưng 890 sản phẩm đang thuộc `4b2f1f05...` và 29 sản phẩm thuộc `6a1faecc...`.
+   - Chọn hướng an toàn: chỉ hiển thị theo `manager_id` hợp lệ với người dùng hiện tại; không xóa dữ liệu ngay.
+   - Nếu cần sửa dữ liệu thật sau khi bạn xác nhận, sẽ chuyển các sản phẩm đúng về cùng manager của bảng giá hoặc tách bảng giá theo manager.
 
-2. **Chặn trang vượt quá tổng số trang**
-   - Sau khi biết `count`, nếu `currentPage > totalPages`, tự đưa về trang cuối hợp lệ thay vì để Supabase trả `PGRST103`.
-   - Nếu bảng giá có 920 sản phẩm và 50 sản phẩm/trang, app sẽ chỉ cho phép trang 1–19.
+3. **Sửa truy vấn trang Quản lý sản phẩm để không cộng lẫn dữ liệu giữa các manager**
+   - Với user không phải Admin/Accountant, query sản phẩm sẽ lọc theo `manager_id` phù hợp với role.
+   - Count phân trang cũng dùng cùng điều kiện lọc để không còn báo sai tổng số.
+   - PGRST103 vẫn được giữ xử lý fallback trang hợp lệ.
 
-3. **Cải thiện xử lý lỗi PGRST103**
-   - Nếu vẫn gặp `PGRST103`, app sẽ tự reset về trang 1 và tải lại thay vì chỉ hiện toast lỗi đỏ.
-   - Giữ toast lỗi chi tiết cho các lỗi thật khác.
+4. **Kiểm tra lại sau sửa**
+   - Vào bảng giá “Từ 01/5 Năm 2025 Đến Nay”.
+   - Xác nhận tổng sản phẩm không còn cộng lẫn 890 + 29 + 1.
+   - Kiểm tra các mã ví dụ như `BVDCBT-1M`, `BVDCBT-1M2`, `BVDCBT-1M4` không bị hiện thêm dòng từ manager khác.
 
-4. **Kiểm tra lại**
-   - Mở trang Quản lý sản phẩm với bảng giá “Từ 01/5 Năm 2025 Đến Nay”.
-   - Xác nhận hiển thị được 920 sản phẩm theo phân trang và không còn toast `Requested range not satisfiable`.
+### Ghi chú cần bạn xác nhận khi triển khai
+- Nếu mục tiêu của bạn là bảng giá này phải có **đúng 920 sản phẩm cho tất cả người dùng**, thì phải chuẩn hóa lại `manager_id` của dữ liệu.
+- Nếu mục tiêu là mỗi manager chỉ thấy sản phẩm của mình, thì sau sửa một số user sẽ thấy **890**, user khác thấy **29**, chứ không cộng thành 920 nữa.
