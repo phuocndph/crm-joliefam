@@ -1,35 +1,24 @@
-## Vấn đề
+## Kết quả kiểm tra
 
-Khi duyệt báo giá ở trang **Báo giá**, đơn hàng mới đã được tạo trong DB nhưng trang **Đơn hàng** không cập nhật ngay — phải F5 mới thấy.
+- Bảng giá **“Từ 01/5 Năm 2025 Đến Nay”** hiện có **920 sản phẩm** trong database.
+- Lỗi ảnh chụp **`Requested range not satisfiable | PGRST103`** xảy ra khi app đang yêu cầu một trang sản phẩm vượt quá số trang hợp lệ của kết quả hiện tại.
+- Nguyên nhân rất có khả năng nằm ở logic phân trang trong `ProductManagement.tsx`: khi đổi bảng giá / bộ lọc, code vừa reset `currentPage` về 1 vừa gọi tải sản phẩm ngay, nên có lúc vẫn dùng số trang cũ để `.range(...)`.
 
-## Nguyên nhân
+## Kế hoạch sửa
 
-Trong `src/pages/QuotesPage.tsx` (hàm `handleApproveQuote`, ~dòng 319–323), sau khi tạo đơn hàng, code chỉ invalidate các queryKey cũ:
+1. **Sửa logic tải sản phẩm**
+   - Chỉ gọi `fetchProducts` khi đã có `user`.
+   - Khi đổi bảng giá, tìm kiếm, danh mục hoặc tình trạng: reset về trang 1 rồi để effect phân trang tải lại dữ liệu bằng trang mới.
+   - Tránh gọi tải sản phẩm bằng `currentPage` cũ.
 
-```ts
-queryClient.invalidateQueries({ queryKey: ['quotes'] });
-queryClient.invalidateQueries({ queryKey: ['orders'] });
-```
+2. **Chặn trang vượt quá tổng số trang**
+   - Sau khi biết `count`, nếu `currentPage > totalPages`, tự đưa về trang cuối hợp lệ thay vì để Supabase trả `PGRST103`.
+   - Nếu bảng giá có 920 sản phẩm và 50 sản phẩm/trang, app sẽ chỉ cho phép trang 1–19.
 
-Nhưng trang Đơn hàng (`OrderManagement.tsx`) hiện dùng `useInfiniteOrders` với queryKey `['orders-infinite', ...]`, và thẻ thống kê dùng `['orders-stats', ...]`, `['quotes-stats', ...]`. Hai key `['orders']` / `['quotes']` cũ không khớp nên cache không được làm mới.
+3. **Cải thiện xử lý lỗi PGRST103**
+   - Nếu vẫn gặp `PGRST103`, app sẽ tự reset về trang 1 và tải lại thay vì chỉ hiện toast lỗi đỏ.
+   - Giữ toast lỗi chi tiết cho các lỗi thật khác.
 
-Realtime subscription của `useInfiniteOrders` có lắng nghe `INSERT` trên `orders`, nhưng chỉ chạy khi user đang **mở** trang Đơn hàng (hook đã mount). Nếu user duyệt xong rồi mới chuyển sang trang Đơn hàng, dữ liệu trả về là cache cũ (staleTime = 60s) → phải reload.
-
-## Giải pháp
-
-Cập nhật danh sách invalidate trong `handleApproveQuote` (và `handleRejectQuote` cho đồng bộ) trong `src/pages/QuotesPage.tsx`:
-
-```ts
-queryClient.invalidateQueries({ queryKey: ['quotes'] });
-queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
-queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
-queryClient.invalidateQueries({ queryKey: ['orders'] });
-queryClient.invalidateQueries({ queryKey: ['orders-infinite'] });
-queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
-```
-
-Việc này đảm bảo khi user mở trang Đơn hàng (dù đang mở sẵn hay chuyển vào sau), danh sách và bộ đếm thống kê đều refetch ngay, không cần F5.
-
-## Phạm vi sửa
-
-- 1 file: `src/pages/QuotesPage.tsx` — chỉ thêm các dòng `invalidateQueries` cho key mới. Không đụng tới logic nghiệp vụ, không đổi DB, không đổi UI.
+4. **Kiểm tra lại**
+   - Mở trang Quản lý sản phẩm với bảng giá “Từ 01/5 Năm 2025 Đến Nay”.
+   - Xác nhận hiển thị được 920 sản phẩm theo phân trang và không còn toast `Requested range not satisfiable`.
