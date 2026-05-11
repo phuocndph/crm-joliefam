@@ -134,13 +134,12 @@ const ProductManagement = () => {
   }, [user]);
 
   useEffect(() => {
-    // Reset to first page when filters change; the [currentPage] effect will refetch.
     setCurrentPage(1);
   }, [activeSearchTerm, categoryFilter, stockFilter, selectedPriceList]);
 
   useEffect(() => {
     if (user) fetchProducts();
-  }, [currentPage]);
+  }, [user, currentPage, activeSearchTerm, categoryFilter, stockFilter, selectedPriceList]);
 
   // Tự động chọn bảng giá đầu tiên khi có dữ liệu
   useEffect(() => {
