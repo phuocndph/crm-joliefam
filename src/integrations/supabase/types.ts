@@ -208,6 +208,7 @@ export type Database = {
           customer_id: string | null
           deposit_amount: number | null
           deposit_percentage: number | null
+          document_overrides: Json
           end_date: string | null
           id: string
           include_vat: boolean | null
@@ -240,6 +241,7 @@ export type Database = {
           customer_id?: string | null
           deposit_amount?: number | null
           deposit_percentage?: number | null
+          document_overrides?: Json
           end_date?: string | null
           id?: string
           include_vat?: boolean | null
@@ -272,6 +274,7 @@ export type Database = {
           customer_id?: string | null
           deposit_amount?: number | null
           deposit_percentage?: number | null
+          document_overrides?: Json
           end_date?: string | null
           id?: string
           include_vat?: boolean | null
