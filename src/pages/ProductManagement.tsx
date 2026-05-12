@@ -1052,12 +1052,12 @@ const ProductManagement = () => {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Tổng sản phẩm:</span>
+                  <span className="text-sm text-muted-foreground">Tổng dòng trong bảng giá:</span>
                   <span className="font-bold text-primary">{totalProducts}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Trang hiện tại:</span>
-                  <span className="font-medium text-accent">{products.length} sản phẩm</span>
+                  <span className="text-sm text-muted-foreground">Dòng đang hiển thị:</span>
+                  <span className="font-medium text-accent">{products.length} dòng</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Trang:</span>
