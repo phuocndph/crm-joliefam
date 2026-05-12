@@ -56,7 +56,9 @@ export function ColumnMappingDialog({
       }
 
       const spreadsheetId = urlMatch[1];
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=0`;
+      const gidMatch = googleSheetsUrl.match(/[#?&]gid=(\d+)/);
+      const gid = gidMatch ? gidMatch[1] : '0';
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
 
       const response = await fetch(csvUrl);
       if (!response.ok) {
@@ -144,7 +146,13 @@ export function ColumnMappingDialog({
 
       if (error) throw error;
 
-      toast.success(data.message || 'Import thành công!');
+      const stats = data?.stats;
+      const lossy = stats && stats.totalDataRows !== stats.savedProducts;
+      if (lossy) {
+        toast.warning(data.message || 'Import có chênh lệch số dòng');
+      } else {
+        toast.success(data.message || 'Import thành công!');
+      }
       onImportComplete();
       onOpenChange(false);
     } catch (error: any) {

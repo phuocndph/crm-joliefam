@@ -494,9 +494,12 @@ const ProductManagement = () => {
       if (error) throw error;
 
       if (data.success) {
+        const stats = data.stats;
+        const lossy = stats && (stats.totalDataRows !== stats.savedProducts);
         toast({
-          title: "Thành công",
+          title: lossy ? "Import có chênh lệch" : "Thành công",
           description: data.message,
+          variant: lossy ? "destructive" : "default",
         });
         setGoogleSheetsUrl('');
         // Force refresh products to show updated data
@@ -1052,12 +1055,12 @@ const ProductManagement = () => {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Tổng sản phẩm:</span>
+                  <span className="text-sm text-muted-foreground">Tổng dòng trong bảng giá:</span>
                   <span className="font-bold text-primary">{totalProducts}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Trang hiện tại:</span>
-                  <span className="font-medium text-accent">{products.length} sản phẩm</span>
+                  <span className="text-sm text-muted-foreground">Dòng đang hiển thị:</span>
+                  <span className="font-medium text-accent">{products.length} dòng</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Trang:</span>
@@ -1456,7 +1459,7 @@ const ProductManagement = () => {
                      </div>
                      <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-sm">
-                          Trang {currentPage}/{totalPages} - {products.length}/{totalProducts} sản phẩm
+                          Trang {currentPage}/{totalPages} - {products.length}/{totalProducts} dòng (theo bảng giá)
                         </Badge>
                         {products.length > 0 && (
                          <Button

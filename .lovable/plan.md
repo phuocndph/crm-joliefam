@@ -1,83 +1,74 @@
-## Mục tiêu
+## Kết luận điều tra
 
-Cho phép chỉnh sửa **tự do toàn bộ nội dung** của 3 biểu mẫu trong trang Hợp đồng:
-- Đề nghị Tạm ứng (ĐNTU)
-- Biên bản Bàn giao (BBBG)
-- Đề nghị Thanh toán (ĐNTT)
+Tôi đã kiểm tra luồng Products từ màn hình `/products`, schema DB, dữ liệu thật trong `products`, `price_lists`, import Google Sheets và migration liên quan.
 
-Nội dung sau khi chỉnh sửa được **lưu vào hợp đồng**, lần sau mở lại vẫn còn (giống như cách chỉnh sửa Hợp đồng mua bán hiện tại).
+### Nguyên nhân gốc có khả năng cao
 
-## Cách tiếp cận
+1. **Bảng `products` không có cột “số lượng tồn kho” thật**
+   - DB hiện chỉ có `in_stock` dạng boolean: `Còn/Hết`.
+   - Một số component mobile cũ có interface `stock_quantity`, nhưng schema thật không có cột này.
+   - Vì vậy nếu nơi nào hiển thị “số lượng sản phẩm” theo nghĩa tồn kho, app đang không có dữ liệu nguồn đáng tin cậy để hiển thị.
 
-Mỗi biểu mẫu hiện chỉ cho sửa vài trường (ngày, số tiền, ghi chú). Sẽ nâng cấp thành **form đầy đủ tất cả các trường** trong biểu mẫu + thêm nút **"Lưu"** để ghi vào DB. Khi mở lại dialog, đọc dữ liệu đã lưu để hiển thị.
+2. **Màn Products đang dùng cùng chữ “số lượng sản phẩm” cho “số dòng sản phẩm”**
+   - `Tổng sản phẩm` = số dòng trong bảng `products` theo bảng giá đang chọn.
+   - `Trang hiện tại` = số dòng đang load trong page hiện tại, tối đa 50.
+   - Đây dễ bị hiểu nhầm là số lượng/tồn kho sản phẩm.
 
-Lý do không dùng rich text editor: giữ được layout chuẩn (header, bảng, chữ ký) khi In/PDF/Word; vẫn cho phép chỉnh sửa mọi đoạn văn quan trọng.
+3. **Luồng import có rủi ro mất dòng do tự gộp trùng SKU trong file nguồn**
+   - Edge Function import đang deduplicate bằng `sku` trước khi lưu.
+   - Nếu Google Sheets có nhiều dòng cùng `Mã SP` trong cùng bảng giá, app chỉ giữ dòng đầu tiên và bỏ các dòng sau.
+   - DB hiện có ràng buộc unique theo `(sku, price_list_id)`, nên mỗi bảng giá chỉ cho phép 1 dòng cho mỗi mã SP.
+   - Dữ liệu hiện tại không có trùng trong từng bảng giá: bảng mới có 920 mã, bảng cũ có 852 mã. Điều này cho thấy lỗi nếu còn gặp thường đến từ dữ liệu nguồn/import hoặc cách người dùng hiểu nhãn “số lượng”.
 
-## Thay đổi Database
+4. **Import Google Sheets luôn đọc `gid=0`**
+   - Nếu link Google Sheets người dùng đang mở ở sheet/tab khác, hệ thống vẫn import tab đầu tiên.
+   - Đây là một nguyên nhân gốc rất dễ gây “sai số lượng sản phẩm” vì số dòng import không khớp tab người dùng nhìn thấy.
 
-Thêm 1 cột JSONB vào bảng `contracts` để lưu nội dung tuỳ chỉnh của 3 biểu mẫu:
+5. **Bảng giá đang tự chọn bảng mới nhất theo `created_at`, không theo trạng thái hoặc năm**
+   - Mở trang sẽ tự chọn price list đầu tiên theo ngày tạo mới nhất.
+   - Nếu người dùng nghĩ đang xem bảng giá khác, số lượng hiển thị sẽ “sai” dù DB query đúng.
 
-```sql
-ALTER TABLE public.contracts
-  ADD COLUMN document_overrides jsonb DEFAULT '{}'::jsonb;
-```
+## Kế hoạch sửa để không lặp lại lỗi
 
-Cấu trúc:
-```json
-{
-  "advance_request": { "request_date": "...", "amount": 0, "title": "...", "intro": "...", "rows": [...], "bank_info_text": "...", "notes": "...", "signature_label": "..." },
-  "handover_report": { "handover_date": "...", "intro": "...", "seller": {...}, "buyer": {...}, "items": [...], "conclusion": "...", "notes": "...", "footer_note": "..." },
-  "payment_request": { "document_number": "...", "request_date": "...", "phase": "...", "amount": 0, "to_recipient": "...", "to_address": "...", "intro": "...", "rows": [...], "bank_info_text": "...", "notes": "...", "closing": "..." }
-}
-```
+### 1. Làm rõ UI: phân biệt “số dòng sản phẩm” và “tồn kho”
+- Đổi nhãn trên Products từ “Tổng sản phẩm” thành “Tổng dòng trong bảng giá”.
+- Đổi “Trang hiện tại” thành “Dòng đang hiển thị”.
+- Ở cột `Kho`, giữ `Còn/Hết` hoặc đổi nhãn thành `Tình trạng` để tránh hiểu là số lượng.
 
-RLS: dùng chung policy hiện có của `contracts` (không thêm policy mới).
+### 2. Sửa import Google Sheets đọc đúng sheet/tab người dùng cung cấp
+- Parse `gid` từ URL Google Sheets nếu có.
+- Chỉ fallback về `gid=0` khi URL không có gid.
+- Áp dụng đồng bộ ở:
+  - Preview mapping trong `ColumnMappingDialog.tsx`
+  - Edge Function `supabase/functions/import-products/index.ts`
 
-## Thay đổi Frontend
+### 3. Chặn lỗi import âm thầm bỏ dòng
+- Khi import, thống kê:
+  - tổng dòng đọc được từ CSV
+  - số dòng hợp lệ
+  - số dòng bị bỏ vì thiếu `Mã SP`/`Tên SP`
+  - danh sách SKU trùng trong file
+- Nếu có SKU trùng trong cùng file, không bỏ âm thầm; trả cảnh báo rõ ràng cho người dùng.
+- Toast import hiển thị đúng: “Đọc X dòng, lưu Y mã sản phẩm, bỏ Z dòng lỗi/trùng”.
 
-### Mở rộng 3 dialog
-Cho từng dialog (`AdvanceRequestDialog`, `HandoverReportDialog`, `PaymentRequestDialog`):
+### 4. Thêm kiểm tra chéo sau import
+- Sau khi import xong, frontend gọi lại DB count theo `price_list_id` và hiển thị con số DB thật.
+- Nếu số dòng nguồn khác số dòng lưu, báo rõ lý do thay vì chỉ báo “import thành công”.
 
-1. Thêm **tab "Chỉnh sửa nội dung"** (hoặc accordion) bên cạnh khu vực form hiện tại, gồm input/textarea cho **mọi đoạn văn** trong biểu mẫu:
-   - Tiêu đề lớn (vd "ĐỀ NGHỊ TẠM ỨNG")
-   - Câu mở đầu ("Căn cứ Hợp đồng số...")
-   - Người nhận (Kính gửi)
-   - Các dòng trong bảng (label + giá trị) — cho phép thêm/xoá dòng
-   - Thông tin chuyển khoản (textarea nhiều dòng)
-   - Câu kết
-   - Label chữ ký 2 bên
-   - Ghi chú
+### 5. Giữ nguyên DB nếu chỉ cần sửa hiển thị/import
+- Không cần đổi schema nếu “số lượng” người dùng muốn là số dòng sản phẩm trong bảng giá.
+- Nếu user thật sự muốn quản lý tồn kho số lượng từng mã, khi đó cần migration thêm cột `stock_quantity numeric/integer` và cập nhật form/import/export. Nhưng theo dữ liệu hiện tại, hệ thống đang thiết kế Products là bảng giá, không phải kho tồn số lượng.
 
-2. Khởi tạo state từ `contract.document_overrides?.<form_key>` nếu có, ngược lại dùng giá trị mặc định (sinh từ data hợp đồng + companySettings như hiện nay).
+## Files sẽ chỉnh sau khi được duyệt
 
-3. **Preview** (vùng `printRef`) render theo state đã chỉnh, không còn dùng trực tiếp `contract.*` cho các đoạn văn.
+- `src/pages/ProductManagement.tsx`
+- `src/components/ColumnMappingDialog.tsx`
+- `supabase/functions/import-products/index.ts`
+- Có thể thêm helper nhỏ trong `src/lib/csvUtils.ts` nếu cần dùng chung parse `gid`/CSV.
 
-4. Export PDF/Word đọc từ state đã chỉnh → file xuất ra cũng theo nội dung mới.
+## Kết quả mong muốn
 
-### Nút Lưu
-Thêm nút **"Lưu"** trên thanh công cụ. Khi bấm:
-```ts
-await supabase
-  .from('contracts')
-  .update({ document_overrides: { ...contract.document_overrides, [form_key]: currentState } })
-  .eq('id', contract.id);
-queryClient.invalidateQueries({ queryKey: ['contracts'] });
-toast("Đã lưu nội dung biểu mẫu");
-```
-
-### Nút "Khôi phục mặc định"
-Xoá `document_overrides[form_key]` để biểu mẫu trở về sinh tự động từ dữ liệu hợp đồng.
-
-## Files dự kiến chỉnh sửa
-
-- `supabase/migrations/<new>.sql` — thêm cột `document_overrides`
-- `src/components/AdvanceRequestDialog.tsx` — thêm form đầy đủ + Lưu/Khôi phục
-- `src/components/HandoverReportDialog.tsx` — tương tự
-- `src/components/PaymentRequestDialog.tsx` — tương tự
-- (Không sửa `src/integrations/supabase/types.ts` — tự sinh sau migration)
-
-## Phạm vi không làm
-
-- Không đụng tới Hợp đồng mua bán (đã có editor riêng).
-- Không thêm rich text/bold/italic — chỉ là plain text trong các ô; format (in đậm, màu) vẫn theo template cố định.
-- Không lưu lịch sử các phiên bản chỉnh sửa.
+- Người dùng không còn nhầm “50/920” với tồn kho.
+- Import đúng sheet/tab đang được copy link.
+- Không còn tình trạng file có nhiều dòng nhưng app lưu ít dòng mà không giải thích.
+- Sau import luôn hiển thị số lượng DB thật và cảnh báo nguyên nhân lệch nếu có.
