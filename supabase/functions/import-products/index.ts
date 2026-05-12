@@ -74,7 +74,11 @@ serve(async (req) => {
     }
 
     const spreadsheetId = urlMatch[1]
-    const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=0`
+    // Parse gid from URL (in #gid=... or ?gid=...) so we import the tab the user is actually viewing
+    const gidMatch = googleSheetsUrl.match(/[#?&]gid=(\d+)/)
+    const gid = gidMatch ? gidMatch[1] : '0'
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`
+    console.log('Using gid:', gid)
 
     console.log('CSV URL:', csvUrl)
 
