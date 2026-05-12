@@ -267,20 +267,15 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
           rows: [new DocxTableRow({
             children: [
               new DocxTableCell({
+                children: [new Paragraph({ text: "" })],
+                borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
+              }),
+              new DocxTableCell({
                 children: [
                   new Paragraph({ children: [new TextRun({ text: state.sign_label_a, bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ children: [new TextRun({ text: state.sign_caption_a, italics: true, size: 18, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }),
                   new Paragraph({ children: [new TextRun({ text: state.sign_name_a || "", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
-                ],
-                borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
-              }),
-              new DocxTableCell({
-                children: [
-                  new Paragraph({ children: [new TextRun({ text: state.sign_label_b, bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
-                  new Paragraph({ children: [new TextRun({ text: state.sign_caption_b, italics: true, size: 18, font })], alignment: AlignmentType.CENTER }),
-                  new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }),
-                  new Paragraph({ children: [new TextRun({ text: state.sign_name_b || "", bold: true, size: sz, font })], alignment: AlignmentType.CENTER }),
                 ],
                 borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
               }),
@@ -363,12 +358,9 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
                 <div><Label>Câu kết 1</Label><Textarea value={state.closing} onChange={e => set("closing", e.target.value)} rows={2} /></div>
                 <div><Label>Câu kết 2</Label><Input value={state.closing2} onChange={e => set("closing2", e.target.value)} /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Nhãn ký A</Label><Input value={state.sign_label_a} onChange={e => set("sign_label_a", e.target.value)} /></div>
-                  <div><Label>Nhãn ký B</Label><Input value={state.sign_label_b} onChange={e => set("sign_label_b", e.target.value)} /></div>
-                  <div><Label>Chú thích ký A</Label><Input value={state.sign_caption_a} onChange={e => set("sign_caption_a", e.target.value)} /></div>
-                  <div><Label>Chú thích ký B</Label><Input value={state.sign_caption_b} onChange={e => set("sign_caption_b", e.target.value)} /></div>
-                  <div><Label>Tên người ký A</Label><Input value={state.sign_name_a} onChange={e => set("sign_name_a", e.target.value)} /></div>
-                  <div><Label>Tên người ký B</Label><Input value={state.sign_name_b} onChange={e => set("sign_name_b", e.target.value)} /></div>
+                  <div><Label>Nhãn ký</Label><Input value={state.sign_label_a} onChange={e => set("sign_label_a", e.target.value)} /></div>
+                  <div><Label>Chú thích ký</Label><Input value={state.sign_caption_a} onChange={e => set("sign_caption_a", e.target.value)} /></div>
+                  <div className="col-span-2"><Label>Tên người ký</Label><Input value={state.sign_name_a} onChange={e => set("sign_name_a", e.target.value)} /></div>
                 </div>
               </div>
             </AccordionContent>
@@ -453,19 +445,13 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
           <p style={{ marginTop: 16, textAlign: "justify", whiteSpace: "pre-wrap" }}>{state.closing}</p>
           <p style={{ marginTop: 4 }}>{state.closing2}</p>
 
-          <div className="grid grid-cols-2 gap-8 text-center" style={{ marginTop: 32 }}>
-            <div>
+          <div className="flex justify-end" style={{ marginTop: 32 }}>
+            <div className="text-center" style={{ width: "45%" }}>
               <p style={{ fontWeight: "bold" }}>{state.sign_label_a}</p>
               <p style={{ fontSize: "11px", fontStyle: "italic", color: "#6b7280" }}>{state.sign_caption_a}</p>
               <OnlineStampSignature show={showOnlineStamp} sellerRep={state.sign_name_a} sellerPos="Giám đốc" />
               {!showOnlineStamp && <div style={{ height: 80 }}></div>}
               {state.sign_name_a && !showOnlineStamp && <p style={{ fontWeight: "bold", fontSize: "13px" }}>{state.sign_name_a}</p>}
-            </div>
-            <div>
-              <p style={{ fontWeight: "bold" }}>{state.sign_label_b}</p>
-              <p style={{ fontSize: "11px", fontStyle: "italic", color: "#6b7280" }}>{state.sign_caption_b}</p>
-              <div style={{ height: 80 }}></div>
-              {state.sign_name_b && <p style={{ fontWeight: "bold", fontSize: "13px" }}>{state.sign_name_b}</p>}
             </div>
           </div>
         </div>
