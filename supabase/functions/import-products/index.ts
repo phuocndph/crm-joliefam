@@ -236,6 +236,8 @@ serve(async (req) => {
 
     // Parse data rows using column mapping if provided
     const products = []
+    let skippedMissingRequired = 0
+    const skippedExamples: string[] = []
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvLine(lines[i]).map(v => v.replace(/"/g, '').trim())
       
@@ -307,26 +309,37 @@ serve(async (req) => {
           })
         }
 
-        if (product.name && product.sku) { // Only add if has required fields
+        if (product.name && product.sku) {
           products.push(product)
+        } else {
+          skippedMissingRequired++
+          if (skippedExamples.length < 3) {
+            skippedExamples.push(`Dòng ${i + 1}`)
+          }
         }
       }
     }
 
-    console.log(`Parsed ${products.length} products`)
+    const totalDataRows = lines.length - 1
+    console.log(`Read ${totalDataRows} data rows, parsed ${products.length} valid products, skipped ${skippedMissingRequired} missing required`)
 
     if (products.length === 0) {
       throw new Error('Không tìm thấy sản phẩm hợp lệ trong Google Sheets')
     }
 
-    // Remove duplicates within the same import based on SKU
-    const uniqueProducts = new Map()
+    // Remove duplicates within the same import based on SKU, but track which SKUs were duplicated
+    const uniqueProducts = new Map<string, any>()
+    const duplicateSkus = new Map<string, number>()
     products.forEach(product => {
-      if (product.sku && !uniqueProducts.has(product.sku)) {
+      if (!product.sku) return
+      if (uniqueProducts.has(product.sku)) {
+        duplicateSkus.set(product.sku, (duplicateSkus.get(product.sku) || 1) + 1)
+      } else {
         uniqueProducts.set(product.sku, product)
       }
     })
     const deduplicatedProducts = Array.from(uniqueProducts.values())
+    const duplicateSkuList = Array.from(duplicateSkus.entries()).map(([sku, count]) => ({ sku, count }))
     
     // Sort products: first by category, then by SKU (ascending) to maintain consistent order
     deduplicatedProducts.sort((a, b) => {
@@ -356,10 +369,25 @@ serve(async (req) => {
 
     console.log(`Successfully imported ${data.length} products`)
 
+    const messageParts = [`Đọc ${totalDataRows} dòng từ Google Sheets`,
+      `lưu ${data.length} mã sản phẩm`]
+    if (skippedMissingRequired > 0) messageParts.push(`bỏ ${skippedMissingRequired} dòng thiếu Mã SP/Tên SP`)
+    if (duplicateSkuList.length > 0) messageParts.push(`gộp ${duplicateSkuList.length} mã SP bị trùng trong file`)
+
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Đã import thành công ${data.length} sản phẩm`,
+        message: messageParts.join(', '),
+        stats: {
+          totalDataRows,
+          validProducts: products.length,
+          savedProducts: data.length,
+          skippedMissingRequired,
+          skippedExamples,
+          duplicateSkus: duplicateSkuList.slice(0, 20),
+          duplicateSkuCount: duplicateSkuList.length,
+          gid,
+        },
         products: data
       }),
       {
