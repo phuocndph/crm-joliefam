@@ -56,7 +56,9 @@ export function ColumnMappingDialog({
       }
 
       const spreadsheetId = urlMatch[1];
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=0`;
+      const gidMatch = googleSheetsUrl.match(/[#?&]gid=(\d+)/);
+      const gid = gidMatch ? gidMatch[1] : '0';
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
 
       const response = await fetch(csvUrl);
       if (!response.ok) {
