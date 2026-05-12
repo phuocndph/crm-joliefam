@@ -494,9 +494,12 @@ const ProductManagement = () => {
       if (error) throw error;
 
       if (data.success) {
+        const stats = data.stats;
+        const lossy = stats && (stats.totalDataRows !== stats.savedProducts);
         toast({
-          title: "Thành công",
+          title: lossy ? "Import có chênh lệch" : "Thành công",
           description: data.message,
+          variant: lossy ? "destructive" : "default",
         });
         setGoogleSheetsUrl('');
         // Force refresh products to show updated data
