@@ -104,10 +104,10 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
       notes: "",
       closing: `Kính đề nghị Quý Công ty/Đơn vị sắp xếp thanh toán đúng hạn theo thông tin nêu trên.${sellerPhone ? ` Mọi thắc mắc xin vui lòng liên hệ theo số điện thoại: ${sellerPhone} để được hỗ trợ.` : ""}`,
       closing2: "Trân trọng./",
-      sign_label_a: "ĐẠI DIỆN BÊN BÁN",
+      sign_label_a: sellerName.toUpperCase(),
       sign_label_b: "XÁC NHẬN BÊN MUA",
-      sign_caption_a: "(Ký, đóng dấu, ghi rõ họ tên)",
-      sign_caption_b: "(Ký, đóng dấu, ghi rõ họ tên)",
+      sign_caption_a: "(Ký, đóng dấu)",
+      sign_caption_b: "(Ký, đóng dấu)",
       sign_name_a: sellerRep,
       sign_name_b: buyerRep,
     };
