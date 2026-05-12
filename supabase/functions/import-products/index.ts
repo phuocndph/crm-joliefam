@@ -46,23 +46,27 @@ serve(async (req) => {
       throw new Error('Failed to authenticate user')
     }
 
-    // Get user's role to determine manager_id
-    const { data: roleData } = await supabase
-      .from('user_roles')
-      .select('role, assigned_by')
-      .eq('user_id', user.id)
+    const { googleSheetsUrl, priceListId, columnMapping } = await req.json()
+
+    if (!priceListId) {
+      throw new Error('Thiếu priceListId')
+    }
+
+    // CRITICAL: Always derive manager_id from the target price list owner.
+    // This guarantees products belong to the same owner as their price list,
+    // so RLS will never split a price list across managers again.
+    const { data: priceListRow, error: priceListErr } = await supabase
+      .from('price_lists')
+      .select('id, manager_id')
+      .eq('id', priceListId)
       .single()
 
-    // For employees/accountants, use their assigned_by (manager's ID), otherwise use their own ID
-    const managerId = (roleData?.role === 'employee' || roleData?.role === 'accountant') && roleData.assigned_by
-      ? roleData.assigned_by
-      : user.id
+    if (priceListErr || !priceListRow) {
+      throw new Error('Không tìm thấy bảng giá hoặc bạn không có quyền truy cập')
+    }
 
-    console.log('User ID:', user.id)
-    console.log('User Role:', roleData?.role)
-    console.log('Manager ID:', managerId)
-
-    const { googleSheetsUrl, priceListId, columnMapping } = await req.json()
+    const managerId = (priceListRow as any).manager_id || user.id
+    console.log('User ID:', user.id, 'Price list owner (manager_id):', managerId)
 
     console.log('Processing Google Sheets URL:', googleSheetsUrl)
     console.log('Price List ID:', priceListId)
