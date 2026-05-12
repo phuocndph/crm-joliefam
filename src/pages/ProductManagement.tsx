@@ -1456,7 +1456,7 @@ const ProductManagement = () => {
                      </div>
                      <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-sm">
-                          Trang {currentPage}/{totalPages} - {products.length}/{totalProducts} sản phẩm
+                          Trang {currentPage}/{totalPages} - {products.length}/{totalProducts} dòng (theo bảng giá)
                         </Badge>
                         {products.length > 0 && (
                          <Button
