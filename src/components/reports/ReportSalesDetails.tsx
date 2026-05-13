@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +6,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { ArrowUpDown, Download } from "lucide-react";
+import { format } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 interface ReportSalesDetailsProps {
@@ -24,6 +28,12 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const ReportSalesDetails = ({ filteredOrders, monthlyData, formatCurrency }: ReportSalesDetailsProps) => {
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<"name" | "quantity" | "revenue" | "orderCount">("revenue");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
+
   // Fetch assignees
   const { data: assignees = [] } = useQuery({
     queryKey: ["assignees-reports"],
@@ -89,6 +99,104 @@ const ReportSalesDetails = ({ filteredOrders, monthlyData, formatCurrency }: Rep
     }));
   }, [filteredOrders]);
 
+  // ALL products sold (detailed)
+  const allProducts = useMemo(() => {
+    const map = new Map<string, { name: string; sku: string; unit: string; quantity: number; revenue: number; orderCount: number; lastSoldAt: Date | null }>();
+    filteredOrders.forEach(order => {
+      if (!order.items) return;
+      try {
+        const items = typeof order.items === "string" ? JSON.parse(order.items) : order.items;
+        const orderDate = order.created_at ? new Date(order.created_at) : null;
+        const seenInOrder = new Set<string>();
+        items.forEach((item: any) => {
+          const key = (item.sku || item.name || "unknown").toString();
+          const existing = map.get(key) || {
+            name: item.name || "N/A",
+            sku: item.sku || "-",
+            unit: item.unit || "",
+            quantity: 0,
+            revenue: 0,
+            orderCount: 0,
+            lastSoldAt: null as Date | null,
+          };
+          existing.quantity += Number(item.quantity || 0);
+          existing.revenue += Number(item.total || 0) || (Number(item.price || 0) * Number(item.quantity || 1));
+          if (!seenInOrder.has(key)) {
+            existing.orderCount += 1;
+            seenInOrder.add(key);
+          }
+          if (orderDate && (!existing.lastSoldAt || orderDate > existing.lastSoldAt)) {
+            existing.lastSoldAt = orderDate;
+          }
+          map.set(key, existing);
+        });
+      } catch { /* skip */ }
+    });
+    return Array.from(map.values());
+  }, [filteredOrders]);
+
+  const totalAllRevenue = useMemo(() => allProducts.reduce((s, p) => s + p.revenue, 0), [allProducts]);
+
+  const filteredAllProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let list = allProducts;
+    if (q) {
+      list = list.filter(p =>
+        p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+      );
+    }
+    const dir = sortDir === "asc" ? 1 : -1;
+    list = [...list].sort((a, b) => {
+      if (sortKey === "name") return a.name.localeCompare(b.name) * dir;
+      return ((a[sortKey] as number) - (b[sortKey] as number)) * dir;
+    });
+    return list;
+  }, [allProducts, search, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAllProducts.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pagedProducts = filteredAllProducts.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir(key === "name" ? "asc" : "desc");
+    }
+    setPage(0);
+  };
+
+  const exportCsv = () => {
+    const headers = ["#", "Tên sản phẩm", "SKU", "Đơn vị", "Số lượng", "Đơn giá TB", "Doanh thu", "% DT", "Số đơn", "Lần bán gần nhất"];
+    const rows = filteredAllProducts.map((p, i) => {
+      const avg = p.quantity > 0 ? p.revenue / p.quantity : 0;
+      const pct = totalAllRevenue > 0 ? (p.revenue / totalAllRevenue) * 100 : 0;
+      return [
+        i + 1,
+        `"${(p.name || "").replace(/"/g, '""')}"`,
+        `"${(p.sku || "").replace(/"/g, '""')}"`,
+        `"${(p.unit || "").replace(/"/g, '""')}"`,
+        p.quantity,
+        Math.round(avg),
+        Math.round(p.revenue),
+        pct.toFixed(2),
+        p.orderCount,
+        p.lastSoldAt ? format(p.lastSoldAt, "dd/MM/yyyy") : "",
+      ].join(",");
+    });
+    const csv = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `chi-tiet-san-pham-ban-ra-${format(new Date(), "yyyyMMdd-HHmm")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       {/* Monthly Revenue BarChart */}
@@ -150,6 +258,124 @@ const ReportSalesDetails = ({ filteredOrders, monthlyData, formatCurrency }: Rep
                 </TableBody>
               </Table>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* All Products Sold - Detailed */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            📦 Chi tiết tất cả sản phẩm bán ra
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+            <Input
+              placeholder="Tìm theo tên hoặc SKU..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(0); }}
+              className="md:w-80"
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                {filteredAllProducts.length} sản phẩm
+              </span>
+              <Button variant="outline" size="sm" className="gap-2" onClick={exportCsv} disabled={filteredAllProducts.length === 0}>
+                <Download className="h-4 w-4" /> Xuất CSV
+              </Button>
+            </div>
+          </div>
+
+          {filteredAllProducts.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">Không có dữ liệu</p>
+          ) : (
+            <>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>#</TableHead>
+                      <TableHead>
+                        <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("name")}>
+                          Tên sản phẩm <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>ĐV</TableHead>
+                      <TableHead className="text-right">
+                        <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("quantity")}>
+                          SL bán <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right">Đơn giá TB</TableHead>
+                      <TableHead className="text-right">
+                        <button className="inline-flex items-center gap-1 hover:text-foreground ml-auto" onClick={() => toggleSort("revenue")}>
+                          Doanh thu <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right">% DT</TableHead>
+                      <TableHead className="text-right">
+                        <button className="inline-flex items-center gap-1 hover:text-foreground ml-auto" onClick={() => toggleSort("orderCount")}>
+                          Số đơn <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right">Lần bán gần nhất</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagedProducts.map((p, i) => {
+                      const idx = currentPage * PAGE_SIZE + i + 1;
+                      const avg = p.quantity > 0 ? p.revenue / p.quantity : 0;
+                      const pct = totalAllRevenue > 0 ? (p.revenue / totalAllRevenue) * 100 : 0;
+                      return (
+                        <TableRow key={`${p.sku}-${p.name}-${i}`}>
+                          <TableCell className="font-bold">{idx}</TableCell>
+                          <TableCell className="font-medium">{p.name}</TableCell>
+                          <TableCell className="text-muted-foreground">{p.sku}</TableCell>
+                          <TableCell className="text-muted-foreground">{p.unit || "-"}</TableCell>
+                          <TableCell className="text-right">{p.quantity.toLocaleString("vi-VN")}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(avg)}</TableCell>
+                          <TableCell className="text-right font-semibold">{formatCurrency(p.revenue)}</TableCell>
+                          <TableCell className="text-right">{pct.toFixed(1)}%</TableCell>
+                          <TableCell className="text-right">{p.orderCount}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {p.lastSoldAt ? format(p.lastSoldAt, "dd/MM/yyyy") : "-"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell colSpan={4}>Tổng cộng (đã lọc)</TableCell>
+                      <TableCell className="text-right">
+                        {filteredAllProducts.reduce((s, p) => s + p.quantity, 0).toLocaleString("vi-VN")}
+                      </TableCell>
+                      <TableCell />
+                      <TableCell className="text-right">
+                        {formatCurrency(filteredAllProducts.reduce((s, p) => s + p.revenue, 0))}
+                      </TableCell>
+                      <TableCell colSpan={3} />
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Trang {currentPage + 1} / {totalPages}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}>
+                      Trước
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1}>
+                      Sau
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
