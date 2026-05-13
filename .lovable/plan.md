@@ -1,33 +1,45 @@
-## Vấn đề xác định được
+## Mục tiêu
+Tab "Bán hàng" trong trang Báo cáo & Thống kê hiện chỉ hiển thị Top 10 sản phẩm bán chạy. Cần bổ sung báo cáo **chi tiết tất cả sản phẩm được bán ra** trong khoảng thời gian đã chọn, kèm các công cụ lọc/tìm kiếm và xuất file.
 
-- Trong database, bảng giá `Từ 01/5 Năm 2025 Đến Nay` hiện có **920 sản phẩm**.
-- Nhưng phân theo `manager_id`:
-  - **890 dòng** thuộc manager `4b2f...`
-  - **29 dòng** thuộc manager `6a1...`
-  - **1 dòng** thuộc admin/chủ bảng giá `3dc...`
-- Frontend không đếm sai: nó đang nhận đúng phần dữ liệu mà RLS cho user hiện tại thấy.
-- Gốc lỗi là dữ liệu import đã bị gán `manager_id` không đồng nhất với `price_lists.manager_id`, trong khi RLS sản phẩm đang lọc theo `products.manager_id`. Vì vậy cùng một bảng giá nhưng mỗi tài khoản chỉ thấy một mảnh dữ liệu khác nhau.
+Bộ lọc ngày toàn trang (`DatePickerWithRange`) đã có sẵn ở đầu trang `/reports` — sẽ tái sử dụng, không thêm bộ lọc trùng.
 
-## Kế hoạch sửa
+## Thay đổi
 
-1. **Sửa dữ liệu hiện tại cho bảng giá 01/05/2025**
-   - Đồng bộ toàn bộ `products.manager_id` của bảng giá này về đúng `price_lists.manager_id`.
-   - Sau khi sửa, user có quyền với bảng giá này sẽ thấy đủ 920 dòng thay vì 29.
+### 1. Thêm bảng "Chi tiết tất cả sản phẩm bán ra" trong tab Bán hàng
+File: `src/components/reports/ReportSalesDetails.tsx`
 
-2. **Chặn tái diễn ở Edge Function import-products**
-   - Khi import, không lấy `manager_id` từ người bấm import nữa.
-   - Luôn đọc `price_lists.manager_id` của `priceListId` được chọn và gán sản phẩm theo owner của bảng giá đó.
-   - Với employee/accountant/admin import hộ, sản phẩm vẫn đi vào đúng owner của bảng giá.
+Bảng mới, đặt ngay dưới "Top 10 sản phẩm bán chạy", với các cột:
+- # (số thứ tự)
+- Tên sản phẩm
+- SKU
+- Đơn vị (nếu có trong item)
+- Số lượng bán
+- Đơn giá trung bình (doanh thu / số lượng)
+- Doanh thu
+- % doanh thu
+- Số đơn hàng chứa sản phẩm
+- Lần bán gần nhất (ngày)
 
-3. **Củng cố RLS để bảng giá và sản phẩm đi cùng nhau**
-   - Thêm/điều chỉnh policy đọc sản phẩm theo quyền truy cập bảng giá tương ứng, thay vì chỉ phụ thuộc `products.manager_id`.
-   - Giữ nguyên ràng buộc bảo mật theo role; không mở public.
+Tính từ `filteredOrders` (đã được lọc theo `dateRange` ở `ReportsPage`), gộp theo `sku || name`.
 
-4. **Sửa UI hiển thị thống kê để tránh gây hiểu nhầm**
-   - Sau khi load, thống kê vẫn dùng count từ DB nhưng thêm cảnh báo nếu count trả về thấp bất thường so với bảng giá đã import.
-   - Sau import, toast sẽ nói rõ: đọc bao nhiêu dòng, lưu bao nhiêu SKU, bỏ/gộp bao nhiêu dòng.
+### 2. Công cụ trên bảng chi tiết
+- Ô tìm kiếm theo tên / SKU (client-side filter)
+- Sắp xếp click cột (doanh thu, số lượng, tên) — mặc định doanh thu giảm dần
+- Hiển thị tổng cộng cuối bảng (tổng SL, tổng doanh thu)
+- Nút **Xuất CSV** chỉ cho bảng này (xuất đúng dữ liệu đã lọc + sắp xếp, có BOM UTF-8 để Excel mở tiếng Việt đúng)
+- Phân trang đơn giản (50/trang) để không lag khi danh sách dài
 
-5. **Xác minh sau sửa**
-   - Query lại database: bảng giá 01/05/2025 phải có toàn bộ sản phẩm cùng owner.
-   - Kiểm tra lại trang `/products`: tổng dòng không còn là 29 cho bảng giá này.
-   - Kiểm tra import mới: sản phẩm mới không còn bị gán owner theo người thao tác sai bảng giá.
+### 3. Hiển thị khoảng ngày đang áp dụng
+Tiêu đề card ghi rõ: "Chi tiết sản phẩm bán ra · {từ} → {đến}" để người dùng biết bộ lọc ngày trên đầu trang đang chi phối báo cáo này.
+
+## Phạm vi không thay đổi
+- Không sửa schema DB, không sửa edge function.
+- Không động đến tab Tổng quan / Tài chính / Khách hàng.
+- Không đổi cấu trúc bộ lọc ngày toàn trang.
+- Top 10 sản phẩm bán chạy được giữ nguyên (vẫn hữu ích để xem nhanh).
+
+## Kỹ thuật (tóm tắt)
+- Gộp item bằng `Map<key, {name, sku, unit, quantity, revenue, orderCount, lastSoldAt}>`, key = `sku || name`.
+- Doanh thu mỗi item: `item.total ?? item.price * item.quantity`.
+- Sort/search/pagination dùng `useMemo` + `useState` thuần, không thêm thư viện.
+- Xuất CSV: tạo Blob `text/csv;charset=utf-8` với `\uFEFF` BOM, tải qua `<a download>`.
