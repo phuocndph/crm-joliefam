@@ -17,6 +17,7 @@ import { saveAs } from "file-saver";
 import { numberToVietnameseCurrency } from "@/lib/numberToText";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { syncContractNumberInOverrides } from "@/lib/contractUtils";
 
 interface Props {
   open: boolean;
