@@ -1,45 +1,35 @@
-## Mục tiêu
-Tab "Bán hàng" trong trang Báo cáo & Thống kê hiện chỉ hiển thị Top 10 sản phẩm bán chạy. Cần bổ sung báo cáo **chi tiết tất cả sản phẩm được bán ra** trong khoảng thời gian đã chọn, kèm các công cụ lọc/tìm kiếm và xuất file.
+## Vấn đề
 
-Bộ lọc ngày toàn trang (`DatePickerWithRange`) đã có sẵn ở đầu trang `/reports` — sẽ tái sử dụng, không thêm bộ lọc trùng.
+Các biểu mẫu (Đề nghị thanh toán, Đề nghị tạm ứng, Biên bản bàn giao, Hoá đơn ĐT) lấy số HĐ từ `contract.contract_number` lúc khởi tạo, nhưng sau đó merge với `document_overrides` đã lưu trong DB. Khi:
+- Người dùng từng lưu biểu mẫu rồi sau đó đổi số HĐ gốc, hoặc
+- Copy/paste lẫn lộn giữa các HĐ,
 
-## Thay đổi
+thì các trường text như `subtitle`, `intro`, `bank_text`, "Nội dung chuyển khoản: Thanh toán HĐ số …" vẫn giữ số HĐ cũ trong override → hiển thị sai, phải sửa tay.
 
-### 1. Thêm bảng "Chi tiết tất cả sản phẩm bán ra" trong tab Bán hàng
-File: `src/components/reports/ReportSalesDetails.tsx`
+## Giải pháp
 
-Bảng mới, đặt ngay dưới "Top 10 sản phẩm bán chạy", với các cột:
-- # (số thứ tự)
-- Tên sản phẩm
-- SKU
-- Đơn vị (nếu có trong item)
-- Số lượng bán
-- Đơn giá trung bình (doanh thu / số lượng)
-- Doanh thu
-- % doanh thu
-- Số đơn hàng chứa sản phẩm
-- Lần bán gần nhất (ngày)
+Tự động đồng bộ mọi tham chiếu số HĐ trong các trường text đã lưu về đúng `contract.contract_number` hiện tại mỗi khi mở dialog. Người dùng không cần sửa tay nữa.
 
-Tính từ `filteredOrders` (đã được lọc theo `dateRange` ở `ReportsPage`), gộp theo `sku || name`.
+### Cách làm
 
-### 2. Công cụ trên bảng chi tiết
-- Ô tìm kiếm theo tên / SKU (client-side filter)
-- Sắp xếp click cột (doanh thu, số lượng, tên) — mặc định doanh thu giảm dần
-- Hiển thị tổng cộng cuối bảng (tổng SL, tổng doanh thu)
-- Nút **Xuất CSV** chỉ cho bảng này (xuất đúng dữ liệu đã lọc + sắp xếp, có BOM UTF-8 để Excel mở tiếng Việt đúng)
-- Phân trang đơn giản (50/trang) để không lag khi danh sách dài
+Thêm hàm tiện ích `syncContractNumberInOverrides(saved, currentNumber)`:
+- Regex thay thế mọi chuỗi khớp `HD-\d{6,8}-\d{3,}` và `HDNT-\d{6,8}-\d{3,}` trong tất cả string field của `saved` bằng `currentNumber`.
+- Bỏ qua nếu `currentNumber` rỗng hoặc bản thân `saved` không chứa pattern.
 
-### 3. Hiển thị khoảng ngày đang áp dụng
-Tiêu đề card ghi rõ: "Chi tiết sản phẩm bán ra · {từ} → {đến}" để người dùng biết bộ lọc ngày trên đầu trang đang chi phối báo cáo này.
+Áp dụng trong `useEffect` merge của 4 dialog:
+- `src/components/PaymentRequestDialog.tsx`
+- `src/components/AdvanceRequestDialog.tsx`
+- `src/components/HandoverReportDialog.tsx`
+- `src/components/CreateEInvoiceDialog.tsx` (nếu có field text lưu HD)
 
-## Phạm vi không thay đổi
-- Không sửa schema DB, không sửa edge function.
-- Không động đến tab Tổng quan / Tài chính / Khách hàng.
-- Không đổi cấu trúc bộ lọc ngày toàn trang.
-- Top 10 sản phẩm bán chạy được giữ nguyên (vẫn hữu ích để xem nhanh).
+Đặt hàm ở `src/lib/contractUtils.ts` (file mới, gọn nhẹ) để dùng chung.
 
-## Kỹ thuật (tóm tắt)
-- Gộp item bằng `Map<key, {name, sku, unit, quantity, revenue, orderCount, lastSoldAt}>`, key = `sku || name`.
-- Doanh thu mỗi item: `item.total ?? item.price * item.quantity`.
-- Sort/search/pagination dùng `useMemo` + `useState` thuần, không thêm thư viện.
-- Xuất CSV: tạo Blob `text/csv;charset=utf-8` với `\uFEFF` BOM, tải qua `<a download>`.
+### Phạm vi
+
+- Chỉ sửa frontend, không đụng DB schema, không đụng edge functions.
+- Không thay đổi cấu trúc form, chỉ "rửa" số HĐ sai trong override khi load.
+- Tên file PDF/DOCX và DialogTitle vốn đã dùng `contract.contract_number` trực tiếp — không cần sửa.
+
+### Lưu ý
+
+Đây là sửa hiển thị: nếu người dùng *cố tình* viết số HĐ khác (ví dụ tham chiếu HĐ phụ lục) trong override, hàm sẽ ghi đè. Theo yêu cầu hiện tại điều này là mong muốn — luôn thống nhất theo HĐ gốc.
