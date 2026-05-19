@@ -74,7 +74,8 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   useEffect(() => {
     if (!contract) return;
     const saved = contract.document_overrides?.[FORM_KEY];
-    setState({ ...defaults, ...(saved || {}) });
+    const synced = syncContractNumberInOverrides(saved, contract.contract_number);
+    setState({ ...defaults, ...(synced || {}) });
   }, [contract, defaults]);
 
   if (!contract) return null;
