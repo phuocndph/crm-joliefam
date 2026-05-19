@@ -50,7 +50,7 @@ export const EditFrameworkContractDialog = ({ open, onOpenChange, contract }: Pr
       setContractDate(contract.contract_date ? new Date(contract.contract_date).toISOString().slice(0, 10) : "");
       setNotes(contract.notes || "");
       const seller = contract.seller_info || {};
-      setSellerRep(seller.representative || "TRẦN THỊ THANH HOAN");
+      setSellerRep(seller.representative || "​");
       setSellerPos(seller.position || "Giám đốc");
       const buyer = contract.buyer_info || {};
       setBuyerInfo({
