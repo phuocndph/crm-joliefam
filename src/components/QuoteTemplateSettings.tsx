@@ -168,7 +168,7 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
                   <Label htmlFor="directorName">Người đại diện</Label>
                   <Input
                     id="directorName"
-                    value={(settings as any).directorName || "TRẦN THỊ THANH HOAN"}
+                    value={(settings as any).directorName || "​"}
                     onChange={(e) => setSettings(prev => ({ ...prev, directorName: e.target.value } as any))}
                     placeholder="Họ tên giám đốc"
                   />

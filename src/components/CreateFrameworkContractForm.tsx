@@ -42,7 +42,7 @@ export const CreateFrameworkContractForm = ({ onSuccess }: Props) => {
   const [customerId, setCustomerId] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [notes, setNotes] = useState("");
-  const [sellerRep, setSellerRep] = useState("TRẦN THỊ THANH HOAN");
+  const [sellerRep, setSellerRep] = useState("​");
   const [sellerPos, setSellerPos] = useState("Giám đốc");
   const [articles, setArticles] = useState(defaultArticles);
   const [lookingUpTax, setLookingUpTax] = useState(false);
