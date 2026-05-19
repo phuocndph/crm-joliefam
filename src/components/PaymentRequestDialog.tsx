@@ -17,6 +17,7 @@ import { Document, Packer, Paragraph, TextRun, Table as DocxTable, TableRow as D
 import { saveAs } from "file-saver";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { syncContractNumberInOverrides } from "@/lib/contractUtils";
 
 interface Props {
   open: boolean;
@@ -118,7 +119,8 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   useEffect(() => {
     if (!contract) return;
     const saved = contract.document_overrides?.[FORM_KEY];
-    setState({ ...defaults, ...(saved || {}) });
+    const synced = syncContractNumberInOverrides(saved, contract.contract_number);
+    setState({ ...defaults, ...(synced || {}) });
   }, [contract, defaults]);
 
   if (!contract) return null;
