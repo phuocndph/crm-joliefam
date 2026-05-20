@@ -385,8 +385,8 @@ serve(async (req) => {
                 .update({
                   ghn_status: order.status,
                   ghn_status_text: getStatusText(order.status),
-                  expected_delivery_date: order.leadtime,
-                  delivered_date: order.finish_date,
+                   expected_delivery_date: normalizeGhnDate(order.leadtime),
+                   delivered_date: normalizeGhnDate(order.finish_date),
                   raw_data: order,
                   last_updated_at: new Date().toISOString(),
                 })
