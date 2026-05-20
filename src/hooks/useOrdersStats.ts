@@ -11,7 +11,7 @@ export const useOrdersStats = (managerId?: string | null) => {
     queryFn: async () => {
       let q = supabase
         .from('orders')
-        .select('id, status, total_amount, created_at, delivery_date, display_order_number');
+        .select('id, status, total_amount, created_at, delivery_date');
       if (managerId && managerId !== 'all') q = q.eq('manager_id', managerId);
       const { data, error } = await q;
       if (error) throw error;
@@ -55,15 +55,6 @@ export const useOrdersStats = (managerId?: string | null) => {
         .filter(o => o.status === 'delivered')
         .reduce((s, o) => s + (Number(o.total_amount) || 0), 0);
 
-      // Detect duplicate display_order_number
-      const dupCounts = new Map<string, number>();
-      rows.forEach(o => {
-        const num = (o.display_order_number as string) || '';
-        if (!num || !/^\d+$/.test(num)) return;
-        dupCounts.set(num, (dupCounts.get(num) || 0) + 1);
-      });
-      const duplicateOrderNumbers = Array.from(dupCounts.entries()).filter(([, c]) => c > 1);
-
       return {
         total: rows.length,
         pendingCount,
@@ -72,7 +63,6 @@ export const useOrdersStats = (managerId?: string | null) => {
         overdueCount,
         totalReceivable,
         totalValue,
-        duplicateOrderNumbers,
       };
     },
     staleTime: 2 * 60 * 1000,
