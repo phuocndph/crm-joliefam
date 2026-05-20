@@ -9,6 +9,8 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { useUserRole } from "@/hooks/useUserRole";
 import { ManagerSelector } from "@/components/ManagerSelector";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileOrderList } from "@/components/MobileOrderList";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -139,6 +141,7 @@ export default function OrderManagement() {
   const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
   
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const [user, setUser] = useState(null);
   const { role: userRole } = useUserRole(user);
@@ -422,19 +425,19 @@ export default function OrderManagement() {
         </div>
 
         {/* Compact Stats Bar */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg border text-sm">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg border text-sm">
           <div className="flex items-center gap-1.5">
             <Package className="h-3.5 w-3.5 text-blue-600" />
             <span className="font-semibold">{totalOrders}</span>
             <span className="text-muted-foreground">đơn</span>
           </div>
-          <span className="text-muted-foreground/40">|</span>
+          <span className="hidden sm:inline text-muted-foreground/40">|</span>
           <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-yellow-600" />
             <span className="font-semibold">{pendingCount}</span>
             <span className="text-muted-foreground">chờ xử lý</span>
           </div>
-          <span className="text-muted-foreground/40">|</span>
+          <span className="hidden sm:inline text-muted-foreground/40">|</span>
           <div className="flex items-center gap-1.5">
             <AlertCircle className="h-3.5 w-3.5 text-blue-600" />
             <span className="font-semibold">{processingCount}</span>
@@ -442,7 +445,7 @@ export default function OrderManagement() {
           </div>
           {overdueCount > 0 && (
             <>
-              <span className="text-muted-foreground/40">|</span>
+              <span className="hidden sm:inline text-muted-foreground/40">|</span>
               <div className="flex items-center gap-1.5">
                 <AlertCircle className="h-3.5 w-3.5 text-red-600 animate-pulse" />
                 <span className="font-semibold text-red-600">{overdueCount}</span>
@@ -450,20 +453,20 @@ export default function OrderManagement() {
               </div>
             </>
           )}
-          <span className="text-muted-foreground/40">|</span>
+          <span className="hidden sm:inline text-muted-foreground/40">|</span>
           <div className="flex items-center gap-1.5">
             <CheckCircle className="h-3.5 w-3.5 text-green-600" />
             <span className="font-semibold">{completedCount}</span>
             <span className="text-muted-foreground">hoàn thành</span>
           </div>
-          <span className="text-muted-foreground/40">|</span>
-          <div className="flex items-center gap-1.5">
+          <span className="hidden sm:inline text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5 col-span-2">
             <DollarSign className="h-3.5 w-3.5 text-orange-600" />
             <span className="text-muted-foreground">Chờ thu:</span>
             <span className="font-semibold text-orange-600">{formatCompactCurrency(totalReceivable)}</span>
           </div>
-          <span className="text-muted-foreground/40">|</span>
-          <div className="flex items-center gap-1.5">
+          <span className="hidden sm:inline text-muted-foreground/40">|</span>
+          <div className="flex items-center gap-1.5 col-span-2">
             <DollarSign className="h-3.5 w-3.5 text-green-600" />
             <span className="text-muted-foreground">Tổng HT:</span>
             <span className="font-semibold text-green-600">{formatCompactCurrency(totalValue)}</span>
@@ -495,13 +498,13 @@ export default function OrderManagement() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input placeholder="Tìm mã đơn, khách hàng, SĐT..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 h-9" />
         </div>
-        <div className="flex gap-1.5 flex-wrap items-center">
+        <div className="flex gap-1.5 items-center overflow-x-auto lg:flex-wrap -mx-1 px-1 pb-1 lg:pb-0 lg:mx-0 lg:px-0 scrollbar-hide">
           {statusFilterChips.map(chip => (
             <button
               key={chip.value}
               onClick={() => setStatusFilter(chip.value)}
               className={cn(
-                "px-3 py-1 rounded-full text-xs font-medium transition-colors border",
+                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors border whitespace-nowrap shrink-0",
                 statusFilter === chip.value
                   ? "bg-primary text-primary-foreground border-primary"
                   : "bg-background text-muted-foreground border-border hover:bg-muted"
@@ -511,9 +514,9 @@ export default function OrderManagement() {
             </button>
           ))}
         </div>
-        <div className="flex gap-2 ml-auto">
+        <div className="grid grid-cols-2 gap-2 lg:flex lg:ml-auto">
           <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="w-44 h-9">
+            <SelectTrigger className="w-full lg:w-44 h-9">
               <SelectValue placeholder="Sắp xếp theo" />
             </SelectTrigger>
             <SelectContent className="bg-white z-50">
@@ -526,7 +529,7 @@ export default function OrderManagement() {
             </SelectContent>
           </Select>
           <Select value={paymentFilter} onValueChange={setPaymentFilter}>
-            <SelectTrigger className="w-40 h-9">
+            <SelectTrigger className="w-full lg:w-40 h-9">
               <SelectValue placeholder="Thanh toán" />
             </SelectTrigger>
             <SelectContent className="bg-white z-50">
@@ -545,6 +548,22 @@ export default function OrderManagement() {
           {/* Table */}
               {loading ? (
                 <div className="text-center py-8">Đang tải...</div>
+              ) : isMobile ? (
+                <MobileOrderList
+                  orders={sortedOrders}
+                  duplicateNumbers={duplicateNumberSet}
+                  statusConfig={statusConfig}
+                  paymentStatusConfig={paymentStatusConfig}
+                  calculateTotalPaid={calculateTotalPaid}
+                  calculateRemainingAmount={calculateRemainingAmount}
+                  onView={(o) => setSelectedOrder(o)}
+                  onEdit={(o) => setOrderToEdit(o)}
+                  onDelete={(o) => setOrderToDelete(o)}
+                  onAddPayment={(o) => setOrderToPayment(o)}
+                  onEditNumber={(o) => setOrderToEditNumber(o)}
+                  onCreateGHN={(o) => setOrderToCreateGHN(o)}
+                  onGHNTracking={(o) => setOrderToGHNTracking(o)}
+                />
               ) : (
                 <InlineOrderEditTable
                   orders={sortedOrders}
