@@ -1,58 +1,62 @@
 ## Mục tiêu
-Trang `/ghn-tracking` hiện dùng bảng rộng tối thiểu 1800px → trên điện thoại (414px) phải cuộn ngang rất khó dùng. Sẽ thêm giao diện mobile dạng card, gọn gàng, giữ nguyên logic backend.
+Trang `/orders` đang dùng `InlineOrderEditTable` rộng → trên mobile (414px) phải cuộn ngang. Sẽ thêm giao diện mobile dạng card, gọn gàng, giữ nguyên logic backend & desktop.
 
-## Phạm vi thay đổi
-Chỉ chỉnh UI/presentation trong `src/pages/GHNTrackingPage.tsx`. Không đụng vào edge function, hook, hay schema.
+## Phạm vi
+Chỉ chỉnh UI/presentation trong `src/pages/OrderManagement.tsx`. Không đụng `InlineOrderEditTable`, hook, edge function, hay schema.
 
 ## Chi tiết triển khai
 
-### 1. Dùng `useIsMobile()` (đã có sẵn) để switch layout
+### 1. Dùng `useIsMobile()`
+Switch giữa layout desktop (giữ nguyên) và mobile (mới).
 
-### 2. Thanh công cụ trên mobile
-- Hai nút "Đơn lẻ / Nhiều đơn" giữ nguyên (full width, chia đôi).
-- Input + nút "Thêm tracking" xếp dọc, full width.
-- Các nút "Cập nhật tất cả", "In A5 (n)" xếp dọc full width, bỏ khối "Hiển thị x/y" (đã có trong filter).
-- `GHNTrackingFilters` giữ nguyên (component này nên đã responsive; nếu chưa sẽ kiểm tra nhanh).
+### 2. Header + Stats trên mobile
+- Tiêu đề "Quản lý Đơn hàng" cỡ nhỏ hơn (`text-lg`), nút "Tạo báo giá" full width khi mobile.
+- Compact Stats Bar: chuyển thành lưới 2 cột (`grid grid-cols-2 gap-2`) trên mobile, mỗi ô gồm icon + số + nhãn, bỏ dấu `|` ngăn cách (chỉ hiện ở desktop).
+- Cảnh báo trùng số đơn: giữ nguyên (đã responsive sẵn nhờ `Alert`).
 
-### 3. Thay bảng bằng danh sách card khi mobile
-Mỗi card hiển thị:
+### 3. Search + Filter trên mobile
+- Ô tìm kiếm full width.
+- Hàng chip trạng thái cuộn ngang (`overflow-x-auto flex-nowrap`), giữ kích thước chạm.
+- Hai `Select` (Sắp xếp, Thanh toán) xếp 2 cột grid, full width, bỏ `ml-auto`.
+
+### 4. Thay bảng bằng danh sách card khi mobile
+Bọc `<InlineOrderEditTable .../>` trong `{!isMobile && (...)}`. Khi `isMobile`, render danh sách card:
+
 ```text
 ┌──────────────────────────────────┐
-│ ☐  #STT  Mã GHN          [Badge] │
-│    Mã đơn nội bộ                 │
-│ ──────────────────────────────── │
-│ 👤 Tên KH · SĐT                  │
-│ 📍 Địa chỉ (wrap)                │
-│ ──────────────────────────────── │
-│ Cân: 1.2kg   COD: 150.000₫       │
-│ Tạo: 10/05   Giao DK: 12/05      │
-│ Giao TT: 13/05 (nếu có)          │
-│ ──────────────────────────────── │
-│ [Tra cứu] [In] [Sửa] [🔄] [🗑]   │
+│ #Mã đơn (display)      [Trạng thái] │
+│ Khách hàng · Mã KH                  │
+│ ──────────────────────────────────  │
+│ 👤 Phụ trách     📅 Hẹn giao dd/MM  │
+│ 💰 Tổng: ...     ✅ Đã thu: ...     │
+│ ⏳ Còn lại: ...  [Badge thanh toán] │
+│ 🚚 GHN: code (nếu có)               │
+│ ──────────────────────────────────  │
+│ [Xem] [Sửa] [Thanh toán] [⋯]        │
 └──────────────────────────────────┘
 ```
-- Card dùng `Card` shadcn, gap 3, padding 3.
-- Checkbox chọn ở góc trên trái để hỗ trợ In A5 hàng loạt.
-- Badge trạng thái góc trên phải.
-- Nút thao tác là icon button kích thước chạm (>=40px), xếp ngang cuối card.
-- Tap vào card không làm gì (tránh xung đột với nút trong card).
 
-### 4. Phân trang trên mobile
-- Hiển thị: "Trang 1/5 · 25/120 đơn" + 2 nút "‹ Trước" "Sau ›" full-width grid 2 cột.
-- Selector "Số dòng/trang" đặt riêng phía trên, mặc định 25 trên mobile.
+- Dùng `Card` shadcn từ `@/components/ui/card`, `p-3 space-y-2`.
+- Card có viền trái màu `border-l-4` theo trạng thái + nền `bg-amber-50/70` khi số đơn nằm trong `duplicateNumberSet` (đồng nhất với desktop) + badge "Trùng".
+- Tap vào card → mở `EditOrderDialog` (giống hành vi "Sửa" hiện có).
+- Nút thao tác kích thước chạm ≥40px, dùng icon + label ngắn. Dropdown `⋯` chứa "Sửa số đơn", "Tạo vận đơn GHN", "Theo dõi GHN", "Xóa".
+- Reuse các handler hiện có: `setEditingOrder`, `setDeletingOrder`, `setPayingOrder`, `setEditingOrderNumber`, `setGhnDialogOrder`, `setCreateGhnOrder`.
 
-### 5. Giữ nguyên desktop
-Bọc khối bảng hiện tại trong `{!isMobile && (...)}`, khối card trong `{isMobile && (...)}`. Toolbar cũng có 2 nhánh ngắn để không phá layout desktop.
+### 5. Infinite scroll
+- Giữ `useInfiniteScroll` đang dùng — chỉ thay phần render bên trong, sentinel vẫn nằm cuối danh sách card.
 
-### 6. Token & màu
-- Tránh các class `bg-blue-800`, `text-gray-600`, `bg-gray-50` mới thêm — dùng `bg-card`, `text-muted-foreground`, `bg-muted/50` cho phần mobile mới để đúng design-system. Phần desktop giữ nguyên (không nằm trong yêu cầu).
+### 6. Giữ nguyên desktop & logic
+- `InlineOrderEditTable` chỉ render khi `!isMobile`.
+- Mọi dialog (`EditOrderDialog`, `DeleteOrderDialog`, `CreatePaymentForm`, `EditOrderNumberDialog`, `GHNTrackingDialog`, `CreateGHNOrderDialog`) dùng chung — chỉ thay UI list.
+
+### 7. Token & màu
+Dùng `bg-card`, `text-muted-foreground`, `bg-muted/50`, `border-border`, `sidebar-primary` cho trạng thái "đã thanh toán" (theo core memory). Tránh thêm class `bg-blue-*/text-gray-*` mới.
 
 ## Không thay đổi
-- Logic gọi `ghn-tracking`, real-time subscription, auto-update.
-- `GHNTrackingFilters`, `EditGHNOrderDialog`.
-- Schema DB.
+- Logic phân quyền, fetch, realtime, các hook, dialog, schema DB.
+- `InlineOrderEditTable.tsx` (vẫn dùng cho desktop với cảnh báo trùng đã có).
 
 ## Kiểm thử
-- Mở `/ghn-tracking` ở viewport 414×756: card hiển thị đầy đủ, không cuộn ngang.
-- Chọn nhiều đơn → nút "In A5 (n)" hiện và bấm được.
-- Chuyển sang desktop ≥768px: bảng cũ hoạt động bình thường.
+- Viewport 414×756: danh sách card hiển thị đầy đủ, không cuộn ngang; filter chip cuộn ngang mượt; mở/sửa/xóa/thanh toán đều hoạt động.
+- Đơn trùng số → card có viền + badge "Trùng".
+- Viewport ≥768px: bảng inline cũ hoạt động bình thường.
