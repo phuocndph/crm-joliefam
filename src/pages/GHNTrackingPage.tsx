@@ -14,6 +14,8 @@ import { User } from '@supabase/supabase-js';
 import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
 import { EditGHNOrderDialog } from '@/components/EditGHNOrderDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Card as UICard } from '@/components/ui/card';
 
 import * as XLSX from 'xlsx';
 
@@ -96,6 +98,7 @@ export default function GHNTrackingPage() {
   const [pageSize, setPageSize] = useState(50);
   
   const { role } = useUserRole(user);
+  const isMobile = useIsMobile();
 
   // Get current user
   useEffect(() => {
@@ -649,16 +652,17 @@ export default function GHNTrackingPage() {
   return (
     <div className="container mx-auto py-6 space-y-6 max-w-full">
       <Card className="w-full">
-        <CardHeader>
+        <CardHeader className="px-3 sm:px-6">
           <CardTitle>Theo dõi đơn hàng GHN</CardTitle>
         </CardHeader>
-        <CardContent className="px-2">
+        <CardContent className="px-2 sm:px-6">
           <div className="space-y-4 mb-6">
             <div className="flex items-center gap-2">
               <Button
                 variant={!isMultipleMode ? "default" : "outline"}
                 size="sm"
                 onClick={() => setIsMultipleMode(false)}
+                className="flex-1 sm:flex-none"
               >
                 Đơn lẻ
               </Button>
@@ -666,20 +670,21 @@ export default function GHNTrackingPage() {
                 variant={isMultipleMode ? "default" : "outline"}
                 size="sm"
                 onClick={() => setIsMultipleMode(true)}
+                className="flex-1 sm:flex-none"
               >
                 Nhiều đơn
               </Button>
             </div>
 
             {!isMultipleMode ? (
-              <div className="flex gap-4 items-center justify-between">
-                <div className="flex gap-4">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center sm:justify-between">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
                   <Input
                     placeholder="Nhập mã đơn hàng GHN"
                     value={orderCodeInput}
                     onChange={(e) => setOrderCodeInput(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && addOrderTracking()}
-                    className="max-w-xs"
+                    className="sm:max-w-xs"
                   />
                   <Button
                     onClick={addOrderTracking}
@@ -689,8 +694,8 @@ export default function GHNTrackingPage() {
                     Thêm tracking
                   </Button>
                 </div>
-                <div className="flex gap-4 items-center">
-                     <span className="text-sm text-gray-600">
+                <div className="flex flex-wrap gap-2 sm:gap-4 items-center">
+                     <span className="text-sm text-muted-foreground">
                        Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
                      </span>
                      {selectedOrders.size > 0 && (
@@ -723,11 +728,12 @@ export default function GHNTrackingPage() {
                   rows={4}
                   className="resize-none"
                 />
-                <div className="flex gap-4 items-center justify-between">
-                  <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center sm:justify-between">
+                  <div className="flex gap-2 sm:gap-4">
                     <Button
                       onClick={addOrderTracking}
                       disabled={loading || !orderCodeInput.trim()}
+                      className="flex-1 sm:flex-none"
                     >
                       {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
                       Thêm tất cả
@@ -736,12 +742,13 @@ export default function GHNTrackingPage() {
                       onClick={() => setOrderCodeInput('')}
                       variant="outline"
                       disabled={loading}
+                      className="flex-1 sm:flex-none"
                     >
                       Xóa
                     </Button>
                   </div>
-                  <div className="flex gap-4 items-center">
-                     <span className="text-sm text-gray-600">
+                  <div className="flex flex-wrap gap-2 sm:gap-4 items-center">
+                     <span className="text-sm text-muted-foreground">
                        Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
                      </span>
                      {selectedOrders.size > 0 && (
@@ -777,6 +784,7 @@ export default function GHNTrackingPage() {
             />
           </div>
 
+          {!isMobile && (
           <div className="overflow-auto border rounded-lg max-h-[600px] w-full">
             <table className="w-full border-collapse min-w-[1800px]">
               <thead className="sticky top-0 z-10">
@@ -900,10 +908,148 @@ export default function GHNTrackingPage() {
               </tbody>
             </table>
           </div>
+          )}
+
+          {isMobile && (
+            <div className="space-y-3">
+              {paginatedData.length === 0 ? (
+                <div className="border rounded-lg p-6 text-center text-sm text-muted-foreground">
+                  {trackingData.length === 0 ? 'Chưa có dữ liệu tracking' : 'Không tìm thấy kết quả phù hợp với bộ lọc'}
+                </div>
+              ) : (
+                paginatedData.map((item, index) => {
+                  const isFinal = FINAL_STATUSES.includes(item.ghn_status || '');
+                  const isSelected = selectedOrders.has(item.ghn_order_code);
+                  return (
+                    <UICard key={item.id} className="p-3 space-y-3">
+                      {/* Header: checkbox + STT + mã + badge */}
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelectOrder(item.ghn_order_code)}
+                          className="mt-1"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-muted-foreground">#{(safePage - 1) * pageSize + index + 1}</span>
+                            <span className="font-mono text-sm font-semibold truncate">{item.ghn_order_code}</span>
+                          </div>
+                          {item.internal_order_code && (
+                            <div className="text-xs text-muted-foreground font-mono mt-0.5">
+                              {item.internal_order_code}
+                            </div>
+                          )}
+                        </div>
+                        <Badge className={`${statusColors[item.ghn_status || ''] || 'bg-muted text-muted-foreground'} shrink-0`}>
+                          {item.ghn_status_text || item.ghn_status || '-'}
+                        </Badge>
+                      </div>
+
+                      {/* Customer */}
+                      <div className="text-sm space-y-1 border-t pt-2">
+                        <div className="font-medium">
+                          {item.customer_name}
+                          {item.customer_phone && <span className="text-muted-foreground font-normal"> · {item.customer_phone}</span>}
+                        </div>
+                        {item.customer_address && (
+                          <div className="text-xs text-muted-foreground leading-relaxed">{item.customer_address}</div>
+                        )}
+                      </div>
+
+                      {/* Meta grid */}
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs border-t pt-2">
+                        <div>
+                          <span className="text-muted-foreground">Cân: </span>
+                          <span className="font-medium">{formatWeight(item.package_weight) || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">COD: </span>
+                          <span className="font-medium">{formatCurrency(item.cod_amount)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Tạo: </span>
+                          <span className="font-medium">{formatDate(item.created_date) || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">DK giao: </span>
+                          <span className="font-medium">{formatDate(item.expected_delivery_date) || '-'}</span>
+                        </div>
+                        {item.delivered_date && (
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">Đã giao: </span>
+                            <span className="font-medium text-sidebar-primary">{formatDate(item.delivered_date)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1 border-t pt-2 flex-wrap">
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="h-9 flex-1 min-w-[88px] gap-1"
+                        >
+                          <a
+                            href={`https://donhang.ghn.vn/?order_code=${item.ghn_order_code}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Search className="h-3.5 w-3.5" />
+                            Tra cứu
+                          </a>
+                        </Button>
+                        <Button
+                          onClick={() => updateSingleTracking(item.ghn_order_code)}
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9"
+                          disabled={updatingOrderCode === item.ghn_order_code}
+                          title="Cập nhật"
+                        >
+                          <RefreshCw className={`h-4 w-4 ${updatingOrderCode === item.ghn_order_code ? 'animate-spin' : ''}`} />
+                        </Button>
+                        <Button
+                          onClick={() => printA5([item.ghn_order_code])}
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 text-green-600"
+                          title="In A5"
+                          disabled={printing}
+                        >
+                          <Printer className="h-4 w-4" />
+                        </Button>
+                        {!isFinal && (
+                          <Button
+                            onClick={() => { setEditingRecord(item); setEditDialogOpen(true); }}
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 text-blue-600"
+                            title="Chỉnh sửa"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button
+                          onClick={() => removeTracking(item.id)}
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 text-destructive"
+                          title="Xóa"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </UICard>
+                  );
+                })
+              )}
+            </div>
+          )}
 
           {trackingData.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
-              <div className="flex items-center gap-2">
+            <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span>Số dòng/trang:</span>
                 <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
                   <SelectTrigger className="h-8 w-20"><SelectValue /></SelectTrigger>
@@ -913,14 +1059,14 @@ export default function GHNTrackingPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <span>Hiển thị {startIdx}-{endIdx} / {filteredData.length} đơn hàng</span>
+                <span className="text-xs sm:text-sm">{startIdx}-{endIdx} / {filteredData.length}</span>
               </div>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={safePage === 1}>«</Button>
+              <div className="flex items-center gap-1 justify-between sm:justify-end">
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={safePage === 1} className="hidden sm:inline-flex">«</Button>
                 <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safePage === 1}>‹ Trước</Button>
-                <span className="px-2">Trang {safePage} / {totalPages}</span>
+                <span className="px-2 whitespace-nowrap">{safePage} / {totalPages}</span>
                 <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>Sau ›</Button>
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={safePage === totalPages}>»</Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={safePage === totalPages} className="hidden sm:inline-flex">»</Button>
               </div>
             </div>
           )}

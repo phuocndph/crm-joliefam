@@ -1,30 +1,58 @@
-## Vấn đề
-Cảnh báo phía trên đã liệt kê các số đơn trùng (2680–2687), nhưng trong bảng đơn hàng các dòng tương ứng (2688, 2687, 2686, 2685, 2683, 2682, 2681…) không được đánh dấu — người dùng phải tự dò bằng mắt.
-
 ## Mục tiêu
-Đánh dấu trực quan ngay trên bảng những dòng có `display_order_number` (hoặc `order_number`) nằm trong danh sách trùng, để mọi role (admin/quản lý/nhân viên) đều nhìn thấy ngay đơn nào cần sửa.
+Trang `/ghn-tracking` hiện dùng bảng rộng tối thiểu 1800px → trên điện thoại (414px) phải cuộn ngang rất khó dùng. Sẽ thêm giao diện mobile dạng card, gọn gàng, giữ nguyên logic backend.
 
-## Thay đổi
+## Phạm vi thay đổi
+Chỉ chỉnh UI/presentation trong `src/pages/GHNTrackingPage.tsx`. Không đụng vào edge function, hook, hay schema.
 
-### 1. `src/pages/OrderManagement.tsx`
-- Đã có `duplicateOrderNumbers` (mảng `[number, count]` toàn cục).
-- Tạo `duplicateNumberSet = new Set(duplicateOrderNumbers.map(([num]) => String(num)))`.
-- Truyền prop mới `duplicateNumbers={duplicateNumberSet}` xuống `<InlineOrderEditTable />`.
+## Chi tiết triển khai
 
-### 2. `src/components/InlineOrderEditTable.tsx`
-- Thêm prop `duplicateNumbers?: Set<string>` vào `InlineOrderEditTableProps`.
-- Trong vòng lặp render row:
-  - Tính `const dispNum = order.display_order_number || order.order_number;`
-  - `const isDup = duplicateNumbers?.has(String(dispNum));`
-- Khi `isDup`:
-  - Row: thêm class nền cảnh báo nhẹ `bg-amber-50/70 hover:bg-amber-100/70` + viền trái `border-l-amber-500` (đè lên `borderClass`/`zebraBg`).
-  - Cell "Mã đơn" (`order_number`): hiển thị thêm badge nhỏ `Trùng` (`bg-amber-100 text-amber-800`) cạnh số đơn, và icon `AlertTriangle` size 12 màu amber, có tooltip "Số đơn này đang trùng với đơn khác — vui lòng sửa".
+### 1. Dùng `useIsMobile()` (đã có sẵn) để switch layout
 
-### 3. Không đổi
-- Logic backend, RPC `get_duplicate_display_order_numbers`, hook `useDuplicateOrderNumbers` giữ nguyên.
-- Alert cảnh báo phía trên giữ nguyên.
+### 2. Thanh công cụ trên mobile
+- Hai nút "Đơn lẻ / Nhiều đơn" giữ nguyên (full width, chia đôi).
+- Input + nút "Thêm tracking" xếp dọc, full width.
+- Các nút "Cập nhật tất cả", "In A5 (n)" xếp dọc full width, bỏ khối "Hiển thị x/y" (đã có trong filter).
+- `GHNTrackingFilters` giữ nguyên (component này nên đã responsive; nếu chưa sẽ kiểm tra nhanh).
 
-## Kỹ thuật
-- Dùng `Set<string>` cho lookup O(1) khi render nhiều dòng.
-- So sánh dạng string để khớp với `display_number` RPC trả về (text).
-- Style dùng token tailwind sẵn có; không thêm token mới.
+### 3. Thay bảng bằng danh sách card khi mobile
+Mỗi card hiển thị:
+```text
+┌──────────────────────────────────┐
+│ ☐  #STT  Mã GHN          [Badge] │
+│    Mã đơn nội bộ                 │
+│ ──────────────────────────────── │
+│ 👤 Tên KH · SĐT                  │
+│ 📍 Địa chỉ (wrap)                │
+│ ──────────────────────────────── │
+│ Cân: 1.2kg   COD: 150.000₫       │
+│ Tạo: 10/05   Giao DK: 12/05      │
+│ Giao TT: 13/05 (nếu có)          │
+│ ──────────────────────────────── │
+│ [Tra cứu] [In] [Sửa] [🔄] [🗑]   │
+└──────────────────────────────────┘
+```
+- Card dùng `Card` shadcn, gap 3, padding 3.
+- Checkbox chọn ở góc trên trái để hỗ trợ In A5 hàng loạt.
+- Badge trạng thái góc trên phải.
+- Nút thao tác là icon button kích thước chạm (>=40px), xếp ngang cuối card.
+- Tap vào card không làm gì (tránh xung đột với nút trong card).
+
+### 4. Phân trang trên mobile
+- Hiển thị: "Trang 1/5 · 25/120 đơn" + 2 nút "‹ Trước" "Sau ›" full-width grid 2 cột.
+- Selector "Số dòng/trang" đặt riêng phía trên, mặc định 25 trên mobile.
+
+### 5. Giữ nguyên desktop
+Bọc khối bảng hiện tại trong `{!isMobile && (...)}`, khối card trong `{isMobile && (...)}`. Toolbar cũng có 2 nhánh ngắn để không phá layout desktop.
+
+### 6. Token & màu
+- Tránh các class `bg-blue-800`, `text-gray-600`, `bg-gray-50` mới thêm — dùng `bg-card`, `text-muted-foreground`, `bg-muted/50` cho phần mobile mới để đúng design-system. Phần desktop giữ nguyên (không nằm trong yêu cầu).
+
+## Không thay đổi
+- Logic gọi `ghn-tracking`, real-time subscription, auto-update.
+- `GHNTrackingFilters`, `EditGHNOrderDialog`.
+- Schema DB.
+
+## Kiểm thử
+- Mở `/ghn-tracking` ở viewport 414×756: card hiển thị đầy đủ, không cuộn ngang.
+- Chọn nhiều đơn → nút "In A5 (n)" hiện và bấm được.
+- Chuyển sang desktop ≥768px: bảng cũ hoạt động bình thường.
