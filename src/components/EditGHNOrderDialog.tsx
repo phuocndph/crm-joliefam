@@ -606,12 +606,19 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         updateData,
       });
 
-      // 2. Update COD if changed
-      if (codAmount !== initialCodAmount) {
+      // 2. Update COD if changed — chỉ cho phép khi đơn còn ở giai đoạn lấy hàng
+      const COD_EDITABLE = ['ready_to_pick', 'picking', 'picked'];
+      if (codAmount !== initialCodAmount && COD_EDITABLE.includes(currentStatus)) {
         await callGHN('update_cod', {
           orderCode: trackingRecord.ghn_order_code,
           codAmount,
           shopId: selectedShopId || undefined,
+        });
+      } else if (codAmount !== initialCodAmount) {
+        toast({
+          title: 'Không thể đổi COD',
+          description: `GHN không cho phép thay đổi COD khi đơn đã ở trạng thái "${currentStatus}".`,
+          duration: 6000,
         });
       }
 
