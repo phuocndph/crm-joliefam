@@ -682,3 +682,20 @@ function getStatusText(status: string): string {
   };
   return statusMap[status] || status;
 }
+
+// Chuẩn hóa giá trị thời gian từ GHN: có thể là epoch giây/mili-giây hoặc ISO string.
+function normalizeGhnDate(value: any): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') {
+    const ms = value > 10_000_000_000 ? value : value * 1000;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  if (typeof value === 'string') {
+    // GHN đôi khi trả "0001-01-01T00:00:00Z" cho field rỗng
+    if (value.startsWith('0001-')) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
+}
