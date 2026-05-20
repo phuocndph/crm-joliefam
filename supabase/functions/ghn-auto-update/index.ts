@@ -114,9 +114,10 @@ Deno.serve(async (req) => {
               customer_address: orderData.to_address,
               package_weight: orderData.weight,
               created_date: orderData.created_date,
-              expected_delivery_date: orderData.expected_delivery_time,
-              delivered_date: orderData.delivered_date || null,
+              expected_delivery_date: normalizeGhnDate((orderData as any).leadtime ?? orderData.expected_delivery_time),
+              delivered_date: normalizeGhnDate((orderData as any).finish_date ?? orderData.delivered_date),
               cod_amount: orderData.cod_amount,
+              raw_data: orderData,
               tracking_url: `https://donhang.ghn.vn/?order_code=${orderData.order_code}`,
               last_updated_at: new Date().toISOString()
             })
