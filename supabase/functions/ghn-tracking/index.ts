@@ -408,6 +408,41 @@ serve(async (req) => {
       });
     }
 
+    // ==================== GET LIVE ORDER DETAIL (for Edit dialog prefill) ====================
+    if (action === 'get_order_detail') {
+      const { orderCode } = requestBody;
+      if (!orderCode) throw new Error('Order code is required');
+
+      const order = await fetchOrderDetail(ghnApiKey, orderCode);
+
+      // Sync snapshot back to DB so các trang khác cũng có dữ liệu mới nhất
+      try {
+        await supabase
+          .from('ghn_tracking')
+          .update({
+            customer_name: order.to_name ?? undefined,
+            customer_phone: order.to_phone ?? undefined,
+            customer_address: buildAddress(order),
+            package_weight: order.weight ?? undefined,
+            cod_amount: order.cod_amount ?? 0,
+            ghn_status: order.status,
+            ghn_status_text: getStatusText(order.status),
+            created_date: order.created_date,
+            expected_delivery_date: normalizeGhnDate(order.leadtime),
+            delivered_date: normalizeGhnDate(order.finish_date),
+            raw_data: order,
+            last_updated_at: new Date().toISOString(),
+          })
+          .eq('ghn_order_code', order.order_code);
+      } catch (e) {
+        console.warn('get_order_detail: snapshot sync failed', e);
+      }
+
+      return new Response(JSON.stringify({ success: true, data: order }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // ==================== UPDATE ORDER ACTION ====================
     if (action === 'update_order') {
       const { orderCode, updateData, shopId } = requestBody;
