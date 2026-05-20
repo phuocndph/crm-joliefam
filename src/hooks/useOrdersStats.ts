@@ -5,9 +5,10 @@ import { supabase } from '@/integrations/supabase/client';
  * Lightweight stats over ALL orders (not just paginated rows).
  * Selects only the columns needed for dashboard counters.
  */
-export const useOrdersStats = (managerId?: string | null) => {
+export const useOrdersStats = (managerId?: string | null, enabled: boolean = true) => {
   return useQuery({
     queryKey: ['orders-stats', managerId ?? 'all'],
+    enabled,
     queryFn: async () => {
       let q = supabase
         .from('orders')
