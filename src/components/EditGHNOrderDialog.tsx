@@ -551,29 +551,53 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
     }
     setLoading(true);
     try {
-      // GHN không cho sửa field `items` khi đơn đã qua trạng thái lấy hàng
+      // GHN giới hạn field được sửa theo trạng thái đơn
       const currentStatus = (trackingRecord.ghn_status || '').toLowerCase();
-      const canEditItems = ['ready_to_pick', 'picking'].includes(currentStatus);
-
-      const updateData: any = {
-        to_name: toName,
-        to_phone: toPhone,
-        to_address: toAddress,
-        to_district_id: parseInt(districtId),
-        to_ward_code: wardCode,
-        weight: totalItemWeight || weight,
-        length: effectiveDims.length,
-        width: effectiveDims.width,
-        height: effectiveDims.height,
-        note,
-        required_note: requiredNote,
-        content: itemContent,
-        insurance_value: insuranceValue,
-        cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
-      };
-      if (canEditItems) {
-        updateData.items = productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height }));
+      const FULL_EDITABLE = ['ready_to_pick', 'picking'];
+      const LOCKED = ['delivered', 'cancel', 'returned', 'lost', 'damage'];
+      if (LOCKED.includes(currentStatus)) {
+        toast({
+          title: 'Không thể chỉnh sửa',
+          description: `Đơn đang ở trạng thái "${currentStatus}" — GHN không cho phép cập nhật nữa.`,
+          variant: 'destructive',
+          duration: 8000,
+        });
+        setLoading(false);
+        return;
       }
+      const canEditFull = FULL_EDITABLE.includes(currentStatus);
+
+      // Khi đã rời kho: chỉ còn được sửa note / required_note / cod_failed_amount
+      const updateData: any = canEditFull
+        ? {
+            to_name: toName,
+            to_phone: toPhone,
+            to_address: toAddress,
+            to_district_id: parseInt(districtId),
+            to_ward_code: wardCode,
+            weight: totalItemWeight || weight,
+            length: effectiveDims.length,
+            width: effectiveDims.width,
+            height: effectiveDims.height,
+            note,
+            required_note: requiredNote,
+            content: itemContent,
+            insurance_value: insuranceValue,
+            cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
+            items: productItems.map(p => ({
+              name: p.name || 'Hàng hóa',
+              quantity: p.quantity,
+              weight: p.weight,
+              length: p.length,
+              width: p.width,
+              height: p.height,
+            })),
+          }
+        : {
+            note,
+            required_note: requiredNote,
+            cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
+          };
 
       // 1. Update order info
       await callGHN('update_order', {
@@ -582,12 +606,19 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         updateData,
       });
 
-      // 2. Update COD if changed
-      if (codAmount !== initialCodAmount) {
+      // 2. Update COD if changed — chỉ cho phép khi đơn còn ở giai đoạn lấy hàng
+      const COD_EDITABLE = ['ready_to_pick', 'picking', 'picked'];
+      if (codAmount !== initialCodAmount && COD_EDITABLE.includes(currentStatus)) {
         await callGHN('update_cod', {
           orderCode: trackingRecord.ghn_order_code,
           codAmount,
           shopId: selectedShopId || undefined,
+        });
+      } else if (codAmount !== initialCodAmount) {
+        toast({
+          title: 'Không thể đổi COD',
+          description: `GHN không cho phép thay đổi COD khi đơn đã ở trạng thái "${currentStatus}".`,
+          duration: 6000,
         });
       }
 
@@ -609,6 +640,9 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
 
   const fmt = (n: number) => n.toLocaleString("vi-VN") + " đ";
   const selectedShop = shops.find(s => String(s._id) === selectedShopId);
+  const currentStatus = (trackingRecord?.ghn_status || '').toLowerCase();
+  const fullEditable = ['ready_to_pick', 'picking'].includes(currentStatus);
+  const locked = ['delivered', 'cancel', 'returned', 'lost', 'damage'].includes(currentStatus);
 
   if (!trackingRecord) return null;
 
@@ -627,6 +661,14 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
             </DialogTitle>
           </DialogHeader>
         </div>
+
+        {!fullEditable && currentStatus && (
+          <div className={`mx-6 mt-3 rounded-md border px-3 py-2 text-xs ${locked ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
+            {locked
+              ? <>Đơn đang ở trạng thái <b>{currentStatus}</b> — GHN không cho phép cập nhật.</>
+              : <>Đơn đã ở trạng thái <b>{currentStatus}</b>. GHN chỉ cho phép sửa <b>Ghi chú</b>, <b>Lưu ý giao hàng</b> và <b>Phí giao lại thất bại</b>. Cân nặng, kích thước, COD, địa chỉ, sản phẩm sẽ không được gửi lên GHN.</>}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] h-[calc(90vh-80px)]">
           {/* LEFT COLUMN */}

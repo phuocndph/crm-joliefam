@@ -1,59 +1,63 @@
-# Sửa lỗi "Thông tin đơn hàng sai lệch, không lấy đúng theo GHN"
+# Lỗi cập nhật đơn GHN: "Not support change field: insurance_value with order status: delivering"
 
 ## Chẩn đoán
 
-Sau khi kiểm tra DB (`ghn_tracking`), edge function `ghn-tracking`, `ghn-auto-update` và `EditGHNOrderDialog`, nguyên nhân không phải mất dữ liệu mà là **dữ liệu hiển thị bị "đông lạnh"** tại thời điểm tạo đơn:
+Log edge function ghi rõ:
+```
+GHN update response: { code: 400,
+  message: "Lỗi gọi API: corev2_tenant_order_update -
+    Not support change field: insurance_value with order status: delivering" }
+```
 
-### Cách `raw_data` được cập nhật
-| Tình huống | Có ghi `raw_data` không? |
-|---|---|
-| Tạo đơn (`create_order`) | Có |
-| Bấm "Cập nhật tất cả" (`update_all_tracking`) | Có |
-| Cron `ghn-auto-update` chạy nền | **KHÔNG** (chỉ ghi status, cod, weight, địa chỉ…) |
-| `track_order` đơn lẻ | **KHÔNG** |
-| Sau khi `update_order` (vừa sửa xong) | **KHÔNG** (không pull detail mới về) |
-| Khi mở dialog `EditGHNOrderDialog` | **KHÔNG** (chỉ đọc snapshot cũ trong `raw_data`) |
+Đơn `GYTV9XPB` đang ở trạng thái **`delivering`** (đang giao hàng). GHN khoá hầu hết các field khi đơn đã rời kho:
 
-### Hậu quả người dùng thấy
-- Mở dialog Sửa đơn → form prefill từ `raw_data` chụp lúc tạo đơn (có thể vài tuần trước).
-- Trong khi đó GHN portal đã thay đổi: COD, cân nặng, dịch vụ (Hàng nhẹ ↔ Hàng nặng), district/ward (theo địa giới hành chính mới), shop gửi, items… → Mọi field đều "sai lệch" so với GHN.
-- Sau khi save sửa, app cũng **không pull về** state mới từ GHN → lần mở kế tiếp vẫn lệch.
-- Shop "Bên gửi" lấy từ `raw_data.shop_id` rồi tra local `shops` list → nếu shop bị đổi tên / shop list khác → hiển thị shop sai.
+| Field | `ready_to_pick` / `picking` | `picked` / `storing` / `transporting` / `delivering` … |
+|---|---|---|
+| `to_name`, `to_phone`, `to_address`, `to_ward_code`, `to_district_id` | ✅ | ❌ (1 số tỉnh cho đổi địa chỉ qua API riêng) |
+| `weight`, `length`, `width`, `height` | ✅ | ❌ |
+| `insurance_value` | ✅ | ❌ ← chính field gây lỗi hôm nay |
+| `items` | ✅ | ❌ (đã chặn đúng bằng `canEditItems`) |
+| `cod_amount` | qua endpoint riêng `update_cod` | qua `update_cod` (giới hạn theo status) |
+| `note`, `required_note`, `cod_failed_amount` | ✅ | ✅ (thường vẫn cho) |
 
-### Lỗi phụ phát hiện
-- `update_all_tracking` (dòng 388–389) ghi `expected_delivery_date: order.leadtime` và `delivered_date: order.finish_date` — GHN trả `leadtime` dạng **Unix epoch (số)**, không phải ISO string → ngày dự kiến giao đang lưu sai kiểu (đôi khi NULL hoặc text số).
+Code hiện tại trong `src/components/EditGHNOrderDialog.tsx` (`handleSubmit` ~dòng 530-558) chỉ chặn `items` khi không phải `ready_to_pick/picking`, còn lại gửi nguyên xi mọi field → GHN reject ngay khi gặp `insurance_value`.
 
 ## Kế hoạch sửa
 
-### 1. Thêm action `get_order_detail` cho edge function `ghn-tracking`
-Gọi `POST /v2/shipping-order/detail` với `order_code`, trả về toàn bộ `data` (chính là raw từ GHN). Endpoint mới dùng riêng cho dialog, không đụng tới các flow batch.
+### 1. Phân loại trạng thái có thể sửa
+Trong `EditGHNOrderDialog.tsx`, thêm hằng số:
+```
+EDITABLE_STATUSES = ['ready_to_pick', 'picking']            // sửa toàn bộ
+LIGHT_EDITABLE_STATUSES = ['picked','storing','transporting',
+                           'sorting','delivering','delivery_fail',
+                           'waiting_to_return','return_transporting','return_sorting']
+                                                            // chỉ note + required_note + cod_failed_amount
+LOCKED_STATUSES = ['delivered','cancel','returned','lost','damage']
+                                                            // không cho mở chỉnh sửa
+```
 
-### 2. Đồng bộ snapshot vào DB khi pull detail
-Trong action mới: ngay sau khi nhận response GHN, `UPDATE ghn_tracking SET raw_data = order, customer_name/customer_phone/customer_address/cod_amount/package_weight/ghn_status/ghn_status_text/last_updated_at = …` để các trang khác cũng thấy dữ liệu mới nhất.
+### 2. `handleSubmit` build payload theo nhóm
+- Nếu `currentStatus` ∈ `LOCKED_STATUSES` → toast lỗi rõ ràng, không gọi API.
+- Nếu `LIGHT_EDITABLE_STATUSES`: payload chỉ gồm `note`, `required_note`, `cod_failed_amount` (và `cod_amount` xử lý riêng qua `update_cod` nếu GHN còn cho phép — đã có sẵn).
+- Nếu `EDITABLE_STATUSES`: payload đầy đủ như hiện tại (bao gồm `items`).
+- Bỏ field `insurance_value`, `weight`, dimensions, địa chỉ, … khỏi payload khi không phải EDITABLE_STATUSES.
 
-### 3. `EditGHNOrderDialog` luôn fetch live trước khi prefill
-Trong `useEffect` mở dialog (`src/components/EditGHNOrderDialog.tsx` dòng 150-244):
-- Hiển thị loading nhẹ ("Đang đồng bộ với GHN…").
-- Gọi `callGHN('get_order_detail', { orderCode: trackingRecord.ghn_order_code })`.
-- Dùng `fresh` thay cho `trackingRecord.raw_data` để set toàn bộ field.
-- Nếu API GHN lỗi → fallback về `raw_data` cũ + toast cảnh báo "Không lấy được dữ liệu mới từ GHN, đang hiển thị bản lưu gần nhất".
+### 3. UI hint khi đơn đã vận chuyển
+Ngay khi prefill xong và biết status:
+- Hiển thị banner vàng nhẹ ở đầu dialog:
+  > "Đơn đang ở trạng thái **Đang giao hàng** — GHN chỉ cho phép sửa ghi chú, lưu ý giao hàng và phí giao lại. Các thông tin khác (cân nặng, kích thước, COD, địa chỉ, sản phẩm) đã bị khoá."
+- Disable các input bị khoá (toName/toPhone/toAddress/weight/dims/insurance/items, dropdown shop) để user không kỳ vọng sửa được.
+- Vẫn cho phép xem cước & dữ liệu thật từ GHN.
 
-### 4. Refresh sau khi save (`handleSubmit` ~dòng 553-558)
-Sau khi `update_order` thành công, gọi tiếp `get_order_detail` để cập nhật `raw_data` mới rồi mới `onSuccess()`/`loadTrackingData()`.
+### 4. Xử lý lỗi rõ ràng hơn
+Trong `callGHN` (`update_order` block ở edge function `ghn-tracking/index.ts` ~dòng 438-441) khi GHN trả 400 kèm `message` "Not support change field …", convert sang message tiếng Việt: "GHN không cho sửa trường `<tên field>` ở trạng thái `<status>`. Vui lòng huỷ đơn rồi tạo lại nếu cần điều chỉnh." Frontend toast hiển thị message này thay vì raw English.
 
-### 5. Lấy "Bên gửi" từ GHN, không suy luận local
-Hiển thị block "Bên gửi" ưu tiên `fresh.from_name / from_address / from_phone / from_ward_code / from_district_id` (đến từ GHN). Dropdown shop vẫn còn nhưng chỉ dùng để **đổi sang shop khác**, không còn quyết định text hiển thị → loại bỏ khả năng lệch tên shop.
+### 5. (Tuỳ chọn nhỏ) Validate `cod_amount` thay đổi
+Khi status không phải `ready_to_pick/picking/picked`, không gọi `update_cod` nữa (GHN hay trả lỗi tương tự) — báo "Không thể đổi COD ở trạng thái đang giao".
 
-### 6. Sửa lỗi kiểu dữ liệu `leadtime`
-Trong `update_all_tracking` (và action mới): nếu `order.leadtime` là number → `new Date(order.leadtime * 1000).toISOString()`. Tương tự `finish_date` (nếu là epoch).
-
-### 7. (Tuỳ chọn) Bổ sung `raw_data` vào `ghn-auto-update`
-Cập nhật cron `ghn-auto-update/index.ts` ghi luôn cả `raw_data: orderData` để dữ liệu auto-cron cũng giữ snapshot mới — đỡ phụ thuộc người dùng phải mở dialog.
-
-## Phạm vi
-- Edge: `supabase/functions/ghn-tracking/index.ts` (action mới + sửa leadtime), `supabase/functions/ghn-auto-update/index.ts` (thêm raw_data).
-- Frontend: `src/components/EditGHNOrderDialog.tsx` (live fetch + refresh sau save + Bên gửi).
-- Không động vào schema DB, không động RLS.
+## Phạm vi sửa
+- `src/components/EditGHNOrderDialog.tsx`: phân nhóm status, lọc payload, disable input, banner cảnh báo.
+- `supabase/functions/ghn-tracking/index.ts`: dịch message GHN cho user-friendly trong `update_order`.
 
 ## Tóm tắt
-Dữ liệu trong DB và `raw_data` đang là **bản chụp cũ**; dialog Sửa đơn chưa bao giờ hỏi GHN dữ liệu mới. Sẽ thêm action `get_order_detail`, gọi mỗi khi mở/sau khi save, đồng thời đồng bộ snapshot xuống DB để mọi nơi đều khớp với GHN. Kèm sửa lỗi parse `leadtime` và hiển thị Bên gửi theo dữ liệu thật của GHN.
+GHN từ chối sửa hầu hết field khi đơn đã `delivering`. Dialog đang gửi đầy đủ payload nên trượt ngay vào `insurance_value`. Giải pháp: chỉ gửi các field GHN còn cho phép theo từng nhóm status, khoá input không sửa được, hiển thị banner cảnh báo và dịch message lỗi của GHN sang tiếng Việt.

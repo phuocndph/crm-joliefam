@@ -472,7 +472,16 @@ serve(async (req) => {
 
       if (data.code !== 200) {
         const detail = data.code_message_value ? JSON.stringify(data.code_message_value) : '';
-        throw new Error(`${data.message || 'Lỗi cập nhật đơn GHN'}${detail ? ` - Chi tiết: ${detail}` : ''}`);
+        const raw = data.message || 'Lỗi cập nhật đơn GHN';
+        // Dịch lỗi phổ biến "Not support change field: X with order status: Y"
+        const m = /Not support change field:\s*([^\s]+)\s*with order status:\s*([^\s]+)/i.exec(raw);
+        if (m) {
+          throw new Error(
+            `GHN không cho phép sửa trường "${m[1]}" khi đơn đang ở trạng thái "${m[2]}". ` +
+            `Vui lòng huỷ đơn và tạo lại nếu cần điều chỉnh.`
+          );
+        }
+        throw new Error(`${raw}${detail ? ` - Chi tiết: ${detail}` : ''}`);
       }
 
       // Update tracking record in DB
