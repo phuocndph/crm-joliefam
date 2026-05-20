@@ -8,6 +8,7 @@ import { useDuplicateOrderNumbers } from "@/hooks/useDuplicateOrderNumbers";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useAuthReady } from "@/hooks/useAuthReady";
 import { ManagerSelector } from "@/components/ManagerSelector";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileOrderList } from "@/components/MobileOrderList";
@@ -143,14 +144,9 @@ export default function OrderManagement() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
-  const [user, setUser] = useState(null);
-  const { role: userRole } = useUserRole(user);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-  }, []);
+  const { user, isReady } = useAuthReady();
+  const { role: userRole, roleReady } = useUserRole(user);
+  const authReady = isReady && roleReady;
 
   useEffect(() => {
     document.title = "Quản lý Đơn hàng | Hệ thống";
@@ -159,7 +155,7 @@ export default function OrderManagement() {
   const managerFilter = (userRole === 'admin' || userRole === 'accountant')
     ? selectedManagerId
     : (userRole === 'manager' && (user as any)?.id) ? (user as any).id : undefined;
-  console.log('[Orders] role:', userRole, 'selectedManagerId:', selectedManagerId, 'managerFilter:', managerFilter);
+  console.log('[Orders] role:', userRole, 'selectedManagerId:', selectedManagerId, 'managerFilter:', managerFilter, 'authReady:', authReady);
   const debouncedSearch = useDebounce(searchTerm, 350);
   const {
     data: ordersPages,
@@ -168,10 +164,10 @@ export default function OrderManagement() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useInfiniteOrders({ managerId: managerFilter, search: debouncedSearch }) as any;
+  } = useInfiniteOrders({ managerId: managerFilter, search: debouncedSearch, enabled: authReady && !!user }) as any;
   const orders = ((ordersPages?.pages || []) as any[]).flat();
   const sentinelRef = useInfiniteScroll(hasNextPage, isFetchingNextPage, fetchNextPage);
-  const { data: orderStats } = useOrdersStats(managerFilter);
+  const { data: orderStats } = useOrdersStats(managerFilter, authReady && !!user);
   const { data: dupOrderNumbers } = useDuplicateOrderNumbers();
   console.log('[Orders] fetched:', orders.length, 'unique managers:', Array.from(new Set(orders.map((o:any)=>o.manager_id))).length);
   const { toast } = useToast();

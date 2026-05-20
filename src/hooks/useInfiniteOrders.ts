@@ -4,9 +4,10 @@ import { useEffect } from 'react';
 
 const PAGE_SIZE = 50;
 
-export const useInfiniteOrders = (opts?: { managerId?: string | null; search?: string }) => {
+export const useInfiniteOrders = (opts?: { managerId?: string | null; search?: string; enabled?: boolean }) => {
   const queryClient = useQueryClient();
   const search = (opts?.search || '').trim();
+  const enabled = opts?.enabled !== false;
 
   useEffect(() => {
     const invalidate = () => queryClient.invalidateQueries({ queryKey: ['orders-infinite'] });
@@ -22,6 +23,7 @@ export const useInfiniteOrders = (opts?: { managerId?: string | null; search?: s
 
   return useInfiniteQuery({
     queryKey: ['orders-infinite', opts?.managerId ?? 'all', search],
+    enabled,
     initialPageParam: 0,
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * PAGE_SIZE;

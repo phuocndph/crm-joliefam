@@ -1,62 +1,58 @@
-## Mục tiêu
-Trang `/orders` đang dùng `InlineOrderEditTable` rộng → trên mobile (414px) phải cuộn ngang. Sẽ thêm giao diện mobile dạng card, gọn gàng, giữ nguyên logic backend & desktop.
+## Vấn đề
 
-## Phạm vi
-Chỉ chỉnh UI/presentation trong `src/pages/OrderManagement.tsx`. Không đụng `InlineOrderEditTable`, hook, edge function, hay schema.
+Console đang báo `TypeError: Load failed` ở `useUserRole` → role trả về `null` → các trang Đơn hàng/GHN/… filter sai theo `manager_id`, dẫn tới KT/NV/Manager thấy số liệu lệch hoặc trống.
 
-## Chi tiết triển khai
+Nguyên nhân:
+1. `useUserRole` query `user_roles` ngay khi component mount, có thể chạy **trước khi session Supabase được khôi phục** từ storage (INITIAL_SESSION race).
+2. `useUserRole` dùng `.single()` → nếu có 0 hoặc >1 dòng sẽ throw lỗi, role = null.
+3. Các page (OrderManagement, GHNTrackingPage, …) tính `managerFilter` **trước khi role load xong**; query đầu tiên đi với filter sai, sau đó refetch lại → flicker và đôi khi cache giữ kết quả cũ.
+4. `GHNTrackingPage.loadTrackingData` chỉ chạy 1 lần khi có `user`, không re-run khi role ready.
 
-### 1. Dùng `useIsMobile()`
-Switch giữa layout desktop (giữ nguyên) và mobile (mới).
+## Giải pháp
 
-### 2. Header + Stats trên mobile
-- Tiêu đề "Quản lý Đơn hàng" cỡ nhỏ hơn (`text-lg`), nút "Tạo báo giá" full width khi mobile.
-- Compact Stats Bar: chuyển thành lưới 2 cột (`grid grid-cols-2 gap-2`) trên mobile, mỗi ô gồm icon + số + nhãn, bỏ dấu `|` ngăn cách (chỉ hiện ở desktop).
-- Cảnh báo trùng số đơn: giữ nguyên (đã responsive sẵn nhờ `Alert`).
+Giữ nguyên phân quyền hiện tại (Manager xem của mình, NV xem của manager mình qua RLS, KT xem tất cả). Chỉ sửa lớp auth/role để đồng bộ.
 
-### 3. Search + Filter trên mobile
-- Ô tìm kiếm full width.
-- Hàng chip trạng thái cuộn ngang (`overflow-x-auto flex-nowrap`), giữ kích thước chạm.
-- Hai `Select` (Sắp xếp, Thanh toán) xếp 2 cột grid, full width, bỏ `ml-auto`.
+### 1. Tạo hook `useAuthReady` (mới)
 
-### 4. Thay bảng bằng danh sách card khi mobile
-Bọc `<InlineOrderEditTable .../>` trong `{!isMobile && (...)}`. Khi `isMobile`, render danh sách card:
+`src/hooks/useAuthReady.tsx`:
+- Gọi `supabase.auth.getSession()` 1 lần để khôi phục session từ storage → set `user` + `isReady=true`.
+- Subscribe `onAuthStateChange` để cập nhật user khi sign-in/sign-out (không `await` trong callback).
+- Trả về `{ user, isReady }`.
 
-```text
-┌──────────────────────────────────┐
-│ #Mã đơn (display)      [Trạng thái] │
-│ Khách hàng · Mã KH                  │
-│ ──────────────────────────────────  │
-│ 👤 Phụ trách     📅 Hẹn giao dd/MM  │
-│ 💰 Tổng: ...     ✅ Đã thu: ...     │
-│ ⏳ Còn lại: ...  [Badge thanh toán] │
-│ 🚚 GHN: code (nếu có)               │
-│ ──────────────────────────────────  │
-│ [Xem] [Sửa] [Thanh toán] [⋯]        │
-└──────────────────────────────────┘
-```
+### 2. Cập nhật `useUserRole`
 
-- Dùng `Card` shadcn từ `@/components/ui/card`, `p-3 space-y-2`.
-- Card có viền trái màu `border-l-4` theo trạng thái + nền `bg-amber-50/70` khi số đơn nằm trong `duplicateNumberSet` (đồng nhất với desktop) + badge "Trùng".
-- Tap vào card → mở `EditOrderDialog` (giống hành vi "Sửa" hiện có).
-- Nút thao tác kích thước chạm ≥40px, dùng icon + label ngắn. Dropdown `⋯` chứa "Sửa số đơn", "Tạo vận đơn GHN", "Theo dõi GHN", "Xóa".
-- Reuse các handler hiện có: `setEditingOrder`, `setDeletingOrder`, `setPayingOrder`, `setEditingOrderNumber`, `setGhnDialogOrder`, `setCreateGhnOrder`.
+- Dùng `.maybeSingle()` thay cho `.single()` để tránh throw khi không có dòng.
+- Thêm `roleReady` flag (true khi đã fetch xong, dù role null hay không).
+- Thêm retry nhẹ (1 lần, delay 300ms) nếu lỗi `TypeError: Load failed` (network race).
+- Trả về `{ role, loading, roleReady }`.
 
-### 5. Infinite scroll
-- Giữ `useInfiniteScroll` đang dùng — chỉ thay phần render bên trong, sentinel vẫn nằm cuối danh sách card.
+### 3. Gate các query data theo `isReady && roleReady`
 
-### 6. Giữ nguyên desktop & logic
-- `InlineOrderEditTable` chỉ render khi `!isMobile`.
-- Mọi dialog (`EditOrderDialog`, `DeleteOrderDialog`, `CreatePaymentForm`, `EditOrderNumberDialog`, `GHNTrackingDialog`, `CreateGHNOrderDialog`) dùng chung — chỉ thay UI list.
+Các trang dùng pattern: chỉ tính `managerFilter` và chỉ enable query khi `isReady && roleReady`.
 
-### 7. Token & màu
-Dùng `bg-card`, `text-muted-foreground`, `bg-muted/50`, `border-border`, `sidebar-primary` cho trạng thái "đã thanh toán" (theo core memory). Tránh thêm class `bg-blue-*/text-gray-*` mới.
+Áp dụng cho:
+- `src/pages/OrderManagement.tsx` — thay `useState(user)` + `getUser()` bằng `useAuthReady()`; truyền `enabled` vào `useInfiniteOrders` và `useOrdersStats`.
+- `src/pages/GHNTrackingPage.tsx` — gate `loadTrackingData()` bằng `isReady && roleReady`; thêm dependency `role` vào effect để reload khi role sẵn sàng. Đổi channel name realtime sang `ghn-tracking-${Date.now()}` (tránh xung đột nhiều tab).
+- Các trang tương tự dùng `useUserRole`: `CustomerManagement`, `QuotesPage`, `CashFlowManagement`, `TransactionManagement`, `ContractManagement`, `FabricManagement`, `ReportsPage`, `Dashboard`. Chỉ thêm điều kiện `enabled` vào React Query options; không đổi logic filter.
 
-## Không thay đổi
-- Logic phân quyền, fetch, realtime, các hook, dialog, schema DB.
-- `InlineOrderEditTable.tsx` (vẫn dùng cho desktop với cảnh báo trùng đã có).
+### 4. Cập nhật `useInfiniteOrders` / `useOrdersStats` / `useInfiniteCustomers` / `useInfiniteQuotes` / `useInfiniteTransactions`
 
-## Kiểm thử
-- Viewport 414×756: danh sách card hiển thị đầy đủ, không cuộn ngang; filter chip cuộn ngang mượt; mở/sửa/xóa/thanh toán đều hoạt động.
-- Đơn trùng số → card có viền + badge "Trùng".
-- Viewport ≥768px: bảng inline cũ hoạt động bình thường.
+- Thêm option `enabled?: boolean` và truyền vào React Query.
+- Caller chỉ enable khi auth + role ready.
+
+### 5. Hiển thị loading state thân thiện
+
+Khi `!isReady || !roleReady`: hiện skeleton/loader thay vì render với data rỗng (tránh người dùng tưởng "không có dữ liệu").
+
+## Phạm vi không đổi
+
+- Không đụng RLS policies, không migration DB.
+- Không đổi UI/UX, không đổi logic filter theo role.
+- Không đổi `set_manager_id` triggers.
+
+## Kiểm thử sau khi sửa
+
+1. Đăng nhập lần lượt bằng Admin / Manager / Accountant / Employee và mở **Quản lý Đơn hàng** + **Theo dõi GHN**.
+2. Kiểm tra console: không còn `TypeError: Load failed` ở `useUserRole`.
+3. Manager thấy đúng đơn của mình; Employee thấy đúng đơn của manager mình; Accountant thấy tất cả; số liệu trên Stats Bar khớp với danh sách.
+4. F5 nhiều lần / mở tab mới → dữ liệu hiển thị ổn định ngay lần load đầu, không flicker.
