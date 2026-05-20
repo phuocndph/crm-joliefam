@@ -592,6 +592,14 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       }
 
       toast({ title: "Cập nhật thành công!", description: `Đơn ${trackingRecord.ghn_order_code} đã được cập nhật` });
+      // Pull lại detail mới nhất từ GHN để snapshot raw_data trong DB luôn khớp
+      try {
+        await supabase.functions.invoke('ghn-tracking', {
+          body: { action: 'get_order_detail', orderCode: trackingRecord.ghn_order_code },
+        });
+      } catch (e) {
+        console.warn('[GHN Edit] Post-save refresh failed:', e);
+      }
       onSuccess();
       onOpenChange(false);
     } catch (e: any) {
