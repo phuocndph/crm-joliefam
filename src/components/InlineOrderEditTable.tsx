@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Check, X, Edit3, Calendar, DollarSign, Trash2, MoreHorizontal, Eye } from "lucide-react";
+import { Check, X, Edit3, Calendar, DollarSign, Trash2, MoreHorizontal, Eye, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,7 @@ interface InlineOrderEditTableProps {
   onOrderUpdate: (orderId: string, updates: Partial<Order>) => Promise<void>;
   onDeleteOrder: (order: Order) => void;
   onViewOrderDetail?: (order: Order) => void;
+  duplicateNumbers?: Set<string>;
 }
 const statusConfig = {
   pending: {
