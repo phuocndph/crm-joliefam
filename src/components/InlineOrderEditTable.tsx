@@ -203,7 +203,8 @@ export function InlineOrderEditTable({
   orders,
   onOrderUpdate,
   onDeleteOrder,
-  onViewOrderDetail
+  onViewOrderDetail,
+  duplicateNumbers
 }: InlineOrderEditTableProps) {
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>("");
