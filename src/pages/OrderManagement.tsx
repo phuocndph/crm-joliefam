@@ -4,6 +4,7 @@ import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, Check
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useInfiniteOrders } from "@/hooks/useInfiniteOrders";
 import { useOrdersStats } from "@/hooks/useOrdersStats";
+import { useDuplicateOrderNumbers } from "@/hooks/useDuplicateOrderNumbers";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { useUserRole } from "@/hooks/useUserRole";
