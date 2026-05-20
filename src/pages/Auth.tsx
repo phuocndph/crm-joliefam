@@ -6,27 +6,42 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eye, EyeOff, Building2, User, Mail, Lock } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Eye, EyeOff, Building2, User, Mail, Lock, ShieldCheck } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
+const REMEMBER_EMAIL_KEY = "remembered_email";
+
 const Auth = () => {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => {
+    try { return localStorage.getItem(REMEMBER_EMAIL_KEY) || ""; } catch { return ""; }
+  });
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => {
+    try { return localStorage.getItem(REMEMBER_EMAIL_KEY) !== null ? true : true; } catch { return true; }
+  });
+  const [checkingSession, setCheckingSession] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is already logged in
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    // Subscribe FIRST, then check session — handles late-restore on PWA
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) navigate("/dashboard", { replace: true });
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
+      } else {
+        setCheckingSession(false);
       }
-    };
-    checkUser();
+    });
+
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   const handleSignIn = async (e: React.FormEvent) => {
@@ -42,6 +57,14 @@ const Auth = () => {
       if (error) throw error;
 
       if (data.user) {
+        try {
+          if (rememberMe) {
+            localStorage.setItem(REMEMBER_EMAIL_KEY, email);
+          } else {
+            localStorage.removeItem(REMEMBER_EMAIL_KEY);
+          }
+        } catch {}
+
         toast({
           title: "Đăng nhập thành công!",
           description: "Chào mừng bạn trở lại hệ thống CRM.",
@@ -97,6 +120,14 @@ const Auth = () => {
     }
   };
 
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4">
+        <div className="text-white/80 text-sm animate-pulse">Đang khôi phục phiên đăng nhập…</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6 animate-fade-in">
@@ -127,18 +158,21 @@ const Auth = () => {
               </TabsList>
               
               <TabsContent value="signin">
-                <form onSubmit={handleSignIn} className="space-y-4">
+                <form onSubmit={handleSignIn} className="space-y-4" autoComplete="on">
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="email"
+                        name="email"
                         type="email"
                         placeholder="admin@company.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="pl-10"
+                        autoComplete="email"
+                        inputMode="email"
                         required
                       />
                     </div>
@@ -150,11 +184,13 @@ const Auth = () => {
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="password"
+                        name="password"
                         type={showPassword ? "text" : "password"}
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="pl-10 pr-10"
+                        autoComplete="current-password"
                         required
                       />
                       <button
@@ -167,6 +203,17 @@ const Auth = () => {
                     </div>
                   </div>
 
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="rememberMe"
+                      checked={rememberMe}
+                      onCheckedChange={(v) => setRememberMe(v === true)}
+                    />
+                    <Label htmlFor="rememberMe" className="text-sm font-normal cursor-pointer">
+                      Ghi nhớ đăng nhập trên thiết bị này
+                    </Label>
+                  </div>
+
                   <Button 
                     type="submit" 
                     className="w-full" 
@@ -176,12 +223,17 @@ const Auth = () => {
                   >
                     {loading ? "Đang đăng nhập..." : "Đăng nhập"}
                   </Button>
+
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 justify-center pt-1">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Phiên đăng nhập được giữ tới 60 ngày trên thiết bị này
+                  </p>
                 </form>
 
               </TabsContent>
               
               <TabsContent value="signup">
-                <form onSubmit={handleSignUp} className="space-y-4">
+                <form onSubmit={handleSignUp} className="space-y-4" autoComplete="on">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="firstName">Họ</Label>
@@ -189,11 +241,13 @@ const Auth = () => {
                         <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="firstName"
+                        name="given-name"
                           type="text"
                           placeholder="Nguyễn"
                           value={firstName}
                           onChange={(e) => setFirstName(e.target.value)}
                           className="pl-10"
+                        autoComplete="given-name"
                           required
                         />
                       </div>
@@ -202,10 +256,12 @@ const Auth = () => {
                       <Label htmlFor="lastName">Tên</Label>
                       <Input
                         id="lastName"
+                        name="family-name"
                         type="text"
                         placeholder="Văn A"
                         value={lastName}
                         onChange={(e) => setLastName(e.target.value)}
+                        autoComplete="family-name"
                         required
                       />
                     </div>
@@ -217,11 +273,14 @@ const Auth = () => {
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signupEmail"
+                        name="email"
                         type="email"
                         placeholder="your.email@company.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="pl-10"
+                        autoComplete="email"
+                        inputMode="email"
                         required
                       />
                     </div>
@@ -233,11 +292,13 @@ const Auth = () => {
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signupPassword"
+                        name="new-password"
                         type={showPassword ? "text" : "password"}
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="pl-10 pr-10"
+                        autoComplete="new-password"
                         required
                         minLength={8}
                       />
