@@ -619,6 +619,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Truck className="h-5 w-5 text-primary" /> Chỉnh sửa đơn GHN: {trackingRecord.ghn_order_code}
+              {prefilling && (
+                <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Đang đồng bộ với GHN…
+                </span>
+              )}
             </DialogTitle>
           </DialogHeader>
         </div>
