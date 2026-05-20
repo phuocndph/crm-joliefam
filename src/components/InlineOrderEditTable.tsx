@@ -435,7 +435,7 @@ export function InlineOrderEditTable({
         return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.assignee_id || "unassigned")}>
             {assigneeName !== 'Chưa phân công' ? <span className="text-blue-600 font-medium">{assigneeName}</span> : <span className="text-muted-foreground italic">{assigneeName}</span>}
           </div>;
-      case "order_number":
+      case "order_number": {
         const dispNum = getOrderDisplayNumber(order);
         const isDupNum = duplicateNumbers?.has(String(dispNum));
         return <div className="cursor-pointer flex items-center gap-1.5" onClick={() => handleCellEdit(order.id, field, dispNum)}>
@@ -450,6 +450,7 @@ export function InlineOrderEditTable({
               </span>
             )}
           </div>;
+      }
       case "notes":
         const isAutoNote = order.notes?.startsWith('Được tạo từ báo giá');
         const displayNotes = (!order.notes || isAutoNote) ? '' : order.notes;
