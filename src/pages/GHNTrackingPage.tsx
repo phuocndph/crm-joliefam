@@ -652,16 +652,17 @@ export default function GHNTrackingPage() {
   return (
     <div className="container mx-auto py-6 space-y-6 max-w-full">
       <Card className="w-full">
-        <CardHeader>
+        <CardHeader className="px-3 sm:px-6">
           <CardTitle>Theo dõi đơn hàng GHN</CardTitle>
         </CardHeader>
-        <CardContent className="px-2">
+        <CardContent className="px-2 sm:px-6">
           <div className="space-y-4 mb-6">
             <div className="flex items-center gap-2">
               <Button
                 variant={!isMultipleMode ? "default" : "outline"}
                 size="sm"
                 onClick={() => setIsMultipleMode(false)}
+                className="flex-1 sm:flex-none"
               >
                 Đơn lẻ
               </Button>
@@ -669,20 +670,21 @@ export default function GHNTrackingPage() {
                 variant={isMultipleMode ? "default" : "outline"}
                 size="sm"
                 onClick={() => setIsMultipleMode(true)}
+                className="flex-1 sm:flex-none"
               >
                 Nhiều đơn
               </Button>
             </div>
 
             {!isMultipleMode ? (
-              <div className="flex gap-4 items-center justify-between">
-                <div className="flex gap-4">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center sm:justify-between">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
                   <Input
                     placeholder="Nhập mã đơn hàng GHN"
                     value={orderCodeInput}
                     onChange={(e) => setOrderCodeInput(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && addOrderTracking()}
-                    className="max-w-xs"
+                    className="sm:max-w-xs"
                   />
                   <Button
                     onClick={addOrderTracking}
@@ -692,8 +694,8 @@ export default function GHNTrackingPage() {
                     Thêm tracking
                   </Button>
                 </div>
-                <div className="flex gap-4 items-center">
-                     <span className="text-sm text-gray-600">
+                <div className="flex flex-wrap gap-2 sm:gap-4 items-center">
+                     <span className="text-sm text-muted-foreground">
                        Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
                      </span>
                      {selectedOrders.size > 0 && (
@@ -726,11 +728,12 @@ export default function GHNTrackingPage() {
                   rows={4}
                   className="resize-none"
                 />
-                <div className="flex gap-4 items-center justify-between">
-                  <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center sm:justify-between">
+                  <div className="flex gap-2 sm:gap-4">
                     <Button
                       onClick={addOrderTracking}
                       disabled={loading || !orderCodeInput.trim()}
+                      className="flex-1 sm:flex-none"
                     >
                       {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
                       Thêm tất cả
@@ -739,12 +742,13 @@ export default function GHNTrackingPage() {
                       onClick={() => setOrderCodeInput('')}
                       variant="outline"
                       disabled={loading}
+                      className="flex-1 sm:flex-none"
                     >
                       Xóa
                     </Button>
                   </div>
-                  <div className="flex gap-4 items-center">
-                     <span className="text-sm text-gray-600">
+                  <div className="flex flex-wrap gap-2 sm:gap-4 items-center">
+                     <span className="text-sm text-muted-foreground">
                        Hiển thị {filteredData.length} / {trackingData.length} đơn hàng
                      </span>
                      {selectedOrders.size > 0 && (
