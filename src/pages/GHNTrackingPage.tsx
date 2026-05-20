@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil, Search, Printer } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { User } from '@supabase/supabase-js';
@@ -83,7 +84,6 @@ export default function GHNTrackingPage() {
   const [isMultipleMode, setIsMultipleMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [updatingOrderCode, setUpdatingOrderCode] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
     status: ['all'],
@@ -97,24 +97,19 @@ export default function GHNTrackingPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   
-  const { role } = useUserRole(user);
+  const { user: authUser, isReady } = useAuthReady();
+  const [user, setUser] = useState<User | null>(null);
+  useEffect(() => { setUser(authUser); }, [authUser]);
+  const { role, roleReady } = useUserRole(user);
+  const authReady = isReady && roleReady;
   const isMobile = useIsMobile();
-
-  // Get current user
-  useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-    };
-    getCurrentUser();
-  }, []);
 
   // Load tracking data from database
   useEffect(() => {
-    if (user) {
+    if (user && authReady) {
       loadTrackingData();
     }
-  }, [user]);
+  }, [user, authReady, role]);
 
   // Auto-load incomplete orders when accessing the page
   useEffect(() => {
@@ -135,7 +130,7 @@ export default function GHNTrackingPage() {
     console.log('📦 Setting up GHN tracking real-time subscription');
     
     const channel = supabase
-      .channel('ghn-tracking-changes')
+      .channel(`ghn-tracking-changes-${Date.now()}`)
       .on(
         'postgres_changes',
         {
