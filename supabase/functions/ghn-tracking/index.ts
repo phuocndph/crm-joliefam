@@ -331,8 +331,8 @@ serve(async (req) => {
         customer_address: buildAddress(order),
         package_weight: order.weight,
         created_date: order.created_date,
-        expected_delivery_date: order.leadtime,
-        delivered_date: order.finish_date,
+        expected_delivery_date: normalizeGhnDate(order.leadtime),
+        delivered_date: normalizeGhnDate(order.finish_date),
         cod_amount: order.cod_amount,
         ghn_status: order.status,
         ghn_status_text: getStatusText(order.status),
@@ -385,8 +385,8 @@ serve(async (req) => {
                 .update({
                   ghn_status: order.status,
                   ghn_status_text: getStatusText(order.status),
-                  expected_delivery_date: order.leadtime,
-                  delivered_date: order.finish_date,
+                   expected_delivery_date: normalizeGhnDate(order.leadtime),
+                   delivered_date: normalizeGhnDate(order.finish_date),
                   raw_data: order,
                   last_updated_at: new Date().toISOString(),
                 })
@@ -404,6 +404,41 @@ serve(async (req) => {
         message: `Đã cập nhật ${updateCount} đơn hàng${errorCount > 0 ? `, ${errorCount} lỗi` : ''}`,
         data: { updateCount, errorCount },
       }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ==================== GET LIVE ORDER DETAIL (for Edit dialog prefill) ====================
+    if (action === 'get_order_detail') {
+      const { orderCode } = requestBody;
+      if (!orderCode) throw new Error('Order code is required');
+
+      const order = await fetchOrderDetail(ghnApiKey, orderCode);
+
+      // Sync snapshot back to DB so các trang khác cũng có dữ liệu mới nhất
+      try {
+        await supabase
+          .from('ghn_tracking')
+          .update({
+            customer_name: order.to_name ?? undefined,
+            customer_phone: order.to_phone ?? undefined,
+            customer_address: buildAddress(order),
+            package_weight: order.weight ?? undefined,
+            cod_amount: order.cod_amount ?? 0,
+            ghn_status: order.status,
+            ghn_status_text: getStatusText(order.status),
+            created_date: order.created_date,
+            expected_delivery_date: normalizeGhnDate(order.leadtime),
+            delivered_date: normalizeGhnDate(order.finish_date),
+            raw_data: order,
+            last_updated_at: new Date().toISOString(),
+          })
+          .eq('ghn_order_code', order.order_code);
+      } catch (e) {
+        console.warn('get_order_detail: snapshot sync failed', e);
+      }
+
+      return new Response(JSON.stringify({ success: true, data: order }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -646,4 +681,21 @@ function getStatusText(status: string): string {
     'lost': 'Hàng bị thất lạc',
   };
   return statusMap[status] || status;
+}
+
+// Chuẩn hóa giá trị thời gian từ GHN: có thể là epoch giây/mili-giây hoặc ISO string.
+function normalizeGhnDate(value: any): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') {
+    const ms = value > 10_000_000_000 ? value : value * 1000;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  if (typeof value === 'string') {
+    // GHN đôi khi trả "0001-01-01T00:00:00Z" cho field rỗng
+    if (value.startsWith('0001-')) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
 }

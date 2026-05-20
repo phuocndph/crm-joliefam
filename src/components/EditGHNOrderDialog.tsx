@@ -46,6 +46,7 @@ interface EditGHNOrderDialogProps {
 export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSuccess }: EditGHNOrderDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [prefilling, setPrefilling] = useState(false);
 
   // Shop
   const [shops, setShops] = useState<GHNShop[]>([]);
@@ -146,11 +147,15 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const hasPrefilledRef = useRef(false);
   const userTypingRef = useRef(false);
 
-  // Pre-fill from raw_data
+  // Pre-fill: luôn fetch live từ GHN trước, fallback sang raw_data nếu lỗi
   useEffect(() => {
-    if (trackingRecord && open && !hasPrefilledRef.current) {
-      hasPrefilledRef.current = true;
-      const raw = trackingRecord.raw_data || {};
+    if (!trackingRecord || !open || hasPrefilledRef.current) {
+      if (!open) hasPrefilledRef.current = false;
+      return;
+    }
+    hasPrefilledRef.current = true;
+
+    const applyPrefill = (raw: any) => {
       setToName(raw.to_name || trackingRecord.customer_name || "");
       setToPhone(raw.to_phone || trackingRecord.customer_phone || "");
       setToAddress(raw.to_address || trackingRecord.customer_address || "");
@@ -237,11 +242,31 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       setWards([]);
       setAutoMatchDone(false);
       setPrefillLocationDone(false);
-    }
-    if (!open) {
-      hasPrefilledRef.current = false;
-    }
-  }, [trackingRecord, open]);
+    };
+
+    (async () => {
+      setPrefilling(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('ghn-tracking', {
+          body: { action: 'get_order_detail', orderCode: trackingRecord.ghn_order_code },
+        });
+        if (error) throw error;
+        if (!data?.success) throw new Error(data?.error || 'GHN trả về lỗi');
+        applyPrefill(data.data || {});
+      } catch (e: any) {
+        console.warn('[GHN Edit] Live fetch failed, dùng snapshot cũ:', e?.message);
+        toast({
+          title: 'Không lấy được dữ liệu mới từ GHN',
+          description: 'Đang hiển thị bản lưu gần nhất. Có thể chưa khớp với GHN.',
+          variant: 'destructive',
+          duration: 6000,
+        });
+        applyPrefill(trackingRecord.raw_data || {});
+      } finally {
+        setPrefilling(false);
+      }
+    })();
+  }, [trackingRecord, open, toast]);
 
   // Fetch address suggestions
   const fetchAddressSuggestions = useCallback(async (searchText: string, isSelected: boolean) => {
@@ -567,6 +592,14 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       }
 
       toast({ title: "Cập nhật thành công!", description: `Đơn ${trackingRecord.ghn_order_code} đã được cập nhật` });
+      // Pull lại detail mới nhất từ GHN để snapshot raw_data trong DB luôn khớp
+      try {
+        await supabase.functions.invoke('ghn-tracking', {
+          body: { action: 'get_order_detail', orderCode: trackingRecord.ghn_order_code },
+        });
+      } catch (e) {
+        console.warn('[GHN Edit] Post-save refresh failed:', e);
+      }
       onSuccess();
       onOpenChange(false);
     } catch (e: any) {
@@ -586,6 +619,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Truck className="h-5 w-5 text-primary" /> Chỉnh sửa đơn GHN: {trackingRecord.ghn_order_code}
+              {prefilling && (
+                <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Đang đồng bộ với GHN…
+                </span>
+              )}
             </DialogTitle>
           </DialogHeader>
         </div>
