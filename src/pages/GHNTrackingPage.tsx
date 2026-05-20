@@ -14,6 +14,8 @@ import { User } from '@supabase/supabase-js';
 import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
 import { EditGHNOrderDialog } from '@/components/EditGHNOrderDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Card as UICard } from '@/components/ui/card';
 
 import * as XLSX from 'xlsx';
 
@@ -96,6 +98,7 @@ export default function GHNTrackingPage() {
   const [pageSize, setPageSize] = useState(50);
   
   const { role } = useUserRole(user);
+  const isMobile = useIsMobile();
 
   // Get current user
   useEffect(() => {
