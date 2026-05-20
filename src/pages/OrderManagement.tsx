@@ -396,6 +396,10 @@ export default function OrderManagement() {
 
   // Duplicate display_order_number warning — toàn cục, mọi role thấy được
   const duplicateOrderNumbers = (dupOrderNumbers ?? []) as Array<[string, number]>;
+  const duplicateNumberSet = React.useMemo(
+    () => new Set(duplicateOrderNumbers.map(([num]) => String(num))),
+    [duplicateOrderNumbers]
+  );
 
   return (
     <div className="space-y-3">
@@ -544,6 +548,7 @@ export default function OrderManagement() {
               ) : (
                 <InlineOrderEditTable
                   orders={sortedOrders}
+                  duplicateNumbers={duplicateNumberSet}
                   onOrderUpdate={async (orderId, updates) => {
                     try {
                       const { error } = await supabase

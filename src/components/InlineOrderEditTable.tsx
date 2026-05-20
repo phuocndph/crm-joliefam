@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Check, X, Edit3, Calendar, DollarSign, Trash2, MoreHorizontal, Eye } from "lucide-react";
+import { Check, X, Edit3, Calendar, DollarSign, Trash2, MoreHorizontal, Eye, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,7 @@ interface InlineOrderEditTableProps {
   onOrderUpdate: (orderId: string, updates: Partial<Order>) => Promise<void>;
   onDeleteOrder: (order: Order) => void;
   onViewOrderDetail?: (order: Order) => void;
+  duplicateNumbers?: Set<string>;
 }
 const statusConfig = {
   pending: {
@@ -202,7 +203,8 @@ export function InlineOrderEditTable({
   orders,
   onOrderUpdate,
   onDeleteOrder,
-  onViewOrderDetail
+  onViewOrderDetail,
+  duplicateNumbers
 }: InlineOrderEditTableProps) {
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>("");
@@ -433,10 +435,22 @@ export function InlineOrderEditTable({
         return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, order.assignee_id || "unassigned")}>
             {assigneeName !== 'Chưa phân công' ? <span className="text-blue-600 font-medium">{assigneeName}</span> : <span className="text-muted-foreground italic">{assigneeName}</span>}
           </div>;
-      case "order_number":
-        return <div className="cursor-pointer" onClick={() => handleCellEdit(order.id, field, getOrderDisplayNumber(order))}>
-            <span className="text-sm font-medium">{getOrderDisplayNumber(order)}</span>
+      case "order_number": {
+        const dispNum = getOrderDisplayNumber(order);
+        const isDupNum = duplicateNumbers?.has(String(dispNum));
+        return <div className="cursor-pointer flex items-center gap-1.5" onClick={() => handleCellEdit(order.id, field, dispNum)}>
+            <span className="text-sm font-medium">{dispNum}</span>
+            {isDupNum && (
+              <span
+                title="Số đơn này đang trùng với đơn khác — vui lòng sửa"
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300"
+              >
+                <AlertTriangle className="h-3 w-3" />
+                Trùng
+              </span>
+            )}
           </div>;
+      }
       case "notes":
         const isAutoNote = order.notes?.startsWith('Được tạo từ báo giá');
         const displayNotes = (!order.notes || isAutoNote) ? '' : order.notes;
@@ -471,13 +485,15 @@ export function InlineOrderEditTable({
             const zebraBg = index % 2 === 0 ? 'bg-white' : 'bg-gray-50/60';
             const totalPaid = order.total_paid || 0;
             const remaining = Math.max(0, (order.total_amount || 0) - totalPaid);
-            
+            const dispNumRow = getOrderDisplayNumber(order);
+            const isDupRow = duplicateNumbers?.has(String(dispNumRow));
+
             return <TableRow 
               key={order.id} 
               className={cn(
                 "transition-colors group border-l-4 hover:bg-blue-50/50",
-                borderClass,
-                zebraBg
+                isDupRow ? 'border-l-amber-500' : borderClass,
+                isDupRow ? 'bg-amber-50/70 hover:bg-amber-100/70' : zebraBg
               )}
             >
               <TableCell className="font-medium min-w-[110px] bg-gray-50/40">
