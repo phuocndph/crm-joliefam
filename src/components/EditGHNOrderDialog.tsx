@@ -617,8 +617,8 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0" aria-describedby={undefined}>
-        <div className="px-6 pt-5 pb-3 border-b">
+      <DialogContent className="max-w-5xl h-[90vh] max-h-[90vh] overflow-hidden p-0 flex flex-col" aria-describedby={undefined}>
+        <div className="px-6 pt-5 pb-3 border-b shrink-0">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Truck className="h-5 w-5 text-primary" /> Chỉnh sửa đơn GHN: {trackingRecord.ghn_order_code}
@@ -631,11 +631,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           </DialogHeader>
         </div>
 
-        <div className="mx-6 mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <div className="mx-6 mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 shrink-0">
           Có thể chỉnh sửa <b>địa chỉ</b>, <b>người nhận</b>, <b>sản phẩm</b>, <b>khối lượng/kích thước</b>, <b>COD</b>, <b>ghi chú</b>. Riêng <b>Tổng giá trị hàng hóa</b> (bảo hiểm) không thể đổi sau khi tạo đơn trên GHN.
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] h-[calc(90vh-80px)]">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] flex-1 min-h-0 overflow-hidden">
           {/* LEFT COLUMN */}
           <div className="overflow-y-auto">
 
