@@ -1,58 +1,50 @@
-## Vấn đề
+## Tình trạng hiện tại
 
-Console đang báo `TypeError: Load failed` ở `useUserRole` → role trả về `null` → các trang Đơn hàng/GHN/… filter sai theo `manager_id`, dẫn tới KT/NV/Manager thấy số liệu lệch hoặc trống.
+Supabase client đã được cấu hình `persistSession: true` + `autoRefreshToken: true` (xem `src/integrations/supabase/client.ts`) — về mặt kỹ thuật **phiên đăng nhập đã được nhớ tự động** trong localStorage, refresh token sống tới 60 ngày.
 
-Nguyên nhân:
-1. `useUserRole` query `user_roles` ngay khi component mount, có thể chạy **trước khi session Supabase được khôi phục** từ storage (INITIAL_SESSION race).
-2. `useUserRole` dùng `.single()` → nếu có 0 hoặc >1 dòng sẽ throw lỗi, role = null.
-3. Các page (OrderManagement, GHNTrackingPage, …) tính `managerFilter` **trước khi role load xong**; query đầu tiên đi với filter sai, sau đó refetch lại → flicker và đôi khi cache giữ kết quả cũ.
-4. `GHNTrackingPage.loadTrackingData` chỉ chạy 1 lần khi có `user`, không re-run khi role ready.
+Nguyên nhân thực tế user vẫn phải nhập lại tài khoản/mật khẩu trên PWA:
+1. **Form chưa có `autocomplete` chuẩn** → trình duyệt/PWA (iOS Safari, Chrome Android) không gợi ý lưu hoặc autofill mật khẩu.
+2. **Chưa có "Ghi nhớ email"** → mỗi lần phải gõ lại email dù đã đăng nhập trước đó.
+3. **PWA iOS xoá localStorage** khi máy thiếu bộ nhớ → mất session. Cần fallback fill email.
+4. Khi token refresh fail (mạng kém lúc mở app) bị đẩy về `/auth` → mất sạch state.
 
-## Giải pháp
+## Phạm vi
 
-Giữ nguyên phân quyền hiện tại (Manager xem của mình, NV xem của manager mình qua RLS, KT xem tất cả). Chỉ sửa lớp auth/role để đồng bộ.
+Chỉ frontend (`src/pages/Auth.tsx`). Không đổi cấu hình Supabase, không đổi DB. Không lưu mật khẩu plaintext (rủi ro bảo mật).
 
-### 1. Tạo hook `useAuthReady` (mới)
+## Các thay đổi
 
-`src/hooks/useAuthReady.tsx`:
-- Gọi `supabase.auth.getSession()` 1 lần để khôi phục session từ storage → set `user` + `isReady=true`.
-- Subscribe `onAuthStateChange` để cập nhật user khi sign-in/sign-out (không `await` trong callback).
-- Trả về `{ user, isReady }`.
+### 1. Thêm thuộc tính `autocomplete` chuẩn cho 2 form
+- Email input: `autoComplete="email"` + `name="email"`
+- Password input (signin): `autoComplete="current-password"` + `name="password"`
+- Password input (signup): `autoComplete="new-password"`
+- Bọc form bằng `<form>` đúng cấu trúc + button `type="submit"` để trình duyệt nhận diện và đề nghị **Lưu mật khẩu**.
 
-### 2. Cập nhật `useUserRole`
+→ Sau lần đăng nhập đầu, Chrome/Safari/Edge sẽ hỏi "Bạn có muốn lưu mật khẩu cho site này?" và tự fill ở các lần sau (bao gồm cả PWA cài về home screen).
 
-- Dùng `.maybeSingle()` thay cho `.single()` để tránh throw khi không có dòng.
-- Thêm `roleReady` flag (true khi đã fetch xong, dù role null hay không).
-- Thêm retry nhẹ (1 lần, delay 300ms) nếu lỗi `TypeError: Load failed` (network race).
-- Trả về `{ role, loading, roleReady }`.
+### 2. Checkbox "Ghi nhớ đăng nhập"
+- Mặc định **bật**.
+- Khi bật + đăng nhập thành công → lưu `remembered_email` vào localStorage.
+- Khi tắt → xoá `remembered_email`.
+- Lần mở Auth page sau: tự điền email vào ô.
+- Không lưu password trong localStorage.
 
-### 3. Gate các query data theo `isReady && roleReady`
+### 3. Cải thiện trải nghiệm session
+- Trên Auth page, khi `getSession()` đang chạy → hiển thị skeleton/loader (tránh nháy form login rồi mới chuyển sang dashboard).
+- Subscribe `onAuthStateChange` để auto-redirect sang `/dashboard` ngay khi session restore xong (kể cả async).
 
-Các trang dùng pattern: chỉ tính `managerFilter` và chỉ enable query khi `isReady && roleReady`.
+### 4. Hiển thị thông tin nhỏ dưới form
+- Dòng nhỏ "🔒 Phiên đăng nhập được giữ trong 60 ngày trên thiết bị này" để user yên tâm không cần đăng nhập lại liên tục.
 
-Áp dụng cho:
-- `src/pages/OrderManagement.tsx` — thay `useState(user)` + `getUser()` bằng `useAuthReady()`; truyền `enabled` vào `useInfiniteOrders` và `useOrdersStats`.
-- `src/pages/GHNTrackingPage.tsx` — gate `loadTrackingData()` bằng `isReady && roleReady`; thêm dependency `role` vào effect để reload khi role sẵn sàng. Đổi channel name realtime sang `ghn-tracking-${Date.now()}` (tránh xung đột nhiều tab).
-- Các trang tương tự dùng `useUserRole`: `CustomerManagement`, `QuotesPage`, `CashFlowManagement`, `TransactionManagement`, `ContractManagement`, `FabricManagement`, `ReportsPage`, `Dashboard`. Chỉ thêm điều kiện `enabled` vào React Query options; không đổi logic filter.
+## Không làm
 
-### 4. Cập nhật `useInfiniteOrders` / `useOrdersStats` / `useInfiniteCustomers` / `useInfiniteQuotes` / `useInfiniteTransactions`
+- Không thêm checkbox "Lưu mật khẩu" tự tạo (kém an toàn hơn trình duyệt gốc).
+- Không đổi token expiry trên Supabase (đã 60 ngày).
+- Không thêm OAuth (Google/Apple) trong phạm vi này.
 
-- Thêm option `enabled?: boolean` và truyền vào React Query.
-- Caller chỉ enable khi auth + role ready.
+## Kiểm thử
 
-### 5. Hiển thị loading state thân thiện
-
-Khi `!isReady || !roleReady`: hiện skeleton/loader thay vì render với data rỗng (tránh người dùng tưởng "không có dữ liệu").
-
-## Phạm vi không đổi
-
-- Không đụng RLS policies, không migration DB.
-- Không đổi UI/UX, không đổi logic filter theo role.
-- Không đổi `set_manager_id` triggers.
-
-## Kiểm thử sau khi sửa
-
-1. Đăng nhập lần lượt bằng Admin / Manager / Accountant / Employee và mở **Quản lý Đơn hàng** + **Theo dõi GHN**.
-2. Kiểm tra console: không còn `TypeError: Load failed` ở `useUserRole`.
-3. Manager thấy đúng đơn của mình; Employee thấy đúng đơn của manager mình; Accountant thấy tất cả; số liệu trên Stats Bar khớp với danh sách.
-4. F5 nhiều lần / mở tab mới → dữ liệu hiển thị ổn định ngay lần load đầu, không flicker.
+1. Mở PWA, đăng nhập 1 lần → trình duyệt hỏi lưu mật khẩu → Yes.
+2. Đóng app, mở lại → vào thẳng dashboard (session còn).
+3. Logout → mở lại Auth page → email được fill sẵn, ô mật khẩu được trình duyệt gợi ý autofill bằng 1 chạm.
+4. Tick bỏ "Ghi nhớ đăng nhập" rồi login → lần sau email không fill sẵn.
