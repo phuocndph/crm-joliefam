@@ -1,36 +1,64 @@
-Nguyên nhân gốc rễ nằm ở payload cập nhật đơn GHN, không phải do nút hay form.
+# Sửa cảnh báo trùng số đơn để mọi tài khoản đều thấy
 
-Hiện tại mỗi lần bấm “CẬP NHẬT ĐƠN”, frontend luôn gọi `update_order` và gửi cả các trường GHN không cho sửa ở trạng thái `delivering`, đặc biệt là:
+## Vấn đề
 
-```text
-content
-items
+Cảnh báo "Phát hiện X số đơn bị trùng" chỉ hiện với **admin/accountant**. Manager và nhân viên không thấy, vì:
+
+- Hook `useOrdersStats(managerFilter)` query bảng `orders` có lọc theo `manager_id` (manager filter hoặc RLS).
+- Các số trùng (2680–2687) thuộc về **2 manager khác nhau** (`3dc07420...` và `6a1faecc...`), nên trong "không gian" của mỗi manager mỗi số chỉ xuất hiện 1 lần → không phát hiện trùng.
+
+Tuy nhiên trigger `auto_link_ghn_tracking_to_order` đếm `display_order_number` **toàn cục** (không lọc manager). Hai đơn cùng số khác manager vẫn làm GHN không tự liên kết được mã vận đơn. Vì vậy cảnh báo cần được hiện cho **mọi tài khoản** (kể cả manager/nhân viên), không chỉ admin.
+
+## Giải pháp
+
+### 1. Tạo RPC hoặc View để đếm trùng toàn cục, bỏ qua RLS
+
+Tạo SECURITY DEFINER function `get_duplicate_display_order_numbers()` trả về danh sách số trùng trên toàn DB (không lọc theo manager, vì trigger GHN cũng đếm toàn cục).
+
+```sql
+CREATE OR REPLACE FUNCTION public.get_duplicate_display_order_numbers()
+RETURNS TABLE(display_number text, dup_count bigint)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT display_order_number, COUNT(*)::bigint
+  FROM public.orders
+  WHERE display_order_number ~ '^\d+$'
+  GROUP BY display_order_number
+  HAVING COUNT(*) > 1
+  ORDER BY display_order_number;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_duplicate_display_order_numbers() TO authenticated;
 ```
 
-Log Edge Function đã xác nhận GHN trả lỗi:
+### 2. Tạo hook `useDuplicateOrderNumbers` riêng
 
-```text
-Not support change field: content with order status: delivering
-```
+File mới `src/hooks/useDuplicateOrderNumbers.ts` gọi `supabase.rpc('get_duplicate_display_order_numbers')`. Cache 2 phút.
 
-Vì `content` luôn được gửi trong mọi lần cập nhật, nên dù anh chỉ đổi địa chỉ, COD, ghi chú, hay bất kỳ nội dung nhỏ nào, GHN vẫn thấy request có trường `content` và từ chối toàn bộ request. Toast ngoài frontend lại chỉ hiện chung chung `Edge Function returned a non-2xx status code`, nên nhìn như “cái gì cũng không cập nhật được”.
+### 3. Cập nhật `OrderManagement.tsx`
 
-Kế hoạch sửa:
+- Bỏ phần tính `duplicateOrderNumbers` từ `useOrdersStats`.
+- Dùng `useDuplicateOrderNumbers()` để hiển thị cảnh báo (luôn toàn cục, mọi role).
+- Cảnh báo bổ sung dòng nhỏ: "Số đơn có thể đang nằm ở quản lý khác — liên hệ admin để xử lý" cho manager/nhân viên không tìm thấy đơn trùng trong danh sách của mình.
 
-1. Sửa `EditGHNOrderDialog.tsx`
-   - Không gửi `content` trong `update_order` nữa.
-   - Không gửi `insurance_value` vì đó là giá trị đơn hàng/bảo hiểm không sửa được.
-   - Với đơn đang `delivering`, không gửi `items` nếu người dùng không thực sự cần sửa sản phẩm, vì GHN có thể cũng khóa nhóm hàng hóa theo trạng thái.
-   - Vẫn cho gửi các trường cần sửa: người nhận, điện thoại, địa chỉ, quận/huyện, phường/xã, khối lượng/kích thước, ghi chú, yêu cầu giao hàng, phí giao thất bại.
+### 4. Dọn `useOrdersStats.ts`
 
-2. Giữ COD đi qua endpoint riêng
-   - COD vẫn cập nhật bằng `update_cod`, không phụ thuộc payload `update_order`.
-   - Nếu chỉ đổi COD, có thể bỏ qua `update_order` khi các field đơn hàng khác không đổi để tránh bị GHN chặn không cần thiết.
+Xoá block tính `duplicateOrderNumbers` để giảm payload (vì đã chuyển sang RPC riêng).
 
-3. Cải thiện thông báo lỗi thật từ Edge Function
-   - Khi Edge Function trả non-2xx, frontend sẽ đọc nội dung lỗi thật từ response thay vì chỉ hiện `Edge Function returned a non-2xx status code`.
-   - Như vậy nếu GHN khóa trường nào khác, màn hình sẽ hiện đúng tên trường bị khóa.
+## Kết quả
 
-4. Kiểm tra lại sau sửa
-   - Bấm cập nhật khi đổi địa chỉ/ghi chú/COD sẽ không còn bị chặn bởi lỗi `content`.
-   - Nếu GHN tiếp tục khóa một trường khác theo trạng thái đơn, lỗi hiển thị sẽ chỉ rõ trường đó để xử lý tiếp.
+- Mọi tài khoản (admin, manager, accountant, nhân viên) đều thấy cảnh báo nếu có trùng `display_order_number` toàn cục.
+- Manager biết số đơn của mình đang xung đột với manager khác, kể cả khi danh sách họ chỉ thấy 1 bản.
+- GHN auto-link tiếp tục hoạt động không đổi.
+
+## Phần kỹ thuật
+
+| Thay đổi | File |
+|---|---|
+| Tạo SECURITY DEFINER function | migration mới |
+| Hook mới gọi RPC | `src/hooks/useDuplicateOrderNumbers.ts` |
+| Bỏ duplicateOrderNumbers khỏi stats | `src/hooks/useOrdersStats.ts` |
+| Dùng hook mới + thêm gợi ý cho manager | `src/pages/OrderManagement.tsx` |

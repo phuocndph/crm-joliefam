@@ -1885,6 +1885,13 @@ export type Database = {
       }
     }
     Functions: {
+      get_duplicate_display_order_numbers: {
+        Args: never
+        Returns: {
+          display_number: string
+          dup_count: number
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]

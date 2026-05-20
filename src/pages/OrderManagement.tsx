@@ -4,6 +4,7 @@ import { Search, Plus, Package, Eye, Edit, Trash2, Filter, MoreHorizontal, Check
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useInfiniteOrders } from "@/hooks/useInfiniteOrders";
 import { useOrdersStats } from "@/hooks/useOrdersStats";
+import { useDuplicateOrderNumbers } from "@/hooks/useDuplicateOrderNumbers";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -168,6 +169,7 @@ export default function OrderManagement() {
   const orders = ((ordersPages?.pages || []) as any[]).flat();
   const sentinelRef = useInfiniteScroll(hasNextPage, isFetchingNextPage, fetchNextPage);
   const { data: orderStats } = useOrdersStats(managerFilter);
+  const { data: dupOrderNumbers } = useDuplicateOrderNumbers();
   console.log('[Orders] fetched:', orders.length, 'unique managers:', Array.from(new Set(orders.map((o:any)=>o.manager_id))).length);
   const { toast } = useToast();
 
@@ -392,8 +394,8 @@ export default function OrderManagement() {
     { value: 'cancelled', label: 'Đã hủy' },
   ];
 
-  // Duplicate display_order_number warning (server-side stats)
-  const duplicateOrderNumbers = (orderStats?.duplicateOrderNumbers ?? []) as Array<[string, number]>;
+  // Duplicate display_order_number warning — toàn cục, mọi role thấy được
+  const duplicateOrderNumbers = (dupOrderNumbers ?? []) as Array<[string, number]>;
 
   return (
     <div className="space-y-3">
@@ -471,7 +473,7 @@ export default function OrderManagement() {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Phát hiện {duplicateOrderNumbers.length} số đơn bị trùng</AlertTitle>
           <AlertDescription>
-            <p className="mb-2 text-sm">Các số đơn dưới đây đang bị dùng cho nhiều đơn khác nhau, sẽ khiến mã vận đơn GHN không tự liên kết được. Vui lòng sửa số đơn cho 1 trong các đơn để mỗi số là duy nhất:</p>
+            <p className="mb-2 text-sm">Các số đơn dưới đây đang bị dùng cho nhiều đơn khác nhau (có thể nằm ở quản lý khác), khiến mã vận đơn GHN không tự liên kết được. Vui lòng sửa số đơn cho 1 trong các đơn để mỗi số là duy nhất — nếu bạn không tìm thấy đơn trùng trong danh sách của mình, liên hệ admin để xử lý:</p>
             <ul className="list-disc pl-5 space-y-1 text-sm">
               {duplicateOrderNumbers.map(([num, count]) => (
                 <li key={num}>
