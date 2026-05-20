@@ -554,6 +554,12 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       // GHN giới hạn field được sửa theo trạng thái đơn
       const currentStatus = (trackingRecord.ghn_status || '').toLowerCase();
       const FULL_EDITABLE = ['ready_to_pick', 'picking'];
+      const TRANSIT_EDITABLE = [
+        'picked', 'storing', 'transporting', 'sorting',
+        'delivery_fail', 'waiting_to_return',
+        'return', 'return_transporting', 'return_sorting', 'returning', 'return_fail',
+      ];
+      const DELIVERING_ONLY = ['delivering'];
       const LOCKED = ['delivered', 'cancel', 'returned', 'lost', 'damage'];
       if (LOCKED.includes(currentStatus)) {
         toast({
@@ -565,9 +571,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         setLoading(false);
         return;
       }
-      const canEditFull = FULL_EDITABLE.includes(currentStatus);
+      const canEditFull = FULL_EDITABLE.includes(currentStatus) || !currentStatus;
+      const canEditAddress = canEditFull || TRANSIT_EDITABLE.includes(currentStatus);
 
-      // Khi đã rời kho: chỉ còn được sửa note / required_note / cod_failed_amount
+      // FULL: gửi tất cả. TRANSIT: địa chỉ + note (bỏ insurance/weight/items).
+      // DELIVERING / khác: chỉ note / required_note / cod_failed_amount.
       const updateData: any = canEditFull
         ? {
             to_name: toName,
@@ -593,6 +601,17 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
               height: p.height,
             })),
           }
+        : canEditAddress
+        ? {
+            to_name: toName,
+            to_phone: toPhone,
+            to_address: toAddress,
+            to_district_id: parseInt(districtId),
+            to_ward_code: wardCode,
+            note,
+            required_note: requiredNote,
+            cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
+          }
         : {
             note,
             required_note: requiredNote,
@@ -606,8 +625,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         updateData,
       });
 
-      // 2. Update COD if changed — chỉ cho phép khi đơn còn ở giai đoạn lấy hàng
-      const COD_EDITABLE = ['ready_to_pick', 'picking', 'picked'];
+      // 2. Update COD if changed — GHN cho phép đến trước khi giao thành công
+      const COD_EDITABLE = [
+        'ready_to_pick', 'picking', 'picked', 'storing',
+        'transporting', 'sorting', 'delivery_fail',
+      ];
       if (codAmount !== initialCodAmount && COD_EDITABLE.includes(currentStatus)) {
         await callGHN('update_cod', {
           orderCode: trackingRecord.ghn_order_code,
