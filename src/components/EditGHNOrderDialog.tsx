@@ -551,9 +551,9 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
     }
     setLoading(true);
     try {
-      // GHN chỉ thực sự khoá "insurance_value" (giá trị đơn hàng) sau khi tạo đơn.
-      // Các thông tin còn lại (địa chỉ, KL, kích thước, sản phẩm, COD, ghi chú...) đều có thể sửa;
-      // nếu GHN từ chối theo trạng thái thực tế, edge function sẽ trả message rõ ràng.
+      // GHN khoá nhiều trường theo trạng thái đơn (vd "content", "items", "insurance_value"
+      // bị khoá khi đơn đang "delivering"). Chỉ gửi các trường an toàn để tránh GHN
+      // từ chối toàn bộ request chỉ vì 1 trường bị khoá.
       const updateData: any = {
         to_name: toName,
         to_phone: toPhone,
@@ -566,32 +566,43 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         height: effectiveDims.height,
         note,
         required_note: requiredNote,
-        content: itemContent,
         cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
-        items: productItems.map(p => ({
-          name: p.name || 'Hàng hóa',
-          quantity: p.quantity,
-          weight: p.weight,
-          length: p.length,
-          width: p.width,
-          height: p.height,
-        })),
       };
 
-      // 1. Update order info
-      await callGHN('update_order', {
-        orderCode: trackingRecord.ghn_order_code,
-        shopId: selectedShopId || undefined,
-        updateData,
-      });
+      // 1. Update order info — bọc try riêng để lỗi update_order không chặn update_cod
+      let updateOrderError: string | null = null;
+      try {
+        await callGHN('update_order', {
+          orderCode: trackingRecord.ghn_order_code,
+          shopId: selectedShopId || undefined,
+          updateData,
+        });
+      } catch (err: any) {
+        updateOrderError = err?.message || 'Lỗi cập nhật đơn GHN';
+      }
 
       // 2. Update COD nếu có thay đổi — GHN sẽ tự từ chối nếu trạng thái không cho phép
+      let updateCodError: string | null = null;
       if (codAmount !== initialCodAmount) {
-        await callGHN('update_cod', {
-          orderCode: trackingRecord.ghn_order_code,
-          codAmount,
-          shopId: selectedShopId || undefined,
-        });
+        try {
+          await callGHN('update_cod', {
+            orderCode: trackingRecord.ghn_order_code,
+            codAmount,
+            shopId: selectedShopId || undefined,
+          });
+        } catch (err: any) {
+          updateCodError = err?.message || 'Lỗi cập nhật COD';
+        }
+      }
+
+      if (updateOrderError && updateCodError) {
+        throw new Error(`${updateOrderError} | COD: ${updateCodError}`);
+      }
+      if (updateOrderError) {
+        throw new Error(updateOrderError);
+      }
+      if (updateCodError) {
+        throw new Error(updateCodError);
       }
 
       toast({ title: "Cập nhật thành công!", description: `Đơn ${trackingRecord.ghn_order_code} đã được cập nhật` });
