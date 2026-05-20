@@ -554,6 +554,12 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       // GHN giới hạn field được sửa theo trạng thái đơn
       const currentStatus = (trackingRecord.ghn_status || '').toLowerCase();
       const FULL_EDITABLE = ['ready_to_pick', 'picking'];
+      const TRANSIT_EDITABLE = [
+        'picked', 'storing', 'transporting', 'sorting',
+        'delivery_fail', 'waiting_to_return',
+        'return', 'return_transporting', 'return_sorting', 'returning', 'return_fail',
+      ];
+      const DELIVERING_ONLY = ['delivering'];
       const LOCKED = ['delivered', 'cancel', 'returned', 'lost', 'damage'];
       if (LOCKED.includes(currentStatus)) {
         toast({
@@ -565,9 +571,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         setLoading(false);
         return;
       }
-      const canEditFull = FULL_EDITABLE.includes(currentStatus);
+      const canEditFull = FULL_EDITABLE.includes(currentStatus) || !currentStatus;
+      const canEditAddress = canEditFull || TRANSIT_EDITABLE.includes(currentStatus);
 
-      // Khi đã rời kho: chỉ còn được sửa note / required_note / cod_failed_amount
+      // FULL: gửi tất cả. TRANSIT: địa chỉ + note (bỏ insurance/weight/items).
+      // DELIVERING / khác: chỉ note / required_note / cod_failed_amount.
       const updateData: any = canEditFull
         ? {
             to_name: toName,
@@ -593,6 +601,17 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
               height: p.height,
             })),
           }
+        : canEditAddress
+        ? {
+            to_name: toName,
+            to_phone: toPhone,
+            to_address: toAddress,
+            to_district_id: parseInt(districtId),
+            to_ward_code: wardCode,
+            note,
+            required_note: requiredNote,
+            cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
+          }
         : {
             note,
             required_note: requiredNote,
@@ -606,8 +625,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         updateData,
       });
 
-      // 2. Update COD if changed — chỉ cho phép khi đơn còn ở giai đoạn lấy hàng
-      const COD_EDITABLE = ['ready_to_pick', 'picking', 'picked'];
+      // 2. Update COD if changed — GHN cho phép đến trước khi giao thành công
+      const COD_EDITABLE = [
+        'ready_to_pick', 'picking', 'picked', 'storing',
+        'transporting', 'sorting', 'delivery_fail',
+      ];
       if (codAmount !== initialCodAmount && COD_EDITABLE.includes(currentStatus)) {
         await callGHN('update_cod', {
           orderCode: trackingRecord.ghn_order_code,
@@ -643,6 +665,12 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const currentStatus = (trackingRecord?.ghn_status || '').toLowerCase();
   const fullEditable = ['ready_to_pick', 'picking'].includes(currentStatus);
   const locked = ['delivered', 'cancel', 'returned', 'lost', 'damage'].includes(currentStatus);
+  const deliveringOnly = currentStatus === 'delivering';
+  const transitEditable = [
+    'picked', 'storing', 'transporting', 'sorting',
+    'delivery_fail', 'waiting_to_return',
+    'return', 'return_transporting', 'return_sorting', 'returning', 'return_fail',
+  ].includes(currentStatus);
 
   if (!trackingRecord) return null;
 
@@ -666,7 +694,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           <div className={`mx-6 mt-3 rounded-md border px-3 py-2 text-xs ${locked ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
             {locked
               ? <>Đơn đang ở trạng thái <b>{currentStatus}</b> — GHN không cho phép cập nhật.</>
-              : <>Đơn đã ở trạng thái <b>{currentStatus}</b>. GHN chỉ cho phép sửa <b>Ghi chú</b>, <b>Lưu ý giao hàng</b> và <b>Phí giao lại thất bại</b>. Cân nặng, kích thước, COD, địa chỉ, sản phẩm sẽ không được gửi lên GHN.</>}
+              : transitEditable
+              ? <>Đơn đã rời kho (<b>{currentStatus}</b>). Vẫn sửa được <b>địa chỉ giao</b>, <b>COD</b>, <b>ghi chú</b>, <b>lưu ý giao hàng</b>, <b>phí giao lại</b>. Không đổi được trọng lượng / kích thước / bảo hiểm / danh sách sản phẩm.</>
+              : deliveringOnly
+              ? <>Đơn đang <b>giao hàng</b> — GHN chỉ cho phép sửa <b>Ghi chú</b>, <b>Lưu ý giao hàng</b> và <b>Phí giao lại thất bại</b>.</>
+              : <>Đơn ở trạng thái <b>{currentStatus}</b>. GHN chỉ cho phép sửa <b>Ghi chú</b>, <b>Lưu ý giao hàng</b> và <b>Phí giao lại thất bại</b>.</>}
           </div>
         )}
 

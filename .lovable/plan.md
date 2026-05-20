@@ -1,63 +1,62 @@
-# Lỗi cập nhật đơn GHN: "Not support change field: insurance_value with order status: delivering"
+## Vấn đề
 
-## Chẩn đoán
+Trong `src/components/EditGHNOrderDialog.tsx`, logic hiện tại chia 2 nhóm:
+- `FULL_EDITABLE = [ready_to_pick, picking]` → gửi full payload
+- Còn lại (picked, storing, transporting, delivering, …) → chỉ gửi `note / required_note / cod_failed_amount`
+- `LOCKED = [delivered, cancel, returned, lost, damage]` → chặn save
 
-Log edge function ghi rõ:
+Hệ quả: với đơn đang `picked/storing/transporting/delivering`, user **không sửa được địa chỉ giao và COD**, dù GHN vẫn cho phép.
+
+GHN chỉ thực sự khoá một vài field nhạy cảm khi đơn đã rời kho:
+- `insurance_value` — không đổi được sau khi đã `picked`
+- `weight / length / width / height / items / content` — đổi được nhưng đôi khi GHN từ chối ở `delivering`
+- `cod_amount` chỉ nên đi qua endpoint riêng `update_cod` (không nhét vào `update_order`)
+
+## Thay đổi
+
+### 1. `EditGHNOrderDialog.tsx` — `handleSubmit` (~dòng 542-639)
+
+Thêm tầng trung gian `TRANSIT_EDITABLE = [picked, storing, transporting, delivery_fail, return, return_transporting, return_sorting, returning, return_fail]` — ở các trạng thái này:
+- **Cho sửa**: `to_name, to_phone, to_address, to_district_id, to_ward_code, note, required_note, cod_failed_amount`
+- **Bỏ khỏi payload**: `insurance_value`, `weight`, `length`, `width`, `height`, `items`, `content` (nếu GHN trả 400 cho field nào thì error mapping ở edge function sẽ báo chi tiết)
+- **COD vẫn đi qua `update_cod` riêng** — mở rộng `COD_EDITABLE` thêm các status transit: `[ready_to_pick, picking, picked, storing, transporting, delivery_fail]` (theo tài liệu GHN, COD vẫn đổi được trước khi giao thành công).
+
+Riêng `delivering` (shipper đang đi giao): GHN thường chặn cả địa chỉ — giữ chế độ "chỉ note + required_note + cod_failed_amount" cho status này. Tách ra `DELIVERING_ONLY_NOTES = [delivering]`.
+
+Tóm tắt 3 tầng mới:
 ```
-GHN update response: { code: 400,
-  message: "Lỗi gọi API: corev2_tenant_order_update -
-    Not support change field: insurance_value with order status: delivering" }
-```
-
-Đơn `GYTV9XPB` đang ở trạng thái **`delivering`** (đang giao hàng). GHN khoá hầu hết các field khi đơn đã rời kho:
-
-| Field | `ready_to_pick` / `picking` | `picked` / `storing` / `transporting` / `delivering` … |
-|---|---|---|
-| `to_name`, `to_phone`, `to_address`, `to_ward_code`, `to_district_id` | ✅ | ❌ (1 số tỉnh cho đổi địa chỉ qua API riêng) |
-| `weight`, `length`, `width`, `height` | ✅ | ❌ |
-| `insurance_value` | ✅ | ❌ ← chính field gây lỗi hôm nay |
-| `items` | ✅ | ❌ (đã chặn đúng bằng `canEditItems`) |
-| `cod_amount` | qua endpoint riêng `update_cod` | qua `update_cod` (giới hạn theo status) |
-| `note`, `required_note`, `cod_failed_amount` | ✅ | ✅ (thường vẫn cho) |
-
-Code hiện tại trong `src/components/EditGHNOrderDialog.tsx` (`handleSubmit` ~dòng 530-558) chỉ chặn `items` khi không phải `ready_to_pick/picking`, còn lại gửi nguyên xi mọi field → GHN reject ngay khi gặp `insurance_value`.
-
-## Kế hoạch sửa
-
-### 1. Phân loại trạng thái có thể sửa
-Trong `EditGHNOrderDialog.tsx`, thêm hằng số:
-```
-EDITABLE_STATUSES = ['ready_to_pick', 'picking']            // sửa toàn bộ
-LIGHT_EDITABLE_STATUSES = ['picked','storing','transporting',
-                           'sorting','delivering','delivery_fail',
-                           'waiting_to_return','return_transporting','return_sorting']
-                                                            // chỉ note + required_note + cod_failed_amount
-LOCKED_STATUSES = ['delivered','cancel','returned','lost','damage']
-                                                            // không cho mở chỉnh sửa
+FULL_EDITABLE       = [ready_to_pick, picking]                 → gửi tất cả
+TRANSIT_EDITABLE    = [picked, storing, transporting,          → gửi địa chỉ + note,
+                       delivery_fail, return*, returning, ...]   bỏ insurance/weight/items
+DELIVERING_ONLY     = [delivering]                              → chỉ note/required_note/cod_failed
+LOCKED              = [delivered, cancel, returned, lost,       → chặn save
+                       damage]
 ```
 
-### 2. `handleSubmit` build payload theo nhóm
-- Nếu `currentStatus` ∈ `LOCKED_STATUSES` → toast lỗi rõ ràng, không gọi API.
-- Nếu `LIGHT_EDITABLE_STATUSES`: payload chỉ gồm `note`, `required_note`, `cod_failed_amount` (và `cod_amount` xử lý riêng qua `update_cod` nếu GHN còn cho phép — đã có sẵn).
-- Nếu `EDITABLE_STATUSES`: payload đầy đủ như hiện tại (bao gồm `items`).
-- Bỏ field `insurance_value`, `weight`, dimensions, địa chỉ, … khỏi payload khi không phải EDITABLE_STATUSES.
+COD:
+```
+COD_EDITABLE = [ready_to_pick, picking, picked, storing,
+                transporting, delivery_fail]
+```
 
-### 3. UI hint khi đơn đã vận chuyển
-Ngay khi prefill xong và biết status:
-- Hiển thị banner vàng nhẹ ở đầu dialog:
-  > "Đơn đang ở trạng thái **Đang giao hàng** — GHN chỉ cho phép sửa ghi chú, lưu ý giao hàng và phí giao lại. Các thông tin khác (cân nặng, kích thước, COD, địa chỉ, sản phẩm) đã bị khoá."
-- Disable các input bị khoá (toName/toPhone/toAddress/weight/dims/insurance/items, dropdown shop) để user không kỳ vọng sửa được.
-- Vẫn cho phép xem cước & dữ liệu thật từ GHN.
+### 2. UI banner (~dòng banner cảnh báo)
 
-### 4. Xử lý lỗi rõ ràng hơn
-Trong `callGHN` (`update_order` block ở edge function `ghn-tracking/index.ts` ~dòng 438-441) khi GHN trả 400 kèm `message` "Not support change field …", convert sang message tiếng Việt: "GHN không cho sửa trường `<tên field>` ở trạng thái `<status>`. Vui lòng huỷ đơn rồi tạo lại nếu cần điều chỉnh." Frontend toast hiển thị message này thay vì raw English.
+Cập nhật message theo từng tầng:
+- `TRANSIT_EDITABLE`: "Đơn đã rời kho — vẫn sửa được địa chỉ giao, COD, ghi chú; không đổi được trọng lượng/kích thước/bảo hiểm."
+- `DELIVERING_ONLY`: giữ message hiện tại ("chỉ sửa được ghi chú và lưu ý giao hàng").
 
-### 5. (Tuỳ chọn nhỏ) Validate `cod_amount` thay đổi
-Khi status không phải `ready_to_pick/picking/picked`, không gọi `update_cod` nữa (GHN hay trả lỗi tương tự) — báo "Không thể đổi COD ở trạng thái đang giao".
+### 3. Disable input theo tầng (~khu vực form input)
 
-## Phạm vi sửa
-- `src/components/EditGHNOrderDialog.tsx`: phân nhóm status, lọc payload, disable input, banner cảnh báo.
-- `supabase/functions/ghn-tracking/index.ts`: dịch message GHN cho user-friendly trong `update_order`.
+- Ở `TRANSIT_EDITABLE`: enable các input `toName / toPhone / toAddress / province / district / ward / codAmount`, disable `weight / length / width / height / insuranceValue / items`.
+- Ở `DELIVERING_ONLY`: disable hết trừ `note / requiredNote / codFailedAmount`.
 
-## Tóm tắt
-GHN từ chối sửa hầu hết field khi đơn đã `delivering`. Dialog đang gửi đầy đủ payload nên trượt ngay vào `insurance_value`. Giải pháp: chỉ gửi các field GHN còn cho phép theo từng nhóm status, khoá input không sửa được, hiển thị banner cảnh báo và dịch message lỗi của GHN sang tiếng Việt.
+### 4. Không đụng edge function
+
+`ghn-tracking/index.ts` đã có translation lỗi GHN sang tiếng Việt từ lần trước, nên nếu vẫn còn field nào GHN từ chối ở một status cụ thể, user sẽ nhận message rõ ràng để mình tinh chỉnh thêm danh sách.
+
+## Kiểm thử
+
+- Đơn `GYTV9XPB` (đang `delivering`): vẫn rơi vào `DELIVERING_ONLY`, không bị 400 do `insurance_value` (đã loại khỏi payload).
+- Đơn ở `transporting`: thử đổi địa chỉ giao + COD → cả 2 đều save được.
+- Đơn `ready_to_pick`: hành vi giữ nguyên (full edit).
+- Đơn `delivered`: vẫn bị chặn từ client.
