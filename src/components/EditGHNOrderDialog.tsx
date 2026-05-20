@@ -665,6 +665,12 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const currentStatus = (trackingRecord?.ghn_status || '').toLowerCase();
   const fullEditable = ['ready_to_pick', 'picking'].includes(currentStatus);
   const locked = ['delivered', 'cancel', 'returned', 'lost', 'damage'].includes(currentStatus);
+  const deliveringOnly = currentStatus === 'delivering';
+  const transitEditable = [
+    'picked', 'storing', 'transporting', 'sorting',
+    'delivery_fail', 'waiting_to_return',
+    'return', 'return_transporting', 'return_sorting', 'returning', 'return_fail',
+  ].includes(currentStatus);
 
   if (!trackingRecord) return null;
 
@@ -688,7 +694,11 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           <div className={`mx-6 mt-3 rounded-md border px-3 py-2 text-xs ${locked ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
             {locked
               ? <>Đơn đang ở trạng thái <b>{currentStatus}</b> — GHN không cho phép cập nhật.</>
-              : <>Đơn đã ở trạng thái <b>{currentStatus}</b>. GHN chỉ cho phép sửa <b>Ghi chú</b>, <b>Lưu ý giao hàng</b> và <b>Phí giao lại thất bại</b>. Cân nặng, kích thước, COD, địa chỉ, sản phẩm sẽ không được gửi lên GHN.</>}
+              : transitEditable
+              ? <>Đơn đã rời kho (<b>{currentStatus}</b>). Vẫn sửa được <b>địa chỉ giao</b>, <b>COD</b>, <b>ghi chú</b>, <b>lưu ý giao hàng</b>, <b>phí giao lại</b>. Không đổi được trọng lượng / kích thước / bảo hiểm / danh sách sản phẩm.</>
+              : deliveringOnly
+              ? <>Đơn đang <b>giao hàng</b> — GHN chỉ cho phép sửa <b>Ghi chú</b>, <b>Lưu ý giao hàng</b> và <b>Phí giao lại thất bại</b>.</>
+              : <>Đơn ở trạng thái <b>{currentStatus}</b>. GHN chỉ cho phép sửa <b>Ghi chú</b>, <b>Lưu ý giao hàng</b> và <b>Phí giao lại thất bại</b>.</>}
           </div>
         )}
 
