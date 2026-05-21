@@ -771,7 +771,7 @@ export default function QuotesPage() {
                               <Edit className="mr-2 h-4 w-4" />
                               Sửa
                             </DropdownMenuItem>
-                            {(userRole === 'manager' || userRole === 'admin') && (
+                            {(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')) && (
                               <DropdownMenuItem
                                 onClick={() => setEditingQuoteDetails(quote)}
                                 className="hover:bg-primary hover:text-primary-foreground transition-colors"
