@@ -1,34 +1,54 @@
-# Khôi phục quyền cho Nhân viên trên Báo giá
 
 ## Nguyên nhân
 
-Trong cả 2 view (desktop `QuotesPage.tsx` và mobile `MobileQuoteList.tsx`):
+Khi nhân viên duyệt báo giá (`handleApproveQuote` trong `src/pages/QuotesPage.tsx`), đơn hàng VẪN được tạo trong DB — nhưng nó "biến mất" khỏi tab Quản lý đơn hàng vì sắp xếp theo `created_at DESC`.
 
-- **Duyệt / Từ chối báo giá**: đã gắn theo permission `quote_approval` → NV có quyền này vẫn thấy. Nếu NV không thấy là do **chưa được bật quyền `quote_approval`** trong Quản lý nhân viên.
-- **Sửa ngày & trạng thái**: đang **hardcode chỉ `manager` / `admin`** → mọi NV đều mất, kể cả NV có `quote_approval`.
+Cụ thể tại dòng **263** của `QuotesPage.tsx`:
 
-## Thay đổi
+```ts
+created_at: quote.quoteDate || quote.created_at, // Use quote date as order creation date
+```
 
-### 1. `src/pages/QuotesPage.tsx` (desktop)
+`quote.quoteDate` chính là `quote.created_at` của báo giá. Nếu báo giá được tạo từ rất lâu trước (ví dụ quote `BG-20260521-478` có `created_at = 2025-12-29`, được duyệt hôm nay `2026-05-21`), thì đơn hàng mới sinh ra cũng mang `created_at = 2025-12-29` → bị đẩy xuống tận cuối danh sách, manager tưởng là "không có".
 
-- Dòng 773: đổi điều kiện hiển thị "Sửa ngày & trạng thái" từ
-  `(userRole === 'manager' || userRole === 'admin')`
-  → `(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval'))`
-- Giữ nguyên điều kiện "Xóa" (chỉ manager/admin).
+Kiểm chứng trên DB: tất cả các quote `approved` gần đây đều có order tương ứng tồn tại, `manager_id` đúng, nhưng `order.created_at` bằng ngày báo giá cũ (tháng 12/2025, 5/2026...), trong khi `quote.updated_at` (thời điểm thực sự duyệt) là hôm nay.
 
-### 2. `src/components/MobileQuoteList.tsx` + lệnh gọi trong `QuotesPage.tsx`
+→ Đây không phải lỗi RLS, không phải lỗi mất dữ liệu. Là lỗi UI/sắp xếp.
 
-- Thêm prop `canEditDetails: boolean` riêng biệt với `canManage` (vốn dùng cho Xóa).
-- Trong `MobileQuoteList`: item "Sửa ngày & trạng thái" gate theo `canEditDetails`; item "Xóa" vẫn gate theo `canManage`.
-- Truyền `canEditDetails={userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')}` từ `QuotesPage.tsx`.
+## Hướng sửa
 
-### 3. Hướng dẫn người dùng
+Trong `src/pages/QuotesPage.tsx` — hàm `handleApproveQuote`:
 
-Sau khi sửa, để NV thực sự dùng được 3 chức năng này, **Manager/Admin cần vào "Quản lý nhân viên" bật quyền `quote_approval`** cho NV đó. Không cấp quyền này thì NV vẫn không thấy nút (đúng thiết kế).
+1. **Bỏ override `created_at`** khi insert vào `orders`, để DB tự dùng `default now()`. Đơn mới luôn nhảy lên đầu danh sách như mong đợi.
+2. Comment cũ "Use quote date as order creation date" → xóa.
 
-## Phạm vi
+```ts
+// Trước
+.insert({
+  ...
+  quote_id: quote.id,
+  created_at: quote.quoteDate || quote.created_at,
+})
 
-- 2 file frontend, không thay đổi DB/RLS.
-- Không ảnh hưởng các chức năng khác.
+// Sau
+.insert({
+  ...
+  quote_id: quote.id,
+  // created_at: để DB tự gán now()
+})
+```
 
-Bạn duyệt plan, mình sẽ chuyển sang build mode và áp dụng.
+Không cần thay đổi DB, không cần thay đổi RLS, không ảnh hưởng đơn cũ đã tạo.
+
+## Xử lý các đơn cũ đã bị "chìm"
+
+Các đơn đã tạo trước đó với `created_at` sai vẫn tồn tại trong DB. Có 2 lựa chọn (sẽ hỏi user sau khi approve plan):
+
+- **A. Để nguyên** — chỉ sửa logic cho các lần duyệt sau.
+- **B. Chạy 1 migration update**: với các order có `quote_id` không null, set `created_at = COALESCE(quote.updated_at, order.created_at)` cho những đơn có `created_at < quote.updated_at` rõ rệt — đưa chúng lên đúng vị trí.
+
+## Phạm vi file
+
+- `src/pages/QuotesPage.tsx` — sửa 1 dòng trong `handleApproveQuote` (~dòng 263).
+
+Không động vào RLS, không động vào component khác, không động vào MobileQuoteList.

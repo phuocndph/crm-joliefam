@@ -260,7 +260,6 @@ export default function QuotesPage() {
           notes: null,
           tenant_id: 'default',
           quote_id: quote.id, // Link directly to quote
-          created_at: quote.quoteDate || quote.created_at, // Use quote date as order creation date
         })
         .select('id')
         .single();
