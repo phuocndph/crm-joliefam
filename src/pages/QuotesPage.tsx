@@ -542,6 +542,43 @@ export default function QuotesPage() {
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
+            {isMobile ? (
+              <div className="p-2">
+                {loading ? (
+                  <div className="text-center py-8 text-sm text-muted-foreground">Đang tải...</div>
+                ) : (
+                  <MobileQuoteList
+                    quotes={filteredQuotes}
+                    statusLabels={statusLabels}
+                    canApprove={userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')}
+                    canSupplement={hasPermission('quote_supplement')}
+                    canManage={userRole === 'manager' || userRole === 'admin'}
+                    onView={(q) => setSelectedQuote(q)}
+                    onEdit={async (q) => {
+                      const quoteDataRaw = await fetchQuoteData(q.id);
+                      setEditingQuote({ ...q, quote_data: quoteDataRaw });
+                    }}
+                    onDelete={(q) => handleDeleteQuote(q.id)}
+                    onDuplicate={(q) => handleDuplicateQuote(q)}
+                    onApprove={(q) => handleApproveQuote(q)}
+                    onReject={(q) => handleRejectQuote(q.id)}
+                    onSupplement={(q) => setSupplementQuote(q)}
+                    onEditDetails={(q) => setEditingQuoteDetails(q)}
+                    onToContract={(q) => {
+                      const items = Array.isArray(q.items) ? q.items : [];
+                      const params = new URLSearchParams({
+                        from_quote: q.id,
+                        customer_id: q.customer_id || '',
+                        total: String(q.total_amount || 0),
+                        title: `HĐ từ báo giá ${q.quote_number}`,
+                        items: JSON.stringify(items),
+                      });
+                      window.location.href = `/contracts?${params.toString()}`;
+                    }}
+                  />
+                )}
+              </div>
+            ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -776,6 +813,7 @@ export default function QuotesPage() {
                 )}
               </TableBody>
             </Table>
+            )}
           </div>
           {/* Infinite scroll sentinel */}
           <div ref={sentinelRef} className="h-10 flex items-center justify-center">
