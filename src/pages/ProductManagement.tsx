@@ -1607,6 +1607,7 @@ const ProductManagement = () => {
                               ))}
                             </TableBody>
                           </Table>
+                          )}
                        </div>
                        
                        {/* Pagination Controls */}
