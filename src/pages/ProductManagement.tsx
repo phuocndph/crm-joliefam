@@ -17,6 +17,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { ColumnMappingDialog } from '@/components/ColumnMappingDialog';
 import ProductImageLibrary from '@/components/ProductImageLibrary';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileProductList } from '@/components/MobileProductList';
 
 interface Product {
   id: string;
