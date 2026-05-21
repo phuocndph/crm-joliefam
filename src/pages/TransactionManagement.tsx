@@ -80,6 +80,7 @@ const TransactionManagement = () => {
   const [allOrderExpenses, setAllOrderExpenses] = useState<any[]>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   const [user, setUser] = useState(null);
   const { role: userRole } = useUserRole(user);
