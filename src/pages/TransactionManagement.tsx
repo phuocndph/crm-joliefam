@@ -612,6 +612,7 @@ const TransactionManagement = () => {
                 )}
               </TableBody>
             </Table>
+            )}
           </div>
         </CardContent>
       </Card>
