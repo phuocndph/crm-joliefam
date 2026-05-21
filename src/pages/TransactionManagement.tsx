@@ -16,6 +16,8 @@ import { CreatePaymentForm } from "@/components/CreatePaymentForm";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { useUserRole } from "@/hooks/useUserRole";
 import { ManagerSelector } from "@/components/ManagerSelector";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileTransactionList } from "@/components/MobileTransactionList";
 
 interface Order {
   id: string;
