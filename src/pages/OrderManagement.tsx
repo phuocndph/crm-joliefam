@@ -172,6 +172,25 @@ export default function OrderManagement() {
   const { data: dupOrderNumbers } = useDuplicateOrderNumbers();
   console.log('[Orders] fetched:', orders.length, 'unique managers:', Array.from(new Set(orders.map((o:any)=>o.manager_id))).length);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Optimistic patch helper for the infinite orders cache
+  const patchOrderInCache = (orderId: string, patch: Record<string, any>) => {
+    const queries = queryClient.getQueriesData<any>({ queryKey: ['orders-infinite'] });
+    const prev: Array<{ key: any; data: any }> = [];
+    queries.forEach(([key, data]) => {
+      if (!data?.pages) return;
+      prev.push({ key, data });
+      const newPages = data.pages.map((page: any[]) =>
+        page.map((o: any) => (o.id === orderId ? { ...o, ...patch } : o))
+      );
+      queryClient.setQueryData(key, { ...data, pages: newPages });
+    });
+    return () => {
+      // Rollback
+      prev.forEach(({ key, data }) => queryClient.setQueryData(key, data));
+    };
+  };
 
   const filteredOrders = orders.filter(order => {
     const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
@@ -241,12 +260,9 @@ export default function OrderManagement() {
   };
 
   const handleEditOrder = () => {
-    loadOrders();
     setOrderToEdit(null);
-    toast({
-      title: "Thành công",
-      description: "Đơn hàng đã được cập nhật thành công"
-    });
+    // Realtime + optimistic cache đã cập nhật; chỉ invalidate mềm
+    queryClient.invalidateQueries({ queryKey: ['orders-infinite'] });
   };
 
   const handleDeleteOrder = () => {
@@ -258,51 +274,51 @@ export default function OrderManagement() {
     });
   };
 
-  const updateOrderStatus = async (orderId: string, newStatus: string) => {
-    try {
-      const updateData: any = {
-        status: newStatus
-      };
-
-      // If order is delivered or shipped, set delivered_date
-      if (newStatus === 'delivered' || newStatus === 'shipped') {
-        updateData.delivered_date = new Date().toISOString();
-      }
-      const {
-        error
-      } = await supabase.from('orders').update(updateData).eq('id', orderId);
-      if (error) throw error;
-
-      // If order is delivered, create transaction
-      if (newStatus === 'delivered') {
-        const order = orders.find(o => o.id === orderId);
-        if (order && order.total_amount) {
-          await supabase.from('transactions').insert({
-            amount: order.total_amount,
-            type: 'income',
-            category: 'sales',
-            description: `Thanh toán đơn hàng ${getOrderDisplayNumber(order)}`,
-            date: new Date().toISOString(),
-            tenant_id: 'default',
-            manager_id: (order as any).manager_id || null,
-          });
-        }
-      }
-
-      // Refetch data to get updated state
-      loadOrders();
-      toast({
-        title: "Thành công",
-        description: "Trạng thái đơn hàng đã được cập nhật"
-      });
-    } catch (error) {
-      console.error('Error updating order status:', error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể cập nhật trạng thái đơn hàng",
-        variant: "destructive"
-      });
+  const updateOrderStatus = (orderId: string, newStatus: string) => {
+    const updateData: any = { status: newStatus };
+    if (newStatus === 'delivered' || newStatus === 'shipped') {
+      updateData.delivered_date = new Date().toISOString();
     }
+
+    // 1) Cập nhật UI tức thì
+    const rollback = patchOrderInCache(orderId, updateData);
+    toast({
+      title: "Đã cập nhật",
+      description: "Trạng thái đơn hàng đã được thay đổi"
+    });
+
+    // 2) Gửi request ngầm
+    (async () => {
+      try {
+        const { error } = await supabase.from('orders').update(updateData).eq('id', orderId);
+        if (error) throw error;
+
+        if (newStatus === 'delivered') {
+          const order = orders.find(o => o.id === orderId);
+          if (order && order.total_amount) {
+            supabase.from('transactions').insert({
+              amount: order.total_amount,
+              type: 'income',
+              category: 'sales',
+              description: `Thanh toán đơn hàng ${getOrderDisplayNumber(order)}`,
+              date: new Date().toISOString(),
+              tenant_id: 'default',
+              manager_id: (order as any).manager_id || null,
+            }).then(({ error: txErr }) => {
+              if (txErr) console.error('Transaction insert error:', txErr);
+            });
+          }
+        }
+      } catch (error: any) {
+        console.error('Error updating order status:', error);
+        rollback();
+        toast({
+          title: "Lỗi",
+          description: error?.message || "Không thể cập nhật trạng thái đơn hàng",
+          variant: "destructive"
+        });
+      }
+    })();
   };
 
   const handlePaymentAdded = async () => {
