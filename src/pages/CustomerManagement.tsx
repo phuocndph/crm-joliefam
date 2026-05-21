@@ -44,6 +44,18 @@ import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import MobileCustomerManagement from "@/components/mobile/MobileCustomerManagement";
 
+export default function CustomerManagement() {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return (
+      <div className="p-4">
+        <MobileCustomerManagement />
+      </div>
+    );
+  }
+  return <CustomerManagementDesktop />;
+}
+
 interface CustomerPhone {
   number: string;
   label: string;
