@@ -1498,7 +1498,17 @@ const ProductManagement = () => {
                    ) : (
                      <>
                        <div className="overflow-x-auto">
-                          <Table>
+                          {isMobile ? (
+                            <div className="p-2">
+                              <MobileProductList
+                                products={products}
+                                formatPrice={formatPrice}
+                                onEdit={openEditDialog}
+                                onDelete={setDeletingProduct}
+                              />
+                            </div>
+                          ) : (
+                           <Table>
                             <TableHeader>
                               <TableRow className="border-b border-border bg-muted/30">
                                 <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[100px]">
