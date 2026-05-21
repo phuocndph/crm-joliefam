@@ -15,6 +15,7 @@ interface Props {
   canApprove: boolean;
   canSupplement: boolean;
   canManage: boolean;
+  canEditDetails: boolean;
   onView: (q: any) => void;
   onEdit: (q: any) => void;
   onDelete: (q: any) => void;
@@ -39,6 +40,7 @@ const statusBorder: Record<string, string> = {
 
 export const MobileQuoteList: React.FC<Props> = ({
   quotes, statusLabels, canApprove, canSupplement, canManage,
+  canEditDetails,
   onView, onEdit, onDelete, onDuplicate, onApprove, onReject,
   onSupplement, onEditDetails, onToContract,
 }) => {
@@ -133,7 +135,7 @@ export const MobileQuoteList: React.FC<Props> = ({
                       <XCircle className="h-4 w-4 mr-2" /> Từ chối
                     </DropdownMenuItem>
                   )}
-                  {canManage && (
+                  {canEditDetails && (
                     <DropdownMenuItem onClick={() => onEditDetails(q)}>
                       <Calendar className="h-4 w-4 mr-2" /> Sửa ngày & trạng thái
                     </DropdownMenuItem>
