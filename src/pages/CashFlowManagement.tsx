@@ -3,6 +3,8 @@ import { TrendingUp, TrendingDown, DollarSign, Plus, Filter, Search, Eye, Edit, 
 import { useUserRole } from "@/hooks/useUserRole";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ManagerSelector } from "@/components/ManagerSelector";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileExpenseList } from "@/components/MobileExpenseList";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
