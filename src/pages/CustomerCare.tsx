@@ -27,6 +27,8 @@ import { useCustomers } from "@/hooks/useCustomers";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { format } from "date-fns";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileCareList } from "@/components/MobileCareList";
 
 const CustomerCare = () => {
   const [searchTerm, setSearchTerm] = useState("");
