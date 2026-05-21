@@ -58,6 +58,7 @@ const CustomerCare = () => {
   const [notesText, setNotesText] = useState("");
   const [selectedCareDate, setSelectedCareDate] = useState<Date | undefined>(undefined);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   
   // Get current user and check permissions
   const [user, setUser] = useState<any>(null);
