@@ -75,6 +75,7 @@ const ProductManagement = () => {
   const [showColumnMapping, setShowColumnMapping] = useState(false);
   const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   // Price List Form state
   const [priceListName, setPriceListName] = useState('');
