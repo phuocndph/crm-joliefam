@@ -477,6 +477,34 @@ const TransactionManagement = () => {
 
           {/* Orders Table */}
           <div className="rounded-md border">
+            {isMobile ? (
+              <div className="p-2">
+                {loading ? (
+                  <div className="text-center py-8 text-sm text-muted-foreground">Đang tải...</div>
+                ) : (
+                  <MobileTransactionList
+                    orders={filteredOrders}
+                    calculatePaidAmount={calculatePaidAmount}
+                    calculateOrderExpenses={calculateOrderExpenses}
+                    calculateRemainingAmount={calculateRemainingAmount}
+                    formatCurrency={formatCurrency}
+                    formatDate={formatDate}
+                    getPaymentStatusColor={getPaymentStatusColor}
+                    getPaymentStatusLabel={getPaymentStatusLabel}
+                    onView={(o) => {
+                      setSelectedOrder(o);
+                      loadOrderPaymentDetails(o.id);
+                      setShowPaymentDialog(true);
+                    }}
+                    onAddPayment={(o) => {
+                      setSelectedOrder(o);
+                      setShowPaymentForm(true);
+                    }}
+                    onUpdatePaymentStatus={(id, v) => updatePaymentStatus(id, v as any)}
+                  />
+                )}
+              </div>
+            ) : (
             <Table>
               <TableHeader>
                 <TableRow>
