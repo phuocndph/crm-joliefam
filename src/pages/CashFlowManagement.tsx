@@ -854,6 +854,22 @@ export default function CashFlowManagement() {
                   </div>
 
                   <div className="rounded-md border">
+                    {isMobile ? (
+                      <div className="p-2">
+                        {loading ? (
+                          <div className="text-center py-8 text-sm text-muted-foreground">Đang tải...</div>
+                        ) : (
+                          <MobileExpenseList
+                            expenses={filteredExpenses}
+                            formatCurrency={formatCurrency}
+                            formatSafeDate={(d) => formatSafeDate(d)}
+                            onView={setSelectedExpense}
+                            onEdit={setExpenseToEdit}
+                            onDelete={setExpenseToDelete}
+                          />
+                        )}
+                      </div>
+                    ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -927,6 +943,7 @@ export default function CashFlowManagement() {
                         )}
                       </TableBody>
                     </Table>
+                    )}
                   </div>
                 </div>
               </CardContent>
