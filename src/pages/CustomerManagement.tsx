@@ -147,6 +147,14 @@ function PaymentWrapper({ order, onClose, onSubmit }: { order: any, onClose: () 
 }
 
 export default function CustomerManagement() {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return (
+      <div className="p-4">
+        <MobileCustomerManagement />
+      </div>
+    );
+  }
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("created_at");
   const [filterTag, setFilterTag] = useState("all");
