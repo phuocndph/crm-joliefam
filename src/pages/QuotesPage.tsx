@@ -72,6 +72,8 @@ import {
   FileSignature,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileQuoteList } from "@/components/MobileQuoteList";
 
 const statusLabels = {
   draft: { label: "Nháp", color: "bg-gray-100 text-gray-800" },
