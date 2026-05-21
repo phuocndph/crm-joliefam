@@ -107,6 +107,7 @@ interface OrderProfitDetail {
 
 export default function CashFlowManagement() {
   const [searchTerm, setSearchTerm] = useState("");
+  const isMobile = useIsMobile();
   const [filterPeriod, setFilterPeriod] = useState("month");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString());
