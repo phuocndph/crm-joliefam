@@ -98,6 +98,7 @@ export default function QuotesPage() {
   const { hasPermission } = useEmployeePermissions(user, userRole);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const debouncedSearch = useDebounce(searchTerm, 350);
   const managerFilter = userRole === 'manager' ? user?.id : 'all';
