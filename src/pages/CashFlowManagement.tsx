@@ -3,6 +3,8 @@ import { TrendingUp, TrendingDown, DollarSign, Plus, Filter, Search, Eye, Edit, 
 import { useUserRole } from "@/hooks/useUserRole";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ManagerSelector } from "@/components/ManagerSelector";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileExpenseList } from "@/components/MobileExpenseList";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,6 +107,7 @@ interface OrderProfitDetail {
 
 export default function CashFlowManagement() {
   const [searchTerm, setSearchTerm] = useState("");
+  const isMobile = useIsMobile();
   const [filterPeriod, setFilterPeriod] = useState("month");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString());
@@ -851,6 +854,22 @@ export default function CashFlowManagement() {
                   </div>
 
                   <div className="rounded-md border">
+                    {isMobile ? (
+                      <div className="p-2">
+                        {loading ? (
+                          <div className="text-center py-8 text-sm text-muted-foreground">Đang tải...</div>
+                        ) : (
+                          <MobileExpenseList
+                            expenses={filteredExpenses}
+                            formatCurrency={formatCurrency}
+                            formatSafeDate={(d) => formatSafeDate(d)}
+                            onView={setSelectedExpense}
+                            onEdit={setExpenseToEdit}
+                            onDelete={setExpenseToDelete}
+                          />
+                        )}
+                      </div>
+                    ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -924,6 +943,7 @@ export default function CashFlowManagement() {
                         )}
                       </TableBody>
                     </Table>
+                    )}
                   </div>
                 </div>
               </CardContent>

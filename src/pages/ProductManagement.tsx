@@ -17,6 +17,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { ColumnMappingDialog } from '@/components/ColumnMappingDialog';
 import ProductImageLibrary from '@/components/ProductImageLibrary';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileProductList } from '@/components/MobileProductList';
 
 interface Product {
   id: string;
@@ -73,6 +75,7 @@ const ProductManagement = () => {
   const [showColumnMapping, setShowColumnMapping] = useState(false);
   const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   // Price List Form state
   const [priceListName, setPriceListName] = useState('');
@@ -1495,7 +1498,17 @@ const ProductManagement = () => {
                    ) : (
                      <>
                        <div className="overflow-x-auto">
-                          <Table>
+                          {isMobile ? (
+                            <div className="p-2">
+                              <MobileProductList
+                                products={products}
+                                formatPrice={formatPrice}
+                                onEdit={openEditDialog}
+                                onDelete={setDeletingProduct}
+                              />
+                            </div>
+                          ) : (
+                           <Table>
                             <TableHeader>
                               <TableRow className="border-b border-border bg-muted/30">
                                 <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[100px]">
@@ -1594,6 +1607,7 @@ const ProductManagement = () => {
                               ))}
                             </TableBody>
                           </Table>
+                          )}
                        </div>
                        
                        {/* Pagination Controls */}

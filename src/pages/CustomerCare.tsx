@@ -27,6 +27,8 @@ import { useCustomers } from "@/hooks/useCustomers";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { format } from "date-fns";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileCareList } from "@/components/MobileCareList";
 
 const CustomerCare = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -56,6 +58,7 @@ const CustomerCare = () => {
   const [notesText, setNotesText] = useState("");
   const [selectedCareDate, setSelectedCareDate] = useState<Date | undefined>(undefined);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   
   // Get current user and check permissions
   const [user, setUser] = useState<any>(null);
@@ -804,6 +807,38 @@ const CustomerCare = () => {
             <CardContent>
               {/* Customer Table */}
               <div className="border rounded-lg">
+                {isMobile ? (
+                  <div className="p-2">
+                    {loading ? (
+                      <div className="text-center py-8 text-sm text-muted-foreground">Đang tải...</div>
+                    ) : (
+                      <MobileCareList
+                        customers={enhancedCustomers.filter((customer) => {
+                          const matchesSearch = searchTerm === "" ||
+                            customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                            (customer.phone && customer.phone.includes(searchTerm));
+                          const matchesStatus = selectedStatus === "all" ||
+                            (customer.current_status || 'waiting-payment') === selectedStatus;
+                          const matchesSource = selectedSource === "all" ||
+                            (customer.tags && customer.tags.includes(selectedSource));
+                          const matchesManager = selectedManagerId === null ||
+                            customer.assignedManager === selectedManagerId;
+                          return matchesSearch && matchesStatus && matchesSource && matchesManager;
+                        })}
+                        assignees={assignees}
+                        onView={(c) => { setSelectedCustomer(c); setEditDialogOpen(true); }}
+                        onEditNotes={(c) => {
+                          setSelectedCustomerForEdit(c);
+                          setNotesText(c.notes || "");
+                          setNotesDialogOpen(true);
+                        }}
+                        onEditStatus={(c) => { setSelectedCustomerForEdit(c); setStatusDialogOpen(true); }}
+                        onEditAssignee={(c) => { setSelectedCustomerForAssignee(c); setAssigneeDialogOpen(true); }}
+                      />
+                    )}
+                  </div>
+                ) : (
                 <Table>
                   <TableHeader>
                      <TableRow>
@@ -1090,6 +1125,7 @@ const CustomerCare = () => {
                     )}
                   </TableBody>
                 </Table>
+                )}
               </div>
             </CardContent>
           </Card>

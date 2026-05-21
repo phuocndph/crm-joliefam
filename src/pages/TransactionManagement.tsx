@@ -16,6 +16,8 @@ import { CreatePaymentForm } from "@/components/CreatePaymentForm";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { useUserRole } from "@/hooks/useUserRole";
 import { ManagerSelector } from "@/components/ManagerSelector";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileTransactionList } from "@/components/MobileTransactionList";
 
 interface Order {
   id: string;
@@ -78,6 +80,7 @@ const TransactionManagement = () => {
   const [allOrderExpenses, setAllOrderExpenses] = useState<any[]>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   const [user, setUser] = useState(null);
   const { role: userRole } = useUserRole(user);
@@ -474,6 +477,34 @@ const TransactionManagement = () => {
 
           {/* Orders Table */}
           <div className="rounded-md border">
+            {isMobile ? (
+              <div className="p-2">
+                {loading ? (
+                  <div className="text-center py-8 text-sm text-muted-foreground">Đang tải...</div>
+                ) : (
+                  <MobileTransactionList
+                    orders={filteredOrders}
+                    calculatePaidAmount={calculatePaidAmount}
+                    calculateOrderExpenses={calculateOrderExpenses}
+                    calculateRemainingAmount={calculateRemainingAmount}
+                    formatCurrency={formatCurrency}
+                    formatDate={formatDate}
+                    getPaymentStatusColor={getPaymentStatusColor}
+                    getPaymentStatusLabel={getPaymentStatusLabel}
+                    onView={(o) => {
+                      setSelectedOrder(o);
+                      loadOrderPaymentDetails(o.id);
+                      setShowPaymentDialog(true);
+                    }}
+                    onAddPayment={(o) => {
+                      setSelectedOrder(o);
+                      setShowPaymentForm(true);
+                    }}
+                    onUpdatePaymentStatus={(id, v) => updatePaymentStatus(id, v as any)}
+                  />
+                )}
+              </div>
+            ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -581,6 +612,7 @@ const TransactionManagement = () => {
                 )}
               </TableBody>
             </Table>
+            )}
           </div>
         </CardContent>
       </Card>
