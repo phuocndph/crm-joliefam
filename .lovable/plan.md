@@ -1,54 +1,50 @@
+# Tăng tốc cập nhật đơn hàng — Phản hồi tức thì
 
-## Nguyên nhân
+## Vấn đề
 
-Khi nhân viên duyệt báo giá (`handleApproveQuote` trong `src/pages/QuotesPage.tsx`), đơn hàng VẪN được tạo trong DB — nhưng nó "biến mất" khỏi tab Quản lý đơn hàng vì sắp xếp theo `created_at DESC`.
+Mỗi khi đổi trạng thái hoặc sửa đơn, UI phải đợi rất lâu vì:
 
-Cụ thể tại dòng **263** của `QuotesPage.tsx`:
+1. `updateOrderStatus` ở `OrderManagement.tsx` gọi `await supabase.update(...)` rồi mới `loadOrders()` → refetch **toàn bộ** đơn hàng (kèm join customers, assignees, ghn_tracking, payments) → mất vài giây.
+2. `EditOrderDialog` cũng gọi `await update` → `onSubmit()` → `loadOrders()` toàn bộ.
+3. Realtime subscription đã tự invalidate khi DB thay đổi, nên việc `loadOrders()` thủ công là **trùng lặp** và không cần thiết.
+4. Toast "Thành công" hiển thị sau khi mạng trả về → cảm giác chậm.
 
-```ts
-created_at: quote.quoteDate || quote.created_at, // Use quote date as order creation date
-```
+## Giải pháp: Optimistic Update
 
-`quote.quoteDate` chính là `quote.created_at` của báo giá. Nếu báo giá được tạo từ rất lâu trước (ví dụ quote `BG-20260521-478` có `created_at = 2025-12-29`, được duyệt hôm nay `2026-05-21`), thì đơn hàng mới sinh ra cũng mang `created_at = 2025-12-29` → bị đẩy xuống tận cuối danh sách, manager tưởng là "không có".
+Cập nhật cache React Query **ngay lập tức** trước khi gọi API. UI đổi tức thì (<50ms). Nếu API lỗi → rollback và báo toast lỗi.
 
-Kiểm chứng trên DB: tất cả các quote `approved` gần đây đều có order tương ứng tồn tại, `manager_id` đúng, nhưng `order.created_at` bằng ngày báo giá cũ (tháng 12/2025, 5/2026...), trong khi `quote.updated_at` (thời điểm thực sự duyệt) là hôm nay.
+### 1. `src/pages/OrderManagement.tsx` — `updateOrderStatus`
 
-→ Đây không phải lỗi RLS, không phải lỗi mất dữ liệu. Là lỗi UI/sắp xếp.
+- Dùng `queryClient.setQueryData(['orders-infinite', ...], ...)` để patch ngay record có `id === orderId` với `status` (và `delivered_date` nếu cần).
+- Đóng dropdown + hiển thị toast "Đã cập nhật" **ngay** (không await).
+- Gọi `supabase.update` ở background. Nếu lỗi → `setQueryData` rollback về giá trị cũ + toast lỗi.
+- **Bỏ** `loadOrders()` — realtime sẽ tự đồng bộ phần còn lại.
+- Việc tạo `transactions` khi `delivered` vẫn chạy background, không block UI.
 
-## Hướng sửa
+### 2. `src/components/EditOrderDialog.tsx`
 
-Trong `src/pages/QuotesPage.tsx` — hàm `handleApproveQuote`:
+- Patch cache ngay với `status`, `notes`, `delivery_date` mới.
+- Đóng dialog ngay (`onOpenChange(false)`) + toast thành công ngay.
+- API call chạy background; nếu lỗi → rollback + toast lỗi.
 
-1. **Bỏ override `created_at`** khi insert vào `orders`, để DB tự dùng `default now()`. Đơn mới luôn nhảy lên đầu danh sách như mong đợi.
-2. Comment cũ "Use quote date as order creation date" → xóa.
+### 3. Bỏ refetch toàn bộ ở các handler
 
-```ts
-// Trước
-.insert({
-  ...
-  quote_id: quote.id,
-  created_at: quote.quoteDate || quote.created_at,
-})
+- `handleEditOrder`, `handleDeleteOrder`: bỏ `loadOrders()`, để realtime + optimistic cache lo. Chỉ gọi `invalidateQueries` mềm (không await) khi thật sự cần.
 
-// Sau
-.insert({
-  ...
-  quote_id: quote.id,
-  // created_at: để DB tự gán now()
-})
-```
+### 4. Helper
 
-Không cần thay đổi DB, không cần thay đổi RLS, không ảnh hưởng đơn cũ đã tạo.
-
-## Xử lý các đơn cũ đã bị "chìm"
-
-Các đơn đã tạo trước đó với `created_at` sai vẫn tồn tại trong DB. Có 2 lựa chọn (sẽ hỏi user sau khi approve plan):
-
-- **A. Để nguyên** — chỉ sửa logic cho các lần duyệt sau.
-- **B. Chạy 1 migration update**: với các order có `quote_id` không null, set `created_at = COALESCE(quote.updated_at, order.created_at)` cho những đơn có `created_at < quote.updated_at` rõ rệt — đưa chúng lên đúng vị trí.
+Tạo hàm nhỏ `patchOrderInCache(queryClient, orderId, patch)` để dùng chung cho status update, edit dialog, payment update.
 
 ## Phạm vi file
 
-- `src/pages/QuotesPage.tsx` — sửa 1 dòng trong `handleApproveQuote` (~dòng 263).
+- `src/pages/OrderManagement.tsx` (updateOrderStatus + các handler)
+- `src/components/EditOrderDialog.tsx`
+- (tùy chọn) `src/hooks/useOrders.ts` thêm helper patch cache
 
-Không động vào RLS, không động vào component khác, không động vào MobileQuoteList.
+## Kết quả mong đợi
+
+- Đổi trạng thái / sửa đơn: UI cập nhật **dưới 100ms** (tức thì).
+- Mạng chạy ngầm; lỗi sẽ tự rollback rõ ràng.
+- Không còn cảm giác "đợi load lại bảng".
+
+Bấm **Approve plan** để mình áp dụng.

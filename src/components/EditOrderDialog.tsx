@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -58,6 +59,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(order.status);
   const [notes, setNotes] = useState(order.notes || "");
+  const queryClient = useQueryClient();
   
   // Tính ngày mặc định (4 ngày từ ngày tạo đơn)
   const getDefaultDeliveryDate = () => {
@@ -74,47 +76,63 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
   );
   const { toast } = useToast();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    setLoading(true);
-    try {
-      const orderData = {
-        status,
-        notes: notes.trim() || null,
-        delivery_date: deliveryDate ? deliveryDate.toISOString() : null,
-      };
 
-      const { error } = await supabase
-        .from("orders")
-        .update(orderData)
-        .eq("id", order.id);
+    const orderData = {
+      status,
+      notes: notes.trim() || null,
+      delivery_date: deliveryDate ? deliveryDate.toISOString() : null,
+    };
 
-      if (error) throw error;
+    // 1) Optimistic update vào cache infinite orders
+    const queries = queryClient.getQueriesData<any>({ queryKey: ['orders-infinite'] });
+    const prev: Array<{ key: any; data: any }> = [];
+    queries.forEach(([key, data]) => {
+      if (!data?.pages) return;
+      prev.push({ key, data });
+      const newPages = data.pages.map((page: any[]) =>
+        page.map((o: any) => (o.id === order.id ? { ...o, ...orderData } : o))
+      );
+      queryClient.setQueryData(key, { ...data, pages: newPages });
+    });
 
-      // Tạo transaction khi đơn hàng hoàn thành
-      if (status === 'delivered' && order.status !== 'delivered' && order.total_amount) {
-        await supabase.from('transactions').insert({
-          amount: order.total_amount,
-          type: 'income',
-          category: 'sales',
-          description: `Thanh toán đơn hàng ${getOrderDisplayNumber(order)}`,
-          date: new Date().toISOString(),
-          tenant_id: 'default',
+    // 2) Đóng dialog ngay + báo thành công
+    onSubmit();
+    toast({ title: "Đã cập nhật", description: "Đơn hàng đã được lưu" });
+
+    // 3) Ghi DB ngầm
+    (async () => {
+      try {
+        const { error } = await supabase
+          .from("orders")
+          .update(orderData)
+          .eq("id", order.id);
+        if (error) throw error;
+
+        if (status === 'delivered' && order.status !== 'delivered' && order.total_amount) {
+          supabase.from('transactions').insert({
+            amount: order.total_amount,
+            type: 'income',
+            category: 'sales',
+            description: `Thanh toán đơn hàng ${getOrderDisplayNumber(order)}`,
+            date: new Date().toISOString(),
+            tenant_id: 'default',
+          }).then(({ error: txErr }) => {
+            if (txErr) console.error('Transaction insert error:', txErr);
+          });
+        }
+      } catch (error: any) {
+        console.error("Error updating order:", error);
+        // Rollback
+        prev.forEach(({ key, data }) => queryClient.setQueryData(key, data));
+        toast({
+          title: "Lỗi",
+          description: error?.message || "Không thể cập nhật đơn hàng",
+          variant: "destructive",
         });
       }
-
-      onSubmit();
-    } catch (error) {
-      console.error("Error updating order:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể cập nhật đơn hàng",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+    })();
   };
 
   return (
