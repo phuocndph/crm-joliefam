@@ -1125,6 +1125,7 @@ const CustomerCare = () => {
                     )}
                   </TableBody>
                 </Table>
+                )}
               </div>
             </CardContent>
           </Card>
