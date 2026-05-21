@@ -553,6 +553,7 @@ export default function QuotesPage() {
                     canApprove={userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')}
                     canSupplement={hasPermission('quote_supplement')}
                     canManage={userRole === 'manager' || userRole === 'admin'}
+                    canEditDetails={userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')}
                     onView={(q) => setSelectedQuote(q)}
                     onEdit={async (q) => {
                       const quoteDataRaw = await fetchQuoteData(q.id);
