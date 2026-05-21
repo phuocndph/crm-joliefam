@@ -1883,6 +1883,68 @@ export type Database = {
         }
         Relationships: []
       }
+      products_public: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          description: string | null
+          id: string | null
+          image_url: string | null
+          images: Json | null
+          in_stock: boolean | null
+          manager_id: string | null
+          name: string | null
+          price: number | null
+          price_list_id: string | null
+          sku: string | null
+          specifications: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          image_url?: string | null
+          images?: Json | null
+          in_stock?: boolean | null
+          manager_id?: string | null
+          name?: string | null
+          price?: number | null
+          price_list_id?: string | null
+          sku?: string | null
+          specifications?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          image_url?: string | null
+          images?: Json | null
+          in_stock?: boolean | null
+          manager_id?: string | null
+          name?: string | null
+          price?: number | null
+          price_list_id?: string | null
+          sku?: string | null
+          specifications?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_price_list_id_fkey"
+            columns: ["price_list_id"]
+            isOneToOne: false
+            referencedRelation: "price_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       get_duplicate_display_order_numbers: {

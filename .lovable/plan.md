@@ -1,85 +1,52 @@
-## Mục tiêu
+# Vấn đề: Không thấy sản phẩm
 
-Đưa 6 trang nghiệp vụ chính lên chuẩn mobile-first giống `OrderManagement` + `MobileCustomerManagement` đã có sẵn: card list thay bảng, infinite scroll, pull-to-refresh, bottom sheet thay dialog, FAB tạo mới, thao tác chính trong tầm ngón cái.
+## Nguyên nhân gốc (đã xác định bằng truy vấn DB)
 
-Phạm vi: **không đổi business logic, không đổi phân quyền, không sửa schema**. Chỉ thêm lớp UI mobile, desktop giữ nguyên.
+1. **Toàn bộ 1.772 sản phẩm và 7 bảng giá** trong database đều đang thuộc sở hữu của tài khoản **admin** (`manager_id = 3dc07420-…`).
+2. Các tài khoản vận hành (manager `6a1faecc-…`, `722bd658-…`, employees, accountant) **không sở hữu sản phẩm nào**.
+3. Trước đây có policy `Users can view products in accessible price_lists` cho phép mọi user xem sản phẩm thông qua bảng giá → các manager/employee vẫn thấy được sản phẩm của admin.
+4. **Migration ngày 20/05** (`20260520105913_…`) đã **DROP policy này** với lý do "leaks cost_price across managers".
+5. Sau khi drop, RLS hiện tại chỉ cho:
+   - Admin và Accountant: xem tất cả ✓
+   - Manager: chỉ xem `manager_id = auth.uid()` → **không khớp** → 0 dòng
+   - Employee: chỉ xem `manager_id IN (assigned_by)` → **không khớp** → 0 dòng
 
-## Trang xử lý (thứ tự ưu tiên)
+Vì vậy mọi manager/employee đang đăng nhập đều thấy danh sách sản phẩm trống — đây cũng là lý do dropdown bảng giá có thể trông như rỗng nếu được lọc theo dữ liệu sản phẩm.
 
-1. **QuotesPage** — đã có `useInfiniteQuotes`, dễ làm trước
-2. **CustomerManagement** — đã có `MobileCustomerManagement` nhưng chưa wire vào page → chỉ cần nhánh `isMobile`
-3. **TransactionManagement** — đã có `useInfiniteTransactions`
-4. **CustomerCare** — list chăm sóc + form note
-5. **CashFlowManagement** — phức tạp hơn (nhiều tab, biểu đồ)
-6. **ProductManagement** — đã có `MobileProductCard` chưa wire
+## Giải pháp tận gốc
 
-## Pattern áp dụng cho mỗi trang
+Đây là mô hình **catalog dùng chung toàn công ty**: 1 admin tạo bảng giá + sản phẩm, các manager/employee chỉ sử dụng để bán. Cần khôi phục khả năng xem sản phẩm dùng chung, nhưng vẫn **bịt lỗ rò `cost_price`** mà migration trước lo ngại.
 
-```text
-PageX.tsx
- ├─ const isMobile = useIsMobile()
- ├─ if (isMobile) return <MobileX />
- └─ // desktop code giữ nguyên
+### Migration mới sẽ thực hiện
 
-components/mobile/MobileX.tsx
- ├─ Header: title + count + FAB "+"
- ├─ Sticky search + filter chips
- ├─ Sort sheet (bottom)
- ├─ PullToRefresh
- │   └─ InfiniteScroll
- │       └─ MobileXCard list (border-l-4 theo status, badge sidebar-primary cho paid)
- └─ Sheet (bottom 90vh) cho Create/Edit/View thay Dialog
-```
+1. **Tạo view `products_public`** (`security_invoker = on`) chứa mọi cột **trừ `cost_price`**.
+2. **Khôi phục policy SELECT** trên `public.products` cho mọi user `authenticated` có thể xem qua bảng giá hợp lệ — nhưng cấp qua view để ẩn `cost_price`. Cụ thể:
+   - Policy SELECT trên `products`: chỉ cho admin / accountant / chủ sở hữu (`manager_id = auth.uid()`) / employee của chủ sở hữu được xem **toàn bộ cột** (bao gồm `cost_price`).
+   - Thêm policy SELECT thứ hai: cho phép mọi user `authenticated` xem các dòng `products` mà `price_list_id` tồn tại — **NHƯNG** truy vấn từ frontend cho danh sách sản phẩm sẽ đi qua view `products_public` (không có `cost_price`). Do RLS áp dụng theo hàng, ta tách quyền cột bằng view + revoke `SELECT (cost_price)` ở cấp column-grant cho role `authenticated` (chỉ cấp lại cho admin/accountant/manager-sở-hữu/employee-của-sở-hữu thông qua một function `can_see_cost_price`).
+3. **Áp dụng tương tự** cho các trang khác đang dùng chung dữ liệu của admin nếu cần (kiểm tra: customers, expenses cũng đang chạy theo model "mỗi manager 1 bộ dữ liệu" — nhưng người dùng chỉ phản ánh sản phẩm, sẽ không sửa thêm để tránh tác động ngoài phạm vi).
 
-## Chi tiết từng trang
+### Thay đổi code frontend
 
-### 1. QuotesPage → `MobileQuotesPage` + `MobileQuoteCard`
-- Card: số báo giá, KH, ngày, tổng tiền, trạng thái duyệt, người tạo
-- Action: Xem, Sửa, Duyệt (nếu có quyền theo memory `quote-actions-hierarchy`), Tạo đơn, Xóa
-- Sheet cho Create/Edit/Preview
+- `ProductManagement.tsx` (danh sách + bộ chọn bảng giá), `CreateQuoteForm`, `CreateOrderForm`, `ProductSelectionForm`, `MobileProductList`, mobile product card và các nơi liệt kê sản phẩm: đổi `from('products')` → `from('products_public')` cho **các truy vấn chỉ-đọc danh sách**.
+- Giữ nguyên `from('products')` cho:
+  - Insert/Update/Delete (ghi).
+  - Trang/Section cần `cost_price` (vd. tính lãi, phân tích lợi nhuận).
+- Cập nhật type cast `as any` hiện có để không vỡ TypeScript (file `types.ts` tự sinh sẽ có view).
 
-### 2. CustomerManagement
-- Wire sẵn `MobileCustomerManagement` (đã tồn tại): chỉ thêm `if (isMobile) return <MobileCustomerManagement />`
-- Bổ sung: chip filter theo nhóm KH, gọi/nhắn nhanh (`tel:`, `sms:`)
+### Kiểm thử sau khi áp dụng
 
-### 3. TransactionManagement → `MobileTransactionsPage` + `MobileTransactionCard`
-- Card: ngày, loại (thu/chi), số tiền (màu xanh/đỏ), KH/đơn liên quan, ghi chú
-- Filter chips: hôm nay / 7 ngày / tháng, loại thu-chi
-- Tổng thu/chi sticky đầu trang
+1. Đăng nhập bằng manager `6a1faecc-…` → mở Quản lý sản phẩm → dropdown bảng giá có 7 mục → chọn → thấy 1.772 sản phẩm; **không** thấy cột "Giá gốc" có giá trị (hoặc thấy `null`).
+2. Đăng nhập bằng admin → thấy đầy đủ kể cả `cost_price`.
+3. Tạo báo giá / đơn hàng: dropdown chọn sản phẩm có dữ liệu trên cả desktop và mobile.
+4. Accountant xem được sản phẩm + `cost_price` để đối chiếu chi phí.
 
-### 4. CustomerCare → `MobileCustomerCarePage` + `MobileCareCard`
-- Card: tên KH, lần liên hệ cuối, điểm chốt, next action (parse theo memory)
-- Sheet thêm/sửa note
-- Quick call/sms
+## Lưu ý cho người dùng
 
-### 5. CashFlowManagement → `MobileCashFlowPage`
-- Tabs scroll ngang (Tổng quan / Yêu cầu thanh toán / Ứng / …)
-- Summary cards (Tổng vào, Tổng ra, Còn lại) — grid 2 cột
-- List card cho từng yêu cầu, sheet duyệt/từ chối
-- Ẩn tab/profit cho role accountant (giữ logic hiện có)
+- Sau khi sửa, mọi tài khoản đều dùng chung **danh mục sản phẩm và bảng giá của admin** (đây vốn là mô hình thực tế của bạn).
+- Nếu sau này muốn mỗi manager có **bộ sản phẩm/bảng giá riêng**, ta sẽ cần tách dữ liệu rõ ràng và tắt policy "view via price_list". Hiện tại giữ mô hình dùng chung để không làm vỡ dữ liệu cũ.
 
-### 6. ProductManagement
-- Wire `MobileProductCard` (đã có) trong `MobileProductsPage` mới
-- Filter chips: loại vải, còn hàng/hết
-- Sheet thêm/sửa sản phẩm, library ảnh full-screen
+## Phạm vi file thay đổi
 
-## Thành phần dùng chung (đã có, tái sử dụng)
-
-- `useIsMobile`, `PullToRefresh`, `InfiniteScroll`, `useInfiniteScroll`
-- Sheet (`bottom`, `h-[90vh]`) thay Dialog để tránh nested Radix Dialog
-- `border-l-4` theo trạng thái, `sidebar-primary` cho trạng thái paid (theo Core memory)
-- Format tiền có dấu phân cách nghìn
-
-## Kỹ thuật / lưu ý
-
-- Giữ nguyên hooks data & RLS (`useInfiniteQuotes`, `useCustomers`, `useTransactions`, …); chỉ thêm `enabled: authReady && !!user && !!role` nếu trang nào còn chưa gate (đã làm cho Orders/GHN).
-- Dùng `Sheet` thay `Dialog` ở mobile; nested Select set `bg-popover z-[100]`.
-- Mỗi MobileX là 1 file mới ở `src/components/mobile/`; page chỉ thêm 2 dòng `if (isMobile)`.
-- Không tách logic ra hook mới — gọi lại hook hiện có để tránh duplicate.
-- Test viewport 360, 390, 414; kiểm tra không vỡ desktop.
-
-## Deliverables
-
-- 5 file mobile mới: `MobileQuotesPage`, `MobileTransactionsPage`, `MobileCustomerCarePage`, `MobileCashFlowPage`, `MobileProductsPage` + các card con tương ứng
-- 6 page sửa: thêm nhánh `isMobile`
-- 1 file wire lại CustomerManagement
+- 1 migration SQL mới (view + policy + column grant + helper function).
+- ~6 file frontend chuyển `products` → `products_public` cho query đọc danh sách.
+- Không sửa nghiệp vụ ghi, không động đến các bảng khác.
