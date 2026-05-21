@@ -553,6 +553,7 @@ export default function QuotesPage() {
                     canApprove={userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')}
                     canSupplement={hasPermission('quote_supplement')}
                     canManage={userRole === 'manager' || userRole === 'admin'}
+                    canEditDetails={userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')}
                     onView={(q) => setSelectedQuote(q)}
                     onEdit={async (q) => {
                       const quoteDataRaw = await fetchQuoteData(q.id);
@@ -770,7 +771,7 @@ export default function QuotesPage() {
                               <Edit className="mr-2 h-4 w-4" />
                               Sửa
                             </DropdownMenuItem>
-                            {(userRole === 'manager' || userRole === 'admin') && (
+                            {(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')) && (
                               <DropdownMenuItem
                                 onClick={() => setEditingQuoteDetails(quote)}
                                 className="hover:bg-primary hover:text-primary-foreground transition-colors"
