@@ -41,6 +41,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { format, formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
+import { useIsMobile } from "@/hooks/use-mobile";
+import MobileCustomerManagement from "@/components/mobile/MobileCustomerManagement";
 
 interface CustomerPhone {
   number: string;
