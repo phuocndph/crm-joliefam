@@ -1107,6 +1107,16 @@ const CustomerCare = () => {
                   </TableBody>
                 </Table>
                 )}
+                {!isMobile && hasMore && (
+                  <div ref={sentinelRef} className="h-10 flex items-center justify-center text-xs text-muted-foreground">
+                    Đang tải thêm...
+                  </div>
+                )}
+                {!isMobile && !hasMore && filteredCustomers.length > 50 && (
+                  <div className="h-10 flex items-center justify-center text-xs text-muted-foreground">
+                    Đã hiển thị tất cả {filteredCustomers.length} khách hàng
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
