@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Search, Plus, FileText, Eye, Edit, Trash2, Filter, MoreHorizontal, Users, UserCheck, Building2, Calendar, Phone, MapPin, ShoppingCart, DollarSign, Clock, Star, ArrowRight, ExternalLink, CreditCard } from "lucide-react";
 import { CreatePaymentForm } from "@/components/CreatePaymentForm";
 import { Button } from "@/components/ui/button";
@@ -256,6 +256,13 @@ function CustomerManagementDesktop() {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     }
   });
+
+  // Client-side progressive rendering (infinite scroll)
+  const [visibleCount, setVisibleCount] = useState(50);
+  useEffect(() => { setVisibleCount(50); }, [searchTerm, filterTag, sortBy]);
+  const visibleCustomers = useMemo(() => sortedCustomers.slice(0, visibleCount), [sortedCustomers, visibleCount]);
+  const hasMoreCustomers = visibleCount < sortedCustomers.length;
+  const customersSentinelRef = useInfiniteScroll(hasMoreCustomers, false, () => setVisibleCount((c) => c + 50));
 
   const loadCustomers = async () => {
     try {
