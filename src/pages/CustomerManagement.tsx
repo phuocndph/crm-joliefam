@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Search, Plus, FileText, Eye, Edit, Trash2, Filter, MoreHorizontal, Users, UserCheck, Building2, Calendar, Phone, MapPin, ShoppingCart, DollarSign, Clock, Star, ArrowRight, ExternalLink, CreditCard } from "lucide-react";
 import { CreatePaymentForm } from "@/components/CreatePaymentForm";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,7 @@ import { vi } from "date-fns/locale";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import MobileCustomerManagement from "@/components/mobile/MobileCustomerManagement";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
 export default function CustomerManagement() {
   const isMobile = useIsMobile();
@@ -256,6 +257,13 @@ function CustomerManagementDesktop() {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     }
   });
+
+  // Client-side progressive rendering (infinite scroll)
+  const [visibleCount, setVisibleCount] = useState(50);
+  useEffect(() => { setVisibleCount(50); }, [searchTerm, filterTag, sortBy]);
+  const visibleCustomers = useMemo(() => sortedCustomers.slice(0, visibleCount), [sortedCustomers, visibleCount]);
+  const hasMoreCustomers = visibleCount < sortedCustomers.length;
+  const customersSentinelRef = useInfiniteScroll(hasMoreCustomers, false, () => setVisibleCount((c) => c + 50));
 
   const loadCustomers = async () => {
     try {
@@ -668,7 +676,7 @@ function CustomerManagementDesktop() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sortedCustomers.map((customer) => (
+                  visibleCustomers.map((customer) => (
                     <TableRow key={customer.id} className="hover:bg-muted/60 transition-colors">
                       <TableCell className="font-medium">
                         {customer.customer_code || `KH-${customer.id.slice(0, 8)}`}
@@ -769,6 +777,16 @@ function CustomerManagementDesktop() {
                 )}
               </TableBody>
             </Table>
+            {hasMoreCustomers && (
+              <div ref={customersSentinelRef} className="h-10 flex items-center justify-center text-xs text-muted-foreground">
+                Đang tải thêm...
+              </div>
+            )}
+            {!hasMoreCustomers && sortedCustomers.length > 50 && (
+              <div className="h-10 flex items-center justify-center text-xs text-muted-foreground">
+                Đã hiển thị tất cả {sortedCustomers.length} khách hàng
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
