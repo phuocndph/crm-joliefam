@@ -906,29 +906,7 @@ const CustomerCare = () => {
                          </TableCell>
                        </TableRow>
                       ) : (
-                        enhancedCustomers
-                         .filter(customer => {
-                            // Filter by search term
-                            const matchesSearch = searchTerm === "" || 
-                              customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                              (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                              (customer.phone && customer.phone.includes(searchTerm));
-                            
-                            // Filter by status
-                            const matchesStatus = selectedStatus === "all" || 
-                              (customer.current_status || 'waiting-payment') === selectedStatus;
-                            
-                            // Filter by source
-                            const matchesSource = selectedSource === "all" ||
-                              (customer.tags && customer.tags.includes(selectedSource));
-                            
-                            // Filter by manager
-                            const matchesManager = selectedManagerId === null || 
-                              customer.assignedManager === selectedManagerId;
-                            
-                            return matchesSearch && matchesStatus && matchesSource && matchesManager;
-                         })
-                         .map((customer, index) => (
+                        visibleCustomers.map((customer, index) => (
                          <TableRow key={customer.id}>
                            <TableCell>
                              <input 
