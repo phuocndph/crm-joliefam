@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,7 @@ import PredictiveAnalyticsCell from "@/components/PredictiveAnalyticsCell";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCustomers } from "@/hooks/useCustomers";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { format } from "date-fns";
@@ -79,6 +80,36 @@ const CustomerCare = () => {
 
   // Enhanced customers data with purchase statistics
   const [enhancedCustomers, setEnhancedCustomers] = useState<any[]>([]);
+  const [visibleCount, setVisibleCount] = useState(50);
+
+  // Reset visible count when filters/search change
+  useEffect(() => {
+    setVisibleCount(50);
+  }, [searchTerm, selectedStatus, selectedSource, selectedManagerId]);
+
+  // Filtered customers (memoized)
+  const filteredCustomers = useMemo(() => {
+    return enhancedCustomers.filter((customer) => {
+      const matchesSearch = searchTerm === "" ||
+        customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (customer.phone && customer.phone.includes(searchTerm));
+      const matchesStatus = selectedStatus === "all" ||
+        (customer.current_status || 'waiting-payment') === selectedStatus;
+      const matchesSource = selectedSource === "all" ||
+        (customer.tags && customer.tags.includes(selectedSource));
+      const matchesManager = selectedManagerId === null ||
+        customer.assignedManager === selectedManagerId;
+      return matchesSearch && matchesStatus && matchesSource && matchesManager;
+    });
+  }, [enhancedCustomers, searchTerm, selectedStatus, selectedSource, selectedManagerId]);
+
+  const visibleCustomers = useMemo(
+    () => filteredCustomers.slice(0, visibleCount),
+    [filteredCustomers, visibleCount]
+  );
+  const hasMore = visibleCount < filteredCustomers.length;
+  const sentinelRef = useInfiniteScroll(hasMore, false, () => setVisibleCount((c) => c + 50));
 
   const fetchEnhancedCustomerData = async () => {
     if (!customersData) return;
