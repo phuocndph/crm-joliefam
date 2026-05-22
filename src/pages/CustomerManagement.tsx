@@ -43,6 +43,7 @@ import { vi } from "date-fns/locale";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import MobileCustomerManagement from "@/components/mobile/MobileCustomerManagement";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
 export default function CustomerManagement() {
   const isMobile = useIsMobile();
