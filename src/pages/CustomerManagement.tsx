@@ -676,7 +676,7 @@ function CustomerManagementDesktop() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sortedCustomers.map((customer) => (
+                  visibleCustomers.map((customer) => (
                     <TableRow key={customer.id} className="hover:bg-muted/60 transition-colors">
                       <TableCell className="font-medium">
                         {customer.customer_code || `KH-${customer.id.slice(0, 8)}`}
@@ -777,6 +777,16 @@ function CustomerManagementDesktop() {
                 )}
               </TableBody>
             </Table>
+            {hasMoreCustomers && (
+              <div ref={customersSentinelRef} className="h-10 flex items-center justify-center text-xs text-muted-foreground">
+                Đang tải thêm...
+              </div>
+            )}
+            {!hasMoreCustomers && sortedCustomers.length > 50 && (
+              <div className="h-10 flex items-center justify-center text-xs text-muted-foreground">
+                Đã hiển thị tất cả {sortedCustomers.length} khách hàng
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
