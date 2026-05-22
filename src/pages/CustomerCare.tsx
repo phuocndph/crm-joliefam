@@ -865,23 +865,6 @@ const CustomerCare = () => {
                           <input 
                             type="checkbox" 
                             className="rounded"
-                            checked={selectedCustomerIds.size > 0 && selectedCustomerIds.size === enhancedCustomers.filter(customer => {
-                              const matchesSearch = searchTerm === "" || 
-                                customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                (customer.email && customer.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                                (customer.phone && customer.phone.includes(searchTerm));
-                              
-                              const matchesStatus = selectedStatus === "all" || 
-                                (customer.current_status || 'waiting-payment') === selectedStatus;
-                              
-                              const matchesSource = selectedSource === "all" ||
-                                (customer.tags && customer.tags.includes(selectedSource));
-                              
-                              const matchesManager = selectedManagerId === null || 
-                                customer.assignedManager === selectedManagerId;
-                              
-                              return matchesSearch && matchesStatus && matchesSource && matchesManager;
-                            }).length}
                             checked={selectedCustomerIds.size > 0 && selectedCustomerIds.size === filteredCustomers.length}
                             onChange={(e) => handleSelectAll(e.target.checked)}
                           />
