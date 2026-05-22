@@ -882,6 +882,7 @@ const CustomerCare = () => {
                               
                               return matchesSearch && matchesStatus && matchesSource && matchesManager;
                             }).length}
+                            checked={selectedCustomerIds.size > 0 && selectedCustomerIds.size === filteredCustomers.length}
                             onChange={(e) => handleSelectAll(e.target.checked)}
                           />
                         </TableHead>
