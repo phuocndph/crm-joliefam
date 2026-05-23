@@ -1,24 +1,25 @@
-## Nguyên nhân
+## Mục tiêu
+Khắc phục trang Sản phẩm đang hiển thị 0 dòng cho người dùng không sở hữu `manager_id` của bảng giá, nhưng vẫn không để lộ `cost_price`.
 
-Trang sản phẩm đang chọn bảng giá **“Từ 01/5 Năm 2025 Đến Nay”**, trong database bảng giá này vẫn có **920 sản phẩm**. Nhưng chính sách bảo mật vừa sửa đã bỏ rule đọc sản phẩm theo bảng giá để chặn lộ `cost_price` giữa các quản lý. Vì vậy tài khoản không phải chủ `manager_id` của các sản phẩm đó sẽ nhìn thấy bảng giá nhưng không thấy sản phẩm.
+## Kế hoạch thực hiện
+1. **Thêm RPC đọc catalog công khai an toàn**
+   - Tạo function đọc sản phẩm theo bảng giá với `SECURITY DEFINER`.
+   - Function chỉ trả các cột cần hiển thị catalog và **không trả `cost_price`**.
+   - Hỗ trợ lọc theo bảng giá, tìm kiếm, danh mục, tồn kho, phân trang và tổng số dòng.
 
-## Kế hoạch sửa
+2. **Sửa trang `ProductManagement`**
+   - Giữ query trực tiếp `products` cho admin/manager/accountant có quyền xem đủ dữ liệu.
+   - Khi query trực tiếp trả 0 do RLS, gọi RPC catalog để lấy sản phẩm không có `cost_price`.
+   - Sửa luôn phần đếm tổng dòng/phân trang để không còn hiện 0 khi fallback có dữ liệu.
 
-1. **Tách dữ liệu sản phẩm để xem và để quản trị**
-   - Giữ bảng gốc `products` chỉ cho admin/manager chủ sở hữu/nhân viên đúng tuyến xem đầy đủ, bao gồm `cost_price`.
-   - Dùng view `products_public` đã có để cho người dùng đã đăng nhập xem catalog sản phẩm theo bảng giá nhưng **không có `cost_price`**.
+3. **Sửa nơi chọn sản phẩm khi tạo báo giá**
+   - Nếu query `products` trả rỗng, gọi RPC catalog để danh sách sản phẩm vẫn hiện.
+   - Gán `cost_price = null/0` ở frontend cho dữ liệu catalog để không phá UI cũ.
 
-2. **Sửa `ProductManagement.tsx` để không bị mất sản phẩm**
-   - Khi người dùng có quyền xem giá vốn: query `products` như hiện tại.
-   - Khi không có quyền xem giá vốn của bảng giá đang chọn: query `products_public` để vẫn hiện danh sách sản phẩm, giá bán, mã, quy cách, tồn kho.
-   - Cột “Giá gốc” sẽ ẩn/hiển thị dấu `-` nếu dữ liệu đến từ `products_public`.
-   - Các thao tác sửa/xóa/tạo sản phẩm vẫn chỉ dùng bảng `products` và để RLS chặn nếu không đủ quyền.
+4. **Kiểm tra lại**
+   - Xác nhận bảng giá “Từ 01/5 Năm 2025 Đến Nay” hiển thị ~920 sản phẩm.
+   - Đảm bảo `cost_price` không bị lộ qua đường fallback.
 
-3. **Sửa các form chọn sản phẩm nếu cần**
-   - `CreateQuoteForm` dùng `products_public` cho danh sách chọn sản phẩm vì báo giá không cần `cost_price`.
-   - `CreateOrderForm` vẫn dùng `products` nếu cần tính giá vốn; nếu bị RLS chặn, fallback sang `products_public` với `cost_price = 0` để không mất danh sách sản phẩm.
-
-4. **Kiểm tra lại dữ liệu thực tế**
-   - Bảng giá 2025 phải hiển thị lại ~920 sản phẩm.
-   - Không khôi phục policy cũ gây lộ `cost_price` qua mọi bảng giá.
-   - Người không có quyền không thấy giá vốn, nhưng vẫn chọn/tra cứu được sản phẩm.
+## Chi tiết kỹ thuật
+- Không khôi phục policy đọc trực tiếp toàn bảng `products` vì sẽ làm lộ giá vốn.
+- `products_public` hiện là `security_invoker`, nên vẫn bị RLS của bảng gốc chặn; vì vậy cần RPC có kiểm soát thay vì view fallback hiện tại.

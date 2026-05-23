@@ -1954,6 +1954,34 @@ export type Database = {
           dup_count: number
         }[]
       }
+      get_products_catalog: {
+        Args: {
+          _category?: string
+          _in_stock?: boolean
+          _limit?: number
+          _offset?: number
+          _price_list_id: string
+          _search?: string
+        }
+        Returns: {
+          category: string
+          created_at: string
+          description: string
+          id: string
+          image_url: string
+          images: Json
+          in_stock: boolean
+          manager_id: string
+          name: string
+          price: number
+          price_list_id: string
+          sku: string
+          specifications: string
+          tenant_id: string
+          total_count: number
+          updated_at: string
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
