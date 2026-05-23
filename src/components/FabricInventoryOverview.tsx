@@ -12,6 +12,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { toast } from "@/hooks/use-toast";
 import { FabricTransactionsTable } from "@/components/FabricTransactionsTable";
 import { supabase } from "@/integrations/supabase/client";
+import { Search } from "lucide-react";
 
 export const FabricInventoryOverview = () => {
   const { data: inventory = [] } = useFabricInventory();
@@ -38,6 +39,7 @@ export const FabricInventoryOverview = () => {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [selectedFabric, setSelectedFabric] = useState<any>(null);
   const [selectedFabricForTransfer, setSelectedFabricForTransfer] = useState<string>('');
   const [transferQuantity, setTransferQuantity] = useState(0);
@@ -150,7 +152,10 @@ export const FabricInventoryOverview = () => {
     return acc;
   }, {} as Record<string, { fabricName: string; total: number; totalPackages: number; hanoi: number; hanoiPackages: number; bacninh: number; bacninhPackages: number }>);
 
-  const fabricSummaryArray = Object.values(fabricSummary);
+  const fabricSummaryArray = Object.values(fabricSummary).filter(f =>
+    searchTerm.trim() === '' ||
+    f.fabricName?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   // Format number function with Vietnamese formatting
   const formatNumber = (num: number) => {
@@ -674,6 +679,15 @@ export const FabricInventoryOverview = () => {
           <CardTitle>Tổng quan tồn kho vải</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Tìm kiếm mã vải..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9"
+            />
+          </div>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
