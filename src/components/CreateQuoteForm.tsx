@@ -434,11 +434,16 @@ export function CreateQuoteForm({
     try {
       let { data, error } = await supabase.from("products").select("*").eq("price_list_id", priceListId).eq("in_stock", true).order("name");
       if (error) throw error;
-      // Fallback to public view (no cost_price) when RLS hides another manager's products
+      // Fallback: dùng RPC catalog an toàn khi RLS ẩn sản phẩm của manager khác (không trả cost_price)
       if (!data || data.length === 0) {
-        const pub = await supabase.from("products_public" as any).select("*").eq("price_list_id", priceListId).eq("in_stock", true).order("name");
-        if (!pub.error && pub.data && pub.data.length > 0) {
-          data = pub.data as any;
+        const { data: rpcData, error: rpcError } = await (supabase as any).rpc('get_products_catalog', {
+          _price_list_id: priceListId,
+          _in_stock: true,
+          _limit: 10000,
+          _offset: 0,
+        });
+        if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+          data = rpcData.map((r: any) => ({ ...r, cost_price: null })) as any;
         }
       }
       const products = (data as unknown as Product[]) || [];
