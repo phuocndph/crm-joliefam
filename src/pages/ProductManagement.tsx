@@ -56,6 +56,8 @@ const ProductManagement = () => {
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  // True when current rows come from products_public view (no cost_price visible)
+  const [usingPublicView, setUsingPublicView] = useState(false);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -175,10 +177,10 @@ const ProductManagement = () => {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const buildQuery = (page: number) => {
+      const buildQuery = (page: number, source: 'products' | 'products_public' = 'products') => {
         const offset = (page - 1) * itemsPerPage;
         let q = supabase
-        .from('products' as any)
+        .from(source as any)
         .select('*', { count: 'exact' });
         if (selectedPriceList) q = q.eq('price_list_id', selectedPriceList);
         if (activeSearchTerm) {
@@ -195,6 +197,18 @@ const ProductManagement = () => {
       };
 
       let { data, error, count } = await buildQuery(currentPage);
+      let fromPublic = false;
+
+      // Fallback: if RLS hides products owned by another manager, try the public view
+      // so users can still see the catalog (without cost_price).
+      if (!error && selectedPriceList && (count ?? 0) === 0) {
+        const pub = await buildQuery(currentPage, 'products_public');
+        if (!pub.error && (pub.count ?? 0) > 0) {
+          data = pub.data as any;
+          count = pub.count;
+          fromPublic = true;
+        }
+      }
 
       // If we requested a page beyond the available range, retry on the last valid page
       if (error && (error as any).code === 'PGRST103') {
@@ -215,6 +229,7 @@ const ProductManagement = () => {
       if (error) throw error;
 
       setProducts((data as unknown as Product[]) || []);
+      setUsingPublicView(fromPublic);
       setTotalProducts(count || 0);
       const newTotalPages = Math.max(1, Math.ceil((count || 0) / itemsPerPage));
       setTotalPages(newTotalPages);

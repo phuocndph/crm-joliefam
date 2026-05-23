@@ -1,50 +1,24 @@
-# Tăng tốc cập nhật đơn hàng — Phản hồi tức thì
+## Nguyên nhân
 
-## Vấn đề
+Trang sản phẩm đang chọn bảng giá **“Từ 01/5 Năm 2025 Đến Nay”**, trong database bảng giá này vẫn có **920 sản phẩm**. Nhưng chính sách bảo mật vừa sửa đã bỏ rule đọc sản phẩm theo bảng giá để chặn lộ `cost_price` giữa các quản lý. Vì vậy tài khoản không phải chủ `manager_id` của các sản phẩm đó sẽ nhìn thấy bảng giá nhưng không thấy sản phẩm.
 
-Mỗi khi đổi trạng thái hoặc sửa đơn, UI phải đợi rất lâu vì:
+## Kế hoạch sửa
 
-1. `updateOrderStatus` ở `OrderManagement.tsx` gọi `await supabase.update(...)` rồi mới `loadOrders()` → refetch **toàn bộ** đơn hàng (kèm join customers, assignees, ghn_tracking, payments) → mất vài giây.
-2. `EditOrderDialog` cũng gọi `await update` → `onSubmit()` → `loadOrders()` toàn bộ.
-3. Realtime subscription đã tự invalidate khi DB thay đổi, nên việc `loadOrders()` thủ công là **trùng lặp** và không cần thiết.
-4. Toast "Thành công" hiển thị sau khi mạng trả về → cảm giác chậm.
+1. **Tách dữ liệu sản phẩm để xem và để quản trị**
+   - Giữ bảng gốc `products` chỉ cho admin/manager chủ sở hữu/nhân viên đúng tuyến xem đầy đủ, bao gồm `cost_price`.
+   - Dùng view `products_public` đã có để cho người dùng đã đăng nhập xem catalog sản phẩm theo bảng giá nhưng **không có `cost_price`**.
 
-## Giải pháp: Optimistic Update
+2. **Sửa `ProductManagement.tsx` để không bị mất sản phẩm**
+   - Khi người dùng có quyền xem giá vốn: query `products` như hiện tại.
+   - Khi không có quyền xem giá vốn của bảng giá đang chọn: query `products_public` để vẫn hiện danh sách sản phẩm, giá bán, mã, quy cách, tồn kho.
+   - Cột “Giá gốc” sẽ ẩn/hiển thị dấu `-` nếu dữ liệu đến từ `products_public`.
+   - Các thao tác sửa/xóa/tạo sản phẩm vẫn chỉ dùng bảng `products` và để RLS chặn nếu không đủ quyền.
 
-Cập nhật cache React Query **ngay lập tức** trước khi gọi API. UI đổi tức thì (<50ms). Nếu API lỗi → rollback và báo toast lỗi.
+3. **Sửa các form chọn sản phẩm nếu cần**
+   - `CreateQuoteForm` dùng `products_public` cho danh sách chọn sản phẩm vì báo giá không cần `cost_price`.
+   - `CreateOrderForm` vẫn dùng `products` nếu cần tính giá vốn; nếu bị RLS chặn, fallback sang `products_public` với `cost_price = 0` để không mất danh sách sản phẩm.
 
-### 1. `src/pages/OrderManagement.tsx` — `updateOrderStatus`
-
-- Dùng `queryClient.setQueryData(['orders-infinite', ...], ...)` để patch ngay record có `id === orderId` với `status` (và `delivered_date` nếu cần).
-- Đóng dropdown + hiển thị toast "Đã cập nhật" **ngay** (không await).
-- Gọi `supabase.update` ở background. Nếu lỗi → `setQueryData` rollback về giá trị cũ + toast lỗi.
-- **Bỏ** `loadOrders()` — realtime sẽ tự đồng bộ phần còn lại.
-- Việc tạo `transactions` khi `delivered` vẫn chạy background, không block UI.
-
-### 2. `src/components/EditOrderDialog.tsx`
-
-- Patch cache ngay với `status`, `notes`, `delivery_date` mới.
-- Đóng dialog ngay (`onOpenChange(false)`) + toast thành công ngay.
-- API call chạy background; nếu lỗi → rollback + toast lỗi.
-
-### 3. Bỏ refetch toàn bộ ở các handler
-
-- `handleEditOrder`, `handleDeleteOrder`: bỏ `loadOrders()`, để realtime + optimistic cache lo. Chỉ gọi `invalidateQueries` mềm (không await) khi thật sự cần.
-
-### 4. Helper
-
-Tạo hàm nhỏ `patchOrderInCache(queryClient, orderId, patch)` để dùng chung cho status update, edit dialog, payment update.
-
-## Phạm vi file
-
-- `src/pages/OrderManagement.tsx` (updateOrderStatus + các handler)
-- `src/components/EditOrderDialog.tsx`
-- (tùy chọn) `src/hooks/useOrders.ts` thêm helper patch cache
-
-## Kết quả mong đợi
-
-- Đổi trạng thái / sửa đơn: UI cập nhật **dưới 100ms** (tức thì).
-- Mạng chạy ngầm; lỗi sẽ tự rollback rõ ràng.
-- Không còn cảm giác "đợi load lại bảng".
-
-Bấm **Approve plan** để mình áp dụng.
+4. **Kiểm tra lại dữ liệu thực tế**
+   - Bảng giá 2025 phải hiển thị lại ~920 sản phẩm.
+   - Không khôi phục policy cũ gây lộ `cost_price` qua mọi bảng giá.
+   - Người không có quyền không thấy giá vốn, nhưng vẫn chọn/tra cứu được sản phẩm.
