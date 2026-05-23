@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Edit, Trash2, Package, Copy } from 'lucide-react';
+import { Plus, Edit, Trash2, Package, Copy, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ export const FabricTypeManagement = () => {
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingType, setEditingType] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     description: ''
@@ -31,6 +32,12 @@ export const FabricTypeManagement = () => {
       .map(variant => variant.variant_name)
       .filter(name => name && !fabricTypes.some(type => type.name === name))
   )).slice(0, 6);
+
+  const filteredFabricTypes = fabricTypes.filter(t =>
+    searchTerm.trim() === '' ||
+    t.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.description?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
@@ -175,6 +182,15 @@ export const FabricTypeManagement = () => {
         </div>
       </CardHeader>
       <CardContent>
+        <div className="mb-4 relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Tìm kiếm mã vải..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
         <div className="rounded-md border">
           <Table>
             <TableHeader>
@@ -187,8 +203,8 @@ export const FabricTypeManagement = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {fabricTypes.length > 0 ? (
-                fabricTypes.map((type) => (
+              {filteredFabricTypes.length > 0 ? (
+                filteredFabricTypes.map((type) => (
                   <TableRow key={type.id}>
                     <TableCell className="font-medium">{type.name}</TableCell>
                     <TableCell>
