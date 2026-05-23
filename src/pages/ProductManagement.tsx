@@ -177,11 +177,11 @@ const ProductManagement = () => {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const buildQuery = (page: number, source: 'products' | 'products_public' = 'products') => {
+      const buildQuery = (page: number) => {
         const offset = (page - 1) * itemsPerPage;
         let q = supabase
-        .from(source as any)
-        .select('*', { count: 'exact' });
+          .from('products')
+          .select('*', { count: 'exact' });
         if (selectedPriceList) q = q.eq('price_list_id', selectedPriceList);
         if (activeSearchTerm) {
           q = q.or(`name.ilike.%${activeSearchTerm}%,sku.ilike.%${activeSearchTerm}%,description.ilike.%${activeSearchTerm}%`);
@@ -199,13 +199,21 @@ const ProductManagement = () => {
       let { data, error, count } = await buildQuery(currentPage);
       let fromPublic = false;
 
-      // Fallback: if RLS hides products owned by another manager, try the public view
-      // so users can still see the catalog (without cost_price).
+      // Fallback: nếu RLS ẩn sản phẩm (khác manager), dùng RPC catalog an toàn
+      // để vẫn hiển thị danh sách (không trả cost_price).
       if (!error && selectedPriceList && (count ?? 0) === 0) {
-        const pub = await buildQuery(currentPage, 'products_public');
-        if (!pub.error && (pub.count ?? 0) > 0) {
-          data = pub.data as any;
-          count = pub.count;
+        const offset = (currentPage - 1) * itemsPerPage;
+        const { data: rpcData, error: rpcError } = await (supabase as any).rpc('get_products_catalog', {
+          _price_list_id: selectedPriceList,
+          _search: activeSearchTerm || null,
+          _category: categoryFilter && categoryFilter !== 'all' ? categoryFilter : null,
+          _in_stock: stockFilter && stockFilter !== 'all' ? stockFilter === 'in-stock' : null,
+          _limit: itemsPerPage,
+          _offset: offset,
+        });
+        if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+          data = rpcData.map((r: any) => ({ ...r, cost_price: null })) as any;
+          count = Number(rpcData[0]?.total_count ?? rpcData.length);
           fromPublic = true;
         }
       }
