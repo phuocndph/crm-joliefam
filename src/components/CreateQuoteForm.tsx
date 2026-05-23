@@ -432,14 +432,16 @@ export function CreateQuoteForm({
   };
   const loadProducts = async (priceListId: string) => {
     try {
-      const {
-        data,
-        error
-      } = await supabase.from("products").select("*").eq("price_list_id", priceListId).eq("in_stock", true).order("name");
+      let { data, error } = await supabase.from("products").select("*").eq("price_list_id", priceListId).eq("in_stock", true).order("name");
       if (error) throw error;
-
-      // Explicit typing and debugging
-      const products = data as unknown as Product[] || [];
+      // Fallback to public view (no cost_price) when RLS hides another manager's products
+      if (!data || data.length === 0) {
+        const pub = await supabase.from("products_public" as any).select("*").eq("price_list_id", priceListId).eq("in_stock", true).order("name");
+        if (!pub.error && pub.data && pub.data.length > 0) {
+          data = pub.data as any;
+        }
+      }
+      const products = (data as unknown as Product[]) || [];
       console.log('Loaded products with descriptions:', products.map(p => ({
         id: p.id,
         name: p.name,
