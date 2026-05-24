@@ -107,19 +107,23 @@ export const FabricReports: React.FC = () => {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Compute date interval
-  const interval = useMemo(() => {
+  const { interval, prevInterval } = useMemo(() => {
     const now = new Date();
+    let cur: { start: Date; end: Date };
     switch (rangeKey) {
-      case 'today': return { start: startOfDay(now), end: endOfDay(now) };
-      case 'week': return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
-      case 'month': return { start: startOfMonth(now), end: endOfMonth(now) };
-      case 'quarter': return { start: startOfQuarter(now), end: endOfQuarter(now) };
-      case 'year': return { start: startOfYear(now), end: endOfYear(now) };
-      case 'custom': return {
+      case 'today': cur = { start: startOfDay(now), end: endOfDay(now) }; break;
+      case 'week': cur = { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) }; break;
+      case 'month': cur = { start: startOfMonth(now), end: endOfMonth(now) }; break;
+      case 'quarter': cur = { start: startOfQuarter(now), end: endOfQuarter(now) }; break;
+      case 'year': cur = { start: startOfYear(now), end: endOfYear(now) }; break;
+      case 'custom': cur = {
         start: customRange.from ? startOfDay(customRange.from) : startOfYear(now),
         end: customRange.to ? endOfDay(customRange.to) : endOfDay(now),
-      };
+      }; break;
     }
+    const len = differenceInMilliseconds(cur.end, cur.start);
+    const prev = { start: subMilliseconds(cur.start, len + 1), end: subMilliseconds(cur.start, 1) };
+    return { interval: cur, prevInterval: prev };
   }, [rangeKey, customRange]);
 
   const warehouseIdFor = (key: 'hanoi' | 'bacninh') =>
