@@ -6,12 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Calendar as CalendarIcon, Download, ChevronDown, ChevronUp, Package, TrendingUp, TrendingDown, AlertTriangle, Search, BarChart3 } from 'lucide-react';
+import { Calendar as CalendarIcon, Download, ChevronDown, ChevronUp, Package, TrendingUp, TrendingDown, AlertTriangle, Search, BarChart3, Wallet, ArrowUp, ArrowDown, CheckCircle2, ArrowUpDown } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Progress } from '@/components/ui/progress';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Line, LineChart } from 'recharts';
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, eachQuarterOfInterval, isWithinInterval } from 'date-fns';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Line, LineChart, Area, ComposedChart, PieChart, Pie, Cell, LabelList } from 'recharts';
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, eachQuarterOfInterval, isWithinInterval, differenceInMilliseconds, subMilliseconds, differenceInCalendarDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useFabricUsage, useFabricInventory, useWarehouses, useFabricTypes } from '@/hooks/useFabrics';
@@ -50,6 +51,46 @@ const formatNum = (n: number, digits = 2) =>
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(n);
 
+const formatCompact = (n: number) => {
+  if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(1) + ' tỷ';
+  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + ' tr';
+  if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+  return formatNum(n);
+};
+
+// Chart palette (HSL strings - cohesive with light theme)
+const CHART_COLORS = [
+  'hsl(217 91% 60%)',  // blue (primary-ish)
+  'hsl(142 71% 45%)',  // green
+  'hsl(38 92% 50%)',   // amber
+  'hsl(280 65% 60%)',  // purple
+  'hsl(0 84% 60%)',    // red
+  'hsl(190 80% 45%)',  // teal
+];
+const COLOR_HANOI = CHART_COLORS[0];
+const COLOR_BACNINH = CHART_COLORS[1];
+const COLOR_TOTAL = 'hsl(240 5% 35%)';
+
+const DeltaBadge: React.FC<{ curr: number; prev: number; invert?: boolean }> = ({ curr, prev, invert }) => {
+  if (prev === 0 && curr === 0) {
+    return <span className="text-[11px] text-muted-foreground">— Không có kỳ trước</span>;
+  }
+  if (prev === 0) {
+    return <span className="text-[11px] text-muted-foreground">Mới phát sinh</span>;
+  }
+  const pct = ((curr - prev) / Math.abs(prev)) * 100;
+  const up = pct >= 0;
+  const good = invert ? !up : up;
+  return (
+    <span className={cn("text-[11px] inline-flex items-center gap-0.5 font-medium", good ? "text-sidebar-primary" : "text-destructive")}>
+      {up ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+      {Math.abs(pct).toFixed(1).replace('.', ',')}% so kỳ trước
+    </span>
+  );
+};
+
+type SortKey = 'used' | 'stock' | 'value' | 'name';
+
 export const FabricReports: React.FC = () => {
   const { data: usage } = useFabricUsage();
   const { data: inventory } = useFabricInventory();
@@ -62,6 +103,8 @@ export const FabricReports: React.FC = () => {
   const [fabricTypeId, setFabricTypeId] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>('used');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Compute date interval
   const interval = useMemo(() => {
