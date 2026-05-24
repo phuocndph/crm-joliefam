@@ -18,6 +18,7 @@ import { FabricControlByWarehouse } from '@/components/FabricControlByWarehouse'
 import { FabricUsageDetails } from '@/components/FabricUsageDetails';
 import { FabricTypeManagement } from '@/components/FabricTypeManagement';
 import { FabricTransactionsTable } from '@/components/FabricTransactionsTable';
+import { FabricReports } from '@/components/FabricReports';
 import { useFabricTypes, useFabricVariants, useFabricWidths, useWarehouses, useFabricInventory, useFabricTransactions, useFabricTransfers, useFabricUsage, useCreateFabricType, useCreateFabricVariant, useCreateFabricWidth, useUpdateInventory, useCreateTransaction, useCreateTransfer, useUpdateTransferStatus, useCreateFabricUsage } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 const FabricManagement = () => {
@@ -373,6 +374,7 @@ const FabricManagement = () => {
           <TabsTrigger value="hanoi-control">Kiểm soát vải Hà Nội</TabsTrigger>
           <TabsTrigger value="bacninh-control">Kiểm soát vải Bắc Ninh</TabsTrigger>
           <TabsTrigger value="fabric-types">Loại vải</TabsTrigger>
+          <TabsTrigger value="reports">Báo cáo</TabsTrigger>
         </TabsList>
 
         {/* Total Quantity Tab */}
@@ -398,6 +400,10 @@ const FabricManagement = () => {
         <TabsContent value="fabric-types" className="space-y-4">
           <FabricTypeManagement />
           
+        </TabsContent>
+
+        <TabsContent value="reports" className="space-y-4">
+          <FabricReports />
         </TabsContent>
 
       </Tabs>
