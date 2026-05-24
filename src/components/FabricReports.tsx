@@ -132,18 +132,23 @@ export const FabricReports: React.FC = () => {
   const hanoiId = warehouseIdFor('hanoi');
   const bacninhId = warehouseIdFor('bacninh');
 
-  // Filter usage in range
+  const passesScope = (u: any) => {
+    if (warehouseKey === 'hanoi' && u.warehouse_id !== hanoiId) return false;
+    if (warehouseKey === 'bacninh' && u.warehouse_id !== bacninhId) return false;
+    if (fabricTypeId !== 'all' && u.fabric_variants?.fabric_type_id !== fabricTypeId) return false;
+    return true;
+  };
+
+  // Filter usage in current and previous range
   const filteredUsage = useMemo(() => {
     if (!usage) return [];
-    return usage.filter((u: any) => {
-      const d = new Date(u.usage_date);
-      if (!isWithinInterval(d, interval)) return false;
-      if (warehouseKey === 'hanoi' && u.warehouse_id !== hanoiId) return false;
-      if (warehouseKey === 'bacninh' && u.warehouse_id !== bacninhId) return false;
-      if (fabricTypeId !== 'all' && u.fabric_variants?.fabric_type_id !== fabricTypeId) return false;
-      return true;
-    });
+    return usage.filter((u: any) => isWithinInterval(new Date(u.usage_date), interval) && passesScope(u));
   }, [usage, interval, warehouseKey, fabricTypeId, hanoiId, bacninhId]);
+
+  const prevUsage = useMemo(() => {
+    if (!usage) return [];
+    return usage.filter((u: any) => isWithinInterval(new Date(u.usage_date), prevInterval) && passesScope(u));
+  }, [usage, prevInterval, warehouseKey, fabricTypeId, hanoiId, bacninhId]);
 
   // KPIs - sum quantity by unit
   const kpis = useMemo(() => {
