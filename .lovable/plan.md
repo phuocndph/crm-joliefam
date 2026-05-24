@@ -1,56 +1,52 @@
-## Thêm tab "Báo cáo" trong Quản lý vải
+## Mục tiêu
+Làm cho tab "Báo cáo" trong Quản lý vải trực quan, dễ đọc và mang tính quản trị hơn — không chỉ là bảng số.
 
-Bổ sung một tab mới `Báo cáo` vào trang `/fabrics` (`src/pages/FabricManagement.tsx`), hiển thị các chỉ số sử dụng và tồn kho theo nhiều chiều thời gian và theo từng xưởng.
+## Phạm vi thay đổi
+Chỉ sửa **1 file**: `src/components/FabricReports.tsx` (frontend, không đụng DB/API).
 
-### Nội dung báo cáo
+## Các cải tiến
 
-**1. Bộ lọc đầu trang**
-- Khoảng thời gian: Hôm nay / Tuần này / Tháng này / Quý này / Năm nay / Tùy chọn (date range).
-- Xưởng: Tổng 2 xưởng / Hà Nội / Bắc Ninh.
-- Loại vải (tùy chọn, lọc thêm).
+### 1. KPI cards có so sánh kỳ trước
+- Tính kỳ trước cùng độ dài (ví dụ tháng này → tháng trước).
+- Mỗi card hiển thị: số lớn + dòng nhỏ `↑ 12,3% so kỳ trước` (xanh nếu tăng, đỏ nếu giảm; với "Sắp hết hàng" thì ngược lại).
+- Thêm viền trái màu cho 4 card: primary / sidebar-primary / chart-2 / destructive.
+- Thêm card thứ 5: **Giá trị tồn kho (VND)** = Σ current_stock × cost_price.
 
-**2. Thẻ tổng quan (KPI cards)**
-- Tổng số lượng vải đã sử dụng (m/kg) trong kỳ.
-- Tổng giá trị vải đã sử dụng (VND, dựa trên `cost_price`).
-- Tổng tồn kho hiện tại (toàn hệ thống hoặc theo xưởng đã chọn).
-- Số loại vải sắp hết hàng (dưới `minimum_stock`).
+### 2. Biểu đồ xu hướng đẹp hơn
+- Đổi sang **Area + Line combo** với gradient dưới line.
+- Luôn hiển thị 2 line Hà Nội & Bắc Ninh + line "Tổng" (dashed) — kể cả khi đã chọn 1 xưởng, để so sánh.
+- Thêm dòng phụ trên chart: `Tổng kỳ: X m | Trung bình/ngày: Y m | Đỉnh: Z m (dd/MM)`.
 
-**3. Biểu đồ xu hướng sử dụng theo thời gian**
-- Line/Bar chart hiển thị lượng vải sử dụng theo:
-  - Ngày (khi chọn tuần/tháng)
-  - Tuần (khi chọn quý)
-  - Tháng (khi chọn năm)
-  - Quý (khi chọn nhiều năm)
-- So sánh 2 xưởng (2 đường/2 cột chồng) khi chọn "Tổng 2 xưởng".
+### 3. Hai biểu đồ cơ cấu (mới)
+Bố cục 2 cột:
+- **Donut "Cơ cấu theo loại vải"**: top 5 loại + nhóm "Khác", hiện % ở center khi hover.
+- **Donut "Cơ cấu theo xưởng"**: Hà Nội vs Bắc Ninh, label %.
 
-**4. Bảng "Vải dùng nhiều nhất" (Top 10)**
-- Cột: Mã/Tên vải, Khổ, Màu, Xưởng, SL đã dùng, Đơn vị, Giá trị, Tồn kho còn lại.
-- Sắp xếp giảm dần theo SL sử dụng trong kỳ.
+### 4. Top 10 dạng horizontal bar
+- Đổi 2 bảng "dùng nhiều / dùng ít" sang **horizontal bar chart** (recharts `BarChart` layout="vertical"):
+  - Trục Y = tên vải (rút gọn), trục X = số lượng.
+  - Tooltip hiện: loại, khổ, màu, đã dùng + đơn vị, giá trị VND, tồn kho.
+  - Vẫn giữ nút export CSV.
 
-**5. Bảng "Vải dùng ít nhất / chậm luân chuyển" (Top 10)**
-- Cùng cấu trúc, sắp xếp tăng dần (loại bỏ vải có 0 sử dụng nếu cần, hoặc hiển thị riêng nhóm "Chưa sử dụng trong kỳ").
+### 5. Panel cảnh báo tồn thấp (mới)
+- Card riêng "Cảnh báo tồn thấp" liệt kê top 5 mã vải có `stock ≤ minimum_stock`, sắp xếp theo độ thiếu (`(min - stock)` giảm dần).
+- Mỗi dòng: tên vải · khổ · màu | `tồn / min` + progress bar đỏ.
+- Nếu không có thì hiện badge "Tất cả vải đủ tồn" màu sidebar-primary.
 
-**6. Bảng chi tiết toàn bộ vải (có thể thu gọn, mặc định collapsed)**
-- Mã vải, loại, khổ, màu, xuất xứ, SL đã nhập, SL đã xuất/sử dụng, tồn kho hiện tại, cảnh báo low-stock.
-- Có ô tìm kiếm theo mã vải.
+### 6. Bảng chi tiết nâng cấp
+- Thêm cột **Giá trị tồn (VND)** = stock × cost_price.
+- Thêm cột **% tồn** (so với min) dạng progress bar nhỏ.
+- Cho phép **sort** bằng click header (đã dùng / tồn / giá trị).
+- Giữ search + collapsible + export như hiện tại.
 
-**7. Xuất báo cáo**
-- Nút "Xuất Excel/CSV" cho bảng top vải và bảng chi tiết.
+## Kỹ thuật
 
-### Cấu trúc kỹ thuật
+- Tính `previousInterval` từ `interval` hiện tại (cùng độ dài, dời lùi).
+- Tạo helper `pctChange(curr, prev)` và component nhỏ `<DeltaBadge value={...} invert />`.
+- Donut dùng `recharts` `PieChart` + `Pie` + `Cell`, màu từ `--chart-1..5`.
+- Horizontal bar dùng `BarChart layout="vertical"`, `YAxis type="category"`.
+- Tất cả màu qua semantic tokens (`hsl(var(--primary))`, `--chart-1..5`, `--destructive`, `--sidebar-primary`).
+- Không thêm dependency mới (recharts đã có).
 
-- Tạo component mới `src/components/FabricReports.tsx` chứa toàn bộ UI báo cáo.
-- Thêm tab `<TabsTrigger value="reports">Báo cáo</TabsTrigger>` trong `FabricManagement.tsx`.
-- Dữ liệu:
-  - Sử dụng: query `fabric_usage` join `fabric_variants` + `fabric_types` + `warehouses`, filter theo `usage_date` và `warehouse_id`.
-  - Tồn kho: query `fabric_inventory` join `fabric_variants`.
-  - Aggregate ở client bằng `useMemo` (hoặc tạo RPC nếu dữ liệu lớn — sẽ đánh giá sau khi xem khối lượng).
-- Biểu đồ: dùng `recharts` (đã có trong shadcn `chart`).
-- Bộ lọc thời gian: dùng `date-fns` để tính `startOfDay/Week/Month/Quarter/Year`.
-- Xuất CSV: tận dụng `src/lib/csvUtils.ts` có sẵn.
-
-### Câu hỏi xác nhận trước khi build
-
-1. Đơn vị hiển thị tổng: gộp theo `unit` (m và kg riêng) hay quy đổi về 1 đơn vị?
-2. "Vải dùng ít" có gồm cả vải không phát sinh sử dụng trong kỳ không, hay chỉ vải có sử dụng > 0?
-3. Có cần xuất Excel/CSV ngay ở phiên bản đầu, hay chỉ hiển thị trên web trước?
+## Không thay đổi
+- Schema DB, hooks, RLS, edge functions, các tab khác của trang Quản lý vải.
