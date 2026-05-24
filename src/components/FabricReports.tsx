@@ -91,6 +91,72 @@ const DeltaBadge: React.FC<{ curr: number; prev: number; invert?: boolean }> = (
 
 type SortKey = 'used' | 'stock' | 'value' | 'name';
 
+interface TopBarCardProps {
+  title: string;
+  icon: React.ReactNode;
+  rows: { variantId: string; name: string; typeName: string; color: string; width: string; unit: string; quantity: number; value: number }[];
+  stockByVariant: Map<string, number>;
+  color: string;
+  action?: React.ReactNode;
+}
+
+const TopBarCard: React.FC<TopBarCardProps> = ({ title, icon, rows, stockByVariant, color, action }) => {
+  const data = rows.map(r => ({
+    name: r.name.length > 22 ? r.name.slice(0, 21) + '…' : r.name,
+    fullName: r.name,
+    quantity: r.quantity,
+    unit: r.unit,
+    typeName: r.typeName,
+    width: r.width,
+    color: r.color,
+    value: r.value,
+    stock: stockByVariant.get(r.variantId) || 0,
+  }));
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-base flex items-center gap-2">{icon} {title}</CardTitle>
+        {action}
+      </CardHeader>
+      <CardContent>
+        {data.length === 0 ? (
+          <div className="h-[320px] flex items-center justify-center text-sm text-muted-foreground">Không có dữ liệu</div>
+        ) : (
+          <div style={{ height: Math.max(220, data.length * 32 + 30) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} layout="vertical" margin={{ top: 4, right: 50, left: 8, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-border" />
+                <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => formatCompact(Number(v))} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={140} />
+                <ChartTooltip
+                  content={({ active, payload }: any) => {
+                    if (!active || !payload?.length) return null;
+                    const d = payload[0].payload;
+                    return (
+                      <div className="rounded-md border bg-popover px-2.5 py-2 text-xs shadow-md">
+                        <div className="font-semibold mb-1">{d.fullName}</div>
+                        <div className="text-muted-foreground text-[11px]">{[d.typeName, d.width, d.color].filter(Boolean).join(' · ')}</div>
+                        <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5">
+                          <span className="text-muted-foreground">Đã dùng:</span><span className="font-medium text-right">{formatNum(d.quantity)} {d.unit}</span>
+                          <span className="text-muted-foreground">Giá trị:</span><span className="font-medium text-right">{formatCompact(d.value)} đ</span>
+                          <span className="text-muted-foreground">Tồn kho:</span><span className="font-medium text-right">{formatNum(d.stock)} {d.unit}</span>
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+                <Bar dataKey="quantity" fill={color} radius={[0, 4, 4, 0]}>
+                  <LabelList dataKey="quantity" position="right" className="fill-foreground" fontSize={10} formatter={(v: any) => formatCompact(Number(v))} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 export const FabricReports: React.FC = () => {
   const { data: usage } = useFabricUsage();
   const { data: inventory } = useFabricInventory();
