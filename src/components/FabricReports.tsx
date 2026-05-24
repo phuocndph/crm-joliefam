@@ -797,20 +797,30 @@ export const FabricReports: React.FC = () => {
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-background">
                     <TableRow className="bg-primary/90 hover:bg-primary/90">
-                      <TableHead className="text-primary-foreground text-xs py-2">Vải</TableHead>
+                      <TableHead className="text-primary-foreground text-xs py-2 cursor-pointer select-none" onClick={() => toggleSort('name')}>
+                        <span className="inline-flex items-center gap-1">Vải <ArrowUpDown className="h-3 w-3 opacity-70" /></span>
+                      </TableHead>
                       <TableHead className="text-primary-foreground text-xs py-2">Loại</TableHead>
                       <TableHead className="text-primary-foreground text-xs py-2">Khổ</TableHead>
                       <TableHead className="text-primary-foreground text-xs py-2">Màu</TableHead>
-                      <TableHead className="text-primary-foreground text-xs py-2 text-right">Đã dùng (kỳ)</TableHead>
-                      <TableHead className="text-primary-foreground text-xs py-2 text-right">Tồn kho</TableHead>
-                      <TableHead className="text-primary-foreground text-xs py-2 text-right">Tồn tối thiểu</TableHead>
+                      <TableHead className="text-primary-foreground text-xs py-2 text-right cursor-pointer select-none" onClick={() => toggleSort('used')}>
+                        <span className="inline-flex items-center gap-1 justify-end w-full">Đã dùng (kỳ) <ArrowUpDown className="h-3 w-3 opacity-70" /></span>
+                      </TableHead>
+                      <TableHead className="text-primary-foreground text-xs py-2 text-right cursor-pointer select-none" onClick={() => toggleSort('stock')}>
+                        <span className="inline-flex items-center gap-1 justify-end w-full">Tồn kho <ArrowUpDown className="h-3 w-3 opacity-70" /></span>
+                      </TableHead>
+                      <TableHead className="text-primary-foreground text-xs py-2 text-right">Tồn / Min</TableHead>
+                      <TableHead className="text-primary-foreground text-xs py-2 text-right cursor-pointer select-none" onClick={() => toggleSort('value')}>
+                        <span className="inline-flex items-center gap-1 justify-end w-full">Giá trị tồn <ArrowUpDown className="h-3 w-3 opacity-70" /></span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {detailRows.length === 0 ? (
-                      <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground text-sm py-6">Không có dữ liệu</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground text-sm py-6">Không có dữ liệu</TableCell></TableRow>
                     ) : detailRows.map(r => {
                       const low = r.minStock > 0 && r.stock <= r.minStock;
+                      const pct = r.minStock > 0 ? Math.min(200, (r.stock / r.minStock) * 100) : 100;
                       return (
                         <TableRow key={r.id} className="text-xs">
                           <TableCell className="font-medium">{r.name}</TableCell>
@@ -822,7 +832,18 @@ export const FabricReports: React.FC = () => {
                             {formatNum(r.stock)} {r.unit}
                             {low && <Badge variant="destructive" className="ml-1 h-4 text-[10px]">Thấp</Badge>}
                           </TableCell>
-                          <TableCell className="text-right text-muted-foreground">{formatNum(r.minStock)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <span className="text-muted-foreground text-[11px] tabular-nums w-12 text-right">{r.minStock > 0 ? `${pct.toFixed(0)}%` : '—'}</span>
+                              <div className="w-16 h-1.5 bg-muted rounded overflow-hidden">
+                                <div
+                                  className={cn("h-full", low ? "bg-destructive" : pct < 150 ? "bg-amber-500" : "bg-sidebar-primary")}
+                                  style={{ width: `${Math.min(100, pct)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{formatCompact(r.value)}</TableCell>
                         </TableRow>
                       );
                     })}
