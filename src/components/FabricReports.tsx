@@ -444,6 +444,7 @@ export const FabricReports: React.FC = () => {
       'Đã dùng (kỳ)': r.used,
       'Tồn kho': r.stock,
       'Tồn tối thiểu': r.minStock,
+      'Giá trị tồn (VND)': r.value,
       'Đơn vị': r.unit,
     }));
     exportToCSV(rows, `chi-tiet-vai-${format(new Date(), 'yyyyMMdd')}.csv`);
