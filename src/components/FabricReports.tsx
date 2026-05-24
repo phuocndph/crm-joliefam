@@ -164,6 +164,7 @@ export const FabricReports: React.FC = () => {
     // Inventory totals (filtered by warehouse)
     let totalStock = 0;
     let lowStock = 0;
+    let stockValue = 0;
     const stockByUnit: Record<string, number> = {};
     (inventory || []).forEach((inv: any) => {
       if (warehouseKey === 'hanoi' && inv.warehouse_id !== hanoiId) return;
@@ -173,11 +174,28 @@ export const FabricReports: React.FC = () => {
       const cur = Number(inv.current_stock || 0);
       stockByUnit[unit] = (stockByUnit[unit] || 0) + cur;
       totalStock += cur;
+      stockValue += cur * Number(inv.fabric_variants?.cost_price || 0);
       if ((inv.minimum_stock || 0) > 0 && cur <= (inv.minimum_stock || 0)) lowStock++;
     });
 
-    return { byUnit, totalValue, stockByUnit, totalStock, lowStock };
+    return { byUnit, totalValue, stockByUnit, totalStock, stockValue, lowStock };
   }, [filteredUsage, inventory, warehouseKey, fabricTypeId, hanoiId, bacninhId]);
+
+  // Previous-period KPIs for delta
+  const prevKpis = useMemo(() => {
+    let totalQty = 0, totalValue = 0;
+    prevUsage.forEach((u: any) => {
+      const q = Number(u.quantity_used || 0);
+      totalQty += q;
+      totalValue += q * Number(u.fabric_variants?.cost_price || 0);
+    });
+    return { totalQty, totalValue };
+  }, [prevUsage]);
+
+  const currTotalQty = useMemo(
+    () => Object.values(kpis.byUnit).reduce((a, b) => a + b, 0),
+    [kpis]
+  );
 
   // Trend chart data
   const trendData = useMemo(() => {
