@@ -290,6 +290,76 @@ export const FabricReports: React.FC = () => {
     [variantAgg]
   );
 
+  // Trend stats
+  const trendStats = useMemo(() => {
+    const totals = trendData.map((b: any) => b.total);
+    const sum = totals.reduce((a, b) => a + b, 0);
+    const days = Math.max(1, differenceInCalendarDays(interval.end, interval.start) + 1);
+    const peakIdx = totals.length ? totals.indexOf(Math.max(...totals)) : -1;
+    return {
+      sum,
+      avgPerDay: sum / days,
+      peakLabel: peakIdx >= 0 ? (trendData[peakIdx] as any).label : '—',
+      peakValue: peakIdx >= 0 ? totals[peakIdx] : 0,
+    };
+  }, [trendData, interval]);
+
+  // Composition by fabric type
+  const typeComposition = useMemo(() => {
+    const map = new Map<string, number>();
+    filteredUsage.forEach((u: any) => {
+      const name = u.fabric_variants?.fabric_types?.name || 'Khác';
+      map.set(name, (map.get(name) || 0) + Number(u.quantity_used || 0));
+    });
+    const arr = Array.from(map.entries()).map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+    if (arr.length <= 6) return arr;
+    const top = arr.slice(0, 5);
+    const rest = arr.slice(5).reduce((s, x) => s + x.value, 0);
+    return [...top, { name: 'Khác', value: rest }];
+  }, [filteredUsage]);
+
+  // Composition by warehouse
+  const warehouseComposition = useMemo(() => {
+    let h = 0, b = 0;
+    filteredUsage.forEach((u: any) => {
+      const q = Number(u.quantity_used || 0);
+      if (u.warehouse_id === hanoiId) h += q;
+      else if (u.warehouse_id === bacninhId) b += q;
+    });
+    return [
+      { name: 'Hà Nội', value: h, color: COLOR_HANOI },
+      { name: 'Bắc Ninh', value: b, color: COLOR_BACNINH },
+    ];
+  }, [filteredUsage, hanoiId, bacninhId]);
+
+  // Low-stock list
+  const lowStockList = useMemo(() => {
+    if (!inventory) return [];
+    const arr: any[] = [];
+    inventory.forEach((inv: any) => {
+      if (warehouseKey === 'hanoi' && inv.warehouse_id !== hanoiId) return;
+      if (warehouseKey === 'bacninh' && inv.warehouse_id !== bacninhId) return;
+      if (fabricTypeId !== 'all' && inv.fabric_variants?.fabric_type_id !== fabricTypeId) return;
+      const cur = Number(inv.current_stock || 0);
+      const min = Number(inv.minimum_stock || 0);
+      if (min > 0 && cur <= min) {
+        arr.push({
+          id: inv.id,
+          name: inv.fabric_variants?.variant_name || '',
+          width: inv.fabric_variants?.width_code || '',
+          color: inv.fabric_variants?.color || '',
+          warehouse: inv.warehouses?.name || '',
+          unit: inv.fabric_variants?.unit || 'm',
+          stock: cur,
+          min,
+          deficit: min - cur,
+        });
+      }
+    });
+    return arr.sort((a, b) => b.deficit - a.deficit).slice(0, 5);
+  }, [inventory, warehouseKey, hanoiId, bacninhId, fabricTypeId]);
+
   // Detail table (all variants with optional filters)
   const detailRows = useMemo(() => {
     if (!inventory) return [];
