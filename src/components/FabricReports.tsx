@@ -519,13 +519,13 @@ export const FabricReports: React.FC = () => {
       </Card>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">SL đã sử dụng</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+        <Card className="border-l-4 border-l-primary">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">SL đã sử dụng</CardTitle>
+            <Package className="h-4 w-4 text-primary" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="pb-3">
             <div className="text-xl font-bold space-y-0.5">
               {Object.keys(kpis.byUnit).length === 0 ? (
                 <div>0</div>
@@ -535,23 +535,25 @@ export const FabricReports: React.FC = () => {
                 ))
               )}
             </div>
+            <div className="mt-1"><DeltaBadge curr={currTotalQty} prev={prevKpis.totalQty} /></div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Giá trị đã sử dụng</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-l-4 border-l-sidebar-primary">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Giá trị đã dùng</CardTitle>
+            <TrendingUp className="h-4 w-4 text-sidebar-primary" />
           </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold">{formatCurrency(kpis.totalValue)}</div>
+          <CardContent className="pb-3">
+            <div className="text-xl font-bold">{formatCompact(kpis.totalValue)}<span className="text-xs font-normal text-muted-foreground ml-1">đ</span></div>
+            <div className="mt-1"><DeltaBadge curr={kpis.totalValue} prev={prevKpis.totalValue} /></div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tồn kho hiện tại</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-l-4" style={{ borderLeftColor: CHART_COLORS[2] }}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tồn kho hiện tại</CardTitle>
+            <BarChart3 className="h-4 w-4" style={{ color: CHART_COLORS[2] }} />
           </CardHeader>
-          <CardContent>
+          <CardContent className="pb-3">
             <div className="text-xl font-bold space-y-0.5">
               {Object.keys(kpis.stockByUnit).length === 0 ? (
                 <div>0</div>
@@ -563,134 +565,204 @@ export const FabricReports: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sắp hết hàng</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-l-4" style={{ borderLeftColor: CHART_COLORS[3] }}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Giá trị tồn kho</CardTitle>
+            <Wallet className="h-4 w-4" style={{ color: CHART_COLORS[3] }} />
           </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold text-destructive">{kpis.lowStock}</div>
+          <CardContent className="pb-3">
+            <div className="text-xl font-bold">{formatCompact(kpis.stockValue)}<span className="text-xs font-normal text-muted-foreground ml-1">đ</span></div>
+            <div className="text-[11px] text-muted-foreground mt-1">{formatCurrency(kpis.stockValue)}</div>
+          </CardContent>
+        </Card>
+        <Card className={cn("border-l-4", kpis.lowStock > 0 ? "border-l-destructive" : "border-l-sidebar-primary")}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sắp hết hàng</CardTitle>
+            {kpis.lowStock > 0
+              ? <AlertTriangle className="h-4 w-4 text-destructive" />
+              : <CheckCircle2 className="h-4 w-4 text-sidebar-primary" />}
+          </CardHeader>
+          <CardContent className="pb-3">
+            <div className={cn("text-xl font-bold", kpis.lowStock > 0 ? "text-destructive" : "text-sidebar-primary")}>{kpis.lowStock}</div>
+            <div className="text-[11px] text-muted-foreground mt-1">{kpis.lowStock > 0 ? 'mã vải dưới tồn tối thiểu' : 'Đủ tồn'}</div>
           </CardContent>
         </Card>
       </div>
 
       {/* Trend chart */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Xu hướng sử dụng vải</CardTitle>
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-base">Xu hướng sử dụng vải</CardTitle>
+            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+              <span>Tổng kỳ: <span className="font-semibold text-foreground">{formatNum(trendStats.sum)}</span></span>
+              <span>TB/ngày: <span className="font-semibold text-foreground">{formatNum(trendStats.avgPerDay, 1)}</span></span>
+              <span>Đỉnh: <span className="font-semibold text-foreground">{formatNum(trendStats.peakValue)}</span> ({trendStats.peakLabel})</span>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <ChartContainer
             config={{
-              total: { label: 'Tổng', color: 'hsl(var(--primary))' },
-              hanoi: { label: 'Hà Nội', color: 'hsl(var(--chart-1))' },
-              bacninh: { label: 'Bắc Ninh', color: 'hsl(var(--chart-2))' },
+              total: { label: 'Tổng', color: COLOR_TOTAL },
+              hanoi: { label: 'Hà Nội', color: COLOR_HANOI },
+              bacninh: { label: 'Bắc Ninh', color: COLOR_BACNINH },
             }}
             className="h-[320px] w-full"
           >
             <ResponsiveContainer width="100%" height="100%">
-              {warehouseKey === 'all' ? (
-                <BarChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <ChartLegend content={<ChartLegendContent />} />
-                  <Bar dataKey="hanoi" stackId="a" fill="var(--color-hanoi)" />
-                  <Bar dataKey="bacninh" stackId="a" fill="var(--color-bacninh)" />
-                </BarChart>
-              ) : (
-                <LineChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Line type="monotone" dataKey="total" stroke="var(--color-total)" strokeWidth={2} />
-                </LineChart>
-              )}
+              <ComposedChart data={trendData} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gradHanoi" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={COLOR_HANOI} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={COLOR_HANOI} stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gradBacninh" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={COLOR_BACNINH} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={COLOR_BACNINH} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatCompact(Number(v))} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <ChartLegend content={<ChartLegendContent />} />
+                <Area type="monotone" dataKey="hanoi" stroke={COLOR_HANOI} strokeWidth={2} fill="url(#gradHanoi)" name="Hà Nội" />
+                <Area type="monotone" dataKey="bacninh" stroke={COLOR_BACNINH} strokeWidth={2} fill="url(#gradBacninh)" name="Bắc Ninh" />
+                <Line type="monotone" dataKey="total" stroke={COLOR_TOTAL} strokeWidth={2} strokeDasharray="4 4" dot={false} name="Tổng" />
+              </ComposedChart>
             </ResponsiveContainer>
           </ChartContainer>
         </CardContent>
       </Card>
 
-      {/* Top tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Composition + Low stock alert */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" /> Vải dùng nhiều nhất
-            </CardTitle>
-            <Button variant="outline" size="sm" onClick={handleExportTop}>
-              <Download className="h-3.5 w-3.5 mr-1" /> CSV
-            </Button>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Cơ cấu theo loại vải</CardTitle></CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40px]">#</TableHead>
-                  <TableHead>Vải</TableHead>
-                  <TableHead className="text-right">Đã dùng</TableHead>
-                  <TableHead className="text-right">Tồn</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topMost.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground text-sm py-6">Không có dữ liệu</TableCell></TableRow>
-                ) : topMost.map((r, i) => (
-                  <TableRow key={r.variantId} className="text-xs">
-                    <TableCell>{i + 1}</TableCell>
-                    <TableCell>
-                      <div className="font-medium">{r.name}</div>
-                      <div className="text-muted-foreground text-[11px]">
-                        {[r.typeName, r.width, r.color].filter(Boolean).join(' · ')}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-medium">{formatNum(r.quantity)} {r.unit}</TableCell>
-                    <TableCell className="text-right">{formatNum(stockByVariant.get(r.variantId) || 0)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="h-[260px]">
+              {typeComposition.length === 0 || typeComposition.every(t => t.value === 0) ? (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Không có dữ liệu</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={typeComposition} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
+                      {typeComposition.map((_, i) => (
+                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <ChartTooltip content={<ChartTooltipContent nameKey="name" />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            <div className="mt-2 space-y-1">
+              {typeComposition.slice(0, 5).map((t, i) => {
+                const total = typeComposition.reduce((s, x) => s + x.value, 0) || 1;
+                const pct = (t.value / total) * 100;
+                return (
+                  <div key={t.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
+                      <span className="truncate">{t.name}</span>
+                    </div>
+                    <span className="text-muted-foreground tabular-nums">{pct.toFixed(1)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Cơ cấu theo xưởng</CardTitle></CardHeader>
+          <CardContent>
+            <div className="h-[260px]">
+              {warehouseComposition.every(t => t.value === 0) ? (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Không có dữ liệu</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={warehouseComposition} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2} label={(e: any) => `${e.name}: ${((e.percent || 0) * 100).toFixed(0)}%`}>
+                      {warehouseComposition.map((w, i) => <Cell key={i} fill={w.color} />)}
+                    </Pie>
+                    <ChartTooltip content={<ChartTooltipContent nameKey="name" />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+              {warehouseComposition.map((w) => (
+                <div key={w.name} className="flex items-center justify-between border rounded px-2 py-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: w.color }} />
+                    <span>{w.name}</span>
+                  </div>
+                  <span className="font-medium tabular-nums">{formatNum(w.value)}</span>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <TrendingDown className="h-4 w-4" /> Vải dùng ít nhất (có phát sinh)
+              <AlertTriangle className="h-4 w-4 text-destructive" /> Cảnh báo tồn thấp
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40px]">#</TableHead>
-                  <TableHead>Vải</TableHead>
-                  <TableHead className="text-right">Đã dùng</TableHead>
-                  <TableHead className="text-right">Tồn</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topLeast.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground text-sm py-6">Không có dữ liệu</TableCell></TableRow>
-                ) : topLeast.map((r, i) => (
-                  <TableRow key={r.variantId} className="text-xs">
-                    <TableCell>{i + 1}</TableCell>
-                    <TableCell>
-                      <div className="font-medium">{r.name}</div>
-                      <div className="text-muted-foreground text-[11px]">
-                        {[r.typeName, r.width, r.color].filter(Boolean).join(' · ')}
+            {lowStockList.length === 0 ? (
+              <div className="h-[240px] flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+                <CheckCircle2 className="h-8 w-8 text-sidebar-primary" />
+                <span>Tất cả vải đủ tồn</span>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {lowStockList.map(r => {
+                  const pct = Math.min(100, (r.stock / Math.max(1, r.min)) * 100);
+                  return (
+                    <div key={r.id} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="truncate">
+                          <div className="font-medium truncate">{r.name}</div>
+                          <div className="text-muted-foreground text-[11px] truncate">
+                            {[r.width, r.color, r.warehouse].filter(Boolean).join(' · ')}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 tabular-nums">
+                          <span className="font-semibold text-destructive">{formatNum(r.stock)}</span>
+                          <span className="text-muted-foreground"> / {formatNum(r.min)} {r.unit}</span>
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-right font-medium">{formatNum(r.quantity)} {r.unit}</TableCell>
-                    <TableCell className="text-right">{formatNum(stockByVariant.get(r.variantId) || 0)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      <Progress value={pct} className="h-1.5 [&>div]:bg-destructive" />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Top horizontal bars */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <TopBarCard
+          title="Vải dùng nhiều nhất"
+          icon={<TrendingUp className="h-4 w-4 text-sidebar-primary" />}
+          rows={topMost}
+          stockByVariant={stockByVariant}
+          color={COLOR_HANOI}
+          action={<Button variant="outline" size="sm" onClick={handleExportTop}><Download className="h-3.5 w-3.5 mr-1" /> CSV</Button>}
+        />
+        <TopBarCard
+          title="Vải dùng ít nhất (có phát sinh)"
+          icon={<TrendingDown className="h-4 w-4 text-destructive" />}
+          rows={topLeast}
+          stockByVariant={stockByVariant}
+          color={CHART_COLORS[2]}
+        />
       </div>
 
       {/* Detail collapsible */}
