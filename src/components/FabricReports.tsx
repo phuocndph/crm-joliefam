@@ -388,9 +388,12 @@ export const FabricReports: React.FC = () => {
         stock: 0,
         minStock: 0,
         used: usageMap.get(id) || 0,
+        cost: Number(v.cost_price || 0),
+        value: 0,
       };
       existing.stock += cur;
       existing.minStock = Math.max(existing.minStock, min);
+      existing.value = existing.stock * existing.cost;
       map.set(id, existing);
     });
 
@@ -404,8 +407,18 @@ export const FabricReports: React.FC = () => {
         r.width?.toLowerCase().includes(s)
       );
     }
-    return rows.sort((a, b) => b.used - a.used);
-  }, [inventory, variantAgg, warehouseKey, hanoiId, bacninhId, fabricTypeId, search]);
+    const cmp = (a: any, b: any) => {
+      const ka = sortKey === 'name' ? String(a.name).localeCompare(String(b.name))
+        : (a[sortKey] || 0) - (b[sortKey] || 0);
+      return sortDir === 'asc' ? ka : -ka;
+    };
+    return rows.sort(cmp);
+  }, [inventory, variantAgg, warehouseKey, hanoiId, bacninhId, fabricTypeId, search, sortKey, sortDir]);
+
+  const toggleSort = (k: SortKey) => {
+    if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(k); setSortDir('desc'); }
+  };
 
   const handleExportTop = () => {
     const rows = topMost.map(r => ({
