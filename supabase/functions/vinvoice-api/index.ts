@@ -651,14 +651,16 @@ Deno.serve(async (req: Request) => {
 
       // Step 2: LUÔN gọi thêm getInvoices với các invoiceStatus có thể là "chưa phát hành"
       // và phân trang đầy đủ để không bỏ sót.
-      const statusCandidates = [0, 3, 8, 20];
+      // Sweep rộng 1..30 để dò đúng mã trạng thái Viettel của tax code này dùng cho draft.
+      const statusCandidates = Array.from({ length: 30 }, (_, i) => i + 1).concat([0]);
       for (const st of statusCandidates) {
         let pageNum = 1;
         let pageTotal = 0;
         let pageDrafts = 0;
         let lastStatus = 0;
+        let firstSample: any = null;
         const ROWS = 100;
-        for (; pageNum <= 50; pageNum++) {
+        for (; pageNum <= 100; pageNum++) {
           const fbBody: any = {
             invoiceType: it,
             startDate, endDate, invoiceStatus: st,
@@ -672,10 +674,12 @@ Deno.serve(async (req: Request) => {
           const list = extractInvoiceList(fb.data);
           if (list.length === 0) break;
           pageTotal += list.length;
+          if (!firstSample) firstSample = list[0];
           for (const inv of list) {
-            // Endpoint này được filter theo invoiceStatus nên ép là draft cho st in {0,8,20}.
-            // Với st=3 (huỷ) chỉ giữ những dòng thật sự là draft theo isDraftRow.
-            const forceDraft = st === 0 || st === 8 || st === 20;
+            // Endpoint này đã filter theo invoiceStatus. Ép draft cho mọi st != 1 (= đã phát hành) và != 5 (= đã cấp mã CQT thường gặp).
+            // Với st=1/5 chỉ giữ dòng thực sự là draft.
+            const looksIssued = st === 1 || st === 5;
+            const forceDraft = !looksIssued;
             if (forceDraft || isDraftRow(inv)) {
               merged.set(keyOf(inv), inv);
               pageDrafts++;
@@ -683,11 +687,69 @@ Deno.serve(async (req: Request) => {
           }
           if (list.length < ROWS) break;
         }
-        attempts.push({
+        if (lastStatus === 200 || pageTotal > 0) attempts.push({
           endpoint: `getInvoices?invoiceStatus=${st}`,
           status: lastStatus, total: pageTotal, drafts: pageDrafts, pages: pageNum,
+          sample: firstSample ? {
+            state: firstSample.state, stateCode: firstSample.stateCode,
+            invoiceStatus: firstSample.invoiceStatus, status: firstSample.status,
+            invoiceStatusName: firstSample.invoiceStatusName, stateName: firstSample.stateName,
+            invoiceNumber: firstSample.invoiceNumber, issueDate: firstSample.issueDate,
+          } : null,
         });
-        console.log(`[sync_drafts] getInvoices invoiceStatus=${st} rows=${pageTotal} drafts=${pageDrafts}`);
+        if (pageTotal > 0) console.log(`[sync_drafts] getInvoices invoiceStatus=${st} rows=${pageTotal} drafts=${pageDrafts}`);
+      }
+
+      // Step 3: Thử các endpoint draft ứng viên khác (path có thể khác nhau giữa các phiên bản Viettel)
+      const draftEndpoints: { name: string; path: string; body: any }[] = [
+        {
+          name: "getInvoiceDrafts",
+          path: `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceDrafts/${c.taxCode}`,
+          body: { invoiceType: it, startDate, endDate, rowPerPage: 100, pageNum: 1 },
+        },
+        {
+          name: "getInvoiceDraft",
+          path: `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceDraft/${c.taxCode}`,
+          body: { invoiceType: it, startDate, endDate, rowPerPage: 100, pageNum: 1 },
+        },
+        {
+          name: "getDraftInvoice",
+          path: `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/getDraftInvoice/${c.taxCode}`,
+          body: { invoiceType: it, startDate, endDate, rowPerPage: 100, pageNum: 1 },
+        },
+        {
+          name: "searchInvoiceByCondition",
+          path: `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/searchInvoiceByCondition/${c.taxCode}`,
+          body: { invoiceType: it, startDate, endDate, rowPerPage: 100, pageNum: 1 },
+        },
+        {
+          name: "getInvoiceListByCondition",
+          path: `/services/einvoiceapplication/api/InvoiceAPI/BusinessService/InvoiceUtilsWS/getInvoiceListByCondition`,
+          body: { supplierTaxCode: c.taxCode, invoiceType: it, startDate, endDate, rowPerPage: 100, pageNum: 1 },
+        },
+      ];
+      for (const ep of draftEndpoints) {
+        try {
+          const r = await callViettel(c, cacheKey, ep.path, "POST", ep.body);
+          const list = r.ok ? extractInvoiceList(r.data) : [];
+          let added = 0;
+          for (const inv of list) {
+            merged.set(keyOf(inv), inv);
+            added++;
+          }
+          attempts.push({
+            endpoint: ep.name, status: r.status, total: list.length, drafts: added,
+            sample: list[0] ? {
+              state: list[0].state, stateCode: list[0].stateCode,
+              invoiceStatus: list[0].invoiceStatus, status: list[0].status,
+              invoiceStatusName: list[0].invoiceStatusName, stateName: list[0].stateName,
+              invoiceNumber: list[0].invoiceNumber, issueDate: list[0].issueDate,
+            } : null,
+          });
+          if (list.length > 0) console.log(`[sync_drafts] ${ep.name} rows=${list.length}`);
+        } catch (e: any) {
+          attempts.push({ endpoint: ep.name, status: 0, total: 0, drafts: 0, error: e?.message });
+        }
       }
 
       const draftList = Array.from(merged.values());

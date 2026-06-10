@@ -1,24 +1,36 @@
-Kế hoạch sửa phần lấy số lượng HĐ chưa phát hành bị thiếu:
+## Vấn đề hiện tại
 
-1. Sửa logic phân loại HĐ chưa phát hành
-- Không chỉ dựa vào vài mã trạng thái cứng `0, 3, 8, 20`.
-- Bổ sung nhận diện theo nhiều dấu hiệu từ Viettel: `state/stateCode/invoiceStatus/status`, tên trạng thái, `issueDate`, `issueDateStr`, `invoiceNumber`, `invoiceNo`, các trường publish/sign/publishStatus nếu có.
-- Tránh đánh nhầm HĐ đã phát hành thành nháp bằng cách ưu tiên dấu hiệu đã phát hành như có `issueDate` hợp lệ và số hóa đơn thật.
+Log mới nhất xác nhận:
+- `getListInvoiceDataControl` trả 206 dòng nhưng 204 là `state=1` (đã phát hành) + 2 là `state=0`. Endpoint này là "data control" của HĐ đã có trên hệ thống — không phải nguồn của tab "HĐ chưa phát hành" trên portal Viettel.
+- `getInvoices?invoiceStatus=0|3|8|20` đều trả `400 NOT_FOUND_DATA` → các mã trạng thái này không phải mã Viettel của bạn đang dùng cho draft.
 
-2. Không bỏ sót do phân trang / giới hạn dòng
-- Với endpoint `getInvoices`, lặp qua nhiều trang thay vì chỉ gọi `pageNum: 1`.
-- Dừng khi hết dữ liệu hoặc đã đạt `totalRows` Viettel trả về.
-- Tăng thống kê trả về: tổng Viettel báo, tổng app đã đọc, tổng đã phân loại nháp, tổng đã lưu.
+Vì vậy app chỉ vớt được 1 dòng draft "vô tình" lẫn trong danh sách đã phát hành, đúng như bạn thấy.
 
-3. Thêm thống kê chẩn đoán trạng thái Viettel
-- Trong `sync_drafts`, trả về và log phân bố trạng thái thực tế: mỗi `state/stateCode/invoiceStatus/status` có bao nhiêu dòng.
-- Toast sau đồng bộ sẽ hiển thị rõ: “Viettel trả X dòng, app đọc Y dòng, nhận diện Z HĐ chưa phát hành, đã lưu N”.
+## Hướng xử lý
 
-4. Giữ đồng bộ đúng với app hiện tại
-- Vẫn lưu vào bảng `einvoices` bằng `transaction_uuid` ổn định.
-- Vẫn gắn `is_draft=true`, `status='draft'` chỉ cho các dòng được xác định là chưa phát hành.
-- Không thay đổi cấu trúc database.
+Quét rộng để tìm đúng endpoint + mã trạng thái mà Viettel của tax code này thực sự dùng cho draft, log chi tiết để chốt endpoint chuẩn sau 1 lần đồng bộ.
 
-5. Kiểm tra sau sửa
-- Chạy lại đồng bộ HĐ chưa phát hành với khoảng ngày rộng.
-- Đối chiếu log: hiện tại backend đã đọc 413 dòng nhưng chỉ nhận diện 5 nháp; sau sửa sẽ thấy rõ các trạng thái nào bị bỏ sót và số đã lưu.
+## Việc cần làm trong `supabase/functions/vinvoice-api/index.ts` (action `sync_drafts`)
+
+1. Thêm bộ endpoint ứng viên cho draft, gọi tuần tự, dòng nào ra data thì gộp vào `merged`:
+   - `InvoiceUtilsWS/getInvoiceDrafts/{taxCode}` (POST, body `{ invoiceType, startDate, endDate, rowPerPage, pageNum }`)
+   - `InvoiceUtilsWS/searchInvoiceByCondition/{taxCode}` (POST, body có `invoiceType, startDate, endDate, invoiceStatus`)
+   - `InvoiceWS/getDraftInvoice/{taxCode}` (POST)
+   - `InvoiceUtilsWS/getInvoiceDraft/{taxCode}` (POST)
+   - `BusinessService/InvoiceUtilsWS/getInvoiceListByCondition` (POST)
+2. Mở rộng sweep `invoiceStatus` trên endpoint `getInvoices/{taxCode}` từ tập `{0,3,8,20}` → sweep `1..30`. Endpoint nào trả 200 + có dòng thì log lại "invoiceStatus=N có X dòng" để bạn biết mã thật là gì.
+3. Với mỗi endpoint thử: log `status`, `total`, `drafts`, và `sample` (1 dòng đầu) vào `attempts` (đã có sẵn cơ chế).
+4. Phân loại draft mềm hơn: bất kỳ dòng nào tới từ endpoint có chữ "Draft" trong path hoặc từ `getInvoices?invoiceStatus=N` với `N` mà ta đang sweep, đều coi là draft (vì chính filter của Viettel đã lọc). Chỉ dùng `isDraftRow` để hậu kiểm cho `getListInvoiceDataControl`.
+5. Dedupe theo `transactionUuid → invoiceGuid → invoiceId → (templateCode+invoiceSeri+invoiceNumber)`.
+6. Tăng giới hạn phân trang lên 100 trang, mỗi trang 100 dòng (đã có 50, tăng nhẹ).
+7. Trả về `attempts` đầy đủ + message tổng kết: "Đã thử N endpoint, endpoint X trả Y draft, đã lưu Z". Hiển thị qua toast (`useEInvoices.ts` đã log `attempts` rồi, chỉ cần đảm bảo message rõ).
+
+## Sau khi chạy
+
+Bạn bấm "Đồng bộ HĐ chưa phát hành" 1 lần với khoảng ngày đang có draft trên portal. Mở Console, gửi tôi log `[sync_drafts] attempts:` — sẽ thấy ngay endpoint/mã trạng thái nào có dữ liệu để chốt lại logic gọn gàng (loại bỏ những endpoint vô dụng).
+
+## Không thay đổi
+
+- Không sửa schema DB.
+- Không đụng các action khác (`sync_invoices`, `issue_draft`, v.v.).
+- Không sửa UI ngoài việc message toast tự động phong phú hơn nhờ `d.message`.
