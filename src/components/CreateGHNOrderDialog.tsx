@@ -121,7 +121,7 @@ const parseWeightRange = (name: string): { min: number; max: number } => {
 interface CreateGHNOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  order: {
+  order?: {
     id: string;
     order_number: string;
     display_order_number?: string;
@@ -130,16 +130,17 @@ interface CreateGHNOrderDialogProps {
     items?: any;
     customers?: { name: string; phone: string | null; address?: string | null; addresses?: any[] | null; } | null;
   };
-  remainingAmount: number;
-  onSuccess: () => void;
+  remainingAmount?: number;
+  onSuccess?: () => void;
 }
 
-export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmount, onSuccess }: CreateGHNOrderDialogProps) {
+export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmount = 0, onSuccess }: CreateGHNOrderDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [createdOrderCode, setCreatedOrderCode] = useState("");
   const [createdOrderData, setCreatedOrderData] = useState<any>(null);
+  const [customOrderNumber, setCustomOrderNumber] = useState("");
 
   // Shop
   const [shops, setShops] = useState<GHNShop[]>([]);
