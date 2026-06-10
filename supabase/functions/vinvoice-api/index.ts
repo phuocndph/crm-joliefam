@@ -106,11 +106,16 @@ function isViettelEmptyResult(data: any): boolean {
 function extractInvoiceList(data: any): any[] {
   if (!data) return [];
   const candidates = [
+    Array.isArray(data) ? data : null,
     data.invoices, data.lstInvoice, data.lstInvoiceData,
+    data.list, data.content, data.rows, data.items,
     data.data?.invoices, data.data?.lstInvoice, data.data?.lstInvoiceData,
+    data.data?.content, data.data?.rows, data.data?.items, data.data?.list,
     Array.isArray(data.data) ? data.data : null,
     data.result?.invoices, data.result?.lstInvoice,
+    data.result?.content, data.result?.rows, data.result?.items,
     Array.isArray(data.result) ? data.result : null,
+    data.page?.content,
   ];
   for (const c of candidates) if (Array.isArray(c)) return c;
   return [];
