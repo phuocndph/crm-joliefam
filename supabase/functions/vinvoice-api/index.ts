@@ -425,13 +425,20 @@ Deno.serve(async (req: Request) => {
       for (const inv of list) {
         const txUuid = inv.transactionUuid || inv.transactionID || inv.invoiceGuid;
         if (!txUuid) continue;
+        const invStatus = inv.invoiceStatus;
+        // Viettel invoiceStatus: 1=phát hành, 3=nháp, 5=huỷ, 6=đã thay thế, 7=đã điều chỉnh
+        const isDraft = invStatus == 3 || invStatus === "draft";
+        const mappedStatus = isDraft ? "draft"
+          : (invStatus == 5 || invStatus === "cancelled") ? "cancelled"
+          : "issued";
         const record: any = {
           transaction_uuid: txUuid,
           invoice_number: inv.invoiceNo || inv.invoiceNumber || null,
           invoice_type: inv.invoiceType || invoiceType || "01GTKT",
           template_code: inv.templateCode || "",
           invoice_series: inv.invoiceSeries || "",
-          status: inv.invoiceStatus == 5 || inv.invoiceStatus === "cancelled" ? "cancelled" : "issued",
+          status: mappedStatus,
+          is_draft: isDraft,
           issued_date: inv.issueDate ? new Date(Number(inv.issueDate)).toISOString() : null,
           total_amount: Number(inv.totalAmountWithoutTax || inv.totalAmount || 0),
           vat_amount: Number(inv.totalTaxAmount || 0),
