@@ -896,6 +896,16 @@ export default function OrderManagement() {
         />
       )}
 
+      {/* Standalone GHN Order Dialog (không gắn với đơn nội bộ) */}
+      <CreateGHNOrderDialog
+        open={standaloneGHNOpen}
+        onOpenChange={setStandaloneGHNOpen}
+        onSuccess={() => {
+          loadOrders();
+          setStandaloneGHNOpen(false);
+        }}
+      />
+
     </div>
   );
 }
