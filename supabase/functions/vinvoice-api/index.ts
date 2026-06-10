@@ -326,13 +326,14 @@ Deno.serve(async (req: Request) => {
     // ---------- LOGIN TEST ----------
     if (action === "login") {
       try {
-        tokenCache = null;
-        const token = await getToken();
+        tokenCache.delete(cacheKey);
+        const c = await ensureCreds();
+        const token = await getToken(c, cacheKey);
         return json({
           success: true,
           token_preview: token.slice(0, 12) + "..." + token.slice(-6),
           token_length: token.length,
-          tax_code: TAX_CODE,
+          tax_code: c.taxCode,
         });
       } catch (e: any) {
         return json({ success: false, error: e.message });
@@ -342,8 +343,8 @@ Deno.serve(async (req: Request) => {
     // ---------- GET TEMPLATES ----------
     if (action === "get_templates") {
       // Use the correct endpoint: getAllInvoiceTemplates/{MST}
-      const r = await callViettel(
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getAllInvoiceTemplates/${TAX_CODE}`,
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getAllInvoiceTemplates/${creds!.taxCode}`,
         "GET"
       );
       return json({ success: r.ok, data: r.data, status: r.status });
@@ -362,8 +363,8 @@ Deno.serve(async (req: Request) => {
         size: 1000,
         offset: 0,
       };
-      const r = await callViettel(
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${TAX_CODE}`,
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${creds!.taxCode}`,
         "POST",
         reqBody
       );
@@ -404,10 +405,10 @@ Deno.serve(async (req: Request) => {
     if (action === "download_file") {
       const { transactionUuid, fileType, einvoice_id } = params;
       if (!transactionUuid) return json({ success: false, error: "Thiếu transactionUuid" });
-      const r = await callViettel(
+      const r = await callViettel(await ensureCreds(), cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceRepresentationFile`,
         "POST",
-        { supplierTaxCode: TAX_CODE, transactionUuid, fileType: fileType || "PDF" }
+        { supplierTaxCode: creds!.taxCode, transactionUuid, fileType: fileType || "PDF" }
       );
       await logAction(supabase, { einvoice_id, action, request: { transactionUuid, fileType }, response: { status: r.status }, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
@@ -424,10 +425,10 @@ Deno.serve(async (req: Request) => {
     if (action === "cancel_invoice") {
       const { transactionUuid, reason, einvoice_id } = params;
       if (!transactionUuid || !reason) return json({ success: false, error: "Thiếu transactionUuid hoặc lý do" });
-      const r = await callViettel(
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/cancelTransactionInvoice/${TAX_CODE}`,
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/cancelTransactionInvoice/${creds!.taxCode}`,
         "POST",
-        { supplierTaxCode: TAX_CODE, transactionUuid, additionalReferenceDesc: reason, additionalReferenceDate: Date.now() }
+        { supplierTaxCode: creds!.taxCode, transactionUuid, additionalReferenceDesc: reason, additionalReferenceDate: Date.now() }
       );
       await logAction(supabase, { einvoice_id, action, request: params, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
@@ -455,8 +456,8 @@ Deno.serve(async (req: Request) => {
         additionalReferenceDesc: options?.reason || "Thay thế/điều chỉnh",
         originalInvoiceIssueDate: original.issued_date ? new Date(original.issued_date).getTime() : Date.now(),
       });
-      const r = await callViettel(
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${TAX_CODE}`,
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${creds!.taxCode}`,
         "POST",
         payload
       );
@@ -498,10 +499,10 @@ Deno.serve(async (req: Request) => {
     if (action === "send_email") {
       const { transactionUuid, email, einvoice_id } = params;
       if (!transactionUuid || !email) return json({ success: false, error: "Thiếu transactionUuid hoặc email" });
-      const r = await callViettel(
+      const r = await callViettel(await ensureCreds(), cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/sendHtmlMailProcess`,
         "POST",
-        { supplierTaxCode: TAX_CODE, lstTransactionUuid: [transactionUuid], paramEmail: email }
+        { supplierTaxCode: creds!.taxCode, lstTransactionUuid: [transactionUuid], paramEmail: email }
       );
       await logAction(supabase, { einvoice_id, action, request: params, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
@@ -517,10 +518,10 @@ Deno.serve(async (req: Request) => {
     if (action === "update_payment") {
       const { transactionUuid, paid, einvoice_id } = params;
       if (!transactionUuid) return json({ success: false, error: "Thiếu transactionUuid" });
-      const r = await callViettel(
+      const r = await callViettel(await ensureCreds(), cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/updatePaymentStatus`,
         "POST",
-        { supplierTaxCode: TAX_CODE, transactionUuid, paymentStatus: !!paid }
+        { supplierTaxCode: creds!.taxCode, transactionUuid, paymentStatus: !!paid }
       );
       await logAction(supabase, { einvoice_id, action, request: params, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
@@ -533,10 +534,10 @@ Deno.serve(async (req: Request) => {
     // ---------- SEARCH BY UUID ----------
     if (action === "search_by_uuid") {
       const { transactionUuid } = params;
-      const r = await callViettel(
+      const r = await callViettel(await ensureCreds(), cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/searchInvoiceByTransactionUuid`,
         "POST",
-        { supplierTaxCode: TAX_CODE, transactionUuid }
+        { supplierTaxCode: creds!.taxCode, transactionUuid }
       );
       return json({ success: r.ok, data: r.data });
     }
@@ -545,9 +546,9 @@ Deno.serve(async (req: Request) => {
     if (action === "create_invoice") {
       const { contract, options } = params;
       if (!contract) return json({ success: false, error: "Missing contract data" });
-      const payload = mapContractToInvoice(contract, options || {});
-      const r = await callViettel(
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${TAX_CODE}`,
+      const payload = mapContractToInvoice(contract, options || {}, creds!.taxCode);
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${creds!.taxCode}`,
         "POST", payload
       );
       const record: any = {
@@ -577,7 +578,7 @@ Deno.serve(async (req: Request) => {
     if (action === "create_draft") {
       const { contract, options } = params;
       if (!contract) return json({ success: false, error: "Missing contract data" });
-      const payload = mapContractToInvoice(contract, options || {});
+      const payload = mapContractToInvoice(contract, options || {}, creds!.taxCode);
       const { data: saved, error } = await supabase.from("einvoices").insert({
         contract_id: contract.id || null,
         invoice_type: options?.invoiceType || "01GTKT",
