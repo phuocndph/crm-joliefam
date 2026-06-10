@@ -423,43 +423,39 @@ Deno.serve(async (req: Request) => {
     // ---------- SYNC INVOICES ----------
     if (action === "sync_invoices") {
       const { fromDate, toDate, invoiceType } = params;
-      // Viettel getInvoices requires startDate/endDate (not fromDate/toDate).
       const fromStr = toViettelShortDate(fromDate);
       const toStr = toViettelShortDate(toDate);
       const startDate = toViettelSearchDate(fromDate);
       const endDate = toViettelSearchDate(toDate);
 
-      if (!startDate || !endDate) {
+      if (!fromStr || !toStr) {
         return json({ success: false, error: "Thiếu hoặc sai định dạng ngày bắt đầu/kết thúc" });
       }
 
       const c = await ensureCreds();
-      const buildBody = (variant: "getInvoices" | "dataControl") => variant === "getInvoices"
-        ? {
-            invoiceType: invoiceType || "01GTKT",
-            startDate,
-            endDate,
-            invoiceStatus: null,
-            rowPerPage: 1000,
-            pageNum: 1,
-          }
-        : {
-            supplierTaxCode: c.taxCode,
-            fromDate: fromStr,
-            toDate: toStr,
-          };
+      // Primary endpoint per Viettel S-Invoice docs:
+      // POST /InvoiceUtilsWS/getListInvoiceDataControl { supplierTaxCode, fromDate, toDate } (dd/MM/yyyy)
+      let reqBody: any = { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr };
+      let r = await callViettel(c, cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`,
+        "POST", reqBody);
+      console.log("[sync_invoices] primary getListInvoiceDataControl status=", r.status);
 
-      const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`;
-
-      let reqBody: any = buildBody("getInvoices");
-      let r = await callViettel(c, cacheKey, endpoint, "POST", reqBody);
-      console.log("[sync_invoices] primary status=", r.status, "body=", JSON.stringify(reqBody));
-
-      // Fallback endpoint used by Viettel for date-range invoice data.
-      if (!r.ok && (r.data?.message === "START_DATE_REQUIRED" || r.data?.message === "END_DATE_REQUIRED")) {
-        reqBody = buildBody("dataControl");
-        r = await callViettel(c, cacheKey, `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`, "POST", reqBody);
-        console.log("[sync_invoices] fallback status=", r.status, "body=", JSON.stringify(reqBody));
+      // Fallback to legacy getInvoices/{taxCode} with ISO startDate/endDate
+      if (!r.ok && !isViettelEmptyResult(r.data)) {
+        const fbBody: any = {
+          invoiceType: invoiceType || "01GTKT",
+          startDate, endDate,
+          rowPerPage: 1000, pageNum: 1,
+        };
+        const fb = await callViettel(c, cacheKey,
+          `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`,
+          "POST", fbBody);
+        console.log("[sync_invoices] fallback getInvoices status=", fb.status);
+        if (fb.ok || isViettelEmptyResult(fb.data)) {
+          r = fb;
+          reqBody = fbBody;
+        }
       }
 
       await logAction(supabase, { action, request: reqBody, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
@@ -514,23 +510,32 @@ Deno.serve(async (req: Request) => {
     // ---------- SYNC DRAFTS (invoiceStatus=3 from Viettel) ----------
     if (action === "sync_drafts") {
       const { fromDate, toDate, invoiceType } = params;
+      const fromStr = toViettelShortDate(fromDate);
+      const toStr = toViettelShortDate(toDate);
       const startDate = toViettelSearchDate(fromDate);
       const endDate = toViettelSearchDate(toDate);
-      if (!startDate || !endDate) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
+      if (!fromStr || !toStr) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
 
-      const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${(await ensureCreds()).taxCode}`;
-      const buildBody = () => ({
-        invoiceType: invoiceType || "01GTKT",
-        startDate,
-        endDate,
-        invoiceStatus: 3,
-        rowPerPage: 1000,
-        pageNum: 1,
-      });
+      const c = await ensureCreds();
+      // Primary: getListInvoiceDataControl returns all statuses; filter drafts client-side
+      let reqBody: any = { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr };
+      let r = await callViettel(c, cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`,
+        "POST", reqBody);
 
-      let reqBody: any = buildBody();
-      let r = await callViettel(creds!, cacheKey, endpoint, "POST", reqBody);
-      console.log("[sync_drafts] primary status=", r.status, "body=", JSON.stringify(reqBody));
+      // Fallback to getInvoices with invoiceStatus=3
+      if (!r.ok && !isViettelEmptyResult(r.data)) {
+        const fbBody: any = {
+          invoiceType: invoiceType || "01GTKT",
+          startDate, endDate, invoiceStatus: 3,
+          rowPerPage: 1000, pageNum: 1,
+        };
+        const fb = await callViettel(c, cacheKey,
+          `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`,
+          "POST", fbBody);
+        if (fb.ok || isViettelEmptyResult(fb.data)) { r = fb; reqBody = fbBody; }
+      }
+
       await logAction(supabase, { action, request: reqBody, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
 
       if (!r.ok && isViettelEmptyResult(r.data)) {
@@ -538,7 +543,12 @@ Deno.serve(async (req: Request) => {
       }
       if (!r.ok) return json({ success: false, error: r.data?.data || r.data?.message || r.raw });
 
-      const list = extractInvoiceList(r.data);
+      const all = extractInvoiceList(r.data);
+      // Only keep drafts when response carries mixed statuses
+      const list = all.filter((inv: any) => {
+        const s = inv.invoiceStatus;
+        return s === undefined || s === null || s == 3 || s === "draft";
+      });
       let upserted = 0;
       for (const inv of list) {
         const txUuid = inv.transactionUuid || inv.transactionID || inv.invoiceGuid;
