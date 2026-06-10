@@ -47,6 +47,8 @@ const EInvoiceManagement = () => {
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [templatesResult, setTemplatesResult] = useState<any>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [diagnoseResult, setDiagnoseResult] = useState<any>(null);
+  const [loadingDiagnose, setLoadingDiagnose] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [showSyncDrafts, setShowSyncDrafts] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<any>(null);
@@ -100,6 +102,23 @@ const EInvoiceManagement = () => {
       setTemplatesResult({ success: false, error: e.message });
       toast.error(e.message);
     } finally { setLoadingTemplates(false); }
+  };
+
+  const handleDiagnose = async () => {
+    setLoadingDiagnose(true);
+    setDiagnoseResult(null);
+    try {
+      const today = new Date();
+      const from = new Date(today.getTime() - 30 * 86400000);
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      const res = await callApi("diagnose_read", { fromDate: fmt(from), toDate: fmt(today) });
+      setDiagnoseResult(res);
+      if (res?.success) toast.success("Đã chạy chẩn đoán API");
+      else toast.error(res?.error || "Chẩn đoán thất bại");
+    } catch (e: any) {
+      setDiagnoseResult({ success: false, error: e.message });
+      toast.error(e.message);
+    } finally { setLoadingDiagnose(false); }
   };
 
   const matchSearch = (inv: any) => {
@@ -541,6 +560,49 @@ const EInvoiceManagement = () => {
             </Card>
 
             {/* Card 4: Quick links */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Chẩn đoán đọc dữ liệu Viettel</CardTitle>
+                <CardDescription>Gọi thử các endpoint chính (login, mẫu HĐ, getListInvoiceDataControl, getInvoices) trong 30 ngày gần nhất. Không thay đổi dữ liệu.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button onClick={handleDiagnose} disabled={loadingDiagnose}>
+                  {loadingDiagnose && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                  Chạy chẩn đoán
+                </Button>
+                {diagnoseResult && (
+                  <>
+                    {Array.isArray(diagnoseResult.results) && (
+                      <div className="border rounded-md overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Endpoint</TableHead>
+                              <TableHead>HTTP</TableHead>
+                              <TableHead>Message</TableHead>
+                              <TableHead>Số bản ghi</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {diagnoseResult.results.map((r: any, i: number) => (
+                              <TableRow key={i}>
+                                <TableCell className="font-mono text-xs">{r.step}</TableCell>
+                                <TableCell className={r.ok ? "text-sidebar-primary" : "text-destructive"}>{r.status ?? (r.ok ? "OK" : "ERR")}</TableCell>
+                                <TableCell className="text-xs">{r.message || r.error || "—"}</TableCell>
+                                <TableCell>{r.count ?? "—"}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                    <pre className="text-xs bg-muted p-2 rounded overflow-x-auto max-h-60">{JSON.stringify(diagnoseResult, null, 2)}</pre>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Card 5: Quick links */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Liên kết nhanh</CardTitle>

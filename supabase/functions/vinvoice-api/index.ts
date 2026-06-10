@@ -106,11 +106,16 @@ function isViettelEmptyResult(data: any): boolean {
 function extractInvoiceList(data: any): any[] {
   if (!data) return [];
   const candidates = [
+    Array.isArray(data) ? data : null,
     data.invoices, data.lstInvoice, data.lstInvoiceData,
+    data.list, data.content, data.rows, data.items,
     data.data?.invoices, data.data?.lstInvoice, data.data?.lstInvoiceData,
+    data.data?.content, data.data?.rows, data.data?.items, data.data?.list,
     Array.isArray(data.data) ? data.data : null,
     data.result?.invoices, data.result?.lstInvoice,
+    data.result?.content, data.result?.rows, data.result?.items,
     Array.isArray(data.result) ? data.result : null,
+    data.page?.content,
   ];
   for (const c of candidates) if (Array.isArray(c)) return c;
   return [];
@@ -397,54 +402,110 @@ Deno.serve(async (req: Request) => {
 
     // ---------- GET TEMPLATES ----------
     if (action === "get_templates") {
-      // Use the correct endpoint: getAllInvoiceTemplates/{MST}
-      const r = await callViettel(await ensureCreds(), cacheKey,
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getAllInvoiceTemplates/${creds!.taxCode}`,
-        "GET"
+      // Per docs: POST /InvoiceUtilsWS/getInvoiceTemplates with { taxCode, invoiceType }
+      const c = await ensureCreds();
+      const invoiceType = params.invoiceType || "01GTKT";
+      let r = await callViettel(c, cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceTemplates`,
+        "POST",
+        { taxCode: c.taxCode, invoiceType }
       );
+      // Fallback to legacy path if first attempt 404s
+      if (!r.ok && r.status === 404) {
+        r = await callViettel(c, cacheKey,
+          `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getAllInvoiceTemplates/${c.taxCode}`,
+          "GET"
+        );
+      }
       return json({ success: r.ok, data: r.data, status: r.status });
+    }
+
+    // ---------- DIAGNOSE READ (admin/manager) ----------
+    if (action === "diagnose_read") {
+      if (!isManagerOrAdmin) return json({ success: false, error: "Chỉ admin/manager" }, 403);
+      const c = await ensureCreds();
+      const fd = params.fromDate || new Date(Date.now() - 30 * 86400000);
+      const td = params.toDate || new Date();
+      const fromStr = toViettelShortDate(fd);
+      const toStr = toViettelShortDate(td);
+      const startDate = toViettelSearchDate(fd);
+      const endDate = toViettelSearchDate(td);
+      const it = params.invoiceType || "01GTKT";
+      const results: any[] = [];
+
+      try {
+        const tok = await getToken(c, cacheKey);
+        results.push({ step: "login", ok: true, tokenLength: tok.length });
+      } catch (e: any) {
+        results.push({ step: "login", ok: false, error: e.message });
+        return json({ success: false, results });
+      }
+
+      const probe = async (label: string, path: string, body: any) => {
+        try {
+          const r = await callViettel(c, cacheKey, path, "POST", body);
+          results.push({
+            step: label, status: r.status, ok: r.ok,
+            message: r.data?.message,
+            count: extractInvoiceList(r.data).length,
+            keys: r.data && typeof r.data === "object" ? Object.keys(r.data).slice(0, 8) : [],
+            sample: extractInvoiceList(r.data)[0] || null,
+            body,
+          });
+        } catch (e: any) {
+          results.push({ step: label, ok: false, error: e.message, body });
+        }
+      };
+
+      await probe("getInvoiceTemplates",
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceTemplates`,
+        { taxCode: c.taxCode, invoiceType: it });
+      await probe("getListInvoiceDataControl",
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`,
+        { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr });
+      await probe("getInvoices",
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`,
+        { invoiceType: it, startDate, endDate, rowPerPage: 100, pageNum: 1 });
+
+      return json({ success: true, taxCode: c.taxCode, apiUrl: c.apiUrl, dateRange: { fromStr, toStr }, results });
     }
 
     // ---------- SYNC INVOICES ----------
     if (action === "sync_invoices") {
       const { fromDate, toDate, invoiceType } = params;
-      // Viettel getInvoices requires startDate/endDate (not fromDate/toDate).
       const fromStr = toViettelShortDate(fromDate);
       const toStr = toViettelShortDate(toDate);
       const startDate = toViettelSearchDate(fromDate);
       const endDate = toViettelSearchDate(toDate);
 
-      if (!startDate || !endDate) {
+      if (!fromStr || !toStr) {
         return json({ success: false, error: "Thiếu hoặc sai định dạng ngày bắt đầu/kết thúc" });
       }
 
       const c = await ensureCreds();
-      const buildBody = (variant: "getInvoices" | "dataControl") => variant === "getInvoices"
-        ? {
-            invoiceType: invoiceType || "01GTKT",
-            startDate,
-            endDate,
-            invoiceStatus: null,
-            rowPerPage: 1000,
-            pageNum: 1,
-          }
-        : {
-            supplierTaxCode: c.taxCode,
-            fromDate: fromStr,
-            toDate: toStr,
-          };
+      // Primary endpoint per Viettel S-Invoice docs:
+      // POST /InvoiceUtilsWS/getListInvoiceDataControl { supplierTaxCode, fromDate, toDate } (dd/MM/yyyy)
+      let reqBody: any = { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr };
+      let r = await callViettel(c, cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`,
+        "POST", reqBody);
+      console.log("[sync_invoices] primary getListInvoiceDataControl status=", r.status);
 
-      const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`;
-
-      let reqBody: any = buildBody("getInvoices");
-      let r = await callViettel(c, cacheKey, endpoint, "POST", reqBody);
-      console.log("[sync_invoices] primary status=", r.status, "body=", JSON.stringify(reqBody));
-
-      // Fallback endpoint used by Viettel for date-range invoice data.
-      if (!r.ok && (r.data?.message === "START_DATE_REQUIRED" || r.data?.message === "END_DATE_REQUIRED")) {
-        reqBody = buildBody("dataControl");
-        r = await callViettel(c, cacheKey, `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`, "POST", reqBody);
-        console.log("[sync_invoices] fallback status=", r.status, "body=", JSON.stringify(reqBody));
+      // Fallback to legacy getInvoices/{taxCode} with ISO startDate/endDate
+      if (!r.ok && !isViettelEmptyResult(r.data)) {
+        const fbBody: any = {
+          invoiceType: invoiceType || "01GTKT",
+          startDate, endDate,
+          rowPerPage: 1000, pageNum: 1,
+        };
+        const fb = await callViettel(c, cacheKey,
+          `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`,
+          "POST", fbBody);
+        console.log("[sync_invoices] fallback getInvoices status=", fb.status);
+        if (fb.ok || isViettelEmptyResult(fb.data)) {
+          r = fb;
+          reqBody = fbBody;
+        }
       }
 
       await logAction(supabase, { action, request: reqBody, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
@@ -499,23 +560,32 @@ Deno.serve(async (req: Request) => {
     // ---------- SYNC DRAFTS (invoiceStatus=3 from Viettel) ----------
     if (action === "sync_drafts") {
       const { fromDate, toDate, invoiceType } = params;
+      const fromStr = toViettelShortDate(fromDate);
+      const toStr = toViettelShortDate(toDate);
       const startDate = toViettelSearchDate(fromDate);
       const endDate = toViettelSearchDate(toDate);
-      if (!startDate || !endDate) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
+      if (!fromStr || !toStr) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
 
-      const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${(await ensureCreds()).taxCode}`;
-      const buildBody = () => ({
-        invoiceType: invoiceType || "01GTKT",
-        startDate,
-        endDate,
-        invoiceStatus: 3,
-        rowPerPage: 1000,
-        pageNum: 1,
-      });
+      const c = await ensureCreds();
+      // Primary: getListInvoiceDataControl returns all statuses; filter drafts client-side
+      let reqBody: any = { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr };
+      let r = await callViettel(c, cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`,
+        "POST", reqBody);
 
-      let reqBody: any = buildBody();
-      let r = await callViettel(creds!, cacheKey, endpoint, "POST", reqBody);
-      console.log("[sync_drafts] primary status=", r.status, "body=", JSON.stringify(reqBody));
+      // Fallback to getInvoices with invoiceStatus=3
+      if (!r.ok && !isViettelEmptyResult(r.data)) {
+        const fbBody: any = {
+          invoiceType: invoiceType || "01GTKT",
+          startDate, endDate, invoiceStatus: 3,
+          rowPerPage: 1000, pageNum: 1,
+        };
+        const fb = await callViettel(c, cacheKey,
+          `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`,
+          "POST", fbBody);
+        if (fb.ok || isViettelEmptyResult(fb.data)) { r = fb; reqBody = fbBody; }
+      }
+
       await logAction(supabase, { action, request: reqBody, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
 
       if (!r.ok && isViettelEmptyResult(r.data)) {
@@ -523,7 +593,12 @@ Deno.serve(async (req: Request) => {
       }
       if (!r.ok) return json({ success: false, error: r.data?.data || r.data?.message || r.raw });
 
-      const list = extractInvoiceList(r.data);
+      const all = extractInvoiceList(r.data);
+      // Only keep drafts when response carries mixed statuses
+      const list = all.filter((inv: any) => {
+        const s = inv.invoiceStatus;
+        return s === undefined || s === null || s == 3 || s === "draft";
+      });
       let upserted = 0;
       for (const inv of list) {
         const txUuid = inv.transactionUuid || inv.transactionID || inv.invoiceGuid;

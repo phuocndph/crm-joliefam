@@ -1,45 +1,51 @@
-## Kế hoạch rà và sửa luồng đồng bộ hóa đơn S-Invoice
+Đã đối chiếu tài liệu và code nguồn tham khảo Viettel S-Invoice.
 
-### Mục tiêu
-- Đi từ đầu luồng `Đồng bộ nháp từ Viettel` / `Đồng bộ từ Viettel`.
-- Không để trường hợp Viettel trả `NOT_FOUND_DATA` làm app báo lỗi đỏ `Không tìm thấy bản ghi`.
-- Đảm bảo nếu Viettel có dữ liệu thì parse đúng danh sách và lưu vào bảng `einvoices`.
+Kết luận sai lệch chính
+- Code hiện tại đang ưu tiên endpoint `getInvoices/{taxCode}` với body `startDate/endDate` dạng ISO. Tài liệu/code tham khảo dùng endpoint đọc theo khoảng ngày là:
+  - `POST /services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`
+  - body JSON: `{ supplierTaxCode, fromDate, toDate }`
+  - ngày dạng `DD/MM/YYYY`
+- Code lấy mẫu hiện đang gọi sai endpoint:
+  - hiện tại: `GET /getAllInvoiceTemplates/{taxCode}` → log trả `404 Not Found`
+  - tài liệu/code tham khảo dùng: `POST /getInvoiceTemplates` với body `{ taxCode, invoiceType }`
+- Một số API tra cứu/tải file trong tài liệu dùng `Authorization: Bearer token`; code hiện gửi cả `Authorization` và `Cookie`, không phải nguyên nhân chính nhưng nên chuẩn hóa theo tài liệu.
+- `getListInvoiceDataControl` là luồng đúng hơn để lấy hoá đơn đã phát hành theo ngày. `getInvoices/{taxCode}` có thể là API khác/tenant khác, nên đang trả `NOT_FOUND_DATA` dù login OK.
 
-### Phát hiện hiện tại
-- UI gọi đúng Edge Function qua `useEInvoiceActions`.
-- Edge Function hiện đã gửi đúng `startDate/endDate` dạng ISO `2026-05-11T00:00:00.000+07:00` → lỗi “ngày kết thúc là bắt buộc” đã hết.
-- Viettel đang trả:
-  - `message: NOT_FOUND_DATA`
-  - `data: Không tìm thấy bản ghi`
-- DB `einvoices` hiện có `0` bản ghi, nên không phải lỗi RLS che dữ liệu hiện có.
-- App đang biến `NOT_FOUND_DATA` thành lỗi toast, trong khi đây nên được hiểu là “đồng bộ thành công nhưng không có hóa đơn trong khoảng ngày/loại HĐ đã chọn”.
+Nguồn đối chiếu
+- Repository tham khảo `dev10katec/viettel-s-invoice`: `getInvoicesByDateRange()` gọi `getListInvoiceDataControl` với `supplierTaxCode/fromDate/toDate` dạng `DD/MM/YYYY`.
+- Cùng repository: `getInvoiceTemplates()` gọi `POST /getInvoiceTemplates` với `{ taxCode, invoiceType }`.
+- Trang hướng dẫn Viettel Postman xác nhận các API S-Invoice dùng REST JSON và luồng phát hành/tra cứu/tải file theo `InvoiceAPI/InvoiceUtilsWS`.
 
-### Việc sẽ sửa
-1. **Chuẩn hóa xử lý response Viettel trong `vinvoice-api`**
-   - Thêm helper nhận diện `NOT_FOUND_DATA` / “Không tìm thấy bản ghi”.
-   - Với `sync_invoices` và `sync_drafts`, nếu gặp mã này thì trả về:
-     - `success: true`
-     - `synced: 0`
-     - `total: 0`
-     - thông báo rõ là không có dữ liệu trong khoảng đã chọn.
+Kế hoạch sửa
+1. Sửa lấy danh sách hoá đơn phát hành
+   - Đổi `sync_invoices` ưu tiên dùng `getListInvoiceDataControl`.
+   - Gửi body đúng tài liệu: `supplierTaxCode`, `fromDate`, `toDate` dạng `DD/MM/YYYY`.
+   - Không gửi `invoiceStatus: null` ở request chính.
+   - Giữ `getInvoices/{taxCode}` chỉ làm fallback/phụ để dò tenant nếu cần.
 
-2. **Log request đầy đủ hơn cho sync nháp**
-   - Hiện `sync_drafts` log action chưa lưu `request`, gây khó debug.
-   - Bổ sung lưu `request: reqBody` giống `sync_invoices`.
+2. Sửa lấy mẫu hoá đơn
+   - Đổi `get_templates` sang `POST /getInvoiceTemplates`.
+   - Gửi `{ taxCode: MST, invoiceType }`.
+   - Frontend dùng invoice type đang chọn hoặc mặc định `01GTKT`.
 
-3. **Tăng độ bền parser danh sách hóa đơn**
-   - Mở rộng nơi đọc list từ Viettel: `invoices`, `lstInvoice`, `data`, `data.invoices`, `data.lstInvoice`, `result.invoices`, `result.lstInvoice`, v.v.
-   - Dùng chung helper parse list cho cả nháp và đã phát hành để tránh lệch logic.
+3. Chuẩn hóa parser dữ liệu trả về
+   - Parse các dạng list thường gặp: mảng trực tiếp, `data`, `result`, `lstInvoice`, `lstInvoiceData`, `content`, `rows`, `items`.
+   - Map thêm các field phổ biến: `transactionUuid`, `transactionID`, `invoiceNo`, `invoiceNumber`, `templateCode`, `invoiceSeries`, `buyerLegalName`, `buyerName`, `totalAmountWithTax`.
 
-4. **Điều chỉnh toast phía frontend**
-   - Nếu `synced=0,total=0`, hiển thị thông báo nhẹ: “Không có hóa đơn trong khoảng ngày đã chọn” thay vì báo lỗi.
-   - Nếu có dữ liệu, vẫn hiển thị số lượng đồng bộ như hiện tại.
+4. Thêm action chẩn đoán API đọc dữ liệu
+   - Action chỉ admin/manager dùng để gọi thử:
+     - login
+     - `getInvoiceTemplates`
+     - `getListInvoiceDataControl`
+     - fallback `getInvoices/{taxCode}`
+   - Trả về status, message, số bản ghi đọc được, response keys; không lộ token/password.
 
-5. **Kiểm tra lại RLS/DB sau khi sửa**
-   - Giữ chính sách RLS hiện tại nếu không có vấn đề, vì bảng đang thật sự trống.
-   - Không mở public hoặc nới quyền không cần thiết.
+5. Cập nhật UI cấu hình
+   - Nút “Kiểm tra đọc dữ liệu Viettel”.
+   - Hiển thị endpoint nào trả dữ liệu, endpoint nào lỗi, và số bản ghi đọc được.
 
-### Kết quả mong đợi
-- Bấm đồng bộ khi Viettel không có hóa đơn: app không báo lỗi đỏ, mà báo không có dữ liệu.
-- Khi Viettel trả danh sách hóa đơn: app lưu được vào `einvoices` và hiển thị ở tab tương ứng.
-- Nhật ký `einvoice_actions` đủ request/response để lần sau debug nhanh hơn.
+6. Kiểm thử sau sửa
+   - Deploy `vinvoice-api`.
+   - Chạy chẩn đoán trên tài khoản hiện tại.
+   - Chạy đồng bộ lại.
+   - Kiểm tra bảng `einvoices` có bản ghi nếu Viettel trả dữ liệu; nếu Viettel vẫn trả rỗng, UI báo rõ API login OK nhưng không có hoá đơn trong ngày/loại HĐ đã chọn.
