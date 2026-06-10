@@ -449,13 +449,14 @@ Deno.serve(async (req: Request) => {
       if (!original) return json({ success: false, error: "Không tìm thấy HĐ gốc" });
 
       const adjustmentType = action === "replace_invoice" ? "5" : "3";
+      await ensureCreds();
       const payload = mapContractToInvoice(contract, {
         ...options,
         adjustmentType,
         originalInvoiceId: original.invoice_number,
         additionalReferenceDesc: options?.reason || "Thay thế/điều chỉnh",
         originalInvoiceIssueDate: original.issued_date ? new Date(original.issued_date).getTime() : Date.now(),
-      });
+      }, creds!.taxCode);
       const r = await callViettel(await ensureCreds(), cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${creds!.taxCode}`,
         "POST",
