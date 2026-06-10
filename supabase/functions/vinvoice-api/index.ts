@@ -121,6 +121,43 @@ function extractInvoiceList(data: any): any[] {
   return [];
 }
 
+// Map raw Viettel invoice (from getListInvoiceDataControl or getInvoices) → einvoices row
+function mapViettelInvoiceRow(inv: any, ctx: { taxCode: string; defaultType?: string; managerId: string | null; forceDraft?: boolean }) {
+  const state = inv.state ?? inv.stateCode ?? inv.invoiceStatus;
+  const isDraft = ctx.forceDraft || state == 3 || state === "draft";
+  const status = isDraft ? "draft"
+    : (state == 5 || state === "cancelled") ? "cancelled"
+    : "issued";
+  const invoiceNo = inv.invoiceNo || inv.invoiceNumber || null;
+  // Viettel summary endpoint often returns transactionUuid=null; synthesize a stable key.
+  const txUuid = inv.transactionUuid
+    || inv.transactionID
+    || inv.invoiceGuid
+    || (inv.invoiceId ? `vt-${ctx.taxCode}-${inv.invoiceId}` : (invoiceNo ? `vt-${ctx.taxCode}-${invoiceNo}` : null));
+  if (!txUuid) return null;
+  const totalBefore = Number(inv.totalBeforeTax ?? inv.totalAmountWithoutTax ?? 0);
+  const taxAmt = Number(inv.taxAmount ?? inv.totalTaxAmount ?? 0);
+  const totalWith = Number(inv.total ?? inv.totalAmountWithTax ?? (totalBefore + taxAmt));
+  return {
+    transaction_uuid: String(txUuid),
+    invoice_number: invoiceNo,
+    invoice_type: inv.invoiceType || ctx.defaultType || "01GTKT",
+    template_code: inv.templateCode || "",
+    invoice_series: inv.invoiceSeri || inv.invoiceSeries || "",
+    status,
+    is_draft: isDraft,
+    issued_date: inv.issueDate ? new Date(Number(inv.issueDate)).toISOString() : null,
+    total_amount: totalBefore,
+    vat_amount: taxAmt,
+    total_with_vat: totalWith,
+    buyer_name: inv.buyerLegalName || inv.buyerName || "",
+    buyer_tax_code: inv.buyerTaxCode || "",
+    response_data: inv,
+    last_synced_at: new Date().toISOString(),
+    manager_id: ctx.managerId ? String(ctx.managerId) : null,
+  } as any;
+}
+
 async function callViettel(creds: Creds, cacheKey: string, path: string, method: "GET" | "POST", body?: any) {
   const token = await getToken(creds, cacheKey);
   const url = `${creds.apiUrl}${path}`;
