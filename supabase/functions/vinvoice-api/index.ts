@@ -393,14 +393,14 @@ Deno.serve(async (req: Request) => {
 
       const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${creds!.taxCode}`;
 
-      // Primary attempt: dd/MM/yyyy string format
-      let reqBody: any = buildBody("string");
+      // Primary attempt: epoch millis (Viettel rejects dd/MM/yyyy on this endpoint)
+      let reqBody: any = buildBody("millis");
       let r = await callViettel(await ensureCreds(), cacheKey, endpoint, "POST", reqBody);
       console.log("[sync_invoices] primary status=", r.status, "body=", JSON.stringify(reqBody));
 
-      // Fallback to millis if Viettel rejects the string format
+      // Fallback to dd/MM/yyyy string if millis is rejected
       if (!r.ok && (r.data?.message === "START_DATE_REQUIRED" || r.data?.message === "END_DATE_REQUIRED")) {
-        reqBody = buildBody("millis");
+        reqBody = buildBody("string");
         r = await callViettel(await ensureCreds(), cacheKey, endpoint, "POST", reqBody);
         console.log("[sync_invoices] fallback status=", r.status, "body=", JSON.stringify(reqBody));
       }
@@ -474,14 +474,20 @@ Deno.serve(async (req: Request) => {
       if (!fromStr || !toStr) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
 
       const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${(await ensureCreds()).taxCode}`;
-      const r = await callViettel(creds!, cacheKey, endpoint, "POST", {
-        invoiceType: invoiceType || "01GTKT",
-        fromDate: fromStr,
-        toDate: toStr,
-        invoiceStatus: 3,
-        rowPerPage: 1000,
-        pageNum: 1,
-      });
+      const fromMs = typeof fromDate === "number" ? fromDate : new Date(fromDate).getTime();
+      const toMs = typeof toDate === "number" ? toDate : new Date(toDate).getTime();
+      const buildBody = (variant: "millis" | "string") => variant === "millis"
+        ? { invoiceType: invoiceType || "01GTKT", fromDate: fromMs, toDate: toMs, invoiceStatus: 3, size: 1000, offset: 0 }
+        : { invoiceType: invoiceType || "01GTKT", fromDate: fromStr, toDate: toStr, invoiceStatus: 3, rowPerPage: 1000, pageNum: 1 };
+
+      let reqBody: any = buildBody("millis");
+      let r = await callViettel(creds!, cacheKey, endpoint, "POST", reqBody);
+      console.log("[sync_drafts] primary status=", r.status, "body=", JSON.stringify(reqBody));
+      if (!r.ok && (r.data?.message === "START_DATE_REQUIRED" || r.data?.message === "END_DATE_REQUIRED")) {
+        reqBody = buildBody("string");
+        r = await callViettel(creds!, cacheKey, endpoint, "POST", reqBody);
+        console.log("[sync_drafts] fallback status=", r.status, "body=", JSON.stringify(reqBody));
+      }
       await logAction(supabase, { action, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.data || r.data?.message || r.raw });
 
