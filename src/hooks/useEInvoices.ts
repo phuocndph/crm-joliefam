@@ -102,7 +102,8 @@ export const useEInvoiceActions = () => {
       const total = d?.total ?? 0;
       const synced = d?.synced ?? 0;
       if (synced > 0) {
-        toast.success(`Đã đồng bộ ${synced} HĐ chưa phát hành từ ${d?.endpoint || "Viettel"}`);
+        toast.success(d?.message || `Đã đồng bộ ${synced} HĐ chưa phát hành`, { duration: 8000 });
+        if (d?.attempts) console.log("[sync_drafts] attempts:", d.attempts);
       } else {
         const msg = d?.message || "Viettel không trả về HĐ chưa phát hành trong khoảng ngày/loại HĐ này.";
         toast.info(msg, { duration: 8000 });
