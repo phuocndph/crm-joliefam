@@ -1,30 +1,27 @@
-Tôi kiểm tra lại rồi: API Viettel đã trả về 57 hóa đơn, nhưng DB vẫn 0 dòng vì bảng `einvoices` đang có 2 trigger `set_manager_id` chạy trước khi insert. Edge Function dùng service role nhưng trigger vẫn gọi `auth.uid()`, mà trong Edge Function service role không có user context nên trigger ném lỗi: “Authentication required. Please log in to create records.”
+## Mục tiêu
+Thêm 1 nút **"Tạo đơn GHN"** ngay cạnh nút **"Tạo báo giá"** trong header trang `/orders`, mở nhanh form tạo đơn GHN mà KHÔNG cần chọn trước 1 đơn hàng nội bộ — tiện cho việc tạo vận đơn rời (ví dụ gửi mẫu, ship lẻ, đơn ngoài hệ thống).
 
-Kế hoạch sửa dứt điểm:
+## Thay đổi
 
-1. Sửa cấu trúc DB cho `einvoices`
-   - Gỡ 2 trigger tự set `manager_id` trên bảng `einvoices`:
-     - `set_einvoices_manager_id`
-     - `set_manager_id_einvoices`
-   - Giữ nguyên RLS/policy hiện tại.
-   - Lý do: Edge Function đã tự xác định `manager_id` từ user đang đăng nhập và ghi trực tiếp vào record, không cần trigger này nữa.
+### 1. `src/components/CreateGHNOrderDialog.tsx`
+- Cho phép prop `order` là **optional** (`order?: {...}`) và `remainingAmount` mặc định `0`.
+- Khi không có `order` (chế độ standalone):
+  - Bỏ qua toàn bộ logic prefill từ `order.customers`, `order.items`, `order.total_amount`.
+  - Để form trống cho user nhập tay: Tên người nhận, SĐT, địa chỉ, sản phẩm, COD, kích thước...
+  - Thêm 1 ô input **"Mã đơn nội bộ (tuỳ chọn)"** để user tự gõ nhãn (mặc định auto-generate kiểu `GHN-{timestamp}`). Giá trị này được gửi lên edge function dưới dạng `orderNumber` để lưu vào cột `internal_order_code` của `ghn_tracking`.
+  - Gửi `orderId: null` lên edge function — bảng `ghn_tracking.order_id` đã nullable nên insert sẽ chạy bình thường.
+  - Ô "Mã đơn hàng" hiện đang readOnly (dòng 1219) sẽ chuyển sang input cho phép sửa khi standalone.
+- Khi có `order` (chế độ hiện tại — gắn với đơn nội bộ): giữ nguyên 100% hành vi cũ.
 
-2. Làm sạch constraint/index trùng nếu cần
-   - Hiện đang có cả unique constraint `einvoices_transaction_uuid_key` và partial unique index `einvoices_transaction_uuid_uniq` trên `transaction_uuid`.
-   - Giữ lại constraint dùng cho `upsert(... onConflict: "transaction_uuid")`.
-   - Không đụng dữ liệu cũ.
+### 2. `src/pages/OrderManagement.tsx`
+- Thêm state `standaloneGHNOpen` và 1 `<Button>` mới cạnh nút "Tạo báo giá" (line 433):
+  - Icon `Truck`, label "Tạo đơn GHN", variant `outline`, size `sm`.
+- Render thêm `<CreateGHNOrderDialog open={standaloneGHNOpen} onOpenChange={setStandaloneGHNOpen} onSuccess={() => setStandaloneGHNOpen(false)} />` (không truyền `order`).
 
-3. Chỉnh lại Edge Function để sync ổn định hơn
-   - Dùng service-role client cho toàn bộ phần ghi `einvoices`.
-   - Batch upsert theo danh sách hóa đơn thay vì insert từng dòng để dễ bắt lỗi và nhanh hơn.
-   - Trả về rõ:
-     - API lấy được bao nhiêu hóa đơn.
-     - DB ghi được bao nhiêu hóa đơn.
-     - Nếu lỗi thì trả nguyên lỗi DB đầu tiên.
+### 3. Không cần migration DB
+`ghn_tracking.order_id` đã nullable; edge function `ghn-tracking` action `create_order` đã chấp nhận `orderId` rỗng và insert được.
 
-4. Test thật sau khi sửa
-   - Gọi action `sync_invoices` với range `11/05/2026 - 10/06/2026`.
-   - Query lại `public.einvoices` để xác nhận có 57 bản ghi.
-   - Kiểm tra log Edge Function không còn lỗi `Authentication required`.
-
-Kết quả kỳ vọng: bấm Đồng bộ hóa đơn sẽ thấy `total: 57`, `synced: 57`, và bảng hóa đơn trong app hiển thị dữ liệu.
+## Kiểm thử
+- Click nút mới → dialog mở với form trống.
+- Nhập đầy đủ địa chỉ → tính cước → tạo đơn → kiểm tra bản ghi mới xuất hiện trong `ghn_tracking` với `order_id IS NULL` và `internal_order_code` đúng nhãn user nhập.
+- Mở dialog từ 1 đơn hàng (luồng cũ) vẫn prefill đầy đủ như trước.
