@@ -297,6 +297,9 @@ const EInvoiceManagement = () => {
 
         {canManage && (
           <TabsContent value="config" className="space-y-4">
+            {/* New per-manager settings */}
+            <EInvoiceSettingsCard canEdit={canManage} />
+
             {/* Card 1: Secret status */}
             <Card>
               <CardHeader>
