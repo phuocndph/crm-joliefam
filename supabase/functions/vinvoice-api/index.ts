@@ -353,12 +353,34 @@ Deno.serve(async (req: Request) => {
     // ---------- SYNC INVOICES ----------
     if (action === "sync_invoices") {
       const { fromDate, toDate, invoiceType } = params;
-      // Viettel InvoiceUtilsWS/getInvoices/{MST} expects fromDate/toDate as
-      // "dd/MM/yyyy" strings. Sending ms epoch causes 400 START_DATE_REQUIRED.
+      // Viettel getInvoices requires startDate/endDate (not fromDate/toDate).
+      const toMs = (v: any): number => {
+        if (typeof v === "number") return v;
+        if (v instanceof Date) return v.getTime();
+        if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(`${v}T00:00:00+07:00`).getTime();
+        if (typeof v === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
+          const [dd, mm, yyyy] = v.split("/");
+          return new Date(`${yyyy}-${mm}-${dd}T00:00:00+07:00`).getTime();
+        }
+        return new Date(String(v)).getTime();
+      };
+      const toVnIso = (v: any): string => {
+        const ms = toMs(v);
+        if (!Number.isFinite(ms)) return "";
+        const d = new Date(ms + 7 * 60 * 60 * 1000);
+        const yyyy = d.getUTCFullYear();
+        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(d.getUTCDate()).padStart(2, "0");
+        const hh = String(d.getUTCHours()).padStart(2, "0");
+        const mi = String(d.getUTCMinutes()).padStart(2, "0");
+        const ss = String(d.getUTCSeconds()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}.000+07:00`;
+      };
       const toDdMmYyyy = (v: any): string => {
         if (!v) return "";
         if (typeof v === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(v)) return v;
-        const d = new Date(typeof v === "number" ? v : String(v));
+        const ms = toMs(v);
+        const d = new Date(ms + 7 * 60 * 60 * 1000);
         if (isNaN(d.getTime())) return "";
         const dd = String(d.getUTCDate()).padStart(2, "0");
         const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -368,40 +390,38 @@ Deno.serve(async (req: Request) => {
 
       const fromStr = toDdMmYyyy(fromDate);
       const toStr = toDdMmYyyy(toDate);
+      const startDate = toVnIso(fromDate);
+      const endDate = toVnIso(toDate);
 
-      if (!fromStr || !toStr) {
+      if (!startDate || !endDate) {
         return json({ success: false, error: "Thiếu hoặc sai định dạng ngày bắt đầu/kết thúc" });
       }
 
-      const buildBody = (variant: "string" | "millis") => variant === "string"
+      const buildBody = (variant: "getInvoices" | "dataControl") => variant === "getInvoices"
         ? {
             invoiceType: invoiceType || "01GTKT",
-            fromDate: fromStr,
-            toDate: toStr,
+            startDate,
+            endDate,
             invoiceStatus: null,
             rowPerPage: 1000,
             pageNum: 1,
           }
         : {
-            invoiceType: invoiceType || "01GTKT",
-            fromDate: typeof fromDate === "number" ? fromDate : new Date(fromDate).getTime(),
-            toDate: typeof toDate === "number" ? toDate : new Date(toDate).getTime(),
-            invoiceStatus: null,
-            size: 1000,
-            offset: 0,
+            supplierTaxCode: creds!.taxCode,
+            fromDate: fromStr,
+            toDate: toStr,
           };
 
       const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${creds!.taxCode}`;
 
-      // Primary attempt: epoch millis (Viettel rejects dd/MM/yyyy on this endpoint)
-      let reqBody: any = buildBody("millis");
+      let reqBody: any = buildBody("getInvoices");
       let r = await callViettel(await ensureCreds(), cacheKey, endpoint, "POST", reqBody);
       console.log("[sync_invoices] primary status=", r.status, "body=", JSON.stringify(reqBody));
 
-      // Fallback to dd/MM/yyyy string if millis is rejected
+      // Fallback endpoint used by Viettel for date-range invoice data.
       if (!r.ok && (r.data?.message === "START_DATE_REQUIRED" || r.data?.message === "END_DATE_REQUIRED")) {
-        reqBody = buildBody("string");
-        r = await callViettel(await ensureCreds(), cacheKey, endpoint, "POST", reqBody);
+        reqBody = buildBody("dataControl");
+        r = await callViettel(await ensureCreds(), cacheKey, `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`, "POST", reqBody);
         console.log("[sync_invoices] fallback status=", r.status, "body=", JSON.stringify(reqBody));
       }
 
@@ -459,10 +479,32 @@ Deno.serve(async (req: Request) => {
     // ---------- SYNC DRAFTS (invoiceStatus=3 from Viettel) ----------
     if (action === "sync_drafts") {
       const { fromDate, toDate, invoiceType } = params;
+      const toMs = (v: any): number => {
+        if (typeof v === "number") return v;
+        if (v instanceof Date) return v.getTime();
+        if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(`${v}T00:00:00+07:00`).getTime();
+        if (typeof v === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
+          const [dd, mm, yyyy] = v.split("/");
+          return new Date(`${yyyy}-${mm}-${dd}T00:00:00+07:00`).getTime();
+        }
+        return new Date(String(v)).getTime();
+      };
+      const toVnIso = (v: any): string => {
+        const ms = toMs(v);
+        if (!Number.isFinite(ms)) return "";
+        const d = new Date(ms + 7 * 60 * 60 * 1000);
+        const yyyy = d.getUTCFullYear();
+        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(d.getUTCDate()).padStart(2, "0");
+        const hh = String(d.getUTCHours()).padStart(2, "0");
+        const mi = String(d.getUTCMinutes()).padStart(2, "0");
+        const ss = String(d.getUTCSeconds()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}.000+07:00`;
+      };
       const toDdMmYyyy = (v: any): string => {
         if (!v) return "";
         if (typeof v === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(v)) return v;
-        const d = new Date(typeof v === "number" ? v : String(v));
+        const d = new Date(toMs(v) + 7 * 60 * 60 * 1000);
         if (isNaN(d.getTime())) return "";
         const dd = String(d.getUTCDate()).padStart(2, "0");
         const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -471,22 +513,25 @@ Deno.serve(async (req: Request) => {
       };
       const fromStr = toDdMmYyyy(fromDate);
       const toStr = toDdMmYyyy(toDate);
-      if (!fromStr || !toStr) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
+      const startDate = toVnIso(fromDate);
+      const endDate = toVnIso(toDate);
+      if (!startDate || !endDate) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
 
       const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${(await ensureCreds()).taxCode}`;
-      const fromMs = typeof fromDate === "number" ? fromDate : new Date(fromDate).getTime();
-      const toMs = typeof toDate === "number" ? toDate : new Date(toDate).getTime();
-      const buildBody = (variant: "millis" | "string") => variant === "millis"
-        ? { invoiceType: invoiceType || "01GTKT", fromDate: fromMs, toDate: toMs, invoiceStatus: 3, size: 1000, offset: 0 }
-        : { invoiceType: invoiceType || "01GTKT", fromDate: fromStr, toDate: toStr, invoiceStatus: 3, rowPerPage: 1000, pageNum: 1 };
+      const buildBody = () => ({
+        invoiceType: invoiceType || "01GTKT",
+        startDate,
+        endDate,
+        invoiceStatus: 3,
+        rowPerPage: 1000,
+        pageNum: 1,
+      });
 
-      let reqBody: any = buildBody("millis");
+      let reqBody: any = buildBody();
       let r = await callViettel(creds!, cacheKey, endpoint, "POST", reqBody);
       console.log("[sync_drafts] primary status=", r.status, "body=", JSON.stringify(reqBody));
       if (!r.ok && (r.data?.message === "START_DATE_REQUIRED" || r.data?.message === "END_DATE_REQUIRED")) {
-        reqBody = buildBody("string");
-        r = await callViettel(creds!, cacheKey, endpoint, "POST", reqBody);
-        console.log("[sync_drafts] fallback status=", r.status, "body=", JSON.stringify(reqBody));
+        return json({ success: false, error: "Viettel không nhận tham số ngày tra cứu HĐ nháp", raw: r.data });
       }
       await logAction(supabase, { action, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.data || r.data?.message || r.raw });
