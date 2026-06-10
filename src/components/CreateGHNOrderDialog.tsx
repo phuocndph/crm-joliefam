@@ -750,15 +750,15 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           service_type_id: parseInt(serviceTypeId),
           items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height, price: 0 })),
         },
-        orderId: order.id,
-        orderNumber: order.display_order_number || order.order_number,
+        orderId: order?.id ?? null,
+        orderNumber: customOrderNumber || order?.display_order_number || order?.order_number || `GHN-${Date.now()}`,
         shopId: selectedShopId || undefined,
       });
       setCreatedOrderCode(data?.order_code || "");
       setCreatedOrderData(data);
       setSuccess(true);
       toast({ title: "Tạo đơn GHN thành công!", description: `Mã vận đơn: ${data?.order_code}` });
-      onSuccess();
+      onSuccess?.();
     } catch (e: any) {
       toast({ title: "Lỗi tạo đơn GHN", description: e.message, variant: "destructive", duration: 8000 });
     } finally { setLoading(false); }
