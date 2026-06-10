@@ -293,9 +293,36 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   // Pre-fill
   useEffect(() => {
-    if (order && open && !hasPrefilledRef.current) {
+    if (open && !hasPrefilledRef.current) {
       hasPrefilledRef.current = true;
+      if (!order) {
+        // Standalone mode: blank form + auto-generated internal label
+        const auto = `GHN-${Date.now().toString().slice(-8)}`;
+        setCustomOrderNumber(auto);
+        setToName("");
+        setToPhone("");
+        setToAddress("");
+        setCodAmount(0);
+        setInsuranceValue(0);
+        setNote("Shop: Chăn ga gối Joliefam");
+        setProductItems([{ name: "", weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }]);
+        setSuccess(false);
+        setCreatedOrderCode("");
+        setCreatedOrderData(null);
+        setFeeDetail(null);
+        setFeeStatus("idle");
+        setServices([]);
+        setServiceTypeId("");
+        setProvinceId("");
+        setDistrictId("");
+        setWardCode("");
+        setDistricts([]);
+        setWards([]);
+        setAutoMatchDone(false);
+        return;
+      }
       const displayNum = order.display_order_number || order.order_number;
+      setCustomOrderNumber(displayNum);
       setToName(`${order.customers?.name || ""}_${displayNum}p`);
       setToPhone(order.customers?.phone || "");
       setToAddress((order.customers as any)?.address || "");
