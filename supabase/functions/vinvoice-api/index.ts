@@ -480,42 +480,8 @@ Deno.serve(async (req: Request) => {
     // ---------- SYNC DRAFTS (invoiceStatus=3 from Viettel) ----------
     if (action === "sync_drafts") {
       const { fromDate, toDate, invoiceType } = params;
-      const toMs = (v: any): number => {
-        if (typeof v === "number") return v;
-        if (v instanceof Date) return v.getTime();
-        if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(`${v}T00:00:00+07:00`).getTime();
-        if (typeof v === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
-          const [dd, mm, yyyy] = v.split("/");
-          return new Date(`${yyyy}-${mm}-${dd}T00:00:00+07:00`).getTime();
-        }
-        return new Date(String(v)).getTime();
-      };
-      const toVnIso = (v: any): string => {
-        const ms = toMs(v);
-        if (!Number.isFinite(ms)) return "";
-        const d = new Date(ms + 7 * 60 * 60 * 1000);
-        const yyyy = d.getUTCFullYear();
-        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-        const dd = String(d.getUTCDate()).padStart(2, "0");
-        const hh = String(d.getUTCHours()).padStart(2, "0");
-        const mi = String(d.getUTCMinutes()).padStart(2, "0");
-        const ss = String(d.getUTCSeconds()).padStart(2, "0");
-        return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}.000+07:00`;
-      };
-      const toDdMmYyyy = (v: any): string => {
-        if (!v) return "";
-        if (typeof v === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(v)) return v;
-        const d = new Date(toMs(v) + 7 * 60 * 60 * 1000);
-        if (isNaN(d.getTime())) return "";
-        const dd = String(d.getUTCDate()).padStart(2, "0");
-        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-        const yyyy = d.getUTCFullYear();
-        return `${dd}/${mm}/${yyyy}`;
-      };
-      const fromStr = toDdMmYyyy(fromDate);
-      const toStr = toDdMmYyyy(toDate);
-      const startDate = toVnIso(fromDate);
-      const endDate = toVnIso(toDate);
+      const startDate = toViettelSearchDate(fromDate);
+      const endDate = toViettelSearchDate(toDate);
       if (!startDate || !endDate) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
 
       const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${(await ensureCreds()).taxCode}`;
