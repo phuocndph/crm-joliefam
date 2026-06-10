@@ -137,6 +137,7 @@ export default function OrderManagement() {
   const [orderToEditNumber, setOrderToEditNumber] = useState<Order | null>(null);
   const [orderToGHNTracking, setOrderToGHNTracking] = useState<Order | null>(null);
   const [orderToCreateGHN, setOrderToCreateGHN] = useState<Order | null>(null);
+  const [standaloneGHNOpen, setStandaloneGHNOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("orders");
   const [bulkSyncing, setBulkSyncing] = useState(false);
