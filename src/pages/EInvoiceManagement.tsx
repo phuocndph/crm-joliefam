@@ -213,14 +213,90 @@ const EInvoiceManagement = () => {
         </div>
       )}
 
-      <Tabs defaultValue="history" className="w-full">
+      <Tabs defaultValue="drafts" className="w-full">
         <TabsList>
-          <TabsTrigger value="history">Lịch sử nội bộ</TabsTrigger>
+          <TabsTrigger value="drafts">Chưa phát hành ({stats.draft})</TabsTrigger>
+          <TabsTrigger value="issued">Đã phát hành ({stats.issued + stats.cancelled})</TabsTrigger>
           {canManage && <TabsTrigger value="config">Cấu hình & Kết nối</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="history" className="space-y-4">
-          {/* Toolbar */}
+        {/* ===== DRAFTS TAB ===== */}
+        <TabsContent value="drafts" className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Tìm theo số HĐ, khách hàng, MST..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            </div>
+            <Button onClick={() => setShowCreate(true)} variant="default">
+              <Plus className="h-4 w-4 mr-1" /> Tạo HĐ nháp
+            </Button>
+            <Button onClick={() => setShowSyncDrafts(true)} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-1" /> Đồng bộ nháp từ Viettel
+            </Button>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Số nháp</TableHead>
+                    <TableHead>Mẫu / Ký hiệu</TableHead>
+                    <TableHead>Khách hàng</TableHead>
+                    <TableHead>MST khách</TableHead>
+                    <TableHead className="text-right">Tổng tiền</TableHead>
+                    <TableHead>Ngày tạo</TableHead>
+                    <TableHead>Nguồn</TableHead>
+                    <TableHead className="w-[60px]">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
+                  ) : drafts.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có HĐ nháp. Bấm "Tạo HĐ nháp" hoặc "Đồng bộ nháp từ Viettel".</TableCell></TableRow>
+                  ) : drafts.map((inv: any) => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-medium">{inv.invoice_number || `#${inv.id.slice(0, 6)}`}</TableCell>
+                      <TableCell className="text-xs">{inv.template_code || "—"} / {inv.invoice_series || "—"}</TableCell>
+                      <TableCell>{inv.buyer_name || "—"}</TableCell>
+                      <TableCell className="text-xs">{inv.buyer_tax_code || "—"}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
+                      <TableCell>{new Date(inv.created_at).toLocaleDateString("vi-VN")}</TableCell>
+                      <TableCell>
+                        <Badge variant={inv.transaction_uuid ? "default" : "secondary"}>
+                          {inv.transaction_uuid ? "Viettel" : "Local"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="z-[100]">
+                            <DropdownMenuItem onClick={() => handlePreviewDraft(inv)} disabled={previewDraft.isPending}>
+                              <Eye className="h-4 w-4 mr-2" /> Xem trước PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleIssueDraft(inv)} disabled={issueDraft.isPending}>
+                              <Send className="h-4 w-4 mr-2" /> Phát hành
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteDraft(inv)} disabled={deleteDraft.isPending}>
+                              <Trash2 className="h-4 w-4 mr-2" /> Xoá nháp
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ===== ISSUED TAB ===== */}
+        <TabsContent value="issued" className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <div className="relative max-w-sm flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -231,12 +307,10 @@ const EInvoiceManagement = () => {
             </Button>
           </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             {[
-              { label: "Tổng hoá đơn", value: stats.total, color: "text-foreground" },
-              { label: "Đã phát hành", value: stats.issued, color: "text-blue-600" },
-              { label: "Nháp", value: stats.draft, color: "text-muted-foreground" },
+              { label: "Tổng đã phát hành", value: stats.issued + stats.cancelled, color: "text-foreground" },
+              { label: "Đang hiệu lực", value: stats.issued, color: "text-blue-600" },
               { label: "Đã huỷ", value: stats.cancelled, color: "text-destructive" },
               { label: "Lỗi", value: stats.error, color: "text-destructive" },
             ].map((s, i) => (
@@ -249,7 +323,6 @@ const EInvoiceManagement = () => {
             ))}
           </div>
 
-          {/* Table */}
           <Card>
             <CardContent className="p-0">
               <Table>
@@ -268,58 +341,69 @@ const EInvoiceManagement = () => {
                 <TableBody>
                   {isLoading ? (
                     <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
-                  ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có hoá đơn nào. Bấm "Đồng bộ từ Viettel" để kéo HĐ về.</TableCell></TableRow>
-                  ) : (
-                    filtered.map((inv: any) => {
-                      const st = statusMap[inv.status] || statusMap.draft;
-                      const hasTx = !!inv.transaction_uuid;
-                      return (
-                        <TableRow key={inv.id}>
-                          <TableCell className="font-medium text-primary">{inv.invoice_number || "—"}</TableCell>
-                          <TableCell className="text-xs">{inv.template_code || "—"} / {inv.invoice_series || "—"}</TableCell>
-                          <TableCell>{inv.buyer_name || "—"}</TableCell>
-                          <TableCell className="text-xs">{inv.buyer_tax_code || "—"}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
-                          <TableCell>{inv.issued_date ? new Date(inv.issued_date).toLocaleDateString("vi-VN") : "—"}</TableCell>
-                          <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
-                          <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!hasTx}>
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="z-[100]">
-                                <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "PDF", einvoice_id: inv.id })}>
-                                  <Download className="h-4 w-4 mr-2" /> Tải PDF
+                  ) : issuedAll.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có HĐ phát hành. Bấm "Đồng bộ từ Viettel".</TableCell></TableRow>
+                  ) : issuedAll.map((inv: any) => {
+                    const st = statusMap[inv.status] || statusMap.draft;
+                    const hasTx = !!inv.transaction_uuid;
+                    const hasMinute = inv.status === "cancelled" || inv.invoice_action === "replaced_by_new" || inv.invoice_action === "adjusted_by_new";
+                    return (
+                      <TableRow key={inv.id}>
+                        <TableCell className="font-medium text-primary">{inv.invoice_number || "—"}</TableCell>
+                        <TableCell className="text-xs">{inv.template_code || "—"} / {inv.invoice_series || "—"}</TableCell>
+                        <TableCell>{inv.buyer_name || "—"}</TableCell>
+                        <TableCell className="text-xs">{inv.buyer_tax_code || "—"}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
+                        <TableCell>{inv.issued_date ? new Date(inv.issued_date).toLocaleDateString("vi-VN") : "—"}</TableCell>
+                        <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!hasTx}><MoreHorizontal className="h-4 w-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="z-[100]">
+                              <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "PDF", einvoice_id: inv.id })}>
+                                <Download className="h-4 w-4 mr-2" /> Tải PDF
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "XML", einvoice_id: inv.id })}>
+                                <Download className="h-4 w-4 mr-2" /> Tải XML
+                              </DropdownMenuItem>
+                              {hasMinute && (
+                                <DropdownMenuItem onClick={() => setMinuteTarget(inv)}>
+                                  <FileCheck2 className="h-4 w-4 mr-2" /> Tải biên bản
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "XML", einvoice_id: inv.id })}>
-                                  <Download className="h-4 w-4 mr-2" /> Tải XML
-                                </DropdownMenuItem>
-                                {inv.status === "issued" && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => setEmailTarget(inv)}>
-                                      <Mail className="h-4 w-4 mr-2" /> Gửi email
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => updatePayment.mutate({ transactionUuid: inv.transaction_uuid, paid: true, einvoice_id: inv.id })}>
-                                      <Wallet className="h-4 w-4 mr-2" /> Đánh dấu đã thanh toán
-                                    </DropdownMenuItem>
-                                    {canManage && (
+                              )}
+                              {inv.status === "issued" && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => setEmailTarget(inv)}>
+                                    <Mail className="h-4 w-4 mr-2" /> Gửi email
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => updatePayment.mutate({ transactionUuid: inv.transaction_uuid, paid: true, einvoice_id: inv.id })}>
+                                    <Wallet className="h-4 w-4 mr-2" /> Đánh dấu đã thanh toán
+                                  </DropdownMenuItem>
+                                  {canManage && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => setReplaceTarget(inv)}>
+                                        <Replace className="h-4 w-4 mr-2" /> Thay thế
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => setAdjustTarget(inv)}>
+                                        <Pencil className="h-4 w-4 mr-2" /> Điều chỉnh
+                                      </DropdownMenuItem>
                                       <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setCancelTarget(inv)}>
                                         <Ban className="h-4 w-4 mr-2" /> Huỷ hoá đơn
                                       </DropdownMenuItem>
-                                    )}
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
+                                    </>
+                                  )}
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
