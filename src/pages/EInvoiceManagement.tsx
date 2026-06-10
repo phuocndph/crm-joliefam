@@ -7,11 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
-import { FileText, Plus, Search, ExternalLink, CheckCircle2, XCircle, Loader2, Settings, KeyRound } from "lucide-react";
+import { FileText, Plus, Search, ExternalLink, CheckCircle2, XCircle, Loader2, Settings, KeyRound, RefreshCw, MoreHorizontal, Download, Mail, Ban, Wallet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { useEInvoiceActions } from "@/hooks/useEInvoices";
+import { CancelInvoiceDialog, SendEmailDialog, SyncInvoicesDialog } from "@/components/einvoice/InvoiceActionDialogs";
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
   issued: { label: "Đã phát hành", variant: "default" },
@@ -36,6 +39,11 @@ const EInvoiceManagement = () => {
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [templatesResult, setTemplatesResult] = useState<any>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [showSync, setShowSync] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<any>(null);
+  const [emailTarget, setEmailTarget] = useState<any>(null);
+
+  const { downloadFile, updatePayment } = useEInvoiceActions();
 
   const callApi = async (action: string, extra: any = {}) => {
     const { data, error } = await supabase.functions.invoke("vinvoice-api", { body: { action, ...extra } });
@@ -97,6 +105,7 @@ const EInvoiceManagement = () => {
     issued: (einvoices || []).filter((i: any) => i.status === "issued").length,
     draft: (einvoices || []).filter((i: any) => i.status === "draft").length,
     error: (einvoices || []).filter((i: any) => i.status === "error").length,
+    cancelled: (einvoices || []).filter((i: any) => i.status === "cancelled").length,
   };
 
   const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
@@ -127,12 +136,24 @@ const EInvoiceManagement = () => {
         </TabsList>
 
         <TabsContent value="history" className="space-y-4">
+          {/* Toolbar */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Tìm theo số HĐ, khách hàng, MST..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            </div>
+            <Button onClick={() => setShowSync(true)} variant="default">
+              <RefreshCw className="h-4 w-4 mr-1" /> Đồng bộ từ Viettel
+            </Button>
+          </div>
+
           {/* Stats */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-5 gap-4">
             {[
               { label: "Tổng hoá đơn", value: stats.total, color: "text-foreground" },
               { label: "Đã phát hành", value: stats.issued, color: "text-blue-600" },
               { label: "Nháp", value: stats.draft, color: "text-muted-foreground" },
+              { label: "Đã huỷ", value: stats.cancelled, color: "text-destructive" },
               { label: "Lỗi", value: stats.error, color: "text-destructive" },
             ].map((s, i) => (
               <Card key={i}>
@@ -142,12 +163,6 @@ const EInvoiceManagement = () => {
                 </CardContent>
               </Card>
             ))}
-          </div>
-
-          {/* Search */}
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Tìm theo số HĐ, khách hàng, MST..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
           </div>
 
           {/* Table */}
@@ -163,16 +178,18 @@ const EInvoiceManagement = () => {
                     <TableHead className="text-right">Tổng tiền</TableHead>
                     <TableHead>Ngày phát hành</TableHead>
                     <TableHead>Trạng thái</TableHead>
+                    <TableHead className="w-[60px]">Thao tác</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
                   ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Chưa có hoá đơn nào</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có hoá đơn nào. Bấm "Đồng bộ từ Viettel" để kéo HĐ về.</TableCell></TableRow>
                   ) : (
                     filtered.map((inv: any) => {
                       const st = statusMap[inv.status] || statusMap.draft;
+                      const hasTx = !!inv.transaction_uuid;
                       return (
                         <TableRow key={inv.id}>
                           <TableCell className="font-medium text-primary">{inv.invoice_number || "—"}</TableCell>
@@ -182,6 +199,39 @@ const EInvoiceManagement = () => {
                           <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
                           <TableCell>{inv.issued_date ? new Date(inv.issued_date).toLocaleDateString("vi-VN") : "—"}</TableCell>
                           <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!hasTx}>
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="z-[100]">
+                                <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "PDF", einvoice_id: inv.id })}>
+                                  <Download className="h-4 w-4 mr-2" /> Tải PDF
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "XML", einvoice_id: inv.id })}>
+                                  <Download className="h-4 w-4 mr-2" /> Tải XML
+                                </DropdownMenuItem>
+                                {inv.status === "issued" && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => setEmailTarget(inv)}>
+                                      <Mail className="h-4 w-4 mr-2" /> Gửi email
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => updatePayment.mutate({ transactionUuid: inv.transaction_uuid, paid: true, einvoice_id: inv.id })}>
+                                      <Wallet className="h-4 w-4 mr-2" /> Đánh dấu đã thanh toán
+                                    </DropdownMenuItem>
+                                    {canManage && (
+                                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setCancelTarget(inv)}>
+                                        <Ban className="h-4 w-4 mr-2" /> Huỷ hoá đơn
+                                      </DropdownMenuItem>
+                                    )}
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
                         </TableRow>
                       );
                     })
@@ -344,6 +394,9 @@ const EInvoiceManagement = () => {
       {showCreate && (
         <CreateEInvoiceDialog open={showCreate} onOpenChange={setShowCreate} contract={null} />
       )}
+      {showSync && <SyncInvoicesDialog open={showSync} onOpenChange={setShowSync} />}
+      {cancelTarget && <CancelInvoiceDialog open={!!cancelTarget} onOpenChange={(v) => !v && setCancelTarget(null)} invoice={cancelTarget} />}
+      {emailTarget && <SendEmailDialog open={!!emailTarget} onOpenChange={(v) => !v && setEmailTarget(null)} invoice={emailTarget} />}
     </div>
   );
 };

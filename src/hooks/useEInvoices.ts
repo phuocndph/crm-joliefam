@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 export const useEInvoices = (contractId?: string) => {
   return useQuery({
@@ -19,4 +20,76 @@ export const useEInvoices = (contractId?: string) => {
       return data as any[];
     },
   });
+};
+
+const callApi = async (action: string, extra: any = {}) => {
+  const { data, error } = await supabase.functions.invoke("vinvoice-api", { body: { action, ...extra } });
+  if (error) throw new Error(error.message);
+  if (data && data.success === false) throw new Error(data.error || "Lỗi không xác định");
+  return data;
+};
+
+export const useEInvoiceActions = () => {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["einvoices"] });
+
+  const syncInvoices = useMutation({
+    mutationFn: (p: { fromDate: number; toDate: number; invoiceType?: string }) =>
+      callApi("sync_invoices", p),
+    onSuccess: (d: any) => { toast.success(`Đã đồng bộ ${d.synced}/${d.total} hoá đơn`); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const downloadFile = useMutation({
+    mutationFn: (p: { transactionUuid: string; fileType: "PDF" | "XML"; einvoice_id?: string }) =>
+      callApi("download_file", p),
+    onSuccess: (d: any) => {
+      if (!d?.base64) return toast.error("Viettel không trả về file");
+      const bytes = Uint8Array.from(atob(d.base64), c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: d.fileType === "XML" ? "application/xml" : "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = d.fileName || `invoice.${d.fileType.toLowerCase()}`;
+      a.click(); URL.revokeObjectURL(url);
+      toast.success("Đã tải file");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const cancelInvoice = useMutation({
+    mutationFn: (p: { transactionUuid: string; reason: string; einvoice_id: string }) =>
+      callApi("cancel_invoice", p),
+    onSuccess: () => { toast.success("Đã huỷ hoá đơn"); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const replaceInvoice = useMutation({
+    mutationFn: (p: { contract: any; options: any; original_einvoice_id: string }) =>
+      callApi("replace_invoice", p),
+    onSuccess: () => { toast.success("Đã phát hành HĐ thay thế"); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const adjustInvoice = useMutation({
+    mutationFn: (p: { contract: any; options: any; original_einvoice_id: string }) =>
+      callApi("adjust_invoice", p),
+    onSuccess: () => { toast.success("Đã phát hành HĐ điều chỉnh"); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const sendEmail = useMutation({
+    mutationFn: (p: { transactionUuid: string; email: string; einvoice_id?: string }) =>
+      callApi("send_email", p),
+    onSuccess: () => { toast.success("Đã gửi email cho khách"); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const updatePayment = useMutation({
+    mutationFn: (p: { transactionUuid: string; paid: boolean; einvoice_id?: string }) =>
+      callApi("update_payment", p),
+    onSuccess: () => { toast.success("Đã cập nhật trạng thái thanh toán"); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  return { syncInvoices, downloadFile, cancelInvoice, replaceInvoice, adjustInvoice, sendEmail, updatePayment };
 };
