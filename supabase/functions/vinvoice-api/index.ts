@@ -61,6 +61,41 @@ const authHeader = (token: string) => ({
   "Authorization": `Bearer ${token}`,
 });
 
+function dateInputToMs(value: any): number {
+  if (typeof value === "number") return value;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(`${value}T00:00:00+07:00`).getTime();
+  if (typeof value === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+    const [dd, mm, yyyy] = value.split("/");
+    return new Date(`${yyyy}-${mm}-${dd}T00:00:00+07:00`).getTime();
+  }
+  return new Date(String(value)).getTime();
+}
+
+function toViettelSearchDate(value: any): string {
+  const ms = dateInputToMs(value);
+  if (!Number.isFinite(ms)) return "";
+  const d = new Date(ms + 7 * 60 * 60 * 1000);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mi = String(d.getUTCMinutes()).padStart(2, "0");
+  const ss = String(d.getUTCSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}.000+07:00`;
+}
+
+function toViettelShortDate(value: any): string {
+  if (typeof value === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(value)) return value;
+  const ms = dateInputToMs(value);
+  if (!Number.isFinite(ms)) return "";
+  const d = new Date(ms + 7 * 60 * 60 * 1000);
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 async function callViettel(creds: Creds, cacheKey: string, path: string, method: "GET" | "POST", body?: any) {
   const token = await getToken(creds, cacheKey);
   const url = `${creds.apiUrl}${path}`;
