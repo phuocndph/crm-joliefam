@@ -353,26 +353,74 @@ Deno.serve(async (req: Request) => {
     // ---------- SYNC INVOICES ----------
     if (action === "sync_invoices") {
       const { fromDate, toDate, invoiceType } = params;
-      // Viettel expects ddMMyyyy or millis depending on endpoint.
-      // Use InvoiceUtilsWS/getInvoices/{MST} with POST body
-      const reqBody: any = {
-        invoiceType: invoiceType || "01GTKT",
-        fromDate: fromDate, // expect ms epoch
-        toDate: toDate,
-        invoiceStatus: null,
-        size: 1000,
-        offset: 0,
+      // Viettel InvoiceUtilsWS/getInvoices/{MST} expects fromDate/toDate as
+      // "dd/MM/yyyy" strings. Sending ms epoch causes 400 START_DATE_REQUIRED.
+      const toDdMmYyyy = (v: any): string => {
+        if (!v) return "";
+        if (typeof v === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(v)) return v;
+        const d = new Date(typeof v === "number" ? v : String(v));
+        if (isNaN(d.getTime())) return "";
+        const dd = String(d.getUTCDate()).padStart(2, "0");
+        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const yyyy = d.getUTCFullYear();
+        return `${dd}/${mm}/${yyyy}`;
       };
-      const r = await callViettel(await ensureCreds(), cacheKey,
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${creds!.taxCode}`,
-        "POST",
-        reqBody
-      );
+
+      const fromStr = toDdMmYyyy(fromDate);
+      const toStr = toDdMmYyyy(toDate);
+
+      if (!fromStr || !toStr) {
+        return json({ success: false, error: "Thiếu hoặc sai định dạng ngày bắt đầu/kết thúc" });
+      }
+
+      const buildBody = (variant: "string" | "millis") => variant === "string"
+        ? {
+            invoiceType: invoiceType || "01GTKT",
+            fromDate: fromStr,
+            toDate: toStr,
+            invoiceStatus: null,
+            rowPerPage: 1000,
+            pageNum: 1,
+          }
+        : {
+            invoiceType: invoiceType || "01GTKT",
+            fromDate: typeof fromDate === "number" ? fromDate : new Date(fromDate).getTime(),
+            toDate: typeof toDate === "number" ? toDate : new Date(toDate).getTime(),
+            invoiceStatus: null,
+            size: 1000,
+            offset: 0,
+          };
+
+      const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${creds!.taxCode}`;
+
+      // Primary attempt: dd/MM/yyyy string format
+      let reqBody: any = buildBody("string");
+      let r = await callViettel(await ensureCreds(), cacheKey, endpoint, "POST", reqBody);
+      console.log("[sync_invoices] primary status=", r.status, "body=", JSON.stringify(reqBody));
+
+      // Fallback to millis if Viettel rejects the string format
+      if (!r.ok && (r.data?.message === "START_DATE_REQUIRED" || r.data?.message === "END_DATE_REQUIRED")) {
+        reqBody = buildBody("millis");
+        r = await callViettel(await ensureCreds(), cacheKey, endpoint, "POST", reqBody);
+        console.log("[sync_invoices] fallback status=", r.status, "body=", JSON.stringify(reqBody));
+      }
+
       await logAction(supabase, { action, request: reqBody, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
 
-      if (!r.ok) return json({ success: false, error: r.data?.message || r.raw, raw: r.data });
+      if (!r.ok) {
+        const msg = r.data?.data || r.data?.message || r.raw || "Viettel API lỗi không xác định";
+        return json({ success: false, error: msg, raw: r.data });
+      }
 
-      const list: any[] = r.data?.invoices || r.data?.data || r.data?.lstInvoice || [];
+      // Viettel returns invoices under different keys depending on version
+      const list: any[] = Array.isArray(r.data?.invoices) ? r.data.invoices
+        : Array.isArray(r.data?.lstInvoice) ? r.data.lstInvoice
+        : Array.isArray(r.data?.data?.invoices) ? r.data.data.invoices
+        : Array.isArray(r.data?.data?.lstInvoice) ? r.data.data.lstInvoice
+        : Array.isArray(r.data?.data) ? r.data.data
+        : Array.isArray(r.data?.result?.invoices) ? r.data.result.invoices
+        : [];
+      console.log("[sync_invoices] received", list.length, "invoices");
       let upserted = 0;
       for (const inv of list) {
         const txUuid = inv.transactionUuid || inv.transactionID || inv.invoiceGuid;
