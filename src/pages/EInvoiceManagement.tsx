@@ -562,6 +562,49 @@ const EInvoiceManagement = () => {
             {/* Card 4: Quick links */}
             <Card>
               <CardHeader>
+                <CardTitle className="text-base">Chẩn đoán đọc dữ liệu Viettel</CardTitle>
+                <CardDescription>Gọi thử các endpoint chính (login, mẫu HĐ, getListInvoiceDataControl, getInvoices) trong 30 ngày gần nhất. Không thay đổi dữ liệu.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button onClick={handleDiagnose} disabled={loadingDiagnose}>
+                  {loadingDiagnose && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                  Chạy chẩn đoán
+                </Button>
+                {diagnoseResult && (
+                  <>
+                    {Array.isArray(diagnoseResult.results) && (
+                      <div className="border rounded-md overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Endpoint</TableHead>
+                              <TableHead>HTTP</TableHead>
+                              <TableHead>Message</TableHead>
+                              <TableHead>Số bản ghi</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {diagnoseResult.results.map((r: any, i: number) => (
+                              <TableRow key={i}>
+                                <TableCell className="font-mono text-xs">{r.step}</TableCell>
+                                <TableCell className={r.ok ? "text-sidebar-primary" : "text-destructive"}>{r.status ?? (r.ok ? "OK" : "ERR")}</TableCell>
+                                <TableCell className="text-xs">{r.message || r.error || "—"}</TableCell>
+                                <TableCell>{r.count ?? "—"}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                    <pre className="text-xs bg-muted p-2 rounded overflow-x-auto max-h-60">{JSON.stringify(diagnoseResult, null, 2)}</pre>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Card 5: Quick links */}
+            <Card>
+              <CardHeader>
                 <CardTitle className="text-base">Liên kết nhanh</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
