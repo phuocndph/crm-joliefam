@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
-import { FileText, Plus, Search, ExternalLink, CheckCircle2, XCircle, Loader2, Settings, KeyRound, RefreshCw, MoreHorizontal, Download, Mail, Ban, Wallet, Wifi, AlertTriangle } from "lucide-react";
+import { FileText, Plus, Search, ExternalLink, CheckCircle2, XCircle, Loader2, Settings, KeyRound, RefreshCw, MoreHorizontal, Download, Mail, Ban, Wallet, Wifi, AlertTriangle, Eye, Send, Trash2, Edit3, Replace, Pencil, FileCheck2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -17,6 +17,9 @@ import { useEInvoiceActions } from "@/hooks/useEInvoices";
 import { CancelInvoiceDialog, SendEmailDialog, SyncInvoicesDialog } from "@/components/einvoice/InvoiceActionDialogs";
 import { EInvoiceSettingsCard } from "@/components/einvoice/EInvoiceSettingsCard";
 import { useEInvoiceSettings } from "@/hooks/useEInvoiceSettings";
+import { PreviewPdfDialog } from "@/components/einvoice/PreviewPdfDialog";
+import { ReplaceAdjustDialog } from "@/components/einvoice/ReplaceAdjustDialog";
+import { DownloadMinuteDialog } from "@/components/einvoice/DownloadMinuteDialog";
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
   issued: { label: "Đã phát hành", variant: "default" },
@@ -45,10 +48,15 @@ const EInvoiceManagement = () => {
   const [templatesResult, setTemplatesResult] = useState<any>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [showSync, setShowSync] = useState(false);
+  const [showSyncDrafts, setShowSyncDrafts] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<any>(null);
   const [emailTarget, setEmailTarget] = useState<any>(null);
+  const [replaceTarget, setReplaceTarget] = useState<any>(null);
+  const [adjustTarget, setAdjustTarget] = useState<any>(null);
+  const [minuteTarget, setMinuteTarget] = useState<any>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ open: boolean; base64: string | null; title?: string }>({ open: false, base64: null });
 
-  const { downloadFile, updatePayment } = useEInvoiceActions();
+  const { downloadFile, updatePayment, issueDraft, deleteDraft, previewDraft } = useEInvoiceActions();
 
   const callApi = async (action: string, extra: any = {}) => {
     const { data, error } = await supabase.functions.invoke("vinvoice-api", { body: { action, ...extra } });
@@ -94,7 +102,7 @@ const EInvoiceManagement = () => {
     } finally { setLoadingTemplates(false); }
   };
 
-  const filtered = (einvoices || []).filter((inv: any) => {
+  const matchSearch = (inv: any) => {
     if (!search) return true;
     const s = search.toLowerCase();
     return (
@@ -103,14 +111,18 @@ const EInvoiceManagement = () => {
       inv.buyer_tax_code?.toLowerCase().includes(s) ||
       inv.template_code?.toLowerCase().includes(s)
     );
-  });
+  };
+
+  const all = einvoices || [];
+  const drafts = all.filter((i: any) => i.is_draft || i.status === "draft").filter(matchSearch);
+  const issuedAll = all.filter((i: any) => !i.is_draft && i.status !== "draft").filter(matchSearch);
 
   const stats = {
-    total: (einvoices || []).length,
-    issued: (einvoices || []).filter((i: any) => i.status === "issued").length,
-    draft: (einvoices || []).filter((i: any) => i.status === "draft").length,
-    error: (einvoices || []).filter((i: any) => i.status === "error").length,
-    cancelled: (einvoices || []).filter((i: any) => i.status === "cancelled").length,
+    total: all.length,
+    issued: all.filter((i: any) => i.status === "issued" && !i.is_draft).length,
+    draft: all.filter((i: any) => i.is_draft || i.status === "draft").length,
+    error: all.filter((i: any) => i.status === "error").length,
+    cancelled: all.filter((i: any) => i.status === "cancelled").length,
   };
 
   const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
@@ -118,6 +130,25 @@ const EInvoiceManagement = () => {
   const templates = Array.isArray(templatesResult?.data?.lstInvoiceTemplate)
     ? templatesResult.data.lstInvoiceTemplate
     : Array.isArray(templatesResult?.data) ? templatesResult.data : [];
+
+  const handlePreviewDraft = async (inv: any) => {
+    setPreviewPdf({ open: true, base64: null, title: `Xem trước nháp ${inv.invoice_number || ""}` });
+    try {
+      const res: any = await previewDraft.mutateAsync({ einvoice_id: inv.id });
+      if (res?.base64) setPreviewPdf({ open: true, base64: res.base64, title: `Xem trước nháp ${inv.invoice_number || ""}` });
+      else { setPreviewPdf({ open: false, base64: null }); }
+    } catch { setPreviewPdf({ open: false, base64: null }); }
+  };
+
+  const handleIssueDraft = async (inv: any) => {
+    if (!confirm(`Phát hành HĐ nháp này lên Viettel?`)) return;
+    await issueDraft.mutateAsync({ einvoice_id: inv.id });
+  };
+
+  const handleDeleteDraft = async (inv: any) => {
+    if (!confirm(`Xoá bản nháp này? Nếu đã đẩy lên Viettel sẽ xoá luôn trên S-Invoice.`)) return;
+    await deleteDraft.mutateAsync({ einvoice_id: inv.id });
+  };
 
   return (
     <div className="space-y-4">
@@ -182,14 +213,90 @@ const EInvoiceManagement = () => {
         </div>
       )}
 
-      <Tabs defaultValue="history" className="w-full">
+      <Tabs defaultValue="drafts" className="w-full">
         <TabsList>
-          <TabsTrigger value="history">Lịch sử nội bộ</TabsTrigger>
+          <TabsTrigger value="drafts">Chưa phát hành ({stats.draft})</TabsTrigger>
+          <TabsTrigger value="issued">Đã phát hành ({stats.issued + stats.cancelled})</TabsTrigger>
           {canManage && <TabsTrigger value="config">Cấu hình & Kết nối</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="history" className="space-y-4">
-          {/* Toolbar */}
+        {/* ===== DRAFTS TAB ===== */}
+        <TabsContent value="drafts" className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Tìm theo số HĐ, khách hàng, MST..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            </div>
+            <Button onClick={() => setShowCreate(true)} variant="default">
+              <Plus className="h-4 w-4 mr-1" /> Tạo HĐ nháp
+            </Button>
+            <Button onClick={() => setShowSyncDrafts(true)} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-1" /> Đồng bộ nháp từ Viettel
+            </Button>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Số nháp</TableHead>
+                    <TableHead>Mẫu / Ký hiệu</TableHead>
+                    <TableHead>Khách hàng</TableHead>
+                    <TableHead>MST khách</TableHead>
+                    <TableHead className="text-right">Tổng tiền</TableHead>
+                    <TableHead>Ngày tạo</TableHead>
+                    <TableHead>Nguồn</TableHead>
+                    <TableHead className="w-[60px]">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
+                  ) : drafts.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có HĐ nháp. Bấm "Tạo HĐ nháp" hoặc "Đồng bộ nháp từ Viettel".</TableCell></TableRow>
+                  ) : drafts.map((inv: any) => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-medium">{inv.invoice_number || `#${inv.id.slice(0, 6)}`}</TableCell>
+                      <TableCell className="text-xs">{inv.template_code || "—"} / {inv.invoice_series || "—"}</TableCell>
+                      <TableCell>{inv.buyer_name || "—"}</TableCell>
+                      <TableCell className="text-xs">{inv.buyer_tax_code || "—"}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
+                      <TableCell>{new Date(inv.created_at).toLocaleDateString("vi-VN")}</TableCell>
+                      <TableCell>
+                        <Badge variant={inv.transaction_uuid ? "default" : "secondary"}>
+                          {inv.transaction_uuid ? "Viettel" : "Local"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="z-[100]">
+                            <DropdownMenuItem onClick={() => handlePreviewDraft(inv)} disabled={previewDraft.isPending}>
+                              <Eye className="h-4 w-4 mr-2" /> Xem trước PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleIssueDraft(inv)} disabled={issueDraft.isPending}>
+                              <Send className="h-4 w-4 mr-2" /> Phát hành
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteDraft(inv)} disabled={deleteDraft.isPending}>
+                              <Trash2 className="h-4 w-4 mr-2" /> Xoá nháp
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ===== ISSUED TAB ===== */}
+        <TabsContent value="issued" className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <div className="relative max-w-sm flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -200,12 +307,10 @@ const EInvoiceManagement = () => {
             </Button>
           </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             {[
-              { label: "Tổng hoá đơn", value: stats.total, color: "text-foreground" },
-              { label: "Đã phát hành", value: stats.issued, color: "text-blue-600" },
-              { label: "Nháp", value: stats.draft, color: "text-muted-foreground" },
+              { label: "Tổng đã phát hành", value: stats.issued + stats.cancelled, color: "text-foreground" },
+              { label: "Đang hiệu lực", value: stats.issued, color: "text-blue-600" },
               { label: "Đã huỷ", value: stats.cancelled, color: "text-destructive" },
               { label: "Lỗi", value: stats.error, color: "text-destructive" },
             ].map((s, i) => (
@@ -218,7 +323,6 @@ const EInvoiceManagement = () => {
             ))}
           </div>
 
-          {/* Table */}
           <Card>
             <CardContent className="p-0">
               <Table>
@@ -237,58 +341,69 @@ const EInvoiceManagement = () => {
                 <TableBody>
                   {isLoading ? (
                     <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
-                  ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có hoá đơn nào. Bấm "Đồng bộ từ Viettel" để kéo HĐ về.</TableCell></TableRow>
-                  ) : (
-                    filtered.map((inv: any) => {
-                      const st = statusMap[inv.status] || statusMap.draft;
-                      const hasTx = !!inv.transaction_uuid;
-                      return (
-                        <TableRow key={inv.id}>
-                          <TableCell className="font-medium text-primary">{inv.invoice_number || "—"}</TableCell>
-                          <TableCell className="text-xs">{inv.template_code || "—"} / {inv.invoice_series || "—"}</TableCell>
-                          <TableCell>{inv.buyer_name || "—"}</TableCell>
-                          <TableCell className="text-xs">{inv.buyer_tax_code || "—"}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
-                          <TableCell>{inv.issued_date ? new Date(inv.issued_date).toLocaleDateString("vi-VN") : "—"}</TableCell>
-                          <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
-                          <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!hasTx}>
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="z-[100]">
-                                <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "PDF", einvoice_id: inv.id })}>
-                                  <Download className="h-4 w-4 mr-2" /> Tải PDF
+                  ) : issuedAll.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có HĐ phát hành. Bấm "Đồng bộ từ Viettel".</TableCell></TableRow>
+                  ) : issuedAll.map((inv: any) => {
+                    const st = statusMap[inv.status] || statusMap.draft;
+                    const hasTx = !!inv.transaction_uuid;
+                    const hasMinute = inv.status === "cancelled" || inv.invoice_action === "replaced_by_new" || inv.invoice_action === "adjusted_by_new";
+                    return (
+                      <TableRow key={inv.id}>
+                        <TableCell className="font-medium text-primary">{inv.invoice_number || "—"}</TableCell>
+                        <TableCell className="text-xs">{inv.template_code || "—"} / {inv.invoice_series || "—"}</TableCell>
+                        <TableCell>{inv.buyer_name || "—"}</TableCell>
+                        <TableCell className="text-xs">{inv.buyer_tax_code || "—"}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
+                        <TableCell>{inv.issued_date ? new Date(inv.issued_date).toLocaleDateString("vi-VN") : "—"}</TableCell>
+                        <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!hasTx}><MoreHorizontal className="h-4 w-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="z-[100]">
+                              <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "PDF", einvoice_id: inv.id })}>
+                                <Download className="h-4 w-4 mr-2" /> Tải PDF
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "XML", einvoice_id: inv.id })}>
+                                <Download className="h-4 w-4 mr-2" /> Tải XML
+                              </DropdownMenuItem>
+                              {hasMinute && (
+                                <DropdownMenuItem onClick={() => setMinuteTarget(inv)}>
+                                  <FileCheck2 className="h-4 w-4 mr-2" /> Tải biên bản
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "XML", einvoice_id: inv.id })}>
-                                  <Download className="h-4 w-4 mr-2" /> Tải XML
-                                </DropdownMenuItem>
-                                {inv.status === "issued" && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => setEmailTarget(inv)}>
-                                      <Mail className="h-4 w-4 mr-2" /> Gửi email
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => updatePayment.mutate({ transactionUuid: inv.transaction_uuid, paid: true, einvoice_id: inv.id })}>
-                                      <Wallet className="h-4 w-4 mr-2" /> Đánh dấu đã thanh toán
-                                    </DropdownMenuItem>
-                                    {canManage && (
+                              )}
+                              {inv.status === "issued" && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => setEmailTarget(inv)}>
+                                    <Mail className="h-4 w-4 mr-2" /> Gửi email
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => updatePayment.mutate({ transactionUuid: inv.transaction_uuid, paid: true, einvoice_id: inv.id })}>
+                                    <Wallet className="h-4 w-4 mr-2" /> Đánh dấu đã thanh toán
+                                  </DropdownMenuItem>
+                                  {canManage && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => setReplaceTarget(inv)}>
+                                        <Replace className="h-4 w-4 mr-2" /> Thay thế
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => setAdjustTarget(inv)}>
+                                        <Pencil className="h-4 w-4 mr-2" /> Điều chỉnh
+                                      </DropdownMenuItem>
                                       <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setCancelTarget(inv)}>
                                         <Ban className="h-4 w-4 mr-2" /> Huỷ hoá đơn
                                       </DropdownMenuItem>
-                                    )}
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
+                                    </>
+                                  )}
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
@@ -451,8 +566,13 @@ const EInvoiceManagement = () => {
         <CreateEInvoiceDialog open={showCreate} onOpenChange={setShowCreate} contract={null} />
       )}
       {showSync && <SyncInvoicesDialog open={showSync} onOpenChange={setShowSync} />}
+      {showSyncDrafts && <SyncInvoicesDialog open={showSyncDrafts} onOpenChange={setShowSyncDrafts} mode="drafts" />}
       {cancelTarget && <CancelInvoiceDialog open={!!cancelTarget} onOpenChange={(v) => !v && setCancelTarget(null)} invoice={cancelTarget} />}
       {emailTarget && <SendEmailDialog open={!!emailTarget} onOpenChange={(v) => !v && setEmailTarget(null)} invoice={emailTarget} />}
+      {replaceTarget && <ReplaceAdjustDialog open={!!replaceTarget} onOpenChange={(v) => !v && setReplaceTarget(null)} einvoice={replaceTarget} mode="replace" />}
+      {adjustTarget && <ReplaceAdjustDialog open={!!adjustTarget} onOpenChange={(v) => !v && setAdjustTarget(null)} einvoice={adjustTarget} mode="adjust" />}
+      {minuteTarget && <DownloadMinuteDialog open={!!minuteTarget} onOpenChange={(v) => !v && setMinuteTarget(null)} einvoice={minuteTarget} />}
+      <PreviewPdfDialog open={previewPdf.open} onOpenChange={(o) => setPreviewPdf({ ...previewPdf, open: o })} base64={previewPdf.base64} title={previewPdf.title} loading={previewDraft.isPending} />
     </div>
   );
 };

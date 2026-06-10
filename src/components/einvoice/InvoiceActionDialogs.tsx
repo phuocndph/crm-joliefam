@@ -66,14 +66,15 @@ export const SendEmailDialog = ({ open, onOpenChange, invoice }: { open: boolean
   );
 };
 
-export const SyncInvoicesDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) => {
+export const SyncInvoicesDialog = ({ open, onOpenChange, mode = "issued" }: { open: boolean; onOpenChange: (v: boolean) => void; mode?: "issued" | "drafts" }) => {
   const today = new Date();
   const monthAgo = new Date(today.getTime() - 30 * 86400000);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   const [from, setFrom] = useState(fmt(monthAgo));
   const [to, setTo] = useState(fmt(today));
   const [invoiceType, setInvoiceType] = useState("01GTKT");
-  const { syncInvoices } = useEInvoiceActions();
+  const { syncInvoices, syncDrafts } = useEInvoiceActions();
+  const mut = mode === "drafts" ? syncDrafts : syncInvoices;
 
   const handle = async () => {
     if (!from || !to) {
@@ -83,15 +84,19 @@ export const SyncInvoicesDialog = ({ open, onOpenChange }: { open: boolean; onOp
     }
     const fromMs = new Date(from + "T00:00:00").getTime();
     const toMs = new Date(to + "T23:59:59").getTime();
-    await syncInvoices.mutateAsync({ fromDate: fromMs, toDate: toMs, invoiceType });
+    await mut.mutateAsync({ fromDate: fromMs, toDate: toMs, invoiceType });
     onOpenChange(false);
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Đồng bộ HĐ từ Viettel</DialogTitle>
-          <DialogDescription>Kéo danh sách hoá đơn đã phát hành trên S-Invoice về app.</DialogDescription>
+          <DialogTitle>{mode === "drafts" ? "Đồng bộ HĐ nháp từ Viettel" : "Đồng bộ HĐ từ Viettel"}</DialogTitle>
+          <DialogDescription>
+            {mode === "drafts"
+              ? "Kéo danh sách HĐ nháp (chưa phát hành) trên S-Invoice về app."
+              : "Kéo danh sách hoá đơn đã phát hành trên S-Invoice về app."}
+          </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1"><Label>Từ ngày</Label><Input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
@@ -108,8 +113,8 @@ export const SyncInvoicesDialog = ({ open, onOpenChange }: { open: boolean; onOp
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Đóng</Button>
-          <Button onClick={handle} disabled={syncInvoices.isPending}>
-            {syncInvoices.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+          <Button onClick={handle} disabled={mut.isPending}>
+            {mut.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
             Đồng bộ
           </Button>
         </DialogFooter>
