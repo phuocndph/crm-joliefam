@@ -102,14 +102,11 @@ export const useEInvoiceActions = () => {
       const total = d?.total ?? 0;
       const synced = d?.synced ?? 0;
       if (synced > 0) {
-        toast.success(`Đã đồng bộ ${synced} HĐ chưa phát hành (kiểm tra ${total} HĐ trên Viettel)`);
-      } else if (d?.no_drafts || total > 0) {
-        toast.info(
-          `Viettel không có HĐ chưa phát hành trong khoảng ngày/loại HĐ này. Đã kiểm tra ${total} HĐ qua endpoint ${d?.endpoint || "Viettel"}.`,
-          { duration: 6000 }
-        );
+        toast.success(`Đã đồng bộ ${synced} HĐ chưa phát hành từ ${d?.endpoint || "Viettel"}`);
       } else {
-        toast.info("Viettel không trả về dữ liệu trong khoảng ngày đã chọn (NOT_FOUND_DATA).");
+        const msg = d?.message || "Viettel không trả về HĐ chưa phát hành trong khoảng ngày/loại HĐ này.";
+        toast.info(msg, { duration: 8000 });
+        if (d?.attempts) console.log("[sync_drafts] attempts:", d.attempts, "sample:", d?.primary_sample);
       }
       invalidate();
     },
