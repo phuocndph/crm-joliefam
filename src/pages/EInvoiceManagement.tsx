@@ -3,13 +3,15 @@ import { useEInvoices } from "@/hooks/useEInvoices";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
-import { FileText, Plus, Search, ExternalLink, AlertTriangle } from "lucide-react";
-
-const VINVOICE_URL = "https://vinvoice.viettel.vn/";
+import { FileText, Plus, Search, ExternalLink, CheckCircle2, XCircle, Loader2, Settings, KeyRound } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuthReady } from "@/hooks/useAuthReady";
+import { useUserRole } from "@/hooks/useUserRole";
+import { toast } from "sonner";
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
   issued: { label: "Đã phát hành", variant: "default" },
@@ -18,11 +20,66 @@ const statusMap: Record<string, { label: string; variant: "default" | "secondary
   cancelled: { label: "Đã huỷ", variant: "destructive" },
 };
 
+const SECRET_NAMES = ["VINVOICE_API_URL", "VINVOICE_USERNAME", "VINVOICE_PASSWORD", "VINVOICE_TAX_CODE"] as const;
+
 const EInvoiceManagement = () => {
   const { data: einvoices, isLoading } = useEInvoices();
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
-  const [iframeBlocked, setIframeBlocked] = useState(false);
+  const { user } = useAuthReady();
+  const { role } = useUserRole(user);
+  const canManage = role === "admin" || role === "manager";
+
+  const [configStatus, setConfigStatus] = useState<Record<string, boolean> | null>(null);
+  const [loadingConfig, setLoadingConfig] = useState(false);
+  const [loginResult, setLoginResult] = useState<any>(null);
+  const [loadingLogin, setLoadingLogin] = useState(false);
+  const [templatesResult, setTemplatesResult] = useState<any>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  const callApi = async (action: string, extra: any = {}) => {
+    const { data, error } = await supabase.functions.invoke("vinvoice-api", { body: { action, ...extra } });
+    if (error) throw new Error(error.message);
+    return data;
+  };
+
+  const handleCheckConfig = async () => {
+    setLoadingConfig(true);
+    try {
+      const res = await callApi("config_status");
+      setConfigStatus(res?.status || {});
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally { setLoadingConfig(false); }
+  };
+
+  const handleTestLogin = async () => {
+    setLoadingLogin(true);
+    setLoginResult(null);
+    try {
+      const res = await callApi("login");
+      setLoginResult(res);
+      if (res?.success) toast.success("Đăng nhập Viettel thành công");
+      else toast.error(res?.error || "Đăng nhập thất bại");
+    } catch (e: any) {
+      setLoginResult({ success: false, error: e.message });
+      toast.error(e.message);
+    } finally { setLoadingLogin(false); }
+  };
+
+  const handleGetTemplates = async () => {
+    setLoadingTemplates(true);
+    setTemplatesResult(null);
+    try {
+      const res = await callApi("get_templates");
+      setTemplatesResult(res);
+      if (res?.success) toast.success("Đã lấy danh sách mẫu hoá đơn");
+      else toast.error(res?.error || "Lấy mẫu thất bại");
+    } catch (e: any) {
+      setTemplatesResult({ success: false, error: e.message });
+      toast.error(e.message);
+    } finally { setLoadingTemplates(false); }
+  };
 
   const filtered = (einvoices || []).filter((inv: any) => {
     if (!search) return true;
@@ -44,6 +101,10 @@ const EInvoiceManagement = () => {
 
   const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
 
+  const templates = Array.isArray(templatesResult?.data?.lstInvoiceTemplate)
+    ? templatesResult.data.lstInvoiceTemplate
+    : Array.isArray(templatesResult?.data) ? templatesResult.data : [];
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -59,43 +120,11 @@ const EInvoiceManagement = () => {
         </Button>
       </div>
 
-      <Tabs defaultValue="vinvoice" className="w-full">
+      <Tabs defaultValue="history" className="w-full">
         <TabsList>
-          <TabsTrigger value="vinvoice">VinVoice</TabsTrigger>
           <TabsTrigger value="history">Lịch sử nội bộ</TabsTrigger>
+          {canManage && <TabsTrigger value="config">Cấu hình & Kết nối</TabsTrigger>}
         </TabsList>
-
-        <TabsContent value="vinvoice">
-          {iframeBlocked ? (
-            <Card className="border-destructive/30">
-              <CardContent className="p-8 flex flex-col items-center gap-4 text-center">
-                <AlertTriangle className="h-12 w-12 text-yellow-500" />
-                <div>
-                  <p className="font-medium text-foreground text-lg">Không thể nhúng VinVoice</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Trang VinVoice không cho phép hiển thị trong iframe. Vui lòng mở trong tab mới.
-                  </p>
-                </div>
-                <Button variant="gradient" asChild>
-                  <a href={VINVOICE_URL} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 mr-1" /> Mở VinVoice trong tab mới
-                  </a>
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="rounded-lg border border-border overflow-hidden">
-              <iframe
-                src={VINVOICE_URL}
-                className="w-full border-0"
-                style={{ height: "calc(100vh - 200px)" }}
-                title="Viettel S-Invoice"
-                onError={() => setIframeBlocked(true)}
-                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation"
-              />
-            </div>
-          )}
-        </TabsContent>
 
         <TabsContent value="history" className="space-y-4">
           {/* Stats */}
@@ -162,6 +191,154 @@ const EInvoiceManagement = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {canManage && (
+          <TabsContent value="config" className="space-y-4">
+            {/* Card 1: Secret status */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <KeyRound className="h-4 w-4" /> Trạng thái cấu hình secret
+                </CardTitle>
+                <CardDescription>Kiểm tra các secret kết nối Viettel S-Invoice (giá trị không hiển thị).</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button variant="outline" size="sm" onClick={handleCheckConfig} disabled={loadingConfig}>
+                  {loadingConfig ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Settings className="h-4 w-4 mr-1" />}
+                  Kiểm tra trạng thái
+                </Button>
+                {configStatus && (
+                  <div className="space-y-2">
+                    {SECRET_NAMES.map(name => {
+                      const ok = configStatus[name];
+                      return (
+                        <div key={name} className="flex items-center justify-between border rounded-md px-3 py-2">
+                          <code className="text-sm">{name}</code>
+                          {ok ? (
+                            <Badge className="bg-sidebar-primary text-sidebar-primary-foreground">
+                              <CheckCircle2 className="h-3 w-3 mr-1" /> Đã cấu hình
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive">
+                              <XCircle className="h-3 w-3 mr-1" /> Thiếu
+                            </Badge>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <p className="text-xs text-muted-foreground">
+                      Để cập nhật giá trị secret, vào Lovable → Project Settings → Secrets, hoặc yêu cầu admin cập nhật.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Card 2: Test login */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Test đăng nhập Viettel</CardTitle>
+                <CardDescription>Gọi <code>/auth/login</code> với username/password đã cấu hình.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button onClick={handleTestLogin} disabled={loadingLogin}>
+                  {loadingLogin && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                  Kiểm tra đăng nhập
+                </Button>
+                {loginResult && (
+                  <div className={`rounded-md border p-3 ${loginResult.success ? "border-sidebar-primary/40 bg-sidebar-primary/5" : "border-destructive/40 bg-destructive/5"}`}>
+                    {loginResult.success ? (
+                      <div className="space-y-1 text-sm">
+                        <p className="flex items-center gap-2 font-medium text-sidebar-primary">
+                          <CheckCircle2 className="h-4 w-4" /> Đăng nhập thành công
+                        </p>
+                        <p>Token preview: <code>{loginResult.token_preview}</code></p>
+                        <p>Độ dài: {loginResult.token_length} ký tự</p>
+                        {loginResult.expires_in != null && <p>Hết hạn sau: {loginResult.expires_in}s</p>}
+                      </div>
+                    ) : (
+                      <div className="space-y-1 text-sm text-destructive">
+                        <p className="flex items-center gap-2 font-medium">
+                          <XCircle className="h-4 w-4" /> Đăng nhập thất bại
+                        </p>
+                        <p>{loginResult.error}</p>
+                      </div>
+                    )}
+                    <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-x-auto max-h-48">{JSON.stringify(loginResult, null, 2)}</pre>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Card 3: Templates */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Test lấy danh sách mẫu hoá đơn</CardTitle>
+                <CardDescription>Yêu cầu Viettel trả về các mẫu/ký hiệu HĐ đã đăng ký cho MST của bạn.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button onClick={handleGetTemplates} disabled={loadingTemplates}>
+                  {loadingTemplates && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                  Lấy danh sách mẫu HĐ
+                </Button>
+                {templatesResult && (
+                  <>
+                    {templates.length > 0 ? (
+                      <div className="border rounded-md overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Template Code</TableHead>
+                              <TableHead>Invoice Series</TableHead>
+                              <TableHead>Invoice Type</TableHead>
+                              <TableHead>Trạng thái</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {templates.map((t: any, i: number) => (
+                              <TableRow key={i}>
+                                <TableCell className="font-mono text-xs">{t.templateCode || t.invoiceTemplateCode || "—"}</TableCell>
+                                <TableCell className="font-mono text-xs">{t.invoiceSeries || "—"}</TableCell>
+                                <TableCell>{t.invoiceType || "—"}</TableCell>
+                                <TableCell>{t.status ?? t.statusName ?? "—"}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : templatesResult.success ? (
+                      <p className="text-sm text-yellow-600">
+                        Không có mẫu HĐ nào — cần đăng ký mẫu trong portal SME Viettel trước.
+                      </p>
+                    ) : (
+                      <p className="text-sm text-destructive">{templatesResult.error}</p>
+                    )}
+                    <pre className="text-xs bg-muted p-2 rounded overflow-x-auto max-h-48">{JSON.stringify(templatesResult, null, 2)}</pre>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Card 4: Quick links */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Liên kết nhanh</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                <Button variant="outline" asChild>
+                  <a href="https://sme.viettel.vn" target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-1" /> Portal SME Viettel
+                  </a>
+                </Button>
+                <Button variant="outline" asChild>
+                  <a href="https://vinvoice.viettel.vn" target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-1" /> VinVoice (giao diện cũ)
+                  </a>
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       {showCreate && (

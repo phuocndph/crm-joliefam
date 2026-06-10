@@ -188,9 +188,48 @@ Deno.serve(async (req: Request) => {
 
     const { action, ...params } = await req.json();
 
+    if (action === "config_status") {
+      const names = ["VINVOICE_API_URL", "VINVOICE_USERNAME", "VINVOICE_PASSWORD", "VINVOICE_TAX_CODE"];
+      const status: Record<string, boolean> = {};
+      for (const n of names) status[n] = !!Deno.env.get(n);
+      return new Response(JSON.stringify({ success: true, status }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "login") {
-      const token = await getVinvoiceToken();
-      return new Response(JSON.stringify({ success: true, token: "***" }), {
+      const apiUrl = Deno.env.get("VINVOICE_API_URL") || "https://api-vinvoice.viettel.vn";
+      const username = Deno.env.get("VINVOICE_USERNAME");
+      const password = Deno.env.get("VINVOICE_PASSWORD");
+      if (!username || !password) {
+        return new Response(JSON.stringify({ success: false, error: "Thiếu VINVOICE_USERNAME hoặc VINVOICE_PASSWORD" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const res = await fetch(`${apiUrl}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const text = await res.text();
+      let body: any; try { body = JSON.parse(text); } catch { body = { raw: text }; }
+      if (!res.ok || !body?.access_token) {
+        return new Response(JSON.stringify({
+          success: false,
+          status: res.status,
+          error: body?.message || body?.error || text || `HTTP ${res.status}`,
+          raw: body,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const token: string = body.access_token;
+      return new Response(JSON.stringify({
+        success: true,
+        status: res.status,
+        token_preview: token.slice(0, 12) + "..." + token.slice(-6),
+        token_length: token.length,
+        expires_in: body.expires_in ?? null,
+        token_type: body.token_type ?? null,
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

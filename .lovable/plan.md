@@ -1,52 +1,53 @@
+# Cấu hình & Kết nối Viettel S-Invoice
+
 ## Mục tiêu
-Làm cho tab "Báo cáo" trong Quản lý vải trực quan, dễ đọc và mang tính quản trị hơn — không chỉ là bảng số.
+Bỏ tab iframe VinVoice (đang bị Viettel chặn X-Frame-Options), thay bằng tab cấu hình cho phép kiểm tra credentials thực tế qua edge function.
 
-## Phạm vi thay đổi
-Chỉ sửa **1 file**: `src/components/FabricReports.tsx` (frontend, không đụng DB/API).
+## 1. Edge function `vinvoice-api` (mở rộng)
+Thêm 2 action mới (giữ nguyên các action hiện có):
+- `login` — gọi `POST {VINVOICE_API_URL}/auth/login` với `VINVOICE_USERNAME` / `VINVOICE_PASSWORD`, trả `{success, token_preview, expires_in, error}`. KHÔNG trả full token.
+- `get_templates` — gọi `GET /InvoiceUtilsWS/getAllInvoiceTemplates/{VINVOICE_TAX_CODE}`, trả danh sách mẫu/ký hiệu.
 
-## Các cải tiến
+Cả hai action: Zod validate, log lỗi raw của Viettel, trả về nguyên văn message (theo project memory).
 
-### 1. KPI cards có so sánh kỳ trước
-- Tính kỳ trước cùng độ dài (ví dụ tháng này → tháng trước).
-- Mỗi card hiển thị: số lớn + dòng nhỏ `↑ 12,3% so kỳ trước` (xanh nếu tăng, đỏ nếu giảm; với "Sắp hết hàng" thì ngược lại).
-- Thêm viền trái màu cho 4 card: primary / sidebar-primary / chart-2 / destructive.
-- Thêm card thứ 5: **Giá trị tồn kho (VND)** = Σ current_stock × cost_price.
+## 2. UI — `src/components/EInvoiceManagement.tsx`
+Xoá tab "VinVoice" (iframe). Thêm tab mới **"Cấu hình & Kết nối"** chứa 4 card:
 
-### 2. Biểu đồ xu hướng đẹp hơn
-- Đổi sang **Area + Line combo** với gradient dưới line.
-- Luôn hiển thị 2 line Hà Nội & Bắc Ninh + line "Tổng" (dashed) — kể cả khi đã chọn 1 xưởng, để so sánh.
-- Thêm dòng phụ trên chart: `Tổng kỳ: X m | Trung bình/ngày: Y m | Đỉnh: Z m (dd/MM)`.
+**Card 1 — Trạng thái secret** (chỉ admin/manager xem)
+- 4 dòng: `VINVOICE_API_URL`, `VINVOICE_USERNAME`, `VINVOICE_PASSWORD`, `VINVOICE_TAX_CODE`
+- Mỗi dòng: tên + badge ✓ "Đã cấu hình" / ✗ "Thiếu" + nút "Cập nhật" (mở Lovable Secrets)
+- Gọi edge function `vinvoice-config-status` (hoặc trả trong `login` action) để biết secret nào còn thiếu — KHÔNG lộ giá trị.
 
-### 3. Hai biểu đồ cơ cấu (mới)
-Bố cục 2 cột:
-- **Donut "Cơ cấu theo loại vải"**: top 5 loại + nhóm "Khác", hiện % ở center khi hover.
-- **Donut "Cơ cấu theo xưởng"**: Hà Nội vs Bắc Ninh, label %.
+**Card 2 — Test đăng nhập**
+- Nút "Kiểm tra đăng nhập" → gọi `vinvoice-api` action `login`
+- Hiển thị:
+  - ✓ Thành công: "Đăng nhập thành công, token sống XXs"
+  - ✗ Lỗi: hiển thị nguyên văn message Viettel + status code
+- Pre/code box hiển thị JSON response để debug.
 
-### 4. Top 10 dạng horizontal bar
-- Đổi 2 bảng "dùng nhiều / dùng ít" sang **horizontal bar chart** (recharts `BarChart` layout="vertical"):
-  - Trục Y = tên vải (rút gọn), trục X = số lượng.
-  - Tooltip hiện: loại, khổ, màu, đã dùng + đơn vị, giá trị VND, tồn kho.
-  - Vẫn giữ nút export CSV.
+**Card 3 — Test lấy mẫu hoá đơn**
+- Nút "Lấy danh sách mẫu HĐ" → gọi action `get_templates`
+- Hiển thị bảng: `templateCode`, `invoiceSeries`, `name`, `status`
+- Nếu rỗng: cảnh báo "Chưa có mẫu nào — cần cấu hình trong portal SME"
 
-### 5. Panel cảnh báo tồn thấp (mới)
-- Card riêng "Cảnh báo tồn thấp" liệt kê top 5 mã vải có `stock ≤ minimum_stock`, sắp xếp theo độ thiếu (`(min - stock)` giảm dần).
-- Mỗi dòng: tên vải · khổ · màu | `tồn / min` + progress bar đỏ.
-- Nếu không có thì hiện badge "Tất cả vải đủ tồn" màu sidebar-primary.
+**Card 4 — Liên kết nhanh**
+- Nút "Mở portal SME Viettel (tab mới)" → `window.open('https://sme.viettel.vn', '_blank')`
+- Nút "Mở trang quản trị HĐĐT cũ" → `https://vinvoice.viettel.vn`
+- Link tài liệu API nội bộ (nếu có)
 
-### 6. Bảng chi tiết nâng cấp
-- Thêm cột **Giá trị tồn (VND)** = stock × cost_price.
-- Thêm cột **% tồn** (so với min) dạng progress bar nhỏ.
-- Cho phép **sort** bằng click header (đã dùng / tồn / giá trị).
-- Giữ search + collapsible + export như hiện tại.
+## 3. Phân quyền
+- Tab "Cấu hình & Kết nối" và toàn bộ chức năng test: **chỉ admin + manager**
+- Accountant/staff: ẩn tab này (theo memory RBAC)
+
+## 4. Không thay đổi
+- Các tab khác (Lịch sử nội bộ, Tạo HĐ, etc.) giữ nguyên trong scope này
+- Các action mở rộng (cancel, replace, adjust, sync...) sẽ làm ở bước sau, không bao gồm trong plan này
 
 ## Kỹ thuật
+- Endpoint login Viettel: `POST /auth/login` body `{username, password}` → `{access_token, expires_in, token_type}`
+- Endpoint templates: `GET /InvoiceUtilsWS/getAllInvoiceTemplates/{taxCode}` header `Cookie: access_token=...`
+- Toast lỗi: dùng `toast.error(error.message)` với nguyên văn từ Viettel
+- React Query: mutation cho cả 2 test, không cache (để test luôn fresh)
 
-- Tính `previousInterval` từ `interval` hiện tại (cùng độ dài, dời lùi).
-- Tạo helper `pctChange(curr, prev)` và component nhỏ `<DeltaBadge value={...} invert />`.
-- Donut dùng `recharts` `PieChart` + `Pie` + `Cell`, màu từ `--chart-1..5`.
-- Horizontal bar dùng `BarChart layout="vertical"`, `YAxis type="category"`.
-- Tất cả màu qua semantic tokens (`hsl(var(--primary))`, `--chart-1..5`, `--destructive`, `--sidebar-primary`).
-- Không thêm dependency mới (recharts đã có).
-
-## Không thay đổi
-- Schema DB, hooks, RLS, edge functions, các tab khác của trang Quản lý vải.
+## Sau khi duyệt
+Mình sẽ: (1) cập nhật edge function, (2) sửa `EInvoiceManagement.tsx`, (3) bạn bấm 2 nút test để xác nhận credentials đúng cho production. Nếu test fail → sẽ biết secret nào sai để bạn cập nhật qua Lovable Secrets.
