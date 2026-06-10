@@ -592,63 +592,94 @@ Deno.serve(async (req: Request) => {
       if (!fromStr || !toStr) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
 
       const c = await ensureCreds();
-      // Step 1: primary endpoint returns all statuses; only count rows with state=3
+      const it = invoiceType || "01GTKT";
+      const attempts: any[] = [];
+      let draftList: any[] = [];
+      let usedEndpoint = "";
+      let primaryAll: any[] = [];
+      let primarySample: any = null;
+
+      // Step 1: try the primary control endpoint (returns all statuses)
       const primaryBody: any = { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr };
       const primary = await callViettel(c, cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`,
         "POST", primaryBody);
-
-      let usedEndpoint = "getListInvoiceDataControl";
-      let r = primary;
-      let reqBody: any = primaryBody;
-      let all = primary.ok ? extractInvoiceList(primary.data) : [];
-      let list = all.filter((inv: any) => {
+      primaryAll = primary.ok ? extractInvoiceList(primary.data) : [];
+      primarySample = primaryAll[0] ? {
+        state: primaryAll[0].state, stateCode: primaryAll[0].stateCode,
+        invoiceStatus: primaryAll[0].invoiceStatus, status: primaryAll[0].status,
+        invoiceStatusName: primaryAll[0].invoiceStatusName, stateName: primaryAll[0].stateName,
+      } : null;
+      const primaryDrafts = primaryAll.filter((inv: any) => {
         const s = inv.state ?? inv.stateCode ?? inv.invoiceStatus ?? inv.status;
-        const name = String(inv.invoiceStatusName || inv.stateName || "").toLowerCase();
-        return s == 3 || s === "draft" || /nháp|chưa phát hành|draft|unissued/.test(name);
+        const name = String(inv.invoiceStatusName || inv.stateName || inv.statusName || "").toLowerCase();
+        return s == 3 || s == 0 || s == 8 || s == 20 || s === "draft"
+          || /nháp|chưa phát hành|chưa ký|chờ ký|draft|unissued|unsigned/.test(name);
       });
-      console.log(`[sync_drafts] primary getListInvoiceDataControl status=${primary.status} total=${all.length} drafts=${list.length}`);
+      attempts.push({ endpoint: "getListInvoiceDataControl", status: primary.status, total: primaryAll.length, drafts: primaryDrafts.length, sample: primarySample });
+      console.log(`[sync_drafts] primary status=${primary.status} total=${primaryAll.length} drafts=${primaryDrafts.length} sampleKeys=${primarySample ? Object.keys(primarySample).join(",") : "none"}`);
 
-      // Step 2: if primary returned 0 drafts (or failed non-empty), try getInvoices?invoiceStatus=3
-      if (list.length === 0) {
-        const fbBody: any = {
-          invoiceType: invoiceType || "01GTKT",
-          startDate, endDate, invoiceStatus: 3,
-          rowPerPage: 1000, pageNum: 1,
-        };
-        const fb = await callViettel(c, cacheKey,
-          `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`,
-          "POST", fbBody);
-        const fbList = fb.ok ? extractInvoiceList(fb.data) : [];
-        console.log(`[sync_drafts] fallback getInvoices?invoiceStatus=3 status=${fb.status} total=${fbList.length}`);
-        if (fb.ok || isViettelEmptyResult(fb.data)) {
-          r = fb;
-          reqBody = fbBody;
-          usedEndpoint = "getInvoices?invoiceStatus=3";
-          all = fbList;
-          // Endpoint specific to drafts → treat every row as draft
-          list = fbList;
+      if (primaryDrafts.length > 0) {
+        draftList = primaryDrafts;
+        usedEndpoint = "getListInvoiceDataControl";
+      }
+
+      // Step 2: try getInvoices with multiple invoiceStatus values that Viettel may use for "unissued"
+      // Common Viettel S-Invoice values: 0=new, 3=cancelled, 8=pending issuance/chưa phát hành, 20=draft
+      if (draftList.length === 0) {
+        const statusCandidates = [3, 8, 20, 0];
+        for (const st of statusCandidates) {
+          const fbBody: any = {
+            invoiceType: it,
+            startDate, endDate, invoiceStatus: st,
+            rowPerPage: 1000, pageNum: 1,
+          };
+          const fb = await callViettel(c, cacheKey,
+            `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`,
+            "POST", fbBody);
+          const fbList = fb.ok ? extractInvoiceList(fb.data) : [];
+          attempts.push({
+            endpoint: `getInvoices?invoiceStatus=${st}`,
+            status: fb.status, total: fbList.length,
+            message: fb.data?.message,
+          });
+          console.log(`[sync_drafts] try invoiceStatus=${st} status=${fb.status} rows=${fbList.length}`);
+          if (fbList.length > 0) {
+            draftList = fbList;
+            usedEndpoint = `getInvoices?invoiceStatus=${st}`;
+            break;
+          }
         }
       }
 
-      await logAction(supabase, { action, request: reqBody, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
+      await logAction(supabase, {
+        action,
+        request: { fromStr, toStr, invoiceType: it },
+        response: { attempts, draftsFound: draftList.length, endpoint: usedEndpoint },
+        status: String(primary.status),
+        user_id: user.id, manager_id: managerId,
+      });
 
-      if (!r.ok && isViettelEmptyResult(r.data)) {
+      if (draftList.length === 0) {
+        const triedStatuses = attempts
+          .filter(a => a.endpoint.startsWith("getInvoices?"))
+          .map(a => a.endpoint.replace("getInvoices?invoiceStatus=", ""))
+          .join(", ");
         return json({
-          success: true, synced: 0, total: all.length, empty: true,
-          no_drafts: true, endpoint: usedEndpoint,
-          message: "Viettel không có HĐ chưa phát hành trong khoảng ngày/loại HĐ này.",
+          success: true, synced: 0, total: primaryAll.length, no_drafts: true,
+          endpoint: "all-tried",
+          attempts,
+          primary_sample: primarySample,
+          message: `Đã kiểm tra ${primaryAll.length} HĐ qua getListInvoiceDataControl và thử invoiceStatus=${triedStatuses} nhưng Viettel không trả về HĐ chưa phát hành nào.`,
         });
       }
-      if (!r.ok && list.length === 0) {
-        return json({ success: false, error: r.data?.data || r.data?.message || r.raw, endpoint: usedEndpoint });
-      }
-      const records = list
-        .map((inv: any) => mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId, forceDraft: true }))
+
+      const records = draftList
+        .map((inv: any) => mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: it, managerId, forceDraft: true }))
         .filter(Boolean);
 
       if (records.length === 0) {
-        return json({ success: true, synced: 0, total: all.length, mapped: 0, drafts_found: 0, endpoint: usedEndpoint, no_drafts: true });
+        return json({ success: true, synced: 0, total: draftList.length, mapped: 0, no_drafts: true, endpoint: usedEndpoint, attempts });
       }
 
       const { error: upErr } = await supabaseService
@@ -657,10 +688,10 @@ Deno.serve(async (req: Request) => {
 
       if (upErr) {
         console.error("[sync_drafts] batch upsert err:", upErr);
-        return json({ success: false, error: upErr.message, code: upErr.code, details: upErr.details, total: list.length, mapped: records.length }, 500);
+        return json({ success: false, error: upErr.message, code: upErr.code, details: upErr.details, total: draftList.length, mapped: records.length }, 500);
       }
 
-      return json({ success: true, synced: records.length, total: all.length, mapped: records.length, endpoint: usedEndpoint });
+      return json({ success: true, synced: records.length, total: draftList.length, mapped: records.length, endpoint: usedEndpoint, attempts });
     }
 
     // ---------- DOWNLOAD FILE (PDF/XML) ----------
