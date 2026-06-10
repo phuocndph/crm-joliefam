@@ -559,16 +559,24 @@ Deno.serve(async (req: Request) => {
 
       const list = extractInvoiceList(r.data);
       console.log("[sync_invoices] received", list.length, "invoices");
-      let upserted = 0;
-      const errors: any[] = [];
-      for (const inv of list) {
-        const record = mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId });
-        if (!record) continue;
-        const { error: upErr } = await supabaseService.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
-        if (!upErr) upserted++;
-        else { console.error("upsert err:", upErr); errors.push({ uuid: record.transaction_uuid, msg: upErr.message }); }
+      const records = list
+        .map((inv: any) => mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId }))
+        .filter(Boolean);
+
+      if (records.length === 0) {
+        return json({ success: true, synced: 0, total: list.length, mapped: 0 });
       }
-      return json({ success: true, synced: upserted, total: list.length, errors: errors.slice(0, 5) });
+
+      const { error: upErr } = await supabaseService
+        .from("einvoices")
+        .upsert(records, { onConflict: "transaction_uuid" });
+
+      if (upErr) {
+        console.error("[sync_invoices] batch upsert err:", upErr);
+        return json({ success: false, error: upErr.message, code: upErr.code, details: upErr.details, total: list.length, mapped: records.length }, 500);
+      }
+
+      return json({ success: true, synced: records.length, total: list.length, mapped: records.length });
     }
 
     // ---------- SYNC DRAFTS (invoiceStatus=3 from Viettel) ----------
@@ -613,14 +621,24 @@ Deno.serve(async (req: Request) => {
         const s = inv.state ?? inv.stateCode ?? inv.invoiceStatus;
         return s === undefined || s === null || s == 3 || s === "draft";
       });
-      let upserted = 0;
-      for (const inv of list) {
-        const record = mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId, forceDraft: true });
-        if (!record) continue;
-        const { error: upErr } = await supabaseService.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
-        if (!upErr) upserted++;
+      const records = list
+        .map((inv: any) => mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId, forceDraft: true }))
+        .filter(Boolean);
+
+      if (records.length === 0) {
+        return json({ success: true, synced: 0, total: list.length, mapped: 0 });
       }
-      return json({ success: true, synced: upserted, total: list.length });
+
+      const { error: upErr } = await supabaseService
+        .from("einvoices")
+        .upsert(records, { onConflict: "transaction_uuid" });
+
+      if (upErr) {
+        console.error("[sync_drafts] batch upsert err:", upErr);
+        return json({ success: false, error: upErr.message, code: upErr.code, details: upErr.details, total: list.length, mapped: records.length }, 500);
+      }
+
+      return json({ success: true, synced: records.length, total: list.length, mapped: records.length });
     }
 
     // ---------- DOWNLOAD FILE (PDF/XML) ----------
