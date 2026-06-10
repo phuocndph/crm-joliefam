@@ -76,7 +76,7 @@ async function callViettel(creds: Creds, cacheKey: string, path: string, method:
   return { status: res.status, ok: res.ok, data, raw: text };
 }
 
-function mapContractToInvoice(contract: any, options: any) {
+function mapContractToInvoice(contract: any, options: any, taxCode: string) {
   const sellerInfo = contract.seller_info || {};
   const buyerInfo = contract.buyer_info || {};
   const items = (contract.items || []) as any[];
@@ -122,7 +122,7 @@ function mapContractToInvoice(contract: any, options: any) {
     },
     sellerInfo: {
       sellerLegalName: sellerInfo.company_name || sellerInfo.name || "",
-      sellerTaxCode: TAX_CODE,
+      sellerTaxCode: taxCode,
       sellerAddressLine: sellerInfo.address || "",
       sellerPhoneNumber: sellerInfo.phone || "",
       sellerEmail: sellerInfo.email || "",
