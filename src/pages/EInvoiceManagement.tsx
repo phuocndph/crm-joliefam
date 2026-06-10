@@ -566,8 +566,13 @@ const EInvoiceManagement = () => {
         <CreateEInvoiceDialog open={showCreate} onOpenChange={setShowCreate} contract={null} />
       )}
       {showSync && <SyncInvoicesDialog open={showSync} onOpenChange={setShowSync} />}
+      {showSyncDrafts && <SyncInvoicesDialog open={showSyncDrafts} onOpenChange={setShowSyncDrafts} mode="drafts" />}
       {cancelTarget && <CancelInvoiceDialog open={!!cancelTarget} onOpenChange={(v) => !v && setCancelTarget(null)} invoice={cancelTarget} />}
       {emailTarget && <SendEmailDialog open={!!emailTarget} onOpenChange={(v) => !v && setEmailTarget(null)} invoice={emailTarget} />}
+      {replaceTarget && <ReplaceAdjustDialog open={!!replaceTarget} onOpenChange={(v) => !v && setReplaceTarget(null)} einvoice={replaceTarget} mode="replace" />}
+      {adjustTarget && <ReplaceAdjustDialog open={!!adjustTarget} onOpenChange={(v) => !v && setAdjustTarget(null)} einvoice={adjustTarget} mode="adjust" />}
+      {minuteTarget && <DownloadMinuteDialog open={!!minuteTarget} onOpenChange={(v) => !v && setMinuteTarget(null)} einvoice={minuteTarget} />}
+      <PreviewPdfDialog open={previewPdf.open} onOpenChange={(o) => setPreviewPdf({ ...previewPdf, open: o })} base64={previewPdf.base64} title={previewPdf.title} loading={previewDraft.isPending} />
     </div>
   );
 };
