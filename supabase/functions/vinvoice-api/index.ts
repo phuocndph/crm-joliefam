@@ -123,8 +123,11 @@ function extractInvoiceList(data: any): any[] {
 
 // Map raw Viettel invoice (from getListInvoiceDataControl or getInvoices) → einvoices row
 function mapViettelInvoiceRow(inv: any, ctx: { taxCode: string; defaultType?: string; managerId: string | null; forceDraft?: boolean }) {
-  const state = inv.state ?? inv.stateCode ?? inv.invoiceStatus;
-  const isDraft = ctx.forceDraft || state == 3 || state === "draft";
+  const state = inv.state ?? inv.stateCode ?? inv.invoiceStatus ?? inv.status;
+  const stateName = String(inv.invoiceStatusName || inv.stateName || "").toLowerCase();
+  const isDraft = ctx.forceDraft
+    || state == 3 || state === "draft"
+    || /nháp|chưa phát hành|draft|unissued/.test(stateName);
   const status = isDraft ? "draft"
     : (state == 5 || state === "cancelled") ? "cancelled"
     : "issued";
@@ -600,8 +603,9 @@ Deno.serve(async (req: Request) => {
       let reqBody: any = primaryBody;
       let all = primary.ok ? extractInvoiceList(primary.data) : [];
       let list = all.filter((inv: any) => {
-        const s = inv.state ?? inv.stateCode ?? inv.invoiceStatus;
-        return s == 3 || s === "draft";
+        const s = inv.state ?? inv.stateCode ?? inv.invoiceStatus ?? inv.status;
+        const name = String(inv.invoiceStatusName || inv.stateName || "").toLowerCase();
+        return s == 3 || s === "draft" || /nháp|chưa phát hành|draft|unissued/.test(name);
       });
       console.log(`[sync_drafts] primary getListInvoiceDataControl status=${primary.status} total=${all.length} drafts=${list.length}`);
 
@@ -630,7 +634,11 @@ Deno.serve(async (req: Request) => {
       await logAction(supabase, { action, request: reqBody, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
 
       if (!r.ok && isViettelEmptyResult(r.data)) {
-        return json({ success: true, synced: 0, total: 0, empty: true, endpoint: usedEndpoint });
+        return json({
+          success: true, synced: 0, total: all.length, empty: true,
+          no_drafts: true, endpoint: usedEndpoint,
+          message: "Viettel không có HĐ chưa phát hành trong khoảng ngày/loại HĐ này.",
+        });
       }
       if (!r.ok && list.length === 0) {
         return json({ success: false, error: r.data?.data || r.data?.message || r.raw, endpoint: usedEndpoint });
