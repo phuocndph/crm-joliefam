@@ -589,14 +589,24 @@ Deno.serve(async (req: Request) => {
       if (!fromStr || !toStr) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
 
       const c = await ensureCreds();
-      // Primary: getListInvoiceDataControl returns all statuses; filter drafts client-side
-      let reqBody: any = { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr };
-      let r = await callViettel(c, cacheKey,
+      // Step 1: primary endpoint returns all statuses; only count rows with state=3
+      const primaryBody: any = { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr };
+      const primary = await callViettel(c, cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`,
-        "POST", reqBody);
+        "POST", primaryBody);
 
-      // Fallback to getInvoices with invoiceStatus=3
-      if (!r.ok && !isViettelEmptyResult(r.data)) {
+      let usedEndpoint = "getListInvoiceDataControl";
+      let r = primary;
+      let reqBody: any = primaryBody;
+      let all = primary.ok ? extractInvoiceList(primary.data) : [];
+      let list = all.filter((inv: any) => {
+        const s = inv.state ?? inv.stateCode ?? inv.invoiceStatus;
+        return s == 3 || s === "draft";
+      });
+      console.log(`[sync_drafts] primary getListInvoiceDataControl status=${primary.status} total=${all.length} drafts=${list.length}`);
+
+      // Step 2: if primary returned 0 drafts (or failed non-empty), try getInvoices?invoiceStatus=3
+      if (list.length === 0) {
         const fbBody: any = {
           invoiceType: invoiceType || "01GTKT",
           startDate, endDate, invoiceStatus: 3,
@@ -605,28 +615,32 @@ Deno.serve(async (req: Request) => {
         const fb = await callViettel(c, cacheKey,
           `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`,
           "POST", fbBody);
-        if (fb.ok || isViettelEmptyResult(fb.data)) { r = fb; reqBody = fbBody; }
+        const fbList = fb.ok ? extractInvoiceList(fb.data) : [];
+        console.log(`[sync_drafts] fallback getInvoices?invoiceStatus=3 status=${fb.status} total=${fbList.length}`);
+        if (fb.ok || isViettelEmptyResult(fb.data)) {
+          r = fb;
+          reqBody = fbBody;
+          usedEndpoint = "getInvoices?invoiceStatus=3";
+          all = fbList;
+          // Endpoint specific to drafts → treat every row as draft
+          list = fbList;
+        }
       }
 
       await logAction(supabase, { action, request: reqBody, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
 
       if (!r.ok && isViettelEmptyResult(r.data)) {
-        return json({ success: true, synced: 0, total: 0, empty: true });
+        return json({ success: true, synced: 0, total: 0, empty: true, endpoint: usedEndpoint });
       }
-      if (!r.ok) return json({ success: false, error: r.data?.data || r.data?.message || r.raw });
-
-      const all = extractInvoiceList(r.data);
-      // Only keep drafts when response carries mixed statuses
-      const list = all.filter((inv: any) => {
-        const s = inv.state ?? inv.stateCode ?? inv.invoiceStatus;
-        return s === undefined || s === null || s == 3 || s === "draft";
-      });
+      if (!r.ok && list.length === 0) {
+        return json({ success: false, error: r.data?.data || r.data?.message || r.raw, endpoint: usedEndpoint });
+      }
       const records = list
         .map((inv: any) => mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId, forceDraft: true }))
         .filter(Boolean);
 
       if (records.length === 0) {
-        return json({ success: true, synced: 0, total: list.length, mapped: 0 });
+        return json({ success: true, synced: 0, total: all.length, mapped: 0, drafts_found: 0, endpoint: usedEndpoint, no_drafts: true });
       }
 
       const { error: upErr } = await supabaseService
@@ -638,7 +652,7 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, error: upErr.message, code: upErr.code, details: upErr.details, total: list.length, mapped: records.length }, 500);
       }
 
-      return json({ success: true, synced: records.length, total: list.length, mapped: records.length });
+      return json({ success: true, synced: records.length, total: all.length, mapped: records.length, endpoint: usedEndpoint });
     }
 
     // ---------- DOWNLOAD FILE (PDF/XML) ----------

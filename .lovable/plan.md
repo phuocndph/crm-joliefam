@@ -1,27 +1,23 @@
-## Mục tiêu
-Thêm 1 nút **"Tạo đơn GHN"** ngay cạnh nút **"Tạo báo giá"** trong header trang `/orders`, mở nhanh form tạo đơn GHN mà KHÔNG cần chọn trước 1 đơn hàng nội bộ — tiện cho việc tạo vận đơn rời (ví dụ gửi mẫu, ship lẻ, đơn ngoài hệ thống).
+## Kết luận nhanh
 
-## Thay đổi
+Tab “Chưa phát hành / HĐ nháp” không có dữ liệu vì hàm đồng bộ nháp đang gọi API Viettel `getListInvoiceDataControl`, endpoint này trả về 57 hóa đơn nhưng tất cả đều có `state=1` (đã phát hành), không có bản nào `state=3` (nháp). Hiện code fallback sang endpoint có `invoiceStatus=3` chỉ chạy khi endpoint đầu lỗi, nên trường hợp endpoint đầu thành công nhưng không có nháp thì không thử endpoint chuyên biệt.
 
-### 1. `src/components/CreateGHNOrderDialog.tsx`
-- Cho phép prop `order` là **optional** (`order?: {...}`) và `remainingAmount` mặc định `0`.
-- Khi không có `order` (chế độ standalone):
-  - Bỏ qua toàn bộ logic prefill từ `order.customers`, `order.items`, `order.total_amount`.
-  - Để form trống cho user nhập tay: Tên người nhận, SĐT, địa chỉ, sản phẩm, COD, kích thước...
-  - Thêm 1 ô input **"Mã đơn nội bộ (tuỳ chọn)"** để user tự gõ nhãn (mặc định auto-generate kiểu `GHN-{timestamp}`). Giá trị này được gửi lên edge function dưới dạng `orderNumber` để lưu vào cột `internal_order_code` của `ghn_tracking`.
-  - Gửi `orderId: null` lên edge function — bảng `ghn_tracking.order_id` đã nullable nên insert sẽ chạy bình thường.
-  - Ô "Mã đơn hàng" hiện đang readOnly (dòng 1219) sẽ chuyển sang input cho phép sửa khi standalone.
-- Khi có `order` (chế độ hiện tại — gắn với đơn nội bộ): giữ nguyên 100% hành vi cũ.
+## Kế hoạch sửa
 
-### 2. `src/pages/OrderManagement.tsx`
-- Thêm state `standaloneGHNOpen` và 1 `<Button>` mới cạnh nút "Tạo báo giá" (line 433):
-  - Icon `Truck`, label "Tạo đơn GHN", variant `outline`, size `sm`.
-- Render thêm `<CreateGHNOrderDialog open={standaloneGHNOpen} onOpenChange={setStandaloneGHNOpen} onSuccess={() => setStandaloneGHNOpen(false)} />` (không truyền `order`).
+1. Cập nhật `supabase/functions/vinvoice-api/index.ts`
+   - Trong action `sync_drafts`, sau khi gọi `getListInvoiceDataControl`, nếu lọc ra 0 hóa đơn nháp thì gọi tiếp endpoint `getInvoices/{taxCode}` với `invoiceStatus: 3`.
+   - Ghi log/response rõ ràng: tổng hóa đơn trả về, số bản nháp lọc được, endpoint đã dùng.
+   - Giữ nguyên phần upsert vào bảng `einvoices` và gán `status='draft'`, `is_draft=true`.
 
-### 3. Không cần migration DB
-`ghn_tracking.order_id` đã nullable; edge function `ghn-tracking` action `create_order` đã chấp nhận `orderId` rỗng và insert được.
+2. Cập nhật UI thông báo ở `src/hooks/useEInvoices.ts`
+   - Khi đồng bộ nháp mà Viettel trả về hóa đơn nhưng không có nháp, toast sẽ nói rõ “Không có HĐ nháp trên Viettel trong khoảng ngày này”, thay vì nhìn như lỗi không lấy được dữ liệu.
+   - Nếu endpoint chuyên biệt lấy được nháp thì hiển thị số bản ghi đã đồng bộ như hiện tại.
 
-## Kiểm thử
-- Click nút mới → dialog mở với form trống.
-- Nhập đầy đủ địa chỉ → tính cước → tạo đơn → kiểm tra bản ghi mới xuất hiện trong `ghn_tracking` với `order_id IS NULL` và `internal_order_code` đúng nhãn user nhập.
-- Mở dialog từ 1 đơn hàng (luồng cũ) vẫn prefill đầy đủ như trước.
+3. Triển khai và kiểm tra
+   - Deploy lại edge function `vinvoice-api`.
+   - Gọi thử action `sync_drafts` với khoảng 30 ngày đang dùng để xác nhận response có fallback và không lỗi.
+   - Nếu Viettel thật sự không có HĐ nháp trong khoảng ngày đó, UI sẽ hiển thị đúng lý do thay vì bảng trống khó hiểu.
+
+## Không cần đổi database
+
+Bảng `einvoices` đã có `is_draft`, `draft_payload`, `transaction_uuid`; RLS cũng đang cho manager hiện tại đọc dữ liệu đúng `manager_id`. Không cần migration.
