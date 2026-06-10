@@ -561,32 +561,8 @@ Deno.serve(async (req: Request) => {
       console.log("[sync_invoices] received", list.length, "invoices");
       let upserted = 0;
       for (const inv of list) {
-        const txUuid = inv.transactionUuid || inv.transactionID || inv.invoiceGuid;
-        if (!txUuid) continue;
-        const invStatus = inv.invoiceStatus;
-        // Viettel invoiceStatus: 1=phát hành, 3=nháp, 5=huỷ, 6=đã thay thế, 7=đã điều chỉnh
-        const isDraft = invStatus == 3 || invStatus === "draft";
-        const mappedStatus = isDraft ? "draft"
-          : (invStatus == 5 || invStatus === "cancelled") ? "cancelled"
-          : "issued";
-        const record: any = {
-          transaction_uuid: txUuid,
-          invoice_number: inv.invoiceNo || inv.invoiceNumber || null,
-          invoice_type: inv.invoiceType || invoiceType || "01GTKT",
-          template_code: inv.templateCode || "",
-          invoice_series: inv.invoiceSeries || "",
-          status: mappedStatus,
-          is_draft: isDraft,
-          issued_date: inv.issueDate ? new Date(Number(inv.issueDate)).toISOString() : null,
-          total_amount: Number(inv.totalAmountWithoutTax || inv.totalAmount || 0),
-          vat_amount: Number(inv.totalTaxAmount || 0),
-          total_with_vat: Number(inv.totalAmountWithTax || inv.totalAmount || 0),
-          buyer_name: inv.buyerLegalName || inv.buyerName || "",
-          buyer_tax_code: inv.buyerTaxCode || "",
-          response_data: inv,
-          last_synced_at: new Date().toISOString(),
-          manager_id: managerId ? String(managerId) : null,
-        };
+        const record = mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId });
+        if (!record) continue;
         const { error: upErr } = await supabase.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
         if (!upErr) upserted++;
         else console.error("upsert err:", upErr);
@@ -633,30 +609,13 @@ Deno.serve(async (req: Request) => {
       const all = extractInvoiceList(r.data);
       // Only keep drafts when response carries mixed statuses
       const list = all.filter((inv: any) => {
-        const s = inv.invoiceStatus;
+        const s = inv.state ?? inv.stateCode ?? inv.invoiceStatus;
         return s === undefined || s === null || s == 3 || s === "draft";
       });
       let upserted = 0;
       for (const inv of list) {
-        const txUuid = inv.transactionUuid || inv.transactionID || inv.invoiceGuid;
-        if (!txUuid) continue;
-        const record: any = {
-          transaction_uuid: txUuid,
-          invoice_number: inv.invoiceNo || null,
-          invoice_type: inv.invoiceType || invoiceType || "01GTKT",
-          template_code: inv.templateCode || "",
-          invoice_series: inv.invoiceSeries || "",
-          status: "draft",
-          is_draft: true,
-          total_amount: Number(inv.totalAmountWithoutTax || inv.totalAmount || 0),
-          vat_amount: Number(inv.totalTaxAmount || 0),
-          total_with_vat: Number(inv.totalAmountWithTax || inv.totalAmount || 0),
-          buyer_name: inv.buyerLegalName || inv.buyerName || "",
-          buyer_tax_code: inv.buyerTaxCode || "",
-          response_data: inv,
-          last_synced_at: new Date().toISOString(),
-          manager_id: managerId ? String(managerId) : null,
-        };
+        const record = mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId, forceDraft: true });
+        if (!record) continue;
         const { error: upErr } = await supabase.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
         if (!upErr) upserted++;
       }
