@@ -560,14 +560,15 @@ Deno.serve(async (req: Request) => {
       const list = extractInvoiceList(r.data);
       console.log("[sync_invoices] received", list.length, "invoices");
       let upserted = 0;
+      const errors: any[] = [];
       for (const inv of list) {
         const record = mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId });
         if (!record) continue;
-        const { error: upErr } = await supabase.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
+        const { error: upErr } = await supabaseService.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
         if (!upErr) upserted++;
-        else console.error("upsert err:", upErr);
+        else { console.error("upsert err:", upErr); errors.push({ uuid: record.transaction_uuid, msg: upErr.message }); }
       }
-      return json({ success: true, synced: upserted, total: list.length });
+      return json({ success: true, synced: upserted, total: list.length, errors: errors.slice(0, 5) });
     }
 
     // ---------- SYNC DRAFTS (invoiceStatus=3 from Viettel) ----------
@@ -616,7 +617,7 @@ Deno.serve(async (req: Request) => {
       for (const inv of list) {
         const record = mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId, forceDraft: true });
         if (!record) continue;
-        const { error: upErr } = await supabase.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
+        const { error: upErr } = await supabaseService.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
         if (!upErr) upserted++;
       }
       return json({ success: true, synced: upserted, total: list.length });
