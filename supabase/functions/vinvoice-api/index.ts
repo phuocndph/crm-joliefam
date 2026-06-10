@@ -96,6 +96,26 @@ function toViettelShortDate(value: any): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+function isViettelEmptyResult(data: any): boolean {
+  if (!data) return false;
+  const msg = String(data.message || "").toUpperCase();
+  const text = String(data.data || "");
+  return msg === "NOT_FOUND_DATA" || /không tìm thấy bản ghi/i.test(text);
+}
+
+function extractInvoiceList(data: any): any[] {
+  if (!data) return [];
+  const candidates = [
+    data.invoices, data.lstInvoice, data.lstInvoiceData,
+    data.data?.invoices, data.data?.lstInvoice, data.data?.lstInvoiceData,
+    Array.isArray(data.data) ? data.data : null,
+    data.result?.invoices, data.result?.lstInvoice,
+    Array.isArray(data.result) ? data.result : null,
+  ];
+  for (const c of candidates) if (Array.isArray(c)) return c;
+  return [];
+}
+
 async function callViettel(creds: Creds, cacheKey: string, path: string, method: "GET" | "POST", body?: any) {
   const token = await getToken(creds, cacheKey);
   const url = `${creds.apiUrl}${path}`;
