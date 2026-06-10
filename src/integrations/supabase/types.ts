@@ -560,25 +560,33 @@ export type Database = {
       }
       einvoices: {
         Row: {
+          adjusted_by_uuid: string | null
+          adjustment_type: string | null
+          adjusts_uuid: string | null
           buyer_name: string | null
           buyer_tax_code: string | null
           cancel_reason: string | null
           cancelled_at: string | null
           contract_id: string | null
           created_at: string
+          draft_payload: Json | null
           email_sent_at: string | null
           email_sent_to: string | null
+          error_code: string | null
           id: string
           invoice_action: string | null
           invoice_number: string | null
           invoice_series: string | null
           invoice_type: string | null
+          is_draft: boolean
           issued_date: string | null
           last_synced_at: string | null
           manager_id: string | null
           original_invoice_id: string | null
           payment_status_synced: boolean | null
           pdf_url: string | null
+          replaced_by_uuid: string | null
+          replaces_uuid: string | null
           request_data: Json | null
           reservation_code: string | null
           response_data: Json | null
@@ -593,25 +601,33 @@ export type Database = {
           xml_url: string | null
         }
         Insert: {
+          adjusted_by_uuid?: string | null
+          adjustment_type?: string | null
+          adjusts_uuid?: string | null
           buyer_name?: string | null
           buyer_tax_code?: string | null
           cancel_reason?: string | null
           cancelled_at?: string | null
           contract_id?: string | null
           created_at?: string
+          draft_payload?: Json | null
           email_sent_at?: string | null
           email_sent_to?: string | null
+          error_code?: string | null
           id?: string
           invoice_action?: string | null
           invoice_number?: string | null
           invoice_series?: string | null
           invoice_type?: string | null
+          is_draft?: boolean
           issued_date?: string | null
           last_synced_at?: string | null
           manager_id?: string | null
           original_invoice_id?: string | null
           payment_status_synced?: boolean | null
           pdf_url?: string | null
+          replaced_by_uuid?: string | null
+          replaces_uuid?: string | null
           request_data?: Json | null
           reservation_code?: string | null
           response_data?: Json | null
@@ -626,25 +642,33 @@ export type Database = {
           xml_url?: string | null
         }
         Update: {
+          adjusted_by_uuid?: string | null
+          adjustment_type?: string | null
+          adjusts_uuid?: string | null
           buyer_name?: string | null
           buyer_tax_code?: string | null
           cancel_reason?: string | null
           cancelled_at?: string | null
           contract_id?: string | null
           created_at?: string
+          draft_payload?: Json | null
           email_sent_at?: string | null
           email_sent_to?: string | null
+          error_code?: string | null
           id?: string
           invoice_action?: string | null
           invoice_number?: string | null
           invoice_series?: string | null
           invoice_type?: string | null
+          is_draft?: boolean
           issued_date?: string | null
           last_synced_at?: string | null
           manager_id?: string | null
           original_invoice_id?: string | null
           payment_status_synced?: boolean | null
           pdf_url?: string | null
+          replaced_by_uuid?: string | null
+          replaces_uuid?: string | null
           request_data?: Json | null
           reservation_code?: string | null
           response_data?: Json | null
