@@ -547,6 +547,7 @@ Deno.serve(async (req: Request) => {
     if (action === "create_invoice") {
       const { contract, options } = params;
       if (!contract) return json({ success: false, error: "Missing contract data" });
+      await ensureCreds();
       const payload = mapContractToInvoice(contract, options || {}, creds!.taxCode);
       const r = await callViettel(await ensureCreds(), cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${creds!.taxCode}`,
@@ -579,6 +580,7 @@ Deno.serve(async (req: Request) => {
     if (action === "create_draft") {
       const { contract, options } = params;
       if (!contract) return json({ success: false, error: "Missing contract data" });
+      await ensureCreds();
       const payload = mapContractToInvoice(contract, options || {}, creds!.taxCode);
       const { data: saved, error } = await supabase.from("einvoices").insert({
         contract_id: contract.id || null,
