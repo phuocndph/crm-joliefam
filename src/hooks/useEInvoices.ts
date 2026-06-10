@@ -91,5 +91,49 @@ export const useEInvoiceActions = () => {
     onError: (e: any) => toast.error(e.message),
   });
 
-  return { syncInvoices, downloadFile, cancelInvoice, replaceInvoice, adjustInvoice, sendEmail, updatePayment };
+  const syncDrafts = useMutation({
+    mutationFn: (p: { fromDate: number; toDate: number; invoiceType?: string }) =>
+      callApi("sync_drafts", p),
+    onSuccess: (d: any) => { toast.success(`Đã đồng bộ ${d.synced}/${d.total} HĐ nháp`); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const issueDraft = useMutation({
+    mutationFn: (p: { einvoice_id: string }) => callApi("issue_draft", p),
+    onSuccess: () => { toast.success("Đã phát hành hoá đơn"); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteDraft = useMutation({
+    mutationFn: (p: { einvoice_id: string }) => callApi("delete_draft", p),
+    onSuccess: () => { toast.success("Đã xoá bản nháp"); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const previewDraft = useMutation({
+    mutationFn: (p: { einvoice_id: string }) => callApi("preview_draft", p),
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const downloadMinute = useMutation({
+    mutationFn: (p: { transactionUuid: string; minuteType: 1 | 2 | 3; einvoice_id?: string }) =>
+      callApi("download_minute", p),
+    onSuccess: (d: any) => {
+      if (!d?.base64) return toast.error("Viettel không trả về biên bản");
+      const bytes = Uint8Array.from(atob(d.base64), c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = d.fileName || "bien-ban.pdf";
+      a.click(); URL.revokeObjectURL(url);
+      toast.success("Đã tải biên bản");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  return {
+    syncInvoices, syncDrafts, downloadFile, cancelInvoice,
+    replaceInvoice, adjustInvoice, sendEmail, updatePayment,
+    issueDraft, deleteDraft, previewDraft, downloadMinute,
+  };
 };
