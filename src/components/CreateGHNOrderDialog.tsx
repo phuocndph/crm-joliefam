@@ -1244,7 +1244,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Mã đơn riêng khách hàng</Label>
-                    <Input value={order.display_order_number || order.order_number} readOnly className="text-sm bg-muted" />
+                    <Input
+                      value={customOrderNumber}
+                      onChange={e => setCustomOrderNumber(e.target.value)}
+                      readOnly={!!order}
+                      className={`text-sm ${order ? 'bg-muted' : ''}`}
+                      placeholder="Mã tham chiếu nội bộ"
+                    />
                   </div>
                 </div>
               </div>
