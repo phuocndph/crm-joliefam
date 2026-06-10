@@ -435,6 +435,10 @@ export default function OrderManagement() {
               <Plus className="h-3.5 w-3.5" />
               Tạo báo giá
             </Button>
+            <Button onClick={() => setStandaloneGHNOpen(true)} size="sm" variant="outline" className="gap-1.5">
+              <Truck className="h-3.5 w-3.5" />
+              Tạo đơn GHN
+            </Button>
           </div>
         </div>
 
