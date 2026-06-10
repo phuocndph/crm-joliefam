@@ -196,15 +196,119 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: auth } } }
     );
+    const supabaseService = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
     const { data: { user }, error: authErr } = await supabase.auth.getUser();
     if (authErr || !user) return json({ success: false, error: "Unauthorized" }, 401);
 
     // Resolve manager_id from user_roles
     const { data: roleRow } = await supabase.from("user_roles").select("role, assigned_by").eq("user_id", user.id).maybeSingle();
     const role = roleRow?.role;
-    const managerId = role === "manager" ? user.id : (roleRow?.assigned_by || user.id);
+    const managerId: string | null = role === "manager" ? user.id : (roleRow?.assigned_by || user.id);
+    const isManagerOrAdmin = role === "admin" || role === "manager";
 
     const { action, ...params } = await req.json();
+
+    // Lazy-load creds only when action needs them
+    let creds: Creds | null = null;
+    const cacheKey = String(managerId || "global");
+    const ensureCreds = async () => {
+      if (!creds) creds = await loadCreds(supabaseService, managerId);
+      return creds;
+    };
+
+    // ---------- GET SETTINGS (no password) ----------
+    if (action === "get_settings") {
+      const { data, error } = await supabase
+        .from("einvoice_settings_public")
+        .select("*")
+        .eq("manager_id", String(managerId))
+        .maybeSingle();
+      if (error) return json({ success: false, error: error.message });
+      // Also surface env fallback flag
+      return json({
+        success: true,
+        settings: data,
+        env_fallback: {
+          available: !!(USERNAME && PASSWORD && TAX_CODE),
+          tax_code: TAX_CODE || null,
+          username: USERNAME || null,
+          api_url: API_URL,
+        },
+      });
+    }
+
+    // ---------- SAVE SETTINGS ----------
+    if (action === "save_settings") {
+      if (!isManagerOrAdmin) return json({ success: false, error: "Chỉ admin/manager được sửa cấu hình" }, 403);
+      const { tax_code, username, password, api_url, default_invoice_type, default_template_code, default_serial } = params;
+      if (!tax_code || !username) return json({ success: false, error: "Thiếu MST hoặc username" });
+
+      // Fetch existing to keep password if not provided
+      const { data: existing } = await supabaseService
+        .from("einvoice_settings")
+        .select("password")
+        .eq("manager_id", String(managerId))
+        .maybeSingle();
+
+      const payload: any = {
+        manager_id: String(managerId),
+        tax_code: String(tax_code).trim(),
+        username: String(username).trim(),
+        api_url: (api_url || "https://api-vinvoice.viettel.vn").trim().replace(/\/+$/, ""),
+        default_invoice_type: default_invoice_type || "01GTKT",
+        default_template_code: default_template_code || null,
+        default_serial: default_serial || null,
+      };
+      if (password && String(password).length > 0) {
+        payload.password = String(password);
+      } else if (existing?.password) {
+        payload.password = existing.password;
+      }
+
+      const { error: upErr } = await supabaseService
+        .from("einvoice_settings")
+        .upsert(payload, { onConflict: "manager_id" });
+      if (upErr) return json({ success: false, error: upErr.message });
+
+      // Invalidate token cache for this manager
+      tokenCache.delete(cacheKey);
+      await logAction(supabase, { action, request: { ...payload, password: payload.password ? "***" : undefined }, status: "ok", user_id: user.id, manager_id: managerId });
+      return json({ success: true });
+    }
+
+    // ---------- TEST LOGIN (force fresh login + persist status) ----------
+    if (action === "test_login") {
+      tokenCache.delete(cacheKey);
+      try {
+        const c = await ensureCreds();
+        const token = await getToken(c, cacheKey);
+        const now = new Date().toISOString();
+        if (c.source === "db" && managerId) {
+          await supabaseService.from("einvoice_settings").update({
+            last_login_at: now, last_login_status: "success", last_login_error: null,
+          }).eq("manager_id", String(managerId));
+        }
+        return json({
+          success: true,
+          source: c.source,
+          tax_code: c.taxCode,
+          username: c.username,
+          api_url: c.apiUrl,
+          token_preview: token.slice(0, 12) + "..." + token.slice(-6),
+          last_login_at: now,
+        });
+      } catch (e: any) {
+        if (managerId) {
+          await supabaseService.from("einvoice_settings").update({
+            last_login_at: new Date().toISOString(), last_login_status: "error", last_login_error: e.message,
+          }).eq("manager_id", String(managerId));
+        }
+        return json({ success: false, error: e.message });
+      }
+    }
 
     // ---------- CONFIG STATUS ----------
     if (action === "config_status") {
