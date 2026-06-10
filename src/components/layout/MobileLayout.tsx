@@ -5,7 +5,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Building2, LogOut, Settings, Bell, User, Key, Menu, Home, Users2, Package, ShoppingCart, FileText, CreditCard, BarChart3, Headphones, Truck, Scissors, Plus } from "lucide-react";
+import { Building2, LogOut, Settings, Bell, User, Key, Menu, Home, Users2, Package, ShoppingCart, FileText, CreditCard, BarChart3, Headphones, Truck, Scissors, Plus, FileSignature, Receipt, Wallet, BookOpen, Bot, Globe, Building } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import { cn } from "@/lib/utils";
@@ -120,40 +120,47 @@ const MobileLayout = () => {
     isMenu: true
   }];
 
-  // Menu items for side drawer
-  const menuItems = [{
-    icon: FileText,
-    label: "Báo giá",
-    path: "/quotes"
-  }, {
-    icon: CreditCard,
-    label: "Dòng tiền",
-    path: "/cash-flow"
-  }, {
-    icon: BarChart3,
-    label: "Báo cáo",
-    path: "/reports"
-  }, {
-    icon: Headphones,
-    label: "Chăm sóc KH",
-    path: "/customer-care"
-  }, {
-    icon: Truck,
-    label: "Vận chuyển",
-    path: "/ghn-tracking"
-  }, {
-    icon: Scissors,
-    label: "Vải",
-    path: "/fabrics"
-  }, {
-    icon: Users2,
-    label: "Quản lý user",
-    path: "/user-management"
-  }, {
-    icon: CreditCard,
-    label: "Giao dịch",
-    path: "/transactions"
-  }];
+  // Menu items for side drawer - grouped by category
+  const menuGroups = [
+    {
+      title: "Kinh doanh",
+      items: [
+        { icon: Home, label: "Dashboard", path: "/dashboard" },
+        { icon: Users2, label: "Khách hàng", path: "/customers" },
+        { icon: Package, label: "Sản phẩm", path: "/products" },
+        { icon: ShoppingCart, label: "Đơn hàng", path: "/orders" },
+        { icon: FileText, label: "Báo giá", path: "/quotes" },
+        { icon: Headphones, label: "Chăm sóc KH", path: "/customer-care" },
+      ],
+    },
+    {
+      title: "Tài chính",
+      items: [
+        { icon: CreditCard, label: "Dòng tiền", path: "/cash-flow" },
+        { icon: Wallet, label: "Giao dịch", path: "/transactions" },
+        { icon: FileSignature, label: "Hợp đồng", path: "/contracts" },
+        { icon: Receipt, label: "Hóa đơn điện tử", path: "/einvoices" },
+      ],
+    },
+    {
+      title: "Vận hành",
+      items: [
+        { icon: Truck, label: "Vận chuyển GHN", path: "/ghn-tracking" },
+        { icon: Building, label: "Đơn vị vận chuyển", path: "/shipping-companies" },
+        { icon: Scissors, label: "Vải", path: "/fabrics" },
+        { icon: BarChart3, label: "Báo cáo", path: "/reports" },
+      ],
+    },
+    {
+      title: "Hệ thống",
+      items: [
+        { icon: Users2, label: "Quản lý user", path: "/user-management" },
+        { icon: BookOpen, label: "Tri thức", path: "/knowledge-base" },
+        { icon: Bot, label: "Cài đặt AI", path: "/ai-settings" },
+        { icon: Globe, label: "Web Scraper", path: "/web-scraper" },
+      ],
+    },
+  ];
   if (loading || roleLoading) {
     return <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Đang tải...</div>
@@ -222,16 +229,35 @@ const MobileLayout = () => {
                       </div>
                     </div>
 
-                    {/* Menu Items */}
-                    <div className="space-y-2">
-                      {menuItems.map((menuItem, idx) => <Button key={idx} variant="ghost" className={cn("w-full justify-start h-12 px-4", isActive(menuItem.path) && "bg-sidebar-accent text-sidebar-accent-foreground")} onClick={() => {
-                  navigate(menuItem.path);
-                  setIsMenuOpen(false);
-                }}>
-                          <menuItem.icon className="h-5 w-5 mr-3" />
-                          {menuItem.label}
-                        </Button>)}
-                      
+                    {/* Menu Items - Grouped & scrollable */}
+                    <div className="space-y-4 overflow-y-auto max-h-[calc(80vh-10rem)] pr-1">
+                      {menuGroups.map((group, gi) => (
+                        <div key={gi} className="space-y-1">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2">
+                            {group.title}
+                          </p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {group.items.map((menuItem, idx) => (
+                              <Button
+                                key={idx}
+                                variant="ghost"
+                                className={cn(
+                                  "justify-start h-11 px-3 text-sm",
+                                  isActive(menuItem.path) && "bg-sidebar-accent text-sidebar-accent-foreground"
+                                )}
+                                onClick={() => {
+                                  navigate(menuItem.path);
+                                  setIsMenuOpen(false);
+                                }}
+                              >
+                                <menuItem.icon className="h-4 w-4 mr-2 shrink-0" />
+                                <span className="truncate">{menuItem.label}</span>
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+
                       <div className="pt-4 border-t">
                         <Button variant="outline" className="w-full justify-start h-12 px-4" onClick={handleSignOut}>
                           <LogOut className="h-5 w-5 mr-3" />
