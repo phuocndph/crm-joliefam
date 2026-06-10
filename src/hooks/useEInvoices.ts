@@ -99,12 +99,17 @@ export const useEInvoiceActions = () => {
     mutationFn: (p: { fromDate: number; toDate: number; invoiceType?: string }) =>
       callApi("sync_drafts", p),
     onSuccess: (d: any) => {
-      if (d?.empty || d?.total === 0) {
-        toast.info("Viettel không trả về dữ liệu trong khoảng ngày đã chọn");
-      } else if (d?.no_drafts || d?.synced === 0) {
-        toast.info(`Không có HĐ nháp trên Viettel trong khoảng ngày này (đã kiểm tra ${d?.total ?? 0} HĐ)`);
+      const total = d?.total ?? 0;
+      const synced = d?.synced ?? 0;
+      if (synced > 0) {
+        toast.success(`Đã đồng bộ ${synced} HĐ chưa phát hành (kiểm tra ${total} HĐ trên Viettel)`);
+      } else if (d?.no_drafts || total > 0) {
+        toast.info(
+          `Viettel không có HĐ chưa phát hành trong khoảng ngày/loại HĐ này. Đã kiểm tra ${total} HĐ qua endpoint ${d?.endpoint || "Viettel"}.`,
+          { duration: 6000 }
+        );
       } else {
-        toast.success(`Đã đồng bộ ${d.synced} HĐ nháp`);
+        toast.info("Viettel không trả về dữ liệu trong khoảng ngày đã chọn (NOT_FOUND_DATA).");
       }
       invalidate();
     },

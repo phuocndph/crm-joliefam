@@ -1,23 +1,28 @@
-## Kết luận nhanh
+Kết quả kiểm tra hiện tại:
 
-Tab “Chưa phát hành / HĐ nháp” không có dữ liệu vì hàm đồng bộ nháp đang gọi API Viettel `getListInvoiceDataControl`, endpoint này trả về 57 hóa đơn nhưng tất cả đều có `state=1` (đã phát hành), không có bản nào `state=3` (nháp). Hiện code fallback sang endpoint có `invoiceStatus=3` chỉ chạy khi endpoint đầu lỗi, nên trường hợp endpoint đầu thành công nhưng không có nháp thì không thử endpoint chuyên biệt.
+- Luồng “Chưa phát hành / Đồng bộ nháp từ Viettel” đang gọi đúng Edge Function `vinvoice-api` với action `sync_drafts`.
+- API Viettel trả về:
+  - `getListInvoiceDataControl`: có dữ liệu hoá đơn, nhưng toàn bộ là hoá đơn đã phát hành (`state=1`), không có bản ghi nháp/chưa phát hành (`state=3`).
+  - Fallback `getInvoices` với `invoiceStatus=3`: Viettel trả `400 NOT_FOUND_DATA` / “Không tìm thấy bản ghi”.
+- Database hiện chỉ có `57` hoá đơn `issued`, `0` hoá đơn `draft`.
 
-## Kế hoạch sửa
+Kết luận: hiện tại không phải lỗi mất dữ liệu trong app; Viettel đang báo không có HĐ nháp/chưa phát hành trong khoảng ngày và loại HĐ đang chọn (`01GTKT`).
 
-1. Cập nhật `supabase/functions/vinvoice-api/index.ts`
-   - Trong action `sync_drafts`, sau khi gọi `getListInvoiceDataControl`, nếu lọc ra 0 hóa đơn nháp thì gọi tiếp endpoint `getInvoices/{taxCode}` với `invoiceStatus: 3`.
-   - Ghi log/response rõ ràng: tổng hóa đơn trả về, số bản nháp lọc được, endpoint đã dùng.
-   - Giữ nguyên phần upsert vào bảng `einvoices` và gán `status='draft'`, `is_draft=true`.
+Kế hoạch sửa để tránh hiểu nhầm và hỗ trợ kiểm tra tiếp:
 
-2. Cập nhật UI thông báo ở `src/hooks/useEInvoices.ts`
-   - Khi đồng bộ nháp mà Viettel trả về hóa đơn nhưng không có nháp, toast sẽ nói rõ “Không có HĐ nháp trên Viettel trong khoảng ngày này”, thay vì nhìn như lỗi không lấy được dữ liệu.
-   - Nếu endpoint chuyên biệt lấy được nháp thì hiển thị số bản ghi đã đồng bộ như hiện tại.
+1. Cập nhật thông báo đồng bộ
+   - Khi Viettel trả `NOT_FOUND_DATA` cho `invoiceStatus=3`, hiển thị rõ: “Viettel không có HĐ chưa phát hành trong khoảng ngày/loại HĐ này”.
+   - Không báo lỗi chung chung như không lấy được dữ liệu.
 
-3. Triển khai và kiểm tra
-   - Deploy lại edge function `vinvoice-api`.
-   - Gọi thử action `sync_drafts` với khoảng 30 ngày đang dùng để xác nhận response có fallback và không lỗi.
-   - Nếu Viettel thật sự không có HĐ nháp trong khoảng ngày đó, UI sẽ hiển thị đúng lý do thay vì bảng trống khó hiểu.
+2. Bổ sung thông tin chẩn đoán trong UI
+   - Hiển thị số HĐ Viettel trả về từ endpoint chính.
+   - Hiển thị số HĐ được nhận diện là chưa phát hành.
+   - Hiển thị endpoint đã dùng để kiểm tra.
 
-## Không cần đổi database
+3. Cải thiện bộ lọc trạng thái nháp
+   - Kiểm tra thêm các trường có thể biểu thị trạng thái chưa phát hành như `state`, `stateCode`, `invoiceStatus`, `status`, `invoiceStatusName` nếu Viettel trả schema khác.
+   - Vẫn giữ logic an toàn: chỉ lưu vào tab chưa phát hành khi xác định chắc là nháp/chưa phát hành.
 
-Bảng `einvoices` đã có `is_draft`, `draft_payload`, `transaction_uuid`; RLS cũng đang cho manager hiện tại đọc dữ liệu đúng `manager_id`. Không cần migration.
+4. Sau khi sửa
+   - Test lại action `sync_drafts` với khoảng 30 ngày và 3 tháng.
+   - Đối chiếu log Viettel + bảng `einvoice_actions` để xác nhận thông báo trả về đúng nguyên nhân.
