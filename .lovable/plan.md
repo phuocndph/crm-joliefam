@@ -1,81 +1,39 @@
 
-# Cấu hình & quản lý kết nối S-Invoice
+# Sửa lỗi đồng bộ HĐ — `START_DATE_REQUIRED`
 
-## Mục tiêu
-1. Biết rõ đang nối tài khoản Viettel S-Invoice nào (MST + username + URL).
-2. Chủ động đổi tài khoản / mật khẩu / endpoint ngay trong app (admin-only), không phải vào Supabase.
-3. Nút "Kiểm tra kết nối" để xác nhận login OK trước khi dùng các chức năng sync/cancel/email.
-4. Sửa lỗi runtime `END_DATE_REQUIRED` ở dialog Đồng bộ.
+## Nguyên nhân
+Viettel `InvoiceUtilsWS/getInvoices/{MST}` yêu cầu `fromDate` / `toDate` là **chuỗi `dd/MM/yyyy`** (theo SDK chính thức `dev10katec/viettel-s-invoice` và tài liệu Viettel), không phải epoch millis. App đang gửi `Number` → Viettel parse thành null → trả `START_DATE_REQUIRED`.
 
-## Phần 1 — Lưu cấu hình trong DB (thay vì chỉ secret)
+## Fix
 
-Tạo bảng `einvoice_settings` (1 dòng / manager):
+### 1. Edge function `vinvoice-api` — action `sync_invoices`
+- Nhận `fromDate` / `toDate` từ client ở dạng ms epoch như cũ (không đổi API frontend).
+- Convert sang `dd/MM/yyyy` trước khi gửi Viettel.
+- Body mới gửi Viettel:
+  ```ts
+  {
+    invoiceType: "01GTKT",
+    fromDate: "11/05/2026",     // dd/MM/yyyy
+    toDate:   "10/06/2026",
+    rowPerPage: 1000,
+    pageNum: 1,
+  }
+  ```
+- Nếu Viettel trả 400 với message khác, fallback thử lại body cũ (ms) để tương thích.
+- Parse danh sách HĐ từ các key có thể có: `lstInvoice`, `invoices`, `data`, `result.invoices`.
+- Log raw response để dễ debug lần sau.
 
-| Cột | Ý nghĩa |
-|---|---|
-| `tax_code` | MST |
-| `username` | tài khoản Viettel |
-| `password_encrypted` | mật khẩu (lưu mã hoá, chỉ edge function đọc) |
-| `api_url` | endpoint (mặc định `https://api-vinvoice.viettel.vn`) |
-| `default_invoice_type` | `01GTKT` / `02GTTT`... |
-| `default_template_code` / `default_serial` | mẫu + ký hiệu mặc định |
-| `last_login_at`, `last_login_status`, `last_login_error` | kết quả test gần nhất |
-| `manager_id` | RLS |
+### 2. Frontend (không đổi UI)
+- `SyncInvoicesDialog` vẫn truyền ms epoch — edge function tự lo convert.
 
-RLS: admin/manager xem-sửa dòng của mình; accountant chỉ xem (không thấy password).
+### 3. Cải thiện thông báo lỗi
+- Khi Viettel trả status `>=400` và có `message`, surface nguyên văn message tiếng Việt (vd: "Ngày bắt đầu là bắt buộc") thay vì code khô khan.
 
-Edge function `vinvoice-api` đổi nguồn credential:
-- Đọc từ `einvoice_settings` của manager hiện tại trước.
-- Fallback về secret `VINVOICE_*` nếu chưa cấu hình (tương thích ngược).
-- Cache token theo `manager_id` thay vì global.
+## Kiểm thử
+1. Đăng nhập đã OK (test_login pass).
+2. Vào tab "Lịch sử nội bộ" → "Đồng bộ từ Viettel" → chọn 30 ngày → Đồng bộ.
+3. Xem log edge function: payload gửi đi phải có `fromDate: "DD/MM/YYYY"`.
+4. Toast hiển thị `Đã đồng bộ X/Y hoá đơn`.
 
-## Phần 2 — Trang "Cấu hình S-Invoice"
-
-Route: `/einvoices/settings` (tab mới trên trang Hoá đơn, admin/manager only).
-
-Các thẻ:
-
-**Thẻ 1 — Thông tin kết nối** (form)
-- MST, Username, Password (input type=password, placeholder "••• để giữ nguyên"), API URL.
-- Nút **Lưu** → upsert vào `einvoice_settings`, clear token cache.
-
-**Thẻ 2 — Trạng thái kết nối**
-- Hiển thị: MST đang dùng, username, URL, lần đăng nhập cuối + kết quả (✅/❌ + lỗi).
-- Nút **Kiểm tra kết nối** → gọi `vinvoice-api` action `test_login` → cập nhật `last_login_*` → toast kết quả.
-- Nút **Lấy danh sách mẫu HĐ** → gọi `get_templates` → liệt kê template/serial khả dụng để chọn mặc định.
-
-**Thẻ 3 — Mặc định phát hành**
-- Select loại HĐ (`01GTKT`/`02GTTT`/...), template code, serial → lưu vào settings.
-- Các form tạo HĐ và dialog Đồng bộ sẽ prefill từ đây.
-
-## Phần 3 — Hiển thị tài khoản đang nối ở trang Hoá đơn
-
-Thêm 1 banner gọn ở đầu `/einvoices`:
-> 🔗 Đang kết nối: **MST 0108652480** — `username@joliefam` — ✅ OK lúc 10:32
-> [Cấu hình] [Kiểm tra lại]
-
-Nếu chưa cấu hình hoặc login fail → banner đỏ + chặn các nút sync/cancel/email với tooltip "Cấu hình S-Invoice trước".
-
-## Phần 4 — Sửa lỗi runtime `END_DATE_REQUIRED`
-
-Dialog `SyncInvoicesDialog` đang submit khi `toDate` trống. Sửa:
-- Default `fromDate` = hôm nay − 30 ngày, `toDate` = hôm nay.
-- Validate trước khi gọi, disable nút submit nếu thiếu.
-- Hiển thị lỗi inline thay vì throw.
-
-## Chi tiết kỹ thuật
-
-- **Mã hoá password**: dùng `pgsodium` (`crypto_secretbox`) với khoá lấy từ secret `EINVOICE_ENCRYPTION_KEY`. Edge function giải mã khi cần login. Frontend không bao giờ đọc cột password.
-- **Action mới `vinvoice-api`**: `test_login` (chỉ login + trả status), `save_settings` (validate + upsert + clear cache), `get_settings` (trả về thông tin không có password).
-- **Token cache**: `Map<manager_id, {token, exp}>`, TTL 50 phút. Invalidate khi save settings.
-- **Audit**: mọi lần đổi cấu hình log vào `einvoice_actions` với `action='update_settings'`.
-- **RBAC**: chỉ `admin`/`manager` được sửa; `accountant` được xem (ẩn password & URL); `employee` không truy cập trang này.
-
-## Thứ tự thực hiện
-1. Migration: tạo `einvoice_settings` + RLS + GRANT, thêm extension pgsodium nếu chưa có.
-2. Thêm secret `EINVOICE_ENCRYPTION_KEY`.
-3. Cập nhật edge function `vinvoice-api`: actions `test_login`, `get_settings`, `save_settings`; đổi nguồn credential.
-4. Tạo trang `EInvoiceSettings.tsx` + hook `useEInvoiceSettings`.
-5. Thêm banner + route ở `EInvoiceManagement.tsx`.
-6. Fix `SyncInvoicesDialog` (default dates + validation).
-7. Test: lưu credential mới → test_login → sync 30 ngày gần nhất.
+## File thay đổi
+- `supabase/functions/vinvoice-api/index.ts` — chỉ action `sync_invoices`.
