@@ -1,28 +1,23 @@
-Kết quả kiểm tra hiện tại:
+Mình thấy nguyên nhân có khả năng cao là app đang chỉ gọi `getInvoices` với `invoiceStatus=3`, nhưng danh sách HĐ chưa phát hành trên Viettel có thể không dùng mã trạng thái này hoặc cần đồng bộ qua endpoint/dạng payload khác. Vì vậy app đang báo “không có” dù trên Viettel có dữ liệu.
 
-- Luồng “Chưa phát hành / Đồng bộ nháp từ Viettel” đang gọi đúng Edge Function `vinvoice-api` với action `sync_drafts`.
-- API Viettel trả về:
-  - `getListInvoiceDataControl`: có dữ liệu hoá đơn, nhưng toàn bộ là hoá đơn đã phát hành (`state=1`), không có bản ghi nháp/chưa phát hành (`state=3`).
-  - Fallback `getInvoices` với `invoiceStatus=3`: Viettel trả `400 NOT_FOUND_DATA` / “Không tìm thấy bản ghi”.
-- Database hiện chỉ có `57` hoá đơn `issued`, `0` hoá đơn `draft`.
+Kế hoạch sửa:
 
-Kết luận: hiện tại không phải lỗi mất dữ liệu trong app; Viettel đang báo không có HĐ nháp/chưa phát hành trong khoảng ngày và loại HĐ đang chọn (`01GTKT`).
+1. Mở rộng đồng bộ HĐ chưa phát hành
+   - Không chỉ thử `invoiceStatus=3`.
+   - Thử thêm các mã trạng thái phổ biến cho HĐ nháp/chưa phát hành trên Viettel như `0`, `1`, `2`, `3`, tùy schema thực tế trả về.
+   - Nếu endpoint trả dữ liệu nhưng trạng thái không rõ, ghi log mẫu field trạng thái để xác định đúng mã Viettel đang dùng.
 
-Kế hoạch sửa để tránh hiểu nhầm và hỗ trợ kiểm tra tiếp:
+2. Không ghi đè kết quả “có thể có dữ liệu” thành “không có” quá sớm
+   - Hiện fallback `NOT_FOUND_DATA` làm app kết luận không có HĐ nháp.
+   - Sửa để chỉ báo “không có” sau khi đã thử đủ các biến thể truy vấn.
 
-1. Cập nhật thông báo đồng bộ
-   - Khi Viettel trả `NOT_FOUND_DATA` cho `invoiceStatus=3`, hiển thị rõ: “Viettel không có HĐ chưa phát hành trong khoảng ngày/loại HĐ này”.
-   - Không báo lỗi chung chung như không lấy được dữ liệu.
+3. Tăng khả năng nhận diện HĐ chưa phát hành
+   - Đọc thêm các field trạng thái từ Viettel: `state`, `stateCode`, `invoiceStatus`, `status`, `publishStatus`, `paymentStatus`, `invoiceStatusName`, `stateName`, `statusName`, `description`.
+   - Chỉ lưu vào tab “Chưa phát hành” khi xác định là nháp/chưa phát hành hoặc dữ liệu đến từ endpoint truy vấn riêng cho HĐ chưa phát hành.
 
-2. Bổ sung thông tin chẩn đoán trong UI
-   - Hiển thị số HĐ Viettel trả về từ endpoint chính.
-   - Hiển thị số HĐ được nhận diện là chưa phát hành.
-   - Hiển thị endpoint đã dùng để kiểm tra.
+4. Cập nhật thông báo trả về
+   - Nếu tìm thấy: báo rõ đã đồng bộ bao nhiêu HĐ và endpoint/status nào trả dữ liệu.
+   - Nếu không tìm thấy: báo đã thử những trạng thái nào, thay vì chỉ nói chung “không có hoá đơn”.
 
-3. Cải thiện bộ lọc trạng thái nháp
-   - Kiểm tra thêm các trường có thể biểu thị trạng thái chưa phát hành như `state`, `stateCode`, `invoiceStatus`, `status`, `invoiceStatusName` nếu Viettel trả schema khác.
-   - Vẫn giữ logic an toàn: chỉ lưu vào tab chưa phát hành khi xác định chắc là nháp/chưa phát hành.
-
-4. Sau khi sửa
-   - Test lại action `sync_drafts` với khoảng 30 ngày và 3 tháng.
-   - Đối chiếu log Viettel + bảng `einvoice_actions` để xác nhận thông báo trả về đúng nguyên nhân.
+5. Kiểm tra lại bằng log Edge Function
+   - Sau khi sửa, chạy lại luồng đồng bộ để xem Viettel trả dữ liệu ở trạng thái nào và đảm bảo dữ liệu được lưu vào `einvoices` với `is_draft=true`, `status='draft'`.
