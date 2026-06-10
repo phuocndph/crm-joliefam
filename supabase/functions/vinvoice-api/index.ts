@@ -123,8 +123,11 @@ function extractInvoiceList(data: any): any[] {
 
 // Map raw Viettel invoice (from getListInvoiceDataControl or getInvoices) → einvoices row
 function mapViettelInvoiceRow(inv: any, ctx: { taxCode: string; defaultType?: string; managerId: string | null; forceDraft?: boolean }) {
-  const state = inv.state ?? inv.stateCode ?? inv.invoiceStatus;
-  const isDraft = ctx.forceDraft || state == 3 || state === "draft";
+  const state = inv.state ?? inv.stateCode ?? inv.invoiceStatus ?? inv.status;
+  const stateName = String(inv.invoiceStatusName || inv.stateName || "").toLowerCase();
+  const isDraft = ctx.forceDraft
+    || state == 3 || state === "draft"
+    || /nháp|chưa phát hành|draft|unissued/.test(stateName);
   const status = isDraft ? "draft"
     : (state == 5 || state === "cancelled") ? "cancelled"
     : "issued";
