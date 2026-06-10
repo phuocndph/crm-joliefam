@@ -1,36 +1,45 @@
-# Sửa lỗi "Đồng bộ HĐ nháp" trả về START_DATE_REQUIRED
+## Kế hoạch rà và sửa luồng đồng bộ hóa đơn S-Invoice
 
-## Nguyên nhân
-Endpoint Viettel `InvoiceUtilsWS/getInvoices/{MST}` yêu cầu `fromDate`/`toDate` là **Long timestamp (epoch ms)**. 
-- `sync_invoices` đã có fallback từ chuỗi → millis nên chạy được.
-- `sync_drafts` chỉ gửi chuỗi `dd/MM/yyyy` → luôn bị `400 START_DATE_REQUIRED` / `END_DATE_REQUIRED` (xác nhận trong log edge function).
+### Mục tiêu
+- Đi từ đầu luồng `Đồng bộ nháp từ Viettel` / `Đồng bộ từ Viettel`.
+- Không để trường hợp Viettel trả `NOT_FOUND_DATA` làm app báo lỗi đỏ `Không tìm thấy bản ghi`.
+- Đảm bảo nếu Viettel có dữ liệu thì parse đúng danh sách và lưu vào bảng `einvoices`.
 
-## Thay đổi
+### Phát hiện hiện tại
+- UI gọi đúng Edge Function qua `useEInvoiceActions`.
+- Edge Function hiện đã gửi đúng `startDate/endDate` dạng ISO `2026-05-11T00:00:00.000+07:00` → lỗi “ngày kết thúc là bắt buộc” đã hết.
+- Viettel đang trả:
+  - `message: NOT_FOUND_DATA`
+  - `data: Không tìm thấy bản ghi`
+- DB `einvoices` hiện có `0` bản ghi, nên không phải lỗi RLS che dữ liệu hiện có.
+- App đang biến `NOT_FOUND_DATA` thành lỗi toast, trong khi đây nên được hiểu là “đồng bộ thành công nhưng không có hóa đơn trong khoảng ngày/loại HĐ đã chọn”.
 
-### 1. `supabase/functions/vinvoice-api/index.ts`
+### Việc sẽ sửa
+1. **Chuẩn hóa xử lý response Viettel trong `vinvoice-api`**
+   - Thêm helper nhận diện `NOT_FOUND_DATA` / “Không tìm thấy bản ghi”.
+   - Với `sync_invoices` và `sync_drafts`, nếu gặp mã này thì trả về:
+     - `success: true`
+     - `synced: 0`
+     - `total: 0`
+     - thông báo rõ là không có dữ liệu trong khoảng đã chọn.
 
-**`sync_drafts`**: gửi epoch ms làm primary, dùng chuỗi `dd/MM/yyyy` làm fallback (đảo lại thứ tự so với hiện tại) — đồng bộ logic với `sync_invoices`:
+2. **Log request đầy đủ hơn cho sync nháp**
+   - Hiện `sync_drafts` log action chưa lưu `request`, gây khó debug.
+   - Bổ sung lưu `request: reqBody` giống `sync_invoices`.
 
-```ts
-const fromMs = typeof fromDate === "number" ? fromDate : new Date(fromDate).getTime();
-const toMs   = typeof toDate   === "number" ? toDate   : new Date(toDate).getTime();
+3. **Tăng độ bền parser danh sách hóa đơn**
+   - Mở rộng nơi đọc list từ Viettel: `invoices`, `lstInvoice`, `data`, `data.invoices`, `data.lstInvoice`, `result.invoices`, `result.lstInvoice`, v.v.
+   - Dùng chung helper parse list cho cả nháp và đã phát hành để tránh lệch logic.
 
-const buildBody = (variant: "millis" | "string") => variant === "millis"
-  ? { invoiceType, fromDate: fromMs, toDate: toMs, invoiceStatus: 3, size: 1000, offset: 0 }
-  : { invoiceType, fromDate: fromStr, toDate: toStr, invoiceStatus: 3, rowPerPage: 1000, pageNum: 1 };
+4. **Điều chỉnh toast phía frontend**
+   - Nếu `synced=0,total=0`, hiển thị thông báo nhẹ: “Không có hóa đơn trong khoảng ngày đã chọn” thay vì báo lỗi.
+   - Nếu có dữ liệu, vẫn hiển thị số lượng đồng bộ như hiện tại.
 
-let r = await callViettel(..., buildBody("millis"));
-if (!r.ok && (r.data?.message === "START_DATE_REQUIRED" || r.data?.message === "END_DATE_REQUIRED")) {
-  r = await callViettel(..., buildBody("string"));
-}
-```
+5. **Kiểm tra lại RLS/DB sau khi sửa**
+   - Giữ chính sách RLS hiện tại nếu không có vấn đề, vì bảng đang thật sự trống.
+   - Không mở public hoặc nới quyền không cần thiết.
 
-**`sync_invoices`**: đảo thứ tự — thử **millis trước**, chuỗi sau (theo log thực tế Viettel đang reject chuỗi).
-
-### 2. Không sửa frontend
-`InvoiceActionDialogs.tsx` đã gửi `fromMs`/`toMs` đúng — chỉ backend cần sửa.
-
-## Kiểm thử
-1. Bấm "Đồng bộ nháp từ Viettel" → kỳ vọng toast "Đã đồng bộ X/Y HĐ nháp", không còn lỗi.
-2. Kiểm tra edge function logs `vinvoice-api`: body request phải có `fromDate` là số ms, response 200.
-3. Tab "Đã phát hành" bấm "Đồng bộ từ Viettel" cũng phải hoạt động (giảm 1 round-trip do bỏ primary chuỗi).
+### Kết quả mong đợi
+- Bấm đồng bộ khi Viettel không có hóa đơn: app không báo lỗi đỏ, mà báo không có dữ liệu.
+- Khi Viettel trả danh sách hóa đơn: app lưu được vào `einvoices` và hiển thị ở tab tương ứng.
+- Nhật ký `einvoice_actions` đủ request/response để lần sau debug nhanh hơn.

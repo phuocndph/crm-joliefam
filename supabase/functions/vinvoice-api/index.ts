@@ -96,6 +96,26 @@ function toViettelShortDate(value: any): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+function isViettelEmptyResult(data: any): boolean {
+  if (!data) return false;
+  const msg = String(data.message || "").toUpperCase();
+  const text = String(data.data || "");
+  return msg === "NOT_FOUND_DATA" || /không tìm thấy bản ghi/i.test(text);
+}
+
+function extractInvoiceList(data: any): any[] {
+  if (!data) return [];
+  const candidates = [
+    data.invoices, data.lstInvoice, data.lstInvoiceData,
+    data.data?.invoices, data.data?.lstInvoice, data.data?.lstInvoiceData,
+    Array.isArray(data.data) ? data.data : null,
+    data.result?.invoices, data.result?.lstInvoice,
+    Array.isArray(data.result) ? data.result : null,
+  ];
+  for (const c of candidates) if (Array.isArray(c)) return c;
+  return [];
+}
+
 async function callViettel(creds: Creds, cacheKey: string, path: string, method: "GET" | "POST", body?: any) {
   const token = await getToken(creds, cacheKey);
   const url = `${creds.apiUrl}${path}`;
@@ -429,19 +449,17 @@ Deno.serve(async (req: Request) => {
 
       await logAction(supabase, { action, request: reqBody, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
 
+      // Viettel signals empty result as 400 NOT_FOUND_DATA — treat as success with 0 rows.
+      if (!r.ok && isViettelEmptyResult(r.data)) {
+        return json({ success: true, synced: 0, total: 0, empty: true });
+      }
+
       if (!r.ok) {
         const msg = r.data?.data || r.data?.message || r.raw || "Viettel API lỗi không xác định";
         return json({ success: false, error: msg, raw: r.data });
       }
 
-      // Viettel returns invoices under different keys depending on version
-      const list: any[] = Array.isArray(r.data?.invoices) ? r.data.invoices
-        : Array.isArray(r.data?.lstInvoice) ? r.data.lstInvoice
-        : Array.isArray(r.data?.data?.invoices) ? r.data.data.invoices
-        : Array.isArray(r.data?.data?.lstInvoice) ? r.data.data.lstInvoice
-        : Array.isArray(r.data?.data) ? r.data.data
-        : Array.isArray(r.data?.result?.invoices) ? r.data.result.invoices
-        : [];
+      const list = extractInvoiceList(r.data);
       console.log("[sync_invoices] received", list.length, "invoices");
       let upserted = 0;
       for (const inv of list) {
@@ -498,16 +516,14 @@ Deno.serve(async (req: Request) => {
       let reqBody: any = buildBody();
       let r = await callViettel(creds!, cacheKey, endpoint, "POST", reqBody);
       console.log("[sync_drafts] primary status=", r.status, "body=", JSON.stringify(reqBody));
-      if (!r.ok && (r.data?.message === "START_DATE_REQUIRED" || r.data?.message === "END_DATE_REQUIRED")) {
-        return json({ success: false, error: "Viettel không nhận tham số ngày tra cứu HĐ nháp", raw: r.data });
+      await logAction(supabase, { action, request: reqBody, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
+
+      if (!r.ok && isViettelEmptyResult(r.data)) {
+        return json({ success: true, synced: 0, total: 0, empty: true });
       }
-      await logAction(supabase, { action, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.data || r.data?.message || r.raw });
 
-      const list: any[] = Array.isArray(r.data?.invoices) ? r.data.invoices
-        : Array.isArray(r.data?.lstInvoice) ? r.data.lstInvoice
-        : Array.isArray(r.data?.data) ? r.data.data
-        : [];
+      const list = extractInvoiceList(r.data);
       let upserted = 0;
       for (const inv of list) {
         const txUuid = inv.transactionUuid || inv.transactionID || inv.invoiceGuid;
