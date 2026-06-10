@@ -456,6 +456,66 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, synced: upserted, total: list.length });
     }
 
+    // ---------- SYNC DRAFTS (invoiceStatus=3 from Viettel) ----------
+    if (action === "sync_drafts") {
+      const { fromDate, toDate, invoiceType } = params;
+      const toDdMmYyyy = (v: any): string => {
+        if (!v) return "";
+        if (typeof v === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(v)) return v;
+        const d = new Date(typeof v === "number" ? v : String(v));
+        if (isNaN(d.getTime())) return "";
+        const dd = String(d.getUTCDate()).padStart(2, "0");
+        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const yyyy = d.getUTCFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+      };
+      const fromStr = toDdMmYyyy(fromDate);
+      const toStr = toDdMmYyyy(toDate);
+      if (!fromStr || !toStr) return json({ success: false, error: "Thiếu hoặc sai định dạng ngày" });
+
+      const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${(await ensureCreds()).taxCode}`;
+      const r = await callViettel(creds!, cacheKey, endpoint, "POST", {
+        invoiceType: invoiceType || "01GTKT",
+        fromDate: fromStr,
+        toDate: toStr,
+        invoiceStatus: 3,
+        rowPerPage: 1000,
+        pageNum: 1,
+      });
+      await logAction(supabase, { action, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
+      if (!r.ok) return json({ success: false, error: r.data?.data || r.data?.message || r.raw });
+
+      const list: any[] = Array.isArray(r.data?.invoices) ? r.data.invoices
+        : Array.isArray(r.data?.lstInvoice) ? r.data.lstInvoice
+        : Array.isArray(r.data?.data) ? r.data.data
+        : [];
+      let upserted = 0;
+      for (const inv of list) {
+        const txUuid = inv.transactionUuid || inv.transactionID || inv.invoiceGuid;
+        if (!txUuid) continue;
+        const record: any = {
+          transaction_uuid: txUuid,
+          invoice_number: inv.invoiceNo || null,
+          invoice_type: inv.invoiceType || invoiceType || "01GTKT",
+          template_code: inv.templateCode || "",
+          invoice_series: inv.invoiceSeries || "",
+          status: "draft",
+          is_draft: true,
+          total_amount: Number(inv.totalAmountWithoutTax || inv.totalAmount || 0),
+          vat_amount: Number(inv.totalTaxAmount || 0),
+          total_with_vat: Number(inv.totalAmountWithTax || inv.totalAmount || 0),
+          buyer_name: inv.buyerLegalName || inv.buyerName || "",
+          buyer_tax_code: inv.buyerTaxCode || "",
+          response_data: inv,
+          last_synced_at: new Date().toISOString(),
+          manager_id: managerId ? String(managerId) : null,
+        };
+        const { error: upErr } = await supabase.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
+        if (!upErr) upserted++;
+      }
+      return json({ success: true, synced: upserted, total: list.length });
+    }
+
     // ---------- DOWNLOAD FILE (PDF/XML) ----------
     if (action === "download_file") {
       const { transactionUuid, fileType, einvoice_id } = params;
