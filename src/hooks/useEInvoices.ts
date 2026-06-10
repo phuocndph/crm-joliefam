@@ -36,7 +36,11 @@ export const useEInvoiceActions = () => {
   const syncInvoices = useMutation({
     mutationFn: (p: { fromDate: number; toDate: number; invoiceType?: string }) =>
       callApi("sync_invoices", p),
-    onSuccess: (d: any) => { toast.success(`Đã đồng bộ ${d.synced}/${d.total} hoá đơn`); invalidate(); },
+    onSuccess: (d: any) => {
+      if (d?.empty || d?.total === 0) toast.info("Không có hoá đơn trong khoảng ngày đã chọn");
+      else toast.success(`Đã đồng bộ ${d.synced}/${d.total} hoá đơn`);
+      invalidate();
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -94,7 +98,11 @@ export const useEInvoiceActions = () => {
   const syncDrafts = useMutation({
     mutationFn: (p: { fromDate: number; toDate: number; invoiceType?: string }) =>
       callApi("sync_drafts", p),
-    onSuccess: (d: any) => { toast.success(`Đã đồng bộ ${d.synced}/${d.total} HĐ nháp`); invalidate(); },
+    onSuccess: (d: any) => {
+      if (d?.empty || d?.total === 0) toast.info("Không có HĐ nháp trong khoảng ngày đã chọn");
+      else toast.success(`Đã đồng bộ ${d.synced}/${d.total} HĐ nháp`);
+      invalidate();
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
