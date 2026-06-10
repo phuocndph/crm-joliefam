@@ -636,6 +636,8 @@ Deno.serve(async (req: Request) => {
         template_code: options?.templateCode || "",
         invoice_series: options?.invoiceSeries || "",
         status: "draft",
+        is_draft: true,
+        draft_payload: payload,
         total_amount: Number(contract.subtotal) || 0,
         vat_amount: Number(contract.vat_amount) || 0,
         total_with_vat: Number(contract.total_amount) || 0,
@@ -646,6 +648,134 @@ Deno.serve(async (req: Request) => {
       }).select().single();
       if (error) return json({ success: false, error: error.message });
       return json({ success: true, draft: saved });
+    }
+
+    // ---------- UPDATE DRAFT (local edit) ----------
+    if (action === "update_draft") {
+      const { einvoice_id, contract, options } = params;
+      if (!einvoice_id || !contract) return json({ success: false, error: "Thiếu dữ liệu" });
+      await ensureCreds();
+      const payload = mapContractToInvoice(contract, options || {}, creds!.taxCode);
+      const { error } = await supabase.from("einvoices").update({
+        invoice_type: options?.invoiceType || "01GTKT",
+        template_code: options?.templateCode || "",
+        invoice_series: options?.invoiceSeries || "",
+        total_amount: Number(contract.subtotal) || 0,
+        vat_amount: Number(contract.vat_amount) || 0,
+        total_with_vat: Number(contract.total_amount) || 0,
+        buyer_name: contract.buyer_info?.company_name || contract.buyer_info?.name || "",
+        buyer_tax_code: contract.buyer_info?.tax_code || "",
+        request_data: payload,
+        draft_payload: payload,
+      }).eq("id", einvoice_id).eq("is_draft", true);
+      if (error) return json({ success: false, error: error.message });
+      return json({ success: true });
+    }
+
+    // ---------- DELETE DRAFT ----------
+    if (action === "delete_draft") {
+      const { einvoice_id } = params;
+      if (!einvoice_id) return json({ success: false, error: "Thiếu einvoice_id" });
+      const { data: draft } = await supabase.from("einvoices").select("*").eq("id", einvoice_id).single();
+      if (!draft) return json({ success: false, error: "Không tìm thấy bản nháp" });
+      if (!draft.is_draft) return json({ success: false, error: "HĐ này không phải bản nháp" });
+
+      // If draft has been pushed to Viettel, try to delete remotely first
+      if (draft.transaction_uuid) {
+        try {
+          await ensureCreds();
+          const r = await callViettel(creds!, cacheKey,
+            `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/deleteInvoiceDraft/${creds!.taxCode}/${draft.transaction_uuid}`,
+            "GET"
+          );
+          await logAction(supabase, { einvoice_id, action, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
+        } catch (e: any) {
+          console.warn("Viettel deleteInvoiceDraft failed:", e.message);
+        }
+      }
+      const { error } = await supabase.from("einvoices").delete().eq("id", einvoice_id);
+      if (error) return json({ success: false, error: error.message });
+      return json({ success: true });
+    }
+
+    // ---------- ISSUE DRAFT (createInvoice with stored payload) ----------
+    if (action === "issue_draft") {
+      const { einvoice_id } = params;
+      if (!einvoice_id) return json({ success: false, error: "Thiếu einvoice_id" });
+      const { data: draft } = await supabase.from("einvoices").select("*").eq("id", einvoice_id).single();
+      if (!draft) return json({ success: false, error: "Không tìm thấy bản nháp" });
+      if (!draft.is_draft) return json({ success: false, error: "HĐ này không phải bản nháp" });
+      const payload = draft.draft_payload || draft.request_data;
+      if (!payload) return json({ success: false, error: "Bản nháp không có dữ liệu để phát hành" });
+
+      await ensureCreds();
+      const r = await callViettel(creds!, cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${creds!.taxCode}`,
+        "POST", payload
+      );
+      await logAction(supabase, { einvoice_id, action, request: payload, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
+      if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
+
+      const result = r.data?.result || r.data;
+      await supabase.from("einvoices").update({
+        status: "issued",
+        is_draft: false,
+        transaction_uuid: result?.transactionUuid || result?.transactionID || draft.transaction_uuid,
+        invoice_number: result?.invoiceNo || result?.invoiceNumber || null,
+        reservation_code: result?.reservationCode || null,
+        issued_date: new Date().toISOString(),
+        response_data: r.data,
+      }).eq("id", einvoice_id);
+      return json({ success: true, data: r.data });
+    }
+
+    // ---------- PREVIEW DRAFT PDF ----------
+    if (action === "preview_draft") {
+      const { einvoice_id } = params;
+      if (!einvoice_id) return json({ success: false, error: "Thiếu einvoice_id" });
+      const { data: draft } = await supabase.from("einvoices").select("*").eq("id", einvoice_id).single();
+      if (!draft) return json({ success: false, error: "Không tìm thấy HĐ" });
+      await ensureCreds();
+
+      // Pushed draft: use transactionUuid; otherwise build a quick draft via getInvoiceFileViewBeforeIssue
+      if (draft.transaction_uuid) {
+        const r = await callViettel(creds!, cacheKey,
+          `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceDraftRepresentationFile`,
+          "POST",
+          { supplierTaxCode: creds!.taxCode, transactionUuid: draft.transaction_uuid, fileType: "PDF" }
+        );
+        if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
+        return json({ success: true, base64: r.data?.fileToBytes || r.data?.fileContent || null });
+      }
+
+      const payload = draft.draft_payload || draft.request_data;
+      if (!payload) return json({ success: false, error: "Không có dữ liệu để xem trước" });
+      const r = await callViettel(creds!, cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/createInvoiceUsbToken/${creds!.taxCode}`,
+        "POST", { ...payload, fileType: "PDF", preview: true }
+      );
+      // Many tenants don't support this preview path — fall back gracefully
+      if (!r.ok) return json({ success: false, error: "Viettel chưa hỗ trợ xem trước nháp local. Vui lòng phát hành để xem." });
+      return json({ success: true, base64: r.data?.fileToBytes || r.data?.fileContent || null });
+    }
+
+    // ---------- DOWNLOAD MINUTE (biên bản huỷ/điều chỉnh) ----------
+    if (action === "download_minute") {
+      const { transactionUuid, minuteType, einvoice_id } = params;
+      // minuteType: 1 = biên bản huỷ, 2 = biên bản điều chỉnh, 3 = biên bản thay thế
+      if (!transactionUuid) return json({ success: false, error: "Thiếu transactionUuid" });
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getMinutesOfInvoice`,
+        "POST",
+        { supplierTaxCode: creds!.taxCode, transactionUuid, type: minuteType || 1, fileType: "PDF" }
+      );
+      await logAction(supabase, { einvoice_id, action, request: params, response: { status: r.status }, status: String(r.status), user_id: user.id, manager_id: managerId });
+      if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
+      return json({
+        success: true,
+        base64: r.data?.fileToBytes || r.data?.fileContent || null,
+        fileName: r.data?.fileName || `bien-ban-${minuteType || 1}.pdf`,
+      });
     }
 
     if (action === "get_invoices") {
