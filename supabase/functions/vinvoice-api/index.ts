@@ -11,23 +11,47 @@ const USERNAME = Deno.env.get("VINVOICE_USERNAME") || "";
 const PASSWORD = Deno.env.get("VINVOICE_PASSWORD") || "";
 const TAX_CODE = Deno.env.get("VINVOICE_TAX_CODE") || "";
 
-// In-memory token cache (~50min)
-let tokenCache: { token: string; exp: number } | null = null;
+// Per-manager in-memory token cache (~50min)
+type CachedToken = { token: string; exp: number; apiUrl: string };
+const tokenCache = new Map<string, CachedToken>();
 
-async function getToken(): Promise<string> {
-  if (tokenCache && tokenCache.exp > Date.now()) return tokenCache.token;
-  if (!USERNAME || !PASSWORD) throw new Error("Thiếu VINVOICE_USERNAME / VINVOICE_PASSWORD");
-  const res = await fetch(`${API_URL}/auth/login`, {
+type Creds = { apiUrl: string; username: string; password: string; taxCode: string; source: "db" | "env" };
+
+async function loadCreds(supabaseService: any, managerId: string | null): Promise<Creds> {
+  if (managerId) {
+    const { data } = await supabaseService
+      .from("einvoice_settings")
+      .select("api_url, username, password, tax_code")
+      .eq("manager_id", managerId)
+      .maybeSingle();
+    if (data && data.username && data.password) {
+      return {
+        apiUrl: data.api_url || API_URL,
+        username: data.username,
+        password: data.password,
+        taxCode: data.tax_code || TAX_CODE,
+        source: "db",
+      };
+    }
+  }
+  return { apiUrl: API_URL, username: USERNAME, password: PASSWORD, taxCode: TAX_CODE, source: "env" };
+}
+
+async function getToken(creds: Creds, cacheKey: string): Promise<string> {
+  const cached = tokenCache.get(cacheKey);
+  if (cached && cached.exp > Date.now() && cached.apiUrl === creds.apiUrl) return cached.token;
+  if (!creds.username || !creds.password) throw new Error("Chưa cấu hình tài khoản Viettel S-Invoice. Vào tab 'Cấu hình & Kết nối' để thiết lập.");
+  const res = await fetch(`${creds.apiUrl}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: USERNAME, password: PASSWORD }),
+    body: JSON.stringify({ username: creds.username, password: creds.password }),
   });
   const text = await res.text();
   let body: any; try { body = JSON.parse(text); } catch { body = { raw: text }; }
   if (!res.ok || !body?.access_token) {
     throw new Error(body?.message || body?.error || `Login failed (${res.status}): ${text}`);
   }
-  tokenCache = { token: body.access_token, exp: Date.now() + 50 * 60 * 1000 };
+  tokenCache.set(cacheKey, { token: body.access_token, exp: Date.now() + 50 * 60 * 1000, apiUrl: creds.apiUrl });
   return body.access_token;
 }
 
@@ -37,9 +61,9 @@ const authHeader = (token: string) => ({
   "Authorization": `Bearer ${token}`,
 });
 
-async function callViettel(path: string, method: "GET" | "POST", body?: any) {
-  const token = await getToken();
-  const url = `${API_URL}${path}`;
+async function callViettel(creds: Creds, cacheKey: string, path: string, method: "GET" | "POST", body?: any) {
+  const token = await getToken(creds, cacheKey);
+  const url = `${creds.apiUrl}${path}`;
   console.log(`[viettel] ${method} ${path}`, body ? JSON.stringify(body).slice(0, 300) : "");
   const res = await fetch(url, {
     method,
