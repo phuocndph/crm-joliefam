@@ -121,7 +121,7 @@ const parseWeightRange = (name: string): { min: number; max: number } => {
 interface CreateGHNOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  order: {
+  order?: {
     id: string;
     order_number: string;
     display_order_number?: string;
@@ -130,16 +130,17 @@ interface CreateGHNOrderDialogProps {
     items?: any;
     customers?: { name: string; phone: string | null; address?: string | null; addresses?: any[] | null; } | null;
   };
-  remainingAmount: number;
-  onSuccess: () => void;
+  remainingAmount?: number;
+  onSuccess?: () => void;
 }
 
-export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmount, onSuccess }: CreateGHNOrderDialogProps) {
+export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmount = 0, onSuccess }: CreateGHNOrderDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [createdOrderCode, setCreatedOrderCode] = useState("");
   const [createdOrderData, setCreatedOrderData] = useState<any>(null);
+  const [customOrderNumber, setCustomOrderNumber] = useState("");
 
   // Shop
   const [shops, setShops] = useState<GHNShop[]>([]);
@@ -292,9 +293,36 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
 
   // Pre-fill
   useEffect(() => {
-    if (order && open && !hasPrefilledRef.current) {
+    if (open && !hasPrefilledRef.current) {
       hasPrefilledRef.current = true;
+      if (!order) {
+        // Standalone mode: blank form + auto-generated internal label
+        const auto = `GHN-${Date.now().toString().slice(-8)}`;
+        setCustomOrderNumber(auto);
+        setToName("");
+        setToPhone("");
+        setToAddress("");
+        setCodAmount(0);
+        setInsuranceValue(0);
+        setNote("Shop: Chăn ga gối Joliefam");
+        setProductItems([{ name: "", weight: 1000, quantity: 1, length: 10, width: 10, height: 10 }]);
+        setSuccess(false);
+        setCreatedOrderCode("");
+        setCreatedOrderData(null);
+        setFeeDetail(null);
+        setFeeStatus("idle");
+        setServices([]);
+        setServiceTypeId("");
+        setProvinceId("");
+        setDistrictId("");
+        setWardCode("");
+        setDistricts([]);
+        setWards([]);
+        setAutoMatchDone(false);
+        return;
+      }
       const displayNum = order.display_order_number || order.order_number;
+      setCustomOrderNumber(displayNum);
       setToName(`${order.customers?.name || ""}_${displayNum}p`);
       setToPhone(order.customers?.phone || "");
       setToAddress((order.customers as any)?.address || "");
@@ -722,15 +750,15 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
           service_type_id: parseInt(serviceTypeId),
           items: productItems.map(p => ({ name: p.name || "Hàng hóa", quantity: p.quantity, weight: p.weight, length: p.length, width: p.width, height: p.height, price: 0 })),
         },
-        orderId: order.id,
-        orderNumber: order.display_order_number || order.order_number,
+        orderId: order?.id ?? null,
+        orderNumber: customOrderNumber || order?.display_order_number || order?.order_number || `GHN-${Date.now()}`,
         shopId: selectedShopId || undefined,
       });
       setCreatedOrderCode(data?.order_code || "");
       setCreatedOrderData(data);
       setSuccess(true);
       toast({ title: "Tạo đơn GHN thành công!", description: `Mã vận đơn: ${data?.order_code}` });
-      onSuccess();
+      onSuccess?.();
     } catch (e: any) {
       toast({ title: "Lỗi tạo đơn GHN", description: e.message, variant: "destructive", duration: 8000 });
     } finally { setLoading(false); }
@@ -1216,7 +1244,13 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Mã đơn riêng khách hàng</Label>
-                    <Input value={order.display_order_number || order.order_number} readOnly className="text-sm bg-muted" />
+                    <Input
+                      value={customOrderNumber}
+                      onChange={e => setCustomOrderNumber(e.target.value)}
+                      readOnly={!!order}
+                      className={`text-sm ${order ? 'bg-muted' : ''}`}
+                      placeholder="Mã tham chiếu nội bộ"
+                    />
                   </div>
                 </div>
               </div>

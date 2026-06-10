@@ -137,6 +137,7 @@ export default function OrderManagement() {
   const [orderToEditNumber, setOrderToEditNumber] = useState<Order | null>(null);
   const [orderToGHNTracking, setOrderToGHNTracking] = useState<Order | null>(null);
   const [orderToCreateGHN, setOrderToCreateGHN] = useState<Order | null>(null);
+  const [standaloneGHNOpen, setStandaloneGHNOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("orders");
   const [bulkSyncing, setBulkSyncing] = useState(false);
@@ -433,6 +434,10 @@ export default function OrderManagement() {
             <Button onClick={() => navigate('/quotes?create=true')} size="sm" className="gap-1.5">
               <Plus className="h-3.5 w-3.5" />
               Tạo báo giá
+            </Button>
+            <Button onClick={() => setStandaloneGHNOpen(true)} size="sm" variant="outline" className="gap-1.5">
+              <Truck className="h-3.5 w-3.5" />
+              Tạo đơn GHN
             </Button>
           </div>
         </div>
@@ -890,6 +895,16 @@ export default function OrderManagement() {
           }}
         />
       )}
+
+      {/* Standalone GHN Order Dialog (không gắn với đơn nội bộ) */}
+      <CreateGHNOrderDialog
+        open={standaloneGHNOpen}
+        onOpenChange={setStandaloneGHNOpen}
+        onSuccess={() => {
+          loadOrders();
+          setStandaloneGHNOpen(false);
+        }}
+      />
 
     </div>
   );
