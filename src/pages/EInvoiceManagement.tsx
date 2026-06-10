@@ -47,6 +47,8 @@ const EInvoiceManagement = () => {
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [templatesResult, setTemplatesResult] = useState<any>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [diagnoseResult, setDiagnoseResult] = useState<any>(null);
+  const [loadingDiagnose, setLoadingDiagnose] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [showSyncDrafts, setShowSyncDrafts] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<any>(null);
@@ -100,6 +102,23 @@ const EInvoiceManagement = () => {
       setTemplatesResult({ success: false, error: e.message });
       toast.error(e.message);
     } finally { setLoadingTemplates(false); }
+  };
+
+  const handleDiagnose = async () => {
+    setLoadingDiagnose(true);
+    setDiagnoseResult(null);
+    try {
+      const today = new Date();
+      const from = new Date(today.getTime() - 30 * 86400000);
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      const res = await callApi("diagnose_read", { fromDate: fmt(from), toDate: fmt(today) });
+      setDiagnoseResult(res);
+      if (res?.success) toast.success("Đã chạy chẩn đoán API");
+      else toast.error(res?.error || "Chẩn đoán thất bại");
+    } catch (e: any) {
+      setDiagnoseResult({ success: false, error: e.message });
+      toast.error(e.message);
+    } finally { setLoadingDiagnose(false); }
   };
 
   const matchSearch = (inv: any) => {
