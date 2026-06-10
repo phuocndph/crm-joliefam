@@ -460,19 +460,76 @@ export type Database = {
           },
         ]
       }
+      einvoice_actions: {
+        Row: {
+          action: string
+          created_at: string
+          created_by: string | null
+          einvoice_id: string | null
+          error_message: string | null
+          id: string
+          manager_id: string | null
+          request: Json | null
+          response: Json | null
+          status: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          created_by?: string | null
+          einvoice_id?: string | null
+          error_message?: string | null
+          id?: string
+          manager_id?: string | null
+          request?: Json | null
+          response?: Json | null
+          status?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          einvoice_id?: string | null
+          error_message?: string | null
+          id?: string
+          manager_id?: string | null
+          request?: Json | null
+          response?: Json | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "einvoice_actions_einvoice_id_fkey"
+            columns: ["einvoice_id"]
+            isOneToOne: false
+            referencedRelation: "einvoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       einvoices: {
         Row: {
           buyer_name: string | null
           buyer_tax_code: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
           contract_id: string | null
           created_at: string
+          email_sent_at: string | null
+          email_sent_to: string | null
           id: string
+          invoice_action: string | null
           invoice_number: string | null
           invoice_series: string | null
           invoice_type: string | null
           issued_date: string | null
+          last_synced_at: string | null
           manager_id: string | null
+          original_invoice_id: string | null
+          payment_status_synced: boolean | null
+          pdf_url: string | null
           request_data: Json | null
+          reservation_code: string | null
           response_data: Json | null
           status: string
           template_code: string | null
@@ -482,19 +539,30 @@ export type Database = {
           transaction_uuid: string | null
           updated_at: string
           vat_amount: number | null
+          xml_url: string | null
         }
         Insert: {
           buyer_name?: string | null
           buyer_tax_code?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           contract_id?: string | null
           created_at?: string
+          email_sent_at?: string | null
+          email_sent_to?: string | null
           id?: string
+          invoice_action?: string | null
           invoice_number?: string | null
           invoice_series?: string | null
           invoice_type?: string | null
           issued_date?: string | null
+          last_synced_at?: string | null
           manager_id?: string | null
+          original_invoice_id?: string | null
+          payment_status_synced?: boolean | null
+          pdf_url?: string | null
           request_data?: Json | null
+          reservation_code?: string | null
           response_data?: Json | null
           status?: string
           template_code?: string | null
@@ -504,19 +572,30 @@ export type Database = {
           transaction_uuid?: string | null
           updated_at?: string
           vat_amount?: number | null
+          xml_url?: string | null
         }
         Update: {
           buyer_name?: string | null
           buyer_tax_code?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           contract_id?: string | null
           created_at?: string
+          email_sent_at?: string | null
+          email_sent_to?: string | null
           id?: string
+          invoice_action?: string | null
           invoice_number?: string | null
           invoice_series?: string | null
           invoice_type?: string | null
           issued_date?: string | null
+          last_synced_at?: string | null
           manager_id?: string | null
+          original_invoice_id?: string | null
+          payment_status_synced?: boolean | null
+          pdf_url?: string | null
           request_data?: Json | null
+          reservation_code?: string | null
           response_data?: Json | null
           status?: string
           template_code?: string | null
@@ -526,6 +605,7 @@ export type Database = {
           transaction_uuid?: string | null
           updated_at?: string
           vat_amount?: number | null
+          xml_url?: string | null
         }
         Relationships: [
           {
@@ -533,6 +613,13 @@ export type Database = {
             columns: ["contract_id"]
             isOneToOne: false
             referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "einvoices_original_invoice_id_fkey"
+            columns: ["original_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "einvoices"
             referencedColumns: ["id"]
           },
         ]
