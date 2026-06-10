@@ -398,6 +398,7 @@ Deno.serve(async (req: Request) => {
         return json({ success: false, error: "Thiếu hoặc sai định dạng ngày bắt đầu/kết thúc" });
       }
 
+      const c = await ensureCreds();
       const buildBody = (variant: "getInvoices" | "dataControl") => variant === "getInvoices"
         ? {
             invoiceType: invoiceType || "01GTKT",
@@ -408,21 +409,21 @@ Deno.serve(async (req: Request) => {
             pageNum: 1,
           }
         : {
-            supplierTaxCode: creds!.taxCode,
+            supplierTaxCode: c.taxCode,
             fromDate: fromStr,
             toDate: toStr,
           };
 
-      const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${creds!.taxCode}`;
+      const endpoint = `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`;
 
       let reqBody: any = buildBody("getInvoices");
-      let r = await callViettel(await ensureCreds(), cacheKey, endpoint, "POST", reqBody);
+      let r = await callViettel(c, cacheKey, endpoint, "POST", reqBody);
       console.log("[sync_invoices] primary status=", r.status, "body=", JSON.stringify(reqBody));
 
       // Fallback endpoint used by Viettel for date-range invoice data.
       if (!r.ok && (r.data?.message === "START_DATE_REQUIRED" || r.data?.message === "END_DATE_REQUIRED")) {
         reqBody = buildBody("dataControl");
-        r = await callViettel(await ensureCreds(), cacheKey, `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`, "POST", reqBody);
+        r = await callViettel(c, cacheKey, `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`, "POST", reqBody);
         console.log("[sync_invoices] fallback status=", r.status, "body=", JSON.stringify(reqBody));
       }
 
