@@ -420,6 +420,56 @@ Deno.serve(async (req: Request) => {
       return json({ success: r.ok, data: r.data, status: r.status });
     }
 
+    // ---------- DIAGNOSE READ (admin/manager) ----------
+    if (action === "diagnose_read") {
+      if (!isManagerOrAdmin) return json({ success: false, error: "Chỉ admin/manager" }, 403);
+      const c = await ensureCreds();
+      const fd = params.fromDate || new Date(Date.now() - 30 * 86400000);
+      const td = params.toDate || new Date();
+      const fromStr = toViettelShortDate(fd);
+      const toStr = toViettelShortDate(td);
+      const startDate = toViettelSearchDate(fd);
+      const endDate = toViettelSearchDate(td);
+      const it = params.invoiceType || "01GTKT";
+      const results: any[] = [];
+
+      try {
+        const tok = await getToken(c, cacheKey);
+        results.push({ step: "login", ok: true, tokenLength: tok.length });
+      } catch (e: any) {
+        results.push({ step: "login", ok: false, error: e.message });
+        return json({ success: false, results });
+      }
+
+      const probe = async (label: string, path: string, body: any) => {
+        try {
+          const r = await callViettel(c, cacheKey, path, "POST", body);
+          results.push({
+            step: label, status: r.status, ok: r.ok,
+            message: r.data?.message,
+            count: extractInvoiceList(r.data).length,
+            keys: r.data && typeof r.data === "object" ? Object.keys(r.data).slice(0, 8) : [],
+            sample: extractInvoiceList(r.data)[0] || null,
+            body,
+          });
+        } catch (e: any) {
+          results.push({ step: label, ok: false, error: e.message, body });
+        }
+      };
+
+      await probe("getInvoiceTemplates",
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceTemplates`,
+        { taxCode: c.taxCode, invoiceType: it });
+      await probe("getListInvoiceDataControl",
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`,
+        { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr });
+      await probe("getInvoices",
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${c.taxCode}`,
+        { invoiceType: it, startDate, endDate, rowPerPage: 100, pageNum: 1 });
+
+      return json({ success: true, taxCode: c.taxCode, apiUrl: c.apiUrl, dateRange: { fromStr, toStr }, results });
+    }
+
     // ---------- SYNC INVOICES ----------
     if (action === "sync_invoices") {
       const { fromDate, toDate, invoiceType } = params;
