@@ -121,6 +121,43 @@ function extractInvoiceList(data: any): any[] {
   return [];
 }
 
+// Map raw Viettel invoice (from getListInvoiceDataControl or getInvoices) → einvoices row
+function mapViettelInvoiceRow(inv: any, ctx: { taxCode: string; defaultType?: string; managerId: string | null; forceDraft?: boolean }) {
+  const state = inv.state ?? inv.stateCode ?? inv.invoiceStatus;
+  const isDraft = ctx.forceDraft || state == 3 || state === "draft";
+  const status = isDraft ? "draft"
+    : (state == 5 || state === "cancelled") ? "cancelled"
+    : "issued";
+  const invoiceNo = inv.invoiceNo || inv.invoiceNumber || null;
+  // Viettel summary endpoint often returns transactionUuid=null; synthesize a stable key.
+  const txUuid = inv.transactionUuid
+    || inv.transactionID
+    || inv.invoiceGuid
+    || (inv.invoiceId ? `vt-${ctx.taxCode}-${inv.invoiceId}` : (invoiceNo ? `vt-${ctx.taxCode}-${invoiceNo}` : null));
+  if (!txUuid) return null;
+  const totalBefore = Number(inv.totalBeforeTax ?? inv.totalAmountWithoutTax ?? 0);
+  const taxAmt = Number(inv.taxAmount ?? inv.totalTaxAmount ?? 0);
+  const totalWith = Number(inv.total ?? inv.totalAmountWithTax ?? (totalBefore + taxAmt));
+  return {
+    transaction_uuid: String(txUuid),
+    invoice_number: invoiceNo,
+    invoice_type: inv.invoiceType || ctx.defaultType || "01GTKT",
+    template_code: inv.templateCode || "",
+    invoice_series: inv.invoiceSeri || inv.invoiceSeries || "",
+    status,
+    is_draft: isDraft,
+    issued_date: inv.issueDate ? new Date(Number(inv.issueDate)).toISOString() : null,
+    total_amount: totalBefore,
+    vat_amount: taxAmt,
+    total_with_vat: totalWith,
+    buyer_name: inv.buyerLegalName || inv.buyerName || "",
+    buyer_tax_code: inv.buyerTaxCode || "",
+    response_data: inv,
+    last_synced_at: new Date().toISOString(),
+    manager_id: ctx.managerId ? String(ctx.managerId) : null,
+  } as any;
+}
+
 async function callViettel(creds: Creds, cacheKey: string, path: string, method: "GET" | "POST", body?: any) {
   const token = await getToken(creds, cacheKey);
   const url = `${creds.apiUrl}${path}`;
@@ -524,32 +561,8 @@ Deno.serve(async (req: Request) => {
       console.log("[sync_invoices] received", list.length, "invoices");
       let upserted = 0;
       for (const inv of list) {
-        const txUuid = inv.transactionUuid || inv.transactionID || inv.invoiceGuid;
-        if (!txUuid) continue;
-        const invStatus = inv.invoiceStatus;
-        // Viettel invoiceStatus: 1=phát hành, 3=nháp, 5=huỷ, 6=đã thay thế, 7=đã điều chỉnh
-        const isDraft = invStatus == 3 || invStatus === "draft";
-        const mappedStatus = isDraft ? "draft"
-          : (invStatus == 5 || invStatus === "cancelled") ? "cancelled"
-          : "issued";
-        const record: any = {
-          transaction_uuid: txUuid,
-          invoice_number: inv.invoiceNo || inv.invoiceNumber || null,
-          invoice_type: inv.invoiceType || invoiceType || "01GTKT",
-          template_code: inv.templateCode || "",
-          invoice_series: inv.invoiceSeries || "",
-          status: mappedStatus,
-          is_draft: isDraft,
-          issued_date: inv.issueDate ? new Date(Number(inv.issueDate)).toISOString() : null,
-          total_amount: Number(inv.totalAmountWithoutTax || inv.totalAmount || 0),
-          vat_amount: Number(inv.totalTaxAmount || 0),
-          total_with_vat: Number(inv.totalAmountWithTax || inv.totalAmount || 0),
-          buyer_name: inv.buyerLegalName || inv.buyerName || "",
-          buyer_tax_code: inv.buyerTaxCode || "",
-          response_data: inv,
-          last_synced_at: new Date().toISOString(),
-          manager_id: managerId ? String(managerId) : null,
-        };
+        const record = mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId });
+        if (!record) continue;
         const { error: upErr } = await supabase.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
         if (!upErr) upserted++;
         else console.error("upsert err:", upErr);
@@ -596,30 +609,13 @@ Deno.serve(async (req: Request) => {
       const all = extractInvoiceList(r.data);
       // Only keep drafts when response carries mixed statuses
       const list = all.filter((inv: any) => {
-        const s = inv.invoiceStatus;
+        const s = inv.state ?? inv.stateCode ?? inv.invoiceStatus;
         return s === undefined || s === null || s == 3 || s === "draft";
       });
       let upserted = 0;
       for (const inv of list) {
-        const txUuid = inv.transactionUuid || inv.transactionID || inv.invoiceGuid;
-        if (!txUuid) continue;
-        const record: any = {
-          transaction_uuid: txUuid,
-          invoice_number: inv.invoiceNo || null,
-          invoice_type: inv.invoiceType || invoiceType || "01GTKT",
-          template_code: inv.templateCode || "",
-          invoice_series: inv.invoiceSeries || "",
-          status: "draft",
-          is_draft: true,
-          total_amount: Number(inv.totalAmountWithoutTax || inv.totalAmount || 0),
-          vat_amount: Number(inv.totalTaxAmount || 0),
-          total_with_vat: Number(inv.totalAmountWithTax || inv.totalAmount || 0),
-          buyer_name: inv.buyerLegalName || inv.buyerName || "",
-          buyer_tax_code: inv.buyerTaxCode || "",
-          response_data: inv,
-          last_synced_at: new Date().toISOString(),
-          manager_id: managerId ? String(managerId) : null,
-        };
+        const record = mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: invoiceType, managerId, forceDraft: true });
+        if (!record) continue;
         const { error: upErr } = await supabase.from("einvoices").upsert(record, { onConflict: "transaction_uuid" });
         if (!upErr) upserted++;
       }
