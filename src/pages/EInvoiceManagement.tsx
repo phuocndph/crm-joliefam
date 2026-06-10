@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
-import { FileText, Plus, Search, ExternalLink, CheckCircle2, XCircle, Loader2, Settings, KeyRound, RefreshCw, MoreHorizontal, Download, Mail, Ban, Wallet } from "lucide-react";
+import { FileText, Plus, Search, ExternalLink, CheckCircle2, XCircle, Loader2, Settings, KeyRound, RefreshCw, MoreHorizontal, Download, Mail, Ban, Wallet, Wifi, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useEInvoiceActions } from "@/hooks/useEInvoices";
 import { CancelInvoiceDialog, SendEmailDialog, SyncInvoicesDialog } from "@/components/einvoice/InvoiceActionDialogs";
+import { EInvoiceSettingsCard } from "@/components/einvoice/EInvoiceSettingsCard";
+import { useEInvoiceSettings } from "@/hooks/useEInvoiceSettings";
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
   issued: { label: "Đã phát hành", variant: "default" },
@@ -32,6 +34,9 @@ const EInvoiceManagement = () => {
   const { user } = useAuthReady();
   const { role } = useUserRole(user);
   const canManage = role === "admin" || role === "manager";
+  const { query: settingsQuery, testLogin } = useEInvoiceSettings();
+  const settings = settingsQuery.data?.settings;
+  const envFallback = settingsQuery.data?.env_fallback;
 
   const [configStatus, setConfigStatus] = useState<Record<string, boolean> | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(false);
@@ -128,6 +133,54 @@ const EInvoiceManagement = () => {
           <Plus className="h-4 w-4 mr-1" /> Tạo hoá đơn (nội bộ)
         </Button>
       </div>
+
+      {/* Connection banner */}
+      {!settingsQuery.isLoading && (
+        <div className={`rounded-md border p-3 flex items-center justify-between gap-3 ${
+          settings?.last_login_status === "success" ? "border-sidebar-primary/40 bg-sidebar-primary/5" :
+          settings ? "border-yellow-500/40 bg-yellow-500/5" :
+          envFallback?.available ? "border-yellow-500/40 bg-yellow-500/5" :
+          "border-destructive/40 bg-destructive/5"
+        }`}>
+          <div className="flex items-center gap-2 text-sm">
+            {settings?.last_login_status === "success" ? (
+              <CheckCircle2 className="h-4 w-4 text-sidebar-primary" />
+            ) : settings || envFallback?.available ? (
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            ) : (
+              <XCircle className="h-4 w-4 text-destructive" />
+            )}
+            <span className="font-medium">
+              {settings ? (
+                <>Đang kết nối: <code>MST {settings.tax_code}</code> · <code>{settings.username}</code></>
+              ) : envFallback?.available ? (
+                <>Đang dùng tài khoản mặc định: <code>MST {envFallback.tax_code}</code> · <code>{envFallback.username}</code></>
+              ) : (
+                <>Chưa cấu hình tài khoản S-Invoice</>
+              )}
+            </span>
+            {settings?.last_login_at && (
+              <span className="text-xs text-muted-foreground">
+                ({settings.last_login_status === "success" ? "OK" : "lỗi"} lúc {new Date(settings.last_login_at).toLocaleString("vi-VN")})
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={() => testLogin.mutate()} disabled={testLogin.isPending}>
+              {testLogin.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Wifi className="h-3 w-3 mr-1" />}
+              Kiểm tra
+            </Button>
+            {canManage && (
+              <Button size="sm" variant="outline" onClick={() => {
+                const tab = document.querySelector('[role="tab"][value="config"]') as HTMLElement | null;
+                tab?.click();
+              }}>
+                <Settings className="h-3 w-3 mr-1" /> Cấu hình
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       <Tabs defaultValue="history" className="w-full">
         <TabsList>
@@ -244,6 +297,9 @@ const EInvoiceManagement = () => {
 
         {canManage && (
           <TabsContent value="config" className="space-y-4">
+            {/* New per-manager settings */}
+            <EInvoiceSettingsCard canEdit={canManage} />
+
             {/* Card 1: Secret status */}
             <Card>
               <CardHeader>

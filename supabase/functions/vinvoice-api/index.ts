@@ -11,23 +11,47 @@ const USERNAME = Deno.env.get("VINVOICE_USERNAME") || "";
 const PASSWORD = Deno.env.get("VINVOICE_PASSWORD") || "";
 const TAX_CODE = Deno.env.get("VINVOICE_TAX_CODE") || "";
 
-// In-memory token cache (~50min)
-let tokenCache: { token: string; exp: number } | null = null;
+// Per-manager in-memory token cache (~50min)
+type CachedToken = { token: string; exp: number; apiUrl: string };
+const tokenCache = new Map<string, CachedToken>();
 
-async function getToken(): Promise<string> {
-  if (tokenCache && tokenCache.exp > Date.now()) return tokenCache.token;
-  if (!USERNAME || !PASSWORD) throw new Error("Thiếu VINVOICE_USERNAME / VINVOICE_PASSWORD");
-  const res = await fetch(`${API_URL}/auth/login`, {
+type Creds = { apiUrl: string; username: string; password: string; taxCode: string; source: "db" | "env" };
+
+async function loadCreds(supabaseService: any, managerId: string | null): Promise<Creds> {
+  if (managerId) {
+    const { data } = await supabaseService
+      .from("einvoice_settings")
+      .select("api_url, username, password, tax_code")
+      .eq("manager_id", managerId)
+      .maybeSingle();
+    if (data && data.username && data.password) {
+      return {
+        apiUrl: data.api_url || API_URL,
+        username: data.username,
+        password: data.password,
+        taxCode: data.tax_code || TAX_CODE,
+        source: "db",
+      };
+    }
+  }
+  return { apiUrl: API_URL, username: USERNAME, password: PASSWORD, taxCode: TAX_CODE, source: "env" };
+}
+
+async function getToken(creds: Creds, cacheKey: string): Promise<string> {
+  const cached = tokenCache.get(cacheKey);
+  if (cached && cached.exp > Date.now() && cached.apiUrl === creds.apiUrl) return cached.token;
+  if (!creds.username || !creds.password) throw new Error("Chưa cấu hình tài khoản Viettel S-Invoice. Vào tab 'Cấu hình & Kết nối' để thiết lập.");
+  const res = await fetch(`${creds.apiUrl}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: USERNAME, password: PASSWORD }),
+    body: JSON.stringify({ username: creds.username, password: creds.password }),
   });
   const text = await res.text();
   let body: any; try { body = JSON.parse(text); } catch { body = { raw: text }; }
   if (!res.ok || !body?.access_token) {
     throw new Error(body?.message || body?.error || `Login failed (${res.status}): ${text}`);
   }
-  tokenCache = { token: body.access_token, exp: Date.now() + 50 * 60 * 1000 };
+  tokenCache.set(cacheKey, { token: body.access_token, exp: Date.now() + 50 * 60 * 1000, apiUrl: creds.apiUrl });
   return body.access_token;
 }
 
@@ -37,9 +61,9 @@ const authHeader = (token: string) => ({
   "Authorization": `Bearer ${token}`,
 });
 
-async function callViettel(path: string, method: "GET" | "POST", body?: any) {
-  const token = await getToken();
-  const url = `${API_URL}${path}`;
+async function callViettel(creds: Creds, cacheKey: string, path: string, method: "GET" | "POST", body?: any) {
+  const token = await getToken(creds, cacheKey);
+  const url = `${creds.apiUrl}${path}`;
   console.log(`[viettel] ${method} ${path}`, body ? JSON.stringify(body).slice(0, 300) : "");
   const res = await fetch(url, {
     method,
@@ -52,7 +76,7 @@ async function callViettel(path: string, method: "GET" | "POST", body?: any) {
   return { status: res.status, ok: res.ok, data, raw: text };
 }
 
-function mapContractToInvoice(contract: any, options: any) {
+function mapContractToInvoice(contract: any, options: any, taxCode: string) {
   const sellerInfo = contract.seller_info || {};
   const buyerInfo = contract.buyer_info || {};
   const items = (contract.items || []) as any[];
@@ -98,7 +122,7 @@ function mapContractToInvoice(contract: any, options: any) {
     },
     sellerInfo: {
       sellerLegalName: sellerInfo.company_name || sellerInfo.name || "",
-      sellerTaxCode: TAX_CODE,
+      sellerTaxCode: taxCode,
       sellerAddressLine: sellerInfo.address || "",
       sellerPhoneNumber: sellerInfo.phone || "",
       sellerEmail: sellerInfo.email || "",
@@ -172,15 +196,119 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: auth } } }
     );
+    const supabaseService = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
     const { data: { user }, error: authErr } = await supabase.auth.getUser();
     if (authErr || !user) return json({ success: false, error: "Unauthorized" }, 401);
 
     // Resolve manager_id from user_roles
     const { data: roleRow } = await supabase.from("user_roles").select("role, assigned_by").eq("user_id", user.id).maybeSingle();
     const role = roleRow?.role;
-    const managerId = role === "manager" ? user.id : (roleRow?.assigned_by || user.id);
+    const managerId: string | null = role === "manager" ? user.id : (roleRow?.assigned_by || user.id);
+    const isManagerOrAdmin = role === "admin" || role === "manager";
 
     const { action, ...params } = await req.json();
+
+    // Lazy-load creds only when action needs them
+    let creds: Creds | null = null;
+    const cacheKey = String(managerId || "global");
+    const ensureCreds = async () => {
+      if (!creds) creds = await loadCreds(supabaseService, managerId);
+      return creds;
+    };
+
+    // ---------- GET SETTINGS (no password) ----------
+    if (action === "get_settings") {
+      const { data, error } = await supabase
+        .from("einvoice_settings_public")
+        .select("*")
+        .eq("manager_id", String(managerId))
+        .maybeSingle();
+      if (error) return json({ success: false, error: error.message });
+      // Also surface env fallback flag
+      return json({
+        success: true,
+        settings: data,
+        env_fallback: {
+          available: !!(USERNAME && PASSWORD && TAX_CODE),
+          tax_code: TAX_CODE || null,
+          username: USERNAME || null,
+          api_url: API_URL,
+        },
+      });
+    }
+
+    // ---------- SAVE SETTINGS ----------
+    if (action === "save_settings") {
+      if (!isManagerOrAdmin) return json({ success: false, error: "Chỉ admin/manager được sửa cấu hình" }, 403);
+      const { tax_code, username, password, api_url, default_invoice_type, default_template_code, default_serial } = params;
+      if (!tax_code || !username) return json({ success: false, error: "Thiếu MST hoặc username" });
+
+      // Fetch existing to keep password if not provided
+      const { data: existing } = await supabaseService
+        .from("einvoice_settings")
+        .select("password")
+        .eq("manager_id", String(managerId))
+        .maybeSingle();
+
+      const payload: any = {
+        manager_id: String(managerId),
+        tax_code: String(tax_code).trim(),
+        username: String(username).trim(),
+        api_url: (api_url || "https://api-vinvoice.viettel.vn").trim().replace(/\/+$/, ""),
+        default_invoice_type: default_invoice_type || "01GTKT",
+        default_template_code: default_template_code || null,
+        default_serial: default_serial || null,
+      };
+      if (password && String(password).length > 0) {
+        payload.password = String(password);
+      } else if (existing?.password) {
+        payload.password = existing.password;
+      }
+
+      const { error: upErr } = await supabaseService
+        .from("einvoice_settings")
+        .upsert(payload, { onConflict: "manager_id" });
+      if (upErr) return json({ success: false, error: upErr.message });
+
+      // Invalidate token cache for this manager
+      tokenCache.delete(cacheKey);
+      await logAction(supabase, { action, request: { ...payload, password: payload.password ? "***" : undefined }, status: "ok", user_id: user.id, manager_id: managerId });
+      return json({ success: true });
+    }
+
+    // ---------- TEST LOGIN (force fresh login + persist status) ----------
+    if (action === "test_login") {
+      tokenCache.delete(cacheKey);
+      try {
+        const c = await ensureCreds();
+        const token = await getToken(c, cacheKey);
+        const now = new Date().toISOString();
+        if (c.source === "db" && managerId) {
+          await supabaseService.from("einvoice_settings").update({
+            last_login_at: now, last_login_status: "success", last_login_error: null,
+          }).eq("manager_id", String(managerId));
+        }
+        return json({
+          success: true,
+          source: c.source,
+          tax_code: c.taxCode,
+          username: c.username,
+          api_url: c.apiUrl,
+          token_preview: token.slice(0, 12) + "..." + token.slice(-6),
+          last_login_at: now,
+        });
+      } catch (e: any) {
+        if (managerId) {
+          await supabaseService.from("einvoice_settings").update({
+            last_login_at: new Date().toISOString(), last_login_status: "error", last_login_error: e.message,
+          }).eq("manager_id", String(managerId));
+        }
+        return json({ success: false, error: e.message });
+      }
+    }
 
     // ---------- CONFIG STATUS ----------
     if (action === "config_status") {
@@ -198,13 +326,14 @@ Deno.serve(async (req: Request) => {
     // ---------- LOGIN TEST ----------
     if (action === "login") {
       try {
-        tokenCache = null;
-        const token = await getToken();
+        tokenCache.delete(cacheKey);
+        const c = await ensureCreds();
+        const token = await getToken(c, cacheKey);
         return json({
           success: true,
           token_preview: token.slice(0, 12) + "..." + token.slice(-6),
           token_length: token.length,
-          tax_code: TAX_CODE,
+          tax_code: c.taxCode,
         });
       } catch (e: any) {
         return json({ success: false, error: e.message });
@@ -214,8 +343,8 @@ Deno.serve(async (req: Request) => {
     // ---------- GET TEMPLATES ----------
     if (action === "get_templates") {
       // Use the correct endpoint: getAllInvoiceTemplates/{MST}
-      const r = await callViettel(
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getAllInvoiceTemplates/${TAX_CODE}`,
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getAllInvoiceTemplates/${creds!.taxCode}`,
         "GET"
       );
       return json({ success: r.ok, data: r.data, status: r.status });
@@ -234,8 +363,8 @@ Deno.serve(async (req: Request) => {
         size: 1000,
         offset: 0,
       };
-      const r = await callViettel(
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${TAX_CODE}`,
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoices/${creds!.taxCode}`,
         "POST",
         reqBody
       );
@@ -276,10 +405,10 @@ Deno.serve(async (req: Request) => {
     if (action === "download_file") {
       const { transactionUuid, fileType, einvoice_id } = params;
       if (!transactionUuid) return json({ success: false, error: "Thiếu transactionUuid" });
-      const r = await callViettel(
+      const r = await callViettel(await ensureCreds(), cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceRepresentationFile`,
         "POST",
-        { supplierTaxCode: TAX_CODE, transactionUuid, fileType: fileType || "PDF" }
+        { supplierTaxCode: creds!.taxCode, transactionUuid, fileType: fileType || "PDF" }
       );
       await logAction(supabase, { einvoice_id, action, request: { transactionUuid, fileType }, response: { status: r.status }, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
@@ -296,10 +425,10 @@ Deno.serve(async (req: Request) => {
     if (action === "cancel_invoice") {
       const { transactionUuid, reason, einvoice_id } = params;
       if (!transactionUuid || !reason) return json({ success: false, error: "Thiếu transactionUuid hoặc lý do" });
-      const r = await callViettel(
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/cancelTransactionInvoice/${TAX_CODE}`,
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/cancelTransactionInvoice/${creds!.taxCode}`,
         "POST",
-        { supplierTaxCode: TAX_CODE, transactionUuid, additionalReferenceDesc: reason, additionalReferenceDate: Date.now() }
+        { supplierTaxCode: creds!.taxCode, transactionUuid, additionalReferenceDesc: reason, additionalReferenceDate: Date.now() }
       );
       await logAction(supabase, { einvoice_id, action, request: params, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
@@ -320,15 +449,16 @@ Deno.serve(async (req: Request) => {
       if (!original) return json({ success: false, error: "Không tìm thấy HĐ gốc" });
 
       const adjustmentType = action === "replace_invoice" ? "5" : "3";
+      await ensureCreds();
       const payload = mapContractToInvoice(contract, {
         ...options,
         adjustmentType,
         originalInvoiceId: original.invoice_number,
         additionalReferenceDesc: options?.reason || "Thay thế/điều chỉnh",
         originalInvoiceIssueDate: original.issued_date ? new Date(original.issued_date).getTime() : Date.now(),
-      });
-      const r = await callViettel(
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${TAX_CODE}`,
+      }, creds!.taxCode);
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${creds!.taxCode}`,
         "POST",
         payload
       );
@@ -370,10 +500,10 @@ Deno.serve(async (req: Request) => {
     if (action === "send_email") {
       const { transactionUuid, email, einvoice_id } = params;
       if (!transactionUuid || !email) return json({ success: false, error: "Thiếu transactionUuid hoặc email" });
-      const r = await callViettel(
+      const r = await callViettel(await ensureCreds(), cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/sendHtmlMailProcess`,
         "POST",
-        { supplierTaxCode: TAX_CODE, lstTransactionUuid: [transactionUuid], paramEmail: email }
+        { supplierTaxCode: creds!.taxCode, lstTransactionUuid: [transactionUuid], paramEmail: email }
       );
       await logAction(supabase, { einvoice_id, action, request: params, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
@@ -389,10 +519,10 @@ Deno.serve(async (req: Request) => {
     if (action === "update_payment") {
       const { transactionUuid, paid, einvoice_id } = params;
       if (!transactionUuid) return json({ success: false, error: "Thiếu transactionUuid" });
-      const r = await callViettel(
+      const r = await callViettel(await ensureCreds(), cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/updatePaymentStatus`,
         "POST",
-        { supplierTaxCode: TAX_CODE, transactionUuid, paymentStatus: !!paid }
+        { supplierTaxCode: creds!.taxCode, transactionUuid, paymentStatus: !!paid }
       );
       await logAction(supabase, { einvoice_id, action, request: params, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
       if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
@@ -405,10 +535,10 @@ Deno.serve(async (req: Request) => {
     // ---------- SEARCH BY UUID ----------
     if (action === "search_by_uuid") {
       const { transactionUuid } = params;
-      const r = await callViettel(
+      const r = await callViettel(await ensureCreds(), cacheKey,
         `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/searchInvoiceByTransactionUuid`,
         "POST",
-        { supplierTaxCode: TAX_CODE, transactionUuid }
+        { supplierTaxCode: creds!.taxCode, transactionUuid }
       );
       return json({ success: r.ok, data: r.data });
     }
@@ -417,9 +547,10 @@ Deno.serve(async (req: Request) => {
     if (action === "create_invoice") {
       const { contract, options } = params;
       if (!contract) return json({ success: false, error: "Missing contract data" });
-      const payload = mapContractToInvoice(contract, options || {});
-      const r = await callViettel(
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${TAX_CODE}`,
+      await ensureCreds();
+      const payload = mapContractToInvoice(contract, options || {}, creds!.taxCode);
+      const r = await callViettel(await ensureCreds(), cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createInvoice/${creds!.taxCode}`,
         "POST", payload
       );
       const record: any = {
@@ -449,7 +580,8 @@ Deno.serve(async (req: Request) => {
     if (action === "create_draft") {
       const { contract, options } = params;
       if (!contract) return json({ success: false, error: "Missing contract data" });
-      const payload = mapContractToInvoice(contract, options || {});
+      await ensureCreds();
+      const payload = mapContractToInvoice(contract, options || {}, creds!.taxCode);
       const { data: saved, error } = await supabase.from("einvoices").insert({
         contract_id: contract.id || null,
         invoice_type: options?.invoiceType || "01GTKT",

@@ -1,93 +1,81 @@
-# Đồng bộ 2 chiều & quản lý đầy đủ HĐ Viettel S-Invoice
 
-## Vấn đề hiện tại
-- `get_templates` trả `totalRows: 0` → backend gọi sai endpoint hoặc thiếu tham số. Test login OK, MST `0108652480` đúng → cần sửa endpoint/payload mẫu HĐ.
-- Tab "Lịch sử nội bộ" chỉ hiển thị HĐ tạo từ app, không thấy HĐ đã có trên S-Invoice → cần action đồng bộ kéo về.
-- Chưa có thao tác: tải PDF/XML, huỷ, thay thế, điều chỉnh, gửi email, cập nhật thanh toán.
+# Cấu hình & quản lý kết nối S-Invoice
 
-## 1. Sửa & mở rộng edge function `vinvoice-api`
+## Mục tiêu
+1. Biết rõ đang nối tài khoản Viettel S-Invoice nào (MST + username + URL).
+2. Chủ động đổi tài khoản / mật khẩu / endpoint ngay trong app (admin-only), không phải vào Supabase.
+3. Nút "Kiểm tra kết nối" để xác nhận login OK trước khi dùng các chức năng sync/cancel/email.
+4. Sửa lỗi runtime `END_DATE_REQUIRED` ở dialog Đồng bộ.
 
-**Sửa `get_templates`**: dùng đúng endpoint `getAllInvoiceTemplates/{taxCode}` (GET, không body) thay vì `getInvoiceTemplates` (POST cần invoiceType).
+## Phần 1 — Lưu cấu hình trong DB (thay vì chỉ secret)
 
-**Thêm 8 action mới**, mỗi action: Zod validate → `getVinvoiceToken()` (cache 50') → fetch Viettel → log raw → upsert `einvoices` → ghi `einvoice_actions` (audit) → trả nguyên văn lỗi.
+Tạo bảng `einvoice_settings` (1 dòng / manager):
 
-| Action | Endpoint Viettel | Mục đích |
-|---|---|---|
-| `sync_invoices` | `InvoiceUtilsWS/getInvoices/{MST}` (POST, body: `fromDate`/`toDate` UTC+7 millis) | Kéo danh sách HĐ về DB |
-| `download_file` | `InvoiceUtilsWS/getInvoiceRepresentationFile` | Tải PDF/XML → upload Storage `einvoices/{id}.pdf` → trả URL ký |
-| `cancel_invoice` | `InvoiceWS/cancelTransactionInvoice/{MST}` | Huỷ HĐ + lý do |
-| `replace_invoice` | `InvoiceWS/createInvoice/{MST}` (`adjustmentType=5`, `originalInvoiceId`) | Thay thế |
-| `adjust_invoice` | `InvoiceWS/createInvoice/{MST}` (`adjustmentType=2`) | Điều chỉnh |
-| `send_email` | `InvoiceUtilsWS/sendHtmlMailProcess` | Gửi HĐ qua mail |
-| `update_payment` | `InvoiceWS/updatePaymentStatus` | Đồng bộ thanh toán lên Viettel |
-| `search_by_uuid` | `InvoiceWS/searchInvoiceByTransactionUuid` | Tra cứu 1 HĐ chi tiết |
+| Cột | Ý nghĩa |
+|---|---|
+| `tax_code` | MST |
+| `username` | tài khoản Viettel |
+| `password_encrypted` | mật khẩu (lưu mã hoá, chỉ edge function đọc) |
+| `api_url` | endpoint (mặc định `https://api-vinvoice.viettel.vn`) |
+| `default_invoice_type` | `01GTKT` / `02GTTT`... |
+| `default_template_code` / `default_serial` | mẫu + ký hiệu mặc định |
+| `last_login_at`, `last_login_status`, `last_login_error` | kết quả test gần nhất |
+| `manager_id` | RLS |
 
-## 2. Database migration
+RLS: admin/manager xem-sửa dòng của mình; accountant chỉ xem (không thấy password).
 
-Thêm cột vào `einvoices`:
-- `pdf_url text`, `xml_url text` — link Storage sau khi tải
-- `cancelled_at timestamptz`, `cancel_reason text`
-- `original_invoice_id uuid` (self-FK) — HĐ gốc cho thay thế/điều chỉnh
-- `invoice_action text` — `original | replacement | adjustment`
-- `payment_status_synced boolean default false`
-- `reservation_code text`, `last_synced_at timestamptz`
-- `email_sent_at timestamptz`, `email_sent_to text`
-- Unique index `(transaction_uuid)` để upsert sync
+Edge function `vinvoice-api` đổi nguồn credential:
+- Đọc từ `einvoice_settings` của manager hiện tại trước.
+- Fallback về secret `VINVOICE_*` nếu chưa cấu hình (tương thích ngược).
+- Cache token theo `manager_id` thay vì global.
 
-Bảng mới `einvoice_actions` (audit log): `id, einvoice_id, action, request jsonb, response jsonb, status, error_message, created_by, manager_id, created_at` + RLS theo manager.
+## Phần 2 — Trang "Cấu hình S-Invoice"
 
-Storage bucket private `einvoices` + RLS đọc theo manager.
+Route: `/einvoices/settings` (tab mới trên trang Hoá đơn, admin/manager only).
 
-## 3. UI — tab "Lịch sử nội bộ" → đổi tên "Hoá đơn S-Invoice"
+Các thẻ:
 
-**Toolbar mới**:
-- Filter: trạng thái, khoảng ngày phát hành, MST khách, số HĐ
-- Nút **"Đồng bộ từ Viettel"** → dialog chọn khoảng ngày (mặc định 30 ngày gần nhất) → gọi `sync_invoices` → upsert vào DB → toast "Đã đồng bộ X HĐ"
-- Stats: thêm `Đã huỷ`, `Đã thay thế`, `Đã điều chỉnh`
+**Thẻ 1 — Thông tin kết nối** (form)
+- MST, Username, Password (input type=password, placeholder "••• để giữ nguyên"), API URL.
+- Nút **Lưu** → upsert vào `einvoice_settings`, clear token cache.
 
-**Mỗi dòng — dropdown "Thao tác" theo trạng thái**:
-- `draft` → Xem trước, Phát hành, Sửa, Xoá
-- `issued` → Tải PDF, Tải XML, Gửi email, Cập nhật thanh toán, **Huỷ**, **Thay thế**, **Điều chỉnh**
-- `cancelled` → Tải PDF lưu trữ, **Thay thế**
-- `replaced/adjusted` → Tải PDF, xem HĐ thay thế/điều chỉnh
+**Thẻ 2 — Trạng thái kết nối**
+- Hiển thị: MST đang dùng, username, URL, lần đăng nhập cuối + kết quả (✅/❌ + lỗi).
+- Nút **Kiểm tra kết nối** → gọi `vinvoice-api` action `test_login` → cập nhật `last_login_*` → toast kết quả.
+- Nút **Lấy danh sách mẫu HĐ** → gọi `get_templates` → liệt kê template/serial khả dụng để chọn mặc định.
 
-**Cột mới**: "Loại" (gốc/thay thế/điều chỉnh), "Email", "TT thanh toán" (đã sync lên Viettel chưa).
+**Thẻ 3 — Mặc định phát hành**
+- Select loại HĐ (`01GTKT`/`02GTTT`/...), template code, serial → lưu vào settings.
+- Các form tạo HĐ và dialog Đồng bộ sẽ prefill từ đây.
 
-## 4. Dialog mới
+## Phần 3 — Hiển thị tài khoản đang nối ở trang Hoá đơn
 
-- `CancelInvoiceDialog`: textarea lý do, confirm → `cancel_invoice`
-- `ReplaceInvoiceDialog`: copy items từ HĐ gốc, sửa được, lý do thay thế → `replace_invoice`
-- `AdjustInvoiceDialog`: chọn loại điều chỉnh (tăng/giảm), nhập items điều chỉnh, lý do → `adjust_invoice`
-- `SendEmailDialog`: input email (mặc định từ HĐ), gửi
-- `SyncInvoicesDialog`: 2 date picker, nút "Đồng bộ"
+Thêm 1 banner gọn ở đầu `/einvoices`:
+> 🔗 Đang kết nối: **MST 0108652480** — `username@joliefam` — ✅ OK lúc 10:32
+> [Cấu hình] [Kiểm tra lại]
 
-## 5. Hook React Query `useEInvoices.ts` mở rộng
-- `useEInvoiceActions()` — mutations cho 8 action mới, invalidate `einvoices` sau mỗi action
-- `useSyncEInvoices()` — sync theo khoảng ngày
+Nếu chưa cấu hình hoặc login fail → banner đỏ + chặn các nút sync/cancel/email với tooltip "Cấu hình S-Invoice trước".
 
-## 6. Phân quyền
-- `sync_invoices`, `download_file`, `send_email`, `update_payment`: admin/manager/accountant
-- `cancel/replace/adjust`: chỉ admin/manager
-- Edge function verify JWT + check role server-side
+## Phần 4 — Sửa lỗi runtime `END_DATE_REQUIRED`
 
-## 7. Tab Cấu hình
-- Giữ nguyên 4 card hiện có
-- Sửa lại Card 3 "Test lấy mẫu HĐ" để dùng endpoint mới (sẽ hết lỗi `totalRows: 0`)
+Dialog `SyncInvoicesDialog` đang submit khi `toDate` trống. Sửa:
+- Default `fromDate` = hôm nay − 30 ngày, `toDate` = hôm nay.
+- Validate trước khi gọi, disable nút submit nếu thiếu.
+- Hiển thị lỗi inline thay vì throw.
 
-## Kỹ thuật cốt lõi (theo tài liệu Viettel)
-- `transactionUuid`: client-generated UUID v4 (chống trùng)
-- `originalInvoiceIssueDate`: **unix timestamp millis** khi thay thế/điều chỉnh
-- `adjustmentType`: `1`=mới, `5`=thay thế, `2`=điều chỉnh
-- Sync date range: gửi `fromDate/toDate` dạng `YYYYMMDDHHmmss` UTC+7
-- File response: base64 → `Uint8Array` → upload Storage → tạo signed URL 7 ngày
-- Cache token 50' trong memory edge
+## Chi tiết kỹ thuật
 
-## Trình tự thực hiện
-1. Migration (cột mới + bảng audit + bucket)
-2. Sửa `get_templates` + thêm 8 action → deploy & test
-3. Hook + dialog + UI
-4. Test đầu cuối: sync → tải PDF → huỷ → thay thế
+- **Mã hoá password**: dùng `pgsodium` (`crypto_secretbox`) với khoá lấy từ secret `EINVOICE_ENCRYPTION_KEY`. Edge function giải mã khi cần login. Frontend không bao giờ đọc cột password.
+- **Action mới `vinvoice-api`**: `test_login` (chỉ login + trả status), `save_settings` (validate + upsert + clear cache), `get_settings` (trả về thông tin không có password).
+- **Token cache**: `Map<manager_id, {token, exp}>`, TTL 50 phút. Invalidate khi save settings.
+- **Audit**: mọi lần đổi cấu hình log vào `einvoice_actions` với `action='update_settings'`.
+- **RBAC**: chỉ `admin`/`manager` được sửa; `accountant` được xem (ẩn password & URL); `employee` không truy cập trang này.
 
-## Lưu ý
-- Sau khi bạn duyệt, mình chạy migration trước (bạn approve), sau đó viết code.
-- Nếu Viettel trả lỗi không lường trước, toast sẽ hiện nguyên văn message để debug.
+## Thứ tự thực hiện
+1. Migration: tạo `einvoice_settings` + RLS + GRANT, thêm extension pgsodium nếu chưa có.
+2. Thêm secret `EINVOICE_ENCRYPTION_KEY`.
+3. Cập nhật edge function `vinvoice-api`: actions `test_login`, `get_settings`, `save_settings`; đổi nguồn credential.
+4. Tạo trang `EInvoiceSettings.tsx` + hook `useEInvoiceSettings`.
+5. Thêm banner + route ở `EInvoiceManagement.tsx`.
+6. Fix `SyncInvoicesDialog` (default dates + validation).
+7. Test: lưu credential mới → test_login → sync 30 ngày gần nhất.

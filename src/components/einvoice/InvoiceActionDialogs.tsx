@@ -76,6 +76,11 @@ export const SyncInvoicesDialog = ({ open, onOpenChange }: { open: boolean; onOp
   const { syncInvoices } = useEInvoiceActions();
 
   const handle = async () => {
+    if (!from || !to) {
+      const { toast } = await import("sonner");
+      toast.error("Vui lòng chọn ngày bắt đầu và ngày kết thúc");
+      return;
+    }
     const fromMs = new Date(from + "T00:00:00").getTime();
     const toMs = new Date(to + "T23:59:59").getTime();
     await syncInvoices.mutateAsync({ fromDate: fromMs, toDate: toMs, invoiceType });

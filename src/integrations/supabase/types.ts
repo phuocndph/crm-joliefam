@@ -507,6 +507,57 @@ export type Database = {
           },
         ]
       }
+      einvoice_settings: {
+        Row: {
+          api_url: string | null
+          created_at: string
+          default_invoice_type: string | null
+          default_serial: string | null
+          default_template_code: string | null
+          id: string
+          last_login_at: string | null
+          last_login_error: string | null
+          last_login_status: string | null
+          manager_id: string
+          password: string | null
+          tax_code: string | null
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          api_url?: string | null
+          created_at?: string
+          default_invoice_type?: string | null
+          default_serial?: string | null
+          default_template_code?: string | null
+          id?: string
+          last_login_at?: string | null
+          last_login_error?: string | null
+          last_login_status?: string | null
+          manager_id: string
+          password?: string | null
+          tax_code?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          api_url?: string | null
+          created_at?: string
+          default_invoice_type?: string | null
+          default_serial?: string | null
+          default_template_code?: string | null
+          id?: string
+          last_login_at?: string | null
+          last_login_error?: string | null
+          last_login_status?: string | null
+          manager_id?: string
+          password?: string | null
+          tax_code?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
       einvoices: {
         Row: {
           buyer_name: string | null
@@ -1953,6 +2004,57 @@ export type Database = {
       }
     }
     Views: {
+      einvoice_settings_public: {
+        Row: {
+          api_url: string | null
+          created_at: string | null
+          default_invoice_type: string | null
+          default_serial: string | null
+          default_template_code: string | null
+          has_password: boolean | null
+          id: string | null
+          last_login_at: string | null
+          last_login_error: string | null
+          last_login_status: string | null
+          manager_id: string | null
+          tax_code: string | null
+          updated_at: string | null
+          username: string | null
+        }
+        Insert: {
+          api_url?: string | null
+          created_at?: string | null
+          default_invoice_type?: string | null
+          default_serial?: string | null
+          default_template_code?: string | null
+          has_password?: never
+          id?: string | null
+          last_login_at?: string | null
+          last_login_error?: string | null
+          last_login_status?: string | null
+          manager_id?: string | null
+          tax_code?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Update: {
+          api_url?: string | null
+          created_at?: string | null
+          default_invoice_type?: string | null
+          default_serial?: string | null
+          default_template_code?: string | null
+          has_password?: never
+          id?: string | null
+          last_login_at?: string | null
+          last_login_error?: string | null
+          last_login_status?: string | null
+          manager_id?: string | null
+          tax_code?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Relationships: []
+      }
       payment_summary: {
         Row: {
           customer_code: string | null
