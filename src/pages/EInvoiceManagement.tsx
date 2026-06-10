@@ -15,6 +15,9 @@ import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useEInvoiceActions } from "@/hooks/useEInvoices";
 import { CancelInvoiceDialog, SendEmailDialog, SyncInvoicesDialog } from "@/components/einvoice/InvoiceActionDialogs";
+import { EInvoiceSettingsCard } from "@/components/einvoice/EInvoiceSettingsCard";
+import { useEInvoiceSettings } from "@/hooks/useEInvoiceSettings";
+import { Wifi, AlertTriangle } from "lucide-react";
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
   issued: { label: "Đã phát hành", variant: "default" },
@@ -32,6 +35,9 @@ const EInvoiceManagement = () => {
   const { user } = useAuthReady();
   const { role } = useUserRole(user);
   const canManage = role === "admin" || role === "manager";
+  const { query: settingsQuery, testLogin } = useEInvoiceSettings();
+  const settings = settingsQuery.data?.settings;
+  const envFallback = settingsQuery.data?.env_fallback;
 
   const [configStatus, setConfigStatus] = useState<Record<string, boolean> | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(false);
