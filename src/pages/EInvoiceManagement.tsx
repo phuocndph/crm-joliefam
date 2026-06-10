@@ -134,6 +134,54 @@ const EInvoiceManagement = () => {
         </Button>
       </div>
 
+      {/* Connection banner */}
+      {!settingsQuery.isLoading && (
+        <div className={`rounded-md border p-3 flex items-center justify-between gap-3 ${
+          settings?.last_login_status === "success" ? "border-sidebar-primary/40 bg-sidebar-primary/5" :
+          settings ? "border-yellow-500/40 bg-yellow-500/5" :
+          envFallback?.available ? "border-yellow-500/40 bg-yellow-500/5" :
+          "border-destructive/40 bg-destructive/5"
+        }`}>
+          <div className="flex items-center gap-2 text-sm">
+            {settings?.last_login_status === "success" ? (
+              <CheckCircle2 className="h-4 w-4 text-sidebar-primary" />
+            ) : settings || envFallback?.available ? (
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            ) : (
+              <XCircle className="h-4 w-4 text-destructive" />
+            )}
+            <span className="font-medium">
+              {settings ? (
+                <>Đang kết nối: <code>MST {settings.tax_code}</code> · <code>{settings.username}</code></>
+              ) : envFallback?.available ? (
+                <>Đang dùng tài khoản mặc định: <code>MST {envFallback.tax_code}</code> · <code>{envFallback.username}</code></>
+              ) : (
+                <>Chưa cấu hình tài khoản S-Invoice</>
+              )}
+            </span>
+            {settings?.last_login_at && (
+              <span className="text-xs text-muted-foreground">
+                ({settings.last_login_status === "success" ? "OK" : "lỗi"} lúc {new Date(settings.last_login_at).toLocaleString("vi-VN")})
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={() => testLogin.mutate()} disabled={testLogin.isPending}>
+              {testLogin.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Wifi className="h-3 w-3 mr-1" />}
+              Kiểm tra
+            </Button>
+            {canManage && (
+              <Button size="sm" variant="outline" onClick={() => {
+                const tab = document.querySelector('[role="tab"][value="config"]') as HTMLElement | null;
+                tab?.click();
+              }}>
+                <Settings className="h-3 w-3 mr-1" /> Cấu hình
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       <Tabs defaultValue="history" className="w-full">
         <TabsList>
           <TabsTrigger value="history">Lịch sử nội bộ</TabsTrigger>
