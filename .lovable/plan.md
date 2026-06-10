@@ -1,23 +1,24 @@
-Mình thấy nguyên nhân có khả năng cao là app đang chỉ gọi `getInvoices` với `invoiceStatus=3`, nhưng danh sách HĐ chưa phát hành trên Viettel có thể không dùng mã trạng thái này hoặc cần đồng bộ qua endpoint/dạng payload khác. Vì vậy app đang báo “không có” dù trên Viettel có dữ liệu.
+Kế hoạch sửa phần lấy số lượng HĐ chưa phát hành bị thiếu:
 
-Kế hoạch sửa:
+1. Sửa logic phân loại HĐ chưa phát hành
+- Không chỉ dựa vào vài mã trạng thái cứng `0, 3, 8, 20`.
+- Bổ sung nhận diện theo nhiều dấu hiệu từ Viettel: `state/stateCode/invoiceStatus/status`, tên trạng thái, `issueDate`, `issueDateStr`, `invoiceNumber`, `invoiceNo`, các trường publish/sign/publishStatus nếu có.
+- Tránh đánh nhầm HĐ đã phát hành thành nháp bằng cách ưu tiên dấu hiệu đã phát hành như có `issueDate` hợp lệ và số hóa đơn thật.
 
-1. Mở rộng đồng bộ HĐ chưa phát hành
-   - Không chỉ thử `invoiceStatus=3`.
-   - Thử thêm các mã trạng thái phổ biến cho HĐ nháp/chưa phát hành trên Viettel như `0`, `1`, `2`, `3`, tùy schema thực tế trả về.
-   - Nếu endpoint trả dữ liệu nhưng trạng thái không rõ, ghi log mẫu field trạng thái để xác định đúng mã Viettel đang dùng.
+2. Không bỏ sót do phân trang / giới hạn dòng
+- Với endpoint `getInvoices`, lặp qua nhiều trang thay vì chỉ gọi `pageNum: 1`.
+- Dừng khi hết dữ liệu hoặc đã đạt `totalRows` Viettel trả về.
+- Tăng thống kê trả về: tổng Viettel báo, tổng app đã đọc, tổng đã phân loại nháp, tổng đã lưu.
 
-2. Không ghi đè kết quả “có thể có dữ liệu” thành “không có” quá sớm
-   - Hiện fallback `NOT_FOUND_DATA` làm app kết luận không có HĐ nháp.
-   - Sửa để chỉ báo “không có” sau khi đã thử đủ các biến thể truy vấn.
+3. Thêm thống kê chẩn đoán trạng thái Viettel
+- Trong `sync_drafts`, trả về và log phân bố trạng thái thực tế: mỗi `state/stateCode/invoiceStatus/status` có bao nhiêu dòng.
+- Toast sau đồng bộ sẽ hiển thị rõ: “Viettel trả X dòng, app đọc Y dòng, nhận diện Z HĐ chưa phát hành, đã lưu N”.
 
-3. Tăng khả năng nhận diện HĐ chưa phát hành
-   - Đọc thêm các field trạng thái từ Viettel: `state`, `stateCode`, `invoiceStatus`, `status`, `publishStatus`, `paymentStatus`, `invoiceStatusName`, `stateName`, `statusName`, `description`.
-   - Chỉ lưu vào tab “Chưa phát hành” khi xác định là nháp/chưa phát hành hoặc dữ liệu đến từ endpoint truy vấn riêng cho HĐ chưa phát hành.
+4. Giữ đồng bộ đúng với app hiện tại
+- Vẫn lưu vào bảng `einvoices` bằng `transaction_uuid` ổn định.
+- Vẫn gắn `is_draft=true`, `status='draft'` chỉ cho các dòng được xác định là chưa phát hành.
+- Không thay đổi cấu trúc database.
 
-4. Cập nhật thông báo trả về
-   - Nếu tìm thấy: báo rõ đã đồng bộ bao nhiêu HĐ và endpoint/status nào trả dữ liệu.
-   - Nếu không tìm thấy: báo đã thử những trạng thái nào, thay vì chỉ nói chung “không có hoá đơn”.
-
-5. Kiểm tra lại bằng log Edge Function
-   - Sau khi sửa, chạy lại luồng đồng bộ để xem Viettel trả dữ liệu ở trạng thái nào và đảm bảo dữ liệu được lưu vào `einvoices` với `is_draft=true`, `status='draft'`.
+5. Kiểm tra sau sửa
+- Chạy lại đồng bộ HĐ chưa phát hành với khoảng ngày rộng.
+- Đối chiếu log: hiện tại backend đã đọc 413 dòng nhưng chỉ nhận diện 5 nháp; sau sửa sẽ thấy rõ các trạng thái nào bị bỏ sót và số đã lưu.
