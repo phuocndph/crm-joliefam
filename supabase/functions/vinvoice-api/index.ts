@@ -895,26 +895,35 @@ Deno.serve(async (req: Request) => {
       return json({ success: r.ok, invoice: saved, apiResponse: r.data });
     }
 
-    // ---------- CREATE DRAFT (local only) ----------
+    // ---------- CREATE DRAFT (push to Viettel, then save) ----------
     if (action === "create_draft") {
       const { contract, options } = params;
       if (!contract) return json({ success: false, error: "Missing contract data" });
       await ensureCreds();
       const payload = mapContractToInvoice(contract, options || {}, creds!.taxCode);
+      const r = await callViettel(creds!, cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/createOrUpdateInvoiceDraft/${creds!.taxCode}`,
+        "POST", payload
+      );
+      await logAction(supabase, { action, request: payload, response: r.data, status: String(r.status), user_id: user.id, manager_id: managerId });
+      if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
+      const txUuid = r.data?.result?.transactionUuid || r.data?.transactionUuid || null;
       const { data: saved, error } = await supabase.from("einvoices").insert({
         contract_id: contract.id || null,
-        invoice_type: options?.invoiceType || "01GTKT",
+        transaction_uuid: txUuid,
+        invoice_type: options?.invoiceType || "1",
         template_code: options?.templateCode || "",
         invoice_series: options?.invoiceSeries || "",
         status: "draft",
         is_draft: true,
         draft_payload: payload,
+        request_data: payload,
+        response_data: r.data,
         total_amount: Number(contract.subtotal) || 0,
         vat_amount: Number(contract.vat_amount) || 0,
         total_with_vat: Number(contract.total_amount) || 0,
         buyer_name: contract.buyer_info?.company_name || contract.buyer_info?.name || "",
         buyer_tax_code: contract.buyer_info?.tax_code || "",
-        request_data: payload,
         manager_id: managerId ? String(managerId) : null,
       }).select().single();
       if (error) return json({ success: false, error: error.message });
@@ -1008,7 +1017,6 @@ Deno.serve(async (req: Request) => {
       if (!draft) return json({ success: false, error: "Không tìm thấy HĐ" });
       await ensureCreds();
 
-      // Pushed draft: use transactionUuid; otherwise build a quick draft via getInvoiceFileViewBeforeIssue
       if (draft.transaction_uuid) {
         const r = await callViettel(creds!, cacheKey,
           `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceDraftRepresentationFile`,
@@ -1016,18 +1024,17 @@ Deno.serve(async (req: Request) => {
           { supplierTaxCode: creds!.taxCode, transactionUuid: draft.transaction_uuid, fileType: "PDF" }
         );
         if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
-        return json({ success: true, base64: r.data?.fileToBytes || r.data?.fileContent || null });
+        return json({ success: true, base64: r.data?.fileToBytes || r.data?.fileContent || r.data?.data || null });
       }
 
       const payload = draft.draft_payload || draft.request_data;
       if (!payload) return json({ success: false, error: "Không có dữ liệu để xem trước" });
       const r = await callViettel(creds!, cacheKey,
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/createInvoiceUsbToken/${creds!.taxCode}`,
-        "POST", { ...payload, fileType: "PDF", preview: true }
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/createInvoiceDraftPreview/${creds!.taxCode}`,
+        "POST", payload
       );
-      // Many tenants don't support this preview path — fall back gracefully
-      if (!r.ok) return json({ success: false, error: "Viettel chưa hỗ trợ xem trước nháp local. Vui lòng phát hành để xem." });
-      return json({ success: true, base64: r.data?.fileToBytes || r.data?.fileContent || null });
+      if (!r.ok) return json({ success: false, error: r.data?.message || r.raw });
+      return json({ success: true, base64: r.data?.fileToBytes || r.data?.fileContent || r.data?.data || null });
     }
 
     // ---------- DOWNLOAD MINUTE (biên bản huỷ/điều chỉnh) ----------
