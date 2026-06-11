@@ -20,6 +20,7 @@ import { useEInvoiceSettings } from "@/hooks/useEInvoiceSettings";
 import { PreviewPdfDialog } from "@/components/einvoice/PreviewPdfDialog";
 import { ReplaceAdjustDialog } from "@/components/einvoice/ReplaceAdjustDialog";
 import { DownloadMinuteDialog } from "@/components/einvoice/DownloadMinuteDialog";
+import { DraftInvoicesTable } from "@/components/einvoice/DraftInvoicesTable";
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
   issued: { label: "Đã phát hành", variant: "default" },
@@ -241,77 +242,26 @@ const EInvoiceManagement = () => {
 
         {/* ===== DRAFTS TAB ===== */}
         <TabsContent value="drafts" className="space-y-4">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <div className="relative max-w-sm flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Tìm theo số HĐ, khách hàng, MST..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
             </div>
-            <Button onClick={() => setShowCreate(true)} variant="default">
-              <Plus className="h-4 w-4 mr-1" /> Tạo HĐ nháp
-            </Button>
-            <Button onClick={() => setShowSyncDrafts(true)} variant="outline">
+            <Button onClick={() => setShowSyncDrafts(true)} variant="outline" size="sm">
               <RefreshCw className="h-4 w-4 mr-1" /> Đồng bộ nháp từ Viettel
             </Button>
           </div>
 
-          <Card>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Số nháp</TableHead>
-                    <TableHead>Mẫu / Ký hiệu</TableHead>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>MST khách</TableHead>
-                    <TableHead className="text-right">Tổng tiền</TableHead>
-                    <TableHead>Ngày tạo</TableHead>
-                    <TableHead>Nguồn</TableHead>
-                    <TableHead className="w-[60px]">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
-                  ) : drafts.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có HĐ nháp. Bấm "Tạo HĐ nháp" hoặc "Đồng bộ nháp từ Viettel".</TableCell></TableRow>
-                  ) : drafts.map((inv: any) => (
-                    <TableRow key={inv.id}>
-                      <TableCell className="font-medium">{inv.invoice_number || `#${inv.id.slice(0, 6)}`}</TableCell>
-                      <TableCell className="text-xs">{inv.template_code || "—"} / {inv.invoice_series || "—"}</TableCell>
-                      <TableCell>{inv.buyer_name || "—"}</TableCell>
-                      <TableCell className="text-xs">{inv.buyer_tax_code || "—"}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
-                      <TableCell>{new Date(inv.created_at).toLocaleDateString("vi-VN")}</TableCell>
-                      <TableCell>
-                        <Badge variant={inv.transaction_uuid ? "default" : "secondary"}>
-                          {inv.transaction_uuid ? "Viettel" : "Local"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="z-[100]">
-                            <DropdownMenuItem onClick={() => handlePreviewDraft(inv)} disabled={previewDraft.isPending}>
-                              <Eye className="h-4 w-4 mr-2" /> Xem trước PDF
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleIssueDraft(inv)} disabled={issueDraft.isPending}>
-                              <Send className="h-4 w-4 mr-2" /> Phát hành
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteDraft(inv)} disabled={deleteDraft.isPending}>
-                              <Trash2 className="h-4 w-4 mr-2" /> Xoá nháp
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <DraftInvoicesTable
+            drafts={drafts as any}
+            isLoading={isLoading}
+            onCreate={() => setShowCreate(true)}
+            onSync={() => setShowSyncDrafts(true)}
+            onIssue={handleIssueDraft}
+            onPreview={handlePreviewDraft}
+            onEdit={handlePreviewDraft}
+            onDelete={handleDeleteDraft}
+          />
         </TabsContent>
 
         {/* ===== ISSUED TAB ===== */}
