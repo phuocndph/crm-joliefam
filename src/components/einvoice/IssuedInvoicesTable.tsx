@@ -252,8 +252,14 @@ export function IssuedInvoicesTable({
                         <div className="text-xs text-muted-foreground mt-1">{d} {t}</div>
                       </td>
                       <td className={td}>
-                        <div className="text-xs">Họ tên: {inv.buyer_contact_name || ""}</div>
-                        <div className="text-xs font-medium">Công ty: {(inv.buyer_legal_name || inv.buyer_name || "").toUpperCase()}</div>
+                        <div className="text-xs font-medium">
+                          {(inv.buyer_legal_name || inv.buyer_name || "").toUpperCase()}
+                        </div>
+                        {inv.buyer_contact_name ? (
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            Họ tên: {inv.buyer_contact_name}
+                          </div>
+                        ) : null}
                       </td>
                       <td className={td + " text-right tabular-nums"}>{fmtNum(inv.total_amount)}</td>
                       <td className={td + " text-right tabular-nums"}>{fmtNum(inv.vat_amount)}</td>
