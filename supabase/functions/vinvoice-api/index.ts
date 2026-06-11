@@ -144,7 +144,7 @@ function mapViettelInvoiceRow(inv: any, ctx: { taxCode: string; defaultType?: st
   return {
     transaction_uuid: String(txUuid),
     invoice_number: invoiceNo,
-    invoice_type: inv.invoiceType || ctx.defaultType || "01GTKT",
+    invoice_type: inv.invoiceType || ctx.defaultType || "1",
     template_code: inv.templateCode || "",
     invoice_series: inv.invoiceSeri || inv.invoiceSeries || "",
     status,
@@ -207,7 +207,7 @@ function mapContractToInvoice(contract: any, options: any, taxCode: string) {
 
   return {
     generalInvoiceInfo: {
-      invoiceType: options.invoiceType || "01GTKT",
+      invoiceType: options.invoiceType || "1",
       templateCode: options.templateCode || "",
       invoiceSeries: options.invoiceSeries || "",
       currencyCode: options.currency || "VND",
