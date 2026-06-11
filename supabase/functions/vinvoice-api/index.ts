@@ -358,7 +358,7 @@ Deno.serve(async (req: Request) => {
         tax_code: String(tax_code).trim(),
         username: String(username).trim(),
         api_url: (api_url || "https://api-vinvoice.viettel.vn").trim().replace(/\/+$/, ""),
-        default_invoice_type: default_invoice_type || "01GTKT",
+        default_invoice_type: default_invoice_type || "1",
         default_template_code: default_template_code || null,
         default_serial: default_serial || null,
       };
@@ -469,7 +469,7 @@ Deno.serve(async (req: Request) => {
       const toStr = toViettelShortDate(td);
       const startDate = toViettelSearchDate(fd);
       const endDate = toViettelSearchDate(td);
-      const it = params.invoiceType || "01GTKT";
+      const it = params.invoiceType || "1";
       const results: any[] = [];
 
       try {
@@ -533,7 +533,7 @@ Deno.serve(async (req: Request) => {
       // Fallback to legacy getInvoices/{taxCode} with ISO startDate/endDate
       if (!r.ok && !isViettelEmptyResult(r.data)) {
         const fbBody: any = {
-          invoiceType: invoiceType || "01GTKT",
+          invoiceType: invoiceType || "1",
           startDate, endDate,
           rowPerPage: 1000, pageNum: 1,
         };
@@ -712,7 +712,7 @@ Deno.serve(async (req: Request) => {
       const newRecord: any = {
         transaction_uuid: txUuid,
         invoice_number: r.data?.result?.invoiceNo || null,
-        invoice_type: options?.invoiceType || "01GTKT",
+        invoice_type: options?.invoiceType || "1",
         template_code: options?.templateCode || "",
         invoice_series: options?.invoiceSeries || "",
         status: "issued",
@@ -800,7 +800,7 @@ Deno.serve(async (req: Request) => {
         contract_id: contract.id,
         transaction_uuid: r.data?.result?.transactionUuid || r.data?.transactionUuid || null,
         invoice_number: r.data?.result?.invoiceNo || r.data?.invoiceNo || null,
-        invoice_type: options?.invoiceType || "01GTKT",
+        invoice_type: options?.invoiceType || "1",
         template_code: options?.templateCode || "",
         invoice_series: options?.invoiceSeries || "",
         status: r.ok ? "issued" : "error",
@@ -861,7 +861,7 @@ Deno.serve(async (req: Request) => {
       await ensureCreds();
       const payload = mapContractToInvoice(contract, options || {}, creds!.taxCode);
       const { error } = await supabase.from("einvoices").update({
-        invoice_type: options?.invoiceType || "01GTKT",
+        invoice_type: options?.invoiceType || "1",
         template_code: options?.templateCode || "",
         invoice_series: options?.invoiceSeries || "",
         total_amount: Number(contract.subtotal) || 0,
