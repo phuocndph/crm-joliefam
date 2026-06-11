@@ -1,49 +1,61 @@
-## Hiện trạng
+## Endpoint đã chốt
 
-Định nghĩa đúng của bạn: **"HĐ chưa phát hành" = HĐ nháp đã được tạo trên S-Invoice nhưng chưa ký số / chưa cấp số phát hành**. Đây là kho dữ liệu **riêng** trên Viettel (bảng draft), KHÔNG nằm trong danh sách HĐ đã phát hành.
+```
+GET https://vinvoice.viettel.vn/api/cluster3/services/einvoiceapplication/api/invoice/search-draft-all
+   ?page=0&size=100
+   &createdDate.greaterThanOrEqual=<ISO UTC>
+   &createdDate.lessThanOrEqual=<ISO UTC>
+   &invoiceStatus.equals=0
+   &invoiceTypeId.notEquals=52
+   &sort=id,desc
+Header: Authorization: Bearer <token>
+```
 
-Code hiện tại đang quét:
-- `getListInvoiceDataControl` → chỉ trả HĐ đã có số/đã phát hành (state=1) + vài dòng state=0 lẫn vào → sai nguồn.
-- `getInvoices/{taxCode}` sweep `invoiceStatus 1..30` → endpoint này cũng chỉ truy vấn bảng HĐ đã phát hành, không động tới bảng draft.
-- 5 endpoint draft đoán mò (`getInvoiceDrafts`, `getInvoiceDraft`, `getDraftInvoice`, `searchInvoiceByCondition`, `getInvoiceListByCondition`) → tất cả 404/NOT_FOUND vì path không khớp với phiên bản API của tax code này.
+Response: `{ code, data: { totalElements, totalPages, number, content: [...] } }`
 
-Sweep mù không hiệu quả nữa — Viettel có rất nhiều biến thể path tuỳ phiên bản triển khai (`InvoiceUtilsWS`, `InvoiceWS`, `BusinessService/...`, `PublishService/...`), không thể đoán đúng nếu không có request thật.
+## Việc làm trong `supabase/functions/vinvoice-api/index.ts` action `sync_drafts`
 
-## Hướng xử lý duy nhất còn lại
+1. **Xoá toàn bộ logic cũ** của `sync_drafts`: bỏ `getListInvoiceDataControl`, bỏ sweep `invoiceStatus 1..30` trên `getInvoices`, bỏ 5 endpoint draft đoán mò, bỏ helper `isDraftRow`.
 
-Lấy đúng request mà portal Viettel gọi khi bạn mở tab "HĐ chưa phát hành", rồi gắn cố định vào edge function.
+2. **Gọi đúng endpoint mới**:
+   - Base URL: `https://vinvoice.viettel.vn` (HARDCODE — khác với `api-vinvoice.viettel.vn` đang dùng để login).
+   - Convert `fromDate/toDate` (ms) → ISO UTC: `new Date(ms).toISOString()` cho `greaterThanOrEqual` (00:00 VN → 17:00 UTC hôm trước) và `lessThanOrEqual` (23:59 VN → 16:59 UTC hôm sau).
+   - `size=100`, lặp `page=0,1,2,...` đến khi `content.length < size` hoặc `number+1 >= totalPages`.
+   - Dùng `fetch` trực tiếp + `Authorization: Bearer <token>` (token từ `getToken()` hiện tại).
 
-### Việc bạn cần làm (1 lần, ~2 phút)
+3. **Xử lý 401/403 (token portal khác token API)**:
+   - Nếu nhận 401/403, return `{ success: false, error: "Token đăng nhập API không có quyền truy cập portal draft. Có thể cần cấu hình tài khoản riêng cho portal vinvoice.viettel.vn — gửi tôi log để xử lý." }` kèm `attempts` chi tiết để debug.
 
-1. Đăng nhập portal Viettel S-Invoice (web).
-2. Mở DevTools (F12) → tab **Network** → bật **Preserve log** → filter `Fetch/XHR`.
-3. Vào menu **Quản lý hoá đơn → HĐ chưa phát hành** (hoặc tab đang hiển thị danh sách HĐ nháp của bạn).
-4. Đợi danh sách load xong. Trong Network tìm request POST trả về list (thường tên có `Draft`, `NotSigned`, `Invoice`, hoặc `getInvoice...`).
-5. Click request đó → copy 3 thông tin:
-   - **Request URL** đầy đủ (ví dụ `https://api-vinvoice.viettel.vn/services/.../InvoiceWS/getInvoiceListNotSigned/0123456789`)
-   - **Request Method** (POST/GET)
-   - **Request Payload** (JSON body)
-6. Dán cả 3 vào chat cho tôi.
+4. **Map field → bảng `einvoices`** (cập nhật `mapViettelInvoiceRow` không cần — tạo mapper riêng cho draft):
+   ```
+   transaction_uuid: String(row.id)         // dùng id portal làm khoá dedup
+   invoice_number:   null                    // chưa phát hành
+   invoice_serial:   row.invoiceSeri
+   template_code:    row.templateCode
+   buyer_tax_code:   row.buyerTaxCode
+   buyer_name:       row.buyerName || row.buyerUnitName || row.buyerLegalName
+   total_amount_without_vat: row.totalAmountWithoutVAT
+   total_vat:        row.totalVATAmount
+   total_amount:     row.totalAmountWithVAT
+   issue_date:       null
+   created_at_external: row.createdDate
+   status:           'draft'
+   state:            row.state
+   invoice_status:   0
+   raw_data:         row
+   manager_id:       managerId
+   ```
+   (xem lại schema thực tế `einvoices` để khớp tên cột — sẽ điều chỉnh khi đọc file).
 
-Mẹo: nếu nhiều request, lọc thêm bằng cách gõ `invoice` trong ô filter Network; request đúng sẽ có Response trả về array các HĐ nháp với `invoiceNumber=null` hoặc `state=0`.
+5. **Upsert** vào `einvoices` với `onConflict: 'transaction_uuid'`.
 
-### Sau khi có request thật
+6. **Toast**: `Đã đồng bộ N/M HĐ chưa phát hành` (M = `totalElements`).
 
-Tôi sẽ làm gọn `supabase/functions/vinvoice-api/index.ts` action `sync_drafts`:
+7. **Log gọn**: `[sync_drafts] totalElements=X pages=Y synced=Z`.
 
-1. **Xoá toàn bộ sweep 1..30 và 5 endpoint đoán mò** — chỉ giữ đúng endpoint thật bạn gửi.
-2. **Gọi đúng path + body** Viettel dùng cho tab "HĐ chưa phát hành", phân trang đầy đủ (rowPerPage=100, pageNum tăng dần đến hết).
-3. **Bỏ logic `isDraftRow` mềm dẻo** — vì endpoint đã đúng, mọi dòng trả về đều là draft, lưu thẳng vào bảng `einvoices` với `forceDraft: true`.
-4. **Giữ dedupe** theo `transactionUuid → invoiceGuid → invoiceId`.
-5. **Toast rõ ràng**: "Đã đồng bộ N HĐ nháp từ Viettel".
-6. **Log gọn**: chỉ log `[sync_drafts] endpoint=X rows=N pages=P` để dễ kiểm tra sau này.
+## Không thay đổi
+- Schema DB, các action khác, UI dialog.
+- `useEInvoices.ts` chỉ giữ logic toast hiện tại (đã hiển thị `d.message` và `attempts`).
 
-### Không thay đổi
-
-- Schema DB.
-- Các action khác (`sync_invoices`, `issue_draft`, `delete_draft`, `preview_draft`, v.v.).
-- UI dialog đồng bộ.
-
-### Tại sao không tự dò tiếp
-
-Đã thử sweep 35 biến thể (30 status + 5 endpoint draft) → 0 kết quả. Tiếp tục đoán mò chỉ tốn thời gian. 1 request thật từ portal sẽ giải quyết dứt điểm trong 5 phút code.
+## Sau khi deploy
+Bạn bấm **Đồng bộ HĐ chưa phát hành** với khoảng `11/03/2026 → 11/06/2026`. Nếu thấy 43/43 → xong. Nếu 401 → cần cấu hình tài khoản portal riêng (sẽ bàn tiếp khi có log).
