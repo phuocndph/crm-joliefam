@@ -293,91 +293,13 @@ const EInvoiceManagement = () => {
             ))}
           </div>
 
-          <Card>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Số hoá đơn</TableHead>
-                    <TableHead>Mẫu / Ký hiệu</TableHead>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>MST khách</TableHead>
-                    <TableHead className="text-right">Tổng tiền</TableHead>
-                    <TableHead>Ngày phát hành</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead className="w-[60px]">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
-                  ) : issuedAll.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có HĐ phát hành. Bấm "Đồng bộ từ Viettel".</TableCell></TableRow>
-                  ) : issuedAll.map((inv: any) => {
-                    const st = statusMap[inv.status] || statusMap.draft;
-                    const hasTx = !!inv.transaction_uuid;
-                    const hasMinute = inv.status === "cancelled" || inv.invoice_action === "replaced_by_new" || inv.invoice_action === "adjusted_by_new";
-                    return (
-                      <TableRow key={inv.id}>
-                        <TableCell className="font-medium text-primary">{inv.invoice_number || "—"}</TableCell>
-                        <TableCell className="text-xs">{inv.template_code || "—"} / {inv.invoice_series || "—"}</TableCell>
-                        <TableCell>{inv.buyer_name || "—"}</TableCell>
-                        <TableCell className="text-xs">{inv.buyer_tax_code || "—"}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(inv.total_with_vat)}</TableCell>
-                        <TableCell>{inv.issued_date ? new Date(inv.issued_date).toLocaleDateString("vi-VN") : "—"}</TableCell>
-                        <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!hasTx}><MoreHorizontal className="h-4 w-4" /></Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="z-[100]">
-                              <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "PDF", einvoice_id: inv.id })}>
-                                <Download className="h-4 w-4 mr-2" /> Tải PDF
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => downloadFile.mutate({ transactionUuid: inv.transaction_uuid, fileType: "XML", einvoice_id: inv.id })}>
-                                <Download className="h-4 w-4 mr-2" /> Tải XML
-                              </DropdownMenuItem>
-                              {hasMinute && (
-                                <DropdownMenuItem onClick={() => setMinuteTarget(inv)}>
-                                  <FileCheck2 className="h-4 w-4 mr-2" /> Tải biên bản
-                                </DropdownMenuItem>
-                              )}
-                              {inv.status === "issued" && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => setEmailTarget(inv)}>
-                                    <Mail className="h-4 w-4 mr-2" /> Gửi email
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => updatePayment.mutate({ transactionUuid: inv.transaction_uuid, paid: true, einvoice_id: inv.id })}>
-                                    <Wallet className="h-4 w-4 mr-2" /> Đánh dấu đã thanh toán
-                                  </DropdownMenuItem>
-                                  {canManage && (
-                                    <>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem onClick={() => setReplaceTarget(inv)}>
-                                        <Replace className="h-4 w-4 mr-2" /> Thay thế
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => setAdjustTarget(inv)}>
-                                        <Pencil className="h-4 w-4 mr-2" /> Điều chỉnh
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setCancelTarget(inv)}>
-                                        <Ban className="h-4 w-4 mr-2" /> Huỷ hoá đơn
-                                      </DropdownMenuItem>
-                                    </>
-                                  )}
-                                </>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <IssuedInvoicesTable
+            invoices={issuedAll as any}
+            isLoading={isLoading}
+            onCreate={() => setShowCreate(true)}
+            onInfo={(inv) => downloadFile.mutate({ transactionUuid: (inv as any).transaction_uuid, fileType: "PDF", einvoice_id: inv.id })}
+            onMenu={(inv) => setEmailTarget(inv as any)}
+          />
         </TabsContent>
 
         {canManage && (
