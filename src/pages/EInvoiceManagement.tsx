@@ -21,6 +21,7 @@ import { PreviewPdfDialog } from "@/components/einvoice/PreviewPdfDialog";
 import { ReplaceAdjustDialog } from "@/components/einvoice/ReplaceAdjustDialog";
 import { DownloadMinuteDialog } from "@/components/einvoice/DownloadMinuteDialog";
 import { DraftInvoicesTable } from "@/components/einvoice/DraftInvoicesTable";
+import { IssuedInvoicesTable } from "@/components/einvoice/IssuedInvoicesTable";
 
 const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
   issued: { label: "Đã phát hành", variant: "default" },
