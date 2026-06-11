@@ -442,19 +442,18 @@ Deno.serve(async (req: Request) => {
 
     // ---------- GET TEMPLATES ----------
     if (action === "get_templates") {
-      // Per docs: POST /InvoiceUtilsWS/getInvoiceTemplates with { taxCode, invoiceType }
       const c = await ensureCreds();
-      const invoiceType = params.invoiceType || "01GTKT";
+      const invoiceType = params.invoiceType || "1";
       let r = await callViettel(c, cacheKey,
-        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceTemplates`,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getAllInvoiceTemplateByTaxCode`,
         "POST",
-        { taxCode: c.taxCode, invoiceType }
+        { taxCode: c.taxCode }
       );
-      // Fallback to legacy path if first attempt 404s
       if (!r.ok && r.status === 404) {
         r = await callViettel(c, cacheKey,
-          `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getAllInvoiceTemplates/${c.taxCode}`,
-          "GET"
+          `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getInvoiceTemplates`,
+          "POST",
+          { taxCode: c.taxCode, invoiceType }
         );
       }
       return json({ success: r.ok, data: r.data, status: r.status });
