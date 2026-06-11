@@ -581,142 +581,66 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, synced: records.length, total: list.length, mapped: records.length });
     }
 
-    // ---------- SYNC DRAFTS (HĐ chưa phát hành) ----------
+    // ---------- SYNC DRAFTS (HĐ chưa phát hành — integrator API) ----------
     if (action === "sync_drafts") {
       const { fromDate, toDate, invoiceType } = params;
       if (!fromDate || !toDate) return json({ success: false, error: "Thiếu fromDate/toDate" });
-
       const c = await ensureCreds();
-      const it = invoiceType || "01GTKT";
-      const token = await getToken(c, cacheKey);
+      const it = invoiceType || "1";
+      const fromStr = toViettelShortDate(fromDate);
+      const toStr = toViettelShortDate(toDate);
 
-      // Portal Viettel dùng base URL khác với API integrator
-      const PORTAL_BASE = "https://vinvoice.viettel.vn";
-      const PORTAL_PATH = "/api/cluster3/services/einvoiceapplication/api/invoice/search-draft-all";
+      let r = await callViettel(c, cacheKey,
+        `/services/einvoiceapplication/api/InvoiceAPI/InvoiceUtilsWS/getListInvoiceDataControl`,
+        "POST",
+        { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr }
+      );
+      let list = extractInvoiceList(r.data);
 
-      const fromIso = new Date(Number(fromDate)).toISOString();
-      const toIso = new Date(Number(toDate)).toISOString();
-
-      const SIZE = 100;
-      let pageNum = 0;
-      let totalElements = 0;
-      let totalPages = 1;
-      const all: any[] = [];
-      let lastStatus = 0;
-      let lastErrorBody: string | null = null;
-
-      while (pageNum < 50) {
-        const qs = new URLSearchParams({
-          page: String(pageNum),
-          size: String(SIZE),
-          "createdDate.greaterThanOrEqual": fromIso,
-          "createdDate.lessThanOrEqual": toIso,
-          "invoiceStatus.equals": "0",
-          "invoiceTypeId.notEquals": "52",
-          sort: "id,desc",
-        });
-        const url = `${PORTAL_BASE}${PORTAL_PATH}?${qs.toString()}`;
-        console.log(`[sync_drafts] GET page=${pageNum}`);
-        const res = await fetch(url, {
-          method: "GET",
-          headers: {
-            "Accept": "application/json, text/plain, */*",
-            "Authorization": `Bearer ${token}`,
-            "Cookie": `access_token=${token}`,
-          },
-        });
-        const text = await res.text();
-        lastStatus = res.status;
-        if (!res.ok) {
-          lastErrorBody = text.slice(0, 500);
-          console.error(`[sync_drafts] portal ${res.status}: ${lastErrorBody}`);
-          break;
-        }
-        let body: any; try { body = JSON.parse(text); } catch { body = null; }
-        const data = body?.data || {};
-        const content: any[] = Array.isArray(data.content) ? data.content : [];
-        totalElements = Number(data.totalElements ?? content.length);
-        totalPages = Number(data.totalPages ?? 1);
-        all.push(...content);
-        if (content.length < SIZE || pageNum + 1 >= totalPages) break;
-        pageNum++;
+      if ((!r.ok && !isViettelEmptyResult(r.data)) || (r.ok && list.length === 0)) {
+        const fb = await callViettel(c, cacheKey,
+          `/services/einvoiceapplication/api/InvoiceAPI/InvoiceWS/searchInvoiceByTransactionUuid`,
+          "POST",
+          { supplierTaxCode: c.taxCode, fromDate: fromStr, toDate: toStr }
+        );
+        if (fb.ok) { r = fb; list = extractInvoiceList(fb.data); }
       }
 
-      if (lastStatus === 401 || lastStatus === 403) {
-        await logAction(supabase, {
-          action, request: { fromIso, toIso, invoiceType: it },
-          response: { status: lastStatus, error: lastErrorBody },
-          status: String(lastStatus), user_id: user.id, manager_id: managerId,
-        });
-        return json({
-          success: false,
-          error: `Token đăng nhập (${c.username}) không có quyền truy cập portal vinvoice.viettel.vn (HTTP ${lastStatus}). Cần dùng cùng tài khoản đăng nhập web portal.`,
-          status: lastStatus,
-          detail: lastErrorBody,
-        }, 200);
+      if (!r.ok && !isViettelEmptyResult(r.data)) {
+        const msg = r.data?.data || r.data?.message || r.raw || "Viettel API lỗi";
+        return json({ success: false, error: msg, raw: r.data });
       }
 
-      if (lastStatus && lastStatus >= 400) {
-        return json({
-          success: false, error: `Portal trả HTTP ${lastStatus}`, detail: lastErrorBody,
-        }, 200);
-      }
-
-      // Map portal draft row → bảng einvoices
-      const records = all.map((row: any) => {
-        const totalBefore = Number(row.totalAmountWithoutVAT ?? 0);
-        const taxAmt = Number(row.totalVATAmount ?? 0);
-        const totalWith = Number(row.totalAmountWithVAT ?? (totalBefore + taxAmt));
-        return {
-          transaction_uuid: `vt-portal-${c.taxCode}-${row.id}`,
-          invoice_number: null,
-          invoice_type: row.invoiceTypeCode || it,
-          template_code: row.templateCode || "",
-          invoice_series: row.invoiceSeri || "",
-          status: "draft",
-          is_draft: true,
-          issued_date: null,
-          total_amount: totalBefore,
-          vat_amount: taxAmt,
-          total_with_vat: totalWith,
-          buyer_name: row.buyerName || row.buyerUnitName || row.buyerLegalName || "",
-          buyer_tax_code: row.buyerTaxCode || "",
-          response_data: row,
-          last_synced_at: new Date().toISOString(),
-          manager_id: managerId ? String(managerId) : null,
-        } as any;
+      const drafts = list.filter((inv: any) => {
+        const state = inv.state ?? inv.stateCode ?? inv.invoiceStatus ?? inv.status;
+        const name = String(inv.invoiceStatusName || inv.stateName || "");
+        return state == 3 || /nháp|draft|chưa phát hành/i.test(name);
       });
 
-      let upsertError: any = null;
-      if (records.length > 0) {
-        const { error: upErr } = await supabaseService
-          .from("einvoices")
-          .upsert(records, { onConflict: "transaction_uuid" });
-        upsertError = upErr;
-      }
+      const records = drafts
+        .map((inv: any) => mapViettelInvoiceRow(inv, { taxCode: c.taxCode, defaultType: it, managerId, forceDraft: true }))
+        .filter(Boolean);
 
       await logAction(supabase, {
-        action,
-        request: { fromIso, toIso, invoiceType: it },
-        response: { totalElements, totalPages, fetched: all.length, synced: records.length, error: upsertError?.message },
-        status: String(lastStatus || 200),
-        user_id: user.id, manager_id: managerId,
+        action, request: { fromStr, toStr, invoiceType: it },
+        response: { total: list.length, drafts: records.length },
+        status: String(r.status), user_id: user.id, manager_id: managerId,
       });
 
-      console.log(`[sync_drafts] totalElements=${totalElements} pages=${totalPages} fetched=${all.length} synced=${records.length}`);
-
-      if (upsertError) {
-        return json({
-          success: false, error: upsertError.message, code: upsertError.code, details: upsertError.details,
-          total: all.length, mapped: records.length,
-        }, 500);
+      if (records.length === 0) {
+        return json({ success: true, synced: 0, total: 0, message: "Không tìm thấy HĐ nháp" });
       }
+
+      const { error: upErr } = await supabaseService
+        .from("einvoices")
+        .upsert(records, { onConflict: "transaction_uuid" });
+      if (upErr) return json({ success: false, error: upErr.message, total: list.length, mapped: records.length }, 500);
 
       return json({
         success: true,
         synced: records.length,
-        total: totalElements,
-        message: `Đã đồng bộ ${records.length}/${totalElements} HĐ chưa phát hành từ Viettel.`,
+        total: records.length,
+        message: `Đã đồng bộ ${records.length} HĐ chưa phát hành`,
       });
     }
 
