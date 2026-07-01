@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useEmployeePermissions, type PermissionType } from "@/hooks/useEmployeePermissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -20,6 +21,7 @@ const MobileLayout = () => {
     role: userRole,
     loading: roleLoading
   } = useUserRole(user);
+  const { hasPermission, loading: permLoading } = useEmployeePermissions(user, userRole);
   useEffect(() => {
     // Get current user
     const getUser = async () => {
@@ -96,72 +98,70 @@ const MobileLayout = () => {
     }
   };
 
-  // Navigation items for bottom tab bar
-  const bottomNavItems = [{
-    icon: Home,
-    label: "Dashboard",
-    path: "/dashboard"
-  }, {
-    icon: Users2,
-    label: "Khách hàng",
-    path: "/customers"
-  }, {
-    icon: Package,
-    label: "Sản phẩm",
-    path: "/products"
-  }, {
-    icon: ShoppingCart,
-    label: "Đơn hàng",
-    path: "/orders"
-  }, {
-    icon: Menu,
-    label: "Menu",
-    path: "",
-    isMenu: true
-  }];
+  const isPrivileged = userRole === 'admin' || userRole === 'manager';
+  const canSee = (perm?: PermissionType) => {
+    if (!perm) return isPrivileged;
+    return hasPermission(perm);
+  };
+
+  // Navigation items for bottom tab bar (filtered by permission)
+  const allBottomNav: Array<{ icon: any; label: string; path: string; perm?: PermissionType }> = [
+    { icon: Home, label: "Dashboard", path: "/dashboard", perm: "dashboard" },
+    { icon: Users2, label: "Khách hàng", path: "/customers", perm: "customers" },
+    { icon: Package, label: "Sản phẩm", path: "/products", perm: "products" },
+    { icon: ShoppingCart, label: "Đơn hàng", path: "/orders", perm: "orders" },
+    { icon: FileText, label: "Báo giá", path: "/quotes", perm: "quotes" },
+    { icon: Wallet, label: "Giao dịch", path: "/transactions", perm: "transactions" },
+  ];
+  const bottomNavItems: Array<any> = [
+    ...allBottomNav.filter(i => canSee(i.perm)).slice(0, 4),
+    { icon: Menu, label: "Menu", path: "", isMenu: true },
+  ];
 
   // Menu items for side drawer - grouped by category
   const menuGroups = [
     {
       title: "Kinh doanh",
       items: [
-        { icon: Home, label: "Dashboard", path: "/dashboard" },
-        { icon: Users2, label: "Khách hàng", path: "/customers" },
-        { icon: Package, label: "Sản phẩm", path: "/products" },
-        { icon: ShoppingCart, label: "Đơn hàng", path: "/orders" },
-        { icon: FileText, label: "Báo giá", path: "/quotes" },
-        { icon: Headphones, label: "Chăm sóc KH", path: "/customer-care" },
+        { icon: Home, label: "Dashboard", path: "/dashboard", perm: "dashboard" as PermissionType },
+        { icon: Users2, label: "Khách hàng", path: "/customers", perm: "customers" as PermissionType },
+        { icon: Package, label: "Sản phẩm", path: "/products", perm: "products" as PermissionType },
+        { icon: ShoppingCart, label: "Đơn hàng", path: "/orders", perm: "orders" as PermissionType },
+        { icon: FileText, label: "Báo giá", path: "/quotes", perm: "quotes" as PermissionType },
+        { icon: Headphones, label: "Chăm sóc KH", path: "/customer-care", perm: "customer_care" as PermissionType },
       ],
     },
     {
       title: "Tài chính",
       items: [
-        { icon: CreditCard, label: "Dòng tiền", path: "/cash-flow" },
-        { icon: Wallet, label: "Giao dịch", path: "/transactions" },
-        { icon: FileSignature, label: "Hợp đồng", path: "/contracts" },
-        { icon: Receipt, label: "Hóa đơn điện tử", path: "/einvoices" },
+        { icon: CreditCard, label: "Dòng tiền", path: "/cash-flow", perm: "cash_flow" as PermissionType },
+        { icon: Wallet, label: "Giao dịch", path: "/transactions", perm: "transactions" as PermissionType },
+        { icon: FileSignature, label: "Hợp đồng", path: "/contracts", perm: "contracts" as PermissionType },
+        { icon: Receipt, label: "Hóa đơn điện tử", path: "/einvoices", perm: "contracts" as PermissionType },
       ],
     },
     {
       title: "Vận hành",
       items: [
-        { icon: Truck, label: "Vận chuyển GHN", path: "/ghn-tracking" },
-        { icon: Building, label: "Đơn vị vận chuyển", path: "/shipping-companies" },
-        { icon: Scissors, label: "Vải", path: "/fabrics" },
-        { icon: BarChart3, label: "Báo cáo", path: "/reports" },
+        { icon: Truck, label: "Vận chuyển GHN", path: "/ghn-tracking", perm: "ghn_tracking" as PermissionType },
+        { icon: Building, label: "Đơn vị vận chuyển", path: "/shipping-companies", perm: "shipping_companies" as PermissionType },
+        { icon: Scissors, label: "Vải", path: "/fabrics", perm: "fabric_management" as PermissionType },
+        { icon: BarChart3, label: "Báo cáo", path: "/reports", perm: "reports" as PermissionType },
       ],
     },
     {
       title: "Hệ thống",
       items: [
-        { icon: Users2, label: "Quản lý user", path: "/user-management" },
-        { icon: BookOpen, label: "Tri thức", path: "/knowledge-base" },
+        { icon: Users2, label: "Quản lý user", path: "/user-management", perm: "user_management" as PermissionType },
+        { icon: BookOpen, label: "Tri thức", path: "/knowledge-base", perm: "knowledge_base" as PermissionType },
         { icon: Bot, label: "Cài đặt AI", path: "/ai-settings" },
         { icon: Globe, label: "Web Scraper", path: "/web-scraper" },
       ],
     },
-  ];
-  if (loading || roleLoading) {
+  ]
+    .map(g => ({ ...g, items: g.items.filter((it: any) => canSee(it.perm)) }))
+    .filter(g => g.items.length > 0);
+  if (loading || roleLoading || permLoading) {
     return <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Đang tải...</div>
       </div>;
