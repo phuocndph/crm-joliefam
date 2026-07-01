@@ -28,6 +28,7 @@ import KnowledgeBase from "./pages/KnowledgeBase";
 import AISettingsPage from "./pages/AISettingsPage";
 import WebScraperPage from "./pages/WebScraperPage";
 import ShippingCompanyPage from "./pages/ShippingCompanyPage";
+import MobileMenu from "./pages/MobileMenu";
 import MainLayout from "./components/layout/MainLayout";
 import MobileLayout from "./components/layout/MobileLayout";
 import NotFound from "./pages/NotFound";
@@ -108,6 +109,7 @@ const AppRoutes = () => {
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/" element={<LayoutComponent />}>
+        <Route path="menu" element={<MobileMenu />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="user-management" element={<UserManagement />} />
         <Route path="customers" element={<CustomerManagement />} />

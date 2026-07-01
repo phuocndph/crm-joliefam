@@ -106,7 +106,6 @@ const MobileLayout = () => {
 
   // Navigation items for bottom tab bar (filtered by permission)
   const allBottomNav: Array<{ icon: any; label: string; path: string; perm?: PermissionType }> = [
-    { icon: Home, label: "Dashboard", path: "/dashboard", perm: "dashboard" },
     { icon: Users2, label: "Khách hàng", path: "/customers", perm: "customers" },
     { icon: Package, label: "Sản phẩm", path: "/products", perm: "products" },
     { icon: ShoppingCart, label: "Đơn hàng", path: "/orders", perm: "orders" },
@@ -114,7 +113,8 @@ const MobileLayout = () => {
     { icon: Wallet, label: "Giao dịch", path: "/transactions", perm: "transactions" },
   ];
   const bottomNavItems: Array<any> = [
-    ...allBottomNav.filter(i => canSee(i.perm)).slice(0, 4),
+    { icon: Home, label: "Trang chính", path: "/menu" },
+    ...allBottomNav.filter(i => canSee(i.perm)).slice(0, 3),
     { icon: Menu, label: "Menu", path: "", isMenu: true },
   ];
 
@@ -274,14 +274,6 @@ const MobileLayout = () => {
         </div>
       </nav>
 
-      {/* Floating Action Button for Quick Actions */}
-      <Button size="icon" className="fixed bottom-24 right-4 h-14 w-14 rounded-full shadow-lg z-40" onClick={() => {
-      // Quick action menu - could expand this
-      navigate("/customers?new=true");
-    }}>
-        <Plus className="h-6 w-6" />
-      </Button>
-      
       <ChangePasswordDialog open={showChangePasswordDialog} onOpenChange={setShowChangePasswordDialog} />
     </div>;
 };
