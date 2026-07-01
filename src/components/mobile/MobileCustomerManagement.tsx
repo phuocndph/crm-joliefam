@@ -238,25 +238,37 @@ const MobileCustomerManagement: React.FC = () => {
       </PullToRefresh>
 
       {/* Dialogs */}
-      <EditCustomerDialog
-        customer={selectedCustomer}
-        open={showEditDialog}
-        onOpenChange={setShowEditDialog}
-        onSubmit={() => {
-          setShowEditDialog(false);
-          loadCustomers();
-        }}
-      />
+      {selectedCustomer && (
+        <EditCustomerDialog
+          customer={selectedCustomer}
+          open={showEditDialog}
+          onOpenChange={(o) => {
+            setShowEditDialog(o);
+            if (!o) setSelectedCustomer(null);
+          }}
+          onSubmit={() => {
+            setShowEditDialog(false);
+            setSelectedCustomer(null);
+            loadCustomers();
+          }}
+        />
+      )}
 
-      <DeleteCustomerDialog
-        customer={selectedCustomer}
-        open={showDeleteDialog}
-        onOpenChange={setShowDeleteDialog}
-        onConfirm={() => {
-          setShowDeleteDialog(false);
-          loadCustomers();
-        }}
-      />
+      {selectedCustomer && (
+        <DeleteCustomerDialog
+          customer={selectedCustomer}
+          open={showDeleteDialog}
+          onOpenChange={(o) => {
+            setShowDeleteDialog(o);
+            if (!o) setSelectedCustomer(null);
+          }}
+          onConfirm={() => {
+            setShowDeleteDialog(false);
+            setSelectedCustomer(null);
+            loadCustomers();
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -9,8 +9,8 @@ const Index = () => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        // Use hard navigation to avoid Router-context issues during HMR
-        window.location.assign("/dashboard");
+        const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+        window.location.assign(isMobile ? "/menu" : "/dashboard");
       }
     };
     checkUser();
