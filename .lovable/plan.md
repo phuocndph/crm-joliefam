@@ -1,61 +1,56 @@
-## Endpoint đã chốt
+## Mục tiêu
 
-```
-GET https://vinvoice.viettel.vn/api/cluster3/services/einvoiceapplication/api/invoice/search-draft-all
-   ?page=0&size=100
-   &createdDate.greaterThanOrEqual=<ISO UTC>
-   &createdDate.lessThanOrEqual=<ISO UTC>
-   &invoiceStatus.equals=0
-   &invoiceTypeId.notEquals=52
-   &sort=id,desc
-Header: Authorization: Bearer <token>
-```
+Trên mobile, ẩn hoàn toàn các mục điều hướng (bottom tab + menu drawer) mà user hiện tại không có quyền truy cập, để tránh bấm nhầm gây lỗi.
 
-Response: `{ code, data: { totalElements, totalPages, number, content: [...] } }`
+## Phạm vi
 
-## Việc làm trong `supabase/functions/vinvoice-api/index.ts` action `sync_drafts`
+Chỉ sửa `src/components/layout/MobileLayout.tsx`. Không đụng desktop, không đổi logic quyền.
 
-1. **Xoá toàn bộ logic cũ** của `sync_drafts`: bỏ `getListInvoiceDataControl`, bỏ sweep `invoiceStatus 1..30` trên `getInvoices`, bỏ 5 endpoint draft đoán mò, bỏ helper `isDraftRow`.
+## Cách làm
 
-2. **Gọi đúng endpoint mới**:
-   - Base URL: `https://vinvoice.viettel.vn` (HARDCODE — khác với `api-vinvoice.viettel.vn` đang dùng để login).
-   - Convert `fromDate/toDate` (ms) → ISO UTC: `new Date(ms).toISOString()` cho `greaterThanOrEqual` (00:00 VN → 17:00 UTC hôm trước) và `lessThanOrEqual` (23:59 VN → 16:59 UTC hôm sau).
-   - `size=100`, lặp `page=0,1,2,...` đến khi `content.length < size` hoặc `number+1 >= totalPages`.
-   - Dùng `fetch` trực tiếp + `Authorization: Bearer <token>` (token từ `getToken()` hiện tại).
+1. Dùng hook có sẵn `useEmployeePermissions(user, userRole)` (đã dùng cho desktop) trong `MobileLayout`.
+   - `admin` / `manager` → thấy tất cả (hook đã tự trả `true`).
+   - `accountant` / `employee` → chỉ thấy mục có `enabled = true` trong `employee_permissions`.
 
-3. **Xử lý 401/403 (token portal khác token API)**:
-   - Nếu nhận 401/403, return `{ success: false, error: "Token đăng nhập API không có quyền truy cập portal draft. Có thể cần cấu hình tài khoản riêng cho portal vinvoice.viettel.vn — gửi tôi log để xử lý." }` kèm `attempts` chi tiết để debug.
+2. Map mỗi menu item sang một `PermissionType`:
 
-4. **Map field → bảng `einvoices`** (cập nhật `mapViettelInvoiceRow` không cần — tạo mapper riêng cho draft):
+   ```text
+   /dashboard          → dashboard
+   /customers          → customers
+   /products           → products
+   /orders             → orders
+   /quotes             → quotes
+   /customer-care      → customer_care
+   /cash-flow          → cash_flow
+   /transactions       → transactions
+   /contracts          → contracts
+   /einvoices          → contracts        (chưa có perm riêng — dùng chung nhóm tài chính; nếu muốn tách, thêm perm mới sau)
+   /ghn-tracking       → ghn_tracking
+   /shipping-companies → shipping_companies
+   /fabrics            → fabric_management
+   /reports            → reports
+   /user-management    → user_management   (thực tế chỉ admin/manager thấy)
+   /knowledge-base     → knowledge_base
+   /ai-settings        → (chỉ admin/manager)
+   /web-scraper        → (chỉ admin/manager)
    ```
-   transaction_uuid: String(row.id)         // dùng id portal làm khoá dedup
-   invoice_number:   null                    // chưa phát hành
-   invoice_serial:   row.invoiceSeri
-   template_code:    row.templateCode
-   buyer_tax_code:   row.buyerTaxCode
-   buyer_name:       row.buyerName || row.buyerUnitName || row.buyerLegalName
-   total_amount_without_vat: row.totalAmountWithoutVAT
-   total_vat:        row.totalVATAmount
-   total_amount:     row.totalAmountWithVAT
-   issue_date:       null
-   created_at_external: row.createdDate
-   status:           'draft'
-   state:            row.state
-   invoice_status:   0
-   raw_data:         row
-   manager_id:       managerId
-   ```
-   (xem lại schema thực tế `einvoices` để khớp tên cột — sẽ điều chỉnh khi đọc file).
 
-5. **Upsert** vào `einvoices` với `onConflict: 'transaction_uuid'`.
+   Với các mục không có `PermissionType` tương ứng (AI settings, Web scraper), chỉ hiển thị khi `userRole` là `admin` hoặc `manager`.
 
-6. **Toast**: `Đã đồng bộ N/M HĐ chưa phát hành` (M = `totalElements`).
+3. Lọc:
+   - `bottomNavItems`: giữ nguyên item "Menu"; các item còn lại lọc theo `hasPermission`. Nếu bị lọc mất, thay bằng item khác đầu tiên user có quyền (giữ tối đa 4 tab + Menu).
+   - `menuGroups`: `.map` group → `.filter` items theo quyền; ẩn group nếu rỗng.
 
-7. **Log gọn**: `[sync_drafts] totalElements=X pages=Y synced=Z`.
+4. Trong khi `useEmployeePermissions.loading` còn `true`, giữ màn hình "Đang tải..." hiện có (gộp thêm cờ này vào điều kiện loading).
 
 ## Không thay đổi
-- Schema DB, các action khác, UI dialog.
-- `useEInvoices.ts` chỉ giữ logic toast hiện tại (đã hiển thị `d.message` và `attempts`).
 
-## Sau khi deploy
-Bạn bấm **Đồng bộ HĐ chưa phát hành** với khoảng `11/03/2026 → 11/06/2026`. Nếu thấy 43/43 → xong. Nếu 401 → cần cấu hình tài khoản portal riêng (sẽ bàn tiếp khi có log).
+- Route guards / trang chi tiết (đã bảo vệ ở nơi khác).
+- Desktop sidebar.
+- Bảng `employee_permissions` và RLS.
+- FAB "+" vẫn dẫn tới `/customers?new=true` (đã public trong app; nếu muốn ẩn khi không có quyền `customers`, có thể bổ sung — hỏi thêm nếu cần).
+
+## Kiểm thử
+
+- Login employee chỉ có quyền `orders` + `customers`: bottom bar chỉ còn Dashboard? (dashboard cũng cần quyền — sẽ ẩn), Khách hàng, Đơn hàng, Menu. Drawer chỉ hiện 2 mục đó, các group khác ẩn.
+- Login admin: thấy đầy đủ như hiện tại.
