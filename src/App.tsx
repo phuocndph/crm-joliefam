@@ -110,7 +110,7 @@ const AppRoutes = () => {
       <Route path="/auth" element={<Auth />} />
       <Route path="/" element={<LayoutComponent />}>
         <Route path="menu" element={<MobileMenu />} />
-        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="dashboard" element={isMobile ? <MobileMenu /> : <Dashboard />} />
         <Route path="user-management" element={<UserManagement />} />
         <Route path="customers" element={<CustomerManagement />} />
         <Route path="products" element={<ProductManagement />} />

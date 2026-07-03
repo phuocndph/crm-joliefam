@@ -12,6 +12,11 @@ import { toast } from "@/hooks/use-toast";
 
 const REMEMBER_EMAIL_KEY = "remembered_email";
 
+const getPostAuthPath = () => {
+  const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+  return isMobile ? "/menu" : "/dashboard";
+};
+
 const Auth = () => {
   const [email, setEmail] = useState(() => {
     try { return localStorage.getItem(REMEMBER_EMAIL_KEY) || ""; } catch { return ""; }
@@ -30,12 +35,12 @@ const Auth = () => {
   useEffect(() => {
     // Subscribe FIRST, then check session — handles late-restore on PWA
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate("/dashboard", { replace: true });
+      if (session) navigate(getPostAuthPath(), { replace: true });
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        navigate("/dashboard", { replace: true });
+        navigate(getPostAuthPath(), { replace: true });
       } else {
         setCheckingSession(false);
       }
@@ -69,7 +74,7 @@ const Auth = () => {
           title: "Đăng nhập thành công!",
           description: "Chào mừng bạn trở lại hệ thống CRM.",
         });
-        navigate("/dashboard");
+        navigate(getPostAuthPath());
       }
     } catch (error: any) {
       toast({
@@ -87,7 +92,7 @@ const Auth = () => {
     setLoading(true);
 
     try {
-      const redirectUrl = `${window.location.origin}/dashboard`;
+      const redirectUrl = `${window.location.origin}${getPostAuthPath()}`;
       
       const { data, error } = await supabase.auth.signUp({
         email,
