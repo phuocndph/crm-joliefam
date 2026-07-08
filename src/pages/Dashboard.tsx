@@ -96,26 +96,23 @@ const Dashboard = () => {
       currentMonth.setDate(1);
       currentMonth.setHours(0, 0, 0, 0);
 
-      // Load all stats in parallel
+      // Load all stats in parallel — request only fields we use, and count-only for products.
       const [
         ordersResponse,
         customersResponse,
         quotesResponse,
-        productsResponse,
-        transactionsResponse
+        productsCountResponse,
       ] = await Promise.all([
         supabase.from('orders').select('total_amount, status, created_at'),
-        supabase.from('customers').select('*'),
+        supabase.from('customers').select('email, phone, purchase_count, created_at'),
         supabase.from('quotes').select('total_amount, status, created_at'),
-        supabase.from('products').select('id'),
-        supabase.from('transactions').select('amount, type, created_at')
+        supabase.from('products').select('id', { count: 'exact', head: true }),
       ]);
 
       const orders = ordersResponse.data || [];
       const customers = customersResponse.data || [];
       const quotes = quotesResponse.data || [];
-      const products = productsResponse.data || [];
-      const transactions = transactionsResponse.data || [];
+      const productsCount = productsCountResponse.count ?? 0;
 
       // Remove duplicate customers by email/phone, keep the one with highest purchase_count
       const uniqueCustomers = customers.reduce((acc, customer) => {
@@ -155,7 +152,7 @@ const Dashboard = () => {
         totalOrders: orders.length,
         totalCustomers: deduplicatedCustomers.length,
         totalQuotes: quotes.length,
-        totalProducts: products.length,
+        totalProducts: productsCount,
         pendingOrders: orders.filter(order => order.status === 'pending').length,
         approvedQuotes: quotes.filter(quote => quote.status === 'approved').length,
         monthlyRevenue,
