@@ -142,9 +142,8 @@ const TransactionManagement = () => {
       if (error) throw error;
       return data || [];
     },
-    staleTime: 0, // Always fresh
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // Use React Query for order payments
@@ -159,9 +158,8 @@ const TransactionManagement = () => {
       if (error) throw error;
       return data || [];
     },
-    staleTime: 0, // Always fresh
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // Use React Query for all order expenses
@@ -182,9 +180,8 @@ const TransactionManagement = () => {
       if (error) throw error;
       return data || [];
     },
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {

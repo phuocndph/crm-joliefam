@@ -33,7 +33,18 @@ import MainLayout from "./components/layout/MainLayout";
 import MobileLayout from "./components/layout/MobileLayout";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Cache 2 min, keep in memory 10 min. Prevents refetch storms on every mount/tab focus.
+      staleTime: 2 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
+    },
+  },
+});
 
 // Fallback UI khi app crash
 const AppErrorFallback = () => (

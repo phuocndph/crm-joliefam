@@ -280,8 +280,7 @@ export default function CashFlowManagement() {
       if (error) throw error;
       return data || [];
     },
-    staleTime: 0, // Don't cache to always get fresh data
-    gcTime: 0, // Don't keep in memory to always refetch
+    staleTime: 2 * 60 * 1000,
   });
 
   // Real-time subscription for orders updates
@@ -371,11 +370,14 @@ export default function CashFlowManagement() {
     return { productIds: Array.from(productIds), productSkus: Array.from(productSkus) };
   }, [orders]);
 
+  // Memoize identifiers so the query key is stable — otherwise queryFn re-runs on every render.
+  const productIdentifiers = useMemo(() => getAllProductIdentifiers(), [getAllProductIdentifiers]);
+
   // Batch fetch all products data
   const { data: productsData = [], isLoading: productsLoading } = useQuery({
-    queryKey: ['products-batch', getAllProductIdentifiers()],
+    queryKey: ['products-batch', productIdentifiers.productIds, productIdentifiers.productSkus],
     queryFn: async () => {
-      const { productIds, productSkus } = getAllProductIdentifiers();
+      const { productIds, productSkus } = productIdentifiers;
       
       if (productIds.length === 0 && productSkus.length === 0) {
         return [];
@@ -411,7 +413,7 @@ export default function CashFlowManagement() {
       return allProducts;
     },
     enabled: ordersData.length > 0,
-    staleTime: 0,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Create products lookup map

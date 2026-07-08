@@ -27,23 +27,13 @@ export const useTransactions = (managerId?: string | null) => {
   useEffect(() => {
     console.log('🔧 Setting up real-time transaction synchronization...');
     
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['transactions'] });
+    // Only INSERT/DELETE — UPDATE just invalidates cache anyway, no need to receive full payload
     const channel = supabase
       .channel('transactions-sync-' + Date.now())
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'transactions'
-        },
-        (payload) => {
-          console.log('🔄 Real-time transaction change:', payload.eventType);
-          queryClient.invalidateQueries({ queryKey: ['transactions'] });
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 Transactions real-time status:', status);
-      });
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, invalidate)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'transactions' }, invalidate)
+      .subscribe();
 
     return () => {
       console.log('🧹 Cleaning up transactions real-time subscription');
