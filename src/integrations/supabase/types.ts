@@ -2195,6 +2195,13 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_products_cost_prices: {
+        Args: { _ids: string[] }
+        Returns: {
+          cost_price: number
+          id: string
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
