@@ -212,7 +212,15 @@ const ProductManagement = () => {
           _offset: offset,
         });
         if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
-          data = rpcData.map((r: any) => ({ ...r, cost_price: null })) as any;
+          // Lấy lại giá gốc cho các role được phép (admin/manager/accountant)
+          let costMap: Record<string, number | null> = {};
+          const { data: costRows } = await (supabase as any).rpc('get_products_cost_prices', {
+            _ids: rpcData.map((r: any) => r.id),
+          });
+          if (Array.isArray(costRows)) {
+            costMap = Object.fromEntries(costRows.map((c: any) => [c.id, c.cost_price]));
+          }
+          data = rpcData.map((r: any) => ({ ...r, cost_price: costMap[r.id] ?? null })) as any;
           count = Number(rpcData[0]?.total_count ?? rpcData.length);
           fromPublic = true;
         }
