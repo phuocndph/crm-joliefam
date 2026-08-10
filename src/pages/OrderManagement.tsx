@@ -171,11 +171,16 @@ export default function OrderManagement() {
   const sentinelRef = useInfiniteScroll(hasNextPage, isFetchingNextPage, fetchNextPage);
   const { data: orderStats } = useOrdersStats(managerFilter, authReady && !!user);
   const { data: dupOrderNumbers } = useDuplicateOrderNumbers();
-  // Luôn lấy dữ liệu mới nhất khi vào trang (vd: vừa duyệt báo giá tạo đơn ở trang khác)
+  // Xóa dữ liệu cũ theo đúng bộ lọc sau khi auth/role sẵn sàng rồi tải lại từ server.
+  // `resetQueries` tránh trường hợp refetch giữ lại các page cũ trên bản publish.
   useEffect(() => {
-    if (authReady && user) loadOrders();
+    if (!authReady || !user) return;
+    queryClient.resetQueries({
+      queryKey: ['orders-infinite', managerFilter ?? 'all', debouncedSearch],
+      exact: true,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authReady, !!user]);
+  }, [authReady, user?.id, managerFilter]);
   console.log('[Orders] fetched:', orders.length, 'unique managers:', Array.from(new Set(orders.map((o:any)=>o.manager_id))).length);
   const { toast } = useToast();
   const queryClient = useQueryClient();

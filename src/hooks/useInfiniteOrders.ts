@@ -13,10 +13,8 @@ export const useInfiniteOrders = (opts?: { managerId?: string | null; search?: s
     const invalidate = () => queryClient.invalidateQueries({ queryKey: ['orders-infinite'] });
     const channel = supabase
       .channel(`orders-inf-${Date.now()}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, invalidate)
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, invalidate)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'order_payments' }, invalidate)
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'order_payments' }, invalidate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, invalidate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_payments' }, invalidate)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [queryClient]);
@@ -103,6 +101,8 @@ export const useInfiniteOrders = (opts?: { managerId?: string | null; search?: s
       lastPage.length < PAGE_SIZE ? undefined : allPages.length,
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 };
