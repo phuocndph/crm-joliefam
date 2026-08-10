@@ -863,9 +863,11 @@ export default function OrderManagement() {
           currentDisplayNumber={orderToEditNumber.display_order_number} 
           open={!!orderToEditNumber} 
           onOpenChange={open => !open && setOrderToEditNumber(null)} 
-          onSuccess={() => {
-            loadOrders();
+          onSuccess={(newDisplayNumber) => {
+            // Cập nhật ngay trên UI, không cần tải lại trang
+            patchOrderInCache(orderToEditNumber.id, { display_order_number: newDisplayNumber });
             setOrderToEditNumber(null);
+            queryClient.invalidateQueries({ queryKey: ['orders-infinite'], refetchType: 'all' });
           }} 
         />
       )}
