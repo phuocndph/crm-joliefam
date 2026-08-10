@@ -171,6 +171,11 @@ export default function OrderManagement() {
   const sentinelRef = useInfiniteScroll(hasNextPage, isFetchingNextPage, fetchNextPage);
   const { data: orderStats } = useOrdersStats(managerFilter, authReady && !!user);
   const { data: dupOrderNumbers } = useDuplicateOrderNumbers();
+  // Luôn lấy dữ liệu mới nhất khi vào trang (vd: vừa duyệt báo giá tạo đơn ở trang khác)
+  useEffect(() => {
+    if (authReady && user) loadOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady, !!user]);
   console.log('[Orders] fetched:', orders.length, 'unique managers:', Array.from(new Set(orders.map((o:any)=>o.manager_id))).length);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -863,9 +868,11 @@ export default function OrderManagement() {
           currentDisplayNumber={orderToEditNumber.display_order_number} 
           open={!!orderToEditNumber} 
           onOpenChange={open => !open && setOrderToEditNumber(null)} 
-          onSuccess={() => {
-            loadOrders();
+          onSuccess={(newDisplayNumber) => {
+            // Cập nhật ngay trên UI, không cần tải lại trang
+            patchOrderInCache(orderToEditNumber.id, { display_order_number: newDisplayNumber });
             setOrderToEditNumber(null);
+            queryClient.invalidateQueries({ queryKey: ['orders-infinite'], refetchType: 'all' });
           }} 
         />
       )}

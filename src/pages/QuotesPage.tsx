@@ -324,9 +324,9 @@ export default function QuotesPage() {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
       queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['orders-infinite'] });
-      queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['orders-infinite'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['orders-stats'], refetchType: 'all' });
       
       toast({
         title: "Thành công",

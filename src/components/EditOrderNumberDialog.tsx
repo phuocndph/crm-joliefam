@@ -12,7 +12,7 @@ interface EditOrderNumberDialogProps {
   currentDisplayNumber?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
+  onSuccess: (newDisplayNumber: string | null) => void;
 }
 
 export const EditOrderNumberDialog: React.FC<EditOrderNumberDialogProps> = ({
@@ -28,13 +28,14 @@ export const EditOrderNumberDialog: React.FC<EditOrderNumberDialogProps> = ({
   const { toast } = useToast();
 
   const handleSave = async () => {
+    const newValue = displayNumber.trim() || null;
     try {
       setLoading(true);
-      
+
       const { error } = await supabase
         .from("orders")
         .update({ 
-          display_order_number: displayNumber.trim() || null 
+          display_order_number: newValue 
         })
         .eq("id", orderId);
 
@@ -45,7 +46,7 @@ export const EditOrderNumberDialog: React.FC<EditOrderNumberDialogProps> = ({
         description: "Đã cập nhật tên hiển thị mã đơn hàng",
       });
 
-      onSuccess();
+      onSuccess(newValue);
       onOpenChange(false);
     } catch (error) {
       console.error('Error updating order display number:', error);
