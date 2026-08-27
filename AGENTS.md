@@ -60,6 +60,10 @@ multiple implementations.
 
 ## Required Workflow
 
+For implementation requests started through the project launcher, use the
+`crm-orchestrator` skill as the coordinator workflow. The coordinator delegates
+production edits to `crm_implementer` and does not edit production files itself.
+
 1. Inspect `git status`, relevant docs, the actual execution path, and existing
    tests before proposing changes.
 2. State the scope, invariants, affected files, database impact, and validation

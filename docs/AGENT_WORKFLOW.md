@@ -1,5 +1,26 @@
 # Hướng dẫn dùng Orca và đội agent cho CRM Joliefam
 
+## Cách dùng tự động
+
+Bạn không cần tự gọi từng agent nữa:
+
+1. Chạy `START-CRM.cmd` để dùng Codex, hoặc `START-CRM-OPENCODE.cmd` để dùng
+   OpenCode đa model.
+2. Nhập kết quả CRM cần làm bằng một câu hoặc một đoạn ngắn.
+3. Orca tự tạo worktree từ `main`, mở agent và chạy toàn bộ quy trình.
+4. Khi agent hoàn tất, chỉ cần mở Diff trong Orca để kiểm tra thay đổi.
+
+Có thể chạy trực tiếp bằng PowerShell:
+
+```powershell
+.\scripts\start-crm-agent.ps1 -Task "Sửa tổng tiền đơn hàng khi áp dụng giảm giá"
+.\scripts\start-crm-agent.ps1 -Agent opencode -Task "Thêm báo cáo tồn kho theo lô"
+```
+
+Codex được khởi động với skill `$crm-orchestrator`. OpenCode được khởi động bằng
+lệnh `/crm`. Cả hai tự chọn số agent phù hợp với rủi ro của yêu cầu, tự review,
+chạy kiểm thử và sửa các finding có bằng chứng.
+
 ## Cấu hình đã có
 
 | Agent | Model Codex/OpenCode | Quyền | Nhiệm vụ |

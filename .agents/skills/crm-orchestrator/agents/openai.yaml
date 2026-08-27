@@ -1,0 +1,7 @@
+interface:
+  display_name: "CRM Orchestrator"
+  short_description: "Tu dong phat trien CRM bang doi agent"
+  default_prompt: "Use $crm-orchestrator to complete this CRM request end to end."
+
+policy:
+  allow_implicit_invocation: true
