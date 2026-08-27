@@ -1,0 +1,2 @@
+# Each worktree gets its own local copy. These paths remain gitignored.
+.env
