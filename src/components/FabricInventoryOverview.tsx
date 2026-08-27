@@ -1,0 +1,1136 @@
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Plus, Package2, ArrowRight, Edit, Trash2 } from "lucide-react";
+import { useFabricInventory, useFabricTypes, useFabricVariants, useWarehouses, useCreateTransaction, useUpdateInventory, useCreateTransfer, useUpdateFabricType, useDeleteFabricType, useCreateFabricVariant } from "@/hooks/useFabrics";
+import { DEFAULT_LOW_STOCK_THRESHOLD_METERS } from '@/lib/fabricStock';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { toast } from "@/hooks/use-toast";
+import { FabricTransactionsTable } from "@/components/FabricTransactionsTable";
+import { supabase } from "@/integrations/supabase/client";
+import { Search } from "lucide-react";
+
+export const FabricInventoryOverview = () => {
+  const { data: inventory = [] } = useFabricInventory();
+  const { data: fabricTypes = [] } = useFabricTypes();
+  const { data: fabricVariants = [] } = useFabricVariants();
+  const { data: warehouses = [] } = useWarehouses();
+  const createTransaction = useCreateTransaction();
+  const updateInventory = useUpdateInventory();
+  const createTransfer = useCreateTransfer();
+  const updateFabricType = useUpdateFabricType();
+  const deleteFabricType = useDeleteFabricType();
+  const createFabricVariant = useCreateFabricVariant();
+
+  // User and role state for manager_id
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [managerId, setManagerId] = useState<string | null>(null);
+  
+  // Debug log
+  console.log('FabricInventoryOverview - fabricTypes:', fabricTypes);
+  
+  const [showInboundDialog, setShowInboundDialog] = useState(false);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [showTransferConfirmDialog, setShowTransferConfirmDialog] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedFabric, setSelectedFabric] = useState<any>(null);
+  const [selectedFabricForTransfer, setSelectedFabricForTransfer] = useState<string>('');
+  const [transferQuantity, setTransferQuantity] = useState(0);
+  const [transferPackagesCount, setTransferPackagesCount] = useState(0);
+  const [transferNotes, setTransferNotes] = useState('');
+  const [fromWarehouseId, setFromWarehouseId] = useState('');
+  const [toWarehouseId, setToWarehouseId] = useState('');
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: ''
+  });
+  const [newInbound, setNewInbound] = useState({
+    fabric_type_id: '',
+    quantity: 0,
+    quantityDisplay: '',
+    packages_count: 0,
+    supplier_name: '',
+    transfer_to_bacninh: 0,
+    transferDisplay: '',
+    notes: ''
+  });
+
+  // Fetch user and manager ID on mount
+  useEffect(() => {
+    const fetchUserAndManagerId = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+      
+      if (user) {
+        // Get user role and manager ID
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role, assigned_by')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (roleData) {
+          // If employee/accountant, use their manager's ID if exists, else use own ID
+          if ((roleData.role === 'employee' || roleData.role === 'accountant') && roleData.assigned_by) {
+            setManagerId(roleData.assigned_by);
+          } else {
+            setManagerId(user.id);
+          }
+        } else {
+          setManagerId(user.id);
+        }
+      }
+    };
+    
+    fetchUserAndManagerId();
+  }, []);
+
+  // Process inventory data for table display
+  const inventoryData = inventory.map(item => ({
+    ...item,
+    fabricCode: item.fabric_variants?.variant_name || '',
+    fabricType: item.fabric_variants?.fabric_types?.name || '',
+    warehouse: item.warehouses?.name || '',
+    currentStockRolls: item.packages_count || 0,
+    currentStockMeters: item.current_stock,
+  }));
+
+  // Group by fabric type for chart
+  const chartData = inventoryData.reduce((acc, item) => {
+    const key = item.fabricCode;
+    const existing = acc.find(d => d.name === key);
+    if (existing) {
+      existing.meters += item.currentStockMeters;
+      existing.rolls += item.currentStockRolls;
+    } else {
+      acc.push({
+        name: key,
+        meters: item.currentStockMeters,
+        rolls: item.currentStockRolls,
+      });
+    }
+    return acc;
+  }, [] as Array<{ name: string; meters: number; rolls: number }>);
+
+  // Find main warehouses
+  const hanoiWarehouse = warehouses.find(w => w.name.toLowerCase().includes('hà nội') || w.name.toLowerCase().includes('hanoi'));
+  const bacninhWarehouse = warehouses.find(w => w.name.toLowerCase().includes('bắc ninh') || w.name.toLowerCase().includes('bacninh'));
+
+  // Group by fabric type with warehouse breakdown
+  const fabricSummary = inventoryData.reduce((acc, item) => {
+    const key = item.fabricCode;
+    if (!acc[key]) {
+      acc[key] = {
+        fabricName: item.fabricCode,
+        total: 0,
+        totalPackages: 0,
+        minimumStock: 0,
+        hasMinimumStock: false,
+        hanoi: 0,
+        hanoiPackages: 0,
+        bacninh: 0,
+        bacninhPackages: 0
+      };
+    }
+    
+    acc[key].total += item.currentStockMeters;
+    acc[key].totalPackages += item.currentStockRolls;
+    const itemMinimum = Number(item.minimum_stock || 0);
+    if (itemMinimum > 0) {
+      acc[key].minimumStock += itemMinimum;
+      acc[key].hasMinimumStock = true;
+    }
+    
+    if (item.warehouse?.toLowerCase().includes('hà nội') || item.warehouse?.toLowerCase().includes('hanoi')) {
+      acc[key].hanoi += item.currentStockMeters;
+      acc[key].hanoiPackages += item.currentStockRolls;
+    } else if (item.warehouse?.toLowerCase().includes('bắc ninh') || item.warehouse?.toLowerCase().includes('bacninh')) {
+      acc[key].bacninh += item.currentStockMeters;
+      acc[key].bacninhPackages += item.currentStockRolls;
+    }
+    
+    return acc;
+  }, {} as Record<string, { fabricName: string; total: number; totalPackages: number; minimumStock: number; hasMinimumStock: boolean; hanoi: number; hanoiPackages: number; bacninh: number; bacninhPackages: number }>);
+
+  const fabricSummaryArray = Object.values(fabricSummary).filter(f =>
+    searchTerm.trim() === '' ||
+    f.fabricName?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Format number function with Vietnamese formatting
+  const formatNumber = (num: number) => {
+    if (num % 1 === 0) {
+      return num.toLocaleString('vi-VN');
+    }
+    // Use maximum fraction digits without minimum to avoid trailing zeros
+    return num.toLocaleString('vi-VN', { maximumFractionDigits: 3 }).replace(/,000$/, '');
+  };
+
+  // Format quantity with sign for transfer display
+  const formatTransferQuantity = (quantity: number, type: 'in' | 'out') => {
+    const formattedNum = formatNumber(Math.abs(quantity));
+    const sign = type === 'in' ? '+' : '-';
+    return `${sign}${formattedNum}m`;
+  };
+
+  // Format input value for display
+  const formatInputValue = (value: number) => {
+    if (value === null || value === undefined) return '';
+    if (value === 0) return '0'; // ✅ Hiển thị "0" thay vì rỗng
+    return formatNumber(value);
+  };
+
+  // Parse formatted input value back to number
+  const parseInputValue = (value: string) => {
+    if (!value) return 0;
+    // Handle both comma and dot as decimal separator
+    // Remove thousand separators (dots) but keep decimal separator
+    let cleanValue = value;
+    
+    // If there's a comma, treat it as decimal separator
+    if (cleanValue.includes(',')) {
+      const parts = cleanValue.split(',');
+      if (parts.length === 2) {
+        // Remove dots from integer part (thousand separators)
+        const integerPart = parts[0].replace(/\./g, '');
+        cleanValue = integerPart + '.' + parts[1];
+      }
+    } else if (cleanValue.includes('.')) {
+      // Check if it's a decimal or thousand separator
+      const parts = cleanValue.split('.');
+      if (parts.length === 2 && parts[1].length <= 3) {
+        // Likely a decimal number (e.g., 123.45)
+        cleanValue = value;
+      } else {
+        // Multiple dots or long decimal part, treat as thousand separators
+        cleanValue = cleanValue.replace(/\./g, '');
+      }
+    }
+    
+    return parseFloat(cleanValue) || 0;
+  };
+
+  const handleInboundSubmit = async () => {
+    if (!newInbound.fabric_type_id || newInbound.quantity <= 0) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
+      return;
+    }
+
+    // Show confirmation dialog instead of processing immediately
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmInbound = async () => {
+    if (!hanoiWarehouse) {
+      toast({ title: "Lỗi", description: "Không tìm thấy kho Hà Nội", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const selectedFabricType = fabricTypes.find(ft => ft.id === newInbound.fabric_type_id);
+      if (!selectedFabricType) {
+        toast({ title: "Lỗi", description: "Không tìm thấy loại vải", variant: "destructive" });
+        return;
+      }
+
+      // Check if fabric variant exists for this fabric type, if not create one
+      let fabricVariantId: string;
+      
+      // Find existing variant with this fabric_type_id
+      const existingVariant = fabricVariants.find(variant => variant.fabric_type_id === newInbound.fabric_type_id);
+      
+      if (existingVariant) {
+        fabricVariantId = existingVariant.id;
+      } else {
+        // Create fabric variant from fabric type
+        try {
+          const newVariant = await createFabricVariant.mutateAsync({
+            fabric_type_id: newInbound.fabric_type_id,
+            variant_name: selectedFabricType.name,
+            color: 'Trắng', // Default color
+            origin: 'VN', // Default origin
+            unit: 'm' // Default unit
+          });
+          fabricVariantId = newVariant.id;
+        } catch (variantError: any) {
+          console.error('Error creating fabric variant:', variantError);
+          toast({ 
+            title: "Lỗi tạo biến thể vải", 
+            description: variantError?.message || "Không thể tạo biến thể vải. Vui lòng thử lại.",
+            variant: "destructive" 
+          });
+          return;
+        }
+      }
+
+      const hanoiQuantity = newInbound.quantity - newInbound.transfer_to_bacninh;
+      
+      // Create inbound transaction for Hanoi
+      await createTransaction.mutateAsync({
+        fabric_variant_id: fabricVariantId,
+        warehouse_id: hanoiWarehouse.id,
+        transaction_type: 'inbound',
+        quantity: hanoiQuantity,
+        packages_count: newInbound.packages_count,
+        supplier_name: newInbound.supplier_name,
+        notes: newInbound.notes,
+        manager_id: managerId // Add manager_id
+      });
+
+      // Update Hanoi inventory
+      const existingHanoiInventory = inventory.find(item => 
+        item.fabric_variant_id === fabricVariantId && item.warehouse_id === hanoiWarehouse.id
+      );
+      const currentHanoiStock = existingHanoiInventory?.current_stock || 0;
+      
+      await updateInventory.mutateAsync({
+        fabric_variant_id: fabricVariantId,
+        warehouse_id: hanoiWarehouse.id,
+        current_stock: currentHanoiStock + hanoiQuantity,
+        packages_count: (existingHanoiInventory?.packages_count || 0) + newInbound.packages_count
+      });
+
+      // If transferring to Bac Ninh
+      if (newInbound.transfer_to_bacninh > 0 && bacninhWarehouse) {
+        // Create transfer transaction
+        await createTransaction.mutateAsync({
+          fabric_variant_id: fabricVariantId,
+          warehouse_id: bacninhWarehouse.id,
+          transaction_type: 'transfer_in',
+          quantity: newInbound.transfer_to_bacninh,
+          notes: `Chuyển từ kho Hà Nội`,
+          manager_id: managerId // Add manager_id
+        });
+
+        // Update Bac Ninh inventory
+        const existingBacninhInventory = inventory.find(item => 
+          item.fabric_variant_id === fabricVariantId && item.warehouse_id === bacninhWarehouse.id
+        );
+        const currentBacninhStock = existingBacninhInventory?.current_stock || 0;
+        
+        await updateInventory.mutateAsync({
+          fabric_variant_id: fabricVariantId,
+          warehouse_id: bacninhWarehouse.id,
+          current_stock: currentBacninhStock + newInbound.transfer_to_bacninh,
+          packages_count: existingBacninhInventory?.packages_count || 0
+        });
+      }
+
+      setNewInbound({
+        fabric_type_id: '',
+        quantity: 0,
+        quantityDisplay: '',
+        packages_count: 0,
+        supplier_name: '',
+        transfer_to_bacninh: 0,
+        transferDisplay: '',
+        notes: ''
+      });
+      setShowInboundDialog(false);
+      setShowConfirmDialog(false);
+      toast({ title: "Thành công", description: "Đã nhập kho và phân bổ vải thành công" });
+    } catch (error) {
+      console.error('Error creating inbound:', error);
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi nhập kho", variant: "destructive" });
+    }
+  };
+
+  const handleEditClick = (fabric: any) => {
+    const fabricType = fabricTypes?.find(ft => ft.name === fabric.fabricName);
+    
+    setSelectedFabric(fabric);
+    setEditForm({
+      name: fabricType?.name || '',
+      description: fabricType?.description || ''
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleDeleteClick = (fabric: any) => {
+    setSelectedFabric(fabric);
+    setShowDeleteDialog(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!selectedFabric || !editForm.name) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập tên loại vải", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const fabricType = fabricTypes?.find(ft => ft.name === selectedFabric.fabricName);
+
+      if (fabricType) {
+        await updateFabricType.mutateAsync({
+          id: fabricType.id,
+          name: editForm.name,
+          description: editForm.description
+        });
+      }
+
+      setShowEditDialog(false);
+      setSelectedFabric(null);
+      setEditForm({ name: '', description: '' });
+    } catch (error) {
+      console.error('Error updating fabric type:', error);
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi cập nhật", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteSubmit = async () => {
+    if (!selectedFabric) return;
+
+    try {
+      const fabricType = fabricTypes?.find(ft => ft.name === selectedFabric.fabricName);
+
+      if (fabricType) {
+        await deleteFabricType.mutateAsync(fabricType.id);
+      }
+
+      setShowDeleteDialog(false);
+      setSelectedFabric(null);
+    } catch (error) {
+      console.error('Error deleting fabric type:', error);
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi xóa", variant: "destructive" });
+    }
+  };
+
+  const handleTransferSubmit = async () => {
+    if (!selectedFabricForTransfer || !fromWarehouseId || !toWarehouseId || transferQuantity <= 0) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
+      return;
+    }
+
+    // Show confirmation dialog instead of executing directly
+    setShowTransferConfirmDialog(true);
+  };
+
+  const handleConfirmTransfer = async () => {
+    if (!selectedFabricForTransfer || !fromWarehouseId || !toWarehouseId || transferQuantity <= 0) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập đầy đủ thông tin", variant: "destructive" });
+      return;
+    }
+
+    try {
+      // Find the fabric variant based on the selected fabric name
+      const fabricInventoryItem = inventory.find(item => 
+        item.fabric_variants?.variant_name === selectedFabricForTransfer && 
+        item.warehouse_id === fromWarehouseId
+      );
+
+      if (!fabricInventoryItem) {
+        toast({ title: "Lỗi", description: "Không tìm thấy vải trong kho nguồn", variant: "destructive" });
+        return;
+      }
+
+      // Check if there's enough stock
+      if (fabricInventoryItem.current_stock < transferQuantity) {
+        toast({ title: "Lỗi", description: `Không đủ tồn kho. Chỉ còn ${formatNumber(fabricInventoryItem.current_stock)} mét`, variant: "destructive" });
+        return;
+      }
+
+      // Create transfer record
+      await createTransfer.mutateAsync({
+        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
+        from_warehouse_id: fromWarehouseId,
+        to_warehouse_id: toWarehouseId,
+        quantity: transferQuantity,
+        notes: transferNotes
+      });
+
+      // Update source warehouse inventory (decrease)
+      await updateInventory.mutateAsync({
+        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
+        warehouse_id: fromWarehouseId,
+        current_stock: fabricInventoryItem.current_stock - transferQuantity,
+        packages_count: Math.max(0, fabricInventoryItem.packages_count - transferPackagesCount)
+      });
+
+      // Update destination warehouse inventory (increase)
+      const destinationInventory = inventory.find(item => 
+        item.fabric_variant_id === fabricInventoryItem.fabric_variant_id && 
+        item.warehouse_id === toWarehouseId
+      );
+      
+      const currentDestinationStock = destinationInventory?.current_stock || 0;
+      const currentDestinationPackages = destinationInventory?.packages_count || 0;
+
+      await updateInventory.mutateAsync({
+        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
+        warehouse_id: toWarehouseId,
+        current_stock: currentDestinationStock + transferQuantity,
+        packages_count: currentDestinationPackages + transferPackagesCount
+      });
+
+      // Create transfer transactions
+      await createTransaction.mutateAsync({
+        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
+        warehouse_id: fromWarehouseId,
+        transaction_type: 'transfer_out',
+        quantity: -transferQuantity, // Negative for outbound
+        packages_count: -transferPackagesCount, // Negative for outbound packages
+        notes: `Chuyển đến ${warehouses.find(w => w.id === toWarehouseId)?.name}. ${transferNotes}`
+      });
+
+      await createTransaction.mutateAsync({
+        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
+        warehouse_id: toWarehouseId,
+        transaction_type: 'transfer_in',
+        quantity: transferQuantity,
+        packages_count: transferPackagesCount, // Positive for inbound packages
+        notes: `Nhận từ ${warehouses.find(w => w.id === fromWarehouseId)?.name}. ${transferNotes}`
+      });
+
+      // Force refresh inventory data
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait for database updates
+      
+      // Reset form and close dialogs
+      setSelectedFabricForTransfer('');
+      setFromWarehouseId('');
+      setToWarehouseId('');
+      setTransferQuantity(0);
+      setTransferPackagesCount(0);
+      setTransferNotes('');
+      setShowTransferDialog(false);
+      setShowTransferConfirmDialog(false);
+
+      toast({ title: "Thành công", description: "Đã chuyển kho thành công" });
+    } catch (error) {
+      console.error('Error transferring fabric:', error);
+      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi chuyển kho", variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header with Import Button */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-semibold">Tổng số lượng vải</h2>
+          <p className="text-sm text-muted-foreground">Quản lý tồn kho tổng thể các loại vải</p>
+        </div>
+        <Dialog open={showInboundDialog} onOpenChange={setShowInboundDialog}>
+          <DialogTrigger asChild>
+            <Button>
+              <Package2 className="mr-2 h-4 w-4" />
+              Nhập kho vải
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Nhập kho vải mới</DialogTitle>
+              <DialogDescription>
+                Nhập vải vào kho chính (Hà Nội) và phân bổ sang Bắc Ninh nếu cần
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Loại vải</Label>
+                <Select value={newInbound.fabric_type_id} onValueChange={(value) => setNewInbound(prev => ({ ...prev, fabric_type_id: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn loại vải" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background border shadow-lg z-50">
+                    {fabricTypes && fabricTypes.length > 0 ? (
+                      fabricTypes.map((fabricType) => (
+                        <SelectItem key={fabricType.id} value={fabricType.id} className="cursor-pointer hover:bg-accent">
+                          {fabricType.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="no-types" disabled>Chưa có loại vải nào</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  Tổng số lượng nhập (mét)
+                  {newInbound.quantity === 0 && newInbound.quantityDisplay !== '' && (
+                    <span className="text-xs text-destructive ml-2">
+                      ⚠️ Vui lòng nhập số lượng hợp lệ
+                    </span>
+                  )}
+                </Label>
+                <Input
+                  type="text"
+                  value={newInbound.quantityDisplay || ''}
+                  onChange={(e) => {
+                    const inputValue = e.target.value;
+                    const parsedValue = parseInputValue(inputValue);
+                    setNewInbound(prev => ({ 
+                      ...prev, 
+                      quantityDisplay: inputValue,     // Giữ nguyên raw input
+                      quantity: parsedValue
+                    }));
+                  }}
+                  onBlur={(e) => {
+                    const inputValue = e.target.value;
+                    const numericValue = parseInputValue(inputValue);
+                    
+                    // Chỉ format nếu có giá trị hợp lệ
+                    if (inputValue && numericValue > 0) {
+                      setNewInbound(prev => ({ 
+                        ...prev, 
+                        quantityDisplay: formatNumber(numericValue),
+                        quantity: numericValue
+                      }));
+                    } else {
+                      // Nếu rỗng hoặc = 0, reset về 0
+                      setNewInbound(prev => ({ 
+                        ...prev, 
+                        quantityDisplay: '',
+                        quantity: 0
+                      }));
+                    }
+                  }}
+                  placeholder="Nhập số lượng (ví dụ: 1645,2)"
+                  className={newInbound.quantity === 0 && newInbound.quantityDisplay !== '' ? 'border-destructive' : ''}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Số kiện</Label>
+                <Input
+                  type="text"
+                  value={newInbound.packages_count === 0 ? '' : newInbound.packages_count.toLocaleString('vi-VN')}
+                  onChange={(e) => {
+                    const cleanValue = e.target.value.replace(/\./g, '');
+                    const numericValue = parseInt(cleanValue) || 0;
+                    setNewInbound(prev => ({ ...prev, packages_count: numericValue }));
+                  }}
+                  placeholder="Nhập số kiện"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Trung bình: {newInbound.packages_count > 0 ? formatNumber(newInbound.quantity / newInbound.packages_count) : 0} mét/kiện
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Chuyển sang Bắc Ninh (mét)</Label>
+                <Input
+                  type="text"
+                  value={newInbound.transferDisplay || ''}
+                  onChange={(e) => {
+                    const inputValue = e.target.value;
+                    const parsedValue = parseInputValue(inputValue);
+                    setNewInbound(prev => ({ 
+                      ...prev, 
+                      transferDisplay: inputValue,     // Giữ nguyên raw input
+                      transfer_to_bacninh: parsedValue
+                    }));
+                  }}
+                  onBlur={(e) => {
+                    const inputValue = e.target.value;
+                    const numericValue = parseInputValue(inputValue);
+                    
+                    // Chỉ format nếu có giá trị hợp lệ
+                    if (inputValue && numericValue > 0) {
+                      setNewInbound(prev => ({ 
+                        ...prev, 
+                        transferDisplay: formatNumber(numericValue),
+                        transfer_to_bacninh: numericValue
+                      }));
+                    } else {
+                      // Nếu rỗng hoặc = 0, reset về 0
+                      setNewInbound(prev => ({ 
+                        ...prev, 
+                        transferDisplay: '',
+                        transfer_to_bacninh: 0
+                      }));
+                    }
+                  }}
+                  placeholder="Số lượng chuyển sang Bắc Ninh (ví dụ: 500,5)"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Còn lại tại Hà Nội: {formatNumber(newInbound.quantity - newInbound.transfer_to_bacninh)} mét
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Nhà cung cấp</Label>
+                <Input
+                  value={newInbound.supplier_name}
+                  onChange={(e) => setNewInbound(prev => ({ ...prev, supplier_name: e.target.value }))}
+                  placeholder="Tên nhà cung cấp"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Ghi chú</Label>
+                <Input
+                  value={newInbound.notes}
+                  onChange={(e) => setNewInbound(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Ghi chú thêm"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setShowInboundDialog(false)}>
+                  Hủy
+                </Button>
+                <Button onClick={handleInboundSubmit} disabled={createTransaction.isPending || newInbound.quantity <= 0}>
+                  {createTransaction.isPending ? "Đang xử lý..." : "Nhập kho"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Fabric Summary Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Tổng quan tồn kho vải</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-4 relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Tìm kiếm mã vải..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead rowSpan={2} className="text-center align-middle border-r">Tên Loại Vải</TableHead>
+                  <TableHead colSpan={2} className="text-center border-r">Hà Nội</TableHead>
+                  <TableHead colSpan={2} className="text-center border-r">Bắc Ninh</TableHead>
+                  <TableHead colSpan={2} className="text-center border-r">Tổng</TableHead>
+                  <TableHead rowSpan={2} className="text-center align-middle">Thao Tác</TableHead>
+                </TableRow>
+                <TableRow>
+                  <TableHead className="text-center text-xs">Kiện</TableHead>
+                  <TableHead className="text-center text-xs border-r">Mét</TableHead>
+                  <TableHead className="text-center text-xs">Kiện</TableHead>
+                  <TableHead className="text-center text-xs border-r">Mét</TableHead>
+                  <TableHead className="text-center text-xs">Kiện</TableHead>
+                  <TableHead className="text-center text-xs border-r">Mét</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {fabricSummaryArray.map((fabric, index) => {
+                  const getRowClass = () => {
+                    const threshold = fabric.hasMinimumStock ? fabric.minimumStock : DEFAULT_LOW_STOCK_THRESHOLD_METERS;
+                    if (fabric.total <= threshold) return "bg-red-50 text-red-700";
+                    if (fabric.total <= threshold * 2) return "bg-yellow-50 text-yellow-700";
+                    return "";
+                  };
+
+                  return (
+                    <TableRow key={index} className={getRowClass()}>
+                      <TableCell className="font-medium border-r">
+                        {fabric.fabricName}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {fabric.hanoiPackages}
+                      </TableCell>
+                      <TableCell className="text-center border-r">
+                        {formatNumber(fabric.hanoi)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {fabric.bacninhPackages}
+                      </TableCell>
+                      <TableCell className="text-center border-r">
+                        {formatNumber(fabric.bacninh)}
+                      </TableCell>
+                      <TableCell className="text-center font-semibold">
+                        {fabric.totalPackages}
+                      </TableCell>
+                      <TableCell className="text-center font-semibold border-r">
+                        {formatNumber(fabric.total)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowInboundDialog(true)}
+                            className="h-8 w-8 p-0"
+                            title="Nhập kho"
+                          >
+                            <Package2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowTransferDialog(true)}
+                            className="h-8 w-8 p-0"
+                            title="Chuyển kho"
+                          >
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {fabricSummaryArray.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      <div className="space-y-4">
+                        <p>Chưa có dữ liệu tồn kho</p>
+                        <Button 
+                          onClick={() => setShowInboundDialog(true)}
+                          className="mx-auto"
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Nhập kho đầu tiên
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {/* Total row */}
+                {fabricSummaryArray.length > 0 && (
+                  <TableRow className="bg-muted font-semibold border-t-2">
+                    <TableCell className="border-r">TỔNG CỘNG</TableCell>
+                    <TableCell className="text-center">
+                      {fabricSummaryArray.reduce((sum, item) => sum + item.hanoiPackages, 0)}
+                    </TableCell>
+                    <TableCell className="text-center border-r">
+                      {formatNumber(fabricSummaryArray.reduce((sum, item) => sum + item.hanoi, 0))}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {fabricSummaryArray.reduce((sum, item) => sum + item.bacninhPackages, 0)}
+                    </TableCell>
+                    <TableCell className="text-center border-r">
+                      {formatNumber(fabricSummaryArray.reduce((sum, item) => sum + item.bacninh, 0))}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {fabricSummaryArray.reduce((sum, item) => sum + item.totalPackages, 0)}
+                    </TableCell>
+                    <TableCell className="text-center border-r">
+                      {formatNumber(fabricSummaryArray.reduce((sum, item) => sum + item.total, 0))}
+                    </TableCell>
+                    <TableCell></TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Biểu đồ thể hiện tổng số mét vải các loại</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-96">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="name" 
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                  fontSize={12}
+                />
+                <YAxis />
+                <Tooltip 
+                  formatter={(value, name) => [
+                    `${Number(value).toFixed(2)} ${name === 'meters' ? 'mét' : 'cuộn'}`,
+                    name === 'meters' ? 'Mét' : 'Cuộn'
+                  ]}
+                />
+                <Bar dataKey="meters" fill="#3b82f6" name="meters" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Fabric Transactions Table */}
+      <FabricTransactionsTable />
+
+      {/* Confirmation Dialog for Inbound */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Xác nhận thông tin nhập kho</DialogTitle>
+            <DialogDescription>
+              Vui lòng kiểm tra lại thông tin trước khi nhập kho
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span className="font-medium">Loại vải:</span>
+                <span>{fabricTypes?.find(ft => ft.id === newInbound.fabric_type_id)?.name}</span>
+                
+                <span className="font-medium">Tổng số lượng:</span>
+                <span>{formatNumber(newInbound.quantity)} mét</span>
+                
+                <span className="font-medium">Số kiện:</span>
+                <span>{formatNumber(newInbound.packages_count)} kiện</span>
+                
+                <span className="font-medium">Trung bình/kiện:</span>
+                <span>{newInbound.packages_count > 0 ? formatNumber(newInbound.quantity / newInbound.packages_count) : 0} mét</span>
+                
+                <span className="font-medium">Nhà cung cấp:</span>
+                <span>{newInbound.supplier_name || "Chưa có"}</span>
+                
+                <span className="font-medium">Lưu tại Hà Nội:</span>
+                <span>{formatNumber(newInbound.quantity - newInbound.transfer_to_bacninh)} mét</span>
+                
+                {newInbound.transfer_to_bacninh > 0 && (
+                  <>
+                    <span className="font-medium">Chuyển Bắc Ninh:</span>
+                    <span>{formatNumber(newInbound.transfer_to_bacninh)} mét</span>
+                  </>
+                )}
+                
+                {newInbound.notes && (
+                  <>
+                    <span className="font-medium">Ghi chú:</span>
+                    <span>{newInbound.notes}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
+                Sửa lại
+              </Button>
+              <Button onClick={handleConfirmInbound} disabled={createTransaction.isPending}>
+                {createTransaction.isPending ? "Đang xử lý..." : "Xác nhận nhập kho"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer Dialog */}
+      <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chuyển kho vải</DialogTitle>
+            <DialogDescription>
+              Chuyển vải giữa các kho
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Loại vải</Label>
+              <Select value={selectedFabricForTransfer} onValueChange={setSelectedFabricForTransfer}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn loại vải" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border shadow-lg z-50">
+                  {fabricSummaryArray.map((fabric) => (
+                    <SelectItem key={fabric.fabricName} value={fabric.fabricName} className="cursor-pointer hover:bg-accent">
+                      {fabric.fabricName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Từ kho</Label>
+              <Select value={fromWarehouseId} onValueChange={setFromWarehouseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn kho nguồn" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border shadow-lg z-50">
+                  {warehouses.map((warehouse) => (
+                    <SelectItem key={warehouse.id} value={warehouse.id} className="cursor-pointer hover:bg-accent">
+                      {warehouse.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Đến kho</Label>
+              <Select value={toWarehouseId} onValueChange={setToWarehouseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn kho đích" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border shadow-lg z-50">
+                  {warehouses.filter(w => w.id !== fromWarehouseId).map((warehouse) => (
+                    <SelectItem key={warehouse.id} value={warehouse.id} className="cursor-pointer hover:bg-accent">
+                      {warehouse.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Số lượng chuyển (mét)</Label>
+                <Input
+                  type="text"
+                  value={transferQuantity === 0 ? '' : formatNumber(transferQuantity)}
+                  onChange={(e) => {
+                    const inputValue = e.target.value;
+                    setTransferQuantity(parseInputValue(inputValue));
+                  }}
+                  placeholder="Nhập số lượng (ví dụ: 1645,2)"
+                />
+            </div>
+            <div className="space-y-2">
+              <Label>Số kiện chuyển</Label>
+              <Input
+                type="number"
+                value={transferPackagesCount}
+                onChange={(e) => setTransferPackagesCount(Number(e.target.value))}
+                placeholder="Nhập số kiện"
+                min="0"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Ghi chú</Label>
+              <Input
+                value={transferNotes}
+                onChange={(e) => setTransferNotes(e.target.value)}
+                placeholder="Ghi chú chuyển kho"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => {
+                setShowTransferDialog(false);
+                setSelectedFabricForTransfer('');
+                setFromWarehouseId('');
+                setToWarehouseId('');
+                setTransferQuantity(0);
+                setTransferPackagesCount(0);
+                setTransferNotes('');
+              }}>
+                Hủy
+              </Button>
+              <Button 
+                onClick={handleTransferSubmit} 
+                disabled={createTransfer.isPending || !selectedFabricForTransfer || !fromWarehouseId || !toWarehouseId || transferQuantity <= 0}
+              >
+                {createTransfer.isPending ? "Đang xử lý..." : "Chuyển kho"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa loại vải</DialogTitle>
+            <DialogDescription>
+              Cập nhật thông tin loại vải {selectedFabric?.fabricName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Tên loại vải</Label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Nhập tên loại vải"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Mô tả</Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Nhập mô tả"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+                Hủy
+              </Button>
+              <Button onClick={handleEditSubmit} disabled={updateFabricType.isPending}>
+                {updateFabricType.isPending ? "Đang cập nhật..." : "Cập nhật"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Xác nhận xóa</DialogTitle>
+            <DialogDescription>
+              Bạn có chắc chắn muốn xóa loại vải "{selectedFabric?.fabricName}"? 
+              Hành động này không thể hoàn tác.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Hủy
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteSubmit} 
+              disabled={deleteFabricType.isPending}
+            >
+              {deleteFabricType.isPending ? "Đang xóa..." : "Xóa"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer Confirmation Dialog */}
+      <Dialog open={showTransferConfirmDialog} onOpenChange={setShowTransferConfirmDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Xác nhận chuyển kho vải</DialogTitle>
+            <DialogDescription>
+              Vui lòng kiểm tra lại thông tin trước khi chuyển kho
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span className="font-medium">Loại vải:</span>
+                <span>{selectedFabricForTransfer}</span>
+                
+                <span className="font-medium">Từ kho:</span>
+                <span>{warehouses.find(w => w.id === fromWarehouseId)?.name}</span>
+                
+                <span className="font-medium">Đến kho:</span>
+                <span>{warehouses.find(w => w.id === toWarehouseId)?.name}</span>
+                
+                <span className="font-medium">Số lượng:</span>
+                <span>{formatNumber(transferQuantity)} mét</span>
+                
+                {transferPackagesCount > 0 && (
+                  <>
+                    <span className="font-medium">Số kiện:</span>
+                    <span>{transferPackagesCount} kiện</span>
+                  </>
+                )}
+                
+                {transferNotes && (
+                  <>
+                    <span className="font-medium">Ghi chú:</span>
+                    <span>{transferNotes}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowTransferConfirmDialog(false)}>
+                Sửa lại
+              </Button>
+              <Button onClick={handleConfirmTransfer} disabled={createTransfer.isPending}>
+                {createTransfer.isPending ? "Đang xử lý..." : "Xác nhận chuyển kho"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};

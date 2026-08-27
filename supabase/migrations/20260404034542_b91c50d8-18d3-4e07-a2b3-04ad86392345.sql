@@ -1,0 +1,1 @@
+UPDATE contracts SET seller_info = jsonb_set(seller_info::jsonb, '{tax_code}', '"0108652480"') WHERE seller_info->>'tax_code' = '0134345789';

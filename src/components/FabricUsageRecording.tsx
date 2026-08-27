@@ -1,0 +1,458 @@
+import React, { useState, useEffect } from 'react';
+import { Plus, X, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Card } from '@/components/ui/card';
+import { useFabricVariants, useWarehouses, useFabricInventory, useRecordFabricUsageAtomic } from '@/hooks/useFabrics';
+import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { SearchableFabricSelect } from '@/components/ui/searchable-fabric-select';
+
+interface FabricUsageRecordingProps {
+  warehouseName: string;
+  warehouseFilter: string;
+  /** Render as standalone button (true) or full card wrapper (false/default) */
+  renderAsButton?: boolean;
+}
+
+interface FabricItem {
+  fabric_variant_id: string;
+  quantity_used: number;
+  available_stock?: number;
+}
+
+export const FabricUsageRecording: React.FC<FabricUsageRecordingProps> = ({ 
+  warehouseName, 
+  warehouseFilter,
+  renderAsButton = false
+}) => {
+  const { data: fabricVariants } = useFabricVariants();
+  const { data: warehouses } = useWarehouses();
+  const { data: fabricInventory } = useFabricInventory();
+  
+  const recordFabricUsage = useRecordFabricUsageAtomic();
+
+  const [showDialog, setShowDialog] = useState(false);
+  const [formData, setFormData] = useState({
+    order_id: '',
+    order_number: '',
+    warehouse_id: '',
+    customer_name: '',
+    order_category: '',
+    order_type: '',
+    usage_date: new Date().toISOString().split('T')[0],
+    notes: '',
+    fabricItems: [
+      {
+        fabric_variant_id: '',
+        quantity_used: 0,
+        available_stock: 0
+      }
+    ] as FabricItem[]
+  });
+
+  useEffect(() => {
+    if (warehouses && warehouseFilter) {
+      const warehouse = warehouses.find(w => 
+        warehouseFilter === 'hanoi' ? w.name.includes('Hà Nội') :
+        warehouseFilter === 'bacninh' ? w.name.includes('Bắc Ninh') : false
+      );
+      if (warehouse) {
+        setFormData(prev => ({ ...prev, warehouse_id: warehouse.id }));
+      }
+    }
+  }, [warehouses, warehouseFilter]);
+
+  const handleOrderNumberChange = async (orderNumber: string) => {
+    setFormData(prev => ({ ...prev, order_number: orderNumber }));
+    
+    if (orderNumber) {
+      try {
+        const { data: orders, error } = await supabase
+          .from('orders')
+          .select(`
+            *,
+            customers (name, customer_code)
+          `)
+          .or(`order_number.eq.${orderNumber},display_order_number.eq.${orderNumber}`)
+          .limit(1);
+
+        if (orders && orders.length > 0) {
+          const order = orders[0];
+          setFormData(prev => ({
+            ...prev,
+            order_id: order.id,
+            customer_name: order.customers?.name || '',
+          }));
+        } else {
+          setFormData(prev => ({
+            ...prev,
+            order_id: '',
+            customer_name: '',
+          }));
+        }
+      } catch (error) {
+        console.error('Error fetching order:', error);
+      }
+    }
+  };
+
+  const addFabricItem = () => {
+    setFormData(prev => ({
+      ...prev,
+      fabricItems: [...prev.fabricItems, {
+        fabric_variant_id: '',
+        quantity_used: 0,
+        available_stock: 0
+      }]
+    }));
+  };
+
+  const removeFabricItem = (index: number) => {
+    if (formData.fabricItems.length > 1) {
+      setFormData(prev => ({
+        ...prev,
+        fabricItems: prev.fabricItems.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  const updateFabricItem = (index: number, field: keyof FabricItem, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      fabricItems: prev.fabricItems.map((item, i) => {
+        if (i === index) {
+          const updatedItem = { ...item, [field]: value };
+          
+          if (field === 'fabric_variant_id' && value && fabricInventory && formData.warehouse_id) {
+            const inventory = fabricInventory.find(inv => 
+              inv.fabric_variant_id === value && inv.warehouse_id === formData.warehouse_id
+            );
+            updatedItem.available_stock = inventory?.current_stock || 0;
+          }
+          
+          return updatedItem;
+        }
+        return item;
+      })
+    }));
+  };
+
+  const handleSubmit = async () => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      toast({ 
+        title: "Phiên đăng nhập hết hạn", 
+        description: "Vui lòng đăng nhập lại để tiếp tục.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    if (!formData.order_number || !formData.warehouse_id || formData.fabricItems.some(item => !item.fabric_variant_id || item.quantity_used <= 0)) {
+      toast({ 
+        title: "Lỗi", 
+        description: "Vui lòng nhập đầy đủ thông tin cho tất cả các loại vải", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    let orderId = formData.order_id;
+    if (!orderId) {
+      orderId = crypto.randomUUID();
+    }
+
+    for (const item of formData.fabricItems) {
+      if (item.available_stock !== undefined && item.quantity_used > item.available_stock) {
+        const fabricName = fabricVariants?.find(v => v.id === item.fabric_variant_id)?.variant_name;
+        toast({ 
+          title: "Lỗi", 
+          description: `Không đủ vải ${fabricName}. Số lượng có sẵn: ${item.available_stock}m, cần: ${item.quantity_used}m`, 
+          variant: "destructive" 
+        });
+        return;
+      }
+    }
+
+    try {
+      await recordFabricUsage.mutateAsync({
+        order_id: orderId,
+        order_number: formData.order_number,
+        warehouse_id: formData.warehouse_id,
+        items: formData.fabricItems.map(({ fabric_variant_id, quantity_used }) => ({ fabric_variant_id, quantity_used })),
+        customer_name: formData.customer_name || undefined,
+        order_group: (formData.order_category || 'unclassified') as 'don_phuoc' | 'don_hoan' | 'unclassified',
+        order_type: formData.order_type || undefined,
+        usage_date: formData.usage_date,
+        notes: formData.notes || `Xuất vải cho đơn hàng ${formData.order_number} - ${formData.customer_name || 'Khách hàng'}`
+      });
+
+      setFormData({
+        order_id: '',
+        order_number: '',
+        warehouse_id: warehouses?.find(w => 
+          warehouseFilter === 'hanoi' ? w.name.includes('Hà Nội') :
+          warehouseFilter === 'bacninh' ? w.name.includes('Bắc Ninh') : false
+        )?.id || '',
+        customer_name: '',
+        order_category: '',
+        order_type: '',
+        usage_date: new Date().toISOString().split('T')[0],
+        notes: '',
+        fabricItems: [{
+          fabric_variant_id: '',
+          quantity_used: 0,
+          available_stock: 0
+        }]
+      });
+      
+      setShowDialog(false);
+      toast({
+        title: "Thành công",
+        description: "Đã ghi nhận sử dụng vải thành công"
+      });
+      
+    } catch (error: any) {
+      console.error('Error recording fabric usage:', error);
+      
+      let errorMessage = 'Có lỗi xảy ra khi ghi nhận sử dụng vải';
+      let errorDetails = '';
+      
+      if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      if (error?.code) {
+        errorDetails += `\nMã lỗi: ${error.code}`;
+      }
+      
+      if (error?.hint) {
+        errorDetails += `\nGợi ý: ${error.hint}`;
+      }
+      
+      if (error?.details) {
+        errorDetails += `\nChi tiết: ${error.details}`;
+      }
+      
+      toast({ 
+        title: "Lỗi ghi nhận", 
+        description: errorMessage + errorDetails,
+        variant: "destructive" 
+      });
+    }
+  };
+
+  const dialogContent = (
+    <DialogContent 
+      className="max-w-5xl max-h-[90vh] overflow-y-auto"
+      onInteractOutside={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('[data-radix-popper-content-wrapper]')) {
+          e.preventDefault();
+        }
+      }}
+    >
+      <DialogHeader>
+        <DialogTitle>Ghi nhận sử dụng vải - {warehouseName}</DialogTitle>
+        <DialogDescription>
+          Ghi nhận việc sử dụng vải cho đơn hàng tại kho {warehouseName}
+        </DialogDescription>
+      </DialogHeader>
+      
+      {/* Order Information */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="space-y-2">
+          <Label>Số đơn hàng *</Label>
+          <Input
+            className="w-full"
+            value={formData.order_number}
+            onChange={(e) => handleOrderNumberChange(e.target.value)}
+            placeholder="Nhập số đơn hàng"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Loại đơn hàng *</Label>
+          <Select value={formData.order_type} onValueChange={(value) => setFormData(prev => ({ ...prev, order_type: value }))}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Chọn loại đơn hàng" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="new">Đơn hàng mới</SelectItem>
+              <SelectItem value="replacement">Đơn đổi trả</SelectItem>
+              <SelectItem value="repair">Đơn sửa chữa</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Ngày sử dụng</Label>
+          <Input
+            type="date"
+            className="w-full"
+            value={formData.usage_date}
+            onChange={(e) => setFormData(prev => ({ ...prev, usage_date: e.target.value }))}
+          />
+        </div>
+      </div>
+
+      {/* Customer Information */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div className="space-y-2">
+          <Label>Tên khách hàng</Label>
+          <Input
+            className="w-full"
+            value={formData.customer_name}
+            onChange={(e) => setFormData(prev => ({ ...prev, customer_name: e.target.value }))}
+            placeholder="Tự động điền từ đơn hàng hoặc nhập thủ công"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Loại đơn</Label>
+          <Select value={formData.order_category} onValueChange={(value) => setFormData(prev => ({ ...prev, order_category: value }))}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Chọn loại đơn" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="don_phuoc">Đơn Phước</SelectItem>
+              <SelectItem value="don_hoan">Đơn Hoan</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Fabric Items */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <Label className="text-lg font-semibold">Thông tin vải sử dụng</Label>
+          <Button 
+            type="button" 
+            variant="outline" 
+            size="sm"
+            onClick={addFabricItem}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Thêm loại vải
+          </Button>
+        </div>
+
+        {formData.fabricItems.map((item, index) => (
+          <Card key={index} className="p-4">
+            <div className="flex justify-between items-start mb-4">
+              <h4 className="font-medium">Loại vải {index + 1}</h4>
+              {formData.fabricItems.length > 1 && (
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => removeFabricItem(index)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Loại vải *</Label>
+                <SearchableFabricSelect
+                  value={item.fabric_variant_id}
+                  onValueChange={(value, availableStock) => {
+                    updateFabricItem(index, 'fabric_variant_id', value);
+                    if (availableStock !== undefined) {
+                      updateFabricItem(index, 'available_stock', availableStock);
+                    }
+                  }}
+                  fabricVariants={fabricVariants}
+                  fabricInventory={fabricInventory}
+                  warehouseId={formData.warehouse_id}
+                  placeholder="Tìm và chọn loại vải..."
+                  disabled={!formData.warehouse_id}
+                />
+                {item.fabric_variant_id && item.available_stock !== undefined && (
+                  <div className="text-sm text-muted-foreground">
+                    Số lượng có sẵn: {item.available_stock}m
+                  </div>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Số lượng sử dụng (m) *</Label>
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  className={`w-full ${item.available_stock !== undefined && item.quantity_used > item.available_stock ? 'border-destructive' : ''}`}
+                  value={item.quantity_used === 0 ? '' : item.quantity_used}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateFabricItem(index, 'quantity_used', val === '' ? 0 : parseFloat(val) || 0);
+                  }}
+                  placeholder="Nhập số lượng"
+                />
+                {item.available_stock !== undefined && item.quantity_used > item.available_stock && (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      Số lượng cần dùng ({item.quantity_used}m) vượt quá số lượng có sẵn ({item.available_stock}m)
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Notes */}
+      <div className="space-y-2">
+        <Label>Ghi chú</Label>
+        <Textarea
+          className="w-full"
+          value={formData.notes}
+          onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+          placeholder="Ghi chú thêm (tùy chọn)"
+          rows={2}
+        />
+      </div>
+
+      {/* Actions */}
+      <div className="flex justify-end space-x-2 pt-4">
+        <Button
+          variant="outline"
+          onClick={() => setShowDialog(false)}
+        >
+          Hủy
+        </Button>
+        <Button
+          onClick={handleSubmit}
+          disabled={recordFabricUsage.isPending}
+        >
+          {recordFabricUsage.isPending ? 'Đang lưu...' : 'Ghi nhận'}
+        </Button>
+      </div>
+    </DialogContent>
+  );
+
+  // Render as standalone button only
+  if (renderAsButton) {
+    return (
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogTrigger asChild>
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Ghi nhận sử dụng vải
+          </Button>
+        </DialogTrigger>
+        {dialogContent}
+      </Dialog>
+    );
+  }
+
+  // Default: Return null since the button is now integrated into FabricControlByWarehouse
+  return null;
+};

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CRM Joliefam</title>
+    <link rel="icon" href="/lovable-uploads/b4740629-bcf0-4406-a564-72a5401394ef.png" type="image/png">
+    <meta name="description" content="Công cụ quản lý khách hàng toàn diện" />
+    <meta name="author" content="Lovable" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#ffffff">
+    
+    <!-- iOS PWA Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Joliefam">
+    <meta name="apple-touch-fullscreen" content="yes">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="apple-touch-startup-image" href="/icon-512.png">
+    
+    <!-- Additional PWA Meta Tags -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Joliefam">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="/icon-192.png">
+    <meta name="msapplication-starturl" content="/?source=pwa">
+    
+    <!-- Prevent zoom and ensure app-like behavior -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- Hide Safari UI elements -->
+    <meta name="format-detection" content="telephone=no">
+    <meta name="format-detection" content="address=no">
+
+    <meta property="og:title" content="CRM Joliefam" />
+    <meta property="og:description" content="Công cụ quản lý khách hàng toàn diện" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@lovable_dev" />
+    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Register Service Worker for PWA - only on production -->
+    <script>
+      (function() {
+        const isProduction = window.location.hostname === 'crm-joliefam.lovable.app';
+        
+        if ('serviceWorker' in navigator) {
+          if (isProduction) {
+            window.addEventListener('load', () => {
+              navigator.serviceWorker.register('/sw.js')
+                .then((registration) => {
+                  console.log('SW registered:', registration);
+                  registration.update();
+                  setInterval(() => registration.update(), 60 * 1000);
+                  registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    if (newWorker) {
+                      newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                          console.log('New SW installed, sending SKIP_WAITING');
+                          newWorker.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                      });
+                    }
+                  });
+                })
+                .catch((err) => {
+                  console.log('SW registration failed:', err);
+                });
+            });
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+              if (refreshing) return;
+              refreshing = true;
+              console.log('New SW active, reloading for latest version...');
+              window.location.reload();
+            });
+          } else {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+              registrations.forEach(reg => reg.unregister());
+            });
+            if ('caches' in window) {
+              caches.keys().then(names => names.forEach(name => caches.delete(name)));
+            }
+          }
+        }
+      })();
+    </script>
+  </body>
+</html>

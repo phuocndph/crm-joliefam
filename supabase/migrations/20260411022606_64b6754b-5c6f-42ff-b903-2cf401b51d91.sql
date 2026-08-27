@@ -1,0 +1,1 @@
+DELETE FROM public.transactions WHERE id = 'aa1e281d-9fce-4853-8e60-39f8b8960bb6' AND type = 'expense';

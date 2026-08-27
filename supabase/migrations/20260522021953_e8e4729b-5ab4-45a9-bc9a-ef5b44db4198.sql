@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "Users can view products in accessible price_lists" ON public.products;

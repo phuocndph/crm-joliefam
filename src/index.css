@@ -1,0 +1,235 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Always show scrollbar for order table */
+.order-table-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 12px;
+}
+.order-table-scroll::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 6px;
+}
+.order-table-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 6px;
+}
+.order-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* CRM Pro Design System - Professional blue gradient with orange accents */
+
+@layer base {
+  :root {
+    /* Background colors - Clean whites and subtle grays */
+    --background: 0 0% 100%;
+    --foreground: 215 16% 15%;
+
+    /* Card and surfaces - Elevated components */
+    --card: 0 0% 100%;
+    --card-foreground: 215 16% 15%;
+
+    /* Popover styling */
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 16% 15%;
+
+    /* Primary brand colors - Blue gradient theme for CRM Pro */
+    --primary: 220 91% 48%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 220 91% 65%;
+    --primary-dark: 220 91% 35%;
+
+    /* Secondary colors - Light gray supporting */
+    --secondary: 220 15% 96%;
+    --secondary-foreground: 215 16% 25%;
+
+    /* Muted elements */
+    --muted: 220 15% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    /* Accent colors - Orange for warning/action elements */
+    --accent: 25 95% 53%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Status colors */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 25 95% 53%;
+    --warning-foreground: 0 0% 100%;
+
+    /* UI Elements */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 220 100% 50%;
+
+    /* Gradients - CRM Pro blue gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(220 91% 48%) 0%, hsl(235 91% 55%) 100%);
+    --gradient-secondary: linear-gradient(135deg, hsl(220 15% 96%) 0%, hsl(220 15% 92%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(220 91% 48%) 0%, hsl(235 91% 55%) 50%, hsl(210 91% 60%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%) 0%, hsl(220 15% 98%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(25 95% 53%) 0%, hsl(35 95% 55%) 100%);
+
+    /* Shadows - Professional depth with blue tint */
+    --shadow-sm: 0 1px 2px 0 hsl(220 15% 0% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(220 15% 0% / 0.1), 0 2px 4px -1px hsl(220 15% 0% / 0.06);
+    --shadow-lg: 0 10px 15px -3px hsl(220 15% 0% / 0.1), 0 4px 6px -2px hsl(220 15% 0% / 0.05);
+    --shadow-xl: 0 20px 25px -5px hsl(220 15% 0% / 0.1), 0 10px 10px -5px hsl(220 15% 0% / 0.04);
+    --shadow-brand: 0 10px 30px -10px hsl(220 91% 48% / 0.25);
+    --shadow-accent: 0 8px 25px -8px hsl(25 95% 53% / 0.3);
+
+    /* Animation values */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    /* Hover states - Improved contrast */
+    --hover-overlay: 220 15% 0%;
+    --hover-opacity: 0.05;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Improved hover states for better contrast */
+  .hover-contrast {
+    @apply transition-smooth;
+  }
+  
+  .hover-contrast:hover {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .button-hover {
+    @apply transition-smooth;
+  }
+  
+  .button-hover:hover {
+    @apply shadow-md scale-[1.02];
+  }
+
+  .table-row-hover {
+    @apply transition-smooth;
+  }
+  
+  .table-row-hover:hover {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .dropdown-item-hover {
+    @apply transition-smooth;
+  }
+  
+  .dropdown-item-hover:hover {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  /* Mobile-specific utilities */
+  .mobile-card-shadow {
+    @apply shadow-sm hover:shadow-md transition-shadow duration-200;
+  }
+  
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  .active-scale {
+    @apply active:scale-95 transition-transform duration-100;
+  }
+  
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Safe area insets for mobile */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+}

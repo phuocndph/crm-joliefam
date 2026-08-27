@@ -1,0 +1,25 @@
+project_id = "kmxfljxsmnozvvgypdei"
+
+[functions.create-user]
+verify_jwt = true
+
+[functions.ai-customer-suggestions]
+verify_jwt = true
+
+[functions.predictive-analytics]
+verify_jwt = true
+
+[functions.ghn-auto-update]
+verify_jwt = false
+
+[functions.knowledge-chat]
+verify_jwt = true
+
+[functions.extract-document]
+verify_jwt = true
+
+[functions.lookup-tax-code]
+verify_jwt = true
+
+[functions.web-scraper]
+verify_jwt = true

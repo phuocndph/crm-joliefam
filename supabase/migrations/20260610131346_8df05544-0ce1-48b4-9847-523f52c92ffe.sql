@@ -1,0 +1,1 @@
+ALTER TABLE public.einvoices ADD CONSTRAINT einvoices_transaction_uuid_key UNIQUE (transaction_uuid);

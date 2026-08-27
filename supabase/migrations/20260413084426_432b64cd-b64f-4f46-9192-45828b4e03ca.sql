@@ -1,0 +1,1 @@
+ALTER TABLE public.shipping_companies ADD COLUMN google_maps_url TEXT;

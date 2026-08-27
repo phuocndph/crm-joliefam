@@ -1,0 +1,680 @@
+import React, { useState, useRef } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CalendarIcon, Plus, CreditCard, Truck } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { vi } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+
+const paymentFormSchema = z.object({
+  paymentAmount: z.number().min(1, "Số tiền phải lớn hơn 0"),
+  paymentType: z.string().min(1, "Vui lòng chọn loại thanh toán"),
+  paymentMethod: z.string().min(1, "Vui lòng chọn phương thức thanh toán"),
+  paymentDate: z.date({ required_error: "Vui lòng chọn ngày thanh toán" }),
+  installmentNumber: z.number().min(1, "Số đợt phải lớn hơn 0"),
+  notes: z.string().optional(),
+});
+
+type PaymentFormData = z.infer<typeof paymentFormSchema>;
+
+interface CreatePaymentFormProps {
+  orderId: string;
+  orderNumber: string;
+  totalAmount: number;
+  totalPaid: number;
+  remainingAmount: number;
+  orderExpenses?: number;
+  onClose: () => void;
+  onSubmit: () => void;
+}
+
+export function CreatePaymentForm({ 
+  orderId, 
+  orderNumber, 
+  totalAmount, 
+  totalPaid, 
+  remainingAmount,
+  orderExpenses = 0,
+  onClose, 
+  onSubmit 
+}: CreatePaymentFormProps) {
+  const [loading, setLoading] = useState(false);
+  const submittedRef = useRef(false);
+  const [managerId, setManagerId] = useState<string | null>(null);
+  const [fetchedExpenses, setFetchedExpenses] = useState<number | null>(null);
+  const [hasDeduction, setHasDeduction] = useState(false);
+  const [deductionAmount, setDeductionAmount] = useState(0);
+  const [deductionDescription, setDeductionDescription] = useState(`Phí vận chuyển đơn hàng #${orderNumber}`);
+  const { toast } = useToast();
+
+  const actualExpenses = orderExpenses !== undefined ? orderExpenses : (fetchedExpenses ?? 0);
+
+  // Fetch expenses if not provided via prop
+  React.useEffect(() => {
+    if (orderExpenses !== undefined) return;
+    const fetchExpenses = async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('order_id', orderId)
+        .eq('type', 'expense');
+      setFetchedExpenses(data?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0);
+    };
+    fetchExpenses();
+  }, [orderId, orderExpenses]);
+
+  // Fetch order's manager_id
+  React.useEffect(() => {
+    const fetchOrderManagerId = async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('manager_id')
+        .eq('id', orderId)
+        .single();
+      
+      if (!error && data) {
+        setManagerId(data.manager_id);
+      }
+    };
+    
+    fetchOrderManagerId();
+  }, [orderId]);
+
+  const form = useForm<PaymentFormData>({
+    resolver: zodResolver(paymentFormSchema),
+    defaultValues: {
+      paymentAmount: remainingAmount,
+      paymentType: remainingAmount === totalAmount ? "Thanh toán toàn bộ" : totalPaid === 0 ? "Đặt cọc" : "Thanh toán lần 2",
+      paymentMethod: "cash",
+      paymentDate: new Date(),
+      installmentNumber: 1,
+      notes: "",
+    },
+  });
+
+  const watchedPaymentAmount = form.watch("paymentAmount");
+  const watchedPaymentType = form.watch("paymentType");
+
+  // Suggest payment type based on amount
+  React.useEffect(() => {
+    if (watchedPaymentAmount === totalAmount) {
+      form.setValue("paymentType", "Thanh toán toàn bộ");
+    } else if (totalPaid === 0 && watchedPaymentAmount < totalAmount) {
+      form.setValue("paymentType", "Đặt cọc");
+    } else if (totalPaid > 0 && watchedPaymentAmount < remainingAmount) {
+      form.setValue("paymentType", "Thanh toán lần 2");
+    } else if (totalPaid > 0 && watchedPaymentAmount === remainingAmount) {
+      form.setValue("paymentType", "Thanh toán lần 3");
+    }
+  }, [watchedPaymentAmount, totalAmount, remainingAmount, totalPaid, form]);
+
+  const handleSubmit = async (data: PaymentFormData) => {
+    // Double-submit protection: block if already submitted or in flight
+    if (submittedRef.current || loading) {
+      console.warn('⚠️ Payment submit blocked: already submitted or in flight');
+      return;
+    }
+    submittedRef.current = true;
+    setLoading(true);
+    try {
+      const effectiveRemaining = remainingAmount - (hasDeduction ? deductionAmount : 0);
+      if (data.paymentAmount > effectiveRemaining) {
+        throw new Error("Số tiền thanh toán không thể lớn hơn số tiền còn lại sau chi phí");
+      }
+
+      const paymentData = {
+        order_id: orderId,
+        payment_amount: data.paymentAmount,
+        payment_type: data.paymentType,
+        payment_method: data.paymentMethod,
+        payment_date: data.paymentDate.toISOString(),
+        installment_number: data.installmentNumber,
+        notes: data.notes || null,
+        tenant_id: 'default',
+        manager_id: managerId,
+      };
+
+      console.log('💰 Creating payment:', paymentData);
+      const { error } = await supabase
+        .from("order_payments")
+        .insert(paymentData);
+
+      if (error) {
+        console.error('❌ Error inserting payment:', error);
+        throw error;
+      }
+
+      console.log('✅ Payment inserted successfully');
+
+      // Also create a transaction record
+      const transactionData = {
+        amount: data.paymentAmount,
+        type: 'income',
+        category: 'order_payment',
+        description: `Thanh toán đơn hàng ${orderNumber} - ${getPaymentTypeLabel(data.paymentType)}`,
+        date: data.paymentDate.toISOString(),
+        order_id: orderId,
+        payment_type: data.paymentType,
+        installment_number: data.installmentNumber,
+        total_installments: 1,
+        remaining_amount: remainingAmount - data.paymentAmount - (hasDeduction ? deductionAmount : 0),
+        tenant_id: 'default',
+        manager_id: managerId,
+      };
+
+      console.log('📊 Creating transaction:', transactionData);
+      const { error: transactionError } = await supabase.from('transactions').insert(transactionData);
+
+      if (transactionError) {
+        console.error('❌ Error inserting transaction:', transactionError);
+        throw transactionError;
+      }
+
+      console.log('✅ Transaction inserted successfully');
+
+      // Create expense record if deduction exists
+      if (hasDeduction && deductionAmount > 0) {
+        const expenseCode = `CP-${orderNumber}-${Date.now().toString(36).toUpperCase()}`;
+        const expenseData = {
+          amount: deductionAmount,
+          category: 'shipping_fee',
+          description: deductionDescription || `Phí vận chuyển đơn hàng #${orderNumber}`,
+          expense_code: expenseCode,
+          expense_date: data.paymentDate.toISOString(),
+          tenant_id: 'default',
+          manager_id: managerId,
+        };
+
+        console.log('🚚 Creating expense:', expenseData);
+        const { error: expenseError } = await supabase.from('expenses').insert(expenseData);
+        if (expenseError) {
+          console.error('❌ Error inserting expense:', expenseError);
+          throw expenseError;
+        }
+        console.log('✅ Expense inserted successfully');
+
+        // Create expense transaction
+        const expenseTransactionData = {
+          amount: deductionAmount,
+          type: 'expense',
+          category: 'shipping_fee',
+          description: deductionDescription || `Phí vận chuyển đơn hàng #${orderNumber}`,
+          date: data.paymentDate.toISOString(),
+          order_id: orderId,
+          tenant_id: 'default',
+          manager_id: managerId,
+        };
+
+        console.log('📊 Creating expense transaction:', expenseTransactionData);
+        const { error: expTransError } = await supabase.from('transactions').insert(expenseTransactionData);
+        if (expTransError) {
+          console.error('❌ Error inserting expense transaction:', expTransError);
+          throw expTransError;
+        }
+        console.log('✅ Expense transaction inserted successfully');
+      }
+
+      // Calculate new payment status (deduction counts toward "paid" for the order)
+      const totalSettled = data.paymentAmount + (hasDeduction ? deductionAmount : 0);
+      const newTotalPaid = totalPaid + totalSettled;
+      const newPaymentStatus = newTotalPaid >= totalAmount ? 'paid' : 
+                              newTotalPaid > 0 ? 'partial' : 'pending';
+
+      // Update order payment status
+      const orderUpdateData = {
+        payment_status: newPaymentStatus,
+        payment_date: newPaymentStatus === 'paid' ? data.paymentDate.toISOString() : null
+      };
+
+      console.log('📦 Updating order:', orderId, orderUpdateData);
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(orderUpdateData)
+        .eq('id', orderId);
+
+      if (updateError) {
+        console.error('❌ Error updating order:', updateError);
+        throw updateError;
+      }
+
+      console.log('✅ Order updated successfully');
+
+      console.log('✅ Payment creation completed successfully');
+      toast({
+        title: "Thành công",
+        description: "Đã thêm thanh toán thành công",
+      });
+
+      onSubmit();
+      onClose();
+    } catch (error: any) {
+      console.error("❌ Error creating payment:", error);
+      // Allow retry if there was an error
+      submittedRef.current = false;
+      toast({
+        title: "Lỗi", 
+        description: error.message || "Không thể tạo thanh toán",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getPaymentTypeLabel = (type: string) => {
+    return type || 'Không xác định';
+  };
+
+  const resetForm = () => {
+    const defaultValues = {
+      paymentAmount: 0,
+      paymentType: "Đặt cọc",
+      paymentMethod: "cash",
+      paymentDate: new Date(),
+      installmentNumber: 1,
+      notes: "",
+    };
+    
+    form.reset(defaultValues);
+    setHasDeduction(false);
+    setDeductionAmount(0);
+    setDeductionDescription(`Phí vận chuyển đơn hàng #${orderNumber}`);
+  };
+
+  const deleteAllPayments = async () => {
+    setLoading(true);
+    try {
+      // Delete all payments for this order
+      const { error: paymentError } = await supabase
+        .from("order_payments")
+        .delete()
+        .eq("order_id", orderId);
+
+      if (paymentError) throw paymentError;
+
+      // Delete all related transactions
+      const { error: transactionError } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("order_id", orderId)
+        .eq("category", "order_payment");
+
+      if (transactionError) throw transactionError;
+
+      // Update order payment status to pending after deleting all payments
+      const { error: orderUpdateError } = await supabase
+        .from("orders")
+        .update({ 
+          payment_status: "pending",
+          payment_date: null 
+        })
+        .eq("id", orderId);
+
+      if (orderUpdateError) throw orderUpdateError;
+
+      toast({
+        title: "Thành công",
+        description: "Đã xóa tất cả thanh toán trước đó",
+      });
+
+      onSubmit(); // Refresh data
+    } catch (error: any) {
+      console.error("Error deleting payments:", error);
+      toast({
+        title: "Lỗi", 
+        description: error.message || "Không thể xóa thanh toán",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return amount.toLocaleString("vi-VN") + " VNĐ";
+  };
+
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <CreditCard className="h-5 w-5" />
+          Thêm thanh toán - Đơn hàng #{orderNumber}
+        </DialogTitle>
+      </DialogHeader>
+      
+      {/* Order Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <Card>
+          <CardContent className="p-3 text-center">
+            <div className="text-base font-bold text-blue-600">
+              {formatCurrency(totalAmount)}
+            </div>
+            <div className="text-xs text-muted-foreground">Tổng tiền</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-3 text-center">
+            <div className="text-base font-bold text-green-600">
+              {formatCurrency(totalPaid)}
+            </div>
+            <div className="text-xs text-muted-foreground">Đã thanh toán</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3 text-center">
+            <div className="text-base font-bold text-orange-600">
+              {formatCurrency(actualExpenses)}
+            </div>
+            <div className="text-xs text-muted-foreground">Chi phí</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-3 text-center">
+            <div className="text-base font-bold text-red-600">
+              {formatCurrency(remainingAmount)}
+            </div>
+            <div className="text-xs text-muted-foreground">Còn lại</div>
+          </CardContent>
+        </Card>
+      </div>
+      
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+          
+          {/* Chi phí phát sinh */}
+          <Card className="border-dashed">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="hasDeduction" 
+                  checked={hasDeduction}
+                  onCheckedChange={(checked) => {
+                    setHasDeduction(!!checked);
+                    if (!checked) {
+                      setDeductionAmount(0);
+                    }
+                  }}
+                />
+                <Label htmlFor="hasDeduction" className="flex items-center gap-2 cursor-pointer">
+                  <Truck className="h-4 w-4" />
+                  Có chi phí phát sinh (phí ship, phí khác...)
+                </Label>
+              </div>
+              
+              {hasDeduction && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                  <div className="space-y-2">
+                    <Label>Số tiền chi phí</Label>
+                    <CurrencyInput
+                      placeholder="0"
+                      value={deductionAmount}
+                      onChange={(val) => {
+                        setDeductionAmount(val);
+                        // Auto-adjust payment amount
+                        const newPaymentAmount = remainingAmount - val;
+                        if (newPaymentAmount >= 0) {
+                          form.setValue("paymentAmount", newPaymentAmount);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Mô tả chi phí</Label>
+                    <Input
+                      placeholder="Phí vận chuyển..."
+                      value={deductionDescription}
+                      onChange={(e) => setDeductionDescription(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="paymentAmount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Số tiền thanh toán *</FormLabel>
+                  <FormControl>
+                    <CurrencyInput 
+                      placeholder="0" 
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                  {(watchedPaymentAmount + (hasDeduction ? deductionAmount : 0)) > remainingAmount && (
+                    <p className="text-sm text-red-600">
+                      Tổng thanh toán + chi phí không thể lớn hơn {formatCurrency(remainingAmount)}
+                    </p>
+                  )}
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="paymentType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Loại thanh toán *</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="VD: Đặt cọc, Thanh toán lần 2..."
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="paymentMethod"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phương thức thanh toán *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn phương thức" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="bg-white z-50">
+                      <SelectItem value="cash">Tiền mặt</SelectItem>
+                      <SelectItem value="bank_transfer">Chuyển khoản</SelectItem>
+                      <SelectItem value="card">Thẻ</SelectItem>
+                      <SelectItem value="other">Khác</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="installmentNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Đợt thanh toán</FormLabel>
+                  <FormControl>
+                    <Input 
+                      type="number" 
+                      placeholder="1" 
+                      min="1"
+                      {...field}
+                      onChange={(e) => field.onChange(Number(e.target.value))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <FormField
+            control={form.control}
+            name="paymentDate"
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>Ngày thanh toán *</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "w-full pl-3 text-left font-normal",
+                          !field.value && "text-muted-foreground"
+                        )}
+                      >
+                        {field.value ? (
+                          format(field.value, "dd/MM/yyyy", { locale: vi })
+                        ) : (
+                          <span>Chọn ngày</span>
+                        )}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 bg-white" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={field.onChange}
+                      disabled={(date) =>
+                        date > new Date() || date < new Date("1900-01-01")
+                      }
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="notes"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Ghi chú</FormLabel>
+                <FormControl>
+                  <Textarea 
+                    placeholder="Ghi chú về thanh toán này..."
+                    rows={3}
+                    {...field} 
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {/* Summary */}
+          <Card className="bg-blue-50">
+            <CardContent className="p-4">
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Loại thanh toán:</span>
+                  <span className="font-medium">{getPaymentTypeLabel(watchedPaymentType)}</span>
+                </div>
+                {hasDeduction && deductionAmount > 0 && (
+                  <div className="flex justify-between">
+                    <span>Chi phí phát sinh:</span>
+                    <span className="font-medium text-orange-600">
+                      -{formatCurrency(deductionAmount)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Số tiền thu từ khách:</span>
+                  <span className="font-medium text-green-600">
+                    {formatCurrency(watchedPaymentAmount || 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t pt-2">
+                  <span className="font-medium">Còn lại sau thanh toán:</span>
+                  <span className="font-medium text-red-600">
+                    {formatCurrency(remainingAmount - (watchedPaymentAmount || 0) - (hasDeduction ? deductionAmount : 0))}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-between items-center pt-4">
+            <div className="flex space-x-2">
+              <Button type="button" variant="outline" onClick={resetForm}>
+                Đặt lại
+              </Button>
+              {totalPaid > 0 && (
+                <Button 
+                  type="button" 
+                  variant="destructive" 
+                  onClick={deleteAllPayments}
+                  disabled={loading}
+                >
+                  {loading ? "Đang xóa..." : "Xóa tất cả thanh toán"}
+                </Button>
+              )}
+            </div>
+            <div className="flex space-x-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Hủy
+              </Button>
+              <Button type="submit" disabled={loading || !watchedPaymentAmount || (watchedPaymentAmount + (hasDeduction ? deductionAmount : 0)) > remainingAmount}>
+                {loading ? "Đang lưu..." : "Thêm thanh toán"}
+              </Button>
+            </div>
+          </div>
+        </form>
+      </Form>
+    </>
+  );
+}
