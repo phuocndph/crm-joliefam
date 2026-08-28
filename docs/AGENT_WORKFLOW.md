@@ -2,7 +2,17 @@
 
 ## Cách dùng tự động
 
-Bạn không cần tự gọi từng agent nữa:
+### Cách dễ nhất
+
+Mở shortcut **CRM Agent** trên Desktop. Nhập yêu cầu, chọn Codex hoặc OpenCode,
+sau đó bấm **Bat dau**. Orca tự mở worktree mới và agent tự thực hiện toàn bộ.
+
+Shortcut chạy cửa sổ `CRM-AGENT.cmd` trong thư mục dự án. Không cần cài lại dự
+án, không cần tự tạo branch và không cần tự gọi từng agent.
+
+### Cách dùng bằng file lệnh
+
+Bạn cũng có thể dùng các file lệnh cũ:
 
 1. Chạy `START-CRM.cmd` để dùng Codex, hoặc `START-CRM-OPENCODE.cmd` để dùng
    OpenCode đa model.
