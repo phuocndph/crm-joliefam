@@ -433,20 +433,20 @@ export const useFabricTransactions = () => {
 const FABRIC_TX_PAGE_SIZE = 100;
 
 // Paginated fabric transactions (no 100-record cap — load more on demand)
-export const useInfiniteFabricTransactions = () => {
+export const useInfiniteFabricTransactions = (fabricTypeId?: string) => {
   useFabricRealtime();
 
   return useInfiniteQuery({
-    queryKey: ['fabric-transactions', 'infinite'],
+    queryKey: ['fabric-transactions', 'infinite', fabricTypeId ?? 'all'],
     initialPageParam: 0,
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * FABRIC_TX_PAGE_SIZE;
       const to = from + FABRIC_TX_PAGE_SIZE - 1;
-      const { data, error } = await supabase
+      let query = supabase
         .from('fabric_transactions')
         .select(`
           *,
-          fabric_variants (
+          fabric_variants${fabricTypeId ? '!inner' : ''} (
             *,
             fabric_types (name)
           ),
@@ -454,6 +454,12 @@ export const useInfiniteFabricTransactions = () => {
         `)
         .order('transaction_date', { ascending: false })
         .range(from, to);
+
+      if (fabricTypeId) {
+        query = query.eq('fabric_variants.fabric_type_id', fabricTypeId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return data || [];
