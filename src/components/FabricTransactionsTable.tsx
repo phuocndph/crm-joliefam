@@ -131,10 +131,15 @@ export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = tr
   };
 
   const handleEditSubmit = async () => {
-    if (!selectedTransaction || editForm.quantity <= 0) {
-      toast({ title: "Lỗi", description: "Vui lòng nhập số lượng hợp lệ", variant: "destructive" });
+    if (!selectedTransaction || editForm.quantity < 0) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập số lượng hợp lệ (>= 0)", variant: "destructive" });
       return;
     }
+
+    // Nhập nhầm: cho phép sửa về 0m, tự động ghi chú
+    const notes = editForm.quantity === 0 && !editForm.notes.trim()
+      ? 'Sửa giao dịch về 0m (nhập nhầm)'
+      : editForm.notes;
 
     try {
       const oldQuantity = selectedTransaction.quantity;
@@ -149,7 +154,7 @@ export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = tr
         quantity: newQuantity,
         packages_count: editForm.packages_count,
         supplier_name: editForm.supplier_name,
-        notes: editForm.notes,
+        notes: notes,
         unit_price: selectedTransaction.unit_price,
         total_amount: selectedTransaction.total_amount,
         reference_number: selectedTransaction.reference_number,
@@ -354,10 +359,24 @@ export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = tr
               <Input
                 type="number"
                 step="0.01"
+                min={0}
                 value={editForm.quantity}
-                onChange={(e) => setEditForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
-                placeholder="Nhập số lượng"
+                onChange={(e) => {
+                  const qty = parseFloat(e.target.value) || 0;
+                  setEditForm(prev => ({
+                    ...prev,
+                    quantity: qty,
+                    // Nhập 0m = sửa giao dịch nhầm: tự điền ghi chú nếu đang trống
+                    notes: qty === 0 && !prev.notes.trim() ? 'Sửa giao dịch về 0m (nhập nhầm)' : prev.notes
+                  }));
+                }}
+                placeholder="Nhập số lượng (0 nếu nhập nhầm)"
               />
+              {editForm.quantity === 0 && (
+                <p className="text-xs text-amber-600">
+                  Số lượng 0m: giao dịch sẽ được đưa về 0 và tồn kho điều chỉnh theo.
+                </p>
+              )}
             </div>
             
             <div className="space-y-2">
