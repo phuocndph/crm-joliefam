@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useInfiniteFabricTransactions, useUpdateTransaction, useFabricInventory, useUpdateInventory } from "@/hooks/useFabrics";
-import { ArrowUp, ArrowDown, RefreshCw, Edit, ChevronDown, ChevronUp, History } from "lucide-react";
+import { ArrowUp, ArrowDown, RefreshCw, Edit, ChevronDown, ChevronUp, History, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface FabricTransactionsTableProps {
@@ -266,15 +266,47 @@ export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = tr
                       </TableCell>
                     </TableRow>
                   ))}
-                  {transactions.length === 0 && (
+                  {transactions.length === 0 && !isLoading && (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center text-muted-foreground py-6 text-sm">
                         Chưa có giao dịch nào
                       </TableCell>
                     </TableRow>
                   )}
+                  {isLoading && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-6 text-sm">
+                        <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
+                        Đang tải...
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
+            </div>
+
+            {/* Pagination - load more */}
+            <div className="flex items-center justify-between pt-3">
+              <span className="text-xs text-muted-foreground">
+                Đã tải {allTransactions.length} giao dịch
+              </span>
+              {hasNextPage && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Đang tải...
+                    </>
+                  ) : (
+                    "Xem thêm 100 giao dịch"
+                  )}
+                </Button>
+              )}
             </div>
           </CardContent>
         </CollapsibleContent>
