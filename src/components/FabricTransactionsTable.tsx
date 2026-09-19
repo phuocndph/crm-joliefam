@@ -131,10 +131,15 @@ export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = tr
   };
 
   const handleEditSubmit = async () => {
-    if (!selectedTransaction || editForm.quantity <= 0) {
-      toast({ title: "Lỗi", description: "Vui lòng nhập số lượng hợp lệ", variant: "destructive" });
+    if (!selectedTransaction || editForm.quantity < 0) {
+      toast({ title: "Lỗi", description: "Vui lòng nhập số lượng hợp lệ (>= 0)", variant: "destructive" });
       return;
     }
+
+    // Nhập nhầm: cho phép sửa về 0m, tự động ghi chú
+    const notes = editForm.quantity === 0 && !editForm.notes.trim()
+      ? 'Sửa giao dịch về 0m (nhập nhầm)'
+      : editForm.notes;
 
     try {
       const oldQuantity = selectedTransaction.quantity;
