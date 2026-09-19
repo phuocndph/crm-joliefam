@@ -216,6 +216,22 @@ export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = tr
         </CardHeader>
         <CollapsibleContent>
           <CardContent className="pt-0 px-4 pb-4">
+            <div className="flex items-center gap-2 pb-3">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Select value={selectedFabricType} onValueChange={setSelectedFabricType}>
+                <SelectTrigger className="w-[220px] h-8 text-xs">
+                  <SelectValue placeholder="Chọn loại vải" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả loại vải</SelectItem>
+                  {fabricTypes.map((type: any) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="rounded-md border max-h-[350px] overflow-auto">
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-background">
