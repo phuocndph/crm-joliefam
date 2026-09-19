@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useInfiniteFabricTransactions, useUpdateTransaction, useFabricInventory, useUpdateInventory } from "@/hooks/useFabrics";
-import { ArrowUp, ArrowDown, RefreshCw, Edit, ChevronDown, ChevronUp, History, Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useInfiniteFabricTransactions, useUpdateTransaction, useFabricInventory, useUpdateInventory, useFabricTypes } from "@/hooks/useFabrics";
+import { ArrowUp, ArrowDown, RefreshCw, Edit, ChevronDown, ChevronUp, History, Loader2, Filter } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface FabricTransactionsTableProps {
@@ -17,13 +18,15 @@ interface FabricTransactionsTableProps {
 }
 
 export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = true }: FabricTransactionsTableProps) => {
+  const [selectedFabricType, setSelectedFabricType] = useState<string>('all');
+  const { data: fabricTypes = [] } = useFabricTypes();
   const {
     data: txData,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
     isLoading,
-  } = useInfiniteFabricTransactions();
+  } = useInfiniteFabricTransactions(selectedFabricType === 'all' ? undefined : selectedFabricType);
   const allTransactions = txData?.pages.flat() ?? [];
   const { data: inventory = [] } = useFabricInventory();
   const [isOpen, setIsOpen] = useState(!defaultCollapsed);
