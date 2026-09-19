@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useFabricTransactions, useUpdateTransaction, useFabricInventory, useUpdateInventory } from "@/hooks/useFabrics";
+import { useInfiniteFabricTransactions, useUpdateTransaction, useFabricInventory, useUpdateInventory } from "@/hooks/useFabrics";
 import { ArrowUp, ArrowDown, RefreshCw, Edit, ChevronDown, ChevronUp, History } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -17,7 +17,14 @@ interface FabricTransactionsTableProps {
 }
 
 export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = true }: FabricTransactionsTableProps) => {
-  const { data: allTransactions = [] } = useFabricTransactions();
+  const {
+    data: txData,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    isLoading,
+  } = useInfiniteFabricTransactions();
+  const allTransactions = txData?.pages.flat() ?? [];
   const { data: inventory = [] } = useFabricInventory();
   const [isOpen, setIsOpen] = useState(!defaultCollapsed);
   
