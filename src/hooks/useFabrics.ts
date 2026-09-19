@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { useEffect } from 'react';
@@ -425,6 +425,43 @@ export const useFabricTransactions = () => {
     },
     staleTime: 60 * 1000,
     gcTime: 2 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  });
+};
+
+const FABRIC_TX_PAGE_SIZE = 100;
+
+// Paginated fabric transactions (no 100-record cap — load more on demand)
+export const useInfiniteFabricTransactions = () => {
+  useFabricRealtime();
+
+  return useInfiniteQuery({
+    queryKey: ['fabric-transactions', 'infinite'],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam = 0 }) => {
+      const from = pageParam * FABRIC_TX_PAGE_SIZE;
+      const to = from + FABRIC_TX_PAGE_SIZE - 1;
+      const { data, error } = await supabase
+        .from('fabric_transactions')
+        .select(`
+          *,
+          fabric_variants (
+            *,
+            fabric_types (name)
+          ),
+          warehouses (name)
+        `)
+        .order('transaction_date', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+      return data || [];
+    },
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length < FABRIC_TX_PAGE_SIZE ? undefined : allPages.length,
+    staleTime: 60 * 1000,
+    gcTime: 10 * 60 * 1000,
     refetchOnMount: true,
     refetchOnWindowFocus: false,
   });
