@@ -4,15 +4,17 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useEmployeePermissions, type PermissionType } from "@/hooks/useEmployeePermissions";
+import { isLocalBackend, isLocalDemoEnabled, localAdminUser } from "@/lib/runtime-config";
+import { getLocalMe, hasLocalUserSession } from "@/lib/local-auth";
 import { Card } from "@/components/ui/card";
 import {
   Home, Users2, Package, ShoppingCart, FileText, CreditCard,
   BarChart3, Headphones, Truck, Scissors, FileSignature, Receipt,
-  Wallet, BookOpen, Bot, Globe, Building, CircleDollarSign, Boxes,
+  Wallet, BookOpen, Bot, Globe, Building, CircleDollarSign, Boxes, CalendarCheck2, WalletCards,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-type Item = { icon: LucideIcon; label: string; path: string; perm?: PermissionType; perms?: PermissionType[] };
+type Item = { icon: LucideIcon; label: string; path: string; perm?: PermissionType; perms?: PermissionType[]; selfOnly?: boolean; integrationAdmin?: boolean };
 
 const GROUPS: { title: string; items: Item[] }[] = [
   {
@@ -23,7 +25,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
       { icon: ShoppingCart, label: "Đơn hàng", path: "/orders", perm: "orders" },
       { icon: FileText, label: "Báo giá", path: "/quotes", perm: "quotes" },
       { icon: Headphones, label: "Chăm sóc KH", path: "/customer-care", perm: "customer_care" },
-      { icon: Home, label: "Dashboard", path: "/dashboard", perm: "dashboard" },
+      { icon: Home, label: "Tổng quan", path: "/dashboard", perm: "dashboard" },
     ],
   },
   {
@@ -44,16 +46,21 @@ const GROUPS: { title: string; items: Item[] }[] = [
       { icon: Scissors, label: "Vải", path: "/fabrics", perm: "fabric_management" },
       { icon: Boxes, label: "Kho & vật tư", path: "/inventory-management", perm: "inventory_view" },
       { icon: Boxes, label: "Lệnh SX", path: "/production-orders", perm: "production_view" },
+      { icon: CalendarCheck2, label: "Chấm công xưởng", path: "/production-attendance", perm: "production_view" },
+      { icon: CalendarCheck2, label: "Công & thu nhập của tôi", path: "/my-attendance", selfOnly: true },
+      { icon: WalletCards, label: "Thiết lập tiền lương", path: "/payroll-settings", perm: "payroll_view" },
       { icon: BarChart3, label: "Báo cáo", path: "/reports", perm: "reports" },
     ],
   },
   {
     title: "Hệ thống",
     items: [
-      { icon: Users2, label: "Quản lý user", path: "/user-management", perm: "user_management" },
+      { icon: Globe, label: 'API & Agent', path: '/integration-access', integrationAdmin: true },
+      { icon: Users2, label: "Quản lý người dùng", path: "/user-management", perm: "user_management" },
+      { icon: Users2, label: "Duyệt hồ sơ nhân sự", path: "/profile-review", perm: "user_management" },
       { icon: BookOpen, label: "Tri thức", path: "/knowledge-base", perm: "knowledge_base" },
       { icon: Bot, label: "Cài đặt AI", path: "/ai-settings" },
-      { icon: Globe, label: "Web Scraper", path: "/web-scraper" },
+      { icon: Globe, label: "Thu thập dữ liệu web", path: "/web-scraper" },
     ],
   },
 ];
@@ -61,13 +68,25 @@ const GROUPS: { title: string; items: Item[] }[] = [
 export default function MobileMenu() {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
+  const [localMe, setLocalMe] = useState<{ worker_id: string | null } | null>(null);
   useEffect(() => {
+    if (isLocalBackend()) {
+      if (hasLocalUserSession()) {
+        void getLocalMe().then(me => {
+          setLocalMe(me);
+          setUser({ ...localAdminUser, id: me.user_id, email: me.email, user_metadata: { first_name: me.first_name || "", last_name: me.last_name || "" } } as unknown as User);
+        }).catch(() => setUser(null));
+      } else { void supabase.auth.getUser().then(({ data }) => setUser(data.user)); }
+      return;
+    }
     supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
   }, []);
   const { role } = useUserRole(user);
   const { hasPermission, loading } = useEmployeePermissions(user, role);
   const isPriv = role === "admin" || role === "manager";
-  const canSee = (item: Item) => item.perms
+  const canSee = (item: Item) => item.integrationAdmin ? isLocalBackend() && hasLocalUserSession() && role === 'admin' && user?.id !== 'local-admin' : item.selfOnly
+    ? Boolean(localMe?.worker_id)
+    : item.perms
     ? item.perms.some((permission) => hasPermission(permission))
     : item.perm ? hasPermission(item.perm) : isPriv;
 

@@ -11,6 +11,8 @@ import {
 import { AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface Customer {
   id: string;
@@ -33,6 +35,7 @@ export function DeleteCustomerDialog({ customer, open, onOpenChange, onConfirm }
   const handleDelete = async () => {
     setLoading(true);
     try {
+      if (isLocalBackend()) { await localApi.archiveCustomer(customer.id); onConfirm(); onOpenChange(false); return; }
       const { error } = await supabase
         .from("customers")
         .delete()

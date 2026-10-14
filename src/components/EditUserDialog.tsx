@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 interface Profile {
   id: string;
@@ -57,6 +59,18 @@ const EditUserDialog = ({ open, onOpenChange, profile, currentUserRole, onUserUp
 
     setLoading(true);
     try {
+      if (isLocalBackend()) {
+        await localApi.updateUser(profile.user_id, {
+          first_name: firstName,
+          last_name: lastName,
+          phone,
+          role: selectedRole,
+        });
+        toast({ title: "Thành công", description: "Cập nhật thông tin người dùng local thành công" });
+        onUserUpdated();
+        onOpenChange(false);
+        return;
+      }
       // Update profile
       const { error: profileError } = await supabase
         .from('profiles')
@@ -173,6 +187,7 @@ const EditUserDialog = ({ open, onOpenChange, profile, currentUserRole, onUserUp
                     <SelectItem value="admin">Quản trị viên</SelectItem>
                     <SelectItem value="manager">Quản lý</SelectItem>
                     <SelectItem value="accountant">Kế toán</SelectItem>
+                    {isLocalBackend() && <SelectItem value="team_leader">Tổ trưởng</SelectItem>}
                   </>
                 )}
                 <SelectItem value="employee">Nhân viên</SelectItem>

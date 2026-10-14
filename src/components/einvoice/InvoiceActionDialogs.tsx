@@ -48,7 +48,7 @@ export const SendEmailDialog = ({ open, onOpenChange, invoice }: { open: boolean
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Gửi email HĐ {invoice?.invoice_number}</DialogTitle>
-          <DialogDescription>Viettel sẽ gửi link HĐ điện tử cho khách qua email.</DialogDescription>
+          <DialogDescription>Viettel sẽ gửi liên kết hóa đơn điện tử cho khách qua email.</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <Label>Email người nhận</Label>
@@ -94,8 +94,8 @@ export const SyncInvoicesDialog = ({ open, onOpenChange, mode = "issued" }: { op
           <DialogTitle>{mode === "drafts" ? "Đồng bộ HĐ nháp từ Viettel" : "Đồng bộ HĐ từ Viettel"}</DialogTitle>
           <DialogDescription>
             {mode === "drafts"
-              ? "Kéo danh sách HĐ nháp (chưa phát hành) trên S-Invoice về app."
-              : "Kéo danh sách hoá đơn đã phát hành trên S-Invoice về app."}
+              ? "Đồng bộ danh sách HĐ nháp (chưa phát hành) trên S-Invoice về hệ thống."
+              : "Đồng bộ danh sách hoá đơn đã phát hành trên S-Invoice về hệ thống."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">

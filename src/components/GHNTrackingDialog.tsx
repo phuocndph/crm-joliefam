@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { Truck, ExternalLink, RefreshCw, Package } from "lucide-react";
 
 interface Order {
@@ -55,11 +57,20 @@ export function GHNTrackingDialog({ order, open, onOpenChange, onTrackingAdded }
     if (!order) return;
 
     try {
-      const { data, error } = await supabase
-        .from('ghn_tracking')
-        .select('id, ghn_order_code, ghn_status, ghn_status_text, customer_name, customer_phone, customer_address, package_weight, created_date, expected_delivery_date, delivered_date, cod_amount, tracking_url')
-        .eq('order_id', order.id)
-        .single();
+      let data: GHNTrackingData | null = null;
+      let error: { message?: string } | null = null;
+      if (isLocalBackend()) {
+        const result = await localApi.ghnTracking({ search: order.display_order_number || order.order_number, page: 1, pageSize: 100 });
+        data = (result.rows.find((row) => row.internal_order_code === order.id || row.internal_order_code === order.order_number || row.internal_order_code === order.display_order_number) || null) as unknown as GHNTrackingData | null;
+      } else {
+        const response = await supabase
+          .from('ghn_tracking')
+          .select('id, ghn_order_code, ghn_status, ghn_status_text, customer_name, customer_phone, customer_address, package_weight, created_date, expected_delivery_date, delivered_date, cod_amount, tracking_url')
+          .eq('order_id', order.id)
+          .single();
+        data = response.data as GHNTrackingData | null;
+        error = response.error;
+      }
 
       if (data && !error) {
         setTrackingData(data);
@@ -87,15 +98,24 @@ export function GHNTrackingDialog({ order, open, onOpenChange, onTrackingAdded }
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-        body: { 
-          action: 'track', 
+      let data: { success?: boolean; data?: any; error?: string };
+      if (isLocalBackend()) {
+        data = await localApi.localFunction<{ success?: boolean; data?: any; error?: string }>('ghn-tracking', {
+          action: 'track',
           orderCode: ghnOrderCode.trim(),
-          orderId: order.id 
-        }
-      });
-
-      if (error) throw error;
+          orderId: order.id,
+        });
+      } else {
+        const response = await supabase.functions.invoke('ghn-tracking', {
+          body: {
+            action: 'track',
+            orderCode: ghnOrderCode.trim(),
+            orderId: order.id
+          }
+        });
+        if (response.error) throw response.error;
+        data = response.data as { success?: boolean; data?: any; error?: string };
+      }
 
       if (data.success) {
         setTrackingData({

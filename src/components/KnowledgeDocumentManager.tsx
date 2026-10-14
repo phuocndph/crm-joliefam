@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,6 +48,7 @@ interface KnowledgeDocumentManagerProps {
 }
 
 export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocumentManagerProps) {
+  const localMode = isLocalBackend();
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -73,6 +76,18 @@ export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocument
   }, []);
 
   const fetchDocuments = async () => {
+    if (localMode) {
+      try {
+        const data = await localApi.knowledgeDocuments();
+        setDocuments(data as unknown as KnowledgeDocument[]);
+      } catch (error) {
+        console.error("Error fetching local knowledge documents:", error);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     const { data, error } = await supabase
       .from("knowledge_documents")
       .select("id, title, content, document_type, file_url, faq_answer, created_at")
@@ -109,6 +124,23 @@ export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocument
 
     setUploading(true);
     try {
+      if (localMode) {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const storagePath = `${Date.now()}_${safeName}`;
+        await localApi.localStorageUpload("knowledge-files", storagePath, file, true);
+        const documentType = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : file.name.toLowerCase().endsWith(".docx") ? "word" : "text";
+        let content = "";
+        try {
+          const extractData = await localApi.localFunction<{ content?: string }>("extract-document", { bucket: "knowledge-files", storagePath, fileName: file.name });
+          content = String(extractData?.content || "");
+        } catch (extractError) {
+          console.warn("Local document extraction failed; keeping the uploaded file:", extractError);
+        }
+        await localApi.createKnowledgeDocument({ title: file.name, content, document_type: documentType, file_url: storagePath });
+        toast.success(content ? `Đã thêm tài liệu cục bộ (${content.length.toLocaleString()} ký tự)` : "Đã lưu tệp cục bộ; nội dung cần trình đọc chuyên dụng để xử lý.");
+        await fetchDocuments();
+        return;
+      }
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const storagePath = `${Date.now()}_${safeName}`;
       const { error: uploadError } = await supabase.storage
@@ -177,14 +209,15 @@ export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocument
       return;
     }
 
-    const { error } = await supabase.from("knowledge_documents").insert({
-      title: textTitle.trim(),
-      content: textContent.trim(),
-      document_type: "text",
-    });
-
-    if (error) {
-      toast.error("Lỗi lưu tài liệu");
+    try {
+      if (localMode) await localApi.createKnowledgeDocument({ title: textTitle.trim(), content: textContent.trim(), document_type: "text" });
+      else {
+        const { error } = await supabase.from("knowledge_documents").insert({ title: textTitle.trim(), content: textContent.trim(), document_type: "text" });
+        if (error) { toast.error("Lỗi lưu tài liệu"); return; }
+      }
+    } catch (error) {
+      console.error("Error saving knowledge document:", error);
+      toast.error(error instanceof Error ? error.message : "Lỗi lưu tài liệu");
       return;
     }
 
@@ -200,15 +233,15 @@ export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocument
       return;
     }
 
-    const { error } = await supabase.from("knowledge_documents").insert({
-      title: faqQuestion.trim(),
-      content: faqQuestion.trim(),
-      faq_answer: faqAnswer.trim(),
-      document_type: "faq",
-    });
-
-    if (error) {
-      toast.error("Lỗi lưu FAQ");
+    try {
+      if (localMode) await localApi.createKnowledgeDocument({ title: faqQuestion.trim(), content: faqQuestion.trim(), faq_answer: faqAnswer.trim(), document_type: "faq" });
+      else {
+        const { error } = await supabase.from("knowledge_documents").insert({ title: faqQuestion.trim(), content: faqQuestion.trim(), faq_answer: faqAnswer.trim(), document_type: "faq" });
+        if (error) { toast.error("Lỗi lưu FAQ"); return; }
+      }
+    } catch (error) {
+      console.error("Error saving FAQ:", error);
+      toast.error(error instanceof Error ? error.message : "Lỗi lưu FAQ");
       return;
     }
 
@@ -220,6 +253,22 @@ export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocument
 
   const handleDelete = async (doc: KnowledgeDocument) => {
     if (!confirm(`Xóa "${doc.title}"?`)) return;
+
+    if (localMode) {
+      if (doc.file_url) {
+        try { await localApi.localStorageRemove("knowledge-files", [doc.file_url]); }
+        catch (storageError) { console.warn("Không thể xóa tệp local:", storageError); }
+      }
+      try {
+        await localApi.deleteKnowledgeDocument(doc.id);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Lỗi xóa tài liệu cục bộ");
+        return;
+      }
+      toast.success("Đã xóa tài liệu cục bộ");
+      await fetchDocuments();
+      return;
+    }
 
     if (doc.file_url) {
       await supabase.storage.from("knowledge-files").remove([doc.file_url]);
@@ -257,13 +306,15 @@ export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocument
       updates.content = editContent.trim();
     }
 
-    const { error } = await supabase
-      .from("knowledge_documents")
-      .update(updates)
-      .eq("id", editDoc.id);
-
-    if (error) {
-      toast.error("Lỗi cập nhật");
+    try {
+      if (localMode) await localApi.updateKnowledgeDocument(editDoc.id, updates);
+      else {
+        const { error } = await supabase.from("knowledge_documents").update(updates).eq("id", editDoc.id);
+        if (error) { toast.error("Lỗi cập nhật"); return; }
+      }
+    } catch (error) {
+      console.error("Error updating knowledge document:", error);
+      toast.error(error instanceof Error ? error.message : "Lỗi cập nhật");
       return;
     }
 
@@ -300,8 +351,10 @@ export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocument
     <div className="flex flex-col h-full">
       <div className="p-3 border-b">
         <h3 className="font-semibold text-sm">Quản lý tài liệu</h3>
+        {localMode && <p className="mt-1 text-[11px] text-amber-700">Hệ thống cục bộ lưu tài liệu riêng; bản chụp dữ liệu Supabase vẫn được giữ làm dữ liệu tham chiếu.</p>}
       </div>
 
+      <fieldset className="min-h-0 flex-1 flex flex-col">
       <Tabs defaultValue="upload" className="flex-1 flex flex-col">
         <TabsList className="mx-3 mt-2 grid grid-cols-3">
           <TabsTrigger value="upload" className="text-xs">
@@ -380,6 +433,7 @@ export function KnowledgeDocumentManager({ canDelete = true }: KnowledgeDocument
           </div>
         </TabsContent>
       </Tabs>
+      </fieldset>
 
       {/* Document list */}
       <div className="border-t">

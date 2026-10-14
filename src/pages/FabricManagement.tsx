@@ -21,6 +21,7 @@ import { FabricTransactionsTable } from '@/components/FabricTransactionsTable';
 import { useFabricInventory, useCreateFabricType, useCreateFabricVariant, useCreateFabricWidth, useUpdateInventory, useCreateTransaction, useCreateTransfer, useUpdateTransferStatus } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 import { DEFAULT_LOW_STOCK_THRESHOLD_METERS } from '@/lib/fabricStock';
+import { isLocalBackend, localAdminUser } from '@/lib/runtime-config';
 const FabricReports = lazy(() => import('@/components/FabricReports').then(m => ({ default: m.default })));
 const FabricManagement = () => {
   const [user, setUser] = useState<any>(null);
@@ -141,7 +142,7 @@ const FabricManagement = () => {
       }
       return acc;
     }, {} as Record<string, { stock: number; minimum: number; hasMinimum: boolean }>);
-    const lowStockItems = Object.values(stockByVariant).filter(item =>
+    const lowStockItems = (Object.values(stockByVariant) as Array<{ stock: number; minimum: number; hasMinimum: boolean }>).filter(item =>
       item.hasMinimum ? item.stock <= item.minimum : item.stock < DEFAULT_LOW_STOCK_THRESHOLD_METERS
     ).length;
     return {

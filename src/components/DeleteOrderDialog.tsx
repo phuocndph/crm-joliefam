@@ -11,6 +11,8 @@ import {
 import { AlertTriangle } from "lucide-react";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { useToast } from "@/hooks/use-toast";
 
 interface Order {
@@ -36,6 +38,17 @@ export function DeleteOrderDialog({ order, open, onOpenChange, onConfirm }: Dele
 
   const handleDelete = async () => {
     try {
+      if (isLocalBackend()) {
+        await localApi.deleteOrder(order.id);
+        toast({
+          title: "Thành công",
+          description: "Đơn hàng đã được xóa thành công",
+        });
+        onConfirm();
+        onOpenChange(false);
+        return;
+      }
+
       // First delete related order_payments
       const { error: paymentsError } = await supabase
         .from("order_payments")

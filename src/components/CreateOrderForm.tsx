@@ -11,6 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Minus, Plus, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface Customer {
   id: string;
@@ -203,6 +205,22 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
         delivery_date: defaultDeliveryDate.toISOString(),
       };
 
+      const subtotal = calculateSubtotal();
+      const financialSnapshot = {
+        subtotal,
+        vat_amount: includeVAT ? (subtotal * vatRate) / 100 : 0,
+        vat_rate: vatRate,
+        include_vat: includeVAT,
+        cost_price_source: "historical",
+        cost_price_is_estimated: false,
+      };
+
+      if (isLocalBackend()) {
+        await localApi.createOrder({ ...orderData, ...financialSnapshot });
+        onSubmit();
+        return;
+      }
+
       const { error } = await supabase
         .from("orders")
         .insert([orderData]);
@@ -212,7 +230,6 @@ export function CreateOrderForm({ onClose, onSubmit }: CreateOrderFormProps) {
       // Preserve the financial snapshot for reports when the additive
       // migration is installed. Keep this best-effort so older deployments
       // without the new columns can continue creating orders normally.
-      const subtotal = calculateSubtotal();
       const snapshotUpdate = await supabase
         .from("orders")
         .update({

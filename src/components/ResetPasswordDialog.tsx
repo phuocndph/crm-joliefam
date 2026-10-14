@@ -13,8 +13,12 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 import { Eye, EyeOff, RefreshCw, Shield, Copy } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { generateLocalPassword } from '@/lib/local-password';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 interface Profile {
   id: string;
@@ -24,6 +28,7 @@ interface Profile {
   last_name: string | null;
   phone: string | null;
   created_at: string;
+  is_active?: boolean;
   user_roles?: { role: UserRole; assigned_by?: string }[];
 }
 
@@ -32,25 +37,27 @@ interface ResetPasswordDialogProps {
   onOpenChange: (open: boolean) => void;
   profile: Profile | null;
   currentUserRole: UserRole;
+  onSuccess?: () => void | Promise<void>;
 }
 
-const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: ResetPasswordDialogProps) => {
+const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole, onSuccess }: ResetPasswordDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuthReady();
 
   // Calculate password strength
   const calculatePasswordStrength = (password: string): { score: number; feedback: string[] } => {
     let score = 0;
     const feedback: string[] = [];
 
-    if (password.length >= 8) {
+    if (password.length >= (isLocalBackend() ? 12 : 8) && (!isLocalBackend() || password.length <= 128)) {
       score += 20;
     } else {
-      feedback.push('Ít nhất 8 ký tự');
+      feedback.push(isLocalBackend() ? 'Từ 12 đến 128 ký tự' : 'Ít nhất 8 ký tự');
     }
 
     if (/[a-z]/.test(password)) {
@@ -96,9 +103,16 @@ const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: R
 
   const canResetUser = () => {
     if (!profile) return false;
+    if (isLocalBackend()) {
+      if (!user?.id || user.id === profile.user_id) return false;
+      if (currentUserRole === 'admin') return true;
+      const roles = profile.user_roles || [];
+      return currentUserRole === 'manager' && profile.is_active !== false &&
+        roles.some(role => role.role === 'employee' && role.assigned_by === user.id) &&
+        !roles.some(role => role.role !== 'employee');
+    }
     
     const targetRole = profile.user_roles?.[0]?.role;
-    const assignedBy = profile.user_roles?.[0]?.assigned_by;
     
     if (currentUserRole === 'admin') return true;
     if (currentUserRole === 'manager' && targetRole === 'employee') {
@@ -110,20 +124,15 @@ const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: R
 
   const generateStrongPassword = async () => {
     try {
-      // Call the password generation endpoint
-      const response = await fetch('https://kmxfljxsmnozvvgypdei.supabase.co/functions/v1/change-password/generate', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (isLocalBackend()) {
+        const generated = generateLocalPassword();
+        setNewPassword(generated); setConfirmPassword(generated);
+        toast({ title: "Đã tạo mật khẩu mạnh", description: "Mật khẩu cục bộ đã được tạo tự động." });
+        return;
       }
-      
-      const data = await response.json();
+      // Keep the public deployment behind the configured Supabase function client.
+      const { data, error } = await supabase.functions.invoke('change-password', { method: 'GET' });
+      if (error) throw error;
       
       setNewPassword(data.password);
       setConfirmPassword(data.password);
@@ -162,6 +171,10 @@ const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: R
     e.preventDefault();
     
     if (!profile) return;
+    if (isLocalBackend() && !canResetUser()) {
+      toast({ title: 'Không có quyền', description: 'Bạn không được đặt lại mật khẩu tài khoản này.', variant: 'destructive' });
+      return;
+    }
 
     if (newPassword !== confirmPassword) {
       toast({
@@ -183,6 +196,14 @@ const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: R
 
     setLoading(true);
     try {
+      if (isLocalBackend()) {
+        await localApi.changeUserPassword(profile.user_id, { newPassword });
+        setNewPassword(''); setConfirmPassword('');
+        await onSuccess?.();
+        toast({ title: "Thành công", description: "Đã đặt lại mật khẩu cục bộ thành công" });
+        onOpenChange(false); setNewPassword(''); setConfirmPassword('');
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('change-password', {
         body: {
           action: 'reset_user',
@@ -195,7 +216,7 @@ const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: R
 
       toast({
         title: "Thành công",
-        description: "Đã reset mật khẩu thành công",
+        description: "Đã đặt lại mật khẩu thành công",
       });
 
       onOpenChange(false);
@@ -205,7 +226,7 @@ const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: R
       console.error('Error resetting password:', error);
       toast({
         title: "Lỗi",
-        description: error.message || "Không thể reset mật khẩu",
+        description: error.message || "Không thể đặt lại mật khẩu",
         variant: "destructive",
       });
     } finally {
@@ -225,10 +246,10 @@ const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: R
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5" />
-            Reset mật khẩu
+            Đặt lại mật khẩu
           </DialogTitle>
           <DialogDescription>
-            Reset mật khẩu cho người dùng <strong>{userName}</strong>. 
+            Đặt lại mật khẩu cho người dùng <strong>{userName}</strong>.
             Mật khẩu mới phải đáp ứng tất cả yêu cầu bảo mật.
           </DialogDescription>
         </DialogHeader>
@@ -346,16 +367,16 @@ const ResetPasswordDialog = ({ open, onOpenChange, profile, currentUserRole }: R
             </Button>
             <Button 
               type="submit" 
-              disabled={loading || newPassword !== confirmPassword || newPassword.length === 0}
+              disabled={loading || (isLocalBackend() && !canResetUser()) || newPassword !== confirmPassword || newPassword.length === 0}
               variant="destructive"
             >
               {loading ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-                  Đang reset...
+                  Đang đặt lại...
                 </>
               ) : (
-                'Reset mật khẩu'
+                'Đặt lại mật khẩu'
               )}
             </Button>
           </DialogFooter>

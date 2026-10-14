@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole, UserRole } from '@/hooks/useUserRole';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi, type LocalWorkerLinkResponse } from '@/lib/local-api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,13 +13,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { User, UserPlus, Users, Shield, Edit, Trash2, Eye, RefreshCw, UserCheck, Key } from 'lucide-react';
+import { User, UserPlus, Users, Shield, Edit, Trash2, Eye, RefreshCw, UserCheck, Key, Link2 } from 'lucide-react';
 import EditUserDialog from '@/components/EditUserDialog';
 import DeleteUserDialog from '@/components/DeleteUserDialog';
 import EmployeePermissionManagement from '@/components/EmployeePermissionManagement';
 import ChangePasswordDialog from '@/components/ChangePasswordDialog';
 import ResetPasswordDialog from '@/components/ResetPasswordDialog';
+import ProfileReviewPanel from '@/components/ProfileReviewPanel';
 
 interface Profile {
   id: string;
@@ -25,13 +30,26 @@ interface Profile {
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
+  has_password?: boolean;
+  is_active?: boolean;
   created_at: string;
   user_roles?: { role: UserRole; assigned_by?: string }[];
   manager_name?: string;
 }
 
+type LocalWorkerOption = { id: string; employee_code: string; display_name: string; user_id?: string | null; is_active?: boolean };
+type LocalWorkerLink = { worker_id: string; employee_code: string; worker_name: string; worker_type: string; is_active: boolean } | null;
+const normalizeWorkerLink = (worker: LocalWorkerLinkResponse['worker']): LocalWorkerLink => worker ? {
+  worker_id: worker.worker_id,
+  employee_code: worker.employee_code,
+  worker_name: worker.worker_name ?? worker.display_name ?? '',
+  worker_type: worker.worker_type,
+  is_active: worker.is_active,
+} : null;
+
 const UserManagement = () => {
-  const [user, setUser] = useState<any>(null);
+  const localMode = isLocalBackend();
+  const { user } = useAuthReady();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,6 +60,12 @@ const UserManagement = () => {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const [resetPasswordProfile, setResetPasswordProfile] = useState<Profile | null>(null);
+  const [localWorkers, setLocalWorkers] = useState<LocalWorkerOption[]>([]);
+  const [workerLinks, setWorkerLinks] = useState<Record<string, LocalWorkerLink>>({});
+  const [linkingProfile, setLinkingProfile] = useState<Profile | null>(null);
+  const [linkWorkerId, setLinkWorkerId] = useState("");
+  const [linkReason, setLinkReason] = useState("");
+  const [linkLoading, setLinkLoading] = useState(false);
   const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
   const { toast } = useToast();
 
@@ -52,12 +76,9 @@ const UserManagement = () => {
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('employee');
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-  }, []);
+  const localUsersWithoutPassword = localMode
+    ? profiles.filter((profile) => profile.is_active !== false && profile.has_password === false).length
+    : 0;
 
   useEffect(() => {
     if (currentUserRole && !roleLoading) {
@@ -69,6 +90,19 @@ const UserManagement = () => {
     if (isRefresh) setRefreshing(true);
     
     try {
+      if (localMode) {
+        const data = await localApi.users();
+        setProfiles(data as unknown as Profile[]);
+        const workers = await localApi.workers();
+        setLocalWorkers(workers as unknown as LocalWorkerOption[]);
+        const links = await Promise.all((data as Array<{ user_id: string }>).map(async (profile) => {
+          try { return [profile.user_id, normalizeWorkerLink((await localApi.workerLink(profile.user_id)).worker)] as const; }
+          catch { return [profile.user_id, null] as const; }
+        }));
+        setWorkerLinks(Object.fromEntries(links));
+        return;
+      }
+
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -120,11 +154,57 @@ const UserManagement = () => {
     }
   };
 
+  const openWorkerLink = async (profile: Profile) => {
+    if (!localMode) return;
+    setLinkingProfile(profile);
+    setLinkReason("");
+    setLinkLoading(true);
+    try {
+      const result = await localApi.workerLink(profile.user_id);
+      setLinkWorkerId(result.worker?.worker_id || "");
+      setWorkerLinks((current) => ({ ...current, [profile.user_id]: normalizeWorkerLink(result.worker) }));
+    } catch (error) {
+      toast({ title: "Không tải được liên kết", description: error instanceof Error ? error.message : "Lỗi", variant: "destructive" });
+      setLinkingProfile(null);
+    } finally { setLinkLoading(false); }
+  };
+
+  const saveWorkerLink = async () => {
+    if (!linkingProfile || !linkReason.trim()) return;
+    setLinkLoading(true);
+    try {
+      const result = await localApi.saveWorkerLink(linkingProfile.user_id, linkWorkerId || null, linkReason.trim());
+      setWorkerLinks((current) => ({ ...current, [linkingProfile.user_id]: normalizeWorkerLink(result.worker) }));
+      setLocalWorkers((current) => current.map((worker) => worker.id === linkWorkerId ? { ...worker, user_id: linkingProfile.user_id } : worker));
+      toast({ title: "Đã cập nhật liên kết", description: "Tài khoản có thể sử dụng chấm công cá nhân theo hồ sơ mới." });
+      setLinkingProfile(null);
+      await fetchProfiles(true);
+    } catch (error) {
+      toast({ title: "Không thể cập nhật liên kết", description: error instanceof Error ? error.message : "Lỗi", variant: "destructive" });
+    } finally { setLinkLoading(false); }
+  };
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateUserLoading(true);
 
     try {
+      if (localMode) {
+        const created = await localApi.createUser({
+          email,
+          password,
+          firstName,
+          lastName,
+          phone,
+          role: selectedRole,
+        });
+        toast({ title: "Thành công", description: `Đã tạo tài khoản cục bộ ${String(created.email || email)}.` });
+        setEmail(''); setPassword(''); setFirstName(''); setLastName(''); setPhone(''); setSelectedRole('employee');
+        await fetchProfiles();
+        setSelectedUsers([]);
+        return;
+      }
+
       // Check permissions
       if (currentUserRole === 'admin' || 
           (currentUserRole === 'manager' && selectedRole === 'employee')) {
@@ -164,11 +244,11 @@ const UserManagement = () => {
       } else {
         throw new Error('Không có quyền tạo tài khoản này');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating user:', error);
       toast({
         title: "Lỗi",
-        description: error.message || "Không thể tạo tài khoản",
+        description: error instanceof Error ? error.message : "Không thể tạo tài khoản",
         variant: "destructive",
       });
     } finally {
@@ -181,6 +261,7 @@ const UserManagement = () => {
       case 'admin': return 'destructive';
       case 'manager': return 'default';
       case 'accountant': return 'outline';
+      case 'team_leader': return 'default';
       case 'employee': return 'secondary';
       default: return 'outline';
     }
@@ -191,27 +272,41 @@ const UserManagement = () => {
       case 'admin': return 'Quản trị viên';
       case 'manager': return 'Quản lý';
       case 'accountant': return 'Kế toán';
+      case 'team_leader': return 'Tổ trưởng';
       case 'employee': return 'Nhân viên';
       default: return 'Chưa phân quyền';
     }
   };
 
   const canCreateRole = (role: UserRole) => {
+    if (localMode) return currentUserRole === 'admin';
     if (currentUserRole === 'admin') return true;
     if (currentUserRole === 'manager' && role === 'employee') return true;
     return false;
   };
 
   const canEditUser = (targetRole: UserRole) => {
+    if (localMode) return currentUserRole === 'admin';
     if (currentUserRole === 'admin') return true;
     if (currentUserRole === 'manager' && targetRole === 'employee') return true;
     return false;
   };
 
   const canDeleteUser = (targetRole: UserRole) => {
+    if (localMode) return currentUserRole === 'admin';
     if (currentUserRole === 'admin') return true;
     if (currentUserRole === 'manager' && targetRole === 'employee') return true;
     return false;
+  };
+
+  const canResetPassword = (profile: Profile) => {
+    if (profile.user_id === user?.id || (localMode && !user?.id)) return false;
+    if (currentUserRole === 'admin') return true;
+    const roles = profile.user_roles || [];
+    if (localMode) return currentUserRole === 'manager' && profile.is_active !== false &&
+      roles.some(role => role.role === 'employee' && role.assigned_by === user?.id) &&
+      !roles.some(role => role.role !== 'employee');
+    return currentUserRole === 'manager' && (roles[0]?.role || 'employee') === 'employee';
   };
 
   const handleSelectUser = (userId: string, checked: boolean) => {
@@ -235,25 +330,18 @@ const UserManagement = () => {
 
   const handleBulkDelete = async () => {
     if (selectedUsers.length === 0) return;
-    
+
     setBulkDeleting(true);
     
     try {
-      // Delete user roles first
-      const { error: rolesError } = await supabase
-        .from('user_roles')
-        .delete()
-        .in('user_id', selectedUsers);
-
-      if (rolesError) throw rolesError;
-
-      // Delete profiles
-      const { error: profilesError } = await supabase
-        .from('profiles')
-        .delete()
-        .in('user_id', selectedUsers);
-
-      if (profilesError) throw profilesError;
+      if (localMode) {
+        await Promise.all(selectedUsers.map((id) => localApi.deleteUser(id)));
+      } else {
+        const { error: rolesError } = await supabase.from('user_roles').delete().in('user_id', selectedUsers);
+        if (rolesError) throw rolesError;
+        const { error: profilesError } = await supabase.from('profiles').delete().in('user_id', selectedUsers);
+        if (profilesError) throw profilesError;
+      }
 
       toast({
         title: "Thành công",
@@ -262,7 +350,7 @@ const UserManagement = () => {
 
       setSelectedUsers([]);
       await fetchProfiles();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deleting users:', error);
       toast({
         title: "Lỗi",
@@ -352,6 +440,15 @@ const UserManagement = () => {
         </div>
       </div>
 
+      {localMode && (
+        <Card className="border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20">
+          <CardContent className="pt-6 text-sm text-amber-900 dark:text-amber-100">
+            <p>Hệ thống cục bộ hiển thị bản sao người dùng đã đồng bộ từ Supabase. Các thao tác quản trị bên dưới chỉ ghi PostgreSQL cục bộ và không chạm dữ liệu công khai.</p>
+            {localUsersWithoutPassword > 0 && <p className="mt-2 font-medium">Có {localUsersWithoutPassword} tài khoản đồng bộ chưa có mật khẩu local. Chọn biểu tượng chìa khóa ở từng dòng để đặt mật khẩu trước khi nhân viên đăng nhập.</p>}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Create User Form */}
       <Card>
         <CardHeader>
@@ -368,6 +465,7 @@ const UserManagement = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleCreateUser} className="space-y-4">
+            <fieldset className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -425,6 +523,7 @@ const UserManagement = () => {
                         <SelectItem value="admin">Quản trị viên</SelectItem>
                         <SelectItem value="manager">Quản lý</SelectItem>
                         <SelectItem value="accountant">Kế toán</SelectItem>
+                        {localMode && <SelectItem value="team_leader">Tổ trưởng</SelectItem>}
                       </>
                     )}
                     <SelectItem value="employee">Nhân viên</SelectItem>
@@ -435,6 +534,7 @@ const UserManagement = () => {
             <Button type="submit" disabled={createUserLoading}>
               {createUserLoading ? 'Đang tạo...' : 'Tạo tài khoản'}
             </Button>
+            </fieldset>
           </form>
         </CardContent>
       </Card>
@@ -468,6 +568,7 @@ const UserManagement = () => {
                   <TableHead>Email</TableHead>
                   <TableHead>Họ tên</TableHead>
                   <TableHead>Vai trò</TableHead>
+                  {localMode && <TableHead>Hồ sơ chấm công</TableHead>}
                   <TableHead>Cấp bậc</TableHead>
                   <TableHead>Ngày tạo</TableHead>
                   <TableHead className="text-right">Thao tác</TableHead>
@@ -488,7 +589,17 @@ const UserManagement = () => {
                           disabled={!canDelete}
                         />
                       </TableCell>
-                      <TableCell className="font-medium">{profile.email}</TableCell>
+                      <TableCell className="font-medium">
+                        <div>{profile.email}</div>
+                        {localMode && (
+                          <Badge
+                            variant={profile.has_password ? "outline" : "destructive"}
+                            className="mt-1 text-[10px] font-normal"
+                          >
+                            {profile.has_password ? "Đã có mật khẩu local" : "Cần đặt mật khẩu local"}
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {profile.first_name && profile.last_name 
                           ? `${profile.first_name} ${profile.last_name}`
@@ -500,6 +611,12 @@ const UserManagement = () => {
                           {getRoleDisplayName(userRole)}
                         </Badge>
                       </TableCell>
+                      {localMode && <TableCell>
+                        <div className="flex items-center gap-2">
+                          {workerLinks[profile.user_id] ? <span className="text-sm">{workerLinks[profile.user_id]?.employee_code} · {workerLinks[profile.user_id]?.worker_name}</span> : <span className="text-sm text-muted-foreground">Chưa liên kết</span>}
+                          {currentUserRole === 'admin' && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => void openWorkerLink(profile)} title="Gắn tài khoản với hồ sơ công nhân"><Link2 className="h-4 w-4" /></Button>}
+                        </div>
+                      </TableCell>}
                       <TableCell>
                         {userRole === 'employee' && profile.manager_name ? (
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -532,14 +649,12 @@ const UserManagement = () => {
                           )}
                           
                           {/* Reset password button for admin/manager on other users */}
-                          {profile.user_id !== user?.id && 
-                           ((currentUserRole === 'admin') || 
-                            (currentUserRole === 'manager' && userRole === 'employee')) && (
+                          {canResetPassword(profile) && (
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => setResetPasswordProfile(profile)}
-                              title="Reset mật khẩu người dùng"
+                              title="Đặt lại mật khẩu người dùng"
                             >
                               <Key className="h-4 w-4 text-orange-500" />
                             </Button>
@@ -570,7 +685,7 @@ const UserManagement = () => {
                 })}
                 {profiles.length === 0 && !loading && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={localMode ? 8 : 7} className="text-center py-8 text-muted-foreground">
                       Chưa có người dùng nào
                     </TableCell>
                   </TableRow>
@@ -617,7 +732,22 @@ const UserManagement = () => {
         onOpenChange={(open) => !open && setResetPasswordProfile(null)}
         profile={resetPasswordProfile}
         currentUserRole={currentUserRole}
+        onSuccess={() => fetchProfiles(true)}
       />
+
+      {localMode && <Dialog open={!!linkingProfile} onOpenChange={(open) => !open && setLinkingProfile(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Liên kết tài khoản với hồ sơ chấm công</DialogTitle></DialogHeader>
+          {linkingProfile && <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{linkingProfile.email} · {linkingProfile.first_name || ""} {linkingProfile.last_name || ""}</p>
+            <div className="space-y-2"><Label>Hồ sơ công nhân</Label><Select value={linkWorkerId || "NONE"} onValueChange={(value) => setLinkWorkerId(value === "NONE" ? "" : value)} disabled={linkLoading}><SelectTrigger><SelectValue placeholder="Chọn hồ sơ" /></SelectTrigger><SelectContent><SelectItem value="NONE">Không liên kết</SelectItem>{localWorkers.filter((worker) => worker.is_active !== false).map((worker) => <SelectItem key={worker.id} value={worker.id} disabled={Boolean(worker.user_id && worker.user_id !== linkingProfile.user_id)}>{worker.employee_code} · {worker.display_name}{worker.user_id && worker.user_id !== linkingProfile.user_id ? " (đã gắn)" : ""}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>Lý do thay đổi</Label><Input value={linkReason} onChange={(event) => setLinkReason(event.target.value)} placeholder="VD: Cấp tài khoản chấm công cho nhân viên" /></div>
+          </div>}
+          <DialogFooter><Button variant="outline" onClick={() => setLinkingProfile(null)}>Hủy</Button><Button disabled={linkLoading || !linkReason.trim()} onClick={() => void saveWorkerLink()}>{linkLoading ? "Đang lưu..." : "Lưu liên kết"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>}
+
+      {localMode && (currentUserRole === 'admin' || currentUserRole === 'manager') && <ProfileReviewPanel />}
 
       {/* Employee Permission Management */}
       <EmployeePermissionManagement />

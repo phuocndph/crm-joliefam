@@ -30,6 +30,8 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { isLocalBackend, localAdminUser } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 const statusOptions = [
   { value: "draft", label: "Nháp" },
@@ -108,6 +110,14 @@ export function EditQuoteDetailsDialog({
 
     setLoading(true);
     try {
+      if (isLocalBackend()) {
+        await localApi.updateQuote(quote.id, { created_at: createdDate.toISOString(), status });
+        await queryClient.invalidateQueries({ queryKey: ['quotes'] });
+        toast({ title: "Thành công", description: "Thông tin báo giá đã được cập nhật trên local." });
+        onUpdate();
+        onOpenChange(false);
+        return;
+      }
       const { error } = await supabase
         .from('quotes')
         .update({

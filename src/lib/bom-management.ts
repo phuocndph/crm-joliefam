@@ -1,6 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import type { InventoryItem, InventoryUnit } from "@/lib/inventory-management";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 export type VersionStatus = "DRAFT" | "APPROVED" | "SUPERSEDED";
 export type QuantityMethod = "FIXED" | "PER_UNIT" | "FORMULA" | "CUTTING_ENGINE";
@@ -86,6 +88,7 @@ function asObject<T>(value: Json, label: string): T {
 }
 
 export async function listManufacturingProducts(search = ""): Promise<ManufacturingProduct[]> {
+  if (isLocalBackend()) return localApi.manufacturingProducts(search) as unknown as Promise<ManufacturingProduct[]>;
   let query = supabase.from("products").select("id,name,sku,category,in_stock").order("name").limit(500);
   if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,sku.ilike.%${search.trim()}%`);
   const { data, error } = await query;
@@ -94,6 +97,7 @@ export async function listManufacturingProducts(search = ""): Promise<Manufactur
 }
 
 export async function getManufacturingProfile(productId: string): Promise<ManufacturingProfile | null> {
+  if (isLocalBackend()) return localApi.manufacturingProfile(productId) as unknown as Promise<ManufacturingProfile | null>;
   const { data, error } = await supabase.from("product_manufacturing_profiles").select("*").eq("product_id", productId).maybeSingle();
   if (error) throw error;
   return data as ManufacturingProfile | null;
@@ -103,6 +107,7 @@ export async function saveManufacturingProfile(input: {
   product_id: string; manufacturing_type: string; finished_width: number; finished_length: number;
   finished_height?: number | null; dimension_unit: string; extra_dimensions?: Json; is_active?: boolean;
 }) {
+  if (isLocalBackend()) return localApi.saveManufacturingProfile(input) as unknown as Promise<ManufacturingProfile>;
   const { data, error } = await supabase.rpc("save_product_manufacturing_profile", {
     p_product_id: input.product_id, p_manufacturing_type: input.manufacturing_type,
     p_finished_width: input.finished_width, p_finished_length: input.finished_length,
@@ -114,6 +119,7 @@ export async function saveManufacturingProfile(input: {
 }
 
 export async function listBomWorkspace(productId: string) {
+  if (isLocalBackend()) return localApi.bomWorkspace(productId) as unknown as Promise<{ header: BomHeader | null; versions: BomVersion[] }>;
   const { data: header, error: headerError } = await supabase.from("bom_headers").select("*").eq("product_id", productId).eq("is_active", true).maybeSingle();
   if (headerError) throw headerError;
   if (!header) return { header: null as BomHeader | null, versions: [] as BomVersion[] };
@@ -123,18 +129,21 @@ export async function listBomWorkspace(productId: string) {
 }
 
 export async function listBomLines(versionId: string): Promise<BomLine[]> {
+  if (isLocalBackend()) return localApi.bomLines(versionId) as unknown as Promise<BomLine[]>;
   const { data, error } = await supabase.from("bom_lines").select("*").eq("bom_version_id", versionId).order("sequence");
   if (error) throw error;
   return (data ?? []) as BomLine[];
 }
 
 export async function createBomDraft(productId: string, code: string, name: string, cloneVersionId?: string | null) {
+  if (isLocalBackend()) return localApi.createBomDraft({ product_id: productId, code, name, clone_version_id: cloneVersionId ?? null }) as unknown as Promise<{ header: BomHeader; version: BomVersion }>;
   const { data, error } = await supabase.rpc("create_bom_draft", { p_product_id: productId, p_code: code, p_name: name, p_clone_version_id: cloneVersionId ?? null });
   if (error) throw error;
   return asObject<{ header: BomHeader; version: BomVersion }>(data, "Phiên bản BOM");
 }
 
 export async function saveBomDraft(versionId: string, input: { effective_from: string | null; effective_to: string | null; notes: string | null; lines: BomLineInput[] }) {
+  if (isLocalBackend()) return localApi.saveBomDraft(versionId, input) as unknown as Promise<{ id: string; status: "DRAFT"; line_count: number }>;
   const { data, error } = await supabase.rpc("save_bom_draft", {
     p_version_id: versionId, p_effective_from: input.effective_from, p_effective_to: input.effective_to,
     p_notes: input.notes, p_lines: input.lines as unknown as Json,
@@ -144,24 +153,28 @@ export async function saveBomDraft(versionId: string, input: { effective_from: s
 }
 
 export async function approveBomVersion(versionId: string, reason: string) {
+  if (isLocalBackend()) return localApi.approveBomVersion(versionId, { reason }) as unknown as Promise<BomVersion>;
   const { data, error } = await supabase.rpc("approve_bom_version", { p_version_id: versionId, p_reason: reason || null, p_supersede_previous: true });
   if (error) throw error;
   return asObject<BomVersion>(data, "BOM đã duyệt");
 }
 
 export async function listCuttingProfiles(productId: string): Promise<CuttingProfile[]> {
+  if (isLocalBackend()) return localApi.cuttingProfiles(productId) as unknown as Promise<CuttingProfile[]>;
   const { data, error } = await supabase.from("cutting_profiles").select("*").eq("product_id", productId).eq("is_active", true).order("name");
   if (error) throw error;
   return (data ?? []) as CuttingProfile[];
 }
 
 export async function listCuttingVersions(profileId: string): Promise<CuttingVersion[]> {
+  if (isLocalBackend()) return localApi.cuttingVersions(profileId) as unknown as Promise<CuttingVersion[]>;
   const { data, error } = await supabase.from("cutting_profile_versions").select("*").eq("cutting_profile_id", profileId).order("version_number", { ascending: false });
   if (error) throw error;
   return (data ?? []) as CuttingVersion[];
 }
 
 export async function createCuttingDraft(input: { product_id: string; code: string; name: string; manufacturing_type: string; clone_version_id?: string | null }) {
+  if (isLocalBackend()) return localApi.createCuttingDraft(input) as unknown as Promise<{ profile: CuttingProfile; version: CuttingVersion }>;
   const { data, error } = await supabase.rpc("create_cutting_profile_draft", {
     p_product_id: input.product_id, p_code: input.code, p_name: input.name,
     p_manufacturing_type: input.manufacturing_type, p_clone_version_id: input.clone_version_id ?? null,
@@ -171,6 +184,7 @@ export async function createCuttingDraft(input: { product_id: string; code: stri
 }
 
 export async function saveCuttingDraft(versionId: string, effectiveFrom: string | null, effectiveTo: string | null, configuration: Record<string, unknown>) {
+  if (isLocalBackend()) return localApi.saveCuttingDraft(versionId, { effective_from: effectiveFrom, effective_to: effectiveTo, configuration }) as unknown as Promise<CuttingVersion>;
   const { data, error } = await supabase.rpc("save_cutting_profile_draft", {
     p_version_id: versionId, p_effective_from: effectiveFrom, p_effective_to: effectiveTo,
     p_configuration: configuration as Json,
@@ -180,12 +194,16 @@ export async function saveCuttingDraft(versionId: string, effectiveFrom: string 
 }
 
 export async function approveCuttingVersion(versionId: string, reason: string) {
+  if (isLocalBackend()) return localApi.approveCuttingVersion(versionId, { reason }) as unknown as Promise<CuttingVersion>;
   const { data, error } = await supabase.rpc("approve_cutting_profile_version", { p_version_id: versionId, p_reason: reason || null, p_supersede_previous: true });
   if (error) throw error;
   return asObject<CuttingVersion>(data, "Cấu hình cắt đã duyệt");
 }
 
 export async function calculateCutting(versionId: string, quantity: number, fabricWidthCm?: number | null, allowDraft = false) {
+  if (isLocalBackend()) {
+    return localApi.calculateCutting(versionId, { quantity, fabric_width_cm: fabricWidthCm ?? null, allow_draft: allowDraft }) as unknown as Promise<CuttingResult>;
+  }
   const { data, error } = await supabase.rpc("calculate_cutting_consumption", {
     p_cutting_profile_version_id: versionId, p_quantity: quantity,
     p_fabric_width_cm: fabricWidthCm ?? null, p_allow_draft: allowDraft,
@@ -195,6 +213,9 @@ export async function calculateCutting(versionId: string, quantity: number, fabr
 }
 
 export async function calculateRequirements(input: { product_id: string; quantity: number; effective_date: string; bom_version_id?: string | null; allow_draft?: boolean; warehouse_id?: string | null; save_snapshot?: boolean }) {
+  if (isLocalBackend()) {
+    return localApi.calculateMaterialRequirements(input) as unknown as Promise<RequirementResult>;
+  }
   const { data, error } = await supabase.rpc("calculate_standard_material_requirements", {
     p_product_id: input.product_id, p_quantity: input.quantity, p_effective_date: input.effective_date,
     p_bom_version_id: input.bom_version_id ?? null, p_allow_draft: input.allow_draft ?? false,
@@ -205,6 +226,7 @@ export async function calculateRequirements(input: { product_id: string; quantit
 }
 
 export async function listBomMaterials(): Promise<InventoryItem[]> {
+  if (isLocalBackend()) return localApi.inventoryItems();
   const { data, error } = await supabase.from("inventory_items").select("*").order("code");
   if (error) throw error;
   return (data ?? []) as InventoryItem[];

@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface Expense {
   id: string;
@@ -63,6 +65,13 @@ export function EditExpenseDialog({ expense, open, onOpenChange, onSubmit }: Edi
 
     setLoading(true);
     try {
+      if (isLocalBackend()) {
+        await localApi.updateExpense(expense.id, { category: formData.category, person_name: formData.person_name || null, amount: formData.amount, description: formData.description || null, expense_date: formData.expense_date });
+        onSubmit();
+        onOpenChange(false);
+        toast({ title: "Thành công", description: "Chi phí đã được cập nhật thành công" });
+        return;
+      }
       const { error } = await supabase
         .from('expenses')
         .update({

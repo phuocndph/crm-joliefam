@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 export interface ShippingCompany {
   id: string;
@@ -23,6 +25,11 @@ export const useShippingCompanies = () => {
   const fetchCompanies = useCallback(async () => {
     setLoading(true);
     try {
+      if (isLocalBackend()) {
+        const data = await localApi.shippingCompanies();
+        setCompanies(data as unknown as ShippingCompany[]);
+        return;
+      }
       const { data, error } = await supabase
         .from('shipping_companies')
         .select('*')
@@ -41,18 +48,21 @@ export const useShippingCompanies = () => {
   useEffect(() => { fetchCompanies(); }, [fetchCompanies]);
 
   const createCompany = async (company: Omit<ShippingCompany, 'id' | 'created_at' | 'updated_at'>) => {
+    if (isLocalBackend()) { await localApi.createShippingCompany(company as unknown as Record<string, unknown>); await fetchCompanies(); return; }
     const { error } = await supabase.from('shipping_companies').insert(company as any);
     if (error) throw error;
     await fetchCompanies();
   };
 
   const updateCompany = async (id: string, company: Partial<ShippingCompany>) => {
+    if (isLocalBackend()) { await localApi.updateShippingCompany(id, company as unknown as Record<string, unknown>); await fetchCompanies(); return; }
     const { error } = await supabase.from('shipping_companies').update(company as any).eq('id', id);
     if (error) throw error;
     await fetchCompanies();
   };
 
   const deleteCompany = async (id: string) => {
+    if (isLocalBackend()) { await localApi.deleteShippingCompany(id); await fetchCompanies(); return; }
     const { error } = await supabase.from('shipping_companies').delete().eq('id', id);
     if (error) throw error;
     await fetchCompanies();

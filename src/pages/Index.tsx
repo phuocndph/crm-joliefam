@@ -1,10 +1,15 @@
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { isLocalBackend } from "@/lib/runtime-config";
 import { Building2, ArrowRight, Shield, Users, BarChart3, Zap } from "lucide-react";
 
 const Index = () => {
   useEffect(() => {
+    if (isLocalBackend()) {
+      window.location.assign("/dashboard");
+      return;
+    }
     // Check if user is already logged in
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -115,7 +120,7 @@ const Index = () => {
               <h3 className="text-lg font-semibold text-white mb-4">Tài khoản demo</h3>
               <div className="space-y-2 text-white/80">
                 <p><strong>Email:</strong> admin@company.com</p>
-                <p><strong>Password:</strong> SuperAdmin123!</p>
+                <p><strong>Mật khẩu:</strong> SuperAdmin123!</p>
               </div>
               <Button 
                 onClick={() => window.location.assign("/auth")}

@@ -1,0 +1,611 @@
+import type {
+  AttendanceMethod,
+  AttendanceWorkflowStatus,
+  FactoryAttendanceClosureRow,
+  FactoryAttendanceDayStatus,
+  FactoryAttendanceDayStatusRow,
+  FactoryAttendanceHistoryRow,
+  FactoryAttendanceRow,
+  FactoryOvertimeRow,
+  OvertimeType,
+  ProductionAttendanceRow,
+  ProductionEntryProduct,
+  ProductionEntryRow,
+  ProductionOrderWorkerAssignment,
+  ProductionWorker,
+  PayrollAdjustment,
+  WorkerAttendanceMethod,
+  WorkerCompensationProfile,
+  WorkerCompensationRate,
+  WorkerPayrollProfile,
+} from "@/integrations/supabase/production-execution-types";
+import type {
+  InventoryAuditEvent,
+  InventoryBalance,
+  InventoryBusinessTransaction,
+  InventoryDocument,
+  InventoryDocumentLineInput,
+  InventoryDocumentType,
+  InventoryItem,
+  InventoryMovement,
+  InventoryReconciliation,
+  InventoryReturnSource,
+  InventoryWarehouse,
+  ProductionOrderForIssue,
+} from "@/lib/inventory-management";
+import { localApiUrl } from "./runtime-config";
+import { localFetch } from "./local-auth";
+
+export interface LocalWorkerLinkResponse {
+  user_id: string;
+  worker: {
+    worker_id: string;
+    employee_code: string;
+    worker_name?: string;
+    display_name?: string;
+    worker_type: string;
+    is_active: boolean;
+  } | null;
+}
+
+export interface LocalSelfProfile {
+  user_id: string;
+  email: string;
+  profile: Record<string, string | null>;
+  status: "DRAFT" | "SUBMITTED" | "APPROVED" | "NEEDS_INFO";
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  linked_worker: Record<string, unknown> | null;
+}
+
+export interface LocalCatalogProduct {
+  id: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  specifications: string | null;
+  price: number | null;
+  cost_price: number | null;
+  in_stock: boolean;
+  is_active: boolean;
+  rate_unit: string;
+  current_rate: number | null;
+  current_rate_unit: string | null;
+  current_rate_effective_from: string | null;
+  price_list_id: string | null;
+  tenant_id?: string | null;
+  images?: unknown[];
+  image_url?: string | null;
+  is_snapshot_record?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MyAttendanceContext {
+  work_date: string;
+  configured: boolean;
+  mode: AttendanceMethod | "MIXED" | "MONTHLY" | null;
+  primary_method: AttendanceMethod | null;
+  methods: AttendanceMethod[];
+  label: string;
+  instructions: string;
+  components: Array<{
+    rate_id: string;
+    compensation_type: string;
+    attendance_method: AttendanceMethod;
+    rate_amount: number | null;
+    unit_basis: string;
+    effective_from: string;
+    effective_to: string | null;
+    label: string;
+  }>;
+}
+
+export interface LocalCustomer {
+  id: string;
+  customer_code: string | null;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  company: string | null;
+  notes: string | null;
+  phones: Array<{ number: string; label?: string; isPrimary?: boolean }>;
+  addresses: Array<{ address: string; label?: string; isPrimary?: boolean }>;
+  tags: string[];
+  auto_tags: string[];
+  current_status: string | null;
+  purchase_count: number;
+  order_count: number;
+  quote_count: number;
+  total_spent: number;
+  last_purchase_date: string | null;
+  is_active: boolean;
+  is_snapshot_record: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LocalCustomerDetails {
+  customer: LocalCustomer;
+  orders: Array<Record<string, unknown>>;
+  quotes: Array<Record<string, unknown>>;
+  payments: Array<Record<string, unknown>>;
+}
+
+export interface LocalDashboardStats {
+  totalRevenue: number;
+  totalOrders: number;
+  totalCustomers: number;
+  totalQuotes: number;
+  totalProducts: number;
+  pendingOrders: number;
+  approvedQuotes: number;
+  monthlyRevenue: number;
+  previousMonthRevenue: number;
+  monthlyOrders: number;
+  monthlyCustomers: number;
+  totalContracts: number;
+  monthlyExpenses: number;
+  activeWorkers: number;
+  attendanceEntries: number;
+  productionQuantity: number;
+  inventoryValue: number;
+  payrollRuns: number;
+}
+
+export interface LocalSyncRun {
+  id: string;
+  source: string;
+  mode: string;
+  status: string;
+  requested_tables: string[] | null;
+  table_stats: Record<string, unknown> | null;
+  error_count: number;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export type LocalAttendanceBulkWorkflowSourceType = "ATTENDANCE" | "PRODUCTION_ENTRY" | "OVERTIME";
+export type LocalAttendanceBulkWorkflowTargetStatus = "APPROVED" | "REJECTED";
+
+export interface LocalAttendanceBulkWorkflowInput {
+  target_status: LocalAttendanceBulkWorkflowTargetStatus;
+  reason?: string | null;
+  month: string;
+  worker_ids?: string[];
+  source_types?: LocalAttendanceBulkWorkflowSourceType[];
+  idempotency_key: string;
+}
+
+export interface LocalAttendanceBulkWorkflowCounts {
+  ATTENDANCE: number;
+  PRODUCTION_ENTRY: number;
+  OVERTIME: number;
+}
+
+export interface LocalAttendanceBulkWorkflowResult {
+  target_status: LocalAttendanceBulkWorkflowTargetStatus;
+  scope: {
+    month: string;
+    worker_ids: string[] | null;
+    source_types: LocalAttendanceBulkWorkflowSourceType[];
+  };
+  discovered: { count: number; by_source: LocalAttendanceBulkWorkflowCounts };
+  eligible: { count: number; by_source: LocalAttendanceBulkWorkflowCounts };
+  processed: { count: number; by_source: LocalAttendanceBulkWorkflowCounts };
+  skipped: { count: number; by_source: LocalAttendanceBulkWorkflowCounts };
+  reused: boolean;
+}
+
+type RequestOptions = { method?: string; body?: unknown; query?: Record<string, string | number | boolean | null | undefined> };
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const query = options.query
+    ? Object.entries(options.query).filter(([, value]) => value !== undefined && value !== null).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&")
+    : "";
+  const response = await localFetch(`${localApiUrl()}${path}${query ? `?${query}` : ""}`, {
+    method: options.method ?? "GET",
+    headers: { "content-type": "application/json" },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || `Local API lỗi (${response.status})`);
+  return payload as T;
+}
+
+/** Invoke an endpoint implemented by the local server instead of Supabase Edge Functions. */
+async function localFunction<T>(name: string, body?: unknown, method = "POST"): Promise<T> {
+  return request<T>(`/api/local-functions/${encodeURIComponent(name)}`, {
+    method,
+    body: method === "GET" ? undefined : body ?? {},
+  });
+}
+
+const blobToDataUrl = async (file: Blob | ArrayBuffer): Promise<string> => {
+  const blob = file instanceof Blob ? file : new Blob([file]);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error || new Error("Không thể đọc tệp local."));
+    reader.readAsDataURL(blob);
+  });
+};
+
+async function localStorageUpload(bucket: string, path: string, file: Blob | ArrayBuffer, upsert = false) {
+  return request<{ path: string; bucket: string; size: number; contentType: string; publicUrl: string }>(
+    `/api/local-storage/${encodeURIComponent(bucket)}/upload`,
+    { method: "POST", body: { path, dataUrl: await blobToDataUrl(file), upsert } },
+  );
+}
+
+async function localStorageRemove(bucket: string, paths: string[]) {
+  return request<{ data: Array<{ name: string }>; error: null }>(
+    `/api/local-storage/${encodeURIComponent(bucket)}`,
+    { method: "DELETE", body: { paths } },
+  );
+}
+
+export async function downloadLocalPayrollRunCsv(id: string): Promise<void> {
+  const response = await localFetch(`${localApiUrl()}/api/payroll/runs/${encodeURIComponent(id)}/export.csv`);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message || `Local API lỗi (${response.status})`);
+  }
+  const disposition = response.headers.get("content-disposition") || "";
+  const fileName = disposition.match(/filename="([^"]+)"/)?.[1] || `payroll-${id}.csv`;
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+export const localApi = {
+  aiProviders: () => request<{selected:'local'|'f5quota'|'beeknoee';providers:Array<{provider:'f5quota'|'beeknoee';configured:boolean;model:string;base_url:string;protocol:string}>}>('/api/ai/providers'),
+  saveAiProvider: (provider:string,body:{api_key?:string;model?:string;activate?:boolean}) => request<{selected:'local'|'f5quota'|'beeknoee';providers:Array<{provider:'f5quota'|'beeknoee';configured:boolean;model:string;base_url:string;protocol:string}>}>('/api/ai/providers/'+encodeURIComponent(provider),{method:'PUT',body}),
+  removeAiKey: (provider:string) => request<{selected:'local'|'f5quota'|'beeknoee';providers:Array<{provider:'f5quota'|'beeknoee';configured:boolean;model:string;base_url:string;protocol:string}>}>('/api/ai/providers/'+encodeURIComponent(provider)+'/key',{method:'DELETE'}),
+  aiProviderModels: (provider:string,apiKey?:string) => request<{data:Array<{id:string;owned_by:string}>}>('/api/ai/providers/'+encodeURIComponent(provider)+'/models',apiKey===undefined?{}:{method:'POST',body:{api_key:apiKey}}),
+  testAiProvider: (provider:string,model:string) => request<{success:boolean;message:string}>('/api/ai/providers/'+encodeURIComponent(provider)+'/test',{method:'POST',body:{model}}),
+  myAiSettings: () => request<Array<{setting_name:string;setting_value:boolean}>>('/api/ai/my-settings'),
+  health: () => request<{ ok: boolean; backend: string }>("/health"),
+  localFunction,
+  localStorageUpload,
+  localStorageRemove,
+  localStoragePublicUrl: (bucket: string, path: string) => `${localApiUrl()}/api/local-storage/${encodeURIComponent(bucket)}/object?path=${encodeURIComponent(path)}`,
+  dashboardStats: () => request<LocalDashboardStats>("/api/dashboard/stats"),
+  syncRuns: () => request<LocalSyncRun[]>("/api/local-sync/runs"),
+  startSync: () => request<{ started: boolean; mode: string; message: string }>("/api/local-sync/start", { method: "POST", body: {} }),
+  snapshot: (table: string, query?: { search?: string; limit?: number; offset?: number }) => request<{ table: string; rows: Array<{ source_key: string; source_updated_at: string | null; last_seen_at: string; payload: Record<string, unknown> }>; total: number; limit: number; offset: number }>(`/api/local-snapshot/${encodeURIComponent(table)}`, { query }),
+  customers: (query?: { search?: string; includeInactive?: boolean }) => request<LocalCustomer[]>("/api/customers", { query }),
+  customer: (id: string) => request<LocalCustomerDetails>(`/api/customers/${encodeURIComponent(id)}`),
+  createCustomer: (body: Record<string, unknown>) => request<LocalCustomer>("/api/customers", { method: "POST", body }),
+  updateCustomer: (id: string, body: Record<string, unknown>) => request<LocalCustomer>(`/api/customers/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  archiveCustomer: (id: string) => request<{ id: string; is_active: boolean; archived: boolean }>(`/api/customers/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  quotes: (query?: { search?: string; managerId?: string | null; limit?: number; offset?: number }) => request<Array<Record<string, unknown>>>("/api/quotes", { query }),
+  quoteStats: (managerId?: string | null) => request<Record<string, unknown>>("/api/quotes/stats", { query: { managerId } }),
+  quoteData: (id: string) => request<{ quote_data: unknown }>(`/api/quotes/${encodeURIComponent(id)}/quote-data`),
+  createQuote: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/quotes", { method: "POST", body }),
+  updateQuote: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/quotes/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  approveQuote: (id: string) => request<{ quote: Record<string, unknown>; order: Record<string, unknown>; reused: boolean }>(`/api/quotes/${encodeURIComponent(id)}/approve`, { method: "POST", body: {} }),
+  deleteQuote: (id: string) => request<{ id: string }>(`/api/quotes/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  orders: (query?: { search?: string; managerId?: string | null; limit?: number; offset?: number }) => request<Array<Record<string, unknown>>>("/api/orders", { query }),
+  createOrder: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/orders", { method: "POST", body }),
+  deleteOrder: (id: string) => request<Record<string, unknown>>(`/api/orders/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  orderStats: (managerId?: string | null) => request<Record<string, unknown>>("/api/orders/stats", { query: { managerId } }),
+  duplicateOrders: () => request<Array<{ display_number: string; dup_count: number }>>("/api/orders/duplicates"),
+  updateOrder: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/orders/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  contracts: (query?: { search?: string; managerId?: string | null }) => request<Array<Record<string, unknown>>>('/api/contracts', { query }),
+  createContract: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/contracts', { method: 'POST', body }),
+  updateContract: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/contracts/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  deleteContract: (id: string) => request<Record<string, unknown>>(`/api/contracts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  contractTemplates: () => request<Array<Record<string, unknown>>>('/api/contract-templates'),
+  createContractTemplate: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/contract-templates', { method: 'POST', body }),
+  updateContractTemplate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/contract-templates/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  deleteContractTemplate: (id: string) => request<Record<string, unknown>>(`/api/contract-templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  quoteTemplateSettings: () => request<Record<string, unknown> | null>('/api/quote-template-settings'),
+  saveQuoteTemplateSettings: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/quote-template-settings', { method: 'PUT', body }),
+  expenses: (query?: { managerId?: string | null; start?: string | null; end?: string | null }) => request<Array<Record<string, unknown>>>('/api/expenses', { query }),
+  createExpense: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/expenses', { method: 'POST', body }),
+  updateExpense: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/expenses/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  deleteExpense: (id: string) => request<Record<string, unknown>>(`/api/expenses/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  transactions: (query?: { managerId?: string | null; orderId?: string | null; search?: string }) => request<Array<Record<string, unknown>>>('/api/transactions', { query }),
+  createTransaction: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/transactions', { method: 'POST', body }),
+  deleteTransaction: (id: string) => request<Record<string, unknown>>(`/api/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  createOrderPayment: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/order-payments', { method: 'POST', body }),
+  recordOrderPayment: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/order-payments/record', { method: 'POST', body }),
+  deleteOrderPayments: (orderId: string) => request<Record<string, unknown>>(`/api/order-payments/${encodeURIComponent(orderId)}`, { method: 'DELETE' }),
+  assignees: () => request<Array<Record<string, unknown>>>('/api/assignees'),
+  createAssignee: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/assignees', { method: 'POST', body }),
+  updateAssignee: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/assignees/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  deleteAssignee: (id: string) => request<Record<string, unknown>>(`/api/assignees/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  users: () => request<Record<string, unknown>[]>('/api/users'),
+  createUser: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/users', { method: 'POST', body }),
+  updateUser: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/users/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  deleteUser: (id: string) => request<Record<string, unknown>>(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  changeUserPassword: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/users/${encodeURIComponent(id)}/password`, { method: 'POST', body }),
+  employeePermissions: (userId: string) => request<Array<{ user_id: string; permission_type: string; enabled: boolean; assigned_by: string | null; reason: string | null }>>(`/api/users/${encodeURIComponent(userId)}/permissions`),
+  saveEmployeePermissions: (userId: string, permissions: Array<{ permission_type: string; enabled: boolean }>, reason: string) => request<{ user_id: string; permissions: Array<{ permission_type: string; enabled: boolean }>; audit_id: string }>(`/api/users/${encodeURIComponent(userId)}/permissions`, { method: 'PUT', body: { permissions, reason } }),
+  knowledgeDocuments: () => request<Record<string, unknown>[]>('/api/knowledge/documents'),
+  knowledgeChat: (question: string, chatHistory?: Array<Record<string, unknown>>) => request<{ answer: string; sources: Array<{ id: string; title: string; type: string }>; local_only: boolean }>('/api/knowledge/chat', { method: 'POST', body: { question, chatHistory } }),
+  knowledgeChatHistory: (limit = 20) => request<Array<{ question: string; answer: string; sources: unknown[]; created_at: string }>>(`/api/knowledge/chat-history?limit=${limit}`),
+  saveKnowledgeChatHistory: (body: { question: string; answer: string; sources: unknown[] }) => request<Record<string, unknown>>('/api/knowledge/chat-history', { method: 'POST', body }),
+  createKnowledgeDocument: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/knowledge/documents', { method: 'POST', body }),
+  updateKnowledgeDocument: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/knowledge/documents/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  deleteKnowledgeDocument: (id: string) => request<Record<string, unknown>>(`/api/knowledge/documents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  costCategories: () => request<Record<string, unknown>[]>('/api/cost/categories'),
+  createCostCategory: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/cost/categories', { method: 'POST', body }),
+  updateCostCategory: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/cost/categories/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  setCostCategoryActive: (id: string, isActive: boolean) => request<Record<string, unknown>>(`/api/cost/categories/${encodeURIComponent(id)}/active`, { method: 'POST', body: { is_active: isActive } }),
+  costCenters: () => request<Record<string, unknown>[]>('/api/cost/centers'),
+  createCostCenter: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/cost/centers', { method: 'POST', body }),
+  updateCostCenter: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/cost/centers/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  setCostCenterActive: (id: string, isActive: boolean) => request<Record<string, unknown>>(`/api/cost/centers/${encodeURIComponent(id)}/active`, { method: 'POST', body: { is_active: isActive } }),
+  costObjects: () => request<Record<string, unknown>[]>('/api/cost/objects'),
+  createCostObject: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/cost/objects', { method: 'POST', body }),
+  setCostObjectActive: (id: string, isActive: boolean) => request<Record<string, unknown>>(`/api/cost/objects/${encodeURIComponent(id)}/active`, { method: 'POST', body: { is_active: isActive } }),
+  transactionTypes: () => request<Record<string, unknown>[]>('/api/cost/transaction-types'),
+  costUsers: () => request<Record<string, unknown>[]>('/api/cost/users'),
+  costAudit: () => request<Record<string, unknown>[]>('/api/cost/audit'),
+  businessTransactions: () => request<Record<string, unknown>[]>('/api/cost/business-transactions'),
+  createBusinessTransaction: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/cost/business-transactions', { method: 'POST', body }),
+  confirmBusinessTransaction: (id: string, reason?: string) => request<Record<string, unknown>>(`/api/cost/business-transactions/${encodeURIComponent(id)}/confirm`, { method: 'POST', body: { reason } }),
+  voidBusinessTransaction: (id: string, reason: string) => request<Record<string, unknown>>(`/api/cost/business-transactions/${encodeURIComponent(id)}/void`, { method: 'POST', body: { reason } }),
+  einvoices: (contractId?: string) => request<Record<string, unknown>[]>('/api/einvoices', { query: { contractId } }),
+  createEInvoiceDraft: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/einvoices/draft', { method: 'POST', body }),
+  issueLocalEInvoice: (id: string) => request<Record<string, unknown>>(`/api/einvoices/${encodeURIComponent(id)}/issue`, { method: 'POST', body: {} }),
+  previewLocalEInvoice: (id: string) => request<Record<string, unknown>>(`/api/einvoices/${encodeURIComponent(id)}/preview`, { method: 'POST', body: {} }),
+  deleteLocalEInvoice: (id: string) => request<Record<string, unknown>>(`/api/einvoices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  einvoiceTemplates: () => request<Record<string, unknown>>('/api/einvoice-templates'),
+  einvoiceSettings: () => request<Record<string, unknown>>('/api/einvoice-settings'),
+  saveEinvoiceSettings: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/einvoice-settings', { method: 'POST', body }),
+  shippingCompanies: () => request<Record<string, unknown>[]>('/api/shipping-companies'),
+  createShippingCompany: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/shipping-companies', { method: 'POST', body }),
+  updateShippingCompany: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/shipping-companies/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  deleteShippingCompany: (id: string) => request<Record<string, unknown>>(`/api/shipping-companies/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  ghnTracking: (query?: { page?: number; pageSize?: number; search?: string; status?: string; sortBy?: string; sortOrder?: string }) => request<{ rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }>('/api/ghn-tracking', { query }),
+  createGhnTracking: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/ghn-tracking', { method: 'POST', body }),
+  deleteGhnTracking: (id: string) => request<Record<string, unknown>>(`/api/ghn-tracking/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  workers: () => request<ProductionWorker[]>("/api/workers"),
+  createWorker: (body: Record<string, unknown>) => request<ProductionWorker>("/api/workers", { method: "POST", body }),
+  workerMethods: (onDate?: string) => request<WorkerAttendanceMethod[]>("/api/worker-methods", { query: { onDate } }),
+  configureWorkerMethod: (body: Record<string, unknown>) => request<{ attendance_method: AttendanceMethod; profile: WorkerCompensationProfile; rate: WorkerCompensationRate }>("/api/worker-methods", { method: "POST", body }),
+  rates: (workerId?: string | null) => request<WorkerCompensationRate[]>("/api/rates", { query: { workerId } }),
+  createRate: (body: Record<string, unknown>) => request<WorkerCompensationRate>("/api/rates", { method: "POST", body }),
+  factoryAttendance: (monthStart: string, includeReversed = false) => request<{ rows: FactoryAttendanceRow[]; timeClockAvailable: boolean; workflowAvailable: boolean }>("/api/attendance", { query: { month: monthStart.slice(0, 7), includeReversed } }),
+  recordFactoryAttendance: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/attendance", { method: "POST", body }),
+  recordFactoryHourAttendance: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/attendance/hour", { method: "POST", body }),
+  reverseFactoryAttendance: (id: string, reason: string, idempotencyKey: string) => request<Record<string, unknown>>(`/api/attendance/${id}/reverse`, { method: "POST", body: { reason, idempotencyKey } }),
+  setFactoryAttendanceStatus: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/attendance/status", { method: "POST", body }),
+  bulkAttendanceWorkflow: (body: LocalAttendanceBulkWorkflowInput) => request<LocalAttendanceBulkWorkflowResult>("/api/attendance/bulk-workflow", { method: "POST", body }),
+  closures: (monthStart: string) => request<FactoryAttendanceClosureRow[]>("/api/attendance/closures", { query: { month: monthStart.slice(0, 7) } }),
+  dayStatuses: (monthStart: string) => request<FactoryAttendanceDayStatusRow[]>("/api/attendance/day-status", { query: { month: monthStart.slice(0, 7) } }),
+  attendanceHistory: (monthStart: string) => request<FactoryAttendanceHistoryRow[]>("/api/attendance/history", { query: { month: monthStart.slice(0, 7) } }),
+  setDayStatus: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/attendance/day-status", { method: "POST", body }),
+  setDayClosure: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/attendance/closures", { method: "POST", body }),
+  overtime: (monthStart: string) => request<FactoryOvertimeRow[]>("/api/attendance/overtime", { query: { month: monthStart.slice(0, 7) } }),
+  recordOvertime: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/attendance/overtime", { method: "POST", body }),
+  setOvertimeStatus: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/attendance/overtime/status", { method: "POST", body }),
+  productionAttendance: (orderId: string, monthStart: string, includeReversed = false) => request<ProductionAttendanceRow[]>("/api/production-attendance", { query: { orderId, month: monthStart.slice(0, 7), includeReversed } }),
+  assignments: (orderId: string) => request<ProductionOrderWorkerAssignment[]>("/api/production-attendance/assignments", { query: { orderId } }),
+  assign: (body: Record<string, unknown>) => request<ProductionOrderWorkerAssignment>("/api/production-attendance/assignments", { method: "POST", body }),
+  endAssignment: (id: string, body: Record<string, unknown>) => request<ProductionOrderWorkerAssignment>(`/api/production-attendance/assignments/${id}`, { method: "PATCH", body }),
+  setAssignmentEnforcement: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-attendance/assignment-enforcement", { method: "POST", body }),
+  recordProductionAttendance: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-attendance", { method: "POST", body }),
+  reverseProductionAttendance: (id: string, reason: string, idempotencyKey: string) => request<Record<string, unknown>>(`/api/production-attendance/${id}/reverse`, { method: "POST", body: { reason, idempotencyKey } }),
+  productionProducts: (workDate: string, search?: string) => request<ProductionEntryProduct[]>("/api/production/products", { query: { workDate, search } }),
+  productionEntries: (monthStart: string, includeReversed = false) => request<ProductionEntryRow[]>("/api/production/entries", { query: { month: monthStart.slice(0, 7), includeReversed } }),
+  recordProductionEntry: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production/entries", { method: "POST", body }),
+  recordMyProductionEntry: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production/entries", { method: "POST", body: { ...body, self_service: true } }),
+  setProductionEntryStatus: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production/entries/status", { method: "POST", body }),
+  reverseProductionEntry: (id: string, reason: string, idempotencyKey: string) => request<Record<string, unknown>>(`/api/production/entries/${id}/reverse`, { method: "POST", body: { reason, idempotencyKey } }),
+  catalogProducts: (query?: { search?: string; category?: string; priceListId?: string; includeInactive?: boolean }) => request<LocalCatalogProduct[]>("/api/catalog/products", { query }),
+  catalogPriceLists: () => request<Array<{ id: string; name: string; year: number | null; status: string | null; product_count: number }>>("/api/catalog/price-lists"),
+  createCatalogProduct: (body: Record<string, unknown>) => request<LocalCatalogProduct>("/api/catalog/products", { method: "POST", body }),
+  updateCatalogProduct: (id: string, body: Record<string, unknown>) => request<LocalCatalogProduct>(`/api/catalog/products/${id}`, { method: "PATCH", body }),
+  setCatalogProductActive: (id: string, isActive: boolean) => request<{ id: string; is_active: boolean }>(`/api/catalog/products/${id}/active`, { method: "POST", body: { is_active: isActive } }),
+  setCatalogProductRate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/catalog/products/${id}/rate`, { method: "POST", body }),
+  inventoryItems: () => request<InventoryItem[]>("/api/inventory/items"),
+  createInventoryItem: (body: Record<string, unknown>) => request<InventoryItem>("/api/inventory/items", { method: "POST", body }),
+  updateInventoryItem: (id: string, body: Record<string, unknown>) => request<InventoryItem>(`/api/inventory/items/${id}`, { method: "PATCH", body }),
+  setInventoryItemActive: (id: string, isActive: boolean) => request<Record<string, unknown>>(`/api/inventory/items/${id}/active`, { method: "POST", body: { is_active: isActive } }),
+  inventoryWarehouses: () => request<InventoryWarehouse[]>("/api/inventory/warehouses"),
+  inventoryBusinessTransactions: (documentType: InventoryDocumentType) => request<InventoryBusinessTransaction[]>("/api/inventory/business-transactions", { query: { documentType } }),
+  inventorySummary: () => request<Record<string, unknown>[]>("/api/inventory/summary"),
+  inventoryBalances: () => request<InventoryBalance[]>("/api/inventory/balances"),
+  inventoryDocuments: (limit = 500) => request<InventoryDocument[]>("/api/inventory/documents", { query: { limit } }),
+  inventoryMovements: (itemId?: string | null, limit = 1000) => request<InventoryMovement[]>("/api/inventory/movements", { query: { itemId, limit } }),
+  inventoryReturnSources: () => request<InventoryReturnSource[]>("/api/inventory/return-sources"),
+  inventoryReconciliation: () => request<InventoryReconciliation[]>("/api/inventory/reconciliation"),
+  inventoryAudit: () => request<InventoryAuditEvent[]>("/api/inventory/audit"),
+  inventoryProductionOrders: () => request<ProductionOrderForIssue[]>("/api/inventory/production-orders"),
+  productionOrders: (query?: { status?: string; product_id?: string; order_id?: string }) => request<Record<string, unknown>[]>("/api/production-orders", { query: { status: query?.status, productId: query?.product_id, orderId: query?.order_id } }),
+  productionDispatch: (orderId: string) => request<import('./production-dispatch-types').ProductionDispatchData>(`/api/production-dispatch?orderId=${encodeURIComponent(orderId)}`),
+  myProductionDispatch: () => request<import('./production-dispatch-types').ProductionDispatchData>("/api/production-dispatch/mine"),
+  productionDispatchRates: (date: string) => request<import('./production-dispatch-types').DispatchRate[]>(`/api/production-dispatch/rates?date=${encodeURIComponent(date)}`),
+  productionDispatchPublications: (mine = false) => request<import('./production-dispatch-types').DispatchPublication[]>("/api/production-dispatch/publications", { query: { mine: mine ? "1" : "0" } }),
+  createProductionDispatchPublication: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-dispatch/publications", { method: "POST", body }),
+  claimProductionDispatchPublication: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/publications/${encodeURIComponent(id)}/claim`, { method: "POST", body }),
+  closeProductionDispatchPublication: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/publications/${encodeURIComponent(id)}/close`, { method: "POST", body }),
+  createProductionDispatchAssignment: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-dispatch/assignments", { method: "POST", body }),
+  acceptProductionDispatchAssignment: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/assignments/${encodeURIComponent(id)}/accept`, { method: "POST", body }),
+  returnProductionDispatchAssignment: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/assignments/${encodeURIComponent(id)}/return`, { method: "POST", body }),
+  rejectProductionDispatchAssignment: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/assignments/${encodeURIComponent(id)}/reject`, { method: "POST", body }),
+  reportProductionDispatchAssignment: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/assignments/${encodeURIComponent(id)}/reports`, { method: "POST", body }),
+  reviewProductionDispatchReport: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/reports/${encodeURIComponent(id)}/review`, { method: "POST", body }),
+  reverseProductionDispatchReport: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/reports/${encodeURIComponent(id)}/reverse`, { method: "POST", body }),
+  repairProductionDispatchReport: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/reports/${encodeURIComponent(id)}/repair`, { method: "POST", body }),
+  createProductionDispatchBatch: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-dispatch/batches", { method: "POST", body }),
+  updateProductionDispatchBatch: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/batches/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  splitProductionDispatchBatch: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/batches/${encodeURIComponent(id)}/split`, { method: "POST", body }),
+  productionOrder: (id: string) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}`),
+  createProductionOrder: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-orders", { method: "POST", body }),
+  createProductionOrderGroup: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-orders/groups", { method: "POST", body }),
+  releaseProductionOrder: (id: string, body?: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}/release`, { method: "POST", body: body ?? {} }),
+  completeProductionOrder: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}/complete`, { method: "POST", body }),
+  transitionProductionOrder: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}/transition`, { method: "POST", body }),
+  productionSourceOrders: () => request<Record<string, unknown>[]>("/api/production/source-orders"),
+  productionSalesRequests: (mine = false) => request<import('./production-dispatch-types').ProductionSalesRequest[]>("/api/production-sales/requests", { query: { mine } }),
+  createProductionSalesRequest: (body: Record<string, unknown>) => request<import('./production-dispatch-types').ProductionSalesRequest>("/api/production-sales/requests", { method: "POST", body }),
+  reviewProductionSalesRequest: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-sales/requests/${encodeURIComponent(id)}/review`, { method: "POST", body }),
+  requestProductionSalesChange: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-sales/requests/${encodeURIComponent(id)}/change-request`, { method: "POST", body }),
+  allocateProductionSalesRequest: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-sales/requests/${encodeURIComponent(id)}/allocate`, { method: "POST", body }),
+  cuttingEstimates: (orderId: string) => request<import('./production-dispatch-types').CuttingEstimate[]>(`/api/production-orders/${encodeURIComponent(orderId)}/cutting-estimates`),
+  createCuttingEstimate: (orderId: string, body: Record<string, unknown>) => request<import('./production-dispatch-types').CuttingEstimate>(`/api/production-orders/${encodeURIComponent(orderId)}/cutting-estimates`, { method: "POST", body }),
+  submitCuttingEstimate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/cutting-estimates/${encodeURIComponent(id)}/submit`, { method: "POST", body }),
+  reviewCuttingEstimate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/cutting-estimates/${encodeURIComponent(id)}/review`, { method: "POST", body }),
+  issueCuttingEstimateMaterial: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/cutting-estimates/${encodeURIComponent(id)}/material-issue`, { method: "POST", body }),
+  saveFabricInventoryMapping: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/fabric-inventory-mappings", { method: "POST", body }),
+  productionFabricVariants: (search?: string | null) => request<Record<string, unknown>[]>("/api/production/fabric-variants", { query: { search } }),
+  productionOrderItems: (id: string) => request<Record<string, unknown>[]>(`/api/production-orders/${encodeURIComponent(id)}/items`),
+  productionMaterialRequirements: (id: string) => request<Record<string, unknown>[]>(`/api/production-orders/${encodeURIComponent(id)}/material-requirements`),
+  productionOperations: (id: string) => request<Record<string, unknown>[]>(`/api/production-orders/${encodeURIComponent(id)}/operations`),
+  productionOutputs: (id: string) => request<Record<string, unknown>[]>(`/api/production-orders/${encodeURIComponent(id)}/outputs`),
+  productionOperationLogs: (id: string) => request<Record<string, unknown>[]>(`/api/production-operations/${encodeURIComponent(id)}/logs`),
+  createProductionOperationLog: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-operations/${encodeURIComponent(id)}/logs`, { method: "POST", body }),
+  calculateProductionOrderLaborCost: (id: string) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}/labor-cost`),
+  recordProductionScrap: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production/scrap", { method: "POST", body }),
+  recordProductionRework: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production/rework", { method: "POST", body }),
+  startProductionOperation: (id: string, body?: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-operations/${encodeURIComponent(id)}/start`, { method: "POST", body: body ?? {} }),
+  completeProductionOperation: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-operations/${encodeURIComponent(id)}/complete`, { method: "POST", body }),
+  productionBatches: (id: string) => request<Record<string, unknown>[]>(`/api/production-orders/${encodeURIComponent(id)}/batches`),
+  setProductionBatchStatus: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-batches/${encodeURIComponent(id)}/status`, { method: "POST", body }),
+  productionStageEvents: (id: string) => request<Record<string, unknown>[]>(`/api/production-orders/${encodeURIComponent(id)}/stage-events`),
+  createProductionStageEvent: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-stage-events", { method: "POST", body }),
+  setProductionStageEventStatus: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-stage-events/${encodeURIComponent(id)}/status`, { method: "POST", body }),
+  reverseProductionStageEvent: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-stage-events/${encodeURIComponent(id)}/reverse`, { method: "POST", body }),
+  productionFabricAllocations: (id: string) => request<Record<string, unknown>[]>(`/api/production-orders/${encodeURIComponent(id)}/fabric-allocations`),
+  productionFabricStock: (fabricVariantId?: string | null) => request<Record<string, unknown>[]>("/api/production/fabric-stock", { query: { fabricVariantId } }),
+  issueProductionFabric: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production/fabric-allocations", { method: "POST", body }),
+  updateProductionFabricAllocation: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production/fabric-allocations/${encodeURIComponent(id)}/adjust`, { method: "POST", body }),
+  manufacturingProducts: (search?: string) => request<Record<string, unknown>[]>("/api/manufacturing/products", { query: { search } }),
+  manufacturingProfile: (productId: string) => request<Record<string, unknown> | null>(`/api/manufacturing/products/${encodeURIComponent(productId)}/profile`),
+  saveManufacturingProfile: (body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/manufacturing/products/${encodeURIComponent(String(body.product_id))}/profile`, { method: "PUT", body }),
+  bomWorkspace: (productId: string) => request<Record<string, unknown>>(`/api/manufacturing/products/${encodeURIComponent(productId)}/bom`),
+  bomLines: (versionId: string) => request<Record<string, unknown>[]>(`/api/manufacturing/bom/versions/${encodeURIComponent(versionId)}/lines`),
+  createBomDraft: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/manufacturing/bom/drafts", { method: "POST", body }),
+  saveBomDraft: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/manufacturing/bom/versions/${encodeURIComponent(id)}`, { method: "PUT", body }),
+  approveBomVersion: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/manufacturing/bom/versions/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
+  routingWorkspace: (productId: string) => request<Record<string, unknown>>(`/api/manufacturing/products/${encodeURIComponent(productId)}/routing`),
+  routingOperations: (versionId: string) => request<Record<string, unknown>[]>(`/api/manufacturing/routing/versions/${encodeURIComponent(versionId)}/operations`),
+  createRoutingDraft: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/manufacturing/routing/drafts", { method: "POST", body }),
+  saveRoutingDraft: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/manufacturing/routing/versions/${encodeURIComponent(id)}`, { method: "PUT", body }),
+  approveRoutingVersion: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/manufacturing/routing/versions/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
+  cuttingProfiles: (productId: string) => request<Record<string, unknown>[]>(`/api/manufacturing/products/${encodeURIComponent(productId)}/cutting-profiles`),
+  cuttingVersions: (profileId: string) => request<Record<string, unknown>[]>(`/api/manufacturing/cutting-profiles/${encodeURIComponent(profileId)}/versions`),
+  createCuttingDraft: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/manufacturing/cutting-profiles/drafts", { method: "POST", body }),
+  saveCuttingDraft: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/manufacturing/cutting-versions/${encodeURIComponent(id)}`, { method: "PUT", body }),
+  approveCuttingVersion: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/manufacturing/cutting-versions/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
+  calculateCutting: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/manufacturing/cutting-versions/${encodeURIComponent(id)}/calculate`, { method: "POST", body }),
+  calculateMaterialRequirements: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/manufacturing/material-requirements/calculate", { method: "POST", body }),
+  fabricTypes: () => request<Array<Record<string, unknown>>>("/api/fabrics/types"),
+  fabricVariants: () => request<Array<Record<string, unknown>>>("/api/fabrics/variants"),
+  fabricWidths: () => request<Array<Record<string, unknown>>>("/api/fabrics/widths"),
+  fabricWarehouses: () => request<Array<Record<string, unknown>>>("/api/fabrics/warehouses"),
+  fabricInventory: () => request<Array<Record<string, unknown>>>("/api/fabrics/inventory"),
+  fabricTransactions: () => request<Array<Record<string, unknown>>>("/api/fabrics/transactions"),
+  fabricTransfers: () => request<Array<Record<string, unknown>>>("/api/fabrics/transfers"),
+  fabricUsage: (orderId?: string | null) => request<Array<Record<string, unknown>>>("/api/fabrics/usage", { query: { orderId } }),
+  createFabricUsageBatch: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/fabrics/usage/batch", { method: "POST", body }),
+  updateFabricUsage: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/fabrics/usage/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  deleteFabricUsage: (id: string) => request<Record<string, unknown>>(`/api/fabrics/usage/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  createFabricType: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/fabrics/types", { method: "POST", body }),
+  updateFabricType: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/fabrics/types/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  deleteFabricType: (id: string) => request<Record<string, unknown>>(`/api/fabrics/types/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  createFabricVariant: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/fabrics/variants", { method: "POST", body }),
+  createFabricWidth: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/fabrics/widths", { method: "POST", body }),
+  updateFabricInventory: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/fabrics/inventory", { method: "POST", body }),
+  createFabricTransaction: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/fabrics/transactions", { method: "POST", body }),
+  updateFabricTransaction: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/fabrics/transactions/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  createFabricTransfer: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/fabrics/transfers", { method: "POST", body }),
+  updateFabricTransferStatus: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/fabrics/transfers/${encodeURIComponent(id)}/status`, { method: "PATCH", body }),
+  createInventoryDocument: (body: { document_type: InventoryDocumentType; transaction_at: string; warehouse_id: string; to_warehouse_id?: string | null; description: string; idempotency_key: string; lines: InventoryDocumentLineInput[]; business_transaction_id?: string | null; counterparty_name?: string | null; external_reference?: string | null; reason?: string | null; production_order_id?: string | null }) => request<Record<string, unknown>>("/api/inventory/documents", { method: "POST", body }),
+  confirmInventoryDocument: (id: string) => request<Record<string, unknown>>(`/api/inventory/documents/${id}/confirm`, { method: "POST", body: {} }),
+  voidInventoryDocument: (id: string, reason: string) => request<Record<string, unknown>>(`/api/inventory/documents/${id}/void`, { method: "POST", body: { reason } }),
+  payrollWorkers: (includeInactive = false) => request<Record<string, unknown>[]>("/api/payroll/workers", { query: { includeInactive } }),
+  updatePayrollWorker: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/workers/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  payrollCapabilities: (userId?: string | null) => request<Record<string, unknown>[]>("/api/payroll/capabilities", { query: { userId } }),
+  payrollTeamAssignments: (query?: { supervisorWorkerId?: string | null; workerId?: string | null; onDate?: string | null }) => request<Record<string, unknown>[]>("/api/payroll/team-assignments", { query }),
+  createPayrollTeamAssignment: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/team-assignments", { method: "POST", body }),
+  retirePayrollTeamAssignment: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/team-assignments/${encodeURIComponent(id)}/retire`, { method: "POST", body }),
+  payrollPolicyGroups: () => request<Record<string, unknown>[]>("/api/payroll/policy-groups"),
+  upsertPayrollPolicyGroup: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/policy-groups", { method: "POST", body }),
+  payrollRates: (workerId?: string | null) => request<WorkerCompensationRate[]>("/api/payroll/rates", { query: { workerId } }),
+  createPayrollRate: (body: Record<string, unknown>) => request<WorkerCompensationRate>("/api/payroll/rates", { method: "POST", body }),
+  updatePayrollRate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/rates/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  approvePayrollRate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/rates/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
+  discardPayrollRate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/rates/${encodeURIComponent(id)}/discard`, { method: "POST", body }),
+  payrollCompensationAssignments: (workerId?: string | null) => request<Record<string, unknown>[]>("/api/payroll/compensation-assignments", { query: { workerId } }),
+  createPayrollCompensationAssignment: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/compensation-assignments", { method: "POST", body }),
+  updatePayrollCompensationAssignment: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/compensation-assignments/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  approvePayrollCompensationAssignment: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/compensation-assignments/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
+  discardPayrollCompensationAssignment: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/compensation-assignments/${encodeURIComponent(id)}/discard`, { method: "POST", body }),
+  workerPayrollProfiles: (workerId?: string | null) => request<WorkerPayrollProfile[]>("/api/payroll/worker-profiles", { query: { workerId } }),
+  saveWorkerPayrollBundle: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/worker-profile-bundle", { method: "POST", body }),
+  createWorkerPayrollProfile: (body: Record<string, unknown>) => request<WorkerPayrollProfile>("/api/payroll/worker-profiles", { method: "POST", body }),
+  updateWorkerPayrollProfile: (id: string, body: Record<string, unknown>) => request<WorkerPayrollProfile>(`/api/payroll/worker-profiles/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  approveWorkerPayrollProfile: (id: string, body: Record<string, unknown>) => request<WorkerPayrollProfile>(`/api/payroll/worker-profiles/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
+  discardWorkerPayrollProfile: (id: string, body: Record<string, unknown>) => request<WorkerPayrollProfile>(`/api/payroll/worker-profiles/${encodeURIComponent(id)}/discard`, { method: "POST", body }),
+  payrollProducts: () => request<Record<string, unknown>[]>("/api/payroll/products"),
+  payrollProductRates: (productId?: string | null) => request<Record<string, unknown>[]>("/api/payroll/product-rates", { query: { productId } }),
+  createProductRate: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/product-rates", { method: "POST", body }),
+  updateProductRate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/product-rates/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  approveProductRate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/product-rates/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
+  discardProductRate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/product-rates/${encodeURIComponent(id)}/discard`, { method: "POST", body }),
+  payrollInsurance: (workerId?: string | null) => request<Record<string, unknown>[]>("/api/payroll/insurance", { query: { workerId } }),
+  createPayrollInsurance: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/insurance", { method: "POST", body }),
+  updatePayrollInsurance: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/insurance/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  approvePayrollInsurance: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/insurance/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
+  discardPayrollInsurance: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/insurance/${encodeURIComponent(id)}/discard`, { method: "POST", body }),
+  payrollAdjustments: (query?: { workerId?: string | null; status?: string | null; periodStart?: string | null; periodEnd?: string | null }) => request<PayrollAdjustment[]>("/api/payroll/adjustments", { query }),
+  createPayrollAdjustment: (body: Record<string, unknown>) => request<PayrollAdjustment & { reused?: boolean }>("/api/payroll/adjustments", { method: "POST", body }),
+  updatePayrollAdjustment: (id: string, body: Record<string, unknown>) => request<PayrollAdjustment>(`/api/payroll/adjustments/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  submitPayrollAdjustment: (id: string, body: Record<string, unknown>) => request<{ id: string; status: string }>(`/api/payroll/adjustments/${encodeURIComponent(id)}/submit`, { method: "POST", body }),
+  approvePayrollAdjustment: (id: string, body: Record<string, unknown>) => request<{ id: string; status: string }>(`/api/payroll/adjustments/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
+  rejectPayrollAdjustment: (id: string, body: Record<string, unknown>) => request<{ id: string; status: string }>(`/api/payroll/adjustments/${encodeURIComponent(id)}/reject`, { method: "POST", body }),
+  payrollBankAccounts: (workerId?: string | null) => request<Record<string, unknown>[]>("/api/payroll/bank-accounts", { query: { workerId } }),
+  createPayrollBankAccount: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/bank-accounts", { method: "POST", body }),
+  updatePayrollBankAccount: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/bank-accounts/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  verifyPayrollBankAccount: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/bank-accounts/${encodeURIComponent(id)}/verify`, { method: "POST", body }),
+  discardPayrollBankAccount: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/bank-accounts/${encodeURIComponent(id)}/discard`, { method: "POST", body }),
+  payrollRuns: () => request<Record<string, unknown>[]>("/api/payroll/runs"),
+  previewPayrollImport: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/import/preview", { method: "POST", body }),
+  applyPayrollImport: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/import/apply", { method: "POST", body }),
+  payrollPreflight: (query?: { period_start?: string; period_end?: string; standard_days?: number | null; worker_ids?: string }) => request<Record<string, unknown>>("/api/payroll/preflight", { query }),
+  payrollRun: (id: string) => request<Record<string, unknown>>(`/api/payroll/runs/${id}`),
+  createPayrollRun: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/runs", { method: "POST", body }),
+  lockPayrollRun: (id: string) => request<Record<string, unknown>>(`/api/payroll/runs/${id}/lock`, { method: "POST", body: {} }),
+
+  // ── Tài khoản / liên kết công nhân / chấm công tự phục vụ ──
+  me: () => request<import("./local-auth").LocalMe>("/api/local-auth/me"),
+  myProfile: () => request<LocalSelfProfile>("/api/my-profile"),
+  saveMyProfile: (profile: Record<string, string | null>) => request<LocalSelfProfile>("/api/my-profile", { method: "PATCH", body: { profile } }),
+  submitMyProfile: (profile?: Record<string, string | null>) => request<LocalSelfProfile>("/api/my-profile/submit", { method: "POST", body: profile ? { profile } : {} }),
+  profileRequests: (status = "SUBMITTED") => request<Record<string, unknown>[]>("/api/profile-requests", { query: { status } }),
+  reviewProfileRequest: (userId: string, decision: "APPROVED" | "NEEDS_INFO", note?: string, workerId?: string) => request<LocalSelfProfile>(`/api/profile-requests/${encodeURIComponent(userId)}/review`, { method: "POST", body: { decision, note, worker_id: workerId } }),
+  workerLink: (userId: string) => request<LocalWorkerLinkResponse>(
+    `/api/users/${encodeURIComponent(userId)}/worker-link`),
+  saveWorkerLink: (userId: string, workerId: string | null, reason?: string) => request<LocalWorkerLinkResponse>(
+    `/api/users/${encodeURIComponent(userId)}/worker-link`, { method: "PATCH", body: { worker_id: workerId, reason } }),
+  myAttendance: (monthStart?: string) => request<{ rows: FactoryAttendanceRow[]; worker: { id: string; employee_code: string; display_name: string } }>(
+    "/api/my-attendance", { query: { month: monthStart } }),
+  myAttendanceContext: (workDate?: string) => request<MyAttendanceContext>(
+    "/api/my-attendance/context", { query: { date: workDate } }),
+  myDayStatuses: (monthStart?: string) => request<Record<string, unknown>[]>(
+    "/api/my-attendance/day-status", { query: { month: monthStart } }),
+  recordMyAttendance: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/my-attendance", { method: "POST", body }),
+  recordMyDayStatus: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/my-attendance/day-status", { method: "POST", body }),
+  myOvertime: (monthStart?: string) => request<Record<string, unknown>[]>("/api/my-attendance/overtime", { query: { month: monthStart } }),
+  recordMyOvertime: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/my-attendance/overtime", { method: "POST", body }),
+  myProductionEntries: (monthStart?: string) => request<Record<string, unknown>[]>("/api/my-attendance/production-entries", { query: { month: monthStart } }),
+  myProductEarnings: (month?: string) => request<import('./production-dispatch-types').ProductEarnings>("/api/my-attendance/earnings", { query: { month } }),
+  confirmMyAttendanceDay: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/my-attendance/day-confirm", { method: "POST", body }),
+};
+
+export type LocalAttendanceStatus = AttendanceWorkflowStatus;
+export type LocalDayStatus = FactoryAttendanceDayStatus;

@@ -28,6 +28,8 @@ import { useNavigate } from "react-router-dom";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import type { User } from "@supabase/supabase-js";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import {
   getCostBreakdown,
   getNextPeriodStart,
@@ -98,6 +100,13 @@ const ReportsPage = () => {
         queryClient.invalidateQueries({ queryKey: ["products-batch-reports"] });
       }, 1000);
     };
+    if (isLocalBackend()) {
+      const timer = window.setInterval(invalidateReports, 30000);
+      return () => {
+        window.clearInterval(timer);
+        if (invalidationTimer) clearTimeout(invalidationTimer);
+      };
+    }
     const channel = supabase
       .channel(`reports-sync-${Date.now()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, invalidateReports)
@@ -138,6 +147,17 @@ const ReportsPage = () => {
   const { data: orders = [], isLoading: ordersLoading } = useQuery({
     queryKey: ["orders-reports", reportQueryRange.from.toISOString(), reportQueryRange.to.toISOString()],
     queryFn: async () => {
+      if (isLocalBackend()) {
+        const all = await localApi.orders({ limit: 5000 });
+        return all.filter((row) => {
+          const created = new Date(String(row.created_at || 0)).getTime();
+          const delivered = row.delivered_date ? new Date(String(row.delivered_date)).getTime() : NaN;
+          const updated = new Date(String(row.updated_at || 0)).getTime();
+          return (created >= reportQueryRange.from.getTime() && created <= reportQueryRange.to.getTime()) ||
+            (Number.isFinite(delivered) && delivered >= reportQueryRange.from.getTime() && delivered <= reportQueryRange.to.getTime()) ||
+            (updated >= reportQueryRange.from.getTime() && updated <= reportQueryRange.to.getTime() && ["delivered", "self_delivered"].includes(String(row.status)));
+        });
+      }
       const fetchByDate = async (column: "created_at" | "delivered_date" | "updated_at") => {
         const rows: any[] = [];
         for (let offset = 0; ; offset += 1000) {
@@ -191,6 +211,10 @@ const ReportsPage = () => {
   const { data: reportQuotes = [], isLoading: quotesLoading } = useQuery({
     queryKey: ["quotes-reports", reportQuoteIds],
     queryFn: async () => {
+      if (isLocalBackend()) {
+        const rows = await localApi.quotes({ limit: 5000 });
+        return rows.filter((row) => reportQuoteIds.includes(String(row.id)));
+      }
       const rows: Array<Record<string, unknown>> = [];
       for (let index = 0; index < reportQuoteIds.length; index += 200) {
         const { data, error } = await supabase
@@ -229,6 +253,10 @@ const ReportsPage = () => {
     queryKey: ["customers-reports", reportCustomerIds],
     queryFn: async () => {
       if (reportCustomerIds.length === 0) return [];
+      if (isLocalBackend()) {
+        const rows = await localApi.customers({ includeInactive: true });
+        return rows.filter((row) => reportCustomerIds.includes(row.id));
+      }
       const rows: any[] = [];
       for (let offset = 0; offset < reportCustomerIds.length; offset += 200) {
         const { data, error } = await supabase
@@ -247,6 +275,7 @@ const ReportsPage = () => {
   const { data: expenses = [], isLoading: expensesLoading } = useQuery({
     queryKey: ["expenses-reports", reportQueryRange.from.toISOString(), reportQueryRange.to.toISOString()],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.expenses({ start: reportQueryRange.from.toISOString(), end: reportQueryRange.to.toISOString() });
       const rows: any[] = [];
       for (let offset = 0; ; offset += 1000) {
         const { data, error } = await supabase
@@ -268,6 +297,13 @@ const ReportsPage = () => {
   const { data: orderPayments = [], isLoading: paymentsLoading } = useQuery({
     queryKey: ["order-payments-reports", reportQueryRange.from.toISOString(), reportQueryRange.to.toISOString()],
     queryFn: async () => {
+      if (isLocalBackend()) {
+        const rows = await localApi.orders({ limit: 5000 });
+        return rows.flatMap((order) => (Array.isArray(order.order_payments) ? order.order_payments : []).filter((payment: any) => {
+          const date = new Date(String(payment.payment_date || 0)).getTime();
+          return date >= reportQueryRange.from.getTime() && date <= reportQueryRange.to.getTime();
+        }).map((payment: any) => ({ ...payment, order_id: order.id })));
+      }
       const rows: any[] = [];
       for (let offset = 0; ; offset += 1000) {
         const { data, error } = await supabase
@@ -293,6 +329,11 @@ const ReportsPage = () => {
   const { data: allOrderPayments = [], isLoading: allPaymentsLoading } = useQuery({
     queryKey: ["order-payments-for-report-orders", reportOrderIds],
     queryFn: async () => {
+      if (isLocalBackend()) {
+        const rows = await localApi.orders({ limit: 5000 });
+        const orderSet = new Set(reportOrderIds);
+        return rows.filter((order) => orderSet.has(String(order.id))).flatMap((order) => (Array.isArray(order.order_payments) ? order.order_payments : []).map((payment: any) => ({ ...payment, order_id: order.id })));
+      }
       const rows: any[] = [];
       const CHUNK_SIZE = 200;
 
@@ -343,6 +384,11 @@ const ReportsPage = () => {
     queryKey: ['products-batch-reports', getAllProductIdentifiers()],
     queryFn: async () => {
       const { productIds, productSkus } = getAllProductIdentifiers();
+      if (isLocalBackend()) {
+        if (productIds.length === 0 && productSkus.length === 0) return [];
+        const rows = await localApi.catalogProducts({ includeInactive: true });
+        return rows.map((row) => ({ id: row.id, sku: row.sku, cost_price: row.cost_price }));
+      }
       
       if (productIds.length === 0 && productSkus.length === 0) {
         return [];

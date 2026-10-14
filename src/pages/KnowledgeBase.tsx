@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useUserRole } from "@/hooks/useUserRole";
+import { isLocalBackend, localAdminUser } from "@/lib/runtime-config";
 import { KnowledgeDocumentManager } from "@/components/KnowledgeDocumentManager";
 import { KnowledgeChatbot } from "@/components/KnowledgeChatbot";
 import { BookOpen, MessageSquare, FileText } from "lucide-react";
@@ -9,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const KnowledgeBase = () => {
+  const localMode = isLocalBackend();
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
   const { role } = useUserRole(user);
@@ -22,7 +24,7 @@ const KnowledgeBase = () => {
       }
       setUser(user);
     });
-  }, [navigate]);
+  }, [navigate, localMode]);
 
   const isManager = role === "admin" || role === "manager";
 
@@ -37,7 +39,7 @@ const KnowledgeBase = () => {
         <Tabs defaultValue="chat" className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="mx-3 mt-2 grid grid-cols-2">
             <TabsTrigger value="chat">
-              <MessageSquare className="h-4 w-4 mr-1" /> Chat AI
+              <MessageSquare className="h-4 w-4 mr-1" /> Trò chuyện với AI
             </TabsTrigger>
             <TabsTrigger value="docs">
               <FileText className="h-4 w-4 mr-1" /> Tài liệu

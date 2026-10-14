@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Upload, Folder, Image, Trash2, Plus, FolderOpen, Edit2, Eye, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { transformImageUrl } from '@/lib/imageUrl';
+import { isLocalBackend } from '@/lib/runtime-config';
 
 interface ProductImage {
   id: string;
@@ -30,8 +31,8 @@ interface ProductImageLibraryProps {
 }
 
 // Cache key for localStorage
-const CACHE_KEY = 'productImageLibrary_cache';
-const CACHE_EXPIRY_KEY = 'productImageLibrary_cache_expiry';
+const CACHE_KEY = `productImageLibrary_cache_${isLocalBackend() ? 'local' : 'supabase'}`;
+const CACHE_EXPIRY_KEY = `${CACHE_KEY}_expiry`;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 phút
 
 const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton = false }: ProductImageLibraryProps) => {

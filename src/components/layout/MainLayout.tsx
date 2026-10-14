@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from '@tanstack/react-query';
+import type { User as AuthUser } from "@supabase/supabase-js";
 import { useNavigate, Outlet } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -16,15 +18,37 @@ import {
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
+import { isLocalBackend, isLocalDemoEnabled, localAdminUser } from "@/lib/runtime-config";
+import { clearLocalSession, getLocalMe, hasStoredLocalUserSession, logoutLocal } from "@/lib/local-auth";
 
 const MainLayout = () => {
-  const [user, setUser] = useState<any>(null);
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const navigate = useNavigate();
   const { role: userRole, loading: roleLoading } = useUserRole(user);
 
   useEffect(() => {
+    if (isLocalBackend()) {
+      let cancelled = false;
+      if (!hasStoredLocalUserSession()) {
+        setUser(isLocalDemoEnabled() ? localAdminUser as unknown as AuthUser : null);
+        if (!isLocalDemoEnabled()) navigate('/auth', { replace: true });
+        setLoading(false);
+      } else {
+        void getLocalMe()
+          .then((me) => { if (!cancelled) setUser({
+            ...localAdminUser,
+            id: me.user_id,
+            email: me.email,
+            user_metadata: { first_name: me.first_name ?? '', last_name: me.last_name ?? '' },
+          } as unknown as AuthUser); })
+          .catch(() => { if (!cancelled) { setUser(null); navigate("/auth", { replace: true }); } })
+          .finally(() => { if (!cancelled) setLoading(false); });
+      }
+      return () => { cancelled = true; };
+    }
     // Get current user
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -51,6 +75,16 @@ const MainLayout = () => {
   }, [navigate]);
 
   const handleSignOut = async () => {
+    if (isLocalBackend()) {
+      // Đăng xuất được cả tài khoản người dùng và tài khoản quản trị demo.
+      // Phiên quản trị loopback chỉ nằm trong bộ nhớ nên cần xóa riêng.
+      await logoutLocal();
+      queryClient.clear();
+      clearLocalSession();
+      toast({ title: "Đăng xuất thành công", description: "Bạn đã thoát khỏi hệ thống local." });
+      navigate("/auth", { replace: true });
+      return;
+    }
     try {
       await supabase.auth.signOut();
       toast({
@@ -58,10 +92,10 @@ const MainLayout = () => {
         description: "Hẹn gặp lại bạn!",
       });
       navigate("/auth");
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Lỗi đăng xuất",
-        description: error.message,
+        description: error instanceof Error ? error.message : "Không thể đăng xuất.",
         variant: "destructive",
       });
     }
@@ -73,6 +107,7 @@ const MainLayout = () => {
       case 'manager': return 'Quản lý';
       case 'accountant': return 'Kế toán';
       case 'employee': return 'Nhân viên';
+      case 'team_leader': return 'Tổ trưởng';
       default: return 'Chưa phân quyền';
     }
   };
@@ -83,6 +118,7 @@ const MainLayout = () => {
       case 'manager': return 'default' as const;
       case 'accountant': return 'outline' as const;
       case 'employee': return 'secondary' as const;
+      case 'team_leader': return 'secondary' as const;
       default: return 'outline' as const;
     }
   };
@@ -102,24 +138,24 @@ const MainLayout = () => {
         <AppSidebar />
         
         {/* Main Content */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
           {/* Header */}
-          <header className="h-16 border-b bg-card shadow-soft flex items-center justify-between px-4">
-            <div className="flex items-center gap-4">
+          <header className="h-16 min-w-0 border-b bg-card shadow-soft flex items-center justify-between gap-2 px-3 sm:px-4">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-4">
               <SidebarTrigger className="hover:bg-sidebar-accent" />
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-gradient-primary rounded-lg">
                   <Building2 className="h-6 w-6 text-white" />
                 </div>
-                <div>
+                <div className="hidden min-w-0 sm:block">
                   <h1 className="text-xl font-bold text-foreground">CRM Pro</h1>
                   <p className="text-xs text-muted-foreground">Hệ thống quản lý khách hàng</p>
                 </div>
               </div>
             </div>
             
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" className="hover:bg-sidebar-accent">
+            <div className="flex shrink-0 items-center gap-1 sm:gap-2 xl:gap-4">
+              <Button variant="ghost" size="icon" className="hidden hover:bg-sidebar-accent lg:inline-flex">
                 <Bell className="h-5 w-5" />
               </Button>
               <Button 
@@ -131,16 +167,16 @@ const MainLayout = () => {
               >
                 <Key className="h-5 w-5" />
               </Button>
-              <Button variant="ghost" size="icon" className="hover:bg-sidebar-accent">
+              <Button variant="ghost" size="icon" className="hidden hover:bg-sidebar-accent lg:inline-flex">
                 <Settings className="h-5 w-5" />
               </Button>
               
-              <div className="flex items-center gap-3 pl-4 border-l">
+              <div className="flex items-center gap-2 border-l pl-2 xl:gap-3 xl:pl-4">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center">
                     <User className="h-4 w-4 text-white" />
                   </div>
-                  <div className="text-right">
+                  <div className="hidden text-right xl:block">
                     <p className="text-sm font-medium text-foreground">
                       {user?.user_metadata?.first_name || "Admin"} {user?.user_metadata?.last_name || "User"}
                     </p>
@@ -153,16 +189,16 @@ const MainLayout = () => {
                   </div>
                 </div>
                 
-                <Button variant="outline" size="sm" onClick={handleSignOut} className="ml-2">
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Đăng xuất
+                <Button variant="outline" size="sm" onClick={handleSignOut} className="ml-1 px-2 xl:ml-2 xl:px-3" aria-label="Đăng xuất">
+                  <LogOut className="h-4 w-4 xl:mr-2" />
+                  <span className="hidden xl:inline">Đăng xuất</span>
                 </Button>
               </div>
             </div>
           </header>
           
           {/* Page Content */}
-          <main className="flex-1 p-6 bg-gradient-card">
+          <main className="min-w-0 flex-1 overflow-x-hidden bg-gradient-card p-3 sm:p-4 lg:p-6">
             <Outlet />
           </main>
         </div>

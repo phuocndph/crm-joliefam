@@ -23,7 +23,7 @@ export const PreviewPdfDialog = ({ open, onOpenChange, base64, title, loading }:
               <Loader2 className="h-5 w-5 animate-spin mr-2" /> Đang tải PDF...
             </div>
           ) : src ? (
-            <iframe src={src} className="w-full h-full border-0" title="invoice-preview" />
+            <iframe src={src} className="w-full h-full border-0" title="Xem trước hóa đơn" />
           ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground">
               Không có dữ liệu PDF để hiển thị

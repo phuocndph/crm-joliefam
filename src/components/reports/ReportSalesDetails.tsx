@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -39,6 +41,7 @@ const ReportSalesDetails = ({ filteredOrders, monthlyData, formatCurrency }: Rep
   const { data: assignees = [] } = useQuery({
     queryKey: ["assignees-reports"],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.assignees();
       const { data, error } = await supabase.from("assignees").select("*").order("name");
       if (error) throw error;
       return data;

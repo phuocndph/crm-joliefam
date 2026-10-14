@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { isLocalBackend } from '@/lib/runtime-config';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -215,7 +216,7 @@ const ProductManagement = () => {
 
       // Fallback: nếu RLS ẩn sản phẩm (khác manager), dùng RPC catalog an toàn
       // để vẫn hiển thị danh sách (không trả cost_price).
-      if (!error && selectedPriceList && (count ?? 0) === 0) {
+      if (!isLocalBackend() && !error && selectedPriceList && (count ?? 0) === 0) {
         const offset = (currentPage - 1) * itemsPerPage;
         const { data: rpcData, error: rpcError } = await (supabase as any).rpc('get_products_catalog', {
           _price_list_id: selectedPriceList,
@@ -545,7 +546,7 @@ const ProductManagement = () => {
         const stats = data.stats;
         const lossy = stats && (stats.totalDataRows !== stats.savedProducts);
         toast({
-          title: lossy ? "Import có chênh lệch" : "Thành công",
+          title: lossy ? "Dữ liệu nhập có chênh lệch" : "Thành công",
           description: data.message,
           variant: lossy ? "destructive" : "default",
         });
@@ -560,7 +561,7 @@ const ProductManagement = () => {
       console.error('Error importing products:', error);
       toast({
         title: "Lỗi",
-        description: error.message || "Không thể import sản phẩm",
+        description: error.message || "Không thể nhập sản phẩm",
         variant: "destructive",
       });
     } finally {
@@ -1145,17 +1146,17 @@ const ProductManagement = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileSpreadsheet className="h-5 w-5" />
-                  Import & Quản lý
+                  Nhập dữ liệu & Quản lý
                 </CardTitle>
                 <CardDescription>
-                  Import sản phẩm từ Google Sheets hoặc thêm thủ công
+                  Nhập sản phẩm từ Google Sheets hoặc thêm thủ công
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="flex-1">
                     <Input
-                      placeholder="Nhập link Google Sheets để import..."
+                      placeholder="Nhập liên kết Google Sheets để tải dữ liệu..."
                       value={googleSheetsUrl}
                       onChange={(e) => setGoogleSheetsUrl(e.target.value)}
                     />
@@ -1171,7 +1172,7 @@ const ProductManagement = () => {
                       className="flex items-center gap-2"
                     >
                       <Settings className="h-4 w-4" />
-                      Import
+                      Nhập dữ liệu
                     </Button>
                     <Button
                       onClick={() => {
@@ -1346,7 +1347,7 @@ const ProductManagement = () => {
                               Nhập dữ liệu theo cột (dán từ Excel)
                             </h4>
                             <p className="text-xs text-muted-foreground mb-3">
-                              Copy dữ liệu từ Excel và dán vào ô bên dưới. Mỗi dòng là một sản phẩm, các cột tự động phân tách.
+                              Sao chép dữ liệu từ Excel và dán vào ô bên dưới. Mỗi dòng là một sản phẩm, các cột tự động phân tách.
                             </p>
                             
                             {/* Table header visual guide */}
@@ -1380,7 +1381,7 @@ const ProductManagement = () => {
                             </div>
                             
                             <div className="space-y-1 text-xs text-muted-foreground">
-                              <p>✓ Copy trực tiếp từ Excel (dùng Tab để phân tách cột)</p>
+                              <p>✓ Sao chép trực tiếp từ Excel (dùng phím Tab để phân tách cột)</p>
                               <p>✓ Hoặc nhập thủ công với dấu "|" phân tách: <code className="bg-background px-1 rounded">SP001 | Áo thun | Áo | ...</code></p>
                               <p>✓ Tình trạng: 1 = Còn hàng, 0 = Hết hàng</p>
                               <p>✓ Chỉ cần Mã SP và Tên SP là bắt buộc</p>
@@ -1396,7 +1397,7 @@ const ProductManagement = () => {
                               value={bulkPasteText}
                               onChange={(e) => setBulkPasteText(e.target.value)}
                               rows={12}
-                              placeholder="Chọn và copy các cột từ Excel, sau đó dán vào đây...&#10;&#10;Ví dụ:&#10;SP001    Áo thun trắng    Áo    Size M    100000    150000    Cotton 100%    1&#10;SP002    Quần jean xanh    Quần    Size L    200000    300000    Jean co giãn    1"
+                              placeholder="Chọn và sao chép các cột từ Excel, sau đó dán vào đây...&#10;&#10;Ví dụ:&#10;SP001    Áo thun trắng    Áo    Size M    100000    150000    Cotton 100%    1&#10;SP002    Quần jean xanh    Quần    Size L    200000    300000    Jean co giãn    1"
                               className="font-mono text-xs resize-none"
                             />
                             <p className="text-xs text-muted-foreground">

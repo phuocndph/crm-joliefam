@@ -18,6 +18,8 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { ManagerSelector } from "@/components/ManagerSelector";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileTransactionList } from "@/components/MobileTransactionList";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface Order {
   id: string;
@@ -44,6 +46,7 @@ interface Order {
   assignees?: {
     name: string;
   };
+  order_payments?: OrderPayment[];
 }
 
 interface OrderPayment {
@@ -93,6 +96,7 @@ const TransactionManagement = () => {
 
   // Set up real-time synchronization for orders and payments
   useEffect(() => {
+    if (isLocalBackend()) return;
     console.log('🔧 Setting up real-time order & payment sync...');
     let invalidateTimer: ReturnType<typeof setTimeout> | undefined;
     const scheduleInvalidate = (key: string[]) => {
@@ -122,6 +126,7 @@ const TransactionManagement = () => {
   const { data: ordersData = [], isLoading: ordersLoading } = useQuery({
     queryKey: ['orders', selectedManagerId],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.orders({ managerId: selectedManagerId, limit: 5000 }) as unknown as Promise<Order[]>;
       let ordersQuery = supabase
         .from("orders")
         .select(`
@@ -156,7 +161,7 @@ const TransactionManagement = () => {
       const { data, error } = await ordersQuery;
       
       if (error) throw error;
-      return data || [];
+      return (data || []) as unknown as Order[];
     },
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -169,6 +174,7 @@ const TransactionManagement = () => {
     queryKey: ['order-payments', selectedManagerId, orderIds],
     enabled: orderIds.length > 0,
     queryFn: async () => {
+      if (isLocalBackend()) return ordersData.flatMap((order: any) => (order.order_payments || []).map((payment: any) => ({ ...payment, order_id: order.id })));
       const rows: OrderPayment[] = [];
       for (let i = 0; i < orderIds.length; i += 200) {
         const { data, error } = await supabase
@@ -190,6 +196,11 @@ const TransactionManagement = () => {
     queryKey: ['all-order-expenses', selectedManagerId, orderIds],
     enabled: orderIds.length > 0,
     queryFn: async () => {
+      if (isLocalBackend()) {
+        const rows = await localApi.transactions({ managerId: selectedManagerId });
+        const orderIdSet = new Set(orderIds);
+        return rows.filter((row) => row.type === 'expense' && row.order_id && orderIdSet.has(String(row.order_id))).map((row) => ({ id: String(row.id), order_id: String(row.order_id), amount: Number(row.amount || 0) }));
+      }
       const rows: Array<{ id: string; order_id: string; amount: number }> = [];
       for (let i = 0; i < orderIds.length; i += 200) {
         let query = supabase
@@ -241,6 +252,15 @@ const TransactionManagement = () => {
 
   const loadOrderPaymentDetails = async (orderId: string) => {
     try {
+      if (isLocalBackend()) {
+        const order = orders.find((item) => item.id === orderId);
+        const payments = (order?.order_payments || []) as OrderPayment[];
+        const expenses = (await localApi.transactions({ orderId })).filter((row) => row.type === 'expense');
+        setSelectedOrder((current) => current?.id === orderId ? { ...current, ...(order?.items ? { items: order.items } : {}), notes: order?.notes } : current);
+        setSelectedOrderPayments(payments);
+        setSelectedOrderExpenses(expenses);
+        return;
+      }
       const [orderDetailsRes, paymentsRes, expensesRes] = await Promise.all([
         supabase
           .from("orders")
@@ -277,6 +297,12 @@ const TransactionManagement = () => {
 
   const updatePaymentStatus = async (orderId: string, newStatus: 'pending' | 'partial' | 'paid') => {
     try {
+      if (isLocalBackend()) {
+        await localApi.updateOrder(orderId, { payment_status: newStatus, payment_date: newStatus === 'paid' ? new Date().toISOString() : null });
+        toast({ title: "Thành công", description: "Đã cập nhật trạng thái thanh toán" });
+        await queryClient.invalidateQueries({ queryKey: ['orders'] });
+        return;
+      }
       const { error } = await supabase
         .from("orders")
         .update({ 

@@ -13,6 +13,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 interface Profile {
   id: string;
@@ -58,6 +60,13 @@ const DeleteUserDialog = ({ open, onOpenChange, profile, currentUserRole, onUser
 
     setLoading(true);
     try {
+      if (isLocalBackend()) {
+        await localApi.deleteUser(profile.user_id);
+        toast({ title: "Thành công", description: "Đã vô hiệu hóa người dùng local" });
+        onUserDeleted();
+        onOpenChange(false);
+        return;
+      }
       // Call edge function to delete user
       const { error } = await supabase.functions.invoke('delete-user', {
         body: { userId: profile.user_id }

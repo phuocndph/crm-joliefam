@@ -1,4 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 export interface DashboardStats {
   totalRevenue: number;
@@ -22,6 +24,10 @@ const emptyStats: DashboardStats = {
 
 /** Loads dashboard statistics while avoiding full orders/quotes table downloads. */
 export const loadDashboardStats = async (): Promise<DashboardStats> => {
+  if (isLocalBackend()) {
+    return localApi.dashboardStats();
+  }
+
   const currentMonth = new Date();
   currentMonth.setDate(1);
   currentMonth.setHours(0, 0, 0, 0);

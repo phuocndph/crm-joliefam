@@ -171,7 +171,7 @@ export const AIOrderAnalysis = ({ onItemsExtracted }: AIOrderAnalysisProps) => {
           {/* Image preview */}
           {orderImagePreview && (
             <div className="relative inline-block">
-              <img src={orderImagePreview} alt="Preview" className="max-h-32 rounded-md border border-border object-contain" />
+              <img src={orderImagePreview} alt="Xem trước" className="max-h-32 rounded-md border border-border object-contain" />
               <Button type="button" variant="destructive" size="icon" className="absolute -top-2 -right-2 h-5 w-5 rounded-full" onClick={() => setOrderImagePreview(null)}>
                 <Trash2 className="h-3 w-3" />
               </Button>

@@ -350,7 +350,7 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
             {imagePreview && (
               <div className="flex items-start gap-2">
                 <div className="relative group">
-                  <img src={imagePreview} alt="Preview" className="w-24 h-24 object-cover rounded-lg border-2 border-purple-300" />
+                  <img src={imagePreview} alt="Xem trước" className="w-24 h-24 object-cover rounded-lg border-2 border-purple-300" />
                   <button
                     type="button"
                     onClick={removeImage}

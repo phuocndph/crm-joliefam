@@ -409,7 +409,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
               </div>
               {imagePreview && (
                 <div className="relative mt-2 inline-block">
-                  <img src={imagePreview} alt="Preview" className="max-h-32 rounded-md border border-border object-contain" />
+                  <img src={imagePreview} alt="Xem trước" className="max-h-32 rounded-md border border-border object-contain" />
                   <Button type="button" variant="destructive" size="icon" className="absolute -top-2 -right-2 h-5 w-5 rounded-full" onClick={() => setImagePreview(null)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>

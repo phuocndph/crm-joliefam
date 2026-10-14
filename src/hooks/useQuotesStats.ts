@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 /**
  * Lightweight stats query — fetches only `status` and `total_amount`.
@@ -9,6 +11,15 @@ export const useQuotesStats = (managerId?: string | null) => {
   return useQuery({
     queryKey: ['quotes-stats', managerId ?? 'all'],
     queryFn: async () => {
+      if (isLocalBackend()) {
+        const result = await localApi.quoteStats(managerId);
+        return {
+          total: Number(result.total ?? 0),
+          sent: Number(result.sent_count ?? 0),
+          approved: Number(result.approved_count ?? 0),
+          totalValue: Number(result.approved_value ?? 0),
+        };
+      }
       const { data: aggregate, error: aggregateError } = await supabase.rpc('get_quote_stats', {
         p_manager_id: managerId && managerId !== 'all' ? managerId : null,
       });

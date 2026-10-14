@@ -1,15 +1,28 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
+
+type OrderStats = {
+  total: number;
+  pendingCount: number;
+  processingCount: number;
+  completedCount: number;
+  overdueCount: number;
+  totalReceivable: number;
+  totalValue: number;
+};
 
 /**
  * Lightweight stats over ALL orders (not just paginated rows).
  * Selects only the columns needed for dashboard counters.
  */
 export const useOrdersStats = (managerId?: string | null, enabled: boolean = true) => {
-  return useQuery({
+  return useQuery<OrderStats>({
     queryKey: ['orders-stats', managerId ?? 'all'],
     enabled,
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.orderStats(managerId) as Promise<OrderStats>;
       const { data: aggregate, error: aggregateError } = await supabase.rpc('get_order_stats', {
         p_manager_id: managerId && managerId !== 'all' ? managerId : null,
       });

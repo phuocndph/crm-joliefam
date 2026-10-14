@@ -16,6 +16,8 @@ import {
   User
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { useToast } from "@/hooks/use-toast";
 
 interface PredictiveAnalyticsCellProps {
@@ -24,7 +26,7 @@ interface PredictiveAnalyticsCellProps {
 
 interface Prediction {
   type: string;
-  value: number;
+  value: number | string;
   confidence: number;
   factors: any;
 }
@@ -42,6 +44,10 @@ const PredictiveAnalyticsCell = ({ customer }: PredictiveAnalyticsCellProps) => 
 
   const loadPredictions = async () => {
     try {
+      if (isLocalBackend()) {
+        setPredictions([]); // Never incur paid inference merely by opening a customer list.
+        return;
+      }
       const { data, error } = await supabase
         .from('customer_predictions')
         .select('*')
@@ -71,19 +77,23 @@ const PredictiveAnalyticsCell = ({ customer }: PredictiveAnalyticsCellProps) => 
     try {
       setLoading(true);
       
-      const { data, error } = await supabase.functions.invoke('predictive-analytics', {
-        body: { 
-          customer_id: customer.id,
-          prediction_types: ['purchase_probability', 'churn_risk', 'optimal_contact_time']
-        }
-      });
-
-      if (error) throw error;
+      const body = {
+        customer_id: customer.id,
+        prediction_types: ['purchase_probability', 'churn_risk', 'optimal_contact_time']
+      };
+      let data: { predictions?: Prediction[] } | null;
+      if (isLocalBackend()) {
+        data = await localApi.localFunction<{ predictions?: Prediction[] }>('predictive-analytics', body);
+      } else {
+        const response = await supabase.functions.invoke('predictive-analytics', { body });
+        if (response.error) throw response.error;
+        data = response.data as { predictions?: Prediction[] };
+      }
 
       if (data && data.predictions) {
         setPredictions(data.predictions);
         toast({
-          title: "Predictions Updated",
+          title: "Đã cập nhật dự đoán",
           description: "AI đã phân tích và cập nhật dự đoán cho khách hàng",
         });
       }
@@ -106,13 +116,14 @@ const PredictiveAnalyticsCell = ({ customer }: PredictiveAnalyticsCellProps) => 
   const getPurchaseProbability = () => getPrediction('purchase_probability');
   const getChurnRisk = () => getPrediction('churn_risk');
   const getOptimalTime = () => getPrediction('optimal_contact_time');
+  const scoreValue = (prediction?: Prediction) => Number(prediction?.value ?? 0);
 
   const getPurchaseIcon = () => {
     const prediction = getPurchaseProbability();
     if (!prediction) return <ShoppingCart className="h-4 w-4 text-gray-400" />;
     
-    if (prediction.value >= 70) return <TrendingUp className="h-4 w-4 text-green-600" />;
-    if (prediction.value >= 40) return <TrendingUp className="h-4 w-4 text-yellow-600" />;
+    if (scoreValue(prediction) >= 70) return <TrendingUp className="h-4 w-4 text-green-600" />;
+    if (scoreValue(prediction) >= 40) return <TrendingUp className="h-4 w-4 text-yellow-600" />;
     return <TrendingDown className="h-4 w-4 text-red-600" />;
   };
 
@@ -120,8 +131,8 @@ const PredictiveAnalyticsCell = ({ customer }: PredictiveAnalyticsCellProps) => 
     const prediction = getChurnRisk();
     if (!prediction) return <User className="h-4 w-4 text-gray-400" />;
     
-    if (prediction.value >= 70) return <AlertTriangle className="h-4 w-4 text-red-600" />;
-    if (prediction.value >= 40) return <AlertTriangle className="h-4 w-4 text-yellow-600" />;
+    if (scoreValue(prediction) >= 70) return <AlertTriangle className="h-4 w-4 text-red-600" />;
+    if (scoreValue(prediction) >= 40) return <AlertTriangle className="h-4 w-4 text-yellow-600" />;
     return <User className="h-4 w-4 text-green-600" />;
   };
 
@@ -145,7 +156,8 @@ const PredictiveAnalyticsCell = ({ customer }: PredictiveAnalyticsCellProps) => 
     }
   };
 
-  const formatTime = (hour: number) => {
+  const formatTime = (hour: number | string) => {
+    if (typeof hour === "string" && hour.includes(":")) return hour;
     return `${hour}:00`;
   };
 
@@ -196,11 +208,11 @@ const PredictiveAnalyticsCell = ({ customer }: PredictiveAnalyticsCellProps) => 
                       <ShoppingCart className="h-4 w-4 text-green-600" />
                       <span className="text-sm font-medium">Khả năng mua hàng</span>
                     </div>
-                    <Badge variant="outline" className={getScoreColor(getPurchaseProbability()!.value)}>
+                    <Badge variant="outline" className={getScoreColor(scoreValue(getPurchaseProbability()))}>
                       {getPurchaseProbability()!.value}%
                     </Badge>
                   </div>
-                  <Progress value={getPurchaseProbability()!.value} className="h-2" />
+                  <Progress value={scoreValue(getPurchaseProbability())} className="h-2" />
                   <p className="text-xs text-muted-foreground">
                     Confidence: {getPurchaseProbability()!.confidence}%
                   </p>
@@ -215,11 +227,11 @@ const PredictiveAnalyticsCell = ({ customer }: PredictiveAnalyticsCellProps) => 
                       <AlertTriangle className="h-4 w-4 text-red-600" />
                       <span className="text-sm font-medium">Nguy cơ Lost</span>
                     </div>
-                    <Badge variant="outline" className={getScoreColor(getChurnRisk()!.value, true)}>
+                    <Badge variant="outline" className={getScoreColor(scoreValue(getChurnRisk()), true)}>
                       {getChurnRisk()!.value}%
                     </Badge>
                   </div>
-                  <Progress value={getChurnRisk()!.value} className="h-2" />
+                  <Progress value={scoreValue(getChurnRisk())} className="h-2" />
                   <p className="text-xs text-muted-foreground">
                     Confidence: {getChurnRisk()!.confidence}%
                   </p>
@@ -264,12 +276,12 @@ const PredictiveAnalyticsCell = ({ customer }: PredictiveAnalyticsCellProps) => 
 
       {/* Quick indicators */}
       <div className="flex gap-1">
-        {getPurchaseProbability() && getPurchaseProbability()!.value >= 70 && (
+        {getPurchaseProbability() && scoreValue(getPurchaseProbability()) >= 70 && (
           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
             🎯 High Buy
           </Badge>
         )}
-        {getChurnRisk() && getChurnRisk()!.value >= 70 && (
+        {getChurnRisk() && scoreValue(getChurnRisk()) >= 70 && (
           <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
             ⚠️ Risk Lost
           </Badge>

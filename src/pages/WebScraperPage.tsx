@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,6 +41,12 @@ interface ScrapeResult {
   data: ScrapedRow[];
 }
 
+interface WebScraperResponse {
+  data?: Array<{ id?: string; context_window?: number; name?: string }>;
+  results?: ScrapeResult[];
+  local_only?: boolean;
+}
+
 const WebScraperPage = () => {
   const { toast } = useToast();
   const [urls, setUrls] = useState("");
@@ -56,12 +64,19 @@ const WebScraperPage = () => {
   useEffect(() => {
     const fetchModels = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke("web-scraper", {
-          body: { action: "list_models" },
-        });
-        if (data?.data) {
-          const chatModels = data.data
-            .filter((m: any) => m.id && m.context_window)
+        let payload: WebScraperResponse | null = null;
+        if (isLocalBackend()) {
+          payload = await localApi.localFunction<WebScraperResponse>("web-scraper", { action: "list_models" });
+        } else {
+          const { data, error } = await supabase.functions.invoke("web-scraper", {
+            body: { action: "list_models" },
+          });
+          if (error) throw error;
+          payload = data as WebScraperResponse;
+        }
+        if (payload?.data) {
+          const chatModels = payload.data
+            .filter((m: any) => m.id && (m.context_window || isLocalBackend()))
             .map((m: any) => m.id)
             .sort();
           setModels(chatModels.length > 0 ? chatModels : FALLBACK_MODELS);
@@ -89,7 +104,7 @@ const WebScraperPage = () => {
 
     setIsLoading(true);
     setProgress(0);
-    setProgressText(`Đang xử lý 0/${urlList.length} URLs...`);
+    setProgressText(`Đang xử lý 0/${urlList.length} URL...`);
     setResults([]);
     setAllRows([]);
     setColumns([]);
@@ -105,14 +120,20 @@ const WebScraperPage = () => {
       for (let i = 0; i < urlList.length; i += batchSize) {
         const batch = urlList.slice(i, i + batchSize);
         batchPromises.push(
-          supabase.functions.invoke("web-scraper", {
-            body: { urls: batch, model, prompt },
-          }).then(({ data, error }) => {
-            if (error) {
-              console.error("Batch error:", error);
-              return batch.map(u => ({ url: u, success: false, error: error.message, data: [] }));
-            }
-            return data?.results || [];
+          (isLocalBackend()
+            ? localApi.localFunction<WebScraperResponse>("web-scraper", { urls: batch, model, prompt }).then((data) => data.results || [])
+            : supabase.functions.invoke("web-scraper", {
+                body: { urls: batch, model, prompt },
+              }).then(({ data, error }) => {
+                if (error) {
+                  console.error("Batch error:", error);
+                  return batch.map(u => ({ url: u, success: false, error: error.message, data: [] }));
+                }
+                return (data as WebScraperResponse | null)?.results || [];
+              })
+          ).catch((error) => {
+            console.error("Batch error:", error);
+            return batch.map(u => ({ url: u, success: false, error: error instanceof Error ? error.message : "Trình thu thập dữ liệu cục bộ gặp lỗi", data: [] }));
           })
         );
       }
@@ -125,7 +146,7 @@ const WebScraperPage = () => {
       for (const result of batchResults) {
         completed++;
         setProgress((completed / totalBatches) * 100);
-        setProgressText(`Hoàn tất ${completed}/${totalBatches} batch...`);
+        setProgressText(`Đã hoàn tất ${completed}/${totalBatches} nhóm URL...`);
         
         if (result.status === "fulfilled") {
           allResults.push(...result.value);
@@ -150,12 +171,12 @@ const WebScraperPage = () => {
       const successCount = allResults.filter((r) => r.success).length;
       const totalRows = rows.length;
       toast({
-        title: "Hoàn tất cào dữ liệu",
-        description: `${successCount}/${allResults.length} URLs thành công, ${totalRows} bản ghi`,
+        title: "Hoàn tất thu thập dữ liệu",
+        description: `${successCount}/${allResults.length} URL thành công, ${totalRows} bản ghi`,
       });
     } catch (e) {
       console.error("Scrape error:", e);
-      toast({ title: "Lỗi", description: "Đã xảy ra lỗi khi cào dữ liệu", variant: "destructive" });
+      toast({ title: "Lỗi", description: "Đã xảy ra lỗi khi thu thập dữ liệu", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -185,10 +206,10 @@ const WebScraperPage = () => {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Globe className="h-6 w-6" />
-            Cào dữ liệu từ Web
+            Thu thập dữ liệu từ web
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Nhập URL, chọn model AI và tùy chỉnh prompt để trích xuất dữ liệu
+            Nhập URL, chọn mô hình AI và tùy chỉnh yêu cầu để trích xuất dữ liệu
           </p>
         </div>
       </div>
@@ -219,7 +240,7 @@ const WebScraperPage = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label>Model AI</Label>
+                <Label>Mô hình AI</Label>
                 <Select value={model} onValueChange={setModel}>
                   <SelectTrigger>
                     <SelectValue />
@@ -263,12 +284,12 @@ const WebScraperPage = () => {
             {isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Đang cào dữ liệu...
+                Đang thu thập dữ liệu...
               </>
             ) : (
               <>
                 <Play className="h-4 w-4 mr-2" />
-                Bắt đầu cào
+                Bắt đầu thu thập
               </>
             )}
           </Button>
@@ -288,7 +309,7 @@ const WebScraperPage = () => {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center justify-between">
-                  Trạng thái URLs
+                  Trạng thái URL
                   <Badge variant="outline">
                     {results.filter((r) => r.success).length}/{results.length} thành công
                   </Badge>

@@ -11,6 +11,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { FileText, Send, Loader2, Plus, Trash2, Search, Save, RotateCcw, Eye, Eraser } from "lucide-react";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface CreateEInvoiceDialogProps {
   open: boolean;
@@ -131,6 +133,17 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
   const fetchTemplates = useCallback(async () => {
     setLoadingTemplates(true);
     try {
+      if (isLocalBackend()) {
+        const localResult = await localApi.einvoiceTemplates();
+        const parsed = normalizeTemplateData(localResult);
+        setTemplates(parsed);
+        if (parsed.length > 0) {
+          setTemplateCode(parsed[0].templateCode);
+          setSeriesList(parsed[0].invoiceSeries);
+          setInvoiceSeries(parsed[0].invoiceSeries[0] || "");
+        }
+        return;
+      }
       const { data, error } = await supabase.functions.invoke("vinvoice-api", {
         body: { action: "get_templates", invoiceType: "01GTKT" },
       });
@@ -205,6 +218,10 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
     if (!buyerTaxCode.trim()) { toast.error("Vui lòng nhập mã số thuế"); return; }
     setLookingUp(true);
     try {
+      if (isLocalBackend()) {
+        toast.info("Tra cứu MST trực tuyến được tắt trong hệ thống cục bộ để không gọi Supabase/Viettel.");
+        return;
+      }
       const { data, error } = await supabase.functions.invoke("lookup-tax-code", {
         body: { type: "tax_code", data: buyerTaxCode.trim() },
       });
@@ -261,6 +278,13 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
     if (!templateCode || !invoiceSeries) { toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn"); return; }
     setLoading(true);
     try {
+      if (isLocalBackend()) {
+        const result = await localApi.createEInvoiceDraft({ contract: buildInvoicePayload(), options: buildOptions() });
+        toast.info("Đã lưu hóa đơn ở trạng thái nháp cục bộ", { description: "Hệ thống cục bộ không phát hành trực tiếp lên Viettel." });
+        queryClient.invalidateQueries({ queryKey: ["einvoices"] });
+        onOpenChange(false);
+        return;
+      }
       const { data, error } = await supabase.functions.invoke("vinvoice-api", {
         body: { action: "create_invoice", contract: buildInvoicePayload(), options: buildOptions() },
       });
@@ -280,6 +304,13 @@ export const CreateEInvoiceDialog = ({ open, onOpenChange, contract }: CreateEIn
     if (!templateCode || !invoiceSeries) { toast.error("Vui lòng nhập Mã mẫu và Ký hiệu hoá đơn"); return; }
     setSavingDraft(true);
     try {
+      if (isLocalBackend()) {
+        await localApi.createEInvoiceDraft({ contract: buildInvoicePayload(), options: buildOptions() });
+        toast.success("Đã lưu hoá đơn nháp cục bộ");
+        queryClient.invalidateQueries({ queryKey: ["einvoices"] });
+        onOpenChange(false);
+        return;
+      }
       const { data, error } = await supabase.functions.invoke("vinvoice-api", {
         body: { action: "create_draft", contract: buildInvoicePayload(), options: buildOptions() },
       });

@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 export interface ContractTemplate {
   id: string;
@@ -36,6 +38,10 @@ export const useContractTemplates = () => {
   return useQuery({
     queryKey: ['contract_templates'],
     queryFn: async () => {
+      if (isLocalBackend()) {
+        const data = await localApi.contractTemplates();
+        return (data as any[]).map(t => ({ ...t, legal_basis: Array.isArray(t.legal_basis) ? t.legal_basis : [], seller_info: t.seller_info || {}, item_columns: Array.isArray(t.item_columns) ? t.item_columns : [], articles: Array.isArray(t.articles) ? t.articles : defaultArticles, payment_terms: t.payment_terms || { deposit_percentage: 70, payment_stages: [] } })) as ContractTemplate[];
+      }
       const { data, error } = await supabase
         .from('contract_templates' as any)
         .select('*')
@@ -57,6 +63,7 @@ export const useCreateContractTemplate = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (template: Partial<ContractTemplate>) => {
+      if (isLocalBackend()) return localApi.createContractTemplate({ ...template, articles: template.articles || defaultArticles });
       const { data, error } = await supabase
         .from('contract_templates' as any)
         .insert({
@@ -82,6 +89,7 @@ export const useUpdateContractTemplate = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...updates }: any) => {
+      if (isLocalBackend()) return localApi.updateContractTemplate(id, updates);
       const { data, error } = await supabase
         .from('contract_templates' as any)
         .update(updates)
@@ -99,6 +107,7 @@ export const useDeleteContractTemplate = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      if (isLocalBackend()) { await localApi.deleteContractTemplate(id); return; }
       const { error } = await supabase
         .from('contract_templates' as any)
         .delete()

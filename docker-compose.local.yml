@@ -1,0 +1,16 @@
+services:
+  crm-local-postgres:
+    image: postgres:16-alpine
+    container_name: crm-joliefam-local-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: crm_local
+      POSTGRES_USER: crm_local
+      POSTGRES_PASSWORD: crm_local_dev_only
+    ports:
+      - "55432:5432"
+    volumes:
+      - crm_local_pgdata:/var/lib/postgresql/data
+
+volumes:
+  crm_local_pgdata:

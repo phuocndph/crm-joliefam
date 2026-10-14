@@ -37,6 +37,8 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 const paymentFormSchema = z.object({
   paymentAmount: z.number().min(1, "Số tiền phải lớn hơn 0"),
@@ -85,6 +87,11 @@ export function CreatePaymentForm({
   React.useEffect(() => {
     if (orderExpenses !== undefined) return;
     const fetchExpenses = async () => {
+      if (isLocalBackend()) {
+        const rows = await localApi.transactions({ orderId });
+        setFetchedExpenses(rows.filter((row) => row.type === 'expense').reduce((sum, row) => sum + Number(row.amount || 0), 0));
+        return;
+      }
       const { data } = await supabase
         .from('transactions')
         .select('amount')
@@ -167,16 +174,6 @@ export function CreatePaymentForm({
       };
 
       console.log('💰 Creating payment:', paymentData);
-      const { error } = await supabase
-        .from("order_payments")
-        .insert(paymentData);
-
-      if (error) {
-        console.error('❌ Error inserting payment:', error);
-        throw error;
-      }
-
-      console.log('✅ Payment inserted successfully');
 
       // Also create a transaction record
       const transactionData = {
@@ -193,6 +190,38 @@ export function CreatePaymentForm({
         tenant_id: 'default',
         manager_id: managerId,
       };
+
+      if (isLocalBackend()) {
+        await localApi.recordOrderPayment({
+          ...paymentData,
+          transaction: transactionData,
+          deduction: hasDeduction && deductionAmount > 0 ? {
+            amount: deductionAmount,
+            category: 'shipping_fee',
+            description: deductionDescription || `Phí vận chuyển đơn hàng #${orderNumber}`,
+            expense_code: `CP-${orderNumber}-${Date.now().toString(36).toUpperCase()}`,
+            expense_date: data.paymentDate.toISOString(),
+            manager_id: managerId || 'local-admin',
+          } : null,
+          total_paid_before: totalPaid,
+          order_total_amount: totalAmount,
+        });
+        toast({ title: "Thành công", description: "Đã thêm thanh toán thành công" });
+        onSubmit();
+        onClose();
+        return;
+      }
+
+      const { error } = await supabase
+        .from("order_payments")
+        .insert(paymentData);
+
+      if (error) {
+        console.error('❌ Error inserting payment:', error);
+        throw error;
+      }
+
+      console.log('✅ Payment inserted successfully');
 
       console.log('📊 Creating transaction:', transactionData);
       const { error: transactionError } = await supabase.from('transactions').insert(transactionData);
@@ -316,6 +345,13 @@ export function CreatePaymentForm({
   const deleteAllPayments = async () => {
     setLoading(true);
     try {
+      if (isLocalBackend()) {
+        await localApi.deleteOrderPayments(orderId);
+        await localApi.updateOrder(orderId, { payment_status: "pending", payment_date: null });
+        toast({ title: "Thành công", description: "Đã xóa tất cả thanh toán trước đó" });
+        onSubmit();
+        return;
+      }
       // Delete all payments for this order
       const { error: paymentError } = await supabase
         .from("order_payments")

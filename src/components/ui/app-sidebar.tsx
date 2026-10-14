@@ -20,6 +20,9 @@ import {
   CircleDollarSign,
   Boxes,
   Factory,
+  CalendarCheck2,
+  WalletCards,
+  UserRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
@@ -28,6 +31,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useEmployeePermissions, type PermissionType } from "@/hooks/useEmployeePermissions";
+import { isLocalBackend, isLocalDemoEnabled, localAdminUser } from "@/lib/runtime-config";
+import { getLocalMe, hasStoredLocalUserSession, hasLocalUserSession } from "@/lib/local-auth";
 
 import {
   Sidebar,
@@ -41,12 +46,13 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type MenuItem = { title: string; url: string; icon: LucideIcon; description: string; permission: PermissionType | PermissionType[] };
+type MenuItem = { title: string; url: string; icon: LucideIcon; description: string; permission: PermissionType | PermissionType[]; integrationAdmin?: boolean };
 
 const menuItems: MenuItem[] = [
-  { 
-    title: "Dashboard", 
-    url: "/dashboard", 
+  { title: 'API & kết nối Agent', url: '/integration-access', icon: Settings, description: 'Cấp khóa và quyền cho Hermes', permission: 'user_management', integrationAdmin: true },
+  {
+    title: "Tổng quan",
+    url: "/dashboard",
     icon: Home,
     description: "Tổng quan & thống kê",
     permission: "dashboard" as const
@@ -92,6 +98,34 @@ const menuItems: MenuItem[] = [
     icon: Factory,
     description: "Kế hoạch và thực tế sản xuất",
     permission: "production_view" as const
+  },
+  {
+    title: "Chấm công xưởng",
+    url: "/production-attendance",
+    icon: CalendarCheck2,
+    description: "Bảng công toàn bộ nhân sự xưởng",
+    permission: "production_view" as const
+  },
+  {
+    title: "Chấm công của tôi",
+    url: "/my-attendance",
+    icon: UserCheck,
+    description: "Tự ghi chấm công và sản lượng của bạn",
+    permission: "__self_attendance__" as unknown as PermissionType
+  },
+  {
+    title: "Hồ sơ của tôi",
+    url: "/my-profile",
+    icon: UserRound,
+    description: "Tự khai và cập nhật hồ sơ nhân sự",
+    permission: "__self_profile__" as unknown as PermissionType
+  },
+  {
+    title: "Thiết lập tiền lương",
+    url: "/payroll-settings",
+    icon: WalletCards,
+    description: "Nhân sự, đơn giá và dữ liệu trả lương",
+    permission: "payroll_view" as const
   },
   { 
     title: "Báo giá", 
@@ -167,14 +201,14 @@ const menuItems: MenuItem[] = [
     title: "Cài đặt AI", 
     url: "/ai-settings", 
     icon: Sparkles,
-    description: "Cấu hình AI Quote Fill",
+    description: "Cấu hình công cụ AI cho báo giá",
     permission: "user_management" as const
   },
   { 
     title: "Cào dữ liệu", 
     url: "/web-scraper", 
     icon: Globe,
-    description: "Trích xuất dữ liệu từ web",
+    description: "Trích xuất dữ liệu từ trang web",
     permission: "user_management" as const
   },
   { 
@@ -188,7 +222,14 @@ const menuItems: MenuItem[] = [
     title: "Quản lý nhân viên", 
     url: "/user-management", 
     icon: Settings,
-    description: "Phân quyền users",
+    description: "Phân quyền người dùng",
+    permission: "user_management" as const
+  },
+  {
+    title: "Duyệt hồ sơ nhân sự",
+    url: "/profile-review",
+    icon: UserCheck,
+    description: "Xác nhận hồ sơ nhân viên tự khai",
     permission: "user_management" as const
   }
 ];
@@ -204,6 +245,21 @@ export function AppSidebar() {
   const { hasPermission } = useEmployeePermissions(user, userRole);
 
   useEffect(() => {
+    if (isLocalBackend()) {
+      if (!hasStoredLocalUserSession()) {
+        setUser(isLocalDemoEnabled() ? localAdminUser as unknown as User : null);
+      } else {
+        void getLocalMe()
+          .then((me) => setUser({
+            ...localAdminUser,
+            id: me.user_id,
+            email: me.email,
+            user_metadata: { first_name: me.first_name ?? '', last_name: me.last_name ?? '' },
+          } as unknown as User))
+          .catch(() => setUser(null));
+      }
+      return;
+    }
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
     });
@@ -216,9 +272,14 @@ export function AppSidebar() {
       : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors";
 
   // Filter menu items based on user permissions
-  const filteredMenuItems = menuItems.filter((item) => Array.isArray(item.permission)
-    ? item.permission.some((permission) => hasPermission(permission))
-    : hasPermission(item.permission));
+  const selfAttendanceVisible = isLocalBackend() && hasLocalUserSession();
+  const filteredMenuItems = menuItems.filter((item) => {
+    if (item.integrationAdmin) return isLocalBackend() && hasLocalUserSession() && userRole === 'admin' && user?.id !== 'local-admin';
+    if ((item.permission as string) === "__self_attendance__" || (item.permission as string) === "__self_profile__") return selfAttendanceVisible;
+    return Array.isArray(item.permission)
+      ? item.permission.some((permission) => hasPermission(permission))
+      : hasPermission(item.permission);
+  });
 
   return (
     <Sidebar

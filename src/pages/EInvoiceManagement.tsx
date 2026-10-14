@@ -17,6 +17,8 @@ import { useEInvoiceActions } from "@/hooks/useEInvoices";
 import { CancelInvoiceDialog, SendEmailDialog, SyncInvoicesDialog } from "@/components/einvoice/InvoiceActionDialogs";
 import { EInvoiceSettingsCard } from "@/components/einvoice/EInvoiceSettingsCard";
 import { useEInvoiceSettings } from "@/hooks/useEInvoiceSettings";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { PreviewPdfDialog } from "@/components/einvoice/PreviewPdfDialog";
 import { ReplaceAdjustDialog } from "@/components/einvoice/ReplaceAdjustDialog";
 import { DownloadMinuteDialog } from "@/components/einvoice/DownloadMinuteDialog";
@@ -63,6 +65,11 @@ const EInvoiceManagement = () => {
   const { downloadFile, updatePayment, issueDraft, deleteDraft, previewDraft } = useEInvoiceActions();
 
   const callApi = async (action: string, extra: any = {}) => {
+    if (isLocalBackend()) {
+      if (action === "get_templates") return localApi.einvoiceTemplates();
+      if (action === "config_status") return { success: true, local_only: true, status: {}, message: "Hệ thống cục bộ không dùng thông tin bảo mật của Viettel." };
+      throw new Error("SQL cục bộ không gọi dịch vụ Viettel; dữ liệu đã đồng bộ vẫn được giữ nguyên.");
+    }
     const { data, error } = await supabase.functions.invoke("vinvoice-api", { body: { action, ...extra } });
     if (error) throw new Error(error.message);
     return data;
@@ -311,9 +318,9 @@ const EInvoiceManagement = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <KeyRound className="h-4 w-4" /> Trạng thái cấu hình secret
+                  <KeyRound className="h-4 w-4" /> Trạng thái thông tin bảo mật kết nối
                 </CardTitle>
-                <CardDescription>Kiểm tra các secret kết nối Viettel S-Invoice (giá trị không hiển thị).</CardDescription>
+                <CardDescription>Kiểm tra thông tin bảo mật kết nối Viettel S-Invoice; giá trị sẽ không hiển thị.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button variant="outline" size="sm" onClick={handleCheckConfig} disabled={loadingConfig}>
@@ -340,7 +347,7 @@ const EInvoiceManagement = () => {
                       );
                     })}
                     <p className="text-xs text-muted-foreground">
-                      Để cập nhật giá trị secret, vào Lovable → Project Settings → Secrets, hoặc yêu cầu admin cập nhật.
+                      Để cập nhật thông tin bảo mật, vào Lovable → Cài đặt dự án → Secrets, hoặc yêu cầu quản trị viên cập nhật.
                     </p>
                   </div>
                 )}
@@ -350,8 +357,8 @@ const EInvoiceManagement = () => {
             {/* Card 2: Test login */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Test đăng nhập Viettel</CardTitle>
-                <CardDescription>Gọi <code>/auth/login</code> với username/password đã cấu hình.</CardDescription>
+                <CardTitle className="text-base">Kiểm tra đăng nhập Viettel</CardTitle>
+                <CardDescription>Gọi <code>/auth/login</code> với tên đăng nhập/mật khẩu đã cấu hình.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button onClick={handleTestLogin} disabled={loadingLogin}>
@@ -365,7 +372,7 @@ const EInvoiceManagement = () => {
                         <p className="flex items-center gap-2 font-medium text-sidebar-primary">
                           <CheckCircle2 className="h-4 w-4" /> Đăng nhập thành công
                         </p>
-                        <p>Token preview: <code>{loginResult.token_preview}</code></p>
+                        <p>Xem trước mã xác thực: <code>{loginResult.token_preview}</code></p>
                         <p>Độ dài: {loginResult.token_length} ký tự</p>
                         {loginResult.expires_in != null && <p>Hết hạn sau: {loginResult.expires_in}s</p>}
                       </div>
@@ -386,7 +393,7 @@ const EInvoiceManagement = () => {
             {/* Card 3: Templates */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Test lấy danh sách mẫu hoá đơn</CardTitle>
+                <CardTitle className="text-base">Kiểm tra việc lấy danh sách mẫu hoá đơn</CardTitle>
                 <CardDescription>Yêu cầu Viettel trả về các mẫu/ký hiệu HĐ đã đăng ký cho MST của bạn.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -401,9 +408,9 @@ const EInvoiceManagement = () => {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead>Template Code</TableHead>
-                              <TableHead>Invoice Series</TableHead>
-                              <TableHead>Invoice Type</TableHead>
+                              <TableHead>Mã mẫu hóa đơn</TableHead>
+                              <TableHead>Ký hiệu hóa đơn</TableHead>
+                              <TableHead>Loại hóa đơn</TableHead>
                               <TableHead>Trạng thái</TableHead>
                             </TableRow>
                           </TableHeader>

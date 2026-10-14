@@ -4,12 +4,15 @@ BEGIN;
 
 INSERT INTO auth.users (id, email) VALUES
   ('80000000-0000-0000-0000-000000000001', 'prod.admin@test.local'),
-  ('80000000-0000-0000-0000-000000000002', 'prod.employee@test.local');
+  ('80000000-0000-0000-0000-000000000002', 'prod.employee@test.local')
+ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.user_roles (user_id, role, assigned_by) VALUES
   ('80000000-0000-0000-0000-000000000001', 'admin', NULL),
-  ('80000000-0000-0000-0000-000000000002', 'employee', '80000000-0000-0000-000000000001');
+  ('80000000-0000-0000-0000-000000000002', 'employee', '80000000-0000-0000-0000-000000000001')
+ON CONFLICT (user_id, role) DO NOTHING;
 INSERT INTO public.employee_permissions (user_id, permission_type, enabled) VALUES
-  ('80000000-0000-0000-0000-000000000002', 'production_view', true);
+  ('80000000-0000-0000-0000-000000000002', 'production_view', true)
+ON CONFLICT (user_id, permission_type) DO NOTHING;
 
 INSERT INTO public.products (id, tenant_id) VALUES
   ('81000000-0000-0000-0000-000000000001', 'default'),
@@ -27,14 +30,17 @@ INSERT INTO public.inventory_items (id, tenant_id, code, name, item_type, base_u
   ('82000000-0000-0000-0000-000000000005', 'tenant-b', 'PROD-FOREIGN', 'Vật tư tenant B', 'RAW_MATERIAL', 'METER');
 
 INSERT INTO public.warehouses (id, name, tenant_id, is_active)
-VALUES ('83000000-0000-0000-0000-000000000001', 'Kho SX test', 'default', true);
+VALUES
+  ('83000000-0000-0000-0000-000000000001', 'Kho SX test', 'default', true),
+  ('83000000-0000-0000-0000-000000000002', 'Kho SX test 2', 'default', true);
 
 SELECT set_config('app.inventory_posting', 'on', true);
 INSERT INTO public.inventory_balances (tenant_id, inventory_item_id, warehouse_id, quantity_on_hand, average_unit_cost, inventory_value) VALUES
   ('default', '82000000-0000-0000-0000-000000000001', '83000000-0000-0000-0000-000000000001', 5000, 42000, 210000000),
   ('default', '82000000-0000-0000-0000-000000000002', '83000000-0000-0000-0000-000000000001', 5000, 5000, 25000000),
   ('default', '82000000-0000-0000-0000-000000000003', '83000000-0000-0000-0000-000000000001', 5000, 1000, 5000000),
-  ('default', '82000000-0000-0000-0000-000000000004', '83000000-0000-0000-0000-000000000001', 5000, 2000, 10000000);
+  ('default', '82000000-0000-0000-0000-000000000004', '83000000-0000-0000-0000-000000000001', 5000, 2000, 10000000),
+  ('default', '82000000-0000-0000-0000-000000000001', '83000000-0000-0000-0000-000000000002', 100, 42000, 4200000);
 SELECT set_config('app.inventory_posting', 'off', true);
 
 CREATE TEMP TABLE prod_test_state (key text PRIMARY KEY, value text NOT NULL);
@@ -78,6 +84,9 @@ DO $$ DECLARE v_po jsonb; v_po_id uuid; v_reqs integer; v_ops integer; v_total n
   INSERT INTO prod_test_state VALUES ('po_golden_id', v_po_id::text);
   v_po := public.release_production_order(v_po_id, DATE '2026-06-01');
   IF (v_po->>'status') <> 'RELEASED' THEN RAISE EXCEPTION 'Release failed: %', v_po; END IF;
+  IF (SELECT actual_start_at FROM public.production_orders WHERE id=v_po_id) IS NOT NULL THEN
+    RAISE EXCEPTION 'Release must not set actual_start_at';
+  END IF;
   SELECT count(*) INTO v_reqs FROM public.production_order_material_requirements WHERE production_order_id=v_po_id;
   IF v_reqs <> 3 THEN RAISE EXCEPTION 'Expected 3 material requirements, got %', v_reqs; END IF;
   IF (SELECT standard_quantity FROM public.production_order_material_requirements WHERE production_order_id=v_po_id AND inventory_item_id='82000000-0000-0000-0000-000000000001') <> 320 THEN
@@ -137,7 +146,11 @@ DO $$ DECLARE v_po_id uuid := (SELECT value::uuid FROM prod_test_state WHERE key
   PERFORM public.confirm_inventory_document(v_doc_id);
   -- Return 3m (need source movement)
   DECLARE v_src uuid; BEGIN
-    SELECT id INTO v_src FROM public.inventory_movements WHERE document_id = (SELECT id FROM public.inventory_documents WHERE idempotency_key='prod-issue-002') LIMIT 1;
+    SELECT id INTO v_src
+    FROM public.list_inventory_return_sources()
+    WHERE inventory_item_id='82000000-0000-0000-0000-000000000001'
+      AND original_quantity=125
+    LIMIT 1;
     v_doc := public.create_inventory_document('RETURN_IN', now(), '83000000-0000-0000-0000-000000000001', NULL, 'Tra vai', 'prod-return-001', jsonb_build_array(jsonb_build_object('inventory_item_id','82000000-0000-0000-0000-000000000001','quantity',3,'unit','METER','source_movement_id',v_src::text)), NULL, NULL, NULL, NULL, v_po_id);
     v_doc_id := (v_doc->>'id')::uuid;
     PERFORM public.confirm_inventory_document(v_doc_id);
@@ -159,6 +172,16 @@ DO $$ DECLARE v_var jsonb; v_row jsonb; v_cost numeric; BEGIN
   IF v_cost <> 13524000 THEN RAISE EXCEPTION 'Actual material cost not 13524000 got %', v_cost; END IF;
 END $$;
 
+-- ── Multi-warehouse stock must produce one variance row with aggregate stock ──
+DO $$ DECLARE v_po_id uuid := (SELECT value::uuid FROM prod_test_state WHERE key='po_golden_id'); v_var jsonb; v_row jsonb; BEGIN
+  v_var := public.get_production_order_variance(v_po_id);
+  IF (SELECT count(*) FROM jsonb_array_elements(v_var->'materials') value WHERE value->>'inventory_item_id'='82000000-0000-0000-0000-000000000001') <> 1 THEN
+    RAISE EXCEPTION 'Multi-warehouse balance duplicated material variance row: %', v_var;
+  END IF;
+  SELECT value INTO v_row FROM jsonb_array_elements(v_var->'materials') value WHERE value->>'inventory_item_id'='82000000-0000-0000-0000-000000000001';
+  IF (v_row->>'current_stock')::numeric <> 4778 THEN RAISE EXCEPTION 'Aggregate current stock not 4778: %', v_row; END IF;
+END $$;
+
 -- ── No stock: attempt issue 10000m must fail at ledger level ──
 DO $$ DECLARE v_po_id uuid; v_doc jsonb; v_doc_id uuid; BEGIN
   v_po_id := (SELECT value::uuid FROM prod_test_state WHERE key='po_golden_id');
@@ -168,6 +191,16 @@ DO $$ DECLARE v_po_id uuid; v_doc jsonb; v_doc_id uuid; BEGIN
     PERFORM public.confirm_inventory_document(v_doc_id);
     RAISE EXCEPTION 'Over-stock issue unexpectedly succeeded';
   EXCEPTION WHEN OTHERS THEN IF SQLERRM='Over-stock issue unexpectedly succeeded' THEN RAISE; END IF; END;
+END $$;
+
+-- ── Material issue tolerance: net 322m + 15m exceeds 336m maximum ──
+DO $$ DECLARE v_po_id uuid := (SELECT value::uuid FROM prod_test_state WHERE key='po_golden_id'); v_doc jsonb; v_doc_id uuid; BEGIN
+  BEGIN
+    v_doc := public.create_inventory_document('ISSUE', now(), '83000000-0000-0000-0000-000000000001', NULL, 'Cap vuot dung sai', 'prod-issue-tolerance', jsonb_build_array(jsonb_build_object('inventory_item_id','82000000-0000-0000-0000-000000000001','quantity',15,'unit','METER')), NULL, NULL, NULL, NULL, v_po_id);
+    v_doc_id := (v_doc->>'id')::uuid;
+    PERFORM public.confirm_inventory_document(v_doc_id);
+    RAISE EXCEPTION 'Material tolerance unexpectedly bypassed';
+  EXCEPTION WHEN OTHERS THEN IF SQLERRM='Material tolerance unexpectedly bypassed' THEN RAISE; END IF; END;
 END $$;
 
 -- ── Scrap / Rework ──
@@ -183,6 +216,7 @@ DO $$ DECLARE v_po_id uuid := (SELECT value::uuid FROM prod_test_state WHERE key
   SELECT id INTO v_cut FROM public.production_order_operations WHERE production_order_id=v_po_id AND operation_code='CUT';
   SELECT id INTO v_sew FROM public.production_order_operations WHERE production_order_id=v_po_id AND operation_code='SEW';
   PERFORM public.start_production_operation(v_cut, NULL);
+  IF (SELECT actual_start_at FROM public.production_orders WHERE id=v_po_id) IS NULL THEN RAISE EXCEPTION 'Operation start did not set header actual_start_at'; END IF;
   PERFORM public.complete_production_operation(v_cut, 100, 0, 0, NULL);
   PERFORM public.start_production_operation(v_sew, NULL);
   -- Log an explicit duration for labor variance: COMPLETE with time range
@@ -197,6 +231,8 @@ DO $$ DECLARE v_po_id uuid := (SELECT value::uuid FROM prod_test_state WHERE key
     PERFORM public.start_production_operation(v_pack, NULL);
     PERFORM public.complete_production_operation(v_pack, 97, 0, 0, NULL);
   END;
+  IF (SELECT quantity_scrap FROM public.production_orders WHERE id=v_po_id) <> 2 THEN RAISE EXCEPTION 'Operation scrap was not synchronized to header'; END IF;
+  IF (SELECT quantity_rework FROM public.production_orders WHERE id=v_po_id) <> 3 THEN RAISE EXCEPTION 'Operation rework was not synchronized to header'; END IF;
 END $$;
 
 DO $$ DECLARE v_var jsonb; BEGIN
@@ -219,12 +255,40 @@ DO $$ DECLARE v_po2 jsonb; v_po2_id uuid; BEGIN
   EXCEPTION WHEN OTHERS THEN IF SQLERRM='Complete blocker unexpectedly succeeded' THEN RAISE; END IF; END;
 END $$;
 
+-- ── Direct complete, ON_HOLD start and cross-order rework must be blocked ──
+DO $$ DECLARE
+  v_po2_id uuid := (SELECT value::uuid FROM prod_test_state WHERE key='po_blocker_id');
+  v_po1_id uuid := (SELECT value::uuid FROM prod_test_state WHERE key='po_golden_id');
+  v_po2_cut uuid;
+  v_po1_cut uuid;
+BEGIN
+  SELECT id INTO v_po2_cut FROM public.production_order_operations WHERE production_order_id=v_po2_id AND operation_code='CUT';
+  SELECT id INTO v_po1_cut FROM public.production_order_operations WHERE production_order_id=v_po1_id AND operation_code='CUT';
+  BEGIN
+    PERFORM public.complete_production_operation(v_po2_cut, 10, 0, 0, NULL);
+    RAISE EXCEPTION 'Pending operation completed without start';
+  EXCEPTION WHEN OTHERS THEN IF SQLERRM='Pending operation completed without start' THEN RAISE; END IF; END;
+  PERFORM public.transition_production_order_status(v_po2_id, 'ON_HOLD', 'Test hold');
+  BEGIN
+    PERFORM public.start_production_operation(v_po2_cut, NULL);
+    RAISE EXCEPTION 'ON_HOLD operation start unexpectedly succeeded';
+  EXCEPTION WHEN OTHERS THEN IF SQLERRM='ON_HOLD operation start unexpectedly succeeded' THEN RAISE; END IF; END;
+  BEGIN
+    PERFORM public.record_production_rework(v_po1_id, 1, 'CROSS_ORDER', v_po1_cut, v_po2_cut, NULL);
+    RAISE EXCEPTION 'Cross-order rework unexpectedly succeeded';
+  EXCEPTION WHEN OTHERS THEN IF SQLERRM='Cross-order rework unexpectedly succeeded' THEN RAISE; END IF; END;
+END $$;
+
 -- ── Idempotent complete ──
 DO $$ DECLARE v_po_id uuid := (SELECT value::uuid FROM prod_test_state WHERE key='po_golden_id'); v_r1 jsonb; v_r2 jsonb; BEGIN
-  v_r1 := public.complete_production_order(v_po_id, 97, 1, NULL);
-  v_r2 := public.complete_production_order(v_po_id, 97, 1, NULL);
+  v_r1 := public.complete_production_order(v_po_id, 97, 2, NULL);
+  v_r2 := public.complete_production_order(v_po_id, 97, 2, NULL);
   IF (v_r2->>'reused')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'Second complete not idempotent'; END IF;
   IF (SELECT count(*) FROM public.production_outputs WHERE production_order_id=v_po_id) <> 1 THEN RAISE EXCEPTION 'Duplicate output created'; END IF;
+  BEGIN
+    PERFORM public.complete_production_order(v_po_id, 96, 2, NULL);
+    RAISE EXCEPTION 'Conflicting completion retry unexpectedly succeeded';
+  EXCEPTION WHEN OTHERS THEN IF SQLERRM='Conflicting completion retry unexpectedly succeeded' THEN RAISE; END IF; END;
 END $$;
 
 -- ── Direct API bypass must be blocked ──
@@ -270,16 +334,16 @@ DO $$ BEGIN
 END $$;
 
 -- ── Release without BOM must fail ──
-DO $$ BEGIN
+DO $$ DECLARE v_po jsonb; v_id uuid; BEGIN
+  v_po := public.create_production_order('81000000-0000-0000-0000-000000000004', 10, 'MANUAL', NULL, NULL, NULL, NULL);
+  v_id := (v_po->>'id')::uuid;
   BEGIN
-    PERFORM public.create_production_order('81000000-0000-0000-0000-000000000004', 10, 'MANUAL', NULL, NULL, NULL, NULL);
-    -- product 000004 has no BOM; try release
-    DECLARE v_po jsonb; v_id uuid; BEGIN
-      v_po := public.create_production_order('81000000-0000-0000-0000-000000000004', 10, 'MANUAL', NULL, NULL, NULL, NULL);
-      v_id := (v_po->>'id')::uuid;
-      PERFORM public.release_production_order(v_id, DATE '2026-06-01');
-      RAISE EXCEPTION 'Release without BOM unexpectedly succeeded';
-    EXCEPTION WHEN OTHERS THEN IF SQLERRM='Release without BOM unexpectedly succeeded' THEN RAISE; END IF; END;
+    PERFORM public.release_production_order(v_id, DATE '2026-06-01');
+    RAISE EXCEPTION 'Release without BOM unexpectedly succeeded';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLSTATE <> 'P0001' OR SQLERRM <> 'Sản phẩm chưa có định mức được duyệt' THEN
+      RAISE;
+    END IF;
   END;
 END $$;
 
@@ -295,6 +359,16 @@ DO $$ DECLARE v_po jsonb; v_po_id uuid; v_sew uuid; BEGIN
   EXCEPTION WHEN OTHERS THEN IF SQLERRM='Sequential guard unexpectedly bypassed' THEN RAISE; END IF; END;
 END $$;
 
+-- ── Prepare workflow targets for permission-negative tests ──
+DO $$ DECLARE v_draft jsonb; v_released jsonb; v_released_id uuid; BEGIN
+  v_draft := public.create_production_order('81000000-0000-0000-0000-000000000001', 5, 'MANUAL', NULL, NULL, NULL, NULL);
+  INSERT INTO prod_test_state VALUES ('po_permission_draft', v_draft->>'id');
+  v_released := public.create_production_order('81000000-0000-0000-0000-000000000001', 5, 'MANUAL', NULL, NULL, NULL, NULL);
+  v_released_id := (v_released->>'id')::uuid;
+  PERFORM public.release_production_order(v_released_id, DATE '2026-06-01');
+  INSERT INTO prod_test_state VALUES ('po_permission_released', v_released_id::text);
+END $$;
+
 -- ── Cost visibility: employee without inventory_cost_view must not see actual_material_cost ──
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '80000000-0000-0000-0000-000000000002', true);
@@ -303,6 +377,112 @@ DO $$ DECLARE v_var jsonb; v_row jsonb; BEGIN
   IF (v_var->>'cost_visible')::boolean IS TRUE THEN RAISE EXCEPTION 'Cost leaked to quantity-only employee'; END IF;
   SELECT value INTO v_row FROM jsonb_array_elements(v_var->'materials') LIMIT 1;
   IF v_row->>'actual_material_cost' IS NOT NULL THEN RAISE EXCEPTION 'Actual cost leaked'; END IF;
+  BEGIN
+    PERFORM 1 FROM public.production_order_material_variance LIMIT 1;
+    RAISE EXCEPTION 'Direct variance view unexpectedly readable';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN
+    PERFORM public.transition_production_order_status((SELECT value::uuid FROM prod_test_state WHERE key='po_permission_draft'), 'PLANNED', NULL);
+    RAISE EXCEPTION 'View-only employee planned an order';
+  EXCEPTION WHEN OTHERS THEN IF SQLERRM='View-only employee planned an order' THEN RAISE; END IF; END;
+  BEGIN
+    PERFORM public.transition_production_order_status((SELECT value::uuid FROM prod_test_state WHERE key='po_permission_released'), 'ON_HOLD', NULL);
+    RAISE EXCEPTION 'View-only employee held an order';
+  EXCEPTION WHEN OTHERS THEN IF SQLERRM='View-only employee held an order' THEN RAISE; END IF; END;
+END $$;
+RESET ROLE;
+
+-- ── Prepare fixture for runner-driven concurrent confirmations ──
+-- SQL cannot create two independent sessions. Both the standalone production runner
+-- and the attendance/payroll chain execute these documents concurrently after COMMIT.
+CREATE OR REPLACE FUNCTION public.production_test_confirm_result(p_document uuid, p_user uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE v_result jsonb;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', p_user::text, true);
+  v_result := public.confirm_inventory_document(p_document);
+  PERFORM public.production_test_assert_concurrent_issue_results();
+  RETURN jsonb_build_object('success', true, 'result', v_result);
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.production_test_assert_concurrent_issue_results()
+RETURNS void LANGUAGE plpgsql SET search_path=public AS $$
+DECLARE
+  v_po public.production_orders;
+  v_planned numeric;
+  v_actual numeric;
+  v_allowed numeric;
+BEGIN
+  IF (
+    SELECT count(*) FROM public.inventory_documents
+    WHERE idempotency_key IN ('prod-concurrent-tolerance-a', 'prod-concurrent-tolerance-b')
+      AND status = 'CONFIRMED'
+  ) <> 1 THEN
+    RAISE EXCEPTION 'Concurrent tolerance issues did not serialize to one success';
+  END IF;
+  IF (
+    SELECT count(*) FROM public.inventory_documents
+    WHERE idempotency_key IN ('prod-concurrent-tolerance-a', 'prod-concurrent-tolerance-b')
+      AND status = 'DRAFT'
+  ) <> 1 THEN
+    RAISE EXCEPTION 'Concurrent tolerance loser did not remain a draft';
+  END IF;
+  IF (
+    SELECT count(*)
+    FROM public.inventory_movements m
+    JOIN public.inventory_documents d ON d.id = m.document_id
+    WHERE d.idempotency_key IN ('prod-concurrent-tolerance-a', 'prod-concurrent-tolerance-b')
+  ) <> 1 THEN
+    RAISE EXCEPTION 'Concurrent tolerance loser posted an invalid extra movement';
+  END IF;
+
+  SELECT po.* INTO STRICT v_po
+  FROM public.production_orders po
+  JOIN public.inventory_documents d ON d.production_order_id = po.id
+  WHERE d.idempotency_key = 'prod-concurrent-tolerance-a';
+  SELECT planned_quantity, actual_consumption_quantity
+  INTO STRICT v_planned, v_actual
+  FROM public.production_order_material_variance
+  WHERE production_order_id = v_po.id
+    AND inventory_item_id = '82000000-0000-0000-0000-000000000001'
+    AND unit = 'METER';
+  v_allowed := round(v_planned * (1 + v_po.material_issue_tolerance_percent / 100.0), 4);
+  IF v_actual <> 330 OR v_actual > v_allowed THEN
+    RAISE EXCEPTION 'Concurrent material tolerance invariant failed: actual %, allowed %', v_actual, v_allowed;
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.production_test_delay_concurrent_issue()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.inventory_documents d
+    WHERE d.id = NEW.document_id
+      AND d.idempotency_key IN ('prod-concurrent-tolerance-a', 'prod-concurrent-tolerance-b')
+  ) THEN
+    PERFORM pg_sleep(1);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER production_test_delay_concurrent_issue
+BEFORE INSERT ON public.inventory_movements
+FOR EACH ROW EXECUTE FUNCTION public.production_test_delay_concurrent_issue();
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '80000000-0000-0000-0000-000000000001', true);
+DO $$ DECLARE v_po jsonb; v_po_id uuid; v_doc jsonb; BEGIN
+  v_po := public.create_production_order('81000000-0000-0000-0000-000000000001', 100, 'MANUAL', NULL, NULL, NULL, NULL);
+  v_po_id := (v_po->>'id')::uuid;
+  PERFORM public.release_production_order(v_po_id, DATE '2026-06-01');
+  v_doc := public.create_inventory_document('ISSUE', now(), '83000000-0000-0000-0000-000000000001', NULL, 'Cap dinh muc concurrency', 'prod-concurrent-base', jsonb_build_array(jsonb_build_object('inventory_item_id','82000000-0000-0000-0000-000000000001','quantity',320,'unit','METER')), NULL, NULL, NULL, NULL, v_po_id);
+  PERFORM public.confirm_inventory_document((v_doc->>'id')::uuid);
+  PERFORM public.create_inventory_document('ISSUE', now(), '83000000-0000-0000-0000-000000000001', NULL, 'Cap dong thoi A', 'prod-concurrent-tolerance-a', jsonb_build_array(jsonb_build_object('inventory_item_id','82000000-0000-0000-0000-000000000001','quantity',10,'unit','METER')), NULL, NULL, NULL, NULL, v_po_id);
+  PERFORM public.create_inventory_document('ISSUE', now(), '83000000-0000-0000-0000-000000000001', NULL, 'Cap dong thoi B', 'prod-concurrent-tolerance-b', jsonb_build_array(jsonb_build_object('inventory_item_id','82000000-0000-0000-0000-000000000001','quantity',10,'unit','METER')), NULL, NULL, NULL, NULL, v_po_id);
 END $$;
 RESET ROLE;
 
@@ -312,6 +492,6 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.audit_events WHERE entity_type='production_orders' AND action='COMPLETE') THEN RAISE EXCEPTION 'Production COMPLETE audit missing'; END IF;
 END $$;
 
-ROLLBACK;
+COMMIT;
 
 SELECT 'production_execution_test: PASS' AS result;

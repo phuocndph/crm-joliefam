@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 export type EInvoiceSettings = {
   id: string;
@@ -29,7 +31,7 @@ export const useEInvoiceSettings = () => {
 
   const query = useQuery({
     queryKey: ["einvoice-settings"],
-    queryFn: () => call("get_settings"),
+    queryFn: () => isLocalBackend() ? localApi.einvoiceSettings() : call("get_settings"),
   });
 
   const save = useMutation({
@@ -41,7 +43,7 @@ export const useEInvoiceSettings = () => {
       default_invoice_type?: string;
       default_template_code?: string;
       default_serial?: string;
-    }) => call("save_settings", p),
+    }) => isLocalBackend() ? localApi.saveEinvoiceSettings(p) : call("save_settings", p),
     onSuccess: () => {
       toast.success("Đã lưu cấu hình S-Invoice");
       qc.invalidateQueries({ queryKey: ["einvoice-settings"] });
@@ -50,7 +52,7 @@ export const useEInvoiceSettings = () => {
   });
 
   const testLogin = useMutation({
-    mutationFn: () => call("test_login"),
+    mutationFn: () => isLocalBackend() ? Promise.reject(new Error("Local SQL không gọi dịch vụ Viettel. Dữ liệu hoá đơn đã đồng bộ vẫn được giữ nguyên.")) : call("test_login"),
     onSuccess: (d: any) => {
       toast.success(`Đăng nhập OK — MST ${d.tax_code}`);
       qc.invalidateQueries({ queryKey: ["einvoice-settings"] });

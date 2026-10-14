@@ -443,7 +443,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
               className="text-sm" />
             
             <div className="flex flex-col gap-1 shrink-0">
-              <Button type="button" variant="outline" size="sm" onClick={handleAIAnalyze} disabled={parsingText || parsingImage} title={imagePreview ? "AI phân tích ảnh" : "AI phân tích text"}>
+              <Button type="button" variant="outline" size="sm" onClick={handleAIAnalyze} disabled={parsingText || parsingImage} title={imagePreview ? "AI phân tích ảnh" : "AI phân tích văn bản"}>
                 {parsingText || parsingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 <span className="ml-1 hidden sm:inline">AI</span>
               </Button>
@@ -462,7 +462,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           </div>
           {imagePreview &&
           <div className="relative mt-2 inline-block">
-              <img src={imagePreview} alt="Preview" className="max-h-32 rounded-md border border-border object-contain" />
+              <img src={imagePreview} alt="Xem trước" className="max-h-32 rounded-md border border-border object-contain" />
               <Button
               type="button"
               variant="destructive"

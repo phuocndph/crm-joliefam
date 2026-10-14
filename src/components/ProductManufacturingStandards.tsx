@@ -22,6 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { listInventoryWarehouses, type InventoryUnit, type InventoryWarehouse } from "@/lib/inventory-management";
+import { isLocalBackend } from "@/lib/runtime-config";
 import {
   approveBomVersion, approveCuttingVersion, calculateCutting, calculateRequirements,
   createBomDraft, createCuttingDraft, getManufacturingProfile, listBomLines, listBomMaterials,
@@ -166,6 +167,7 @@ const ProductManufacturingStandards = () => {
   const selectedCuttingVersion = cuttingVersions.find((item) => item.id === selectedCuttingVersionId) ?? null;
 
   useEffect(() => {
+    if (isLocalBackend()) return;
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
   }, []);
 
@@ -461,7 +463,7 @@ const ProductManufacturingStandards = () => {
         save_snapshot: requirementForm.save_snapshot,
       });
       setRequirementResult(result);
-      if (result.snapshot_id) toast({ title: "Đã lưu snapshot định mức" });
+      if (result.snapshot_id) toast({ title: "Đã lưu bản chụp dữ liệu định mức" });
     } catch (error) {
       toast({ title: "Không thể tính nhu cầu vật tư", description: errorMessage(error), variant: "destructive" });
     }
@@ -684,7 +686,7 @@ const ProductManufacturingStandards = () => {
                 </div>
                 <div className="flex flex-wrap gap-5 rounded-md border p-4">
                   {selectedBomVersion?.status === "DRAFT" && canManageBom && <div className="flex items-center gap-2"><Checkbox id="use-draft" checked={requirementForm.use_draft} onCheckedChange={(checked) => setRequirementForm((current) => ({ ...current, use_draft: checked === true }))} /><Label htmlFor="use-draft">Tính thử BOM nháp V{selectedBomVersion.version_number}</Label></div>}
-                  {canManageBom && <div className="flex items-center gap-2"><Checkbox id="save-snapshot" checked={requirementForm.save_snapshot} onCheckedChange={(checked) => setRequirementForm((current) => ({ ...current, save_snapshot: checked === true }))} /><Label htmlFor="save-snapshot">Lưu snapshot</Label></div>}
+                  {canManageBom && <div className="flex items-center gap-2"><Checkbox id="save-snapshot" checked={requirementForm.save_snapshot} onCheckedChange={(checked) => setRequirementForm((current) => ({ ...current, save_snapshot: checked === true }))} /><Label htmlFor="save-snapshot">Lưu bản chụp dữ liệu</Label></div>}
                 </div>
 
                 {requirementResult ? (
@@ -694,7 +696,7 @@ const ProductManufacturingStandards = () => {
                       {requirementResult.cost_visible && <div className="text-right"><div className="text-xs text-muted-foreground">{requirementResult.cost_label}</div><div className="text-xl font-semibold">{formatCurrency(requirementResult.estimated_material_cost_total)}</div></div>}
                     </div>
                     <div className="overflow-x-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>Vật tư</TableHead><TableHead>Phương pháp</TableHead><TableHead className="text-right">Định mức chuẩn</TableHead><TableHead className="text-right">Tồn hiện tại</TableHead>{requirementResult.cost_visible && <><TableHead className="text-right">Giá bình quân</TableHead><TableHead className="text-right">Chi phí dự kiến</TableHead></>}<TableHead>Cảnh báo</TableHead></TableRow></TableHeader><TableBody>{requirementResult.materials.map((material) => <TableRow key={material.inventory_item_id}><TableCell><div className="font-medium">{material.item_name}</div><div className="text-xs text-muted-foreground">{material.item_code}</div></TableCell><TableCell>{material.method}</TableCell><TableCell className="text-right font-medium">{formatNumber(material.standard_quantity)} {unitLabels[material.unit]}</TableCell><TableCell className="text-right">{formatNumber(material.current_stock)} {unitLabels[material.unit]}</TableCell>{requirementResult.cost_visible && <><TableCell className="text-right">{formatCurrency(material.average_unit_cost)}</TableCell><TableCell className="text-right">{formatCurrency(material.estimated_material_cost)}</TableCell></>}<TableCell><div className="space-y-1 text-xs text-destructive">{Object.values(material.warnings || {}).map((warning) => <div key={warning}>{warning}</div>)}</div></TableCell></TableRow>)}</TableBody></Table></div>
-                    {requirementResult.snapshot_id && <div className="text-xs text-muted-foreground">Snapshot: {requirementResult.snapshot_id}</div>}
+                    {requirementResult.snapshot_id && <div className="text-xs text-muted-foreground">Bản chụp dữ liệu: {requirementResult.snapshot_id}</div>}
                   </>
                 ) : <Alert><Calculator className="h-4 w-4" /><AlertTitle>Chưa có kết quả nhu cầu vật tư</AlertTitle></Alert>}
               </TabsContent>

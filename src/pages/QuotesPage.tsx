@@ -73,6 +73,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileQuoteList } from "@/components/MobileQuoteList";
+import { isLocalBackend, localAdminUser } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 const QuotePreviewDialog = lazy(() => import("@/components/QuotePreviewDialog").then(m => ({ default: m.QuotePreviewDialog })));
 
@@ -201,6 +203,15 @@ export default function QuotesPage() {
 
   const handleApproveQuote = async (quote: any) => {
     try {
+      if (isLocalBackend()) {
+        const result = await localApi.approveQuote(quote.id);
+        await refetchQuotes();
+        queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
+        queryClient.invalidateQueries({ queryKey: ['orders-infinite'], refetchType: 'all' });
+        queryClient.invalidateQueries({ queryKey: ['orders-stats'], refetchType: 'all' });
+        toast({ title: "Thành công", description: `Báo giá đã được duyệt và tạo đơn hàng ${String(result.order.order_number || '')} trên local.` });
+        return;
+      }
       // Determine responsible manager for this quote/order
       let managerIdToUse: string | null = quote.manager_id || null;
       // If quote has an existing customer, prefer that customer's manager
@@ -345,6 +356,14 @@ export default function QuotesPage() {
 
   const handleRejectQuote = async (quoteId: string) => {
     try {
+      if (isLocalBackend()) {
+        await localApi.updateQuote(quoteId, { status: 'rejected' });
+        await refetchQuotes();
+        queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
+        toast({ title: "Thành công", description: "Báo giá đã được từ chối trên local." });
+        return;
+      }
+
       const { error } = await supabase
         .from('quotes')
         .update({ status: 'rejected' })
@@ -401,6 +420,13 @@ export default function QuotesPage() {
         status: 'draft',
         tenant_id: 'default',
       };
+
+      if (isLocalBackend()) {
+        await localApi.createQuote(duplicate);
+        await queryClient.invalidateQueries({ queryKey: ['quotes'], refetchType: 'all' });
+        toast({ title: "Nhân bản thành công", description: `Đã tạo báo giá mới: ${newQuoteNumber}` });
+        return;
+      }
 
       const { data: newQuote, error } = await supabase
         .from('quotes')
@@ -489,7 +515,7 @@ export default function QuotesPage() {
                   className="gap-2"
                 >
                   <Settings className="h-4 w-4" />
-                  Cài đặt Template
+                  Cài đặt mẫu
                 </Button>
               </>
             )}
@@ -650,6 +676,12 @@ export default function QuotesPage() {
                                 // Set to noon to avoid timezone shift issues
                                 const adjustedDate = new Date(date);
                                 adjustedDate.setHours(12, 0, 0, 0);
+                                if (isLocalBackend()) {
+                                  await localApi.updateQuote(quote.id, { created_at: adjustedDate.toISOString() });
+                                  queryClient.invalidateQueries({ queryKey: ['quotes'] });
+                                  toast({ title: "Đã cập nhật ngày tạo local" });
+                                  return;
+                                }
                                 const { data: updated, error } = await supabase
                                   .from('quotes')
                                   .update({ created_at: adjustedDate.toISOString() })
@@ -689,6 +721,12 @@ export default function QuotesPage() {
                                   updatedNotes = currentNotes.replace(/Ngày hết hạn:\s*.+/, `Ngày hết hạn: ${expiryDateStr}`);
                                 } else {
                                   updatedNotes = currentNotes + `\nNgày hết hạn: ${expiryDateStr}`;
+                                }
+                                if (isLocalBackend()) {
+                                  await localApi.updateQuote(quote.id, { notes: updatedNotes });
+                                  queryClient.invalidateQueries({ queryKey: ['quotes'] });
+                                  toast({ title: "Đã cập nhật ngày hết hạn local" });
+                                  return;
                                 }
                                 const { data: updated, error } = await supabase
                                   .from('quotes')

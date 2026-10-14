@@ -14,6 +14,13 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Eye, EyeOff, RefreshCw, Shield } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import { generateLocalPassword } from '@/lib/local-password';
+import { logoutLocal } from '@/lib/local-auth';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface ChangePasswordDialogProps {
   open: boolean;
@@ -29,16 +36,19 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuthReady();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Calculate password strength
   const calculatePasswordStrength = (password: string): { score: number; feedback: string[] } => {
     let score = 0;
     const feedback: string[] = [];
 
-    if (password.length >= 8) {
+    if (password.length >= (isLocalBackend() ? 12 : 8) && (!isLocalBackend() || password.length <= 128)) {
       score += 20;
     } else {
-      feedback.push('Ít nhất 8 ký tự');
+      feedback.push(isLocalBackend() ? 'Từ 12 đến 128 ký tự' : 'Ít nhất 8 ký tự');
     }
 
     if (/[a-z]/.test(password)) {
@@ -84,6 +94,12 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
 
   const generateStrongPassword = async () => {
     try {
+      if (isLocalBackend()) {
+        const generated = generateLocalPassword();
+        setNewPassword(generated); setConfirmPassword(generated);
+        toast({ title: "Đã tạo mật khẩu mạnh", description: "Mật khẩu local đã được tạo tự động." });
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('change-password', {
         method: 'GET',
         headers: {
@@ -133,6 +149,17 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
 
     setLoading(true);
     try {
+      if (isLocalBackend()) {
+        if (!user?.id) throw new Error('Không xác định được tài khoản. Vui lòng đăng nhập lại.');
+        await localApi.changeUserPassword(user.id, { currentPassword, newPassword });
+        await logoutLocal();
+        queryClient.clear();
+        setCurrentPassword('');setNewPassword('');setConfirmPassword('');
+        toast({ title: "Thành công", description: "Đã đổi mật khẩu local. Hãy đăng nhập lại bằng mật khẩu mới." });
+        onOpenChange(false);
+        navigate('/auth', { replace: true });
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('change-password', {
         body: {
           action: 'change_own',

@@ -1,0 +1,42 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Joliefam API tích hợp — chỉ đọc",
+    "version": "1.0.0",
+    "description": "Khóa dịch vụ và explicit resource scopes; không có quyền ghi. Xem hermes-integration.md về DTO, quyền, giới hạn và phạm vi chưa hỗ trợ. Không có endpoint chạy SQL hay đọc bảng thô."
+  },
+  "servers": [{"url": "https://crm.example.com/api/integrations/v1", "description": "Thay bằng tên miền đã nghiệm thu"}],
+  "security": [{"ServiceKey": []}],
+  "paths": {
+    "/me": {"get": {"summary": "Danh tính kết nối và quyền hiệu lực", "responses": {"200": {"description": "connection_id và capabilities"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "503": {"$ref": "#/components/responses/Disabled"}}}},
+    "/capabilities": {"get": {"summary": "Danh mục quyền đã cấp đủ phạm vi", "responses": {"200": {"description": "Danh sách capability definitions"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}},
+    "/products": {"get": {"summary": "Tra cứu sản phẩm được cấp", "description": "products.read. ID/SKU/tên/nhóm/đơn vị/trạng thái/thời điểm; không giá, giá vốn, lương, mô tả hay JSON.", "parameters": [{"$ref": "#/components/parameters/Id"},{"$ref": "#/components/parameters/Search"},{"$ref": "#/components/parameters/Limit"},{"$ref": "#/components/parameters/Offset"}], "responses": {"200": {"$ref": "#/components/responses/ReadPage"}, "403": {"$ref": "#/components/responses/Forbidden"}}}},
+    "/customers": {"get": {"summary": "Tra cứu khách hàng được cấp", "description": "customers.read. ID/mã/tên/công ty/trạng thái. Chỉ khi có contact_access: email/phone/address; không hồ sơ JSON, ghi chú hoặc tổng tiền.", "parameters": [{"$ref": "#/components/parameters/Id"},{"$ref": "#/components/parameters/Search"},{"$ref": "#/components/parameters/Limit"},{"$ref": "#/components/parameters/Offset"}], "responses": {"200": {"$ref": "#/components/responses/ReadPage"}, "403": {"$ref": "#/components/responses/Forbidden"}}}},
+    "/orders": {"get": {"summary": "Tra cứu đơn hàng được cấp", "description": "orders.read. ID/mã/trạng thái đơn và thanh toán/thời điểm; không tổng tiền/items/notes hoặc khách hàng liên kết.", "parameters": [{"$ref": "#/components/parameters/Id"},{"$ref": "#/components/parameters/Search"},{"$ref": "#/components/parameters/Limit"},{"$ref": "#/components/parameters/Offset"}], "responses": {"200": {"$ref": "#/components/responses/ReadPage"}, "403": {"$ref": "#/components/responses/Forbidden"}}}},
+    "/quotes": {"get": {"summary": "Tra cứu báo giá được cấp", "description": "quotes.read. ID/mã/trạng thái/thời điểm; không quote_data/items/giá hoặc thuế.", "parameters": [{"$ref": "#/components/parameters/Id"},{"$ref": "#/components/parameters/Search"},{"$ref": "#/components/parameters/Limit"},{"$ref": "#/components/parameters/Offset"}], "responses": {"200": {"$ref": "#/components/responses/ReadPage"}, "403": {"$ref": "#/components/responses/Forbidden"}}}},
+    "/production-orders": {"get": {"summary": "Tiến độ cấp lệnh sản xuất", "description": "production.read. ID/mã lệnh/mã lô/trạng thái/quantity_planned/quantity_good/quantity_scrap/quantity_rework/ngày/thời điểm. Các quantity là chuỗi; không công đoạn/lô con/nhân sự/QR/giá vốn.", "parameters": [{"$ref": "#/components/parameters/Id"},{"$ref": "#/components/parameters/Search"},{"$ref": "#/components/parameters/Limit"},{"$ref": "#/components/parameters/Offset"}], "responses": {"200": {"$ref": "#/components/responses/ReadPage"}, "403": {"$ref": "#/components/responses/Forbidden"}}}},
+    "/inventory": {"get": {"summary": "Tồn số lượng sổ kho", "description": "inventory.read, cần cả resource_ids kho và secondary_ids vật tư. warehouse_id/inventory_item_id/unit/quantity_on_hand. SUM ledger, chưa trừ reservation; không giá vốn. Search không áp dụng.", "parameters": [{"$ref": "#/components/parameters/Id"},{"$ref": "#/components/parameters/Limit"},{"$ref": "#/components/parameters/Offset"}], "responses": {"200": {"$ref": "#/components/responses/ReadPage"}, "403": {"$ref": "#/components/responses/Forbidden"}}}},
+    "/attendance": {"get": {"summary": "Tổng hợp công ngày/giờ/output được cấp", "description": "attendance.read, resource_ids nhân sự. worker_id/work_date/attendance_method/workflow_status/day_units/work_hours/output_quantity. Không tiền lương hoặc tổng production_entries. Search không áp dụng.", "parameters": [{"$ref": "#/components/parameters/Id"},{"$ref": "#/components/parameters/Limit"},{"$ref": "#/components/parameters/Offset"},{"name": "from", "in": "query", "required": true, "description": "Ngày hợp lệ, cùng to tối đa 32 ngày", "schema": {"type": "string", "format": "date"}},{"name": "to", "in": "query", "required": true, "schema": {"type": "string", "format": "date"}}], "responses": {"200": {"$ref": "#/components/responses/ReadPage"}, "400": {"$ref": "#/components/responses/Invalid"}, "403": {"$ref": "#/components/responses/Forbidden"}}}},
+    "/{resource}/{id}": {"get": {"summary": "Giới hạn một tài nguyên được cấp", "description": "Tương đương danh sách cùng resource với query id; response vẫn là ReadPage. Attendance vẫn yêu cầu from/to.", "parameters": [{"name": "resource", "in": "path", "required": true, "schema": {"type": "string", "enum": ["products","customers","orders","quotes","production-orders","inventory","attendance"]}},{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "maxLength": 100}},{"name":"from","in":"query","schema":{"type":"string","format":"date"}},{"name":"to","in":"query","schema":{"type":"string","format":"date"}}], "responses": {"200": {"$ref": "#/components/responses/ReadPage"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"description": "ID không thuộc phạm vi"}}}}
+  },
+  "components": {
+    "securitySchemes": {"ServiceKey": {"type": "http", "scheme": "bearer", "description": "Khóa jf_agent_ do quản trị cấp, không phải phiên người dùng/Supabase"}},
+    "parameters": {
+      "Id": {"name": "id", "in": "query", "description": "ID tài nguyên được cấp; inventory: ID kho; attendance: ID nhân sự", "schema": {"type": "string", "maxLength": 100}},
+      "Search": {"name": "search", "in": "query", "schema": {"type": "string", "maxLength": 100}},
+      "Limit": {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 30}},
+      "Offset": {"name": "offset", "in": "query", "schema": {"type": "integer", "minimum": 0, "maximum": 10000, "default": 0}}
+    },
+    "schemas": {
+      "Error": {"type": "object", "required": ["message"], "properties": {"message": {"type": "string"}}},
+      "ReadPage": {"type": "object", "required": ["data","has_more","limit","offset"], "properties": {"data": {"type": "array", "maxItems": 100, "items": {"type": "object", "description": "DTO allowlist theo endpoint; xem mô tả endpoint, numeric luôn chuỗi."}}, "has_more": {"type": "boolean"}, "limit": {"type": "integer"}, "offset": {"type": "integer"}}}
+    },
+    "responses": {
+      "ReadPage": {"description": "Dữ liệu trong phạm vi, tối đa 128 KB", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReadPage"}}}},
+      "Unauthorized": {"description": "Thiếu/sai/hết hạn/thu hồi khóa", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Forbidden": {"description": "Thiếu quyền hoặc phạm vi, Origin/Host bị chặn", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Invalid": {"description": "Tham số sai, ngày không hợp lệ hoặc khoảng ngày quá dài", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Disabled": {"description": "LOCAL_INTEGRATION_API chưa bật"}
+    }
+  }
+}

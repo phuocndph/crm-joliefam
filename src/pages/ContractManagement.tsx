@@ -19,6 +19,7 @@ import { useEInvoices } from "@/hooks/useEInvoices";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Search, Plus, FileSignature, Eye, Edit, Trash2, MoreHorizontal, Settings, ClipboardCheck, Receipt, ChevronDown, ScrollText, FileText, Banknote } from "lucide-react";
+import { isLocalBackend, localAdminUser } from "@/lib/runtime-config";
 
 const ContractPreviewDialog = lazy(() => import("@/components/ContractPreviewDialog").then(m => ({ default: m.ContractPreviewDialog })));
 const HandoverReportDialog = lazy(() => import("@/components/HandoverReportDialog").then(m => ({ default: m.HandoverReportDialog })));

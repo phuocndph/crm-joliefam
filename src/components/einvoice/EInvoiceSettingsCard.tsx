@@ -59,7 +59,7 @@ export const EInvoiceSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
           <Wifi className="h-4 w-4" /> Tài khoản S-Invoice đang kết nối
         </CardTitle>
         <CardDescription>
-          Mỗi quản lý có thể tự cấu hình tài khoản Viettel S-Invoice riêng. Nếu chưa cấu hình, hệ thống dùng tài khoản mặc định trong Secrets.
+          Mỗi quản lý có thể tự cấu hình tài khoản Viettel S-Invoice riêng. Nếu chưa cấu hình, hệ thống dùng tài khoản mặc định trong thông tin bảo mật.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -73,7 +73,7 @@ export const EInvoiceSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
             {settings ? (
               <>
                 <p className="font-medium">
-                  MST: <code>{settings.tax_code || "—"}</code> · Username: <code>{settings.username || "—"}</code>
+                  MST: <code>{settings.tax_code || "—"}</code> · Tên đăng nhập: <code>{settings.username || "—"}</code>
                 </p>
                 <p className="text-xs text-muted-foreground">URL: {settings.api_url}</p>
                 {settings.last_login_at ? (
@@ -97,10 +97,10 @@ export const EInvoiceSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
               <>
                 <p className="font-medium flex items-center gap-1">
                   <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                  Đang dùng tài khoản mặc định (Secrets)
+                  Đang dùng tài khoản mặc định (thông tin bảo mật)
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  MST: <code>{envFallback.tax_code}</code> · Username: <code>{envFallback.username}</code>
+                  MST: <code>{envFallback.tax_code}</code> · Tên đăng nhập: <code>{envFallback.username}</code>
                 </p>
               </>
             ) : (
@@ -126,7 +126,7 @@ export const EInvoiceSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
               <Input value={form.tax_code} onChange={e => setForm({ ...form, tax_code: e.target.value })} placeholder="0108652480" />
             </div>
             <div className="space-y-1">
-              <Label>Username *</Label>
+              <Label>Tên đăng nhập *</Label>
               <Input value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="0108652480-999" />
             </div>
             <div className="space-y-1 col-span-2">
@@ -151,11 +151,11 @@ export const EInvoiceSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
               </select>
             </div>
             <div className="space-y-1">
-              <Label>Template Code (mặc định)</Label>
+              <Label>Mã mẫu hóa đơn (mặc định)</Label>
               <Input value={form.default_template_code} onChange={e => setForm({ ...form, default_template_code: e.target.value })} placeholder="01GTKT0/001" />
             </div>
             <div className="space-y-1 col-span-2">
-              <Label>Ký hiệu (Serial mặc định)</Label>
+              <Label>Ký hiệu hóa đơn (mặc định)</Label>
               <Input value={form.default_serial} onChange={e => setForm({ ...form, default_serial: e.target.value })} placeholder="C25TJF" />
             </div>
           </div>
@@ -167,7 +167,7 @@ export const EInvoiceSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
             </Button>
           )}
           {!canEdit && (
-            <p className="text-xs text-muted-foreground">Bạn chỉ có quyền xem. Liên hệ admin/manager để cập nhật.</p>
+            <p className="text-xs text-muted-foreground">Bạn chỉ có quyền xem. Liên hệ quản trị viên hoặc quản lý để cập nhật.</p>
           )}
         </fieldset>
       </CardContent>

@@ -12,6 +12,8 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface Customer {
   id: string;
@@ -151,6 +153,14 @@ const EditCustomerCareDialog = ({ customer, open, onOpenChange, onSuccess }: Edi
       }
 
       // Check for duplicate customer name (excluding current customer)
+      if (isLocalBackend()) {
+        const existingCustomers = await localApi.customers({ includeInactive: true });
+        const duplicate = existingCustomers.some((item) => item.id !== customer.id && item.name.trim().toLowerCase() === formData.customerName.trim().toLowerCase());
+        if (duplicate) { toast({ title: "Lỗi", description: "Tên khách hàng đã tồn tại, vui lòng chọn tên khác", variant: "destructive" }); return; }
+        const structuredNotes = [formData.notes, formData.nextAction ? `Hành động tiếp theo: ${formData.nextAction}` : '', formData.closingScore ? `Điểm đánh giá: ${formData.closingScore}` : '', lastUpdateDate ? `Ngày cập nhật: ${format(lastUpdateDate, 'dd/MM/yyyy')}` : ''].filter(Boolean).join('\n');
+        await localApi.updateCustomer(customer.id, { name: formData.customerName, notes: structuredNotes, assignee_id: formData.assignedTo, tags: formData.source ? [formData.source] : [], current_status: formData.currentStatus, auto_tags: formData.followUpType ? [formData.followUpType] : [], last_care_date: lastUpdateDate?.toISOString() || new Date().toISOString() });
+        toast({ title: "Thành công", description: "Đã cập nhật khách hàng thành công!" }); onOpenChange(false); onSuccess(); return;
+      }
       const { data: existingCustomers, error: checkError } = await supabase
         .from('customers')
         .select('id, name')

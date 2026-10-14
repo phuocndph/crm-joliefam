@@ -10,12 +10,52 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+server-dist/
+deploy/.env.production
+deploy/backups/
 *.tsbuildinfo
 *.local
 .local-staging-runtime/
+.local-storage/
 .env
 .env.*
 !.env.example
+!.env.local.example
+!deploy/.env.example
+supabase/.temp/
+
+# Local business data and private handoff packages (keep outside GitHub)
+/backups/
+/uploads/
+/snapshots/
+/outputs/
+/%SystemDrive%/
+*.dump
+*.backup
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db
+
+# Machine-specific audit/test output, not source or reusable fixtures
+/.audit-*
+/.tmp-*
+/.isolated-*
+/tmp-test.xlsx
+/direct_calls.txt
+~$*
+/docs/local-storage-sync-last-run.json
+/docs/local-migration-audit*.json
+/docs/payroll-product-mapping-review.csv
+/docs/*proof*.png
+
+# Private keys and certificate bundles
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
 
 # Editor directories and files
 .vscode/*

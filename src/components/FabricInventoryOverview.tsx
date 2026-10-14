@@ -14,6 +14,7 @@ import { toast } from "@/hooks/use-toast";
 import { FabricTransactionsTable } from "@/components/FabricTransactionsTable";
 import { supabase } from "@/integrations/supabase/client";
 import { Search } from "lucide-react";
+import { isLocalBackend, localAdminUser } from "@/lib/runtime-config";
 
 export const FabricInventoryOverview = () => {
   const { data: inventory = [] } = useFabricInventory();
@@ -160,7 +161,17 @@ export const FabricInventoryOverview = () => {
     return acc;
   }, {} as Record<string, { fabricName: string; total: number; totalPackages: number; minimumStock: number; hasMinimumStock: boolean; hanoi: number; hanoiPackages: number; bacninh: number; bacninhPackages: number }>);
 
-  const fabricSummaryArray = Object.values(fabricSummary).filter(f =>
+  const fabricSummaryArray = (Object.values(fabricSummary) as Array<{
+    fabricName: string;
+    total: number;
+    totalPackages: number;
+    minimumStock: number;
+    hasMinimumStock: boolean;
+    hanoi: number;
+    hanoiPackages: number;
+    bacninh: number;
+    bacninhPackages: number;
+  }>).filter(f =>
     searchTerm.trim() === '' ||
     f.fabricName?.toLowerCase().includes(searchTerm.toLowerCase())
   );

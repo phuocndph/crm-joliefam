@@ -1,16 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import type { User as AuthUser } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { PermissionType } from '@/hooks/useEmployeePermissions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { User, Shield, Settings, Save } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { isLocalBackend, localAdminUser } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 interface Profile {
   id: string;
@@ -31,8 +35,8 @@ interface Permission {
   enabled: boolean;
 }
 
-const permissionLabels: Record<PermissionType, string> = {
-  dashboard: 'Dashboard - Tổng quan & thống kê',
+const permissionLabels = {
+  dashboard: 'Tổng quan - Thống kê',
   customers: 'Khách hàng - Quản lý danh sách khách hàng',
   products: 'Sản phẩm - Quản lý kho hàng và giá',
   quotes: 'Báo giá - Tạo và quản lý báo giá',
@@ -40,7 +44,7 @@ const permissionLabels: Record<PermissionType, string> = {
   cash_flow: 'Dòng tiền - Quản lý thu chi',
   transactions: 'Giao dịch - Lịch sử thanh toán',
   reports: 'Báo cáo - Thống kê và phân tích',
-  user_management: 'Quản lý nhân viên - Phân quyền users',
+  user_management: 'Quản lý nhân viên - Phân quyền người dùng',
   quote_supplement: 'Quyền xem báo giá phụ',
   customer_care: 'Chăm sóc khách hàng - Hỗ trợ và tư vấn',
   fabric_management: 'Quản lý vải - Kho vải và giao dịch',
@@ -64,7 +68,7 @@ const permissionLabels: Record<PermissionType, string> = {
   inventory_adjustment: 'Kho & vật tư - Điều chỉnh tồn kho',
   inventory_opening: 'Kho & vật tư - Tạo tồn đầu kỳ',
   inventory_cost_view: 'Kho & vật tư - Xem đơn giá và giá trị tồn',
-  inventory_audit: 'Kho & vật tư - Đối soát ledger và audit',
+  inventory_audit: 'Kho & vật tư - Đối soát sổ kho và nhật ký',
   bom_view: 'Định mức sản xuất - Xem BOM đã duyệt và tính nhu cầu',
   bom_manage: 'Định mức sản xuất - Tạo và chỉnh sửa phiên bản nháp',
   bom_approve: 'Định mức sản xuất - Duyệt và thay thế phiên bản BOM',
@@ -75,8 +79,25 @@ const permissionLabels: Record<PermissionType, string> = {
   production_release: 'Lệnh sản xuất - Phát hành và duyệt quy trình',
   production_complete: 'Lệnh sản xuất - Hoàn thành lệnh',
   production_operations: 'Lệnh sản xuất - Vận hành công đoạn và ghi nhận sản lượng',
+  production_sales_submit: 'Sản xuất - Sale gửi đơn cần sản xuất',
+  production_sales_workflow: 'Sản xuất - Tiếp nhận và phân bổ đơn Sale',
+  production_cutting_plan: 'Sản xuất - Lập dự toán cắt',
   production_worker_manage: 'Lệnh sản xuất - Quản lý công nhân sản xuất',
-};
+  production_attendance_approve: 'Chấm công xưởng - Duyệt công trong phạm vi tổ',
+  payroll_view: 'Tiền lương - Xem dữ liệu được phân quyền',
+  payroll_team_view: 'Tiền lương - Xem nhân sự trong tổ',
+  payroll_worker_manage: 'Tiền lương - Cập nhật nhân sự trong tổ',
+  payroll_rate_view: 'Tiền lương - Xem mức công và lịch sử đơn giá',
+  payroll_rate_manage: 'Tiền lương - Quản lý mức công',
+  payroll_policy_manage: 'Tiền lương - Quản lý nhóm chính sách',
+  payroll_insurance_manage: 'Tiền lương - Quản lý BHXH',
+  payroll_bank_manage: 'Tiền lương - Quản lý tài khoản ngân hàng',
+  payroll_audit: 'Tiền lương - Xem nhật ký dữ liệu nhạy cảm',
+} satisfies Partial<Record<PermissionType, string>>;
+
+const delegablePayrollPermissions = new Set<PermissionType>([
+  'payroll_view', 'payroll_team_view', 'payroll_worker_manage',
+]);
 
 const EmployeePermissionManagement = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -85,6 +106,8 @@ const EmployeePermissionManagement = () => {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [reasonOpen, setReasonOpen] = useState(false);
+  const [saveReason, setSaveReason] = useState('');
   const { role: currentUserRole } = useUserRole(user);
   const { toast } = useToast();
 
@@ -94,15 +117,27 @@ const EmployeePermissionManagement = () => {
     });
   }, []);
 
-  useEffect(() => {
-    if (currentUserRole && (currentUserRole === 'admin' || currentUserRole === 'manager')) {
-      fetchEmployees();
-    }
-  }, [currentUserRole]);
-
-  const fetchEmployees = async () => {
+  const fetchEmployees = useCallback(async () => {
     try {
       console.log('Fetching employees...');
+
+      if (isLocalBackend()) {
+        const users = await localApi.users();
+        const employeeProfiles = users
+          .filter((profile) => {
+            const roles = Array.isArray(profile.user_roles) ? profile.user_roles as Array<{ role?: string }> : [];
+            return roles.some((role) => role.role === 'employee' || role.role === 'accountant' || role.role === 'team_leader');
+          })
+          .map((profile) => {
+            const roles = Array.isArray(profile.user_roles) ? profile.user_roles as Array<{ role?: string }> : [];
+            return {
+              ...profile,
+              user_roles: [{ role: roles[0]?.role || 'employee' }],
+            } as Profile;
+          });
+        setEmployees(employeeProfiles);
+        return;
+      }
       
       // Lấy tất cả profiles
       const { data: profilesData, error: profilesError } = await supabase
@@ -118,6 +153,7 @@ const EmployeePermissionManagement = () => {
       const { data: rolesData, error: rolesError } = await supabase
         .from('user_roles')
         .select('user_id, role, assigned_by')
+        // Public Supabase keeps its original role enum. `team_leader` is local-only.
         .in('role', ['employee', 'accountant']);
 
       if (rolesError) {
@@ -167,10 +203,25 @@ const EmployeePermissionManagement = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    if (currentUserRole && (currentUserRole === 'admin' || currentUserRole === 'manager')) {
+      void fetchEmployees();
+    }
+  }, [currentUserRole, fetchEmployees]);
 
   const fetchPermissions = async (employeeUserId: string) => {
     try {
+      if (isLocalBackend()) {
+        const data = await localApi.employeePermissions(employeeUserId);
+        const allPermissions: Permission[] = Object.keys(permissionLabels).map(permissionType => ({
+          permission_type: permissionType as PermissionType,
+          enabled: data.find((permission) => permission.permission_type === permissionType)?.enabled === true,
+        }));
+        setPermissions(allPermissions);
+        return;
+      }
       const { data, error } = await supabase
         .from('employee_permissions')
         .select('permission_type, enabled')
@@ -220,10 +271,18 @@ const EmployeePermissionManagement = () => {
 
     setSaving(true);
     try {
+      if (isLocalBackend()) {
+        await localApi.saveEmployeePermissions(selectedEmployee.user_id, permissions.map(({ permission_type, enabled }) => ({ permission_type, enabled })), saveReason.trim());
+        toast({ title: "Thành công", description: "Đã cập nhật quyền trên PostgreSQL cục bộ" });
+        setReasonOpen(false);
+        setSaveReason('');
+        return;
+      }
       const { error } = await supabase.functions.invoke('save-employee-permissions', {
         body: {
           userId: selectedEmployee.user_id,
-          permissions: permissions
+          permissions,
+          reason: saveReason.trim(),
         }
       });
 
@@ -233,6 +292,8 @@ const EmployeePermissionManagement = () => {
         title: "Thành công",
         description: "Đã cập nhật quyền cho nhân viên",
       });
+      setReasonOpen(false);
+      setSaveReason('');
     } catch (error) {
       console.error('Error saving permissions:', error);
       toast({
@@ -244,6 +305,20 @@ const EmployeePermissionManagement = () => {
       setSaving(false);
     }
   };
+
+  const openSaveDialog = () => {
+    if (!selectedEmployee) return;
+    setSaveReason('');
+    setReasonOpen(true);
+  };
+
+  const visiblePermissions = Object.entries(permissionLabels).filter(([key]) => {
+    if (!key.startsWith('payroll_')) return true;
+    const permission = key as PermissionType;
+    const targetRole = selectedEmployee?.user_roles?.[0]?.role;
+    if (targetRole === 'employee') return delegablePayrollPermissions.has(permission);
+    return currentUserRole === 'admin';
+  });
 
   const selectEmployee = (employee: Profile) => {
     setSelectedEmployee(employee);
@@ -311,7 +386,11 @@ const EmployeePermissionManagement = () => {
                   </div>
                 )}
                 <Badge variant={employee.user_roles?.[0]?.role === 'accountant' ? 'outline' : 'secondary'} className="mt-1 text-xs">
-                  {employee.user_roles?.[0]?.role === 'accountant' ? 'Kế toán' : 'Nhân viên'}
+                  {employee.user_roles?.[0]?.role === 'accountant'
+                    ? 'Kế toán'
+                    : employee.user_roles?.[0]?.role === 'team_leader'
+                      ? 'Tổ trưởng'
+                      : 'Nhân viên'}
                 </Badge>
               </div>
             ))}
@@ -337,7 +416,7 @@ const EmployeePermissionManagement = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {Object.entries(permissionLabels).map(([key, label]) => {
+                {visiblePermissions.map(([key, label]) => {
                   const permission = permissions.find(p => p.permission_type === key);
                   const isEnabled = permission?.enabled || false;
 
@@ -358,7 +437,7 @@ const EmployeePermissionManagement = () => {
                 })}
                 
                 <div className="pt-4 border-t">
-                  <Button onClick={savePermissions} disabled={saving} className="w-full">
+                  <Button onClick={openSaveDialog} disabled={saving} className="w-full">
                     {saving ? (
                       <>Đang lưu...</>
                     ) : (
@@ -383,6 +462,20 @@ const EmployeePermissionManagement = () => {
           )}
         </div>
       </div>
+      <Dialog open={reasonOpen} onOpenChange={(open) => { if (!saving) setReasonOpen(open); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Xác nhận thay đổi phân quyền</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Lý do bắt buộc để ghi nhật ký. Quyền tiền lương nhạy cảm chỉ hiển thị cho vai trò được phép.</p>
+          <div className="space-y-2">
+            <Label htmlFor="permission-change-reason">Lý do thay đổi</Label>
+            <Textarea id="permission-change-reason" value={saveReason} onChange={(event) => setSaveReason(event.target.value)} placeholder="Ví dụ: Phân quyền kế toán mới nhận việc" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={saving} onClick={() => setReasonOpen(false)}>Hủy</Button>
+            <Button disabled={!saveReason.trim() || saving} onClick={() => void savePermissions()}>{saving ? 'Đang lưu...' : 'Lưu thay đổi'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

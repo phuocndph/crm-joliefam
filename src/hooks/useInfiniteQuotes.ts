@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 const PAGE_SIZE = 50;
 
@@ -50,6 +52,7 @@ export const useInfiniteQuotes = (opts?: { managerId?: string | null; search?: s
   const search = (opts?.search || '').trim();
 
   useEffect(() => {
+    if (isLocalBackend()) return;
     const channel = supabase
       .channel('quotes-realtime-inf')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'quotes' }, () => {
@@ -72,6 +75,10 @@ export const useInfiniteQuotes = (opts?: { managerId?: string | null; search?: s
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
+      if (isLocalBackend()) {
+        const rows = await localApi.quotes({ search, managerId: opts?.managerId, limit: PAGE_SIZE, offset: from });
+        return rows.map(formatQuote);
+      }
       let query = supabase
         .from('quotes')
         .select(`

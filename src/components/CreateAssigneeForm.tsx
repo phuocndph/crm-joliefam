@@ -8,6 +8,8 @@ import { UserPlus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface CreateAssigneeFormProps {
   onSuccess?: () => void;
@@ -33,6 +35,7 @@ const CreateAssigneeForm = ({ onSuccess }: CreateAssigneeFormProps) => {
   const fetchAssignees = async () => {
     setLoadingAssignees(true);
     try {
+      if (isLocalBackend()) { setAssignees(await localApi.assignees() as unknown as Assignee[]); return; }
       const { data, error } = await supabase
         .from('assignees' as any)
         .select('id, name, created_at')
@@ -53,6 +56,7 @@ const CreateAssigneeForm = ({ onSuccess }: CreateAssigneeFormProps) => {
 
   const handleDeleteAssignee = async (id: string, name: string) => {
     try {
+      if (isLocalBackend()) { await localApi.deleteAssignee(id); toast({ title: "Thành công", description: `Đã xóa người phụ trách "${name}" thành công!` }); fetchAssignees(); return; }
       const { error } = await supabase
         .from('assignees' as any)
         .delete()
@@ -118,6 +122,7 @@ const CreateAssigneeForm = ({ onSuccess }: CreateAssigneeFormProps) => {
       }
 
       // For simplicity, we'll create an assignee record
+      if (isLocalBackend()) { await localApi.createAssignee({ name: formData.name.trim() }); toast({ title: "Thành công", description: "Đã thêm người phụ trách mới thành công!" }); setFormData({ name: "" }); fetchAssignees(); onSuccess?.(); return; }
       const { data, error } = await supabase
         .from('assignees' as any)
         .insert({

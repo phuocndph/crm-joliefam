@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from '@tanstack/react-query';
 import type { User as AuthUser } from "@supabase/supabase-js";
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,17 +8,21 @@ import { useEmployeePermissions, type PermissionType } from "@/hooks/useEmployee
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Building2, LogOut, Settings, Bell, User, Key, Menu, Home, Users2, Package, ShoppingCart, FileText, CreditCard, BarChart3, Headphones, Truck, Scissors, Plus, FileSignature, Receipt, Wallet, BookOpen, Bot, Globe, Building, CircleDollarSign, Boxes } from "lucide-react";
+import { Building2, LogOut, Settings, Bell, User, Key, Menu, Home, Users2, Package, ShoppingCart, FileText, CreditCard, BarChart3, Headphones, Truck, Scissors, Plus, FileSignature, Receipt, Wallet, BookOpen, Bot, Globe, Building, CircleDollarSign, Boxes, Factory, CalendarCheck2, WalletCards } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import { cn } from "@/lib/utils";
+import { isLocalBackend, isLocalDemoEnabled, localAdminUser } from "@/lib/runtime-config";
+import { clearLocalSession, getLocalMe, hasStoredLocalUserSession, logoutLocal } from "@/lib/local-auth";
 
-type MobileNavItem = { icon: LucideIcon; label: string; path: string; perm?: PermissionType; perms?: PermissionType[]; isMenu?: boolean };
+type MobileNavItem = { icon: LucideIcon; label: string; path: string; perm?: PermissionType; perms?: PermissionType[]; isMenu?: boolean; selfOnly?: boolean; accountOnly?: boolean; integrationAdmin?: boolean };
 
 const MobileLayout = () => {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [localWorkerId, setLocalWorkerId] = useState<string | null>(null);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -28,6 +33,25 @@ const MobileLayout = () => {
   } = useUserRole(user);
   const { hasPermission, loading: permLoading } = useEmployeePermissions(user, userRole);
   useEffect(() => {
+    if (isLocalBackend()) {
+      let cancelled = false;
+      if (!hasStoredLocalUserSession()) {
+        setUser(isLocalDemoEnabled() ? localAdminUser as unknown as AuthUser : null);
+        if (!isLocalDemoEnabled()) navigate('/auth', { replace: true });
+        setLoading(false);
+      } else {
+        void getLocalMe()
+          .then((me) => { if (cancelled) return; setLocalWorkerId(me.worker_id); setUser({
+            ...localAdminUser,
+            id: me.user_id,
+            email: me.email,
+            user_metadata: { first_name: me.first_name ?? '', last_name: me.last_name ?? '' },
+          } as unknown as AuthUser); })
+          .catch(() => { if (!cancelled) { setUser(null); navigate("/auth", { replace: true }); } })
+          .finally(() => { if (!cancelled) setLoading(false); });
+      }
+      return () => { cancelled = true; };
+    }
     // Get current user
     const getUser = async () => {
       const {
@@ -59,6 +83,15 @@ const MobileLayout = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
   const handleSignOut = async () => {
+    if (isLocalBackend()) {
+      // Đăng xuất được cả tài khoản người dùng và tài khoản quản trị demo.
+      await logoutLocal();
+      queryClient.clear();
+      clearLocalSession();
+      toast({ title: "Đăng xuất thành công", description: "Bạn đã thoát khỏi hệ thống local." });
+      navigate("/auth", { replace: true });
+      return;
+    }
     try {
       await supabase.auth.signOut();
       toast({
@@ -84,6 +117,8 @@ const MobileLayout = () => {
         return 'Kế toán';
       case 'employee':
         return 'Nhân viên';
+      case 'team_leader':
+        return 'Tổ trưởng';
       default:
         return 'Chưa phân quyền';
     }
@@ -98,6 +133,8 @@ const MobileLayout = () => {
         return 'outline' as const;
       case 'employee':
         return 'secondary' as const;
+      case 'team_leader':
+        return 'secondary' as const;
       default:
         return 'outline' as const;
     }
@@ -105,6 +142,9 @@ const MobileLayout = () => {
 
   const isPrivileged = userRole === 'admin' || userRole === 'manager';
   const canSee = (item: MobileNavItem) => {
+    if (item.integrationAdmin) return isLocalBackend() && hasStoredLocalUserSession() && userRole === 'admin' && user?.id !== 'local-admin';
+    if (item.accountOnly) return isLocalBackend() && hasStoredLocalUserSession();
+    if (item.selfOnly) return Boolean(localWorkerId);
     if (item.perms) return item.perms.some((permission) => hasPermission(permission));
     if (!item.perm) return isPrivileged;
     return hasPermission(item.perm);
@@ -129,7 +169,7 @@ const MobileLayout = () => {
     {
       title: "Kinh doanh",
       items: [
-        { icon: Home, label: "Dashboard", path: "/dashboard", perm: "dashboard" as PermissionType },
+        { icon: Home, label: "Tổng quan", path: "/dashboard", perm: "dashboard" as PermissionType },
         { icon: Users2, label: "Khách hàng", path: "/customers", perm: "customers" as PermissionType },
         { icon: Package, label: "Sản phẩm", path: "/products", perm: "products" as PermissionType },
         { icon: ShoppingCart, label: "Đơn hàng", path: "/orders", perm: "orders" as PermissionType },
@@ -154,20 +194,27 @@ const MobileLayout = () => {
         { icon: Building, label: "Đơn vị vận chuyển", path: "/shipping-companies", perm: "shipping_companies" as PermissionType },
         { icon: Scissors, label: "Vải", path: "/fabrics", perm: "fabric_management" as PermissionType },
         { icon: Boxes, label: "Kho & vật tư", path: "/inventory-management", perm: "inventory_view" as PermissionType },
+        { icon: Factory, label: "Lệnh sản xuất", path: "/production-orders", perm: "production_view" as PermissionType },
+        { icon: CalendarCheck2, label: "Chấm công xưởng", path: "/production-attendance", perm: "production_view" as PermissionType },
+        { icon: CalendarCheck2, label: "Công & thu nhập của tôi", path: "/my-attendance", selfOnly: true },
+        { icon: User, label: "Hồ sơ của tôi", path: "/my-profile", accountOnly: true },
+        { icon: WalletCards, label: "Thiết lập tiền lương", path: "/payroll-settings", perm: "payroll_view" as PermissionType },
         { icon: BarChart3, label: "Báo cáo", path: "/reports", perm: "reports" as PermissionType },
       ],
     },
     {
       title: "Hệ thống",
       items: [
-        { icon: Users2, label: "Quản lý user", path: "/user-management", perm: "user_management" as PermissionType },
+        { icon: Globe, label: 'API & kết nối Agent', path: '/integration-access', integrationAdmin: true },
+        { icon: Users2, label: "Quản lý người dùng", path: "/user-management", perm: "user_management" as PermissionType },
+        { icon: User, label: "Duyệt hồ sơ nhân sự", path: "/profile-review", perm: "user_management" as PermissionType },
         { icon: BookOpen, label: "Tri thức", path: "/knowledge-base", perm: "knowledge_base" as PermissionType },
         { icon: Bot, label: "Cài đặt AI", path: "/ai-settings" },
-        { icon: Globe, label: "Web Scraper", path: "/web-scraper" },
+        { icon: Globe, label: "Thu thập dữ liệu web", path: "/web-scraper" },
       ],
     },
   ]
-    .map(g => ({ ...g, items: g.items.filter((item) => canSee(item)) }))
+    .map(g => ({ ...g, items: g.items.filter(canSee) }))
     .filter(g => g.items.length > 0);
   if (loading || roleLoading || permLoading) {
     return <div className="min-h-screen bg-background flex items-center justify-center">
@@ -226,7 +273,7 @@ const MobileLayout = () => {
                       </div>
                       <div className="flex-1">
                         <p className="text-sm font-medium">
-                          {user?.user_metadata?.first_name || "Admin"} {user?.user_metadata?.last_name || "User"}
+                          {user?.user_metadata?.first_name || "Quản trị viên"} {user?.user_metadata?.last_name || "Người dùng"}
                         </p>
                         <div className="flex items-center gap-2">
                           <p className="text-xs text-muted-foreground">{user?.email}</p>

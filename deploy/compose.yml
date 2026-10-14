@@ -1,0 +1,78 @@
+name: joliefam-production
+services:
+  postgres:
+    image: postgres:16-alpine
+    command: ["postgres", "-c", "timezone=Asia/Ho_Chi_Minh"]
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+      APP_DATABASE_USER: ${APP_DATABASE_USER:?required}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?required}
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./init-app-role.sql:/docker-entrypoint-initdb.d/10-app-role.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [private]
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Ho_Chi_Minh
+      LOCAL_API_HOST: 0.0.0.0
+      LOCAL_API_PORT: 8787
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:?required}
+      LOCAL_DATABASE_URL: ${LOCAL_DATABASE_URL:?required}
+      LOCAL_ALLOWED_ORIGINS: ${LOCAL_ALLOWED_ORIGINS:?required}
+      LOCAL_STORAGE_ROOT: /app/storage
+      LOCAL_DEMO_AUTH: "false"
+      LOCAL_INTEGRATION_API: ${LOCAL_INTEGRATION_API:-false}
+      LOCAL_SYNC_AUTO: ${LOCAL_SYNC_AUTO:-false}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+    volumes:
+      - assets:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [private]
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?required}
+      ACME_EMAIL: ${ACME_EMAIL:?required}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [private]
+volumes:
+  database:
+  assets:
+  caddy_data:
+  caddy_config:
+networks:
+  private:
+

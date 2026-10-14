@@ -1,10 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 export const useOrders = (opts?: { managerId?: string | null }) => {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    if (isLocalBackend()) return;
     // Use unique channel name to prevent conflicts across multiple tabs
     const channelName = `orders-payments-quotes-${Date.now()}`;
     // Invalidate silently for all row changes; the follow-up query fetches only selected columns.
@@ -34,6 +37,7 @@ export const useOrders = (opts?: { managerId?: string | null }) => {
     queryKey: ['orders', opts?.managerId ?? 'all'],
     queryFn: async () => {
       console.log('🔍 Fetching orders with manager filter:', opts?.managerId);
+      if (isLocalBackend()) return localApi.orders({ managerId: opts?.managerId, limit: 200 });
       
       // First, get all orders
       // Egress optimization: removed heavy `quotes(quote_data)` join from list query.
@@ -151,6 +155,7 @@ export const useUpdateOrder = () => {
   
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      if (isLocalBackend()) return localApi.updateOrder(id, data);
       const { data: updatedData, error } = await supabase
         .from('orders')
         .update(data)

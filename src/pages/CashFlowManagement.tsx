@@ -42,6 +42,8 @@ import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subYears, sta
 import { DateRange } from "react-day-picker";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { QuoteSupplementDialog } from "@/components/QuoteSupplementDialog";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 const formatSafeDate = (dateValue: string | null | undefined, formatStr: string = "dd/MM/yyyy") => {
   if (!dateValue) {
@@ -214,6 +216,10 @@ export default function CashFlowManagement() {
     queryKey: ['expenses', selectedManagerId, selectedYear, selectedMonth, filterPeriod, dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async () => {
       const periodRange = getDateRange();
+
+      if (isLocalBackend()) {
+        return localApi.expenses({ managerId: selectedManagerId, start: periodRange.start.toISOString(), end: periodRange.end.toISOString() });
+      }
       
       console.log('=== Fetching Expenses ===');
       console.log('Date range:', {
@@ -250,6 +256,14 @@ export default function CashFlowManagement() {
     queryKey: ['orders', selectedManagerId, selectedYear, selectedMonth, filterPeriod, dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async () => {
       const dateRange = getDateRange();
+
+      if (isLocalBackend()) {
+        const rows = await localApi.orders({ managerId: selectedManagerId, limit: 5000 });
+        return rows.filter((order) => {
+          const created = new Date(String(order.created_at || 0)).getTime();
+          return created >= dateRange.start.getTime() && created <= dateRange.end.getTime();
+        });
+      }
       
       let ordersQuery = supabase
         .from('orders')
@@ -296,6 +310,7 @@ export default function CashFlowManagement() {
     queryKey: ['order-items-cash-flow', orderIdsNeedingItems],
     queryFn: async () => {
       if (orderIdsNeedingItems.length === 0) return [];
+      if (isLocalBackend()) return [];
       const { data, error } = await supabase
         .from('orders')
         .select('id, items')
@@ -309,6 +324,7 @@ export default function CashFlowManagement() {
 
   // Real-time subscription for orders updates
   useEffect(() => {
+    if (isLocalBackend()) return;
     let refetchTimer: ReturnType<typeof setTimeout> | undefined;
     const scheduleRefetch = () => {
       if (refetchTimer) clearTimeout(refetchTimer);
@@ -412,6 +428,11 @@ export default function CashFlowManagement() {
     queryKey: ['products-batch', productIdentifiers.productIds, productIdentifiers.productSkus],
     queryFn: async () => {
       const { productIds, productSkus } = productIdentifiers;
+      if (isLocalBackend()) {
+        if (productIds.length === 0 && productSkus.length === 0) return [];
+        const products = await localApi.catalogProducts({ includeInactive: true });
+        return products.map((product) => ({ id: product.id, sku: product.sku, cost_price: product.cost_price }));
+      }
       
       if (productIds.length === 0 && productSkus.length === 0) {
         return [];
@@ -569,7 +590,7 @@ export default function CashFlowManagement() {
 
   // Update local state when data changes
   useEffect(() => {
-    setExpenses(expensesData);
+    setExpenses(expensesData as Expense[]);
     setLoading(expensesLoading || ordersLoading || orderItemsLoading || productsLoading);
   }, [expensesData, expensesLoading, ordersLoading, orderItemsLoading, productsLoading]);
 
@@ -598,6 +619,16 @@ export default function CashFlowManagement() {
     if (!expenseToDelete) return;
     
     try {
+      if (isLocalBackend()) {
+        await localApi.deleteExpense(expenseToDelete.id);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['expenses'] }),
+          queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+          queryClient.invalidateQueries({ queryKey: ['allOrderExpenses'] }),
+        ]);
+        setExpenseToDelete(null);
+        return;
+      }
       // Also delete the corresponding transaction record (type='expense') if exists
       await supabase
         .from('transactions')

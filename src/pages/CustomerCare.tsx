@@ -30,6 +30,8 @@ import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileCareList } from "@/components/MobileCareList";
+import { isLocalBackend, localAdminUser } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 const CustomerCare = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -115,25 +117,22 @@ const CustomerCare = () => {
     if (!customersData) return;
     
     try {
-      // Fetch orders to get real purchase data
-      const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('id, customer_id, total_amount, status, created_at, payment_date, manager_id, assignee_id')
-        .neq('status', 'cancelled')
-        .not('total_amount', 'is', null)
-        .not('manager_id', 'is', null); // Only get orders with assigned managers
-
-      if (ordersError) {
-        console.error('Error fetching orders:', ordersError);
-      }
-
-      // Fetch assignees
-      const { data: assigneesData, error: assigneesError } = await supabase
-        .from('assignees')
-        .select('id, name');
-
-      if (!assigneesError && assigneesData) {
-        setAssignees(assigneesData);
+      // Fetch orders and assignees from the active backend.
+      let ordersData: any[] = [];
+      if (isLocalBackend()) {
+        ordersData = (await localApi.orders({ limit: 5000 })).filter((order) => order.status !== 'cancelled' && order.total_amount !== null && order.manager_id);
+        setAssignees(await localApi.assignees());
+      } else {
+        const { data, error: ordersError } = await supabase
+          .from('orders')
+          .select('id, customer_id, total_amount, status, created_at, payment_date, manager_id, assignee_id')
+          .neq('status', 'cancelled')
+          .not('total_amount', 'is', null)
+          .not('manager_id', 'is', null);
+        if (ordersError) console.error('Error fetching orders:', ordersError);
+        ordersData = data || [];
+        const { data: assigneesData, error: assigneesError } = await supabase.from('assignees').select('id, name');
+        if (!assigneesError && assigneesData) setAssignees(assigneesData);
       }
 
       // Calculate real purchase statistics for each customer and auto-assign based on orders
@@ -341,6 +340,7 @@ const CustomerCare = () => {
 
   const handleStatusUpdate = async (customerId: string, status: string) => {
     try {
+      if (isLocalBackend()) { await localApi.updateCustomer(customerId, { current_status: status }); refetchCustomers(); setStatusDialogOpen(false); setSelectedCustomerForEdit(null); toast({ title: "Thành công", description: "Đã cập nhật trạng thái" }); return; }
       const { error } = await supabase
         .from('customers')
         .update({ current_status: status })
@@ -368,6 +368,7 @@ const CustomerCare = () => {
 
   const handleSourceUpdate = async (customerId: string, source: string) => {
     try {
+      if (isLocalBackend()) { await localApi.updateCustomer(customerId, { tags: [source] }); refetchCustomers(); setSourceDialogOpen(false); setSelectedCustomerForEdit(null); toast({ title: "Thành công", description: "Đã cập nhật nguồn" }); return; }
       const { error } = await supabase
         .from('customers')
         .update({ tags: [source] })
@@ -395,6 +396,7 @@ const CustomerCare = () => {
 
   const handleNotesUpdate = async (customerId: string, notes: string) => {
     try {
+      if (isLocalBackend()) { await localApi.updateCustomer(customerId, { notes }); refetchCustomers(); setNotesDialogOpen(false); setSelectedCustomerForEdit(null); setNotesText(""); toast({ title: "Thành công", description: "Đã cập nhật ghi chú" }); return; }
       const { error } = await supabase
         .from('customers')
         .update({ notes: notes })
@@ -423,6 +425,7 @@ const CustomerCare = () => {
 
   const handleAssigneeUpdate = async (customerId: string, assigneeId: string) => {
     try {
+      if (isLocalBackend()) { await localApi.updateCustomer(customerId, { assignee_id: assigneeId || null }); refetchCustomers(); setAssigneeDialogOpen(false); setSelectedCustomerForAssignee(null); toast({ title: "Thành công", description: "Đã cập nhật người phụ trách" }); return; }
       const { error } = await supabase
         .from('customers')
         .update({ assignee_id: assigneeId || null })
@@ -451,6 +454,7 @@ const CustomerCare = () => {
 
   const handleCareDateUpdate = async (customerId: string, careDate: Date) => {
     try {
+      if (isLocalBackend()) { await localApi.updateCustomer(customerId, { last_care_date: careDate.toISOString() }); refetchCustomers(); setCareDateDialogOpen(false); setSelectedCustomerForEdit(null); setSelectedCareDate(undefined); toast({ title: "Thành công", description: "Đã cập nhật ngày chăm sóc" }); return; }
       const { error } = await supabase
         .from('customers')
         .update({ last_care_date: careDate.toISOString() })
@@ -527,6 +531,7 @@ const CustomerCare = () => {
   const handleBulkStatusUpdate = async (status: string) => {
     console.log('Bulk status update:', status, 'for customers:', Array.from(selectedCustomerIds));
     try {
+      if (isLocalBackend()) { await Promise.all(Array.from(selectedCustomerIds).map((id) => localApi.updateCustomer(id, { current_status: status }))); refetchCustomers(); setSelectedCustomerIds(new Set()); setBulkActionDialogOpen(false); setBulkActionType(null); toast({ title: "Thành công", description: `Đã cập nhật trạng thái cho ${selectedCustomerIds.size} khách hàng` }); return; }
       const { error } = await supabase
         .from('customers')
         .update({ current_status: status })
@@ -556,6 +561,7 @@ const CustomerCare = () => {
   const handleBulkSourceUpdate = async (source: string) => {
     console.log('Bulk source update:', source, 'for customers:', Array.from(selectedCustomerIds));
     try {
+      if (isLocalBackend()) { await Promise.all(Array.from(selectedCustomerIds).map((id) => localApi.updateCustomer(id, { tags: [source] }))); refetchCustomers(); setSelectedCustomerIds(new Set()); setBulkActionDialogOpen(false); setBulkActionType(null); toast({ title: "Thành công", description: `Đã cập nhật nguồn cho ${selectedCustomerIds.size} khách hàng` }); return; }
       const { error } = await supabase
         .from('customers')
         .update({ tags: [source] })
@@ -585,6 +591,7 @@ const CustomerCare = () => {
   const handleBulkAssigneeUpdate = async (assigneeId: string) => {
     console.log('Bulk assignee update:', assigneeId, 'for customers:', Array.from(selectedCustomerIds));
     try {
+      if (isLocalBackend()) { await Promise.all(Array.from(selectedCustomerIds).map((id) => localApi.updateCustomer(id, { assignee_id: assigneeId || null }))); refetchCustomers(); setSelectedCustomerIds(new Set()); setBulkActionDialogOpen(false); setBulkActionType(null); toast({ title: "Thành công", description: `Đã cập nhật người phụ trách cho ${selectedCustomerIds.size} khách hàng` }); return; }
       const { error } = await supabase
         .from('customers')
         .update({ assignee_id: assigneeId || null })
@@ -666,7 +673,7 @@ const CustomerCare = () => {
           </TabsTrigger>
           <TabsTrigger value="import" className="flex items-center gap-2">
             <Download className="h-4 w-4" />
-            Import
+            Nhập dữ liệu
           </TabsTrigger>
           <TabsTrigger value="ai-settings" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
@@ -1361,15 +1368,15 @@ const CustomerCare = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Download className="h-5 w-5" />
-                Import Khách Hàng
+                Nhập khách hàng
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-12 text-center">
                 <Download className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-medium mb-2">Import dữ liệu khách hàng</h3>
+                <h3 className="text-lg font-medium mb-2">Nhập dữ liệu khách hàng</h3>
                 <p className="text-muted-foreground mb-4">
-                  Kéo thả file Excel hoặc CSV vào đây để import dữ liệu khách hàng
+                  Kéo thả tệp Excel hoặc CSV vào đây để nhập dữ liệu khách hàng
                 </p>
                 <Button>Chọn file</Button>
               </div>

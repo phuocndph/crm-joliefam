@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,8 +10,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Eye, EyeOff, Building2, User, Mail, Lock, ShieldCheck } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { isLocalBackend, isLocalDemoEnabled } from "@/lib/runtime-config";
+import { loginLocal, hasLocalUserSession, getLocalMe, logoutLocal, clearLocalSession } from "@/lib/local-auth";
 
 const REMEMBER_EMAIL_KEY = "remembered_email";
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallback;
+};
 
 const getPostAuthPath = () => {
   const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
@@ -18,6 +29,7 @@ const getPostAuthPath = () => {
 };
 
 const Auth = () => {
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState(() => {
     try { return localStorage.getItem(REMEMBER_EMAIL_KEY) || ""; } catch { return ""; }
   });
@@ -33,6 +45,25 @@ const Auth = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (isLocalBackend()) {
+      let cancelled = false;
+      // Local: nếu đã có phiên người dùng thì vào thẳng dashboard;
+      // nếu chưa thì hiện form đăng nhập email/mật khẩu.
+      if (hasLocalUserSession()) {
+        void getLocalMe(true)
+          .then(() => { if (!cancelled) navigate(getPostAuthPath(), { replace: true }); })
+          .catch(() => {
+            if (cancelled) return;
+            // Remove an expired/corrupt browser token so the next local
+            // attempt can use the loopback administrator session.
+            void logoutLocal();
+            setCheckingSession(false);
+          });
+      } else {
+        setCheckingSession(false);
+      }
+      return () => { cancelled = true; };
+    }
     // Subscribe FIRST, then check session — handles late-restore on PWA
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) navigate(getPostAuthPath(), { replace: true });
@@ -54,6 +85,17 @@ const Auth = () => {
     setLoading(true);
 
     try {
+      if (isLocalBackend()) {
+        await loginLocal(email, password);
+        queryClient.clear();
+        try {
+          if (rememberMe) localStorage.setItem(REMEMBER_EMAIL_KEY, email);
+          else localStorage.removeItem(REMEMBER_EMAIL_KEY);
+        } catch { /* bỏ qua */ }
+        toast({ title: "Đăng nhập thành công!", description: "Chào mừng bạn trở lại hệ thống CRM." });
+        navigate(getPostAuthPath());
+        return;
+      }
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -68,7 +110,9 @@ const Auth = () => {
           } else {
             localStorage.removeItem(REMEMBER_EMAIL_KEY);
           }
-        } catch {}
+        } catch {
+          // Storage may be unavailable in private browsing; authentication still succeeds.
+        }
 
         toast({
           title: "Đăng nhập thành công!",
@@ -76,10 +120,35 @@ const Auth = () => {
         });
         navigate(getPostAuthPath());
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Lỗi đăng nhập",
-        description: error.message || "Có lỗi xảy ra khi đăng nhập",
+        description: getErrorMessage(error, "Có lỗi xảy ra khi đăng nhập"),
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLocalAdminAccess = async () => {
+    if (!isLocalDemoEnabled()) return;
+    setLoading(true);
+    try {
+      // The loopback admin session is restricted by the API to local origins;
+      // it never creates or reuses a public Supabase session.
+      await logoutLocal();
+      // API restarts rotate the loopback token. Drop any in-memory token before
+      // requesting a fresh one so the recovery button cannot reuse a revoked
+      // bootstrap session from a previous server process.
+      clearLocalSession();
+      await getLocalMe(true);
+      toast({ title: "Đã vào hệ thống local", description: "Đang sử dụng quản trị viên cục bộ." });
+      navigate(getPostAuthPath(), { replace: true });
+    } catch (error: unknown) {
+      toast({
+        title: "Không thể mở phiên local",
+        description: getErrorMessage(error, "Local API chưa sẵn sàng hoặc tài khoản quản trị đã bị tắt."),
         variant: "destructive",
       });
     } finally {
@@ -114,10 +183,10 @@ const Auth = () => {
           description: "Vui lòng kiểm tra email để xác nhận tài khoản.",
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Lỗi đăng ký",
-        description: error.message || "Có lỗi xảy ra khi đăng ký",
+        description: getErrorMessage(error, "Có lỗi xảy ra khi đăng ký"),
         variant: "destructive",
       });
     } finally {
@@ -157,9 +226,9 @@ const Auth = () => {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="signin" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsList className={`grid w-full ${isLocalBackend() ? "grid-cols-1" : "grid-cols-2"} mb-6`}>
                 <TabsTrigger value="signin">Đăng nhập</TabsTrigger>
-                <TabsTrigger value="signup">Đăng ký</TabsTrigger>
+                {!isLocalBackend() && <TabsTrigger value="signup">Đăng ký</TabsTrigger>}
               </TabsList>
               
               <TabsContent value="signin">
@@ -229,9 +298,22 @@ const Auth = () => {
                     {loading ? "Đang đăng nhập..." : "Đăng nhập"}
                   </Button>
 
+                  {isLocalDemoEnabled() && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      disabled={loading}
+                      onClick={() => void handleLocalAdminAccess()}
+                    >
+                      <ShieldCheck className="mr-2 h-4 w-4" />
+                      Vào bằng quản trị viên local
+                    </Button>
+                  )}
+
                   <p className="text-xs text-muted-foreground flex items-center gap-1.5 justify-center pt-1">
                     <ShieldCheck className="h-3.5 w-3.5" />
-                    Phiên đăng nhập được giữ tới 60 ngày trên thiết bị này
+                    {isLocalBackend() ? "Phiên local có hiệu lực tối đa 8 giờ trên thiết bị này" : "Phiên đăng nhập được giữ tới 60 ngày trên thiết bị này"}
                   </p>
                 </form>
 
@@ -280,7 +362,7 @@ const Auth = () => {
                         id="signupEmail"
                         name="email"
                         type="email"
-                        placeholder="your.email@company.com"
+                        placeholder="tenban@congty.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="pl-10"

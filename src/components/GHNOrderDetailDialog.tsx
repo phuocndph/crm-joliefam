@@ -3,6 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { Loader2, ExternalLink, Package } from "lucide-react";
 
 interface GHNOrderDetailDialogProps {
@@ -82,10 +84,16 @@ export function GHNOrderDetailDialog({ ghnOrderCode, open, onOpenChange }: GHNOr
     setLoading(true);
     setError(null);
     try {
-      const { data: res, error: err } = await supabase.functions.invoke("ghn-tracking", {
-        body: { action: "track_order", orderCode: ghnOrderCode },
-      });
-      if (err) throw err;
+      let res: { success?: boolean; data?: any; error?: string };
+      if (isLocalBackend()) {
+        res = await localApi.localFunction<{ success?: boolean; data?: any; error?: string }>("ghn-tracking", { action: "track_order", orderCode: ghnOrderCode });
+      } else {
+        const response = await supabase.functions.invoke("ghn-tracking", {
+          body: { action: "track_order", orderCode: ghnOrderCode },
+        });
+        if (response.error) throw response.error;
+        res = response.data as { success?: boolean; data?: any; error?: string };
+      }
       if (!res.success) throw new Error(res.error || "Không thể lấy thông tin");
       setData(res.data);
     } catch (e: any) {

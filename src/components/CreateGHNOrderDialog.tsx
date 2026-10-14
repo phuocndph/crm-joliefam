@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { Truck, Loader2, CheckCircle, Copy, MapPin, ExternalLink, Printer, X, Info, Search, HelpCircle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -394,11 +396,18 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
     }
     setLoadingSuggestions(true);
     try {
-      const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-        body: { action: 'address_autocomplete', input: searchText }
-      });
-      if (error) throw error;
-      const suggestions = data?.data || [];
+      let data: { data?: any[]; success?: boolean; error?: string };
+      if (isLocalBackend()) {
+        data = await localApi.localFunction<{ data?: any[]; success?: boolean; error?: string }>('ghn-tracking', { action: 'address_autocomplete', input: searchText });
+      } else {
+        const response = await supabase.functions.invoke('ghn-tracking', {
+          body: { action: 'address_autocomplete', input: searchText }
+        });
+        if (response.error) throw response.error;
+        data = response.data as { data?: any[]; success?: boolean; error?: string };
+      }
+      if (data.success === false) throw new Error(data.error || 'GHN autocomplete error');
+      const suggestions = data.data || [];
       setAddressSuggestions(suggestions);
       if (suggestions.length > 0) setShowSuggestions(true);
     } catch (e) {
@@ -415,12 +424,18 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
   }, [debouncedAddress, open, addressSelected, fetchAddressSuggestions]);
 
   const callGHN = useCallback(async (action: string, body: Record<string, any> = {}) => {
-    const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-      body: { action, ...body }
-    });
-    if (error) {
-      const detailMessage = data?.error || error.message;
-      throw new Error(detailMessage);
+    let data: { success?: boolean; data?: any; error?: string };
+    if (isLocalBackend()) {
+      data = await localApi.localFunction<{ success?: boolean; data?: any; error?: string }>('ghn-tracking', { action, ...body });
+    } else {
+      const response = await supabase.functions.invoke('ghn-tracking', {
+        body: { action, ...body }
+      });
+      if (response.error) {
+        const detailMessage = (response.data as { error?: string } | null)?.error || response.error.message;
+        throw new Error(detailMessage);
+      }
+      data = response.data as { success?: boolean; data?: any; error?: string };
     }
     if (!data?.success) throw new Error(data?.error || 'GHN API error');
     return data.data;
@@ -837,10 +852,16 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                   if (!createdOrderCode) return;
                   setPrintingA5(true);
                   try {
-                    const { data, error } = await supabase.functions.invoke('ghn-tracking', {
-                      body: { action: 'print_a5', orderCodes: [createdOrderCode] }
-                    });
-                    if (error) throw error;
+                    let data: { success?: boolean; data?: { printUrl?: string }; error?: string };
+                    if (isLocalBackend()) {
+                      data = await localApi.localFunction<{ success?: boolean; data?: { printUrl?: string }; error?: string }>('ghn-tracking', { action: 'print_a5', orderCodes: [createdOrderCode] });
+                    } else {
+                      const response = await supabase.functions.invoke('ghn-tracking', {
+                        body: { action: 'print_a5', orderCodes: [createdOrderCode] }
+                      });
+                      if (response.error) throw response.error;
+                      data = response.data as { success?: boolean; data?: { printUrl?: string }; error?: string };
+                    }
                     if (data?.success && data.data?.printUrl) {
                       window.open(data.data.printUrl, '_blank');
                     } else {
@@ -1212,7 +1233,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                     <div className="col-span-5 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                       <div className="flex items-center gap-1.5 font-medium mb-1">
                         <Info className="h-3.5 w-3.5 flex-shrink-0" />
-                        Hàng nặng (Service 5): GHN tính cước từ kích thước mỗi kiện hàng
+                        Hàng nặng (Dịch vụ 5): GHN tính cước từ kích thước mỗi kiện hàng
                       </div>
                       <div className="ml-5 space-y-0.5">
                         <div>Tổng KL: <strong>{(heavyCargoCalc.totalWeight / 1000).toFixed(1)}kg</strong></div>
@@ -1262,7 +1283,7 @@ export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmoun
                 <h3 className="text-sm font-bold">Gói dịch vụ</h3>
                 {serviceTypeId && (
                   <Badge variant={serviceTypeId === "5" ? "default" : "secondary"} className="text-xs">
-                    {serviceTypeId === "5" ? "📦 Hàng nặng (Service 5)" : `📮 Hàng nhẹ (Service ${serviceTypeId})`}
+                    {serviceTypeId === "5" ? "📦 Hàng nặng (Dịch vụ 5)" : `📮 Hàng nhẹ (Dịch vụ ${serviceTypeId})`}
                   </Badge>
                 )}
               </div>

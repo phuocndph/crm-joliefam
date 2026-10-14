@@ -34,7 +34,7 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
       if (success) {
         // Also cache in localStorage for faster initial load
         localStorage.setItem('quoteTemplateSettings', JSON.stringify(settings));
-        toast.success("Cài đặt template đã được lưu thành công!");
+        toast.success("Cài đặt mẫu báo giá đã được lưu thành công!");
         onOpenChange(false);
       } else {
         toast.error("Không thể lưu cài đặt. Vui lòng thử lại.");
@@ -94,8 +94,8 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto m-4">
         <div className="p-6 border-b">
-          <h2 className="text-2xl font-bold text-gray-900">Cài đặt Template Báo Giá</h2>
-          <p className="text-gray-600 mt-1">Tùy chỉnh thông tin công ty và template báo giá (đồng bộ cho tất cả nhân viên)</p>
+          <h2 className="text-2xl font-bold text-gray-900">Cài đặt mẫu báo giá</h2>
+          <p className="text-gray-600 mt-1">Tùy chỉnh thông tin công ty và mẫu báo giá (đồng bộ cho tất cả nhân viên)</p>
         </div>
 
         {loading ? (
@@ -198,7 +198,7 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
                     {settings.logoUrl && (
                       <img
                         src={settings.logoUrl}
-                        alt="Logo preview"
+                        alt="Xem trước logo"
                         className="w-24 h-24 object-contain border border-gray-300 rounded"
                       />
                     )}
@@ -239,7 +239,7 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
                 <CardTitle className="text-lg">Chữ ký & Con dấu (Ký online)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">Upload ảnh PNG trong suốt để sử dụng khi ký & đóng dấu online trên hợp đồng, đề nghị thanh toán, tạm ứng.</p>
+                <p className="text-sm text-muted-foreground">Tải ảnh PNG trong suốt để sử dụng khi ký và đóng dấu trực tuyến trên hợp đồng, đề nghị thanh toán, tạm ứng.</p>
                 <div className="grid grid-cols-2 gap-6">
                   {/* Signature */}
                   <div>
@@ -267,7 +267,7 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
                         }}
                       />
                       <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById('signature-upload')?.click()} disabled={uploading}>
-                        <Upload className="w-4 h-4 mr-1" />Upload
+                        <Upload className="w-4 h-4 mr-1" />Tải lên
                       </Button>
                       {settings.signatureUrl && (
                         <Button type="button" variant="ghost" size="sm" onClick={() => setSettings(prev => ({ ...prev, signatureUrl: "" }))} className="text-red-600">
@@ -302,7 +302,7 @@ export function QuoteTemplateSettings({ open, onOpenChange }: QuoteTemplateSetti
                         }}
                       />
                       <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById('stamp-upload')?.click()} disabled={uploading}>
-                        <Upload className="w-4 h-4 mr-1" />Upload
+                        <Upload className="w-4 h-4 mr-1" />Tải lên
                       </Button>
                       {settings.stampUrl && (
                         <Button type="button" variant="ghost" size="sm" onClick={() => setSettings(prev => ({ ...prev, stampUrl: "" }))} className="text-red-600">

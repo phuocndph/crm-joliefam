@@ -1,11 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 export const useEInvoices = (contractId?: string) => {
   return useQuery({
     queryKey: ["einvoices", contractId || "all"],
     queryFn: async () => {
+      if (isLocalBackend()) {
+        return (await localApi.einvoices(contractId))
+          .map((row) => ({ ...row, id: row.id || row.source_key }))
+          .filter((invoice: any) => !contractId || invoice.contract_id === contractId);
+      }
       let query = supabase
         .from("einvoices" as any)
         .select(`
@@ -61,6 +68,7 @@ export const useEInvoices = (contractId?: string) => {
 };
 
 const callApi = async (action: string, extra: any = {}) => {
+  if (isLocalBackend()) throw new Error(`Tác vụ ${action} của S-Invoice cần kết nối Viettel; local chỉ đọc dữ liệu đã đồng bộ.`);
   const { data, error } = await supabase.functions.invoke("vinvoice-api", { body: { action, ...extra } });
   if (error) throw new Error(error.message);
   if (data && data.success === false) throw new Error(data.error || "Lỗi không xác định");
@@ -83,8 +91,10 @@ export const useEInvoiceActions = () => {
   });
 
   const downloadFile = useMutation({
-    mutationFn: (p: { transactionUuid: string; fileType: "PDF" | "XML"; einvoice_id?: string }) =>
-      callApi("download_file", p),
+    mutationFn: async (p: { transactionUuid: string; fileType: "PDF" | "XML"; einvoice_id?: string }) => {
+      if (isLocalBackend() && p.einvoice_id) return localApi.previewLocalEInvoice(p.einvoice_id);
+      return callApi("download_file", p);
+    },
     onSuccess: (d: any) => {
       if (!d?.base64) return toast.error("Viettel không trả về file");
       const bytes = Uint8Array.from(atob(d.base64), c => c.charCodeAt(0));
@@ -153,19 +163,25 @@ export const useEInvoiceActions = () => {
   });
 
   const issueDraft = useMutation({
-    mutationFn: (p: { einvoice_id: string }) => callApi("issue_draft", p),
-    onSuccess: () => { toast.success("Đã phát hành hoá đơn"); invalidate(); },
+    mutationFn: (p: { einvoice_id: string }) => isLocalBackend()
+      ? localApi.issueLocalEInvoice(p.einvoice_id)
+      : callApi("issue_draft", p),
+    onSuccess: (d: any) => { toast.info(d?.message || (isLocalBackend() ? "Đã giữ hoá đơn ở trạng thái nháp local" : "Đã phát hành hoá đơn")); invalidate(); },
     onError: (e: any) => toast.error(e.message),
   });
 
   const deleteDraft = useMutation({
-    mutationFn: (p: { einvoice_id: string }) => callApi("delete_draft", p),
+    mutationFn: (p: { einvoice_id: string }) => isLocalBackend()
+      ? localApi.deleteLocalEInvoice(p.einvoice_id)
+      : callApi("delete_draft", p),
     onSuccess: () => { toast.success("Đã xoá bản nháp"); invalidate(); },
     onError: (e: any) => toast.error(e.message),
   });
 
   const previewDraft = useMutation({
-    mutationFn: (p: { einvoice_id: string }) => callApi("preview_draft", p),
+    mutationFn: (p: { einvoice_id: string }) => isLocalBackend()
+      ? localApi.previewLocalEInvoice(p.einvoice_id)
+      : callApi("preview_draft", p),
     onError: (e: any) => toast.error(e.message),
   });
 

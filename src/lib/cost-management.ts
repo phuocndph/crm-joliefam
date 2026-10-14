@@ -1,5 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 export type CostBehavior = "FIXED" | "VARIABLE" | "MIXED";
 export type Traceability = "DIRECT" | "INDIRECT" | "SHARED";
@@ -156,30 +158,35 @@ function parseTransactionResult(value: Json): RpcTransactionResult {
 }
 
 export async function listCostCategories(): Promise<CostCategory[]> {
+  if (isLocalBackend()) return await localApi.costCategories() as unknown as CostCategory[];
   const { data, error } = await supabase.from("cost_categories").select("*").order("code");
   if (error) throw error;
   return data ?? [];
 }
 
 export async function listCostCenters(): Promise<CostCenter[]> {
+  if (isLocalBackend()) return await localApi.costCenters() as unknown as CostCenter[];
   const { data, error } = await supabase.from("cost_centers").select("*").order("code");
   if (error) throw error;
   return data ?? [];
 }
 
 export async function listCostObjects(): Promise<CostObject[]> {
+  if (isLocalBackend()) return await localApi.costObjects() as unknown as CostObject[];
   const { data, error } = await supabase.from("cost_objects").select("*").order("display_code");
   if (error) throw error;
   return data ?? [];
 }
 
 export async function listTransactionTypes(): Promise<TransactionType[]> {
+  if (isLocalBackend()) return await localApi.transactionTypes() as unknown as TransactionType[];
   const { data, error } = await supabase.from("transaction_types").select("*").order("code");
   if (error) throw error;
   return data ?? [];
 }
 
 export async function listBusinessTransactions(): Promise<BusinessTransactionSummary[]> {
+  if (isLocalBackend()) return await localApi.businessTransactions() as unknown as BusinessTransactionSummary[];
   const { data: transactions, error } = await supabase
     .from("business_transactions")
     .select("*")
@@ -211,6 +218,7 @@ export async function listBusinessTransactions(): Promise<BusinessTransactionSum
 }
 
 export async function listCostUsers(): Promise<CostUser[]> {
+  if (isLocalBackend()) return await localApi.costUsers() as unknown as CostUser[];
   const { data, error } = await supabase
     .from("profiles")
     .select("user_id, email, first_name, last_name")
@@ -220,6 +228,7 @@ export async function listCostUsers(): Promise<CostUser[]> {
 }
 
 export async function listCostAuditEvents(): Promise<AuditEvent[]> {
+  if (isLocalBackend()) return await localApi.costAudit() as unknown as AuditEvent[];
   const { data, error } = await supabase
     .from("audit_events")
     .select("id, entity_type, entity_id, action, actor_id, reason, created_at")
@@ -230,36 +239,47 @@ export async function listCostAuditEvents(): Promise<AuditEvent[]> {
 }
 
 export async function createCostCategory(input: Pick<CostCategory, "code" | "name" | "description" | "parent_id" | "default_behavior" | "default_traceability">) {
+  if (isLocalBackend()) return await localApi.createCostCategory(input as unknown as Record<string, unknown>) as unknown as CostCategory;
   const { data, error } = await supabase.from("cost_categories").insert({ ...input, tenant_id: "default" }).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function updateCostCategory(id: string, input: Pick<CostCategory, "name" | "description" | "parent_id" | "default_behavior" | "default_traceability">) {
+  if (isLocalBackend()) return await localApi.updateCostCategory(id, input as unknown as Record<string, unknown>) as unknown as CostCategory;
   const { data, error } = await supabase.from("cost_categories").update(input).eq("id", id).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function createCostCenter(input: Pick<CostCenter, "code" | "name" | "center_type" | "parent_id">) {
+  if (isLocalBackend()) return await localApi.createCostCenter(input as unknown as Record<string, unknown>) as unknown as CostCenter;
   const { data, error } = await supabase.from("cost_centers").insert({ ...input, tenant_id: "default" }).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function updateCostCenter(id: string, input: Pick<CostCenter, "name" | "center_type" | "parent_id">) {
+  if (isLocalBackend()) return await localApi.updateCostCenter(id, input as unknown as Record<string, unknown>) as unknown as CostCenter;
   const { data, error } = await supabase.from("cost_centers").update(input).eq("id", id).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function createCostObject(input: Pick<CostObject, "object_type" | "display_code" | "display_name">) {
+  if (isLocalBackend()) return await localApi.createCostObject(input as unknown as Record<string, unknown>) as unknown as CostObject;
   const { data, error } = await supabase.from("cost_objects").insert({ ...input, tenant_id: "default" }).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function setMasterActive(table: "cost_categories" | "cost_centers" | "cost_objects", id: string, isActive: boolean) {
+  if (isLocalBackend()) {
+    if (table === "cost_categories") await localApi.setCostCategoryActive(id, isActive);
+    else if (table === "cost_centers") await localApi.setCostCenterActive(id, isActive);
+    else await localApi.setCostObjectActive(id, isActive);
+    return;
+  }
   const operation = table === "cost_categories"
     ? supabase.from("cost_categories").update({ is_active: isActive }).eq("id", id)
     : table === "cost_centers"
@@ -281,6 +301,10 @@ export async function createBusinessTransaction(input: {
   lines: BusinessTransactionLineInput[];
   links?: BusinessTransactionLinkInput[];
 }) {
+  if (isLocalBackend()) {
+    const result = await localApi.createBusinessTransaction({ ...input } as unknown as Record<string, unknown>);
+    return parseTransactionResult(result as unknown as Json);
+  }
   const { data, error } = await supabase.rpc("create_business_transaction", {
     p_transaction_type_id: input.transaction_type_id,
     p_transaction_date: input.transaction_date,
@@ -298,12 +322,14 @@ export async function createBusinessTransaction(input: {
 }
 
 export async function confirmBusinessTransaction(id: string) {
+  if (isLocalBackend()) return parseTransactionResult(await localApi.confirmBusinessTransaction(id) as unknown as Json);
   const { data, error } = await supabase.rpc("confirm_business_transaction", { p_transaction_id: id });
   if (error) throw error;
   return parseTransactionResult(data);
 }
 
 export async function voidBusinessTransaction(id: string, reason: string) {
+  if (isLocalBackend()) return parseTransactionResult(await localApi.voidBusinessTransaction(id, reason) as unknown as Json);
   const { data, error } = await supabase.rpc("void_business_transaction", { p_transaction_id: id, p_reason: reason });
   if (error) throw error;
   return parseTransactionResult(data);

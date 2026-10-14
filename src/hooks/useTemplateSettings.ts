@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 export interface PositionSize {
   x: number;
@@ -59,6 +61,41 @@ export function useTemplateSettings() {
   const fetchSettings = useCallback(async () => {
     try {
       setLoading(true);
+      if (isLocalBackend()) {
+        const cached = localStorage.getItem('quoteTemplateSettings');
+        const remote = await localApi.quoteTemplateSettings();
+        if (cached) {
+          try {
+            const parsed = { ...defaultSettings, ...JSON.parse(cached) };
+            setSettings(parsed);
+            if (!remote) await localApi.saveQuoteTemplateSettings(parsed as unknown as Record<string, unknown>);
+          } catch { setSettings(defaultSettings); }
+        } else if (remote) {
+          const textValue = (value: unknown, fallback: string) => typeof value === 'string' && value ? value : fallback;
+          const mapped = {
+            companyName: textValue(remote.company_name, defaultSettings.companyName),
+            companyTitle: textValue(remote.company_title, defaultSettings.companyTitle),
+            address: textValue(remote.address, defaultSettings.address),
+            phone: textValue(remote.phone, defaultSettings.phone),
+            taxCode: textValue(remote.tax_code, defaultSettings.taxCode),
+            headquarters: textValue(remote.headquarters, defaultSettings.headquarters),
+            bankInfo: textValue(remote.bank_info, defaultSettings.bankInfo),
+            quoteTitleColor: textValue(remote.quote_title_color, defaultSettings.quoteTitleColor),
+            companyTitleColor: textValue(remote.company_title_color, defaultSettings.companyTitleColor),
+            logoUrl: textValue(remote.logo_url, defaultSettings.logoUrl),
+            terms: Array.isArray(remote.terms) ? remote.terms as string[] : defaultSettings.terms,
+            footerNote: textValue(remote.footer_note, defaultSettings.footerNote),
+            signatureUrl: textValue(remote.signature_url, defaultSettings.signatureUrl),
+            stampUrl: textValue(remote.stamp_url, defaultSettings.stampUrl),
+            stampPosition: (remote.stamp_position || defaultSettings.stampPosition) as PositionSize,
+            signaturePosition: (remote.signature_position || defaultSettings.signaturePosition) as PositionSize,
+          };
+          localStorage.setItem('quoteTemplateSettings', JSON.stringify(mapped));
+          setSettings(mapped);
+        } else setSettings(defaultSettings);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('quote_template_settings')
         .select('*')
@@ -109,6 +146,8 @@ export function useTemplateSettings() {
 
   useEffect(() => {
     fetchSettings();
+
+    if (isLocalBackend()) return;
     
     // Setup realtime subscription for live sync
     const channelName = `template-settings-${Date.now()}`;
@@ -139,6 +178,14 @@ export function useTemplateSettings() {
 
   const saveSettings = async (newSettings: TemplateSettings): Promise<boolean> => {
     try {
+      if (isLocalBackend()) {
+        await localApi.saveQuoteTemplateSettings(newSettings as unknown as Record<string, unknown>);
+        localStorage.setItem('quoteTemplateSettings', JSON.stringify(newSettings));
+        setSettings(newSettings);
+        setError(null);
+        return true;
+      }
+
       const { error } = await supabase
         .from('quote_template_settings')
         .upsert({
@@ -177,6 +224,15 @@ export function useTemplateSettings() {
 
   const uploadLogo = async (file: File): Promise<string | null> => {
     try {
+      if (isLocalBackend()) {
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error || new Error('Không thể đọc tệp logo local.'));
+          reader.readAsDataURL(file);
+        });
+      }
+
       const fileExt = file.name.split('.').pop();
       const fileName = `logo-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;

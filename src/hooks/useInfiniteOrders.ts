@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 const PAGE_SIZE = 50;
 
@@ -10,6 +12,7 @@ export const useInfiniteOrders = (opts?: { managerId?: string | null; search?: s
   const enabled = opts?.enabled !== false;
 
   useEffect(() => {
+    if (isLocalBackend()) return;
     let invalidationTimer: ReturnType<typeof setTimeout> | undefined;
     const invalidate = () => {
       if (invalidationTimer) clearTimeout(invalidationTimer);
@@ -35,6 +38,9 @@ export const useInfiniteOrders = (opts?: { managerId?: string | null; search?: s
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
+      if (isLocalBackend()) {
+        return localApi.orders({ search, managerId: opts?.managerId, limit: PAGE_SIZE, offset: from });
+      }
       let ordersQuery = supabase
         .from('orders')
         .select(`

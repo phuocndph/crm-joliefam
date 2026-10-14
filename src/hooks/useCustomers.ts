@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 export const useCustomers = () => {
   const queryClient = useQueryClient();
@@ -9,6 +11,7 @@ export const useCustomers = () => {
   const query = useQuery({
     queryKey: ['customers'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.customers();
       console.log('🔍 Fetching customers...');
       const { data, error } = await supabase
         .from('customers')
@@ -30,6 +33,7 @@ export const useCustomers = () => {
 
   // Set up real-time synchronization
   useEffect(() => {
+    if (isLocalBackend()) return;
     console.log('🔧 Setting up real-time customer synchronization...');
     
     // Invalidate silently for all row changes; the follow-up query fetches only selected columns.
@@ -60,6 +64,7 @@ export const useCreateCustomer = () => {
   
   return useMutation({
     mutationFn: async (customerData: any) => {
+      if (isLocalBackend()) return localApi.createCustomer(customerData);
       const { data, error } = await supabase
         .from('customers')
         .insert([customerData])
@@ -80,6 +85,7 @@ export const useUpdateCustomer = () => {
   
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      if (isLocalBackend()) return localApi.updateCustomer(id, data);
       const { data: updatedData, error } = await supabase
         .from('customers')
         .update(data)
@@ -101,6 +107,7 @@ export const useDeleteCustomer = () => {
   
   return useMutation({
     mutationFn: async (id: string) => {
+      if (isLocalBackend()) { await localApi.archiveCustomer(id); return; }
       const { error } = await supabase
         .from('customers')
         .delete()

@@ -117,7 +117,7 @@ export function ColumnMappingDialog({
       setMapping(autoMapping);
 
     } catch (error) {
-      toast.error('Lỗi khi tải dữ liệu preview');
+      toast.error('Lỗi khi tải dữ liệu xem trước');
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -130,7 +130,7 @@ export function ColumnMappingDialog({
     const missingFields = requiredFields.filter(field => !mapping[field.key] || mapping[field.key] === "none");
     
     if (missingFields.length > 0) {
-      toast.error(`Các trường bắt buộc chưa được map: ${missingFields.map(f => f.label).join(', ')}`);
+        toast.error(`Các trường bắt buộc chưa được ghép cột: ${missingFields.map(f => f.label).join(', ')}`);
       return;
     }
 
@@ -149,14 +149,14 @@ export function ColumnMappingDialog({
       const stats = data?.stats;
       const lossy = stats && stats.totalDataRows !== stats.savedProducts;
       if (lossy) {
-        toast.warning(data.message || 'Import có chênh lệch số dòng');
+        toast.warning(data.message || 'Dữ liệu nhập có chênh lệch số dòng');
       } else {
-        toast.success(data.message || 'Import thành công!');
+        toast.success(data.message || 'Nhập sản phẩm thành công!');
       }
       onImportComplete();
       onOpenChange(false);
     } catch (error: any) {
-      toast.error(error.message || 'Lỗi khi import sản phẩm');
+      toast.error(error.message || 'Lỗi khi nhập sản phẩm');
       console.error('Import error:', error);
     } finally {
       setIsImporting(false);
@@ -167,14 +167,14 @@ export function ColumnMappingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Cấu hình import sản phẩm</DialogTitle>
+          <DialogTitle>Cấu hình nhập sản phẩm</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
           {!dataLoaded && (
             <div className="text-center">
               <Button onClick={loadPreviewData} disabled={isLoading}>
-                {isLoading ? 'Đang tải...' : 'Tải dữ liệu preview'}
+                {isLoading ? 'Đang tải...' : 'Tải dữ liệu xem trước'}
               </Button>
             </div>
           )}
@@ -183,7 +183,7 @@ export function ColumnMappingDialog({
             <>
               <Card>
                 <CardHeader>
-                  <CardTitle>Preview dữ liệu từ Google Sheets</CardTitle>
+                  <CardTitle>Xem trước dữ liệu từ Google Sheets</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
@@ -216,7 +216,7 @@ export function ColumnMappingDialog({
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Mapping các cột</CardTitle>
+                  <CardTitle>Ghép cột dữ liệu</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -233,7 +233,7 @@ export function ColumnMappingDialog({
                             <SelectValue placeholder="Chọn cột từ Google Sheets" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="none">-- Không map --</SelectItem>
+                            <SelectItem value="none">-- Chưa ghép cột --</SelectItem>
                             {headers.map((header, index) => (
                               <SelectItem key={index} value={index.toString()}>
                                 Cột {index}: {header}
@@ -252,7 +252,7 @@ export function ColumnMappingDialog({
                   Hủy
                 </Button>
                 <Button onClick={handleImport} disabled={isImporting}>
-                  {isImporting ? 'Đang import...' : 'Import sản phẩm'}
+                  {isImporting ? 'Đang nhập...' : 'Nhập sản phẩm'}
                 </Button>
               </div>
             </>

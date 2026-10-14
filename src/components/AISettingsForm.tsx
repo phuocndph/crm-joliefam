@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { useToast } from "@/hooks/use-toast";
 import { Brain, Lightbulb, MessageCircle, Sparkles } from "lucide-react";
 
@@ -27,6 +29,17 @@ const AISettingsForm = () => {
 
   const loadSettings = async () => {
     try {
+      if (isLocalBackend()) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const data=await localApi.myAiSettings();
+        const next = data.reduce((acc: Record<string, boolean>, row: { setting_name: string; setting_value: unknown }) => {
+          acc[row.setting_name] = Boolean(row.setting_value);
+          return acc;
+        }, {});
+        setSettings(prev => ({ ...prev, ...next }));
+        return;
+      }
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) return;
 
@@ -51,6 +64,23 @@ const AISettingsForm = () => {
   const updateSetting = async (settingName: string, value: boolean) => {
     try {
       setLoading(true);
+      if (isLocalBackend()) {
+        const next = { ...settings, [settingName]: value };
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Phiên đăng nhập không hợp lệ.");
+        const { error } = await (supabase as any).from("ai_settings").upsert({
+          user_id: user.id,
+          setting_name: settingName,
+          setting_value: value,
+          tenant_id: "local-tenant",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id,setting_name,tenant_id" });
+        if (error) throw error;
+        setSettings(next);
+        window.dispatchEvent(new Event('local-ai-settings-updated'));
+        toast({ title: "Đã lưu cục bộ", description: `Đã ${value ? 'bật' : 'tắt'} ${getSettingDisplayName(settingName)} trong PostgreSQL cục bộ.` });
+        return;
+      }
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) return;
 
@@ -111,20 +141,25 @@ const AISettingsForm = () => {
         created_at: new Date().toISOString()
       };
 
-      const { data, error } = await supabase.functions.invoke('ai-customer-suggestions', {
-        body: { customer: sampleCustomer, action_type: 'next_action' }
-      });
-
-      if (error) throw error;
+      let data: { suggestion?: string } | null;
+      if (isLocalBackend()) {
+        data = await localApi.localFunction<{ suggestion?: string }>('ai-customer-suggestions', { customer: sampleCustomer, action_type: 'next_action', custom_prompt:customPrompt });
+      } else {
+        const response = await supabase.functions.invoke('ai-customer-suggestions', {
+          body: { customer: sampleCustomer, action_type: 'next_action' }
+        });
+        if (response.error) throw response.error;
+        data = response.data as { suggestion?: string };
+      }
 
       toast({
-        title: "Test AI thành công",
+        title: "Kiểm tra AI thành công",
         description: `Gợi ý: ${data.suggestion}`,
       });
     } catch (error) {
       console.error('Error testing AI:', error);
       toast({
-        title: "Lỗi test AI",
+        title: "Lỗi khi kiểm tra AI",
         description: "Không thể kết nối với dịch vụ AI",
         variant: "destructive",
       });
@@ -241,7 +276,7 @@ const AISettingsForm = () => {
       {/* Custom Prompt */}
       <Card>
         <CardHeader>
-          <CardTitle>Prompt Template Tùy Chỉnh</CardTitle>
+          <CardTitle>Mẫu hướng dẫn tùy chỉnh</CardTitle>
           <CardDescription>
             Tùy chỉnh cách AI phân tích và đưa ra gợi ý cho khách hàng
           </CardDescription>
@@ -254,7 +289,7 @@ const AISettingsForm = () => {
             rows={6}
           />
           <p className="text-sm text-muted-foreground">
-            Prompt này sẽ được sử dụng làm hướng dẫn cho AI khi tạo gợi ý hành động tiếp theo. Thông tin khách hàng sẽ được tự động thêm vào sau prompt này.
+            Hướng dẫn này sẽ được dùng khi AI tạo gợi ý hành động tiếp theo. Thông tin khách hàng sẽ được tự động thêm vào sau phần hướng dẫn này.
           </p>
         </CardContent>
       </Card>
@@ -262,7 +297,7 @@ const AISettingsForm = () => {
       {/* Test AI */}
       <Card>
         <CardHeader>
-          <CardTitle>Test AI System</CardTitle>
+          <CardTitle>Kiểm tra hệ thống AI</CardTitle>
           <CardDescription>
             Kiểm tra hoạt động của hệ thống AI với dữ liệu mẫu
           </CardDescription>
@@ -273,7 +308,7 @@ const AISettingsForm = () => {
             disabled={testingSuggestion}
             className="w-full"
           >
-            {testingSuggestion ? 'Đang test...' : 'Test AI Gợi Ý'}
+            {testingSuggestion ? 'Đang kiểm tra...' : 'Kiểm tra gợi ý AI'}
           </Button>
         </CardContent>
       </Card>

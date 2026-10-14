@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAssignees } from "@/hooks/useAssignees";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface CreateCustomerCareFormProps {
   onSuccess?: () => void;
@@ -63,6 +65,18 @@ const { toast } = useToast();
       }
 
       // Check for duplicate customer name (case-insensitive)
+      if (isLocalBackend()) {
+        const existingCustomers = await localApi.customers({ includeInactive: true });
+        const normalizedName = formData.customerName.trim().toLowerCase();
+        if (existingCustomers.some((customer) => customer.name.trim().toLowerCase() === normalizedName)) {
+          toast({ title: "Lỗi", description: "Tên khách hàng đã tồn tại, vui lòng chọn tên khác", variant: "destructive" });
+          return;
+        }
+        const structuredNotes = [formData.notes, formData.nextAction ? `Hành động tiếp theo: ${formData.nextAction}` : '', formData.closingScore ? `Điểm đánh giá: ${formData.closingScore}` : '', lastUpdateDate ? `Ngày cập nhật: ${format(lastUpdateDate, 'dd/MM/yyyy')}` : ''].filter(Boolean).join('\n');
+        await localApi.createCustomer({ name: formData.customerName, notes: structuredNotes, assignee_id: formData.assignedTo, current_status: formData.currentStatus, tags: [formData.source], auto_tags: [formData.followUpType], last_care_date: lastUpdateDate ? lastUpdateDate.toISOString() : new Date().toISOString() });
+        toast({ title: "Thành công", description: "Đã thêm khách hàng mới" });
+        setOpen(false); onSuccess?.(); return;
+      }
       const { data: existingCustomers, error: checkError } = await supabase
         .from('customers')
         .select('id, name');

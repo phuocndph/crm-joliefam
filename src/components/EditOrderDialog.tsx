@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { useQueryClient } from "@tanstack/react-query";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { format } from "date-fns";
@@ -104,6 +106,22 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
     // 3) Ghi DB ngầm
     (async () => {
       try {
+        if (isLocalBackend()) {
+          await localApi.updateOrder(order.id, orderData);
+          if (status === 'delivered' && order.status !== 'delivered' && order.total_amount) {
+            await localApi.createTransaction({
+              amount: order.total_amount,
+              type: 'income',
+              category: 'sales',
+              description: `Thanh toán đơn hàng ${getOrderDisplayNumber(order)}`,
+              date: new Date().toISOString(),
+              order_id: order.id,
+              manager_id: (order as any).manager_id || 'local-admin',
+            });
+          }
+          queryClient.invalidateQueries({ queryKey: ['orders-infinite'] });
+          return;
+        }
         const { error } = await supabase
           .from("orders")
           .update(orderData)

@@ -78,7 +78,7 @@ export const ReplaceAdjustDialog = ({ open, onOpenChange, einvoice, mode }: Prop
             <Textarea rows={3} value={reason} onChange={e => setReason(e.target.value)} placeholder="Nhập lý do..." />
           </div>
           <p className="text-xs text-muted-foreground">
-            HĐ mới sẽ được phát hành dựa trên dữ liệu HĐ gốc. Để chỉnh sửa chi tiết item/khách hàng, hãy tạo HĐ thường rồi liên kết thủ công.
+            HĐ mới sẽ được phát hành dựa trên dữ liệu HĐ gốc. Để chỉnh sửa chi tiết mặt hàng hoặc khách hàng, hãy tạo HĐ thường rồi liên kết thủ công.
           </p>
         </div>
         <DialogFooter>

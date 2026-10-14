@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -209,6 +211,19 @@ export function KnowledgeChatbot() {
   // Load chat history on mount
   useEffect(() => {
     (async () => {
+      if (isLocalBackend()) {
+        try {
+          const data = await localApi.knowledgeChatHistory(5);
+          const history: ChatMessage[] = [];
+          for (const item of data) {
+            history.push({ role: "user", content: item.question, timestamp: new Date(item.created_at) });
+            history.push({ role: "assistant", content: item.answer, sources: (item.sources as any[]) || undefined, timestamp: new Date(item.created_at) });
+          }
+          setMessages(history);
+        } catch (e) { console.error("Failed to load local chat history:", e); }
+        setHistoryLoaded(true);
+        return;
+      }
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { setHistoryLoaded(true); return; }
@@ -246,6 +261,11 @@ export function KnowledgeChatbot() {
   };
 
   const saveChatHistory = useCallback(async (question: string, answer: string, sources: any[]) => {
+    if (isLocalBackend()) {
+      try { await localApi.saveKnowledgeChatHistory({ question, answer, sources }); }
+      catch (e) { console.error("Failed to save local chat history:", e); }
+      return;
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -263,6 +283,22 @@ export function KnowledgeChatbot() {
   const sendMessage = async (question?: string) => {
     const text = (question || input).trim();
     if (!text || isLoading) return;
+
+    if (isLocalBackend()) {
+      setInput("");
+      setMessages((prev) => [...prev, { role: "user", content: text, timestamp: new Date() }]);
+      setIsLoading(true);
+      try {
+        const result = await localApi.knowledgeChat(text, messages.slice(-2) as unknown as Array<Record<string, unknown>>);
+        setMessages((prev) => [...prev, { role: "assistant", content: result.answer, sources: result.sources, timestamp: new Date() }]);
+        await saveChatHistory(text, result.answer, result.sources);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Không thể tìm kiếm kho kiến thức local.");
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
 
     abortRef.current?.abort();
     const controller = new AbortController();

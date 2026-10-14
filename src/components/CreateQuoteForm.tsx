@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect } from "react";
+import React, { lazy, Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -31,6 +31,18 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
+import { getLocalMe, type LocalMe } from "@/lib/local-auth";
+
+const localQuoteManagerId = (me: LocalMe): string => {
+  if (!me.user_id || !me.role || !['admin','manager','employee','accountant','team_leader'].includes(me.role)) {
+    throw new Error('Chưa xác định được tài khoản hoặc vai trò local. Vui lòng thử tải lại quyền.');
+  }
+  // Preserve the current assignment policy; module permissions remain enforced by the API.
+  return (me.role === 'employee' || me.role === 'accountant') && me.assigned_by
+    ? me.assigned_by : me.user_id;
+};
 
 const ProductImageLibrary = lazy(() => import('./ProductImageLibrary'));
 const quoteFormSchema = z.object({
@@ -140,6 +152,10 @@ export function CreateQuoteForm({
   const [userRole, setUserRole] = useState<string | null>(null);
   const [managerId, setManagerId] = useState<string | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true); // Track user data loading
+  const [identityError, setIdentityError] = useState('');
+  const [identityAttempt, setIdentityAttempt] = useState(0);
+  const identityRequest = useRef(0);
+  const invalidateIdentityRequest = useCallback(() => { identityRequest.current++; }, []);
 
   // Customer search states
   const [customerSearch, setCustomerSearch] = useState("");
@@ -255,8 +271,23 @@ export function CreateQuoteForm({
 
   // Load user, role, and manager ID
   useEffect(() => {
+    const request = ++identityRequest.current;
     const fetchUserAndRole = async () => {
       setIsLoadingUser(true); // Start loading
+      if (isLocalBackend()) {
+        setCurrentUser(null);setUserRole(null);setManagerId(null);setIdentityError('');
+        try {
+          const me = await getLocalMe(true);
+          if (request !== identityRequest.current) return;
+          const assignedManager = localQuoteManagerId(me);
+          setCurrentUser({id:me.user_id});setUserRole(me.role);setManagerId(assignedManager);
+        } catch (error) {
+          if (request === identityRequest.current) setIdentityError(error instanceof Error ? error.message : 'Không tải được quyền tạo báo giá local. Vui lòng thử lại.');
+        } finally {
+          if (request === identityRequest.current) setIsLoadingUser(false);
+        }
+        return;
+      }
       try {
         const { data: { user } } = await supabase.auth.getUser();
         setCurrentUser(user);
@@ -286,7 +317,8 @@ export function CreateQuoteForm({
     };
     
     fetchUserAndRole();
-  }, []);
+    return invalidateIdentityRequest;
+  }, [identityAttempt, invalidateIdentityRequest]);
 
   // Load price lists and products
   useEffect(() => {
@@ -306,6 +338,11 @@ export function CreateQuoteForm({
     }
     const searchCustomers = async () => {
       try {
+        if (isLocalBackend()) {
+          const rows = await localApi.customers({ search: debouncedCustomerSearch });
+          setCustomerResults(rows.slice(0, 10));
+          return;
+        }
         let query = supabase.from('customers').select('id, name, phone, email, address, company').limit(10);
         const term = `%${debouncedCustomerSearch}%`;
         if (customerSearchField === 'name') {
@@ -414,6 +451,10 @@ export function CreateQuoteForm({
   }, [products, initialData]);
   const loadPriceLists = async () => {
     try {
+      if (isLocalBackend()) {
+        setPriceLists(await localApi.catalogPriceLists() as PriceList[]);
+        return;
+      }
       const {
         data,
         error
@@ -433,6 +474,11 @@ export function CreateQuoteForm({
   };
   const loadProducts = async (priceListId: string) => {
     try {
+      if (isLocalBackend()) {
+        const data = await localApi.catalogProducts({ priceListId });
+        setProducts(data as unknown as Product[]);
+        return;
+      }
       let { data, error } = await supabase.from("products").select("id, name, description, price, cost_price, sku, category, specifications, in_stock, price_list_id").eq("price_list_id", priceListId).eq("in_stock", true).order("name");
       if (error) throw error;
       // Fallback: dùng RPC catalog an toàn khi RLS ẩn sản phẩm của manager khác (không trả cost_price)
@@ -563,6 +609,23 @@ export function CreateQuoteForm({
     }
     setCreateProductLoading(true);
     try {
+      if (isLocalBackend()) {
+        await localApi.createCatalogProduct({
+          name: newProductName,
+          description: newProductDescription || null,
+          price: newProductPrice ? parseFloat(newProductPrice) : null,
+          cost_price: newProductCostPrice ? parseFloat(newProductCostPrice) : null,
+          sku: newProductSku || null,
+          category: newProductCategory || null,
+          specifications: newProductSpecifications || null,
+          in_stock: newProductInStock,
+          price_list_id: selectedPriceList,
+        });
+        toast({ title: "Thành công", description: "Đã tạo sản phẩm thành công" });
+        setNewProductName(''); setNewProductDescription(''); setNewProductPrice(''); setNewProductCostPrice(''); setNewProductSku(''); setNewProductCategory(''); setNewProductSpecifications(''); setNewProductInStock(true); setShowCreateProduct(false);
+        await loadProducts(selectedPriceList);
+        return;
+      }
       const {
         data,
         error
@@ -615,8 +678,9 @@ export function CreateQuoteForm({
     }
   };
   const handleSubmit = async (data: QuoteFormData) => {
+    const submitRequest = identityRequest.current;
     // CRITICAL: Validate managerId before submit to prevent race condition
-    if (!managerId) {
+    if (!managerId || (isLocalBackend() && (isLoading || isLoadingUser))) {
       toast({
         title: "Lỗi xác thực",
         description: "⚠️ Đang tải thông tin người dùng. Vui lòng đợi vài giây và thử lại.",
@@ -625,17 +689,38 @@ export function CreateQuoteForm({
       return;
     }
 
-    // Check authentication BEFORE processing
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      toast({
-        title: "⚠️ Phiên đăng nhập đã hết hạn",
-        description: "Vui lòng đăng nhập lại để tiếp tục tạo báo giá.",
-        variant: "destructive"
-      });
-      setIsLoading(false);
-      return;
+    let submitManagerId = managerId;
+    if (isLocalBackend()) {
+      const request = identityRequest.current;
+      setIsLoading(true);
+      try {
+        const me = await getLocalMe(true);
+        if (request !== identityRequest.current) return;
+        submitManagerId = localQuoteManagerId(me);
+        if (me.user_id !== currentUser?.id) throw new Error('Tài khoản đăng nhập đã thay đổi. Vui lòng tải lại quyền trước khi lưu báo giá.');
+        setUserRole(me.role);setManagerId(submitManagerId);setIdentityError('');
+      } catch (error) {
+        if (request === identityRequest.current) {
+          const message = error instanceof Error ? error.message : 'Không xác thực được tài khoản local. Vui lòng thử lại.';
+          setCurrentUser(null);setUserRole(null);setManagerId(null);setIdentityError(message);
+          toast({title:'Không thể xác thực quyền lưu báo giá',description:message,variant:'destructive'});
+        }
+        return;
+      } finally {
+        if (request === identityRequest.current) setIsLoading(false);
+      }
+    } else {
+      // The public Supabase authentication path is unchanged.
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        toast({
+          title: "⚠️ Phiên đăng nhập đã hết hạn",
+          description: "Vui lòng đăng nhập lại để tiếp tục tạo báo giá.",
+          variant: "destructive"
+        });
+        setIsLoading(false);
+        return;
+      }
     }
 
     if (selectedProducts.length === 0) {
@@ -678,6 +763,26 @@ export function CreateQuoteForm({
       tenant_id: "default",
       manager_id: managerId // CRITICAL: Include manager_id for RLS validation during updates
     };
+
+      if (isLocalBackend()) {
+        const localData: Record<string, unknown> = {
+          ...baseQuoteData,
+          manager_id: submitManagerId,
+          items: selectedProducts,
+          quote_data: JSON.parse(baseQuoteData.quote_data),
+          created_at: data.quoteDate.toISOString(),
+        };
+        if (initialData) {
+          delete localData.manager_id; // Editing never reassigns the persisted owner, including null.
+          await localApi.updateQuote(initialData.id, localData);
+        } else await localApi.createQuote(localData);
+        if (submitRequest !== identityRequest.current) return;
+        toast({ title: "Thành công", description: initialData ? "Báo giá đã được cập nhật thành công" : "Báo giá đã được tạo thành công" });
+        localStorage.removeItem(DRAFT_KEY);
+        setLastSavedAt(null);
+        onSubmit?.();
+        return;
+      }
 
       if (initialData) {
         // Update existing quote - also sync created_at with quoteDate
@@ -803,6 +908,7 @@ export function CreateQuoteForm({
       setLastSavedAt(null);
       onSubmit?.();
     } catch (error: any) {
+      if (isLocalBackend() && submitRequest !== identityRequest.current) return;
       console.error("Error creating quote:", error);
       
       // Parse specific error types
@@ -824,7 +930,7 @@ export function CreateQuoteForm({
         variant: "destructive"
       });
     } finally {
-      setIsLoading(false);
+      if (!isLocalBackend() || submitRequest === identityRequest.current) setIsLoading(false);
     }
   };
   const watchedValues = form.watch();
@@ -843,6 +949,7 @@ export function CreateQuoteForm({
         selectedProducts,
         savedAt: new Date().toISOString(),
       };
+
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
       setLastSavedAt(format(new Date(), 'HH:mm:ss'));
     } catch (e) {
@@ -1895,6 +2002,10 @@ export function CreateQuoteForm({
             </Card>
 
             {/* Action Buttons */}
+            {isLocalBackend() && identityError && <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+              <p>{identityError}</p>
+              <Button type="button" variant="outline" className="mt-2" disabled={isLoadingUser || isLoading} onClick={() => setIdentityAttempt(attempt => attempt + 1)}>Thử tải lại quyền</Button>
+            </div>}
             <div className="flex justify-end gap-4">
               <Button type="button" variant="outline" onClick={onClose}>
                 Hủy

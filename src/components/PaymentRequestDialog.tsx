@@ -18,6 +18,8 @@ import { saveAs } from "file-saver";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { syncContractNumberInOverrides } from "@/lib/contractUtils";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface Props {
   open: boolean;
@@ -146,9 +148,18 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const handleSave = async () => {
     setSaving(true);
     const next = { ...(contract.document_overrides || {}), [FORM_KEY]: state };
-    const { error } = await supabase.from("contracts").update({ document_overrides: next }).eq("id", contract.id);
+    try {
+      if (isLocalBackend()) await localApi.updateContract(contract.id, { document_overrides: next });
+      else {
+        const { error } = await supabase.from("contracts").update({ document_overrides: next }).eq("id", contract.id);
+        if (error) throw error;
+      }
+    } catch (error) {
+      setSaving(false);
+      toast({ title: "Lỗi lưu", description: error instanceof Error ? error.message : "Không thể lưu đề nghị", variant: "destructive" });
+      return;
+    }
     setSaving(false);
-    if (error) { toast({ title: "Lỗi lưu", description: error.message, variant: "destructive" }); return; }
     qc.invalidateQueries({ queryKey: ["contracts"] });
     toast({ title: "Đã lưu nội dung biểu mẫu" });
   };
@@ -156,8 +167,16 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const handleRestore = async () => {
     const next = { ...(contract.document_overrides || {}) };
     delete next[FORM_KEY];
-    const { error } = await supabase.from("contracts").update({ document_overrides: next }).eq("id", contract.id);
-    if (error) { toast({ title: "Lỗi", description: error.message, variant: "destructive" }); return; }
+    try {
+      if (isLocalBackend()) await localApi.updateContract(contract.id, { document_overrides: next });
+      else {
+        const { error } = await supabase.from("contracts").update({ document_overrides: next }).eq("id", contract.id);
+        if (error) throw error;
+      }
+    } catch (error) {
+      toast({ title: "Lỗi", description: error instanceof Error ? error.message : "Không thể khôi phục đề nghị", variant: "destructive" });
+      return;
+    }
     setState(defaults);
     qc.invalidateQueries({ queryKey: ["contracts"] });
     toast({ title: "Đã khôi phục mặc định" });

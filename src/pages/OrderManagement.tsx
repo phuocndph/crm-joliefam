@@ -37,6 +37,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface Order {
   id: string;
@@ -301,6 +303,11 @@ export default function OrderManagement() {
     // 2) Gửi request ngầm
     (async () => {
       try {
+        if (isLocalBackend()) {
+          await localApi.updateOrder(orderId, updateData);
+          queryClient.invalidateQueries({ queryKey: ['orders-infinite'] });
+          return;
+        }
         const { error } = await supabase.from('orders').update(updateData).eq('id', orderId);
         if (error) throw error;
 

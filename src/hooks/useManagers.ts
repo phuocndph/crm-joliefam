@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 export interface Manager {
   user_id: string;
@@ -16,6 +18,7 @@ export const useManagers = () => {
   
   // Set up real-time synchronization
   useEffect(() => {
+    if (isLocalBackend()) return;
     const channel = supabase
       .channel('managers-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_roles' }, () => {
@@ -35,6 +38,19 @@ export const useManagers = () => {
     queryKey: ['managers'],
     queryFn: async () => {
       console.log('useManagers - Starting query...');
+
+      if (isLocalBackend()) {
+        const profiles = await localApi.users();
+        return profiles
+          .filter((profile) => Array.isArray(profile.user_roles) && (profile.user_roles as Array<{ role?: string }>).some((role) => role.role === 'manager'))
+          .map((profile) => ({
+            user_id: String(profile.user_id || ''),
+            email: String(profile.email || ''),
+            first_name: String(profile.first_name || ''),
+            last_name: String(profile.last_name || ''),
+            display_name: `${String(profile.first_name || '')} ${String(profile.last_name || '')}`.trim() || String(profile.email || 'Không có tên'),
+          })) as Manager[];
+      }
       
       // First get users with manager role
       const { data: userRolesData, error: userRolesError } = await supabase

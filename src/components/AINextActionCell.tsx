@@ -3,6 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sparkles, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 import { useToast } from "@/hooks/use-toast";
 
 interface AINextActionCellProps {
@@ -18,6 +20,9 @@ const AINextActionCell = ({ customer }: AINextActionCellProps) => {
   // Check if AI is enabled for the current user
   useEffect(() => {
     checkAISettings();
+    const reload=()=>void checkAISettings();
+    window.addEventListener('local-ai-settings-updated',reload);
+    return ()=>window.removeEventListener('local-ai-settings-updated',reload);
   }, []);
 
   // Initialize with static suggestion instead of auto-generating AI suggestion
@@ -29,6 +34,11 @@ const AINextActionCell = ({ customer }: AINextActionCellProps) => {
 
   const checkAISettings = async () => {
     try {
+      if (isLocalBackend()) {
+        const settings=await localApi.myAiSettings();
+        setAiEnabled(settings.some(row=>row.setting_name==='ai_next_actions'&&row.setting_value));
+        return;
+      }
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) return;
 
@@ -56,18 +66,30 @@ const AINextActionCell = ({ customer }: AINextActionCellProps) => {
     try {
       setLoading(true);
       
-      const { data, error } = await supabase.functions.invoke('ai-customer-suggestions', {
-        body: { 
-          customer: customer, 
-          action_type: 'next_action' 
-        }
-      });
-
-      if (error) throw error;
+      let data: { suggestion?: string } | null;
+      if (isLocalBackend()) {
+        data = await localApi.localFunction<{ suggestion?: string }>('ai-customer-suggestions', {
+          customer,
+          action_type: 'next_action',
+        });
+      } else {
+        const response = await supabase.functions.invoke('ai-customer-suggestions', {
+          body: {
+            customer,
+            action_type: 'next_action'
+          }
+        });
+        if (response.error) throw response.error;
+        data = response.data as { suggestion?: string };
+      }
 
       setSuggestion(data.suggestion || getStaticSuggestion(customer.current_status));
     } catch (error) {
       console.error('Error getting AI suggestion:', error);
+      if(isLocalBackend()) {
+        toast({title:'Không tạo được gợi ý AI',description:error instanceof Error?error.message:'Vui lòng thử lại.',variant:'destructive'});
+        return;
+      }
       // Fallback to static suggestion
       setSuggestion(getStaticSuggestion(customer.current_status));
       
@@ -86,9 +108,9 @@ const AINextActionCell = ({ customer }: AINextActionCellProps) => {
   const getStaticSuggestion = (status: string) => {
     const staticSuggestions = {
       'waiting-payment': 'Gọi xác nhận thanh toán',
-      'waiting-deposit': 'Follow up tiền cọc',
-      'sent-sample': 'Gọi hỏi feedback mẫu',
-      'sent-quote': 'Follow up báo giá',
+      'waiting-deposit': 'Theo dõi tiền cọc',
+      'sent-sample': 'Gọi hỏi phản hồi về mẫu',
+      'sent-quote': 'Theo dõi báo giá',
       'waiting-response': 'Chờ phản hồi khách',
       'ordered': 'Theo dõi đơn hàng',
       'paid': 'Chăm sóc sau bán',

@@ -12,6 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { localApi } from "@/lib/local-api";
 
 interface CreateExpenseFormProps {
   onClose: () => void;
@@ -36,6 +38,11 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
 
   useEffect(() => {
     const fetchOrders = async () => {
+      if (isLocalBackend()) {
+        const data = await localApi.orders({ limit: 5000 });
+        setOrders(data);
+        return;
+      }
       const { data } = await supabase
         .from('orders')
         .select('id, order_number, display_order_number, customers!left(name)')
@@ -61,6 +68,17 @@ export function CreateExpenseForm({ onClose, onSubmit }: CreateExpenseFormProps)
     setLoading(true);
     try {
       const expenseCode = `CP-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Math.floor(Math.random() * 1000)}`;
+
+      if (isLocalBackend()) {
+        await localApi.createExpense({ ...formData, expense_code: expenseCode, manager_id: "local-admin" });
+        if (selectedOrderId && selectedOrderId !== "none") {
+          await localApi.createTransaction({ type: "expense", order_id: selectedOrderId, amount: formData.amount, description: formData.description || formData.category, category: formData.category, date: formData.expense_date, manager_id: "local-admin" });
+        }
+        onSubmit();
+        onClose();
+        toast({ title: "Thành công", description: "Chi phí đã được tạo thành công" });
+        return;
+      }
       
       const { data: { user } } = await supabase.auth.getUser();
       

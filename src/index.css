@@ -2,6 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Employee attendance is used on the factory floor: keep controls large,
+   high-contrast and comfortable to tap on a phone. Scope this to the employee
+   screen so the rest of the CRM keeps its existing density. */
+.attendance-page {
+  --attendance-control-height: 3rem;
+}
+
+.attendance-page button,
+.attendance-page input,
+.attendance-page select,
+.attendance-page textarea {
+  font-size: 1rem;
+}
+
+.attendance-page button,
+.attendance-page input,
+.attendance-page select {
+  min-height: var(--attendance-control-height);
+}
+
+.attendance-page textarea {
+  min-height: 5rem;
+}
+
+.attendance-page button {
+  touch-action: manipulation;
+}
+
+.attendance-page table {
+  font-size: 1rem;
+}
+
+@media (max-width: 640px) {
+  .attendance-page {
+    --attendance-control-height: 3.25rem;
+  }
+
+  .attendance-page button,
+  .attendance-page input,
+  .attendance-page select,
+  .attendance-page textarea {
+    font-size: 1.05rem;
+  }
+}
+
 /* Always show scrollbar for order table */
 .order-table-scroll::-webkit-scrollbar {
   width: 10px;

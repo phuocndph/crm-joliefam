@@ -1,11 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 export const useQuotes = (opts?: { managerId?: string | null }) => {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    if (isLocalBackend()) return;
     // Keep edits/status changes from other sessions visible without shipping row payloads.
     const channel = supabase
       .channel('quotes-realtime')
@@ -26,10 +29,25 @@ export const useQuotes = (opts?: { managerId?: string | null }) => {
     };
   }, [queryClient]);
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['quotes', opts?.managerId ?? 'all'],
     queryFn: async () => {
       console.log('🔍 Fetching quotes with manager filter:', opts?.managerId);
+      if (isLocalBackend()) {
+        const rows = await localApi.quotes({ managerId: opts?.managerId, limit: 200 });
+        return rows.map((quote: any) => ({
+          ...quote,
+          customerName: quote.customers?.name || 'Không có tên',
+          customerEmail: quote.customers?.email || '',
+          customerPhone: quote.customers?.phone || '',
+          customerAddress: quote.customers?.address || '',
+          customerCompany: quote.customers?.company || '',
+          quoteDate: quote.created_at,
+          expiryDate: quote.created_at,
+          responsible: quote.assignees?.name || 'Chưa phân công',
+          totalAmount: quote.total_amount || 0,
+        }));
+      }
       
       // Egress optimization: exclude heavy `quote_data` JSONB from list query.
       // Fetch it on-demand via fetchQuoteData() when approving/duplicating/previewing.
@@ -59,9 +77,11 @@ export const useQuotes = (opts?: { managerId?: string | null }) => {
 
       // Format quotes with extracted customer info
       const formattedQuotes = data?.map(quote => {
+        const customer = Array.isArray(quote.customers) ? quote.customers[0] : quote.customers;
+        const assignee = Array.isArray(quote.assignees) ? quote.assignees[0] : quote.assignees;
         let customerName = 'Không có tên';
-        if (quote.customers?.name) {
-          customerName = quote.customers.name;
+        if (customer?.name) {
+          customerName = customer.name;
         } else if (quote.notes) {
           const customerMatch = quote.notes.match(/Khách hàng:\s*(.+)/);
           if (customerMatch && customerMatch[1].trim()) {
@@ -78,10 +98,10 @@ export const useQuotes = (opts?: { managerId?: string | null }) => {
         return {
           ...quote,
           customerName,
-          customerEmail: quote.customers?.email || extractFromNotes(/Email:\s*([^\n\r]+)/),
-          customerPhone: quote.customers?.phone || extractFromNotes(/Điện thoại:\s*([^\n\r]+)/),
-          customerAddress: quote.customers?.address || extractFromNotes(/Địa chỉ:\s*([^\n\r]+)/),
-          customerCompany: quote.customers?.company || '',
+          customerEmail: customer?.email || extractFromNotes(/Email:\s*([^\n\r]+)/),
+          customerPhone: customer?.phone || extractFromNotes(/Điện thoại:\s*([^\n\r]+)/),
+          customerAddress: customer?.address || extractFromNotes(/Địa chỉ:\s*([^\n\r]+)/),
+          customerCompany: customer?.company || '',
           quoteDate: quote.created_at,
           expiryDate: (() => {
             const raw = extractFromNotes(/Ngày hết hạn:\s*([^\n\r]+)/);
@@ -100,7 +120,7 @@ export const useQuotes = (opts?: { managerId?: string | null }) => {
             }
             return raw;
           })(),
-          responsible: quote.assignees?.name || 'Chưa phân công',
+          responsible: assignee?.name || 'Chưa phân công',
           totalAmount: quote.total_amount || 0
         };
       }) || [];
@@ -119,6 +139,7 @@ export const useUpdateQuote = () => {
   
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      if (isLocalBackend()) return localApi.updateQuote(id, data);
       const { data: updatedData, error } = await supabase
         .from('quotes')
         .update(data)
@@ -141,6 +162,10 @@ export const useDeleteQuote = () => {
   
   return useMutation({
     mutationFn: async (quoteId: string) => {
+      if (isLocalBackend()) {
+        await localApi.deleteQuote(quoteId);
+        return;
+      }
       const { error } = await supabase
         .from('quotes')
         .delete()
@@ -159,6 +184,10 @@ export const useDeleteQuote = () => {
  * Used when approving, duplicating, or previewing — keeps list queries light.
  */
 export const fetchQuoteData = async (quoteId: string): Promise<string | null> => {
+  if (isLocalBackend()) {
+    const result = await localApi.quoteData(quoteId);
+    return result.quote_data == null ? null : JSON.stringify(result.quote_data);
+  }
   const { data, error } = await supabase
     .from('quotes')
     .select('quote_data')

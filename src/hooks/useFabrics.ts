@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { useEffect } from 'react';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 let fabricRealtimeChannel: any = null;
 let fabricRealtimeSubscribers = 0;
@@ -20,6 +22,7 @@ const useFabricRealtime = () => {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    if (isLocalBackend()) return;
     fabricRealtimeSubscribers += 1;
     if (fabricRealtimeChannel) {
       return () => {
@@ -120,9 +123,10 @@ export const useFabricTypes = () => {
   const queryClient = useQueryClient();
   useFabricRealtime();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['fabric-types'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.fabricTypes() as Promise<any[]>;
       console.log('📊 [useFabricTypes] Fetching fabric types...');
       const { data, error } = await supabase
         .from('fabric_types')
@@ -148,6 +152,7 @@ export const useCreateFabricType = () => {
   
   return useMutation({
     mutationFn: async (data: { name: string; description?: string }) => {
+      if (isLocalBackend()) return localApi.createFabricType(data);
       const { data: result, error } = await supabase
         .from('fabric_types')
         .insert(data)
@@ -170,6 +175,7 @@ export const useUpdateFabricType = () => {
   return useMutation({
     mutationFn: async (data: { id: string; name: string; description?: string }) => {
       const { id, ...updateData } = data;
+      if (isLocalBackend()) return localApi.updateFabricType(id, updateData);
       const { data: result, error } = await supabase
         .from('fabric_types')
         .update(updateData)
@@ -192,6 +198,7 @@ export const useDeleteFabricType = () => {
   
   return useMutation({
     mutationFn: async (id: string) => {
+      if (isLocalBackend()) return localApi.deleteFabricType(id);
       const { error } = await supabase
         .from('fabric_types')
         .delete()
@@ -210,9 +217,10 @@ export const useDeleteFabricType = () => {
 export const useFabricVariants = () => {
   useFabricRealtime();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['fabric-variants'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.fabricVariants() as Promise<any[]>;
       console.log('📊 [useFabricVariants] Fetching fabric variants...');
       const { data, error } = await supabase
         .from('fabric_variants')
@@ -251,6 +259,7 @@ export const useCreateFabricVariant = () => {
       cost_price?: number;
       selling_price?: number;
     }) => {
+      if (isLocalBackend()) return localApi.createFabricVariant(data);
       const { data: result, error } = await supabase
         .from('fabric_variants')
         .insert(data)
@@ -272,9 +281,10 @@ export const useCreateFabricVariant = () => {
 export const useFabricWidths = () => {
   useFabricRealtime();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['fabric-widths'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.fabricWidths() as Promise<any[]>;
       const { data, error } = await supabase
         .from('fabric_widths')
         .select('id, width_code, description, created_at, updated_at, manager_id, tenant_id')
@@ -295,6 +305,7 @@ export const useCreateFabricWidth = () => {
   
   return useMutation({
     mutationFn: async (newWidth: { width_code: string; description?: string }) => {
+      if (isLocalBackend()) return localApi.createFabricWidth(newWidth);
       const { data, error } = await supabase
         .from('fabric_widths')
         .insert([newWidth])
@@ -314,9 +325,10 @@ export const useCreateFabricWidth = () => {
 export const useWarehouses = () => {
   useFabricRealtime();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['warehouses'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.fabricWarehouses() as Promise<any[]>;
       const { data, error } = await supabase
         .from('warehouses')
         .select('id, name, address, warehouse_type, is_active, created_at, updated_at, manager_id, tenant_id')
@@ -337,9 +349,10 @@ export const useWarehouses = () => {
 export const useFabricInventory = () => {
   useFabricRealtime();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['fabric-inventory'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.fabricInventory() as Promise<any[]>;
       console.log('📊 [useFabricInventory] Fetching fabric inventory...');
       const { data, error } = await supabase
         .from('fabric_inventory')
@@ -388,6 +401,7 @@ export const useUpdateInventory = () => {
       minimum_stock?: number;
       maximum_stock?: number;
     }) => {
+      if (isLocalBackend()) return localApi.updateFabricInventory({ fabric_variant_id, warehouse_id, current_stock, packages_count, reserved_stock, minimum_stock, maximum_stock });
       // First, check if record already exists
       const { data: existingRecord } = await supabase
         .from('fabric_inventory')
@@ -428,9 +442,10 @@ export const useUpdateInventory = () => {
 export const useFabricTransactions = () => {
   useFabricRealtime();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['fabric-transactions'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.fabricTransactions() as Promise<any[]>;
       const { data, error } = await supabase
         .from('fabric_transactions')
         .select(`
@@ -473,6 +488,7 @@ export const useCreateTransaction = () => {
       transaction_date?: string;
       manager_id?: string | null;
     }) => {
+      if (isLocalBackend()) return localApi.createFabricTransaction(data);
       const { data: result, error } = await supabase
         .from('fabric_transactions')
         .insert({
@@ -513,6 +529,7 @@ export const useUpdateTransaction = () => {
       transaction_date?: string;
     }) => {
       const { id, ...updateData } = data;
+      if (isLocalBackend()) return localApi.updateFabricTransaction(id, updateData);
       const { data: result, error } = await supabase
         .from('fabric_transactions')
         .update({
@@ -538,9 +555,10 @@ export const useUpdateTransaction = () => {
 export const useFabricTransfers = () => {
   useFabricRealtime();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['fabric-transfers'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.fabricTransfers() as Promise<any[]>;
       const { data, error } = await supabase
         .from('fabric_transfers')
         .select(`
@@ -576,6 +594,7 @@ export const useCreateTransfer = () => {
       notes?: string;
       transfer_date?: string;
     }) => {
+      if (isLocalBackend()) return localApi.createFabricTransfer(data);
       const { data: result, error } = await supabase
         .from('fabric_transfers')
         .insert(data)
@@ -607,6 +626,7 @@ export const useUpdateTransferStatus = () => {
       approved_by?: string;
       received_by?: string;
     }) => {
+      if (isLocalBackend()) return localApi.updateFabricTransferStatus(id, { status, approved_by, received_by });
       const { data, error } = await supabase
         .from('fabric_transfers')
         .update({ status, approved_by, received_by })
@@ -629,9 +649,10 @@ export const useUpdateTransferStatus = () => {
 export const useFabricUsage = () => {
   useFabricRealtime();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['fabric-usage'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.fabricUsage() as Promise<any[]>;
       const pageSize = 1000;
       const rows: any[] = [];
       for (let offset = 0; ; offset += pageSize) {
@@ -673,9 +694,25 @@ export const useFabricUsage = () => {
 export const useFabricCostHistory = () => {
   useFabricRealtime();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['fabric-cost-history'],
     queryFn: async () => {
+      if (isLocalBackend()) {
+        const transactions = await localApi.fabricTransactions();
+        return transactions
+          .filter((row) => ['inbound', 'adjustment', 'transfer_in'].includes(String(row.transaction_type)) && Number(row.unit_price || 0) > 0)
+          .sort((a, b) => `${String(a.transaction_date || '')}${String(a.created_at || '')}`.localeCompare(`${String(b.transaction_date || '')}${String(b.created_at || '')}`))
+          .map((row) => ({
+            id: String(row.id),
+            fabric_variant_id: String(row.fabric_variant_id),
+            transaction_type: String(row.transaction_type),
+            quantity: Number(row.quantity || 0),
+            unit_price: row.unit_price == null ? null : Number(row.unit_price),
+            total_amount: row.total_amount == null ? null : Number(row.total_amount),
+            transaction_date: String(row.transaction_date || ''),
+            created_at: String(row.created_at || ''),
+          }));
+      }
       const pageSize = 1000;
       const rows: Array<{
         id: string;
@@ -718,6 +755,7 @@ export const useFabricUsageByOrder = (orderId?: string) => {
     queryKey: ['fabric-usage', orderId],
     queryFn: async () => {
       if (!orderId) return [];
+      if (isLocalBackend()) return localApi.fabricUsage(orderId) as Promise<any[]>;
       
         let response: { data: any[] | null; error: any } = await supabase
         .from('fabric_usage')
@@ -770,6 +808,7 @@ export const useRecordFabricUsageAtomic = () => {
       notes?: string;
     }) => {
       console.log('[RPC] record_fabric_usage_batch START', data);
+      if (isLocalBackend()) return localApi.createFabricUsageBatch(data);
       
       let { data: result, error } = await supabase.rpc('record_fabric_usage_batch', {
         p_order_id: data.order_id,
@@ -857,6 +896,12 @@ export const useCreateFabricUsage = () => {
       fabric_width?: string;
       order_group?: 'don_phuoc' | 'don_hoan' | 'unclassified';
     }) => {
+      if (isLocalBackend()) {
+        return localApi.createFabricUsageBatch({
+          ...data,
+          items: [{ fabric_variant_id: data.fabric_variant_id, quantity_used: data.quantity_used }],
+        });
+      }
       let { data: result, error } = await supabase.rpc('record_fabric_usage_batch', {
         p_order_id: data.order_id,
         p_order_number: data.order_number || '',
@@ -919,6 +964,7 @@ export const useUpdateFabricUsage = () => {
       order_group?: 'don_phuoc' | 'don_hoan' | 'unclassified';
     }) => {
       const { id, ...updateData } = data;
+      if (isLocalBackend()) return localApi.updateFabricUsage(id, updateData);
       let { data: result, error } = await supabase.rpc('update_fabric_usage_and_transaction', {
         p_usage_id: id,
         p_order_number: updateData.order_number || null,
@@ -955,6 +1001,10 @@ export const useDeleteFabricUsage = () => {
   
   return useMutation({
     mutationFn: async (id: string) => {
+      if (isLocalBackend()) {
+        await localApi.deleteFabricUsage(id);
+        return;
+      }
       let { data: result, error } = await supabase.rpc('delete_fabric_usage_and_transaction', { p_usage_id: id });
       
       if (error && (error.code === '42883' || error.message?.includes('delete_fabric_usage_and_transaction'))) {

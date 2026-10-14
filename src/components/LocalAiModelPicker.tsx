@@ -1,0 +1,18 @@
+import { useId, useState } from 'react';
+import { Check, ChevronsUpDown, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+export type LocalAiModel = {id:string;owned_by:string};
+export type LocalAiModelCatalog={provider:'local'|'f5quota'|'beeknoee';models:LocalAiModel[];loading:boolean;error:string;loaded:boolean};
+export default function LocalAiModelPicker({id,label,value,onChange,models,disabled=false,loading=false,error='',loaded=false,onReload}:{id?:string;label:string;value:string;onChange:(value:string)=>void;models:LocalAiModel[];disabled?:boolean;loading?:boolean;error?:string;loaded?:boolean;onReload?:()=>void}) {
+ const generated=useId(), controlId=id || generated, [open,setOpen]=useState(false);
+ const known=models.some(model=>model.id===value), current=value&&!known?{id:value,owned_by:'Hiện tại / chưa xác minh trong danh sách'}:null;
+ return <div className="min-w-0 space-y-1.5"><Label htmlFor={controlId}>{label}</Label><Popover open={open} onOpenChange={setOpen}><PopoverTrigger asChild><Button id={controlId} type="button" variant="outline" role="combobox" aria-expanded={open} aria-label={label} disabled={disabled} className="w-full justify-between min-w-0 h-auto min-h-10 text-left"><span className="truncate min-w-0">{value || 'Chọn mô hình từ danh sách'}</span>{loading?<Loader2 className="ml-2 h-4 w-4 shrink-0 animate-spin"/>:<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>}</Button></PopoverTrigger><PopoverContent align="start" className="p-0 w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-24px)]"><Command><CommandInput placeholder="Tìm tên hoặc mã mô hình..." aria-label={`Tìm ${label.toLowerCase()}`}/><CommandList className="max-w-full"><CommandEmpty>{loading?'Đang tải mô hình...':loaded?'Không tìm thấy mô hình phù hợp.':'Chưa có danh sách. Nhập khóa và bấm tải mô hình.'}</CommandEmpty><CommandGroup>{[...(current?[current]:[]),...models].map(model=><CommandItem key={model.id} value={model.id} keywords={[model.owned_by]} onSelect={()=>{onChange(model.id);setOpen(false);}} className="min-h-11 gap-2"><Check className={`h-4 w-4 shrink-0 ${model.id===value?'opacity-100':'opacity-0'}`}/><span className="min-w-0 break-all"><span className="block">{model.id}</span>{model.owned_by&&<span className="block text-xs text-muted-foreground">{model.owned_by}</span>}</span></CommandItem>)}</CommandGroup></CommandList></Command></PopoverContent></Popover>
+  <div className="text-xs text-muted-foreground">{loading?'Đang tải danh sách...':loaded?`${models.length} mô hình do nhà cung cấp trả về. Chưa bảo đảm hỗ trợ đọc ảnh.`:'Danh sách chưa được tải.'}{current&&<span className="block">Mô hình hiện tại / chưa xác minh.</span>}</div>
+  {error&&<p role="alert" className="text-xs text-destructive">{error}</p>}{onReload&&<Button type="button" variant="link" size="sm" disabled={disabled||loading} onClick={onReload} className="h-auto p-0">{error?'Thử tải lại':'Tải danh sách mô hình'}</Button>}
+  {!loading&&(error||(loaded&&models.length===0))&&<details><summary className="cursor-pointer text-xs text-muted-foreground">Nâng cao: nhập mã nếu nhà cung cấp không có danh sách</summary><Input aria-label={`${label} — mã thủ công nâng cao`} value={value} onChange={event=>onChange(event.target.value)} disabled={disabled} className="mt-2" placeholder="Giữ nguyên mã chính xác của nhà cung cấp"/></details>}
+ </div>;
+}

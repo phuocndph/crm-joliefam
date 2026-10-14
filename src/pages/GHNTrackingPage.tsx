@@ -18,6 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Card as UICard } from '@/components/ui/card';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 interface GHNTrackingData {
   id: string;
@@ -127,7 +129,7 @@ export default function GHNTrackingPage() {
 
   // Real-time subscription for GHN tracking updates
   useEffect(() => {
-    if (!user) return;
+    if (!user || isLocalBackend()) return;
 
     console.log('📦 Setting up GHN tracking real-time subscription');
     let reloadTimer: ReturnType<typeof setTimeout> | undefined;
@@ -169,6 +171,19 @@ export default function GHNTrackingPage() {
 
     try {
       const searchText = debouncedSearchText.trim().replace(/[%,()]/g, ' ');
+      if (isLocalBackend()) {
+        const result = await localApi.ghnTracking({
+          page: currentPage,
+          pageSize,
+          search: searchText,
+          status: filters.status.join(','),
+          sortBy: filters.sortBy,
+          sortOrder: filters.sortOrder,
+        });
+        setTrackingData(result.rows as unknown as GHNTrackingData[]);
+        setTotalTrackingCount(result.total);
+        return;
+      }
       let query = supabase
         .from('ghn_tracking')
         .select('id, ghn_order_code, internal_order_code, order_id, customer_name, customer_phone, customer_address, package_weight, created_date, expected_delivery_date, delivered_date, cod_amount, ghn_status, ghn_status_text, tracking_url, last_updated_at, tracking_notes, created_at, updated_at, manager_id, tenant_id', { count: 'exact' })
@@ -204,7 +219,7 @@ export default function GHNTrackingPage() {
 
   // Auto-load incomplete orders when accessing the page
   const autoLoadIncompleteOrders = async () => {
-    if (!user || totalTrackingCount === 0) return;
+    if (!user || totalTrackingCount === 0 || isLocalBackend()) return;
 
     try {
       const staleBefore = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -236,6 +251,24 @@ export default function GHNTrackingPage() {
       .filter(code => code.length > 0);
 
     if (orderCodes.length === 0) return;
+
+    if (isLocalBackend()) {
+      setLoading(true);
+      try {
+        let added = 0;
+        for (const orderCode of orderCodes) {
+          try {
+            await localApi.createGhnTracking({ ghn_order_code: orderCode, customer_name: "", ghn_status: "local_only" });
+            added += 1;
+          } catch (error: any) {
+            if (!String(error?.message || '').includes('duplicate') && !String(error?.message || '').includes('trùng')) throw error;
+          }
+        }
+        if (added) { toast.info(`Đã thêm ${added} mã theo dõi vào hệ thống cục bộ; chưa đồng bộ GHN.`); setOrderCodeInput(''); await loadTrackingData(); }
+      } catch (error: any) { toast.error(error.message || 'Không thể thêm mã theo dõi cục bộ'); }
+      finally { setLoading(false); }
+      return;
+    }
 
     // Check for duplicates
     const { data: existingCodes, error: duplicateCheckError } = await supabase
@@ -306,6 +339,7 @@ export default function GHNTrackingPage() {
 
   const updateAllTracking = async () => {
     if (!user || totalTrackingCount === 0) return;
+    if (isLocalBackend()) { toast.info('Hệ thống cục bộ chỉ hiển thị dữ liệu GHN đã đồng bộ; không gọi dịch vụ GHN.'); return; }
 
     setLoading(true);
 
@@ -337,6 +371,7 @@ export default function GHNTrackingPage() {
 
   const updateSingleTracking = async (orderCode: string) => {
     if (!user) return;
+    if (isLocalBackend()) { toast.info(`Mã ${orderCode} chỉ có bản chụp dữ liệu cục bộ; chưa đồng bộ GHN.`); return; }
 
     setUpdatingOrderCode(orderCode);
 
@@ -370,6 +405,7 @@ export default function GHNTrackingPage() {
 
   const importAllOrdersFromGHN = async () => {
     if (!user) return;
+    if (isLocalBackend()) { toast.info('Nhập dữ liệu GHN cần kết nối dịch vụ bên ngoài; hệ thống cục bộ không tự gọi GHN.'); return; }
 
     setLoading(true);
 
@@ -393,7 +429,7 @@ export default function GHNTrackingPage() {
           return;
         }
 
-        toast.info(`Tìm thấy ${orders.length} đơn hàng trên GHN. Đang import...`);
+        toast.info(`Tìm thấy ${orders.length} đơn hàng trên GHN. Đang nhập dữ liệu...`);
 
         // Save each order to database
         let savedCount = 0;
@@ -430,7 +466,7 @@ export default function GHNTrackingPage() {
           }
         }
 
-        const message = `Import hoàn tất: ${savedCount} đã thêm, ${skippedCount} đã tồn tại${errorCount > 0 ? `, ${errorCount} lỗi` : ''}`;
+        const message = `Nhập dữ liệu hoàn tất: ${savedCount} đã thêm, ${skippedCount} đã tồn tại${errorCount > 0 ? `, ${errorCount} lỗi` : ''}`;
         toast.success(message);
         
         if (savedCount > 0) {
@@ -449,6 +485,12 @@ export default function GHNTrackingPage() {
 
   const removeTracking = async (id: string) => {
     try {
+      if (isLocalBackend()) {
+        await localApi.deleteGhnTracking(id);
+        toast.success('Đã xóa mã theo dõi cục bộ');
+        await loadTrackingData();
+        return;
+      }
       const { error } = await supabase
         .from('ghn_tracking')
         .delete()
@@ -479,6 +521,7 @@ export default function GHNTrackingPage() {
 
   const printA5 = async (orderCodes: string[]) => {
     if (orderCodes.length === 0) return;
+    if (isLocalBackend()) { toast.info('In phiếu A5 GHN cần kết nối dịch vụ GHN; hệ thống cục bộ chưa tạo liên kết in.'); return; }
     setPrinting(true);
     try {
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
@@ -759,7 +802,7 @@ export default function GHNTrackingPage() {
                           </Button>
                           {!FINAL_STATUSES.includes(item.ghn_status || '') && (
                             <Button
-                              onClick={() => { setEditingRecord(item); setEditDialogOpen(true); }}
+                              onClick={() => isLocalBackend() ? toast.info('Chỉnh sửa đơn GHN cần kết nối dịch vụ GHN; hệ thống cục bộ chỉ giữ bản chụp dữ liệu.') : (setEditingRecord(item), setEditDialogOpen(true))}
                               variant="ghost"
                               size="sm"
                               className="text-blue-600 hover:text-blue-800"
@@ -897,7 +940,7 @@ export default function GHNTrackingPage() {
                         </Button>
                         {!isFinal && (
                           <Button
-                            onClick={() => { setEditingRecord(item); setEditDialogOpen(true); }}
+                            onClick={() => isLocalBackend() ? toast.info('Chỉnh sửa đơn GHN cần kết nối dịch vụ GHN; hệ thống cục bộ chỉ giữ bản chụp dữ liệu.') : (setEditingRecord(item), setEditDialogOpen(true))}
                             variant="outline"
                             size="icon"
                             className="h-9 w-9 text-blue-600"

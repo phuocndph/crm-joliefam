@@ -14,6 +14,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounce } from "@/hooks/useDebounce";
+import { isLocalBackend } from "@/lib/runtime-config";
 
 interface Province { ProvinceID: number; ProvinceName: string; NameExtension?: string[]; }
 interface District { DistrictID: number; DistrictName: string; NameExtension?: string[]; }
@@ -247,6 +248,10 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
     (async () => {
       setPrefilling(true);
       try {
+        if (isLocalBackend()) {
+          applyPrefill(trackingRecord.raw_data || {});
+          return;
+        }
         const { data, error } = await supabase.functions.invoke('ghn-tracking', {
           body: { action: 'get_order_detail', orderCode: trackingRecord.ghn_order_code },
         });
@@ -270,7 +275,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
 
   // Fetch address suggestions
   const fetchAddressSuggestions = useCallback(async (searchText: string, isSelected: boolean) => {
-    if (isSelected) return;
+    if (isSelected || isLocalBackend()) return;
     if (!searchText || searchText.length < 2) {
       setAddressSuggestions([]); setShowSuggestions(false); return;
     }
@@ -294,6 +299,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   }, [debouncedAddress, open, addressSelected, fetchAddressSuggestions]);
 
   const callGHN = useCallback(async (action: string, body: Record<string, any> = {}) => {
+    if (isLocalBackend()) throw new Error('Local chỉ cho phép xem snapshot GHN; thao tác đồng bộ cần dịch vụ bên ngoài.');
     const { data, error } = await supabase.functions.invoke('ghn-tracking', { body: { action, ...body } });
     if (error) {
       const detailMessage = data?.error || error.message;
@@ -607,12 +613,14 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
 
       toast({ title: "Cập nhật thành công!", description: `Đơn ${trackingRecord.ghn_order_code} đã được cập nhật` });
       // Pull lại detail mới nhất từ GHN để snapshot raw_data trong DB luôn khớp
-      try {
-        await supabase.functions.invoke('ghn-tracking', {
-          body: { action: 'get_order_detail', orderCode: trackingRecord.ghn_order_code },
-        });
-      } catch (e) {
-        console.warn('[GHN Edit] Post-save refresh failed:', e);
+      if (!isLocalBackend()) {
+        try {
+          await supabase.functions.invoke('ghn-tracking', {
+            body: { action: 'get_order_detail', orderCode: trackingRecord.ghn_order_code },
+          });
+        } catch (e) {
+          console.warn('[GHN Edit] Post-save refresh failed:', e);
+        }
       }
       onSuccess();
       onOpenChange(false);
@@ -839,7 +847,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                     <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                       <div className="flex items-center gap-1.5 font-medium mb-1">
                         <Info className="h-3.5 w-3.5 flex-shrink-0" />
-                        Hàng nặng (Service 5): GHN tính cước từ kích thước mỗi kiện
+                        Hàng nặng (Dịch vụ 5): GHN tính cước từ kích thước mỗi kiện
                       </div>
                       <div className="ml-5 space-y-0.5">
                         <div>Tổng KL: <strong>{(heavyCargoCalc.totalWeight / 1000).toFixed(1)}kg</strong></div>
@@ -884,7 +892,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                 <h3 className="text-sm font-bold">Gói dịch vụ</h3>
                 {serviceTypeId && (
                   <Badge variant={serviceTypeId === "5" ? "default" : "secondary"} className="text-xs">
-                    {serviceTypeId === "5" ? "📦 Hàng nặng (Service 5)" : `📮 Hàng nhẹ (Service ${serviceTypeId})`}
+                    {serviceTypeId === "5" ? "📦 Hàng nặng (Dịch vụ 5)" : `📮 Hàng nhẹ (Dịch vụ ${serviceTypeId})`}
                   </Badge>
                 )}
               </div>

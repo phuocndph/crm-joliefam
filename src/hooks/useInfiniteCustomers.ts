@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 const PAGE_SIZE = 50;
 
@@ -9,6 +11,7 @@ export const useInfiniteCustomers = (opts?: { search?: string }) => {
   const search = (opts?.search || '').trim();
 
   useEffect(() => {
+    if (isLocalBackend()) return;
     const channel = supabase
       .channel('customers-inf-' + Date.now())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'customers' }, () => {
@@ -26,6 +29,10 @@ export const useInfiniteCustomers = (opts?: { search?: string }) => {
     initialPageParam: 0,
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * PAGE_SIZE;
+      if (isLocalBackend()) {
+        const rows = await localApi.customers({ search });
+        return rows.slice(from, from + PAGE_SIZE) as unknown as any[];
+      }
       const to = from + PAGE_SIZE - 1;
       let query = supabase
         .from('customers')

@@ -1,11 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 export const useContracts = (opts?: { managerId?: string | null }) => {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    if (isLocalBackend()) return;
     const invalidate = () => queryClient.invalidateQueries({ queryKey: ['contracts'] });
     const channel = supabase
       .channel('contracts-realtime')
@@ -19,6 +22,7 @@ export const useContracts = (opts?: { managerId?: string | null }) => {
   return useQuery({
     queryKey: ['contracts', opts?.managerId ?? 'all'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.contracts({ managerId: opts?.managerId });
       let query = supabase
         .from('contracts' as any)
         .select(`*, customers (name, email, phone, address, company)`)
@@ -39,6 +43,7 @@ export const useCreateContract = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (contract: any) => {
+      if (isLocalBackend()) return localApi.createContract(contract);
       const { data, error } = await supabase
         .from('contracts' as any)
         .insert(contract)
@@ -57,6 +62,7 @@ export const useUpdateContract = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...updates }: any) => {
+      if (isLocalBackend()) return localApi.updateContract(id, updates);
       const { data, error } = await supabase
         .from('contracts' as any)
         .update(updates)
@@ -76,6 +82,7 @@ export const useDeleteContract = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      if (isLocalBackend()) { await localApi.deleteContract(id); return; }
       const { error } = await supabase
         .from('contracts' as any)
         .delete()

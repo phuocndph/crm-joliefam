@@ -45,6 +45,12 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import MobileCustomerManagement from "@/components/mobile/MobileCustomerManagement";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
+const formatCustomerDate = (value: unknown, pattern: string) => {
+  if (!value) return "—";
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? "—" : format(date, pattern, { locale: vi });
+};
+
 export default function CustomerManagement() {
   const isMobile = useIsMobile();
   if (isMobile) {
@@ -511,6 +517,7 @@ function CustomerManagementDesktop() {
     if (!lastPurchaseDate) return null;
     const now = new Date();
     const lastPurchase = new Date(lastPurchaseDate);
+    if (Number.isNaN(lastPurchase.getTime())) return null;
     const diffInMonths = (now.getFullYear() - lastPurchase.getFullYear()) * 12 + 
                         (now.getMonth() - lastPurchase.getMonth());
     return diffInMonths;
@@ -519,6 +526,7 @@ function CustomerManagementDesktop() {
   const getLastPurchaseMonthYear = (lastPurchaseDate: string | null) => {
     if (!lastPurchaseDate) return null;
     const lastPurchase = new Date(lastPurchaseDate);
+    if (Number.isNaN(lastPurchase.getTime())) return null;
     const month = lastPurchase.getMonth() + 1; // getMonth() returns 0-11
     const year = lastPurchase.getFullYear();
     return `Tháng ${month}/${year}`;
@@ -738,7 +746,7 @@ function CustomerManagementDesktop() {
                       <TableCell>
                         {customer.last_purchase_date ? (
                           <div className="text-sm">
-                            {format(new Date(customer.last_purchase_date), "dd/MM/yyyy", { locale: vi })}
+                            {formatCustomerDate(customer.last_purchase_date, "dd/MM/yyyy")}
                           </div>
                         ) : (
                           <span className="text-muted-foreground">-</span>
@@ -916,7 +924,7 @@ function CustomerManagementDesktop() {
                       <tr>
                         <td className="px-4 py-3 font-medium">Mua lần cuối</td>
                         <td className="px-4 py-3">
-                          {format(new Date(selectedCustomer.last_purchase_date), "dd/MM/yyyy HH:mm", { locale: vi })}
+                          {formatCustomerDate(selectedCustomer.last_purchase_date, "dd/MM/yyyy HH:mm")}
                           <span className="ml-2 text-sm text-muted-foreground">
                             ({getLastPurchaseMonthYear(selectedCustomer.last_purchase_date)})
                           </span>
@@ -975,7 +983,7 @@ function CustomerManagementDesktop() {
                       {customerOrders.map((order) => (
                         <tr key={order.id}>
                           <td className="px-4 py-3 font-medium">#{getOrderDisplayNumber(order)}</td>
-                          <td className="px-4 py-3">{format(new Date(order.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}</td>
+                          <td className="px-4 py-3">{formatCustomerDate(order.created_at, "dd/MM/yyyy HH:mm")}</td>
                           <td className="px-4 py-3">
                             <Badge variant={order.status === 'delivered' ? 'default' : 'secondary'}>
                               {order.status === 'pending' ? 'Chờ xử lý' :
@@ -1051,7 +1059,7 @@ function CustomerManagementDesktop() {
                       {customerQuotes.map((quote) => (
                         <tr key={quote.id}>
                           <td className="px-4 py-3 font-medium">#{quote.quote_number}</td>
-                          <td className="px-4 py-3">{format(new Date(quote.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}</td>
+                          <td className="px-4 py-3">{formatCustomerDate(quote.created_at, "dd/MM/yyyy HH:mm")}</td>
                           <td className="px-4 py-3">
                             <Badge variant={quote.status === 'approved' ? 'default' : 'secondary'}>
                               {quote.status === 'draft' ? 'Nháp' :
@@ -1164,7 +1172,7 @@ function CustomerManagementDesktop() {
                     <tr>
                       <td className="px-4 py-3 font-medium">Ngày tạo</td>
                       <td className="px-4 py-3">
-                        {format(new Date(selectedOrderDetail.created_at), "dd/MM/yyyy HH:mm", { locale: vi })}
+                        {formatCustomerDate(selectedOrderDetail.created_at, "dd/MM/yyyy HH:mm")}
                       </td>
                     </tr>
                   </tbody>

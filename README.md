@@ -1,73 +1,93 @@
-# Welcome to your Lovable project
+# CRM Joliefam
 
-## Project info
+Mã nguồn đầy đủ của CRM Joliefam: khách hàng, báo giá, đơn hàng, sản xuất, kho,
+chấm công, tiền lương, tài khoản, phân quyền và tích hợp API/MCP/AI. Giao diện dùng
+React 18, TypeScript, Vite, Tailwind CSS và shadcn/ui; backend local/VPS dùng Node.js
+và PostgreSQL 16. Thư mục `supabase/` giữ lịch sử và mã tích hợp nguồn cũ.
 
-**URL**: https://lovable.dev/projects/77b509be-a470-434b-9056-5bf5eddb60a7
+Đăng nhập và dữ liệu nghiệp vụ trên bản local/VPS dùng PostgreSQL. Đồng bộ từ
+Supabase là tác vụ đọc nguồn riêng, chỉ bật khi đã chốt quy trình đối soát; bản
+local không đẩy các thay đổi nghiệp vụ ngược lên Supabase.
 
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/77b509be-a470-434b-9056-5bf5eddb60a7) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Lấy đúng bản local/VPS
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+git clone --branch local-vps-20261014 --single-branch https://github.com/phuocndph/crm-joliefam.git
+cd crm-joliefam
 ```
 
-**Edit a file directly in GitHub**
+Nhánh `local-vps-20261014` là bản bàn giao này. Nhánh mặc định của repository có
+lịch sử khác; cần chọn đúng nhánh trên khi cài VPS hoặc tiếp tục phát triển.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Chạy để phát triển
 
-**Use GitHub Codespaces**
+Cần Node.js 22, npm, Docker Compose và Docker đang chạy. Lệnh khởi động gộp dùng
+PowerShell trên Windows:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```powershell
+npm ci --legacy-peer-deps
+Copy-Item .env.local.example .env.local
+# Điều chỉnh cấu hình local theo mẫu trước khi chạy.
+npm run dev:local
+```
 
-## What technologies are used for this project?
+Trình khởi động tạo PostgreSQL local, kiểm tra API ở cổng 8787 và mở Vite ở cổng
+8090. `npm run dev` chỉ chạy giao diện; không khởi động backend hay cơ sở dữ liệu.
+Không dùng thông tin kết nối phát triển cho VPS. Mật khẩu local và quyền tài khoản
+phải được bàn giao riêng; xem [chuyển đăng nhập local](docs/local-auth-transition.md).
 
-This project is built with:
+Nếu chạy trên hệ điều hành khác, dùng `npm run local:db:up`, thiết lập các biến
+trong mẫu `.env.local.example`, rồi chạy `npm run local:api` và `npm run dev` ở hai
+terminal riêng. Đặt backend mode là `local` và URL API phù hợp trước khi mở UI.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Cài trên VPS
 
-## How can I deploy this project?
+Đọc [hướng dẫn VPS và điều kiện phát hành](docs/vps-readiness.md) trước khi cài.
+Bộ triển khai nằm trong `deploy/`: Dockerfile, Compose, Caddy, script sao lưu và
+khôi phục thử. Mẫu cấu hình là `deploy/.env.example`; tạo
+`deploy/.env.production` riêng trên VPS, dùng tên miền HTTPS và mật khẩu mới.
 
-Simply open [Lovable](https://lovable.dev/projects/77b509be-a470-434b-9056-5bf5eddb60a7) and click on Share -> Publish.
+```sh
+cp deploy/.env.example deploy/.env.production
+chmod 600 deploy/.env.production
+# Điền cấu hình thật bằng trình soạn thảo, không đưa tệp này lên Git.
+docker compose --env-file deploy/.env.production -f deploy/compose.yml config --quiet
+docker compose --env-file deploy/.env.production -f deploy/compose.yml build
+```
 
-## Can I connect a custom domain to my Lovable project?
+Đây là bước chuẩn bị ảnh triển khai. Chỉ bật dịch vụ thực tế sau khi khôi phục,
+đối soát dữ liệu/tệp và nghiệm thu staging theo hướng dẫn. Các vấn đề phân quyền
+từng bản ghi, đồng bộ, cấu hình lương, giới hạn đăng nhập và phụ thuộc vẫn cần kiểm
+tra theo báo cáo; việc đưa mã nguồn lên GitHub không chứng nhận hệ thống đã sẵn
+sàng phát hành đại trà. Chưa tự triển khai VPS hay thay DNS chỉ bằng việc clone.
 
-Yes, you can!
+## Dữ liệu phải bàn giao riêng
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+GitHub chứa mã nguồn, migration, mẫu nhập Excel, tài liệu và cấu hình mẫu; không
+chứa dữ liệu vận hành. Clone dự án không tự mang theo tài khoản, khách hàng,
+báo giá, lịch sử chấm công/tiền lương hoặc tệp người dùng đã tải lên.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+Để giữ đầy đủ dữ liệu hiện có, chuyển bản sao SQL đầy đủ (kèm sổ
+`local_schema_migrations`) và tài sản trong `.local-storage/` bằng kênh riêng bảo
+mật. Sao lưu cả hai trong cùng khoảng đóng ghi, kiểm checksum, thử khôi phục vào
+DB mới và đối chiếu trước cutover. Không đưa dump, hồ sơ nhân sự, mật khẩu hash,
+khóa API, `.env` hay bản sao tệp tải lên vào repository, kể cả repository riêng tư.
+Xem quy trình backup/restore trong [hướng dẫn VPS](docs/vps-readiness.md).
+
+## Kiểm tra mã nguồn
+
+```sh
+npx tsc --noEmit -p tsconfig.app.json
+npm run typecheck:server
+npm run build:vps
+npm run build:server
+npm run test:vps
+```
+
+`npm run test:vps-api` cần Docker/PostgreSQL kiểm thử và chạy trên DB cô lập.
+Các bộ kiểm thử nghiệp vụ khác được khai báo trong `package.json`; một số dùng
+PowerShell. `--legacy-peer-deps` được dùng theo lockfile hiện tại do ràng buộc
+date-fns/react-day-picker; nâng cấp phụ thuộc cần kiểm thử hồi quy riêng.
+
+Không chạy migration, đồng bộ hoặc seed lên Supabase public để kiểm thử local.
+Quy tắc sửa mã và bảo toàn dữ liệu nằm trong [AGENTS.md](AGENTS.md).

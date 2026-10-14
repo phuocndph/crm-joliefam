@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
 
 export interface Assignee {
   id: string;
@@ -16,6 +18,7 @@ export const useAssignees = () => {
 
   // Set up real-time synchronization with unique channel name
   useEffect(() => {
+    if (isLocalBackend()) return;
     const channelName = `assignees-sync-${Date.now()}`;
     const channel = supabase
       .channel(channelName)
@@ -38,6 +41,7 @@ export const useAssignees = () => {
   return useQuery({
     queryKey: ['assignees'],
     queryFn: async () => {
+      if (isLocalBackend()) return localApi.assignees() as unknown as Promise<Assignee[]>;
       const { data, error } = await supabase
         .from('assignees')
         .select('*')
@@ -57,6 +61,7 @@ export const useCreateAssignee = () => {
   
   return useMutation({
     mutationFn: async (data: { name: string }) => {
+      if (isLocalBackend()) return localApi.createAssignee(data) as unknown as Promise<Assignee>;
       const { data: result, error } = await supabase
         .from('assignees')
         .insert([{ name: data.name }])
@@ -77,6 +82,7 @@ export const useUpdateAssignee = () => {
   
   return useMutation({
     mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      if (isLocalBackend()) return localApi.updateAssignee(id, { name }) as unknown as Promise<Assignee>;
       const { data, error } = await supabase
         .from('assignees')
         .update({ name })
@@ -98,6 +104,7 @@ export const useDeleteAssignee = () => {
   
   return useMutation({
     mutationFn: async (id: string) => {
+      if (isLocalBackend()) { await localApi.deleteAssignee(id); return; }
       const { error } = await supabase
         .from('assignees')
         .delete()

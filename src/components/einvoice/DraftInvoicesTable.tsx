@@ -204,7 +204,7 @@ export function DraftInvoicesTable({
                 size="sm"
                 className="bg-slate-800 hover:bg-slate-900 text-white"
               >
-                <Download className="h-4 w-4 mr-1" /> Import hoá đơn
+                <Download className="h-4 w-4 mr-1" /> Nhập hóa đơn
               </Button>
               <Button
                 size="sm"

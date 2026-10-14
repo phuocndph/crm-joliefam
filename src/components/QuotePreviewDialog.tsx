@@ -25,6 +25,7 @@ import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { QuoteSupplementDialog } from './QuoteSupplementDialog';
 import { fetchQuoteData } from '@/hooks/useQuotes';
+import { isLocalBackend, localAdminUser } from '@/lib/runtime-config';
 
 interface QuotePreviewDialogProps {
   open: boolean;
@@ -938,7 +939,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                     <td class="text-center">${index + 1}</td>
                     <td>${item.name || item.sku || ''}</td>
                     <td class="text-center">
-                      ${item.selectedImage ? `<img src="${item.selectedImage}" style="width: 60px; height: 45px; object-fit: cover; border-radius: 4px;" alt="Product">` : '<div style="width: 60px; height: 45px; background: #f3f4f6; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #9ca3af;">Không có ảnh</div>'}
+                      ${item.selectedImage ? `<img src="${item.selectedImage}" style="width: 60px; height: 45px; object-fit: cover; border-radius: 4px;" alt="Sản phẩm">` : '<div style="width: 60px; height: 45px; background: #f3f4f6; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #9ca3af;">Không có ảnh</div>'}
                     </td>
                     <td>${item.specifications || ''}</td>
                     <td>${item.category || item.description || ''}</td>
@@ -1020,7 +1021,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
       toast({
         title: "Thành công",
-        description: "Đã mở cửa sổ in. Chọn 'Save as PDF' để xuất file PDF.",
+        description: "Đã mở cửa sổ in. Chọn 'Lưu dưới dạng PDF' để xuất tệp PDF.",
       });
       
     } catch (error) {
@@ -1104,7 +1105,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               <div className="mx-auto h-24 w-24 shrink-0 sm:mx-0 sm:h-28 sm:w-28">
                 <img 
                   src={logoError ? '/placeholder.svg' : (templateSettings.logoUrl || '/placeholder.svg')}
-                  alt="Company Logo" 
+                  alt="Logo công ty"
                   className="h-full w-full object-contain rounded-md border border-slate-200 bg-white p-1"
                   onError={(e) => {
                     console.error('Logo load error, using fallback');
@@ -1187,7 +1188,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                          {item.selectedImage ? (
                            <img 
                              src={transformImageUrl(item.selectedImage, { width: 120, quality: 70 })} 
-                             alt="Product" 
+                             alt="Sản phẩm"
                              className="mx-auto h-12 w-16 rounded object-cover ring-1 ring-slate-200"
                              loading="lazy"
                            />

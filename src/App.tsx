@@ -11,8 +11,12 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 const Index = lazy(() => import("./pages/Index"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const LocalDashboardPage = lazy(() => import("./pages/LocalDashboardPage"));
 const UserManagement = lazy(() => import("./pages/UserManagement"));
+const ProfileReviewPage = lazy(() => import("./pages/ProfileReviewPage"));
+const IntegrationAccessPage = lazy(() => import("./pages/IntegrationAccessPage"));
 const CustomerManagement = lazy(() => import("./pages/CustomerManagement"));
+const LocalCustomerManagementPage = lazy(() => import("./pages/LocalCustomerManagementPage"));
 const ProductManagement = lazy(() => import("./pages/ProductManagement"));
 const FabricManagement = lazy(() => import("./pages/FabricManagement"));
 const QuotesPage = lazy(() => import("./pages/QuotesPage"));
@@ -24,7 +28,13 @@ const TransactionManagement = lazy(() => import("./pages/TransactionManagement")
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const CostManagementPage = lazy(() => import("./pages/CostManagementPage"));
 const InventoryManagementPage = lazy(() => import("./pages/InventoryManagementPage"));
+const LocalProductCatalogPage = lazy(() => import("./pages/LocalProductCatalogPage"));
 const ProductionOrdersPage = lazy(() => import("./pages/ProductionOrdersPage"));
+const ProductionAttendancePage = lazy(() => import("./pages/ProductionAttendancePage"));
+const ProductionAttendanceV2Page = lazy(() => import("./pages/ProductionAttendanceV2Page"));
+const PayrollSettingsPage = lazy(() => import("./pages/PayrollSettingsPage"));
+const MyAttendancePage = lazy(() => import("./pages/MyAttendancePage"));
+const MyProfilePage = lazy(() => import("./pages/MyProfilePage"));
 const CustomerCare = lazy(() => import("./pages/CustomerCare"));
 const GHNTrackingPage = lazy(() => import("./pages/GHNTrackingPage"));
 const KnowledgeBase = lazy(() => import("./pages/KnowledgeBase"));
@@ -35,6 +45,7 @@ const MobileMenu = lazy(() => import("./pages/MobileMenu"));
 import MainLayout from "./components/layout/MainLayout";
 import MobileLayout from "./components/layout/MobileLayout";
 import NotFound from "./pages/NotFound";
+import { isLocalBackend } from "@/lib/runtime-config";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,6 +91,7 @@ const AppRoutes = () => {
   const LayoutComponent = isMobile ? MobileLayout : MainLayout;
 
   useEffect(() => {
+    if (isLocalBackend()) return;
     // Set up session refresh
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -124,8 +136,13 @@ const AppRoutes = () => {
       <Route path="/auth" element={<Auth />} />
       <Route path="/" element={<LayoutComponent />}>
         <Route path="menu" element={<MobileMenu />} />
-        <Route path="dashboard" element={isMobile ? <MobileMenu /> : <Dashboard />} />
+        <Route path="dashboard" element={isLocalBackend() ? <LocalDashboardPage /> : isMobile ? <MobileMenu /> : <Dashboard />} />
         <Route path="user-management" element={<UserManagement />} />
+        <Route path="profile-review" element={<ProfileReviewPage />} />
+        <Route path="integration-access" element={<IntegrationAccessPage />} />
+        {/* Keep the complete CRM screens in local mode as well. Their Supabase
+            calls are routed through the local adapter, so local SQL does not
+            replace or hide the existing customer/product workflows. */}
         <Route path="customers" element={<CustomerManagement />} />
         <Route path="products" element={<ProductManagement />} />
         <Route path="fabrics" element={<FabricManagement />} />
@@ -139,6 +156,13 @@ const AppRoutes = () => {
           <Route path="cost-management" element={<CostManagementPage />} />
           <Route path="inventory-management" element={<InventoryManagementPage />} />
           <Route path="production-orders" element={<ProductionOrdersPage />} />
+          {/* Local SQL uses the new single-screen workspace; public Supabase keeps V1 unchanged. */}
+          <Route path="production-attendance" element={isLocalBackend() ? <ProductionAttendanceV2Page /> : <ProductionAttendancePage />} />
+          <Route path="production-attendance-v2" element={<ProductionAttendanceV2Page />} />
+          <Route path="production-attendance-legacy" element={<ProductionAttendancePage />} />
+          <Route path="my-attendance" element={<MyAttendancePage />} />
+          <Route path="my-profile" element={<MyProfilePage />} />
+          <Route path="payroll-settings" element={<PayrollSettingsPage />} />
         <Route path="customer-care" element={<CustomerCare />} />
         <Route path="ghn-tracking" element={<GHNTrackingPage />} />
         <Route path="knowledge-base" element={<KnowledgeBase />} />

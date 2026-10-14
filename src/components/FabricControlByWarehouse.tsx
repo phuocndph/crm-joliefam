@@ -167,7 +167,13 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
       currentWarehouse: number;
     }>);
   }, [inventory, warehouseFilter]);
-  const fabricSummaryArray = Object.values(fabricSummary);
+  const fabricSummaryArray = Object.values(fabricSummary) as Array<{
+    fabricName: string;
+    total: number;
+    hanoi: number;
+    bacninh: number;
+    currentWarehouse: number;
+  }>;
 
   // Filtered and sorted fabrics for display
   const displayedFabrics = useMemo(() => {
