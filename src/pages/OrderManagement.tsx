@@ -1,3 +1,4 @@
+import { orderCustomerName, usesQuoteCustomerName } from "@/lib/order-customer-display";
 import React, { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ interface Order {
   order_number: string;
   display_order_number?: string;
   customer_id: string | null;
+  quote_customer_name?: string | null;
   total_amount: number | null;
   cost_price: number | null;
   profit_before: number | null;
@@ -206,7 +208,7 @@ export default function OrderManagement() {
   };
 
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.name?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
+    const matchesSearch = getOrderDisplayNumber(order).toLowerCase().includes(searchTerm.toLowerCase()) || orderCustomerName(order).toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.customer_code?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) || order.customers?.phone?.includes(searchTerm);
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
     const matchesPayment = paymentFilter === "all" || order.payment_status === paymentFilter;
     const matchesManager = !selectedManagerId || order.manager_id === selectedManagerId;
@@ -218,7 +220,7 @@ export default function OrderManagement() {
       case "order_number":
         return getOrderDisplayNumber(b).localeCompare(getOrderDisplayNumber(a), undefined, { numeric: true });
       case "customer_name":
-        return (a.customers?.name || "").localeCompare(b.customers?.name || "");
+        return orderCustomerName(a).localeCompare(orderCustomerName(b));
       case "total_amount":
         return (b.total_amount || 0) - (a.total_amount || 0);
       case "delivery_date":
@@ -681,7 +683,7 @@ export default function OrderManagement() {
                   <tbody>
                     <tr className="border-b border-gray-200">
                       <td className="border-r border-gray-200 p-2 bg-gray-50 font-medium w-32">Tên KH</td>
-                      <td className="p-2">{selectedOrder?.customers?.name || "Khách lẻ"}</td>
+                      <td className="p-2">{orderCustomerName(selectedOrder)}{usesQuoteCustomerName(selectedOrder) && <p className="text-xs text-muted-foreground">Theo báo giá; chưa liên kết hồ sơ khách hàng</p>}</td>
                       <td className="border-l border-gray-200 border-r border-gray-200 p-2 bg-gray-50 font-medium w-32">Mã KH</td>
                       <td className="p-2">{selectedOrder?.customers?.customer_code || "-"}</td>
                     </tr>

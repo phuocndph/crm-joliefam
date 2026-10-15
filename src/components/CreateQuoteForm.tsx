@@ -127,7 +127,6 @@ export function CreateQuoteForm({
   }>({});
   
   // Auto-save draft states
-  const DRAFT_KEY = 'quote-draft-autosave';
   const [showDraftRecovery, setShowDraftRecovery] = useState(false);
   const [savedDraft, setSavedDraft] = useState<any>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
@@ -152,6 +151,11 @@ export function CreateQuoteForm({
   const [userRole, setUserRole] = useState<string | null>(null);
   const [managerId, setManagerId] = useState<string | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true); // Track user data loading
+  const DRAFT_KEY = `quote-draft-autosave:${currentUser?.id || 'pending'}`;
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(initialData?.customer_id || null);
+  const customerAccount = useRef<string | null>(null);
+  const [formAccountInvalidated, setFormAccountInvalidated] = useState(false);
+  const accountChanged = formAccountInvalidated || Boolean(currentUser?.id && customerAccount.current && customerAccount.current !== currentUser.id);
   const [identityError, setIdentityError] = useState('');
   const [identityAttempt, setIdentityAttempt] = useState(0);
   const identityRequest = useRef(0);
@@ -262,6 +266,33 @@ export function CreateQuoteForm({
       })()
     }
   });
+
+  useEffect(() => {
+    setSelectedCustomerId(initialData?.customer_id || null);
+  }, [initialData?.id, initialData?.customer_id]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    if (customerAccount.current && customerAccount.current !== currentUser.id) {
+      setSelectedCustomerId(null);
+      setSavedDraft(null);
+      setShowDraftRecovery(false);
+      setCustomerResults([]);
+      setFormAccountInvalidated(true);
+      // Keep the original owner guard. Even without onClose, no old form values
+      // may be saved into the new account's draft or submitted as its quote.
+      if (!formAccountInvalidated) onClose?.();
+      return;
+    }
+    if (!customerAccount.current) customerAccount.current = currentUser.id;
+  }, [currentUser?.id, formAccountInvalidated, onClose]);
+
+  useEffect(() => {
+    const subscription = form.watch((_values, { name, type }) => {
+      if (type === 'change' && ['customerName', 'phone', 'email'].includes(name || '')) setSelectedCustomerId(null);
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
 
   // Debounce search term for better performance
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
@@ -678,6 +709,7 @@ export function CreateQuoteForm({
     }
   };
   const handleSubmit = async (data: QuoteFormData) => {
+    if (accountChanged || (customerAccount.current && customerAccount.current !== currentUser?.id)) return;
     const submitRequest = identityRequest.current;
     // CRITICAL: Validate managerId before submit to prevent race condition
     if (!managerId || (isLocalBackend() && (isLoading || isLoadingUser))) {
@@ -742,7 +774,7 @@ export function CreateQuoteForm({
       // Prepare quote data
       const baseQuoteData = {
         quote_number: data.quoteNumber,
-        customer_id: null, // Would need customer selection
+        customer_id: selectedCustomerId,
         total_amount: calculatedTotal,
         subtotal: subtotal,
         vat_amount: vatAmount,
@@ -768,6 +800,7 @@ export function CreateQuoteForm({
         const localData: Record<string, unknown> = {
           ...baseQuoteData,
           manager_id: submitManagerId,
+          customer: { name: data.customerName, phone: data.phone, email: data.email, address: data.address },
           items: selectedProducts,
           quote_data: JSON.parse(baseQuoteData.quote_data),
           created_at: data.quoteDate.toISOString(),
@@ -865,7 +898,7 @@ export function CreateQuoteForm({
               error: createError
             } = await supabase.from("orders").insert({
               order_number: orderNumber,
-              customer_id: initialData.customer_id,
+              customer_id: selectedCustomerId,
               manager_id: managerId, // Use correct manager_id
               assignee_id: data.responsible || null,
               // Sử dụng ngày hiện tại cho created_at, lưu quoteDate vào notes
@@ -940,12 +973,14 @@ export function CreateQuoteForm({
   const debouncedProducts = useDebounce(JSON.stringify(selectedProducts), 3000);
 
   useEffect(() => {
-    if (initialData) return; // Don't auto-save when editing existing quote
+    if (accountChanged || initialData || !currentUser?.id || isLoadingUser || customerAccount.current !== currentUser.id) return; // Never mix account drafts
     if (!watchedValues.customerName && selectedProducts.length === 0) return; // Don't save empty forms
     
     try {
       const draft = {
         formData: watchedValues,
+        customerId: selectedCustomerId,
+        accountId: currentUser.id,
         selectedProducts,
         savedAt: new Date().toISOString(),
       };
@@ -955,25 +990,27 @@ export function CreateQuoteForm({
     } catch (e) {
       console.warn('Failed to save draft:', e);
     }
-  }, [debouncedFormData, debouncedProducts, initialData]);
+  }, [debouncedFormData, debouncedProducts, initialData, selectedCustomerId, DRAFT_KEY, currentUser?.id, isLoadingUser, accountChanged]);
 
   // Check for saved draft on mount (only for new quotes)
   useEffect(() => {
-    if (initialData) return;
+    if (accountChanged || initialData || !currentUser?.id || isLoadingUser || customerAccount.current !== currentUser.id) return;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (raw) {
         const draft = JSON.parse(raw);
-        setSavedDraft(draft);
-        setShowDraftRecovery(true);
+        if (draft.accountId === currentUser.id) {
+          setSavedDraft(draft);
+          setShowDraftRecovery(true);
+        }
       }
     } catch (e) {
       localStorage.removeItem(DRAFT_KEY);
     }
-  }, [initialData]);
+  }, [initialData, DRAFT_KEY, currentUser?.id, isLoadingUser, accountChanged]);
 
   const restoreDraft = () => {
-    if (!savedDraft) return;
+    if (accountChanged || customerAccount.current !== currentUser?.id || !savedDraft || savedDraft.accountId !== currentUser?.id || initialData) return;
     try {
       const { formData, selectedProducts: draftProducts } = savedDraft;
       form.reset({
@@ -981,6 +1018,7 @@ export function CreateQuoteForm({
         quoteDate: formData.quoteDate ? new Date(formData.quoteDate) : new Date(),
         expiryDate: formData.expiryDate ? new Date(formData.expiryDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       });
+      setSelectedCustomerId(savedDraft.customerId || null);
       if (draftProducts && draftProducts.length > 0) {
         setSelectedProducts(draftProducts);
       }
@@ -994,6 +1032,7 @@ export function CreateQuoteForm({
   };
 
   const discardDraft = () => {
+    if (accountChanged || customerAccount.current !== currentUser?.id) return;
     localStorage.removeItem(DRAFT_KEY);
     setShowDraftRecovery(false);
     setSavedDraft(null);
@@ -1243,6 +1282,7 @@ export function CreateQuoteForm({
                                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
+                                  setSelectedCustomerId(c.id);
                                   form.setValue('customerName', c.name || '');
                                   form.setValue('phone', c.phone || '');
                                   form.setValue('email', c.email || '');
@@ -1299,6 +1339,7 @@ export function CreateQuoteForm({
                                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
+                                  setSelectedCustomerId(c.id);
                                   form.setValue('customerName', c.name || '');
                                   form.setValue('phone', c.phone || '');
                                   form.setValue('email', c.email || '');
@@ -1367,6 +1408,7 @@ export function CreateQuoteForm({
                                 className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
+                                  setSelectedCustomerId(c.id);
                                   form.setValue('customerName', c.name || '');
                                   form.setValue('phone', c.phone || '');
                                   form.setValue('email', c.email || '');
@@ -2002,7 +2044,11 @@ export function CreateQuoteForm({
             </Card>
 
             {/* Action Buttons */}
-            {isLocalBackend() && identityError && <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+            {accountChanged && <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+              <p>Tài khoản đăng nhập đã thay đổi. Vui lòng đóng và mở lại biểu mẫu trước khi lưu báo giá.</p>
+              {!onClose && <Button type="button" variant="outline" className="mt-2" onClick={() => window.location.reload()}>Tải lại trang</Button>}
+            </div>}
+            {!accountChanged && isLocalBackend() && identityError && <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
               <p>{identityError}</p>
               <Button type="button" variant="outline" className="mt-2" disabled={isLoadingUser || isLoading} onClick={() => setIdentityAttempt(attempt => attempt + 1)}>Thử tải lại quyền</Button>
             </div>}
@@ -2010,7 +2056,7 @@ export function CreateQuoteForm({
               <Button type="button" variant="outline" onClick={onClose}>
                 Hủy
               </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isLoading || isLoadingUser || !managerId}>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={accountChanged || isLoading || isLoadingUser || !managerId}>
                 {isLoadingUser ? 'Đang tải...' : isLoading ? 'Đang lưu...' : initialData ? 'Cập nhật báo giá' : 'Tạo báo giá'}
               </Button>
             </div>

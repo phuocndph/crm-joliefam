@@ -39,6 +39,23 @@ try{
  const frontPort=await freePort(),origin='http://127.0.0.1:'+frontPort,screenshots=path.join(tmpdir(),'crm-quotes-form-browser-'+suffix);await mkdir(screenshots,{recursive:true});
  frontend=createServer(async(req,res)=>{if(req.url.startsWith('/api/')||req.url==='/health'){const upstream=httpRequest(base+req.url,{method:req.method,headers:{...req.headers,origin:'https://crm.example.com',host:'crm.example.com'}},reply=>{res.writeHead(reply.statusCode,reply.headers);reply.pipe(res);});upstream.on('error',()=>{res.writeHead(502);res.end();});req.pipe(upstream);return;}try{let file=path.join(repo,'dist',new URL(req.url,origin).pathname);try{if(!(await stat(file)).isFile())file=path.join(repo,'dist/index.html');}catch{file=path.join(repo,'dist/index.html');}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'})[path.extname(file)]||'application/octet-stream');res.end(await readFile(file));}catch{res.writeHead(500);res.end();}});frontend.listen(frontPort,'127.0.0.1');await once(frontend,'listening');
  const {chromium}=createRequire(import.meta.url)(process.env.AI_QA_PLAYWRIGHT_MODULE||'playwright');browser=await chromium.launch({headless:true,...(process.env.AI_QA_CHROMIUM?{executablePath:process.env.AI_QA_CHROMIUM}:{})});
+
+ if(process.argv.includes('--historical-only')){
+  const historicalId=randomUUID();
+  await pool.query("insert into local_orders(id,order_number,manager_id,customer_id,quote_id,status,total_amount,created_at)values($1,$2,$3,null,$4,'pending',123456,now())",[historicalId,'QA-HISTORICAL-LABEL',ids.manager,oldQuote]);
+  const beforeCustomers=(await pool.query('select count(*)::int n from local_customers')).rows[0].n;
+  for(const[view,viewport]of [['desktop',{width:1440,height:1000}],['mobile',{width:390,height:844}]]){
+   const context=await browser.newContext({viewport});let external=0;await context.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin===origin||url.protocol==='data:')return route.continue();external++;return route.abort();});
+   const page=await context.newPage();await page.goto(origin+'/auth');await page.getByLabel('Email',{exact:true}).fill('manager@fixture.invalid');await page.getByLabel('Mật khẩu',{exact:true}).fill(password);await page.getByRole('button',{name:'Đăng nhập',exact:true}).click();await page.waitForURL(view==='mobile'?'**/menu':'**/dashboard');await page.goto(origin+'/orders');await page.waitForLoadState('networkidle');
+   await page.getByText('Dữ liệu đồng bộ mẫu',{exact:true}).first().waitFor();
+   assert.equal(await page.getByText('Khách lẻ',{exact:true}).count(),0,'legacy linked quote shows its actual name');
+   await page.screenshot({path:path.join(screenshots,view+'-historical-order-customer.png'),fullPage:false});
+   assert.equal(external,0);await context.close();pass('Actual '+view+' historical null-link order renders customer name from same-owner quote');
+  }
+  assert.equal((await pool.query('select customer_id from local_orders where id=$1',[historicalId])).rows[0].customer_id,null,'read-only fallback does not fabricate customer link');
+  assert.equal((await pool.query('select count(*)::int n from local_customers')).rows[0].n,beforeCustomers);
+  console.log('Credential-free historical screenshots: '+screenshots);
+ }else{
  for(const[view,viewport]of [...(mobileOnly?[]:[['desktop',{width:1440,height:1000}]]),['mobile',{width:390,height:844}]])for(const actor of ['admin','manager','employee','accountant',...(view==='desktop'?['employee_unassigned','accountant_unassigned','team_leader']:[])]){
   const context=await browser.newContext({viewport});let external=0;await context.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin===origin||url.protocol==='data:')return route.continue();external++;return route.abort();});const page=await context.newPage(),errors=[],consoleErrors=[],requests=[];
   page.on('pageerror',error=>errors.push({name:error.name,message:error.message.slice(0,240)}));page.on('console',message=>{if(message.type()==='error')consoleErrors.push(message.text().slice(0,300));});page.on('response',response=>{if(response.url().startsWith(origin+'/api/'))requests.push({path:new URL(response.url()).pathname,status:response.status()});});
@@ -51,13 +68,51 @@ try{
   const dialog=page.getByRole('dialog'),opened=await dialog.count()>0&&await dialog.first().isVisible();let submitPresent=false,submitEnabled=false;
   if(opened){const submit=dialog.first().locator('button[type="submit"]');await submit.waitFor({state:'visible'});await page.waitForFunction(()=>document.querySelector('[role="dialog"] button[type="submit"]')?.textContent.trim()!=='Đang tải...',{},{timeout:5000}).catch(()=>{});submitPresent=await submit.count()>0;if(submitPresent)submitEnabled=await submit.isEnabled();}
   const result={view,actor,opened,submitPresent,submitEnabled,clickErrors:errors.slice(beforeErrors),consoleErrors,failedApi:requests.filter(request=>request.status>=400),external};findings.push(result);assert.equal(opened,true);assert.equal(submitEnabled,true,'canonical local identity enables quote submission without source-role snapshots');
-  const form=dialog.first(),quoteNumber='QA-'+view+'-'+actor;await form.getByPlaceholder('BG-20250721-627').fill(quoteNumber);await form.getByPlaceholder('Nhập tên khách hàng để tìm...').fill('Khách hàng QA '+actor);await form.getByRole('combobox',{name:/Bảng giá/}).click();const productLoaded=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/catalog/products'&&response.url().includes(priceList));await page.getByRole('option',{name:'Bảng giá QA độc lập (2026)',exact:true}).click();await productLoaded;await page.waitForFunction(()=>document.querySelector('[role="dialog"]')?.textContent.includes('1 sản phẩm có sẵn'));await form.getByRole('button',{name:'Thêm sản phẩm',exact:true}).click();await form.getByRole('button',{name:'Chọn sản phẩm từ danh sách',exact:true}).click();const picker=page.getByRole('dialog').filter({has:page.getByRole('heading',{name:'Chọn sản phẩm từ danh sách',exact:true})}).last();await picker.getByRole('row').filter({hasText:'QA-QUOTE-PRODUCT'}).click();await picker.waitFor({state:'hidden'});
+  const form=dialog.first(),quoteNumber='QA-'+view+'-'+actor;await form.getByPlaceholder('BG-20250721-627').fill(quoteNumber);await form.getByPlaceholder('Nhập tên khách hàng để tìm...').fill('Khách hàng QA '+actor);
+  if(actor==='manager'){
+   const selectedId=randomUUID(),selectedName='Khách chọn '+view+' QA';
+   await pool.query('insert into local_customers(id,name,phone,email,address,manager_id,tenant_id)values($1,$2,$3,$4,$5,$6,$7)',[selectedId,selectedName,'0912345678','selected@fixture.invalid','Địa chỉ chính QA',ids.manager,'default']);
+   const masterBefore=(await pool.query('select * from local_customers where id=$1',[selectedId])).rows;
+   const draftKey='quote-draft-autosave:'+ids.manager;
+   const selectCustomer=async()=>{
+    await form.getByPlaceholder('Nhập tên khách hàng để tìm...').fill('');
+    // The component intentionally closes previous-field suggestions after 200ms.
+    await page.waitForTimeout(250);
+    await form.getByPlaceholder('Nhập tên khách hàng để tìm...').fill(selectedName);
+    await form.getByRole('button').filter({has:page.getByText(selectedName,{exact:true})}).click();
+    await page.waitForFunction(({key,id})=>JSON.parse(localStorage.getItem(key)||'null')?.customerId===id,{key:draftKey,id:selectedId});
+   };
+   await selectCustomer();
+   await form.getByPlaceholder('Nhập địa chỉ để tìm khách hàng...').fill('Địa chỉ giao hàng riêng QA');
+   await page.waitForFunction(({key,id})=>{const d=JSON.parse(localStorage.getItem(key)||'null');return d?.customerId===id&&d.formData.address==='Địa chỉ giao hàng riêng QA';},{key:draftKey,id:selectedId});
+   pass('Actual '+view+' selected customer keeps id when changing quote delivery address');
+   for(const [placeholder,value]of [['Nhập tên khách hàng để tìm...','Khách sửa tay QA'],['Nhập SĐT để tìm khách hàng...','0987654321'],['VD: email@example.com','changed@fixture.invalid']]){
+    await form.getByPlaceholder(placeholder).fill(value);
+    await page.waitForFunction(key=>JSON.parse(localStorage.getItem(key)||'null')?.customerId===null,draftKey);
+    await selectCustomer();
+   }
+   pass('Actual '+view+' manual name phone email changes clear selected customer id');
+   await page.reload();await page.waitForLoadState('networkidle');await page.getByRole('button',{name:'Tạo báo giá mới',exact:true}).click();
+   await form.getByRole('button',{name:'Khôi phục',exact:true}).click();
+   assert.equal(await form.getByPlaceholder('Nhập tên khách hàng để tìm...').inputValue(),selectedName);
+   await page.waitForFunction(({key,id})=>JSON.parse(localStorage.getItem(key)||'null')?.customerId===id,{key:draftKey,id:selectedId});
+   pass('Actual '+view+' recovers selected customer id with account-scoped draft');
+   requests.selectedId=selectedId;requests.masterBefore=masterBefore;
+  }
+await form.getByRole('combobox',{name:/Bảng giá/}).click();const productLoaded=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/catalog/products'&&response.url().includes(priceList));await page.getByRole('option',{name:'Bảng giá QA độc lập (2026)',exact:true}).click();await productLoaded;await page.waitForFunction(()=>document.querySelector('[role="dialog"]')?.textContent.includes('1 sản phẩm có sẵn'));await form.getByRole('button',{name:'Thêm sản phẩm',exact:true}).click();await form.getByRole('button',{name:'Chọn sản phẩm từ danh sách',exact:true}).click();const picker=page.getByRole('dialog').filter({has:page.getByRole('heading',{name:'Chọn sản phẩm từ danh sách',exact:true})}).last();await picker.getByRole('row').filter({hasText:'QA-QUOTE-PRODUCT'}).click();await picker.waitFor({state:'hidden'});
   const submit=form.locator('button[type="submit"]');await submit.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(screenshots,view+'-'+actor+'-submit-enabled.png'),fullPage:false});const creation=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/quotes'&&response.request().method()==='POST');await submit.click();assert.equal((await creation).status(),201,'actual UI saves to local quote endpoint');await form.waitFor({state:'hidden'});
-  const written=(await pool.query('select manager_id,items,total_amount,local_modified_at from local_quotes where quote_number=$1',[quoteNumber])).rows;assert.equal(written.length,1);assert.equal(written[0].manager_id,['employee','accountant'].includes(actor)?ids.manager:ids[actor],'owner determined from canonical local identity');assert.equal(written[0].items[0].originalProductId,product);assert.equal(Number(written[0].total_amount),123456);assert.ok(written[0].local_modified_at);pass('Actual '+view+' '+actor+' reads synced quote opens form and creates local quote with canonical owner');
+  const written=(await pool.query('select manager_id,customer_id,items,total_amount,local_modified_at from local_quotes where quote_number=$1',[quoteNumber])).rows;assert.equal(written.length,1);assert.equal(written[0].manager_id,['employee','accountant'].includes(actor)?ids.manager:ids[actor],'owner determined from canonical local identity');assert.equal(written[0].items[0].originalProductId,product);assert.equal(Number(written[0].total_amount),123456);assert.ok(written[0].local_modified_at);
+  assert.ok(written[0].customer_id,'UI quote always has a canonical customer link');
+  if(actor==='manager'){
+   assert.equal(written[0].customer_id,requests.selectedId,'selected customer survives actual submit after draft recovery');
+   assert.deepEqual((await pool.query('select * from local_customers where id=$1',[requests.selectedId])).rows,requests.masterBefore,'quote form leaves customer master unchanged');
+  }
+pass('Actual '+view+' '+actor+' reads synced quote opens form and creates local quote with canonical owner');
   if(view==='desktop'&&actor==='admin'){
    for(const owner of [ids.manager,null]){const editId=randomUUID(),editNumber=owner?'QA-EDIT-OTHER-MANAGER':'QA-EDIT-NULL-MANAGER';await pool.query("insert into local_quotes(id,quote_number,manager_id,price_list_id,status,subtotal,total_amount,items,notes,created_at,updated_at)values($1,$2,$3,$4,'draft',123456,123456,$5,$6,now(),now())",[editId,editNumber,owner,priceList,JSON.stringify([{id:product,originalProductId:product,name:'Sản phẩm báo giá QA',sku:'QA-QUOTE-PRODUCT',price:123456,quantity:1,total:123456}]),'Khách hàng: Khách hàng sửa QA']);await page.reload();await page.waitForLoadState('networkidle');await page.getByRole('row').filter({hasText:editNumber}).getByRole('button',{name:'Mở menu',exact:true}).click();await page.getByRole('menuitem',{name:'Sửa',exact:true}).click();const editForm=page.getByRole('dialog').first();await page.waitForFunction(()=>document.querySelector('[role="dialog"] button[type="submit"]')?.disabled===false);const update=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/quotes/'+editId&&response.request().method()==='PATCH');await editForm.getByRole('button',{name:'Cập nhật báo giá',exact:true}).click();assert.equal((await update).status(),200);await editForm.waitFor({state:'hidden'});assert.equal((await pool.query('select manager_id from local_quotes where id=$1',[editId])).rows[0].manager_id,owner,'editing existing quote does not reassign manager even when absent');pass('Administrator editing '+(owner?'another manager':'null manager')+' quote preserves original manager ownership');}
   }
   assert.deepEqual(errors,[],'quote workflow has no runtime exceptions');assert.equal(external,0,'no browser outbound request');await context.close();
  }
  assert.equal((await pool.query('select count(*)::int n from local_quotes')).rows[0].n,mobileOnly?5:14,'UI-created quotes plus preserved synced quote and optional edit fixtures');assert.deepEqual((await pool.query('select * from local_quotes where id=$1',[oldQuote])).rows,oldRows,'synced canonical old row unchanged');assert.deepEqual((await pool.query('select payload,source_hash from local_source_snapshots where source_key=$1',[oldQuote])).rows,oldSource,'upstream source snapshot unchanged');pass('Synced quote stays readable and unchanged while all newly created quotes are local only');console.log('Credential-free quotes screenshots: '+screenshots);console.log('QUOTES FORM QA COMPLETE ('+checks.length+' groups)');
+}
 }finally{await browser?.close();if(frontend?.listening)await new Promise(resolve=>frontend.close(resolve));if(api&&api.exitCode===null){api.kill();await Promise.race([once(api,'exit'),new Promise(resolve=>setTimeout(resolve,5000))]);}await pool?.end();if(created)sql('DROP DATABASE '+db+' WITH (FORCE)');sql('DROP ROLE IF EXISTS '+role);assert.ok(!logs.includes(dbPassword));console.log('CLEANUP isolated quotes database role and process removed');}

@@ -1,3 +1,4 @@
+import { orderCustomerName } from "@/lib/order-customer-display";
 import React from "react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -95,7 +96,7 @@ export const MobileOrderList: React.FC<MobileOrderListProps> = ({
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground truncate mt-0.5">
-                  {order.customers?.name || "Khách lẻ"}
+                  {orderCustomerName(order)}
                   {order.customers?.customer_code && ` · ${order.customers.customer_code}`}
                 </div>
               </div>

@@ -1,3 +1,4 @@
+import { orderCustomerName } from "@/lib/order-customer-display";
 import React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -122,7 +123,7 @@ export function DeleteOrderDialog({ order, open, onOpenChange, onConfirm }: Dele
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-500">Khách hàng:</span>
-                <span className="ml-2 text-sm">{order.customers?.name || "Khách lẻ"}</span>
+                <span className="ml-2 text-sm">{orderCustomerName(order)}</span>
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-500">Trạng thái:</span>

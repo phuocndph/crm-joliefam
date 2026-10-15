@@ -1,3 +1,4 @@
+import { orderCustomerName } from "@/lib/order-customer-display";
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -183,7 +184,7 @@ export function EditOrderDialog({ order, open, onOpenChange, onSubmit }: EditOrd
                 <User className="h-4 w-4 text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium">Khách hàng</p>
-                  <p className="text-sm text-muted-foreground">{order.customers?.name || "Khách lẻ"}</p>
+                  <p className="text-sm text-muted-foreground">{orderCustomerName(order)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-2 bg-background rounded-md">

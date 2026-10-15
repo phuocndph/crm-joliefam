@@ -1,3 +1,4 @@
+import { orderCustomerName } from "@/lib/order-customer-display";
 import React, { useState } from "react";
 import { Check, X, Edit3, Calendar, DollarSign, Trash2, MoreHorizontal, Eye, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,6 +23,7 @@ interface Order {
   order_number: string;
   display_order_number?: string;
   customer_id: string | null;
+  quote_customer_name?: string | null;
   assignee_id?: string | null;
   total_amount: number | null;
   cost_price: number | null;
@@ -529,7 +531,7 @@ export function InlineOrderEditTable({
               </TableCell>
               <TableCell className="min-w-[180px]">
                 <div>
-                  <div className="font-medium text-sm">{order.customers?.name || 'Khách lẻ'}</div>
+                  <div className="font-medium text-sm">{orderCustomerName(order)}</div>
                   {order.customers?.phone && <div className="text-xs text-muted-foreground">{order.customers.phone}</div>}
                   {order.customers?.customer_code && <div className="text-xs text-muted-foreground font-mono">{order.customers.customer_code}</div>}
                 </div>

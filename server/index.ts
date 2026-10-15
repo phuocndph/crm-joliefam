@@ -15,6 +15,7 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PoolClient } from "pg";
+import { resolveQuoteCustomer } from "./quote-customer.js";
 import { bootstrapDatabase, pool } from "./db/bootstrap.js";
 import { runtime } from './runtime.js';
 import { moduleRequirement } from './module-permissions.js';
@@ -2898,17 +2899,21 @@ app.get("/api/quotes", async (req, res) => {
 });
 
 app.post("/api/quotes", async (req, res) => {
+  const client = await pool.connect();
   try {
+    await client.query("begin");
     const quoteNumber = String(req.body?.quote_number || "").trim();
     if (!quoteNumber) throw new Error("Số báo giá là bắt buộc.");
-    const { rows } = await pool.query(
+    const managerId = req.body.manager_id || "local-admin";
+    const customerId = await resolveQuoteCustomer(client, { ...req.body, manager_id: managerId });
+    const { rows } = await client.query(
       `insert into local_quotes(
       id,customer_id,quote_number,manager_id,assignee_id,price_list_id,status,subtotal,vat_rate,vat_amount,total_amount,include_vat,items,quote_data,notes,created_at,updated_at,local_modified_at
     ) values(gen_random_uuid()::text,$1,$2,$3,$4,$5,coalesce($6,'draft'),$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,coalesce($15::timestamptz,now()),now(),now()) returning *`,
       [
-        req.body.customer_id || null,
+        customerId,
         quoteNumber,
-        req.body.manager_id || "local-admin",
+        managerId,
         req.body.assignee_id || null,
         req.body.price_list_id || null,
         req.body.status || "draft",
@@ -2931,9 +2936,13 @@ app.post("/api/quotes", async (req, res) => {
         req.body.created_at || null,
       ],
     );
+    await client.query("commit");
     res.status(201).json(localQuoteRow(rows[0]));
   } catch (error) {
+    await client.query("rollback").catch(() => undefined);
     sendError(res, error);
+  } finally {
+    client.release();
   }
 });
 
@@ -2982,7 +2991,15 @@ app.get("/api/quotes/:id/quote-data", async (req, res) => {
 });
 
 app.patch("/api/quotes/:id", async (req, res) => {
+  const client = await pool.connect();
   try {
+    await client.query("begin");
+    const previous = (await client.query("select * from local_quotes where id=$1 for update", [req.params.id])).rows[0];
+    if (!previous) throw Object.assign(new Error("Không tìm thấy báo giá."), { status: 404 });
+    if (Object.prototype.hasOwnProperty.call(req.body, "manager_id") && req.body.manager_id !== previous.manager_id)
+      throw Object.assign(new Error("Không thể đổi người quản lý khi sửa báo giá."), { status: 409 });
+    const customerId = await resolveQuoteCustomer(client, req.body, previous);
+    const body = { ...req.body, customer_id: customerId };
     const allowed = [
       "status",
       "notes",
@@ -2999,14 +3016,14 @@ app.patch("/api/quotes/:id", async (req, res) => {
       "customer_id",
       "price_list_id",
     ];
-    const fields = Object.keys(req.body || {}).filter((key) =>
+    const fields = Object.keys(body).filter((key) =>
       allowed.includes(key),
     );
     if (!fields.length)
       throw new Error("Không có dữ liệu báo giá cần cập nhật.");
     const values: unknown[] = [req.params.id];
     const assignments = fields.map((field, index) => {
-      const value = req.body[field];
+      const value = body[field];
       values.push(
         field === "items" || field === "quote_data"
           ? JSON.stringify(value)
@@ -3015,15 +3032,19 @@ app.patch("/api/quotes/:id", async (req, res) => {
       return `${field}=$${values.length}${field === "items" || field === "quote_data" ? "::jsonb" : ""}`;
     });
     values.push(true);
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       `update local_quotes set ${assignments.join(",")}, local_modified_at=now(), updated_at=now() where id=$1 returning *`,
       values.slice(0, -1),
     );
     if (!rows[0])
       return res.status(404).json({ message: "Không tìm thấy báo giá." });
+    await client.query("commit");
     res.json(localQuoteRow(rows[0]));
   } catch (error) {
+    await client.query("rollback").catch(() => undefined);
     sendError(res, error);
+  } finally {
+    client.release();
   }
 });
 
@@ -3031,37 +3052,26 @@ app.post("/api/quotes/:id/approve", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const existing = await client.query(
-      "select * from local_orders where quote_id=$1 order by created_at desc limit 1",
-      [req.params.id],
-    );
-    if (existing.rows[0]) {
-      await client.query(
-        "update local_quotes set status='approved',local_modified_at=now(),updated_at=now() where id=$1",
-        [req.params.id],
-      );
-      await client.query("commit");
-      return res.json({
-        quote: localQuoteRow({
-          ...(
-            await pool.query("select * from local_quotes where id=$1", [
-              req.params.id,
-            ])
-          ).rows[0],
-          status: "approved",
-        }),
-        order: localOrderRow({ ...existing.rows[0], order_payments: [] }),
-        reused: true,
-      });
-    }
     const quoteResult = await client.query(
-      "select * from local_quotes where id=$1 for update",
-      [req.params.id],
+      "select * from local_quotes where id=$1 for update", [req.params.id],
     );
     const quote = quoteResult.rows[0];
-    if (!quote) {
-      await client.query("rollback");
-      return res.status(404).json({ message: "Không tìm thấy báo giá." });
+    if (!quote) throw Object.assign(new Error("Không tìm thấy báo giá."), { status: 404 });
+    const customerId = await resolveQuoteCustomer(client, {}, quote, true);
+    const existing = await client.query("select * from local_orders where quote_id=$1 order by created_at desc for update", [quote.id]);
+    if (existing.rows.length > 1) throw Object.assign(new Error("Báo giá đã liên kết nhiều đơn hàng; vui lòng kiểm tra trước khi duyệt."), { status: 409 });
+    if (existing.rows[0]) {
+      const order = existing.rows[0];
+      if ((order.manager_id ?? null) !== (quote.manager_id ?? null) || (order.customer_id && order.customer_id !== customerId))
+        throw Object.assign(new Error("Liên kết khách hàng/người quản lý của đơn hàng không khớp báo giá."), { status: 409 });
+      if (!order.customer_id) {
+        const repaired = await client.query("update local_orders set customer_id=$2,local_modified_at=now(),updated_at=now() where id=$1 returning *", [order.id, customerId]);
+        Object.assign(order, repaired.rows[0]);
+      }
+      const updated = await client.query("update local_quotes set customer_id=$2,status='approved',local_modified_at=now(),updated_at=now() where id=$1 returning *", [quote.id, customerId]);
+      const payments = await client.query("select * from local_order_payments where order_id=$1", [order.id]);
+      await client.query("commit");
+      return res.json({ quote: localQuoteRow(updated.rows[0]), order: localOrderRow({ ...order, order_payments: payments.rows }), reused: true });
     }
     const orderNumber = String(
       req.body?.order_number || `ORD-LOCAL-${Date.now()}`,
@@ -3076,9 +3086,9 @@ app.post("/api/quotes/:id/approve", async (req, res) => {
     `,
       [
         randomUUID(),
-        quote.customer_id,
+        customerId,
         orderNumber,
-        quote.manager_id || "local-admin",
+        quote.manager_id,
         quote.assignee_id || null,
         quote.id,
         quote.total_amount || 0,
@@ -3087,8 +3097,8 @@ app.post("/api/quotes/:id/approve", async (req, res) => {
       ],
     );
     const updatedQuote = await client.query(
-      "update local_quotes set status='approved',local_modified_at=now(),updated_at=now() where id=$1 returning *",
-      [req.params.id],
+      "update local_quotes set customer_id=$2,status='approved',local_modified_at=now(),updated_at=now() where id=$1 returning *",
+      [req.params.id, customerId],
     );
     await client.query("commit");
     res.json({
@@ -3130,15 +3140,19 @@ app.get("/api/orders", async (req, res) => {
     const params: unknown[] = [search, effectiveManagerId, limit, offset];
     const { rows } = await pool.query(
       `
-      select o.*, c.name customer_name, c.email customer_email, c.phone customer_phone,
+      select o.*, quote_name.quote_customer_name, c.name customer_name, c.email customer_email, c.phone customer_phone,
         c.company customer_company, c.customer_code, c.address customer_address,
         c.addresses customer_addresses, assignee.payload->>'name' assignee_name
       from local_orders o
       left join local_customers c on c.id=o.customer_id
+      left join lateral (
+        select nullif(btrim(substring(q.notes from '(?m)^Khách hàng:[ \\t]*([^\\r\\n]+)')), '') quote_customer_name
+        from local_quotes q where q.id=o.quote_id and q.manager_id is not distinct from o.manager_id and o.customer_id is null
+      ) quote_name on true
       left join local_source_snapshots assignee
         on assignee.source='SUPABASE' and assignee.source_table='assignees'
         and assignee.source_key=o.assignee_id and not assignee.is_deleted
-      where ($1='' or lower(coalesce(o.order_number,'')) like '%'||$1||'%' or lower(coalesce(o.display_order_number,'')) like '%'||$1||'%' or lower(coalesce(o.notes,'')) like '%'||$1||'%')
+      where ($1='' or lower(coalesce(o.order_number,'')) like '%'||$1||'%' or lower(coalesce(o.display_order_number,'')) like '%'||$1||'%' or lower(coalesce(o.notes,'')) like '%'||$1||'%' or lower(coalesce(c.name,quote_name.quote_customer_name,'')) like '%'||$1||'%')
         and ($2='' or o.manager_id=$2)
       order by o.created_at desc nulls last limit $3 offset $4`,
       params,
