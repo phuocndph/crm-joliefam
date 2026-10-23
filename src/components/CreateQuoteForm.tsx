@@ -32,8 +32,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { isLocalBackend } from "@/lib/runtime-config";
-import { localApi } from "@/lib/local-api";
+import { localApi, LocalApiError, type QuoteCustomerCandidate } from "@/lib/local-api";
 import { getLocalMe, type LocalMe } from "@/lib/local-auth";
+import { calculateQuote, quoteLineAmount, quoteObject } from '@/lib/quote-calculation';
 
 const localQuoteManagerId = (me: LocalMe): string => {
   if (!me.user_id || !me.role || !['admin','manager','employee','accountant','team_leader'].includes(me.role)) {
@@ -45,6 +46,9 @@ const localQuoteManagerId = (me: LocalMe): string => {
 };
 
 const ProductImageLibrary = lazy(() => import('./ProductImageLibrary'));
+const initialQuoteData = (value: unknown) => { try { return quoteObject(value); } catch { return {}; } };
+const draftLineAmount = (quantity: number, price: number) => { try { return quoteLineAmount(quantity, price); } catch { return 0; } };
+const customerNameKey = (value: string) => value.trim().normalize('NFC').replace(/\s+/g, ' ').toLocaleLowerCase('vi');
 const quoteFormSchema = z.object({
   title: z.string().min(1, "Tiêu đề báo giá là bắt buộc"),
   quoteNumber: z.string().min(1, "Số báo giá là bắt buộc"),
@@ -116,6 +120,7 @@ export function CreateQuoteForm({
   const [selectedProducts, setSelectedProducts] = useState<QuoteItem[]>([]);
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const creationKey = useRef(crypto.randomUUID());
   const [searchTerm, setSearchTerm] = useState("");
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showSearchHistory, setShowSearchHistory] = useState(false);
@@ -153,6 +158,10 @@ export function CreateQuoteForm({
   const [isLoadingUser, setIsLoadingUser] = useState(true); // Track user data loading
   const DRAFT_KEY = `quote-draft-autosave:${currentUser?.id || 'pending'}`;
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(initialData?.customer_id || null);
+  const [selectedCustomerName, setSelectedCustomerName] = useState<string>(initialData?.customers?.name || initialData?.customer_name || initialData?.customerName || '');
+  const selectedIdentityName = useRef(initialData?.customerName || '');
+  const customerSection = useRef<HTMLDivElement>(null);
+  const [customerConflict, setCustomerConflict] = useState<{ message: string; candidates: QuoteCustomerCandidate[] } | null>(null);
   const customerAccount = useRef<string | null>(null);
   const [formAccountInvalidated, setFormAccountInvalidated] = useState(false);
   const accountChanged = formAccountInvalidated || Boolean(currentUser?.id && customerAccount.current && customerAccount.current !== currentUser.id);
@@ -163,7 +172,12 @@ export function CreateQuoteForm({
 
   // Customer search states
   const [customerSearch, setCustomerSearch] = useState("");
-  const [customerResults, setCustomerResults] = useState<any[]>([]);
+  const [customerResults, setCustomerResults] = useState<QuoteCustomerCandidate[]>([]);
+  const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
+  const [customerSearchError, setCustomerSearchError] = useState('');
+  const [customerSearchAttempt, setCustomerSearchAttempt] = useState(0);
+  const customerSearchRequest = useRef(0);
+  const invalidateCustomerSearch = useCallback(() => { customerSearchRequest.current++; }, []);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [customerSearchField, setCustomerSearchField] = useState<'name' | 'phone' | 'address'>('name');
   const debouncedCustomerSearch = useDebounce(customerSearch, 300);
@@ -230,7 +244,7 @@ export function CreateQuoteForm({
   const form = useForm<QuoteFormData>({
     resolver: zodResolver(quoteFormSchema),
     defaultValues: {
-      title: initialData?.title || "BẢNG BÁO GIÁ",
+      title: initialData?.title || initialQuoteData(initialData?.quote_data).title as string || "BẢNG BÁO GIÁ",
       quoteNumber: initialData?.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
       quoteDate: initialData?.quoteDate ? new Date(initialData.quoteDate) : initialData?.created_at ? new Date(initialData.created_at) : new Date(),
       expiryDate: initialData ? parseDate(initialData.expiryDate || initialData.notes) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -241,12 +255,12 @@ export function CreateQuoteForm({
       priceList: initialData?.price_list_id || "",
       responsible: initialData?.assignee_id || "",
       includeVAT: initialData?.include_vat || false,
-      vatRate: initialData?.vat_rate || 8,
+      vatRate: Number(initialData?.vat_rate ?? 8),
       payment1: (() => {
         if (initialData?.quote_data) {
           try {
             const quoteData = typeof initialData.quote_data === 'string' ? JSON.parse(initialData.quote_data) : initialData.quote_data;
-            return quoteData.payment1 || 0;
+            return Number(quoteData.payment1 ?? 0);
           } catch {
             return 0;
           }
@@ -257,7 +271,7 @@ export function CreateQuoteForm({
         if (initialData?.quote_data) {
           try {
             const quoteData = typeof initialData.quote_data === 'string' ? JSON.parse(initialData.quote_data) : initialData.quote_data;
-            return quoteData.payment2 || 0;
+            return Number(quoteData.payment2 ?? 0);
           } catch {
             return 0;
           }
@@ -269,12 +283,18 @@ export function CreateQuoteForm({
 
   useEffect(() => {
     setSelectedCustomerId(initialData?.customer_id || null);
-  }, [initialData?.id, initialData?.customer_id]);
+    setSelectedCustomerName(initialData?.customers?.name || initialData?.customer_name || initialData?.customerName || '');
+    selectedIdentityName.current = initialData?.customerName || '';
+    setCustomerConflict(null);
+  }, [initialData?.id, initialData?.customer_id, initialData?.customerName, initialData?.customer_name, initialData?.customers?.name]);
 
   useEffect(() => {
     if (!currentUser?.id) return;
     if (customerAccount.current && customerAccount.current !== currentUser.id) {
       setSelectedCustomerId(null);
+      setSelectedCustomerName('');
+      setCustomerConflict(null);
+      customerSearchRequest.current++;
       setSavedDraft(null);
       setShowDraftRecovery(false);
       setCustomerResults([]);
@@ -289,7 +309,11 @@ export function CreateQuoteForm({
 
   useEffect(() => {
     const subscription = form.watch((_values, { name, type }) => {
-      if (type === 'change' && ['customerName', 'phone', 'email'].includes(name || '')) setSelectedCustomerId(null);
+      if (type === 'change' && name === 'customerName' && customerNameKey(_values.customerName || '') !== customerNameKey(selectedIdentityName.current)) {
+        setSelectedCustomerId(null);
+        setSelectedCustomerName('');
+      }
+      if (type === 'change' && ['customerName', 'phone', 'email'].includes(name || '')) setCustomerConflict(null);
     });
     return () => subscription.unsubscribe();
   }, [form]);
@@ -363,15 +387,19 @@ export function CreateQuoteForm({
 
   // Search customers from database
   useEffect(() => {
-    if (!debouncedCustomerSearch || debouncedCustomerSearch.length < 2) {
+    const request = ++customerSearchRequest.current;
+    if (debouncedCustomerSearch !== customerSearch) { setCustomerSearchLoading(customerSearch.trim().length >= 2);return; }
+    if (!debouncedCustomerSearch || debouncedCustomerSearch.length < 2 || accountChanged || (isLocalBackend() && (isLoadingUser || !currentUser?.id || !managerId))) {
       setCustomerResults([]);
+      setCustomerSearchLoading(false);
       return;
     }
+    setCustomerResults([]);setCustomerSearchLoading(true);setCustomerSearchError('');
     const searchCustomers = async () => {
       try {
         if (isLocalBackend()) {
-          const rows = await localApi.customers({ search: debouncedCustomerSearch });
-          setCustomerResults(rows.slice(0, 10));
+          const rows = await localApi.quoteCustomerSuggestions({ search: debouncedCustomerSearch, managerId, quoteId: initialData?.id });
+          if (request === customerSearchRequest.current) setCustomerResults(rows);
           return;
         }
         let query = supabase.from('customers').select('id, name, phone, email, address, company').limit(10);
@@ -384,13 +412,48 @@ export function CreateQuoteForm({
           query = query.ilike('address', term);
         }
         const { data } = await query;
-        setCustomerResults(data || []);
+        if (request === customerSearchRequest.current) setCustomerResults((data || []).map(row => ({ ...row, phone: row.phone || '', email: row.email || '', address: row.address || '', is_active: true })));
       } catch (e) {
-        console.error('Customer search error:', e);
+        if (request === customerSearchRequest.current) setCustomerSearchError(e instanceof Error ? e.message : 'Không tìm được khách hàng. Hãy nhập lại để thử.');
+      } finally {
+        if (request === customerSearchRequest.current) setCustomerSearchLoading(false);
       }
     };
     searchCustomers();
-  }, [debouncedCustomerSearch, customerSearchField]);
+    return invalidateCustomerSearch;
+  }, [debouncedCustomerSearch, customerSearch, customerSearchAttempt, customerSearchField, currentUser?.id, managerId, initialData?.id, isLoadingUser, accountChanged, invalidateCustomerSearch]);
+
+  const beginCustomerSearch = (field: 'name' | 'phone' | 'address', value: string) => {
+    customerSearchRequest.current++;
+    setCustomerResults([]);setCustomerSearchError('');
+    setCustomerSearchAttempt(value => value + 1);
+    setCustomerSearchLoading(value.trim().length >= 2);
+    setCustomerSearch(value);setCustomerSearchField(field);setShowCustomerDropdown(true);
+  };
+  const chooseCustomer = (customer: QuoteCustomerCandidate, preserveSnapshot = false) => {
+    // Conflict resolution preserves the delivery details already entered.
+    form.setValue('customerName', customer.name, { shouldValidate: true });
+    if (!preserveSnapshot) {
+      form.setValue('phone', customer.phone || '');form.setValue('email', customer.email || '');form.setValue('address', customer.address || '');
+    }
+    selectedIdentityName.current = customer.name;
+    setSelectedCustomerId(customer.id);setSelectedCustomerName(customer.name);
+    setCustomerConflict(null);setShowCustomerDropdown(false);setCustomerSearch('');
+    customerSearchRequest.current++;
+  };
+  const customerDropdown = (field: 'name' | 'phone' | 'address') => !customerConflict && showCustomerDropdown && customerSearchField === field && customerSearch.trim().length >= 2 ? (
+    <div data-quote-customer-candidates className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+      {customerSearchLoading ? <p role="status" className="p-3 text-sm text-muted-foreground">Đang tìm khách hàng…</p> : customerSearchError ? <p role="alert" className="p-3 text-sm text-destructive">{customerSearchError}</p> : !customerResults.length ? <p className="p-3 text-sm text-muted-foreground">Không tìm thấy khách hàng. Có thể tiếp tục nhập khách mới.</p> : customerResults.map(customer => (
+        <button key={customer.id} type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-accent focus-visible:bg-accent flex flex-col" onMouseDown={event => event.preventDefault()} onClick={() => chooseCustomer(customer)}>
+          <span className="font-medium">{customer.name}{!customer.is_active && ' (ngừng hoạt động)'}</span>
+          <span className="text-xs text-muted-foreground">{[customer.phone, customer.email, customer.address].filter(Boolean).join(' • ')}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
+  const leaveCustomerSearch = (event: React.FocusEvent<HTMLInputElement>) => {
+    if (!(event.relatedTarget instanceof Element) || !event.relatedTarget.closest('[data-quote-customer-candidates]')) setShowCustomerDropdown(false);
+  };
 
   useEffect(() => {
     console.log('CreateQuoteForm useEffect triggered with initialData:', initialData);
@@ -404,6 +467,9 @@ export function CreateQuoteForm({
         // Ensure each item has unique ID and required fields for editing
         const processedItems = items.map((item: any) => ({
           ...item,
+          price: Number(item.price ?? 0),
+          quantity: Number(item.quantity ?? 1),
+          total: Number(item.total ?? 0),
           id: item.id || `${item.originalProductId || item.id}-${Date.now()}-${Math.random()}`, // Ensure unique ID
           originalProductId: item.originalProductId || item.id, // Keep reference to original product
           description: item.description || '',
@@ -422,8 +488,8 @@ export function CreateQuoteForm({
           try {
             const quoteData = typeof initialData.quote_data === 'string' ? JSON.parse(initialData.quote_data) : initialData.quote_data;
             paymentData = {
-              payment1: quoteData.payment1 || 0,
-              payment2: quoteData.payment2 || 0
+              payment1: Number(quoteData.payment1 ?? 0),
+              payment2: Number(quoteData.payment2 ?? 0)
             };
           } catch (error) {
             console.error('Error parsing quote_data:', error);
@@ -432,7 +498,7 @@ export function CreateQuoteForm({
 
         // Reset form with new data
         form.reset({
-          title: initialData.title || "BẢNG BÁO GIÁ",
+          title: initialData.title || initialQuoteData(initialData.quote_data).title as string || "BẢNG BÁO GIÁ",
           quoteNumber: initialData.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
           quoteDate: initialData.quoteDate ? new Date(initialData.quoteDate) : initialData.created_at ? new Date(initialData.created_at) : new Date(),
           expiryDate: parseDate(initialData.expiryDate || initialData.notes),
@@ -443,7 +509,7 @@ export function CreateQuoteForm({
           priceList: initialData.price_list_id || "",
           responsible: initialData.assignee_id || "",
           includeVAT: initialData.include_vat || false,
-          vatRate: initialData.vat_rate || 8,
+          vatRate: Number(initialData.vat_rate ?? 8),
           payment1: paymentData.payment1,
           payment2: paymentData.payment2
         });
@@ -558,16 +624,12 @@ export function CreateQuoteForm({
   };
   
   const updateQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeProduct(productId);
-      return;
-    }
     setSelectedProducts(prev => prev.map(item => {
       if (item.id === productId) {
         return {
           ...item,
           quantity,
-          total: quantity * item.price
+          total: draftLineAmount(quantity, item.price)
         };
       }
       return item;
@@ -581,7 +643,7 @@ export function CreateQuoteForm({
         return {
           ...item,
           price,
-          total: item.quantity * price
+          total: draftLineAmount(item.quantity, price)
         };
       }
       return item;
@@ -592,7 +654,7 @@ export function CreateQuoteForm({
   const recalculateAllTotals = () => {
     setSelectedProducts(prev => prev.map(item => ({
       ...item,
-      total: item.quantity * item.price
+      total: draftLineAmount(item.quantity, item.price)
     })));
   };
   const removeProduct = (productId: string) => {
@@ -768,9 +830,9 @@ export function CreateQuoteForm({
     try {
 
       // Calculate total
-      const subtotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
-      const vatAmount = watchedValues.includeVAT ? subtotal * watchedValues.vatRate / 100 : 0;
-      const calculatedTotal = subtotal + vatAmount;
+      if (isLocalBackend() && initialData?.status === 'approved') throw new Error('Báo giá đã duyệt không thể sửa. Hãy nhân bản thành bản nháp mới.');
+      const calculation = calculateQuote({ items: selectedProducts, includeVAT: data.includeVAT, vatRate: data.vatRate, payment1: data.payment1, payment2: data.payment2 });
+      const { subtotal, vatAmount, total: calculatedTotal } = calculation;
       // Prepare quote data
       const baseQuoteData = {
         quote_number: data.quoteNumber,
@@ -784,8 +846,10 @@ export function CreateQuoteForm({
         assignee_id: data.responsible || null,
         status: initialData ? initialData.status : "draft",
         notes: `Khách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}\nEmail: ${data.email}\nĐịa chỉ: ${data.address}\nNgày hết hạn: ${data.expiryDate && !isNaN(data.expiryDate.getTime()) ? format(data.expiryDate, "dd/MM/yyyy", { locale: vi }) : ""}`,
-        items: JSON.stringify(selectedProducts),
+        items: JSON.stringify(calculation.items),
         quote_data: JSON.stringify({
+          title: data.title,
+          customerName: data.customerName, customerPhone: data.phone, customerEmail: data.email, customerAddress: data.address,
           includeVAT: data.includeVAT,
           vatRate: data.vatRate,
           payment1: data.payment1 || 0,
@@ -801,14 +865,17 @@ export function CreateQuoteForm({
           ...baseQuoteData,
           manager_id: submitManagerId,
           customer: { name: data.customerName, phone: data.phone, email: data.email, address: data.address },
-          items: selectedProducts,
+          items: calculation.items,
           quote_data: JSON.parse(baseQuoteData.quote_data),
           created_at: data.quoteDate.toISOString(),
         };
         if (initialData) {
           delete localData.manager_id; // Editing never reassigns the persisted owner, including null.
           await localApi.updateQuote(initialData.id, localData);
-        } else await localApi.createQuote(localData);
+        } else {
+          await localApi.createQuote({ ...localData, idempotency_key: creationKey.current });
+          creationKey.current = crypto.randomUUID();
+        }
         if (submitRequest !== identityRequest.current) return;
         toast({ title: "Thành công", description: initialData ? "Báo giá đã được cập nhật thành công" : "Báo giá đã được tạo thành công" });
         localStorage.removeItem(DRAFT_KEY);
@@ -942,6 +1009,14 @@ export function CreateQuoteForm({
       onSubmit?.();
     } catch (error: any) {
       if (isLocalBackend() && submitRequest !== identityRequest.current) return;
+      if (error instanceof LocalApiError && error.status === 409 && error.details?.code === 'QUOTE_CUSTOMER_CONFLICT') {
+        setCustomerConflict({ message: error.message, candidates: error.details.candidates });
+        requestAnimationFrame(() => {
+          customerSection.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          form.setFocus('customerName');
+        });
+        return;
+      }
       console.error("Error creating quote:", error);
       
       // Parse specific error types
@@ -980,6 +1055,7 @@ export function CreateQuoteForm({
       const draft = {
         formData: watchedValues,
         customerId: selectedCustomerId,
+        customerName: selectedCustomerName,
         accountId: currentUser.id,
         selectedProducts,
         savedAt: new Date().toISOString(),
@@ -990,7 +1066,7 @@ export function CreateQuoteForm({
     } catch (e) {
       console.warn('Failed to save draft:', e);
     }
-  }, [debouncedFormData, debouncedProducts, initialData, selectedCustomerId, DRAFT_KEY, currentUser?.id, isLoadingUser, accountChanged]);
+  }, [debouncedFormData, debouncedProducts, initialData, selectedCustomerId, selectedCustomerName, DRAFT_KEY, currentUser?.id, isLoadingUser, accountChanged]);
 
   // Check for saved draft on mount (only for new quotes)
   useEffect(() => {
@@ -1019,6 +1095,8 @@ export function CreateQuoteForm({
         expiryDate: formData.expiryDate ? new Date(formData.expiryDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       });
       setSelectedCustomerId(savedDraft.customerId || null);
+      setSelectedCustomerName(savedDraft.customerName || formData.customerName || '');
+      selectedIdentityName.current = formData.customerName || '';
       if (draftProducts && draftProducts.length > 0) {
         setSelectedProducts(draftProducts);
       }
@@ -1039,34 +1117,10 @@ export function CreateQuoteForm({
   };
 
   // Ensure all totals are correctly calculated
-  const correctedProducts = selectedProducts.map(item => ({
-    ...item,
-    total: item.quantity * item.price // Always recalculate to ensure accuracy
-  }));
-  const rawSubtotal = correctedProducts.reduce((sum, item) => sum + item.total, 0);
-
-  // Calculate VAT according to user requirements
-  const subtotal = rawSubtotal; // This is "TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT"
-  const vatAmount = watchedValues.includeVAT ? subtotal * watchedValues.vatRate / 100 : 0;
-  const total = subtotal + vatAmount; // This is "TỔNG TIỀN ĐÃ BAO GỒM GTGT"
-  const remaining = total - (watchedValues.payment1 + watchedValues.payment2);
-
-  // Add debugging info
-  console.log('CreateQuoteForm calculation debug:', {
-    selectedProducts: selectedProducts.length,
-    correctedProducts: correctedProducts.map(p => ({
-      name: p.name,
-      quantity: p.quantity,
-      price: p.price,
-      total: p.total
-    })),
-    rawSubtotal,
-    subtotal,
-    vatAmount,
-    total,
-    includeVAT: watchedValues.includeVAT,
-    vatRate: watchedValues.vatRate
-  });
+  // Incomplete new rows may exist while typing; submit always validates the full list.
+  let displayCalculation = { subtotal: 0, vatAmount: 0, total: 0, remaining: 0 };
+  try { displayCalculation = calculateQuote({ items: selectedProducts.map(item => ({ ...item, name: item.name || 'Dòng đang nhập' })), includeVAT: watchedValues.includeVAT, vatRate: watchedValues.vatRate, payment1: watchedValues.payment1, payment2: watchedValues.payment2 }); } catch { /* Incomplete input is validated on save. */ }
+  const { subtotal, vatAmount, total, remaining } = displayCalculation;
   return <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b bg-card">
@@ -1083,7 +1137,7 @@ export function CreateQuoteForm({
                 </span>
               )}
               <AuthStatusBadge />
-              <Button variant="ghost" size="sm" onClick={onClose}>
+              <Button type="button" variant="ghost" size="sm" onClick={onClose}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -1099,10 +1153,10 @@ export function CreateQuoteForm({
               📝 Bạn có bản nháp chưa lưu từ {savedDraft.savedAt ? format(new Date(savedDraft.savedAt), 'HH:mm dd/MM/yyyy', { locale: vi }) : 'trước đó'}. Khôi phục?
             </p>
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="default" onClick={restoreDraft}>
+              <Button type="button" size="sm" variant="default" onClick={restoreDraft}>
                 Khôi phục
               </Button>
-              <Button size="sm" variant="outline" onClick={discardDraft}>
+              <Button type="button" size="sm" variant="outline" onClick={discardDraft}>
                 Bỏ qua
               </Button>
             </div>
@@ -1153,7 +1207,7 @@ export function CreateQuoteForm({
                         <Popover>
                           <PopoverTrigger asChild>
                             <FormControl>
-                              <Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                              <Button type="button" variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
                                 {field.value ? format(field.value, "dd/MM/yyyy", { locale: vi }) : <span>Chọn ngày</span>}
                                 <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                               </Button>
@@ -1188,7 +1242,7 @@ export function CreateQuoteForm({
                         <Popover>
                           <PopoverTrigger asChild>
                             <FormControl>
-                              <Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                              <Button type="button" variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
                                 {field.value ? format(field.value, "dd/MM/yyyy", { locale: vi }) : <span>Chọn ngày</span>}
                                 <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                               </Button>
@@ -1242,6 +1296,22 @@ export function CreateQuoteForm({
                       </FormItem>} />
                 </div>
 
+                <div ref={customerSection} className="space-y-3">
+                  {selectedCustomerId && <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                    <span>Đã liên kết khách hàng: <strong>{selectedCustomerName || form.getValues('customerName')}</strong>. Số điện thoại, email và địa chỉ đang nhập chỉ áp dụng cho báo giá này.</span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => { setSelectedCustomerId(null);setSelectedCustomerName('');setCustomerConflict(null);form.setFocus('customerName'); }}>Đổi khách hàng</Button>
+                  </div>}
+                  {customerConflict && <div role="alert" className="space-y-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950">
+                    <p>{customerConflict.message}</p>
+                    <p>Chọn đúng hồ sơ để liên kết. Sản phẩm và thông tin giao hàng đã nhập được giữ lại.</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {customerConflict.candidates.map(customer => <button key={customer.id} type="button" onClick={() => chooseCustomer(customer, true)} className="min-w-0 rounded-md border border-amber-300 bg-background p-3 text-left hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-ring">
+                        <span className="block font-medium">{customer.name}{!customer.is_active && ' (ngừng hoạt động)'}</span>
+                        <span className="block break-words text-xs">{[customer.phone, customer.email, customer.address].filter(Boolean).join(' • ') || 'Chưa có thông tin liên hệ'}</span>
+                      </button>)}
+                    </div>
+                  </div>}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField control={form.control} name="customerName" render={({
                   field
@@ -1258,47 +1328,18 @@ export function CreateQuoteForm({
                               className="pl-9"
                               onChange={(e) => {
                                 field.onChange(e);
-                                setCustomerSearch(e.target.value);
-                                setCustomerSearchField('name');
-                                setShowCustomerDropdown(true);
+                                beginCustomerSearch('name', e.target.value);
                               }}
                               onFocus={() => {
                                 if (field.value && field.value.length >= 2) {
-                                  setCustomerSearch(field.value);
-                                  setCustomerSearchField('name');
-                                  setShowCustomerDropdown(true);
+                                  beginCustomerSearch('name', field.value);
                                 }
                               }}
-                              onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                              onBlur={leaveCustomerSearch}
                             />
                           </div>
                         </FormControl>
-                        {showCustomerDropdown && customerSearchField === 'name' && customerResults.length > 0 && (
-                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                            {customerResults.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  setSelectedCustomerId(c.id);
-                                  form.setValue('customerName', c.name || '');
-                                  form.setValue('phone', c.phone || '');
-                                  form.setValue('email', c.email || '');
-                                  form.setValue('address', c.address || '');
-                                  setShowCustomerDropdown(false);
-                                  setCustomerSearch('');
-                                }}
-                              >
-                                <span className="font-medium">{c.name}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {[c.phone, c.address].filter(Boolean).join(' • ')}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                        {customerDropdown('name')}
                         <FormMessage />
                       </FormItem>} />
 
@@ -1315,47 +1356,18 @@ export function CreateQuoteForm({
                               className="pl-9"
                               onChange={(e) => {
                                 field.onChange(e);
-                                setCustomerSearch(e.target.value);
-                                setCustomerSearchField('phone');
-                                setShowCustomerDropdown(true);
+                                beginCustomerSearch('phone', e.target.value);
                               }}
                               onFocus={() => {
                                 if (field.value && field.value.length >= 2) {
-                                  setCustomerSearch(field.value);
-                                  setCustomerSearchField('phone');
-                                  setShowCustomerDropdown(true);
+                                  beginCustomerSearch('phone', field.value);
                                 }
                               }}
-                              onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                              onBlur={leaveCustomerSearch}
                             />
                           </div>
                         </FormControl>
-                        {showCustomerDropdown && customerSearchField === 'phone' && customerResults.length > 0 && (
-                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                            {customerResults.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  setSelectedCustomerId(c.id);
-                                  form.setValue('customerName', c.name || '');
-                                  form.setValue('phone', c.phone || '');
-                                  form.setValue('email', c.email || '');
-                                  form.setValue('address', c.address || '');
-                                  setShowCustomerDropdown(false);
-                                  setCustomerSearch('');
-                                }}
-                              >
-                                <span className="font-medium">{c.name}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {[c.phone, c.address].filter(Boolean).join(' • ')}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                        {customerDropdown('phone')}
                         <FormMessage />
                       </FormItem>} />
                 </div>
@@ -1384,47 +1396,18 @@ export function CreateQuoteForm({
                               className="pl-9"
                               onChange={(e) => {
                                 field.onChange(e);
-                                setCustomerSearch(e.target.value);
-                                setCustomerSearchField('address');
-                                setShowCustomerDropdown(true);
+                                beginCustomerSearch('address', e.target.value);
                               }}
                               onFocus={() => {
                                 if (field.value && field.value.length >= 2) {
-                                  setCustomerSearch(field.value);
-                                  setCustomerSearchField('address');
-                                  setShowCustomerDropdown(true);
+                                  beginCustomerSearch('address', field.value);
                                 }
                               }}
-                              onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                              onBlur={leaveCustomerSearch}
                             />
                           </div>
                         </FormControl>
-                        {showCustomerDropdown && customerSearchField === 'address' && customerResults.length > 0 && (
-                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                            {customerResults.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  setSelectedCustomerId(c.id);
-                                  form.setValue('customerName', c.name || '');
-                                  form.setValue('phone', c.phone || '');
-                                  form.setValue('email', c.email || '');
-                                  form.setValue('address', c.address || '');
-                                  setShowCustomerDropdown(false);
-                                  setCustomerSearch('');
-                                }}
-                              >
-                                <span className="font-medium">{c.name}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {[c.phone, c.address].filter(Boolean).join(' • ')}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                        {customerDropdown('address')}
                         <FormMessage />
                       </FormItem>} />
                 </div>
@@ -1627,7 +1610,7 @@ export function CreateQuoteForm({
                                      <TableCell className="w-32 min-w-32 p-3 border-r border-gray-300">
                             <Dialog>
                               <DialogTrigger asChild>
-                                <Button variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => { setCurrentEditingIndex(index); setSearchTerm(item.sku || item.name || ''); }}>
+                                <Button type="button" variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => { setCurrentEditingIndex(index); setSearchTerm(item.sku || item.name || ''); }}>
                                   <Search className="h-4 w-4 text-blue-600" />
                                    <span className="text-blue-600">
                                      {item.sku ? item.sku : item.name ? `${item.name.substring(0, 15)}...` : 'Chọn sản phẩm từ danh sách'}
@@ -1838,7 +1821,7 @@ export function CreateQuoteForm({
                            }} placeholder="Mô tả sản phẩm" className="border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 flex-1 min-h-[2.5rem] resize-none rounded-none bg-white" rows={2} />
                               <Dialog>
                                 <DialogTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa mô tả chi tiết">
+                                  <Button type="button" variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa mô tả chi tiết">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                                       <path d="M12 20h9" />
                                       <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
@@ -1878,7 +1861,7 @@ export function CreateQuoteForm({
                            }} placeholder="Quy cách" className="border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 flex-1 min-h-[2.5rem] resize-none rounded-none bg-white" rows={2} />
                               <Dialog>
                                 <DialogTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa quy cách chi tiết">
+                                  <Button type="button" variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa quy cách chi tiết">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                                       <path d="M12 20h9" />
                                       <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
@@ -1921,15 +1904,15 @@ export function CreateQuoteForm({
                             </TableCell>
                             <TableCell className="w-24 min-w-24 text-center p-2 border-r border-gray-300">
                               <Input type="number" value={item.quantity} onChange={e => {
-                           const quantity = parseInt(e.target.value) || 1;
+                           const quantity = Number(e.target.value);
                            updateQuantity(item.id, quantity);
-                         }} className="w-full h-10 text-center border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm font-semibold rounded-none bg-white" min="1" />
+                         }} className="w-full h-10 text-center border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm font-semibold rounded-none bg-white" min="0.000001" step="any" />
                            </TableCell>
                              <TableCell className="w-32 min-w-32 text-right font-mono font-bold text-green-600 text-sm p-2 border-r border-gray-300 bg-green-50">
                                {item.total.toLocaleString('vi-VN')}đ
                             </TableCell>
                             <TableCell className="w-20 min-w-20 text-center p-2">
-                             <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
+                             <Button type="button" variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
                               <Trash2 className="w-5 h-5" />
                             </Button>
                                      </TableCell>
@@ -1980,7 +1963,7 @@ export function CreateQuoteForm({
                 }) => <FormItem>
                         <FormLabel>Thuế VAT (%)</FormLabel>
                         <FormControl>
-                          <Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} placeholder="8" />
+                          <Input type="number" min="0" max="100" step="0.001" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} placeholder="8" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>} />
@@ -1990,7 +1973,7 @@ export function CreateQuoteForm({
                   <FormField control={form.control} name="payment1" render={({
                   field
                 }) => <FormItem>
-                        <FormLabel>Thanh toán lần 1 (VNĐ)</FormLabel>
+                        <FormLabel>Dự kiến thanh toán lần 1 (VNĐ)</FormLabel>
                         <FormControl>
                           <CurrencyInput value={field.value} onChange={field.onChange} placeholder="0" />
                         </FormControl>
@@ -2000,7 +1983,7 @@ export function CreateQuoteForm({
                   <FormField control={form.control} name="payment2" render={({
                   field
                 }) => <FormItem>
-                        <FormLabel>Thanh toán lần 2 (VNĐ)</FormLabel>
+                        <FormLabel>Dự kiến thanh toán lần 2 (VNĐ)</FormLabel>
                         <FormControl>
                           <CurrencyInput value={field.value} onChange={field.onChange} placeholder="0" />
                         </FormControl>
@@ -2025,11 +2008,13 @@ export function CreateQuoteForm({
                       </div>
                     </>}
                   <div className="flex justify-between text-sm font-medium">
-                    <span>THANH TOÁN LẦN 1:</span>
+                    <span>DỰ KIẾN THANH TOÁN LẦN 1:</span>
                     <span className="text-purple-600">{(watchedValues.payment1 || 0).toLocaleString()}đ</span>
                   </div>
+                  <div className="flex justify-between text-sm font-medium"><span>DỰ KIẾN THANH TOÁN LẦN 2:</span><span>{(watchedValues.payment2 || 0).toLocaleString()}đ</span></div>
+                  <p className="text-xs text-muted-foreground">Đây là kế hoạch thanh toán, không phải khoản đã thu. Tiền thực nhận được ghi bằng phiếu thu riêng.</p>
                   <div className="flex justify-between text-sm font-medium text-red-600">
-                    <span>CÒN LẠI:</span>
+                    <span>CÒN LẠI THEO KẾ HOẠCH:</span>
                     <span className="font-bold">{remaining.toLocaleString()}đ</span>
                   </div>
                   

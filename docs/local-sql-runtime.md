@@ -2,6 +2,9 @@
 
 This runtime is intentionally isolated from the public Supabase project.
 
+GHN now has a dedicated Node creation journal plus read/status adapters. See
+[GHN rollout](ghn-create-rollout.md) for migrations 061/062 and UNKNOWN recovery.
+
 - PostgreSQL runs in `crm-joliefam-local-postgres` on host port `55432`.
 - The Node API runs on `http://127.0.0.1:8787` and owns SQL credentials.
 - The Vite app uses `VITE_BACKEND_MODE=local` and never initializes a Supabase client.
@@ -14,7 +17,7 @@ removed from the project. Attendance, production output, worker/rate master data
 payroll runs, inventory, manufacturing, the local dashboard, product catalog,
 customers, fabrics, quotes, orders, contracts, finance, local user management,
 and knowledge documents execute against the local PostgreSQL API. External
-service actions such as live GHN updates, Viettel invoice issuance, and hosted AI
+service actions such as Viettel invoice issuance and hosted AI
 remain guarded in local mode. This prevents an external integration from writing
 to the public Supabase project while the UI and route structure stay intact.
 
@@ -24,7 +27,21 @@ to the public Supabase project while the UI and route structure stay intact.
 npm run dev:local
 ```
 
-Open `http://127.0.0.1:8090/dashboard`. Port `8090` avoids conflicts with other local Docker applications.
+Theo mặc định UI dùng cổng `8090`, nên mở `http://127.0.0.1:8090/dashboard`.
+Nếu đang tiếp tục phiên làm việc dùng cổng `8083`, chạy:
+
+```powershell
+npm run dev:local -- -UiPort 8083
+```
+
+Khi đó các URL UI dùng `8083` (ví dụ
+`http://127.0.0.1:8083/production-attendance`). Giữ nguyên cửa sổ PowerShell của
+launcher trong lúc làm việc: cửa sổ này chạy Vite và cũng sở hữu Local API nếu nó
+đã tạo API. Khi launcher thoát bình thường, nó dừng API do nó tạo; chấm dứt cưỡng
+bức cửa sổ không bảo đảm dọn dẹp tiến trình này.
+
+Các URL `8090` bên dưới là ví dụ cho cổng mặc định; khi dùng `-UiPort 8083` (hoặc
+cổng khác), thay `8090` trong mọi URL UI bằng cổng đã chọn.
 
 Use `http://127.0.0.1:8090/production-attendance` for factory attendance and
 `http://127.0.0.1:8090/payroll-settings?tab=runs` for payroll runs.
@@ -164,7 +181,7 @@ touching public data:
 3. Fabrics and manufacturing standards.
 4. Customers, quotes, orders, contracts, and finance transactions.
 5. Reports, integrations, and AI tools. Employee permissions are now local; live
-   GHN, Viettel invoice issuance, hosted AI, and PDF/DOCX extraction remain
+   Viettel invoice issuance, hosted AI, and PDF/DOCX extraction remain
    explicitly guarded until their local service adapters exist.
 
 Until an external or granular-permission capability is migrated, its route remains

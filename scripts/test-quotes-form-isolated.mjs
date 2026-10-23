@@ -86,12 +86,16 @@ try{
    await form.getByPlaceholder('Nhập địa chỉ để tìm khách hàng...').fill('Địa chỉ giao hàng riêng QA');
    await page.waitForFunction(({key,id})=>{const d=JSON.parse(localStorage.getItem(key)||'null');return d?.customerId===id&&d.formData.address==='Địa chỉ giao hàng riêng QA';},{key:draftKey,id:selectedId});
    pass('Actual '+view+' selected customer keeps id when changing quote delivery address');
-   for(const [placeholder,value]of [['Nhập tên khách hàng để tìm...','Khách sửa tay QA'],['Nhập SĐT để tìm khách hàng...','0987654321'],['VD: email@example.com','changed@fixture.invalid']]){
+   for(const [placeholder,value]of [['Nhập SĐT để tìm khách hàng...','0987654321'],['VD: email@example.com','changed@fixture.invalid']]){
     await form.getByPlaceholder(placeholder).fill(value);
-    await page.waitForFunction(key=>JSON.parse(localStorage.getItem(key)||'null')?.customerId===null,draftKey);
+    await page.waitForFunction(({key,id})=>JSON.parse(localStorage.getItem(key)||'null')?.customerId===id,{key:draftKey,id:selectedId});
     await selectCustomer();
    }
-   pass('Actual '+view+' manual name phone email changes clear selected customer id');
+   pass('Actual '+view+' manual contact edits retain selected customer id');
+   await form.getByPlaceholder('Nhập tên khách hàng để tìm...').fill('Khách sửa tay QA');
+   await page.waitForFunction(key=>JSON.parse(localStorage.getItem(key)||'null')?.customerId===null,draftKey);
+   await selectCustomer();
+   pass('Actual '+view+' actual customer name change detaches selection');
    await page.reload();await page.waitForLoadState('networkidle');await page.getByRole('button',{name:'Tạo báo giá mới',exact:true}).click();
    await form.getByRole('button',{name:'Khôi phục',exact:true}).click();
    assert.equal(await form.getByPlaceholder('Nhập tên khách hàng để tìm...').inputValue(),selectedName);

@@ -6,7 +6,7 @@ import { localApi } from '@/lib/local-api';
 
 const PAGE_SIZE = 50;
 
-const formatQuote = (quote: any) => {
+export const formatQuote = (quote: any) => {
   let customerName = 'Không có tên';
   if (quote.customers?.name) {
     customerName = quote.customers.name;
@@ -19,12 +19,23 @@ const formatQuote = (quote: any) => {
     const m = quote.notes.match(pattern);
     return m && m[1] ? m[1].trim() : '';
   };
+  let data: Record<string, unknown> = {};
+  try { data = typeof quote.quote_data === 'string' ? JSON.parse(quote.quote_data) : quote.quote_data || {}; } catch { /* Legacy snapshot may be unavailable. */ }
+  const snapshot = (key: string, pattern: RegExp, fallback: string) => {
+    if (Object.prototype.hasOwnProperty.call(data, key)) return String(data[key] ?? '');
+    const match = quote.notes?.match(pattern);
+    return match ? (match[1] || '').trim() : fallback || '';
+  };
   return {
     ...quote,
-    customerName,
-    customerEmail: quote.customers?.email || extract(/Email:\s*([^\n\r]+)/),
-    customerPhone: quote.customers?.phone || extract(/Điện thoại:\s*([^\n\r]+)/),
-    customerAddress: quote.customers?.address || extract(/Địa chỉ:\s*([^\n\r]+)/),
+    title: data.title,
+    subtotal: Number(quote.subtotal ?? 0),
+    vat_rate: Number(quote.vat_rate ?? 0),
+    vat_amount: Number(quote.vat_amount ?? 0),
+    customerName: snapshot('customerName', /(?:^|\n)Khách hàng:[ \t]*([^\n\r]*)/, customerName),
+    customerEmail: snapshot('customerEmail', /(?:^|\n)Email:[ \t]*([^\n\r]*)/, quote.customers?.email),
+    customerPhone: snapshot('customerPhone', /(?:^|\n)Điện thoại:[ \t]*([^\n\r]*)/, quote.customers?.phone),
+    customerAddress: snapshot('customerAddress', /(?:^|\n)Địa chỉ:[ \t]*([^\n\r]*)/, quote.customers?.address),
     customerCompany: quote.customers?.company || '',
     quoteDate: quote.created_at,
     expiryDate: (() => {

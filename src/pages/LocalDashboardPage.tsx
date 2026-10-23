@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Activity, ArrowRight, Boxes, CalendarCheck, CircleDollarSign, FileSignature,
-  FileText, Package, ReceiptText, RefreshCw, ShoppingCart, TrendingUp, UsersRound,
+  FileText, Package, ReceiptText, ShoppingCart, TrendingUp, UsersRound,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { localApi, type LocalDashboardStats, type LocalSyncRun } from "@/lib/local-api";
+import { localApi, type LocalDashboardStats } from "@/lib/local-api";
 
 const monthStart = `${new Date().toISOString().slice(0, 7)}-01`;
 const money = (value: number) => `${Math.round(value).toLocaleString("vi-VN")} đ`;
@@ -54,18 +54,15 @@ const LocalDashboardPage = () => {
   const [stats, setStats] = useState<LocalDashboardStats>(emptyStats);
   const [recentEntries, setRecentEntries] = useState<RecentEntry[]>([]);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
-  const [lastSync, setLastSync] = useState<LocalSyncRun | null>(null);
-  const [syncing, setSyncing] = useState(false);
   const { toast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [dashboard, production, orders, syncRuns] = await Promise.all([
+      const [dashboard, production, orders] = await Promise.all([
         localApi.dashboardStats(),
         localApi.productionEntries(monthStart, true),
         localApi.orders({ limit: 5 }),
-        localApi.syncRuns(),
       ]);
       setStats(dashboard);
       setRecentEntries(production.slice(0, 5).map((row) => ({
@@ -83,39 +80,12 @@ const LocalDashboardPage = () => {
         total_amount: Number(row.total_amount || 0),
         status: String(row.status || "pending"),
       })));
-      setLastSync(syncRuns[0] || null);
     } catch (error) {
       toast({ title: "Không thể tải trang tổng quan cục bộ", description: error instanceof Error ? error.message : "Dịch vụ API cục bộ không phản hồi", variant: "destructive" });
     } finally { setLoading(false); }
   }, [toast]);
 
   useEffect(() => { void load(); }, [load]);
-
-  const runSync = async () => {
-    setSyncing(true);
-    try {
-      await localApi.startSync();
-      toast({ title: "Đã bắt đầu đồng bộ", description: "Dữ liệu Supabase đang được cập nhật vào PostgreSQL local." });
-      await load();
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        const runs = await localApi.syncRuns();
-        const latest = runs[0] || null;
-        setLastSync(latest);
-        if (!latest || latest.status === "RUNNING") continue;
-        toast({
-          title: latest.status === "COMPLETED" ? "Đồng bộ hoàn tất" : "Đồng bộ cần kiểm tra",
-          description: latest.status === "COMPLETED" ? "Dữ liệu local đã được cập nhật." : `Có ${latest.error_count || 0} bảng lỗi; mở lịch sử đồng bộ để xem chi tiết.`,
-          variant: latest.status === "COMPLETED" ? undefined : "destructive",
-        });
-        break;
-      }
-    } catch (error) {
-      toast({ title: "Không thể bắt đầu đồng bộ", description: error instanceof Error ? error.message : "Dịch vụ API cục bộ không phản hồi", variant: "destructive" });
-    } finally { setSyncing(false); }
-  };
-
-  const syncBusy = syncing || lastSync?.status === "RUNNING";
 
   const crmCards = [
     { title: "Doanh thu đã giao", value: money(stats.totalRevenue), detail: `${money(stats.monthlyRevenue)} trong tháng`, icon: TrendingUp, href: "/transactions", color: "text-emerald-700", bg: "bg-emerald-50" },
@@ -138,23 +108,6 @@ const LocalDashboardPage = () => {
 
   return (
     <div className="space-y-6 pb-8">
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-6 text-white shadow-sm">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-3xl font-bold tracking-tight">Tổng quan CRM</h1>
-            <Badge className="border-emerald-400/30 bg-emerald-400/15 text-emerald-100" variant="outline">POSTGRESQL CỤC BỘ</Badge>
-          </div>
-          <p className="mt-2 max-w-3xl text-sm text-slate-300">Khách hàng, báo giá, đơn hàng, tài chính, kho, sản xuất, chấm công và lương đều đọc từ cơ sở dữ liệu cục bộ. Không phát sinh thao tác ghi lên Supabase công khai.</p>
-        </div>
-        <div className="flex flex-col items-end gap-2">
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="secondary" onClick={() => void load()} disabled={loading || Boolean(syncBusy)}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Tải lại dữ liệu</Button>
-            <Button variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100" onClick={() => void runSync()} disabled={Boolean(syncBusy)}><RefreshCw className={`mr-2 h-4 w-4 ${syncBusy ? "animate-spin" : ""}`} />{syncBusy ? "Đang đồng bộ..." : "Đồng bộ ngay"}</Button>
-          </div>
-          <span className="text-xs text-slate-300">Đồng bộ gần nhất: {lastSync?.completed_at ? new Date(lastSync.completed_at).toLocaleString("vi-VN") : "Chưa có lần đồng bộ"}{lastSync?.status && ` · ${lastSync.status === "COMPLETED" ? "Thành công" : lastSync.status === "COMPLETED_WITH_ERRORS" ? "Có lỗi cần xem" : lastSync.status === "RUNNING" ? "Đang chạy" : lastSync.status}`}</span>
-        </div>
-      </div>
-
       <section className="space-y-3">
         <div><h2 className="text-lg font-semibold">Kinh doanh & khách hàng</h2><p className="text-sm text-muted-foreground">Số liệu tổng hợp từ toàn bộ mô-đun CRM cục bộ.</p></div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">

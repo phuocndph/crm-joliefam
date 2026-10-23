@@ -20,6 +20,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { getTemplateSettings } from "./QuoteTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { isLocalBackend } from '@/lib/runtime-config';
+import { localApi } from '@/lib/local-api';
+import { quoteDisplayItems } from '@/lib/quote-calculation';
 
 interface QuoteSupplementDialogProps {
   open: boolean;
@@ -60,7 +63,7 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
       // Parse quote items to get product IDs or SKUs
       let quoteItems = [];
       try {
-        quoteItems = quote.items ? JSON.parse(quote.items) : [];
+        quoteItems = quoteDisplayItems(quote.items);
       } catch (error) {
         console.error('Error parsing quote items:', error);
         return;
@@ -128,7 +131,7 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
   // Parse quote items
   let quoteItems = [];
   try {
-    quoteItems = quote.items ? JSON.parse(quote.items) : [];
+    quoteItems = quoteDisplayItems(quote.items);
   } catch (error) {
     console.error('Error parsing quote items:', error);
     quoteItems = [];
@@ -136,8 +139,8 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
 
   // Filter items based on search term
   const filteredItems = quoteItems.filter((item: any) =>
-    item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.sku?.toLowerCase().includes(searchTerm.toLowerCase())
+    String(item.name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    String(item.sku ?? '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Helper function to get cost price from products data
@@ -190,6 +193,13 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
     setIsUpdatingOrder(true);
     
     try {
+      if (isLocalBackend()) {
+        const result = await localApi.approveQuote(quote.id);
+        await Promise.all(['quotes', 'quotes-infinite', 'quotes-stats', 'orders', 'orders-infinite', 'orders-stats'].map(key => queryClient.invalidateQueries({ queryKey: [key] })));
+        toast({ title: 'Đã kiểm tra liên kết đơn hàng', description: `Đơn ${String(result.order.order_number || '')} được giữ nguyên dữ liệu vận hành; không ghi nhận tiền thu từ kế hoạch.` });
+        onUpdate?.();
+        return;
+      }
       console.log('🚀 Bắt đầu đẩy báo giá sang đơn hàng:', quote.quote_number);
       
       // Find existing order by quote_id

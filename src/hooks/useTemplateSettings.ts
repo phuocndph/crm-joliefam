@@ -64,13 +64,7 @@ export function useTemplateSettings() {
       if (isLocalBackend()) {
         const cached = localStorage.getItem('quoteTemplateSettings');
         const remote = await localApi.quoteTemplateSettings();
-        if (cached) {
-          try {
-            const parsed = { ...defaultSettings, ...JSON.parse(cached) };
-            setSettings(parsed);
-            if (!remote) await localApi.saveQuoteTemplateSettings(parsed as unknown as Record<string, unknown>);
-          } catch { setSettings(defaultSettings); }
-        } else if (remote) {
+        if (remote) {
           const textValue = (value: unknown, fallback: string) => typeof value === 'string' && value ? value : fallback;
           const mapped = {
             companyName: textValue(remote.company_name, defaultSettings.companyName),
@@ -92,6 +86,8 @@ export function useTemplateSettings() {
           };
           localStorage.setItem('quoteTemplateSettings', JSON.stringify(mapped));
           setSettings(mapped);
+        } else if (cached) {
+          try { setSettings({ ...defaultSettings, ...JSON.parse(cached) }); } catch { setSettings(defaultSettings); }
         } else setSettings(defaultSettings);
         return;
       }

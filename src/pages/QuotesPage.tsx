@@ -164,6 +164,8 @@ export default function QuotesPage() {
     setShowCreateForm(false);
     await refetchQuotes();
     queryClient.invalidateQueries({ queryKey: ['quotes'] });
+    queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
+    queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
     toast({
       title: "Thành công",
       description: "Báo giá đã được tạo thành công",
@@ -177,10 +179,12 @@ export default function QuotesPage() {
     // Invalidate orders cache to refresh orders page if needed
     queryClient.invalidateQueries({ queryKey: ['quotes'] });
     queryClient.invalidateQueries({ queryKey: ['orders'] });
+    queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
+    queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
     
     toast({
       title: "Thành công", 
-      description: "Báo giá đã được cập nhật và tự động đẩy sang đơn hàng",
+      description: "Bản nháp báo giá đã được cập nhật. Duyệt báo giá để tạo đơn hàng.",
     });
   };
 
@@ -422,8 +426,10 @@ export default function QuotesPage() {
       };
 
       if (isLocalBackend()) {
-        await localApi.createQuote(duplicate);
+        await localApi.createQuote({ ...duplicate, idempotency_key: crypto.randomUUID() });
         await queryClient.invalidateQueries({ queryKey: ['quotes'], refetchType: 'all' });
+        await queryClient.invalidateQueries({ queryKey: ['quotes-infinite'], refetchType: 'all' });
+        await queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
         toast({ title: "Nhân bản thành công", description: `Đã tạo báo giá mới: ${newQuoteNumber}` });
         return;
       }
@@ -663,7 +669,7 @@ export default function QuotesPage() {
                       <TableCell>
                         <Popover>
                           <PopoverTrigger asChild>
-                            <button className="text-left hover:underline cursor-pointer text-sm px-1 py-0.5 rounded hover:bg-muted transition-colors">
+                            <button disabled={isLocalBackend() && quote.status === 'approved'} className="text-left hover:underline cursor-pointer text-sm px-1 py-0.5 rounded hover:bg-muted transition-colors disabled:cursor-default disabled:no-underline">
                               {new Date(quote.quoteDate || quote.created_at).toLocaleDateString("vi-VN")}
                             </button>
                           </PopoverTrigger>
@@ -679,6 +685,8 @@ export default function QuotesPage() {
                                 if (isLocalBackend()) {
                                   await localApi.updateQuote(quote.id, { created_at: adjustedDate.toISOString() });
                                   queryClient.invalidateQueries({ queryKey: ['quotes'] });
+                                  queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
+                                  queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
                                   toast({ title: "Đã cập nhật ngày tạo local" });
                                   return;
                                 }
@@ -704,7 +712,7 @@ export default function QuotesPage() {
                       <TableCell>
                         <Popover>
                           <PopoverTrigger asChild>
-                            <button className="text-left hover:underline cursor-pointer text-sm px-1 py-0.5 rounded hover:bg-muted transition-colors">
+                            <button disabled={isLocalBackend() && quote.status === 'approved'} className="text-left hover:underline cursor-pointer text-sm px-1 py-0.5 rounded hover:bg-muted transition-colors disabled:cursor-default disabled:no-underline">
                               {new Date(quote.expiryDate).toLocaleDateString("vi-VN")}
                             </button>
                           </PopoverTrigger>
@@ -725,6 +733,8 @@ export default function QuotesPage() {
                                 if (isLocalBackend()) {
                                   await localApi.updateQuote(quote.id, { notes: updatedNotes });
                                   queryClient.invalidateQueries({ queryKey: ['quotes'] });
+                                  queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
+                                  queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
                                   toast({ title: "Đã cập nhật ngày hết hạn local" });
                                   return;
                                 }
@@ -799,6 +809,7 @@ export default function QuotesPage() {
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem
+                              disabled={isLocalBackend() && quote.status === 'approved'}
                               onClick={async () => {
                                 // Egress optimization: fetch heavy quote_data only when editing
                                 const quoteDataRaw = await fetchQuoteData(quote.id);
@@ -807,10 +818,11 @@ export default function QuotesPage() {
                               className="hover:bg-primary hover:text-primary-foreground transition-colors"
                             >
                               <Edit className="mr-2 h-4 w-4" />
-                              Sửa
+                              {isLocalBackend() && quote.status === 'approved' ? 'Đã duyệt — nhân bản để sửa' : 'Sửa'}
                             </DropdownMenuItem>
                             {(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')) && (
                               <DropdownMenuItem
+                                disabled={isLocalBackend() && quote.status === 'approved'}
                                 onClick={() => setEditingQuoteDetails(quote)}
                                 className="hover:bg-primary hover:text-primary-foreground transition-colors"
                               >
@@ -820,6 +832,7 @@ export default function QuotesPage() {
                             )}
                             {(userRole === 'manager' || userRole === 'admin') && (
                               <DropdownMenuItem
+                                disabled={isLocalBackend() && quote.status === 'approved'}
                                 onClick={() => handleDeleteQuote(quote.id)}
                                 className="text-red-600 hover:bg-red-600 hover:text-white transition-colors"
                               >

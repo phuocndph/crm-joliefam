@@ -1,0 +1,34 @@
+import { useState } from 'react';
+import { localApi, type PayrollBundleReview as Review, type PayrollBundleSelection as Selection } from '@/lib/local-api';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { PayrollDialogContent } from '@/components/payroll/PayrollDialogContent';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
+
+type Version = {id:string;worker_id:string;status?:string;effective_from:string;effective_to:string|null};
+const names:Record<string,string>={assignment_id:'Phân loại lương',profile_id:'Nguồn và khoản cố định',rate_id:'Mức lương chính',insurance_id:'BHXH'};
+const labels:Record<string,string>={compensation_type:'Cách trả lương',payroll_policy_group_id:'Nhóm áp dụng',rate_amount:'Mức lương',employee_amount:'Mức BHXH',effective_from:'Từ ngày',effective_to:'Đến ngày',piece_output_enabled:'Sản lượng',overtime_enabled:'Tăng ca',meal_enabled:'Tiền ăn',insurance_enabled:'BHXH',fixed_allowance_amount:'Phụ cấp cố định',fixed_deduction_amount:'Khấu trừ cố định'};
+const display=(row:Record<string,unknown>,groups:Array<{id:string;name:string}>)=>Object.entries(labels).filter(([key])=>row[key]!=null).map(([key,label])=>`${label}: ${row[key]===true?'Có':row[key]===false?'Không':key==='compensation_type'?({MONTHLY_MANAGER:'Quản lý lương tháng',MONTHLY_HELPER:'Thợ phụ lương tháng',HOURLY:'Theo giờ',PIECE_RATE:'Theo sản phẩm'}[String(row[key])]||'Chưa phân loại'):key==='payroll_policy_group_id'?groups.find(group=>group.id===row[key])?.name||'Nhóm đã chọn':String(row[key])}`).join(' · ');
+const shiftDay=(value:unknown,days:number)=>{const date=new Date(String(value).slice(0,10)+'T12:00:00Z');date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10);};
+const replacementImpact=(previous:Record<string,unknown>,next:Record<string,unknown>)=>{
+  const start=String(next.effective_from).slice(0,10),end=next.effective_to?String(next.effective_to).slice(0,10):null;
+  const oldStart=String(previous.effective_from).slice(0,10),oldEnd=previous.effective_to?String(previous.effective_to).slice(0,10):null;
+  const retained:string[]=[];
+  if(oldStart<start)retained.push(`${oldStart} → ${shiftDay(start,-1)}`);
+  if(end&&(!oldEnd||oldEnd>end))retained.push(`${shiftDay(end,1)} → ${oldEnd||'không giới hạn'}`);
+  return retained.length?`Giữ hiệu lực cũ ở ${retained.join(' và ')} bằng phiên bản tiếp nối; bản gốc được giữ cho lịch sử.`:'Khoảng hiệu lực cũ được thay thế hoàn toàn; bản gốc được giữ cho lịch sử.';
+};
+const replacedBy=(previous:Record<string,unknown>,next:Record<string,unknown>)=>(!next.attendance_method||previous.attendance_method===next.attendance_method)
+  &&(!previous.effective_to||String(previous.effective_to)>=String(next.effective_from))
+  &&(!next.effective_to||String(previous.effective_from)<=String(next.effective_to));
+export default function PayrollBundleReview({workerId,workerName,versions,groups,onClose,onApproved}:{workerId:string;workerName:string;versions:Record<string,Version[]>;groups:Array<{id:string;name:string}>;onClose:()=>void;onApproved:()=>Promise<void>}) {
+  const [selection,setSelection]=useState<Selection>(()=>Object.fromEntries(Object.entries(versions).map(([key,rows])=>[key,rows.length===1?rows[0].id:''])) as Selection);
+  const [review,setReview]=useState<Review|null>(null),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[key,setKey]=useState('');
+  const inspect=async()=>{setBusy(true);setError('');try{setReview(await localApi.reviewWorkerPayrollBundle({worker_id:workerId,selection}));setKey(crypto.randomUUID());}catch(e){setError(e instanceof Error?e.message:'Không đối chiếu được hồ sơ.');}finally{setBusy(false);}};
+  const approve=async()=>{if(!review)return;setBusy(true);setError('');try{await localApi.approveWorkerPayrollBundle({worker_id:workerId,selection:review.selection,expected_fingerprint:review.fingerprint,idempotency_key:key,reason});await onApproved();toast.success('Đã duyệt nguyên bộ hồ sơ lương');onClose();}catch(e){setError(e instanceof Error?e.message:'Không duyệt được hồ sơ.');}finally{setBusy(false);}};
+  return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose();}}><PayrollDialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Đối chiếu hồ sơ lương · {workerName}</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Chọn chính xác phiên bản cùng ngày hiệu lực. Chỉ những phiên bản được liệt kê dưới đây được duyệt trong một giao dịch; ngân hàng có quy trình xác minh riêng.</p>
+  {!review?<div className="space-y-3">{Object.entries(versions).map(([field,rows])=><div key={field} className="space-y-1"><Label htmlFor={`bundle-${field}`}>{names[field]}</Label><select id={`bundle-${field}`} className="h-11 w-full rounded border bg-background px-2" value={selection[field as keyof Selection]||''} onChange={e=>setSelection({...selection,[field]:e.target.value||null})}><option value="">{['assignment_id','profile_id'].includes(field)?'Chọn bản nháp':'Không duyệt thành phần này'}</option>{rows.map(row=><option key={row.id} value={row.id}>{row.effective_from} → {row.effective_to||'không giới hạn'} · {row.id.slice(0,8)}</option>)}</select></div>)}</div>:<div className="space-y-3">{Object.entries(review.components).map(([field,row])=><div key={field} className="rounded border p-3 text-sm"><h3 className="font-semibold">{names[field]}</h3><p className="mt-1 text-muted-foreground">Cũ: {review.previous[field]?.length?review.previous[field].map(row=>display(row,groups)).join(' | '):'Chưa có bản đã duyệt'}</p><p className="mt-2">Mới: {display(row,groups)}</p><p className="mt-1 break-all text-xs text-muted-foreground">Phiên bản được duyệt: {String(row.id)} · bộ chọn {review.selection[field as keyof Selection]||"không có"}</p>{(review.previous[field]||[]).filter(previous=>replacedBy(previous,row)).map(previous=><p key={String(previous.id)} className="mt-2 text-xs">Tác động bản {String(previous.id)}: {replacementImpact(previous,row)}</p>)}</div>)}<Label htmlFor="bundle-reason">Lý do duyệt</Label><Textarea id="bundle-reason" value={reason} onChange={e=>setReason(e.target.value)} /></div>}
+  {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}<DialogFooter><Button variant="outline" disabled={busy} onClick={()=>review?setReview(null):onClose()}>{review?'Chọn lại':'Đóng'}</Button>{review?<Button disabled={busy||!reason.trim()} onClick={()=>void approve()}>{busy?'Đang duyệt…':'Duyệt bộ đã đối chiếu'}</Button>:<Button disabled={busy||!selection.assignment_id||!selection.profile_id} onClick={()=>void inspect()}>{busy?'Đang đối chiếu…':'Đối chiếu mức cũ → mới'}</Button>}</DialogFooter></PayrollDialogContent></Dialog>;
+}

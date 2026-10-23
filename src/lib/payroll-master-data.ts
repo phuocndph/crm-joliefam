@@ -315,7 +315,9 @@ export type WorkerPayrollProfileInput = {
   idempotency_key: string;
 };
 
-export type WorkerPayrollBundleInput = WorkerPayrollProfileInput & {
+export type WorkerPayrollBundleInput = Omit<WorkerPayrollProfileInput,"insurance_enabled"> & {
+  insurance_enabled?: boolean;
+  selected_drafts?: {assignment_id?:string|null;profile_id?:string|null;rate_id?:string|null;insurance_id?:string|null};
   location_code?: string | null;
   position_title?: string | null;
   employment_start_date?: string | null;

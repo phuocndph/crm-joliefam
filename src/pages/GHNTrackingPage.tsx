@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,8 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { Card as UICard } from '@/components/ui/card';
 import { isLocalBackend } from '@/lib/runtime-config';
 import { localApi } from '@/lib/local-api';
+import { LocalGhnPrintDialog } from '@/components/LocalGhnPrintDialog';
+import { canLoadGhnTrackingSearch, clampGhnTrackingPage, createGhnTrackingRequestGate, ghnTrackingQueryFingerprint, type GhnTrackingQuerySnapshot } from '@/lib/ghn-tracking-list-state';
 
 interface GHNTrackingData {
   id: string;
@@ -79,154 +81,204 @@ function formatCurrency(amount?: number): string {
   return `${amount.toLocaleString('vi-VN')} ₫`;
 }
 
+function TrackingListState({ loading, error, total, onRetry }: { loading: boolean; error: string; total: number; onRetry: () => void }) {
+  if (loading) return <>Đang tải dữ liệu tracking…</>;
+  if (error) return <div className="flex flex-col items-center gap-2"><span>{error}</span><Button variant="outline" size="sm" onClick={onRetry}>Thử lại</Button></div>;
+  return <>{total === 0 ? 'Chưa có dữ liệu tracking' : 'Không tìm thấy kết quả phù hợp với bộ lọc'}</>;
+}
+
 export default function GHNTrackingPage() {
+  const localBackend = isLocalBackend();
   const [trackingData, setTrackingData] = useState<GHNTrackingData[]>([]);
   const [orderCodeInput, setOrderCodeInput] = useState('');
   const [isMultipleMode, setIsMultipleMode] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isTrackingLoading, setIsTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState('');
   const [updatingOrderCode, setUpdatingOrderCode] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
-    status: ['all'],
-    sortBy: 'none',
-    sortOrder: 'asc'
+    status: [],
+    sortBy: localBackend ? 'priority' : 'created_date',
+    sortOrder: localBackend ? 'asc' : 'desc'
   });
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<GHNTrackingData | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [printing, setPrinting] = useState(false);
+  const [printDialogIds, setPrintDialogIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [totalTrackingCount, setTotalTrackingCount] = useState(0);
+  const [connection, setConnection] = useState<Awaited<ReturnType<typeof localApi.checkGhnConnection>> | null>(null);
+  const [checkingConnection, setCheckingConnection] = useState(false);
+  const [connectionError, setConnectionError] = useState('');
+  const [refreshCursor, setRefreshCursor] = useState<string | null>(null);
   
   const { user: authUser, isReady } = useAuthReady();
   const [user, setUser] = useState<User | null>(null);
   useEffect(() => { setUser(authUser); }, [authUser]);
+  const userId = user?.id || '';
   const { role, roleReady } = useUserRole(user);
   const authReady = isReady && roleReady;
   const isMobile = useIsMobile();
   const debouncedSearchText = useDebounce(filters.searchText, 300);
+  const searchPending = !canLoadGhnTrackingSearch(filters.searchText, debouncedSearchText);
+  const filterStatusKey = filters.status.join(',');
+  const roleKey = String(role || '');
+  const requestGateRef = useRef(createGhnTrackingRequestGate());
+  const mountedRef = useRef(true);
+  const trackingQuery: GhnTrackingQuerySnapshot = {
+    userId, authReady, role: roleKey, page: currentPage, pageSize, status: filterStatusKey,
+    sortBy: filters.sortBy, sortOrder: filters.sortOrder, rawSearch: filters.searchText,
+    debouncedSearch: debouncedSearchText, searchPending,
+  };
+  const latestTrackingParamsRef = useRef(trackingQuery);
+  latestTrackingParamsRef.current = trackingQuery;
 
-  // Load tracking data from database
+  const checkConnection = useCallback(async () => {
+    if (!isLocalBackend()) return;
+    setCheckingConnection(true);
+    setConnectionError('');
+    try { setConnection(await localApi.checkGhnConnection()); }
+    catch (error) { setConnection(null); setConnectionError(error instanceof Error ? error.message : 'Không kiểm tra được kết nối GHN.'); }
+    finally { setCheckingConnection(false); }
+  }, []);
+  useEffect(() => { if (user && authReady) void checkConnection(); }, [user, authReady, checkConnection]);
+  useEffect(() => { setRefreshCursor(null); }, [user?.id]);
   useEffect(() => {
-    if (user && authReady) {
-      loadTrackingData();
-    }
-  }, [user, authReady, role, currentPage, pageSize, filters.status, filters.sortBy, filters.sortOrder, debouncedSearchText]);
+    setFilters((current) => {
+      if (current.sortBy === 'none') {
+        return { ...current, sortBy: localBackend ? 'priority' : 'created_date', sortOrder: localBackend ? 'asc' : 'desc' };
+      }
+      if (!localBackend && current.sortBy === 'priority') {
+        return { ...current, sortBy: 'created_date', sortOrder: 'desc' };
+      }
+      return current;
+    });
+  }, [localBackend]);
 
-  // Refresh stale, non-terminal orders once when the page opens. The Edge
-  // Function performs this in one server-side batch; avoid one browser request
-  // per order because that multiplies Edge Function and GHN API usage.
-  useEffect(() => {
-    if (user && totalTrackingCount > 0) {
-      const timer = setTimeout(() => {
-        autoLoadIncompleteOrders();
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [user, totalTrackingCount]); // Trigger when user is available and data is loaded
-
-  // Real-time subscription for GHN tracking updates
-  useEffect(() => {
-    if (!user || isLocalBackend()) return;
-
-    console.log('📦 Setting up GHN tracking real-time subscription');
-    let reloadTimer: ReturnType<typeof setTimeout> | undefined;
-    
-    const channel = supabase
-      .channel(`ghn-tracking-changes-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ghn_tracking'
-        },
-        async (payload) => {
-          console.log('📦 GHN tracking real-time update received:', payload.eventType, payload);
-          
-           // Bulk sync updates many rows. Coalesce the resulting events into
-           // one reload instead of fetching the entire table per row.
-           if (reloadTimer) clearTimeout(reloadTimer);
-           reloadTimer = setTimeout(() => { void loadTrackingData(); }, 1000);
-          
-          // Bulk sync emits one realtime event per row. The reload is already
-          // visible in the table, so do not emit one toast per changed row.
-        }
-      )
-      .subscribe((status) => {
-        console.log('📦 GHN tracking real-time subscription status:', status);
-      });
-
-    return () => {
-      if (reloadTimer) clearTimeout(reloadTimer);
-      console.log('📦 Cleaning up GHN tracking real-time subscription');
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
-
-  const loadTrackingData = async () => {
-    if (!user) return;
+  const loadTrackingData = useCallback(async () => {
+    const params = latestTrackingParamsRef.current;
+    if (!params.userId || !params.authReady || params.searchPending) return;
+    const request = requestGateRef.current.invalidate();
+    const paramsFingerprint = ghnTrackingQueryFingerprint(params);
+    const canCommit = () => mountedRef.current && requestGateRef.current.isCurrent(request)
+      && ghnTrackingQueryFingerprint(latestTrackingParamsRef.current) === paramsFingerprint;
+    setIsTrackingLoading(true);
+    setTrackingError('');
 
     try {
-      const searchText = debouncedSearchText.trim().replace(/[%,()]/g, ' ');
-      if (isLocalBackend()) {
+      const searchText = params.debouncedSearch.trim().replace(/[%,()]/g, ' ');
+      let rows: GHNTrackingData[];
+      let total: number;
+      if (localBackend) {
         const result = await localApi.ghnTracking({
-          page: currentPage,
-          pageSize,
-          search: searchText,
-          status: filters.status.join(','),
-          sortBy: filters.sortBy,
-          sortOrder: filters.sortOrder,
+          page: params.page, pageSize: params.pageSize, search: searchText, status: params.status,
+          sortBy: params.sortBy, sortOrder: params.sortOrder,
         });
-        setTrackingData(result.rows as unknown as GHNTrackingData[]);
-        setTotalTrackingCount(result.total);
+        rows = result.rows as unknown as GHNTrackingData[];
+        total = result.total;
+      } else {
+        let query = supabase
+          .from('ghn_tracking')
+          .select('id, ghn_order_code, internal_order_code, order_id, customer_name, customer_phone, customer_address, package_weight, created_date, expected_delivery_date, delivered_date, cod_amount, ghn_status, ghn_status_text, tracking_url, last_updated_at, tracking_notes, created_at, updated_at, manager_id, tenant_id', { count: 'exact' })
+          .range((params.page - 1) * params.pageSize, params.page * params.pageSize - 1);
+        if (params.status) query = query.in('ghn_status', params.status.split(','));
+        const cloudSortBy = ['customer_name', 'ghn_status', 'created_date'].includes(params.sortBy) ? params.sortBy : 'created_date';
+        const ascending = params.sortOrder === 'asc';
+        query = query
+          .order(cloudSortBy, { ascending, nullsFirst: false })
+          .order('id', { ascending: true, nullsFirst: false });
+        if (searchText) {
+          query = query.or(`ghn_order_code.ilike.%${searchText}%,internal_order_code.ilike.%${searchText}%,customer_name.ilike.%${searchText}%,customer_phone.ilike.%${searchText}%,customer_address.ilike.%${searchText}%,ghn_status.ilike.%${searchText}%,ghn_status_text.ilike.%${searchText}%`);
+        }
+        const result = await query;
+        if (result.error) throw result.error;
+        rows = (result.data || []) as GHNTrackingData[];
+        total = result.count || 0;
+      }
+
+      if (!canCommit()) return;
+      const clampedPage = clampGhnTrackingPage(params.page, total, params.pageSize);
+      if (clampedPage !== params.page) {
+        requestGateRef.current.invalidate();
+        setTrackingData([]);
+        setTotalTrackingCount(total);
+        setCurrentPage(clampedPage);
+        setSelectedOrders(new Set());
         return;
       }
-      let query = supabase
-        .from('ghn_tracking')
-        .select('id, ghn_order_code, internal_order_code, order_id, customer_name, customer_phone, customer_address, package_weight, created_date, expected_delivery_date, delivered_date, cod_amount, ghn_status, ghn_status_text, tracking_url, last_updated_at, tracking_notes, created_at, updated_at, manager_id, tenant_id', { count: 'exact' })
-        .range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
-      if (!filters.status.includes('all')) query = query.in('ghn_status', filters.status);
-      if (filters.sortBy === 'none') {
-        query = query
-          .order('delivered_date', { ascending: true, nullsFirst: true })
-          .order('created_date', { ascending: false, nullsFirst: false });
-      } else {
-        query = query.order(filters.sortBy === 'customer_name' ? 'customer_name' : 'ghn_status', {
-          ascending: filters.sortOrder === 'asc',
-          nullsFirst: false,
-        });
-      }
-      if (searchText) {
-        query = query.or(`ghn_order_code.ilike.%${searchText}%,internal_order_code.ilike.%${searchText}%,customer_name.ilike.%${searchText}%,customer_phone.ilike.%${searchText}%,customer_address.ilike.%${searchText}%,ghn_status.ilike.%${searchText}%,ghn_status_text.ilike.%${searchText}%`);
-      }
-      const { data, error, count } = await query;
-
-      if (error) {
-        console.error('Error loading tracking data:', error);
-        toast.error('Lỗi tải dữ liệu tracking');
-      } else {
-        setTrackingData(data || []);
-        setTotalTrackingCount(count || 0);
-      }
+      setTrackingData(rows);
+      setTotalTrackingCount(total);
     } catch (error) {
+      if (!canCommit()) return;
       console.error('Error loading tracking data:', error);
-      toast.error('Lỗi tải dữ liệu tracking');
+      setTrackingError('Không thể tải dữ liệu tracking. Vui lòng thử lại.');
+    } finally {
+      if (canCommit()) setIsTrackingLoading(false);
     }
-  };
+  }, [localBackend]);
+
+  useEffect(() => {
+    const requestGate = requestGateRef.current;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestGate.invalidate();
+    };
+  }, []);
+
+  // Invalidate immediately, including while a debounced search term is pending.
+  useEffect(() => {
+    requestGateRef.current.invalidate();
+    setTrackingData([]);
+    setTrackingError('');
+    if (!userId || !authReady) {
+      setTotalTrackingCount(0);
+      setIsTrackingLoading(false);
+      return;
+    }
+    setIsTrackingLoading(true);
+  }, [userId, authReady, role, currentPage, pageSize, filterStatusKey, filters.sortBy, filters.sortOrder, filters.searchText]);
+
+  useEffect(() => {
+    if (userId && authReady && !searchPending) void loadTrackingData();
+  }, [userId, authReady, role, currentPage, pageSize, filterStatusKey, filters.sortBy, filters.sortOrder, filters.searchText, debouncedSearchText, searchPending, loadTrackingData]);
+
+  // Real-time subscription always asks the latest loader; stale responses cannot commit.
+  useEffect(() => {
+    if (!userId || localBackend) return;
+    let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+    const channel = supabase
+      .channel(`ghn-tracking-changes-${Date.now()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ghn_tracking' }, () => {
+        if (reloadTimer) clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => { void loadTrackingData(); }, 1000);
+      })
+      .subscribe();
+    return () => {
+      if (reloadTimer) clearTimeout(reloadTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [userId, localBackend, loadTrackingData]);
 
   // Auto-load incomplete orders when accessing the page
-  const autoLoadIncompleteOrders = async () => {
-    if (!user || totalTrackingCount === 0 || isLocalBackend()) return;
+  const autoLoadIncompleteOrders = useCallback(async () => {
+    if (!userId || totalTrackingCount === 0) return;
 
     try {
+      if (localBackend) {
+        const result = await localApi.refreshGhnTracking({ staleOnly: true });
+        if (result.updated) { toast.success(`Đã cập nhật ${result.updated} vận đơn chưa hoàn thành`); await loadTrackingData(); }
+        if (result.failed) toast.error(`${result.failed} vận đơn chưa cập nhật được. ${result.errors[0]?.message || 'Hãy thử lại.'}`);
+        return;
+      }
       const staleBefore = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
         body: {
           action: 'update_all_tracking',
-          managerId: user.id,
+          managerId: userId,
           staleBefore,
         },
       });
@@ -238,17 +290,27 @@ export default function GHNTrackingPage() {
     } catch (error) {
       console.error('Lỗi tự động cập nhật GHN:', error);
     }
-  };
+  }, [userId, totalTrackingCount, localBackend, loadTrackingData]);
+
+  // Refresh stale, non-terminal orders once when the page opens. The Edge
+  // Function performs this in one server-side batch; avoid one browser request
+  // per order because that multiplies Edge Function and GHN API usage.
+  useEffect(() => {
+    if (userId && totalTrackingCount > 0 && (!localBackend || connection?.connected)) {
+      const timer = setTimeout(() => { void autoLoadIncompleteOrders(); }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [userId, totalTrackingCount, connection?.connected, localBackend, autoLoadIncompleteOrders]);
 
   const addOrderTracking = async () => {
     const input = orderCodeInput.trim();
     if (!input || !user) return;
 
     // Parse multiple order codes (separated by comma, semicolon, or newline)
-    const orderCodes = input
+    const orderCodes = [...new Set(input
       .split(/[,;\n]/)
       .map(code => code.trim())
-      .filter(code => code.length > 0);
+      .filter(code => code.length > 0))];
 
     if (orderCodes.length === 0) return;
 
@@ -256,15 +318,23 @@ export default function GHNTrackingPage() {
       setLoading(true);
       try {
         let added = 0;
+        const failed: Array<{ code: string; message: string }> = [];
         for (const orderCode of orderCodes) {
           try {
-            await localApi.createGhnTracking({ ghn_order_code: orderCode, customer_name: "", ghn_status: "local_only" });
+            await localApi.createGhnTracking({ ghn_order_code: orderCode });
             added += 1;
           } catch (error: any) {
-            if (!String(error?.message || '').includes('duplicate') && !String(error?.message || '').includes('trùng')) throw error;
+            failed.push({ code: orderCode, message: error instanceof Error ? error.message : 'Không thể xác minh mã GHN.' });
           }
         }
-        if (added) { toast.info(`Đã thêm ${added} mã theo dõi vào hệ thống cục bộ; chưa đồng bộ GHN.`); setOrderCodeInput(''); await loadTrackingData(); }
+        if (added) await loadTrackingData();
+        if (failed.length) {
+          setOrderCodeInput(failed.map(item => item.code).join(isMultipleMode ? '\n' : ', '));
+          toast.error(`Đã xác minh và lưu ${added}/${orderCodes.length} mã. Chưa lưu: ${failed.map(item => item.code).join(', ')}. ${failed[0].message}`);
+        } else {
+          setOrderCodeInput('');
+          toast.success(`Đã xác minh và lưu ${added} mã theo dõi GHN.`);
+        }
       } catch (error: any) { toast.error(error.message || 'Không thể thêm mã theo dõi cục bộ'); }
       finally { setLoading(false); }
       return;
@@ -339,11 +409,20 @@ export default function GHNTrackingPage() {
 
   const updateAllTracking = async () => {
     if (!user || totalTrackingCount === 0) return;
-    if (isLocalBackend()) { toast.info('Hệ thống cục bộ chỉ hiển thị dữ liệu GHN đã đồng bộ; không gọi dịch vụ GHN.'); return; }
 
     setLoading(true);
 
     try {
+      if (isLocalBackend()) {
+        const result = await localApi.refreshGhnTracking(refreshCursor ? { cursor: refreshCursor } : {});
+        setRefreshCursor(result.next_cursor);
+        if (result.updated) toast.success(`Đã cập nhật ${result.updated} vận đơn từ GHN`);
+        else if (!result.failed) toast.info('Không có vận đơn đang giao cần cập nhật.');
+        if (result.failed) toast.error(`${result.failed} vận đơn chưa cập nhật được. ${result.errors[0]?.message || 'Hãy thử lại.'}`);
+        if (result.has_more) toast.info('Còn vận đơn cần cập nhật. Bấm cập nhật tiếp để xử lý lượt kế tiếp.');
+        await loadTrackingData();
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
         body: {
           action: 'update_all_tracking',
@@ -363,6 +442,7 @@ export default function GHNTrackingPage() {
       }
     } catch (error: any) {
       console.error('Error updating tracking:', error);
+      if (isLocalBackend()) setRefreshCursor(null);
       toast.error(error.message || 'Lỗi kết nối server');
     } finally {
       setLoading(false);
@@ -371,11 +451,18 @@ export default function GHNTrackingPage() {
 
   const updateSingleTracking = async (orderCode: string) => {
     if (!user) return;
-    if (isLocalBackend()) { toast.info(`Mã ${orderCode} chỉ có bản chụp dữ liệu cục bộ; chưa đồng bộ GHN.`); return; }
 
     setUpdatingOrderCode(orderCode);
 
     try {
+      if (isLocalBackend()) {
+        const result = await localApi.refreshGhnTracking({ orderCode });
+        if (result.failed) throw new Error(result.errors[0]?.message || 'Không cập nhật được vận đơn.');
+        if (result.updated) toast.success(`Đã cập nhật đơn hàng ${orderCode} từ GHN`);
+        else toast.info('Vận đơn hoặc đơn CRM đã kết thúc; không tự thay đổi trạng thái.');
+        await loadTrackingData();
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
         body: {
           action: 'save_tracking',
@@ -517,11 +604,17 @@ export default function GHNTrackingPage() {
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
     setCurrentPage(1);
+    setSelectedOrders(new Set());
   }, []);
 
   const printA5 = async (orderCodes: string[]) => {
     if (orderCodes.length === 0) return;
-    if (isLocalBackend()) { toast.info('In phiếu A5 GHN cần kết nối dịch vụ GHN; hệ thống cục bộ chưa tạo liên kết in.'); return; }
+    if (orderCodes.length > 50) { toast.error('Mỗi lần chỉ in tối đa 50 vận đơn. Hãy chọn lại trong trang hiện tại.'); return; }
+    if (isLocalBackend()) {
+      const ids = orderCodes.map((code) => trackingData.find((row) => row.ghn_order_code === code)?.id).filter((id): id is string => Boolean(id));
+      if (ids.length !== orderCodes.length) { toast.error('Có vận đơn không còn trong danh sách. Hãy tải lại trước khi in.'); return; }
+      setPrintDialogIds(ids); return;
+    }
     setPrinting(true);
     try {
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
@@ -575,6 +668,17 @@ export default function GHNTrackingPage() {
           <CardTitle>Theo dõi đơn hàng GHN</CardTitle>
         </CardHeader>
         <CardContent className="px-2 sm:px-6">
+          {isLocalBackend() && <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between" role="status" aria-live="polite">
+            <div className="space-y-1 text-sm">
+              <p className="font-medium">GHN: {checkingConnection ? 'Đang kiểm tra kết nối…' : connection?.connected ? 'Đã kết nối' : connection?.configured ? 'Đã cấu hình, kết nối chưa thành công' : connectionError ? 'Không kiểm tra được kết nối' : connection ? 'Chưa cấu hình kết nối' : 'Chưa kiểm tra kết nối'}</p>
+              <p className="text-muted-foreground">{connectionError || connection?.message || 'Kiểm tra kết nối trước khi cập nhật vận đơn.'}</p>
+              <p className="text-muted-foreground">Cập nhật trạng thái vận đơn đã lưu, tối đa 50 mã mỗi lượt. Lượt tự động chỉ lấy dữ liệu cũ hơn 1 giờ.</p>
+            </div>
+            <Button variant="outline" onClick={checkConnection} disabled={checkingConnection} className="shrink-0">
+              <RefreshCw className={`mr-2 h-4 w-4 ${checkingConnection ? 'animate-spin' : ''}`} />Kiểm tra lại kết nối
+            </Button>
+            {refreshCursor && <Button variant="ghost" disabled={loading} onClick={() => setRefreshCursor(null)}>Bắt đầu lượt mới</Button>}
+          </div>}
           <div className="space-y-4 mb-6">
             <div className="flex items-center gap-2">
               <Button
@@ -618,15 +722,15 @@ export default function GHNTrackingPage() {
                        Hiển thị {filteredData.length} / {totalTrackingCount} đơn hàng
                      </span>
                      {selectedOrders.size > 0 && (
-                       <Button
-                         onClick={() => printA5(Array.from(selectedOrders))}
-                         disabled={printing}
-                         variant="outline"
-                         className="gap-2"
-                       >
-                         {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                         In A5 ({selectedOrders.size})
-                       </Button>
+                       <><span className="text-xs text-muted-foreground">Chọn trong trang này, tối đa 50 mã/lần.</span><Button
+                           onClick={() => printA5(Array.from(selectedOrders))}
+                           disabled={printing}
+                           variant="outline"
+                           className="gap-2"
+                         >
+                           {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                           In A5 ({selectedOrders.size})
+                         </Button></>
                      )}
                      <Button
                        onClick={updateAllTracking}
@@ -634,7 +738,7 @@ export default function GHNTrackingPage() {
                        variant="outline"
                      >
                        {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                       Cập nhật tất cả
+                       {isLocalBackend() ? (refreshCursor ? 'Cập nhật lượt tiếp' : 'Cập nhật vận đơn đang giao') : 'Cập nhật tất cả'}
                      </Button>
                 </div>
               </div>
@@ -671,15 +775,15 @@ export default function GHNTrackingPage() {
                        Hiển thị {filteredData.length} / {totalTrackingCount} đơn hàng
                      </span>
                      {selectedOrders.size > 0 && (
-                       <Button
-                         onClick={() => printA5(Array.from(selectedOrders))}
-                         disabled={printing}
-                         variant="outline"
-                         className="gap-2"
-                       >
-                         {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                         In A5 ({selectedOrders.size})
-                       </Button>
+                       <><span className="text-xs text-muted-foreground">Chọn trong trang này, tối đa 50 mã/lần.</span><Button
+                           onClick={() => printA5(Array.from(selectedOrders))}
+                           disabled={printing}
+                           variant="outline"
+                           className="gap-2"
+                         >
+                           {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                           In A5 ({selectedOrders.size})
+                         </Button></>
                      )}
                      <Button
                        onClick={updateAllTracking}
@@ -687,7 +791,7 @@ export default function GHNTrackingPage() {
                        variant="outline"
                      >
                        {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                       Cập nhật tất cả
+                       {isLocalBackend() ? (refreshCursor ? 'Cập nhật lượt tiếp' : 'Cập nhật vận đơn đang giao') : 'Cập nhật tất cả'}
                      </Button>
                   </div>
                 </div>
@@ -697,11 +801,20 @@ export default function GHNTrackingPage() {
             
             {/* Filter Component */}
             <GHNTrackingFilters
+               filters={filters}
               onFiltersChange={handleFiltersChange}
               filteredCount={totalTrackingCount}
               totalCount={totalTrackingCount}
+               isLocal={localBackend}
             />
           </div>
+
+           {trackingError && paginatedData.length > 0 && (
+             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm" role="alert">
+               <span>{trackingError}</span>
+               <Button variant="outline" size="sm" onClick={() => void loadTrackingData()}>Thử lại</Button>
+             </div>
+           )}
 
           {!isMobile && (
           <div className="overflow-auto border rounded-lg max-h-[600px] w-full">
@@ -735,7 +848,7 @@ export default function GHNTrackingPage() {
                 {paginatedData.length === 0 ? (
                   <tr>
                     <td colSpan={15} className="border border-gray-300 px-3 py-4 text-center text-gray-500">
-                      {totalTrackingCount === 0 ? 'Chưa có dữ liệu tracking' : 'Không tìm thấy kết quả phù hợp với bộ lọc'}
+                      <TrackingListState loading={isTrackingLoading} error={trackingError} total={totalTrackingCount} onRetry={() => void loadTrackingData()} />
                     </td>
                   </tr>
                 ) : (
@@ -833,7 +946,7 @@ export default function GHNTrackingPage() {
             <div className="space-y-3">
               {paginatedData.length === 0 ? (
                 <div className="border rounded-lg p-6 text-center text-sm text-muted-foreground">
-                  {totalTrackingCount === 0 ? 'Chưa có dữ liệu tracking' : 'Không tìm thấy kết quả phù hợp với bộ lọc'}
+                  <TrackingListState loading={isTrackingLoading} error={trackingError} total={totalTrackingCount} onRetry={() => void loadTrackingData()} />
                 </div>
               ) : (
                 paginatedData.map((item, index) => {
@@ -970,10 +1083,10 @@ export default function GHNTrackingPage() {
             <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 text-sm text-muted-foreground">
               <div className="flex items-center gap-2 flex-wrap">
                 <span>Số dòng/trang:</span>
-                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); setSelectedOrders(new Set()); }}>
                   <SelectTrigger className="h-8 w-20"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {[25, 50, 100, 200].map(n => (
+                    {[25, 50].map(n => (
                       <SelectItem key={n} value={String(n)}>{n}</SelectItem>
                     ))}
                   </SelectContent>
@@ -981,11 +1094,11 @@ export default function GHNTrackingPage() {
                 <span className="text-xs sm:text-sm">{startIdx}-{endIdx} / {totalTrackingCount}</span>
               </div>
               <div className="flex items-center gap-1 justify-between sm:justify-end">
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={safePage === 1} className="hidden sm:inline-flex">«</Button>
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safePage === 1}>‹ Trước</Button>
+                <Button variant="outline" size="sm" onClick={() => { setCurrentPage(1); setSelectedOrders(new Set()); }} disabled={safePage === 1} className="hidden sm:inline-flex">«</Button>
+                <Button variant="outline" size="sm" onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); setSelectedOrders(new Set()); }} disabled={safePage === 1}>‹ Trước</Button>
                 <span className="px-2 whitespace-nowrap">{safePage} / {totalPages}</span>
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>Sau ›</Button>
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={safePage === totalPages} className="hidden sm:inline-flex">»</Button>
+                <Button variant="outline" size="sm" onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); setSelectedOrders(new Set()); }} disabled={safePage === totalPages}>Sau ›</Button>
+                <Button variant="outline" size="sm" onClick={() => { setCurrentPage(totalPages); setSelectedOrders(new Set()); }} disabled={safePage === totalPages} className="hidden sm:inline-flex">»</Button>
               </div>
             </div>
           )}
@@ -998,6 +1111,7 @@ export default function GHNTrackingPage() {
         trackingRecord={editingRecord}
         onSuccess={() => loadTrackingData()}
       />
+      <LocalGhnPrintDialog open={localBackend && printDialogIds.length > 0} onOpenChange={(open) => { if (!open) setPrintDialogIds([]); }} ids={printDialogIds} />
 
 
     </div>

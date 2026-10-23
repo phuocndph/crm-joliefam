@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Pool, types } from "pg";
 import { createHash } from "node:crypto";
 import { runtime } from '../runtime.js';
+import { BUSINESS_TIMEZONE, businessTimezoneConnectionOptions } from './business-timezone.js';
 
 // Keep PostgreSQL DATE values as YYYY-MM-DD strings for the date-based UI.
 types.setTypeParser(1082, (value) => value);
@@ -11,13 +12,15 @@ types.setTypeParser(1082, (value) => value);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
 export const databaseUrl = runtime.databaseUrl;
-export const pool = new Pool({ connectionString: databaseUrl, max: 10 });
+export const pool = new Pool({ ...businessTimezoneConnectionOptions(databaseUrl, process.env.PGOPTIONS), max: 10 });
 
 export async function bootstrapDatabase() {
   const migrationsDir = path.join(here, "migrations");
   const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
   const client = await pool.connect();
   try {
+    const timezone = (await client.query("select current_setting('TimeZone') timezone")).rows[0]?.timezone;
+    if (timezone !== BUSINESS_TIMEZONE) throw new Error('Múi giờ phiên cơ sở dữ liệu API không đúng Asia/Ho_Chi_Minh; kiểm tra cấu hình kết nối.');
     await client.query('BEGIN');
     await client.query("select pg_advisory_xact_lock(hashtextextended('local-schema-migration-bootstrap',0))");
     const initial = (await client.query(`select to_regclass('public.local_schema_migrations') ledger,

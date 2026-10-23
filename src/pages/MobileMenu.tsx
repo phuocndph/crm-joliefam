@@ -1,137 +1,49 @@
-import { useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useUserRole } from "@/hooks/useUserRole";
-import { useEmployeePermissions, type PermissionType } from "@/hooks/useEmployeePermissions";
-import { isLocalBackend, isLocalDemoEnabled, localAdminUser } from "@/lib/runtime-config";
-import { getLocalMe, hasLocalUserSession } from "@/lib/local-auth";
-import { Card } from "@/components/ui/card";
+import { useLocation } from 'react-router-dom';
+import { Star } from 'lucide-react';
 import {
-  Home, Users2, Package, ShoppingCart, FileText, CreditCard,
-  BarChart3, Headphones, Truck, Scissors, FileSignature, Receipt,
-  Wallet, BookOpen, Bot, Globe, Building, CircleDollarSign, Boxes, CalendarCheck2, WalletCards,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+  NAVIGATION_GROUPS,
+  navigationItemsByGroup,
+  navigationItemsInSection,
+} from '@/lib/navigation-catalog';
+import { NavigationItemRow } from '@/components/navigation/NavigationItemRow';
+import { MobileNavigationGroup } from '@/components/navigation/MobileNavigationGroup';
+import { NavigationSearch } from '@/components/navigation/NavigationSearch';
+import { useNavigation } from '@/components/navigation/NavigationContext';
 
-type Item = { icon: LucideIcon; label: string; path: string; perm?: PermissionType; perms?: PermissionType[]; selfOnly?: boolean; integrationAdmin?: boolean };
-
-const GROUPS: { title: string; items: Item[] }[] = [
-  {
-    title: "Kinh doanh",
-    items: [
-      { icon: Users2, label: "Khách hàng", path: "/customers", perm: "customers" },
-      { icon: Package, label: "Sản phẩm", path: "/products", perm: "products" },
-      { icon: ShoppingCart, label: "Đơn hàng", path: "/orders", perm: "orders" },
-      { icon: FileText, label: "Báo giá", path: "/quotes", perm: "quotes" },
-      { icon: Headphones, label: "Chăm sóc KH", path: "/customer-care", perm: "customer_care" },
-      { icon: Home, label: "Tổng quan", path: "/dashboard", perm: "dashboard" },
-    ],
-  },
-  {
-    title: "Tài chính",
-    items: [
-      { icon: CreditCard, label: "Dòng tiền", path: "/cash-flow", perm: "cash_flow" },
-      { icon: Wallet, label: "Giao dịch", path: "/transactions", perm: "transactions" },
-      { icon: FileSignature, label: "Hợp đồng", path: "/contracts", perm: "contracts" },
-      { icon: Receipt, label: "Hóa đơn ĐT", path: "/einvoices", perm: "contracts" },
-      { icon: CircleDollarSign, label: "Chi phí & Giá thành", path: "/cost-management", perms: ["cost_transactions", "cost_categories", "cost_centers", "cost_objects", "transaction_types", "cost_audit"] },
-    ],
-  },
-  {
-    title: "Vận hành",
-    items: [
-      { icon: Truck, label: "Vận chuyển GHN", path: "/ghn-tracking", perm: "ghn_tracking" },
-      { icon: Building, label: "ĐV vận chuyển", path: "/shipping-companies", perm: "shipping_companies" },
-      { icon: Scissors, label: "Vải", path: "/fabrics", perm: "fabric_management" },
-      { icon: Boxes, label: "Kho & vật tư", path: "/inventory-management", perm: "inventory_view" },
-      { icon: Boxes, label: "Lệnh SX", path: "/production-orders", perm: "production_view" },
-      { icon: CalendarCheck2, label: "Chấm công xưởng", path: "/production-attendance", perm: "production_view" },
-      { icon: CalendarCheck2, label: "Công & thu nhập của tôi", path: "/my-attendance", selfOnly: true },
-      { icon: WalletCards, label: "Thiết lập tiền lương", path: "/payroll-settings", perm: "payroll_view" },
-      { icon: BarChart3, label: "Báo cáo", path: "/reports", perm: "reports" },
-    ],
-  },
-  {
-    title: "Hệ thống",
-    items: [
-      { icon: Globe, label: 'API & Agent', path: '/integration-access', integrationAdmin: true },
-      { icon: Users2, label: "Quản lý người dùng", path: "/user-management", perm: "user_management" },
-      { icon: Users2, label: "Duyệt hồ sơ nhân sự", path: "/profile-review", perm: "user_management" },
-      { icon: BookOpen, label: "Tri thức", path: "/knowledge-base", perm: "knowledge_base" },
-      { icon: Bot, label: "Cài đặt AI", path: "/ai-settings" },
-      { icon: Globe, label: "Thu thập dữ liệu web", path: "/web-scraper" },
-    ],
-  },
-];
-
+/** Full mobile menu. Visibility, search, and pins are shared with the drawer. */
 export default function MobileMenu() {
-  const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
-  const [localMe, setLocalMe] = useState<{ worker_id: string | null } | null>(null);
-  useEffect(() => {
-    if (isLocalBackend()) {
-      if (hasLocalUserSession()) {
-        void getLocalMe().then(me => {
-          setLocalMe(me);
-          setUser({ ...localAdminUser, id: me.user_id, email: me.email, user_metadata: { first_name: me.first_name || "", last_name: me.last_name || "" } } as unknown as User);
-        }).catch(() => setUser(null));
-      } else { void supabase.auth.getUser().then(({ data }) => setUser(data.user)); }
-      return;
-    }
-    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
-  }, []);
-  const { role } = useUserRole(user);
-  const { hasPermission, loading } = useEmployeePermissions(user, role);
-  const isPriv = role === "admin" || role === "manager";
-  const canSee = (item: Item) => item.integrationAdmin ? isLocalBackend() && hasLocalUserSession() && role === 'admin' && user?.id !== 'local-admin' : item.selfOnly
-    ? Boolean(localMe?.worker_id)
-    : item.perms
-    ? item.perms.some((permission) => hasPermission(permission))
-    : item.perm ? hasPermission(item.perm) : isPriv;
+  const location = useLocation();
+  const { visibleItems, favoriteIds, visibleFavoriteItems, toggleFavorite } = useNavigation();
+  const topItems = navigationItemsInSection(visibleItems, 'top');
+  const accountItems = navigationItemsInSection(visibleItems, 'account');
+  const active = (path: string) => location.pathname === path;
+  const groupCount = NAVIGATION_GROUPS.reduce((count, group) => count + (navigationItemsByGroup(visibleItems, group.id).length ? 1 : 0), 0);
 
-  if (loading) {
-    return <div className="text-center text-muted-foreground py-8">Đang tải...</div>;
+  if (!topItems.length && !groupCount && !accountItems.length) {
+    return <div className="py-12 text-center text-muted-foreground">Bạn chưa được cấp quyền truy cập tính năng nào.<br />Vui lòng liên hệ quản trị viên.</div>;
   }
 
-  const groups = GROUPS
-    .map(g => ({ ...g, items: g.items.filter(canSee) }))
-    .filter(g => g.items.length > 0);
+  return <div className="space-y-4">
+    <NavigationSearch items={visibleItems} pathname={location.pathname} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} enableShortcut={false} />
 
-  if (groups.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        Bạn chưa được cấp quyền truy cập tính năng nào.
-        <br />Vui lòng liên hệ quản trị viên.
-      </div>
-    );
-  }
+    {topItems.length > 0 && <section className="space-y-1 rounded-lg border bg-card p-2">
+      <h2 className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Truy cập nhanh</h2>
+      {topItems.map(item => <NavigationItemRow key={item.id} item={item} active={active(item.path)} favorite={favoriteIds.includes(item.id)} onToggleFavorite={toggleFavorite} />)}
+    </section>}
 
-  return (
-    <div className="space-y-6">
-      {groups.map((g) => (
-        <div key={g.title} className="space-y-2">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide px-1">
-            {g.title}
-          </h2>
-          <div className="grid grid-cols-3 gap-3">
-            {g.items.map((it) => (
-              <Card
-                key={it.path}
-                onClick={() => navigate(it.path)}
-                className="flex flex-col items-center justify-center gap-2 p-3 aspect-square cursor-pointer active:scale-95 transition-transform hover:bg-accent"
-              >
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <it.icon className="h-5 w-5 text-primary" />
-                </div>
-                <span className="text-xs font-medium text-center leading-tight">
-                  {it.label}
-                </span>
-              </Card>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+    {visibleFavoriteItems.length > 0 && <section className="space-y-1 rounded-lg border bg-card p-2">
+      <h2 className="flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><Star className="h-3.5 w-3.5 fill-current" />Đã ghim</h2>
+      {visibleFavoriteItems.map(item => <NavigationItemRow key={`pin-${item.id}`} item={item} active={active(item.path)} favorite onToggleFavorite={toggleFavorite} />)}
+    </section>}
+
+    {NAVIGATION_GROUPS.map(group => {
+      const items = navigationItemsByGroup(visibleItems, group.id);
+      return items.length ? <section key={group.id} className="rounded-lg border bg-card p-2"><MobileNavigationGroup group={group} items={items} pathname={location.pathname} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} /></section> : null;
+    })}
+
+    {accountItems.length > 0 && <section className="space-y-1 rounded-lg border bg-card p-2">
+      <h2 className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tài khoản</h2>
+      {accountItems.map(item => <NavigationItemRow key={item.id} item={item} active={active(item.path)} />)}
+    </section>}
+  </div>;
 }

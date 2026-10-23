@@ -143,7 +143,7 @@ try {
   Assert-Decimal ([decimal]$run.deductions_total) 1000000 0.01 "Payroll deduction total is wrong"
   Assert-Decimal ([decimal]$run.payment_total) 5224231 0.01 "Payroll rounding total is wrong"
   $overtimeItem = @($run.items | Where-Object item_type -eq "OVERTIME_PAY") | Select-Object -First 1
-  Assert-True ($null -ne $overtimeItem -and $overtimeItem.details.rate_basis -eq "MONTHLY_DERIVED_HOURLY_RATE") "Monthly overtime was not resolved from the monthly salary"
+  Assert-True ($null -ne $overtimeItem -and $overtimeItem.details.rate_snapshot.attendance_method -eq "DAY" -and [decimal]$overtimeItem.details.calendar_snapshot.standard_days -eq 26 -and [decimal]$overtimeItem.details.calendar_snapshot.daily_minutes -eq 480 -and [decimal]$overtimeItem.details.rule_snapshot.multiplier -eq 1.5) "Monthly overtime must use its approved monthly base, calendar and explicit multiplier snapshots"
   foreach ($source in @(
     @{ Id = [string]$day.id; Label = "day attendance" },
     @{ Id = [string]$hour.id; Label = "hour attendance" },
@@ -154,22 +154,23 @@ try {
   }
 
   # A caller can retain a now-inactive worker id while the page is refreshing.
-  # It remains a valid, auditable request scope, but the server resolves only
-  # employees eligible for this period and must not pull this worker's facts.
+  # A suspended worker with earned approved facts remains eligible for settlement.
+  # Excluding those facts would silently drop the known 180000 piece payment.
   Invoke-LocalSql "update local_workers set payroll_status='SUSPENDED' where id='$($workers[2].id)';"
   $scopeIds = @([string]$workers[0].id, [string]$workers[1].id)
   $scopedRequestIds = @($scopeIds + [string]$workers[2].id)
   $scopeCsv = $scopedRequestIds -join ","
   $scopedPreflight = Invoke-Json "GET" "/api/payroll/preflight?period_start=2026-09-01&period_end=2026-09-30&standard_days=26&worker_ids=$scopeCsv"
-  Assert-True ($scopedPreflight.is_ready -eq $true -and @($scopedPreflight.workers).Count -eq 2) "Scoped payroll preflight did not resolve exactly the active requested employees"
-  Assert-True (@($scopedPreflight.requested_worker_ids).Count -eq 3 -and @($scopedPreflight.resolved_worker_ids).Count -eq 2 -and @($scopedPreflight.resolved_worker_ids) -notcontains [string]$workers[2].id) "Inactive requested worker was not resolved out of payroll preflight"
+  Assert-True ($scopedPreflight.is_ready -eq $true -and @($scopedPreflight.workers).Count -eq 3) "Scoped payroll preflight must retain the suspended worker's earned settlement"
+  Assert-True (@($scopedPreflight.requested_worker_ids).Count -eq 3 -and @($scopedPreflight.resolved_worker_ids).Count -eq 3 -and @($scopedPreflight.resolved_worker_ids) -contains [string]$workers[2].id) "Inactive worker with approved facts was omitted from settlement"
   $emptyScopePreflight = Invoke-Json "GET" "/api/payroll/preflight?period_start=2026-09-01&period_end=2026-09-30&standard_days=26&worker_ids="
   Assert-True ($emptyScopePreflight.is_ready -eq $false -and @($emptyScopePreflight.issues | Where-Object code -eq "NO_ACTIVE_WORKERS").Count -eq 1) "An explicit empty payroll scope must not fall back to all employees"
   $scopedKey = "v2-scoped-run-$PID"
   $scopedRun = Invoke-Json "POST" "/api/payroll/runs" @{ period_start = "2026-09-01"; period_end = "2026-09-30"; standard_days = 26; worker_ids = $scopedRequestIds; idempotency_key = $scopedKey }
-  Assert-True ([int]$scopedRun.record_count -eq 2) "Scoped payroll run must contain exactly two employees"
-  Assert-True (@($scopedRun.items | Where-Object { [string]$_.worker_id -eq [string]$workers[2].id }).Count -eq 0) "Inactive requested employee source leaked into scoped payroll run"
-  Assert-True (@($scopedRun.config_snapshot.worker_scope.requested_worker_ids) -contains [string]$workers[2].id -and @($scopedRun.config_snapshot.worker_scope.resolved_worker_ids) -notcontains [string]$workers[2].id) "Payroll scope snapshot did not preserve requested versus resolved worker ids"
+  Assert-True ([int]$scopedRun.record_count -eq 3) "Scoped payroll run must include all three employees with earned facts"
+  Assert-True (@($scopedRun.items | Where-Object { [string]$_.worker_id -eq [string]$workers[2].id -and [string]$_.source_id -eq [string]$entry.id }).Count -eq 1) "Suspended employee's approved production source must be paid exactly once"
+  Assert-True (@($scopedRun.config_snapshot.worker_scope.requested_worker_ids) -contains [string]$workers[2].id -and @($scopedRun.config_snapshot.worker_scope.resolved_worker_ids) -contains [string]$workers[2].id) "Payroll scope snapshot must retain settlement worker"
+  Assert-Decimal ([decimal]$scopedRun.gross_total) 6224230.769231 0.01 "Suspended settlement must retain the original full-source financial total"
   $scopeConflict = $false
   try {
     Invoke-Json "POST" "/api/payroll/runs" @{ period_start = "2026-09-01"; period_end = "2026-09-30"; standard_days = 26; worker_ids = @([string]$workers[0].id, [string]$workers[2].id); idempotency_key = $scopedKey } | Out-Null

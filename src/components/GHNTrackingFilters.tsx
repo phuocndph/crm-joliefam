@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Search, ChevronDown, X } from 'lucide-react';
 
-interface FilterState {
+export interface FilterState {
   searchText: string;
   status: string[];
   sortBy: string;
@@ -14,84 +14,74 @@ interface FilterState {
 }
 
 interface GHNTrackingFiltersProps {
+  filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
   filteredCount: number;
   totalCount: number;
+  isLocal: boolean;
 }
 
 const statusOptions = [
-  { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'delivered', label: 'Đã giao hàng' },
+  { value: 'self_delivered', label: 'Tự giao thành công' },
   { value: 'delivering', label: 'Đang giao hàng' },
   { value: 'storing', label: 'Đang lưu kho' },
   { value: 'transporting', label: 'Đang vận chuyển' },
+  { value: 'sorting', label: 'Đang phân loại' },
   { value: 'picking', label: 'Đang lấy hàng' },
   { value: 'ready_to_pick', label: 'Sẵn sàng lấy hàng' },
+  { value: 'picked', label: 'Đã lấy hàng' },
   { value: 'returned', label: 'Đã hoàn hàng' },
+  { value: 'return', label: 'Chờ chuyển hoàn' },
+  { value: 'waiting_to_return', label: 'Chờ hoàn hàng' },
   { value: 'returning', label: 'Đang hoàn hàng' },
+  { value: 'return_transporting', label: 'Đang vận chuyển hoàn' },
+  { value: 'return_sorting', label: 'Đang phân loại hoàn' },
+  { value: 'return_fail', label: 'Hoàn hàng thất bại' },
   { value: 'delivery_fail', label: 'Giao hàng thất bại' },
+  { value: 'exception', label: 'Bất thường' },
   { value: 'cancel', label: 'Đã hủy' },
+  { value: 'cancelled', label: 'Đã hủy đơn' },
   { value: 'lost', label: 'Thất lạc' },
-  { value: 'damage', label: 'Hư hỏng' }
+  { value: 'damage', label: 'Hư hỏng' },
+  { value: 'local_only', label: 'Chưa đồng bộ GHN' },
 ];
 
 const sortOptions = [
-  { value: 'status', label: 'Trạng thái đơn hàng' },
+  { value: 'priority', label: 'Ưu tiên xử lý', localOnly: true },
   { value: 'customer_name', label: 'Tên khách hàng' },
-  { value: 'created_date', label: 'Ngày tạo đơn' }
+  { value: 'ghn_status', label: 'Mã trạng thái GHN' },
+  { value: 'created_date', label: 'Ngày tạo đơn' },
 ];
 
 export function GHNTrackingFilters({
+  filters,
   onFiltersChange,
   filteredCount,
-  totalCount
+  totalCount,
+  isLocal,
 }: GHNTrackingFiltersProps) {
-  const [filters, setFilters] = useState<FilterState>({
-    searchText: '',
-    status: ['all'],
-    sortBy: 'none',
-    sortOrder: 'asc'
-  });
-
   const updateFilters = (newFilters: Partial<FilterState>) => {
     const updatedFilters = { ...filters, ...newFilters };
-    setFilters(updatedFilters);
     onFiltersChange(updatedFilters);
   };
 
   const handleStatusChange = (statusValue: string, checked: boolean) => {
     let newStatus = [...filters.status];
-    
-    if (statusValue === 'all') {
-      newStatus = checked ? ['all'] : [];
+    if (checked) {
+      if (!newStatus.includes(statusValue)) newStatus.push(statusValue);
     } else {
-      if (checked) {
-        // Remove 'all' if adding specific status
-        newStatus = newStatus.filter(s => s !== 'all');
-        newStatus.push(statusValue);
-      } else {
-        newStatus = newStatus.filter(s => s !== statusValue);
-      }
-      
-      // If no status selected, default to 'all'
-      if (newStatus.length === 0) {
-        newStatus = ['all'];
-      }
+      newStatus = newStatus.filter(s => s !== statusValue);
     }
-    
     updateFilters({ status: newStatus });
   };
 
   const clearStatus = (statusValue: string) => {
-    let newStatus = filters.status.filter(s => s !== statusValue);
-    if (newStatus.length === 0) {
-      newStatus = ['all'];
-    }
-    updateFilters({ status: newStatus });
+    updateFilters({ status: filters.status.filter(s => s !== statusValue) });
   };
 
   const getStatusDisplayText = () => {
-    if (filters.status.includes('all')) {
+    if (filters.status.length === 0) {
       return 'Tất cả trạng thái';
     }
     if (filters.status.length === 1) {
@@ -135,7 +125,7 @@ export function GHNTrackingFilters({
             <PopoverContent className="w-64 p-0 z-50 bg-white" align="start">
               <div className="p-4 max-h-64 overflow-y-auto">
                 {/* Selected Status Tags */}
-                {!filters.status.includes('all') && filters.status.length > 0 && (
+                {filters.status.length > 0 && (
                   <div className="mb-3 flex flex-wrap gap-1">
                     {filters.status.map(statusValue => {
                       const option = statusOptions.find(opt => opt.value === statusValue);
@@ -153,6 +143,9 @@ export function GHNTrackingFilters({
                     })}
                   </div>
                 )}
+                <Button variant="ghost" size="sm" className="mb-2 h-8 px-2" onClick={() => updateFilters({ status: [] })}>
+                  Tất cả trạng thái
+                </Button>
                 
                 {/* Status Options */}
                 <div className="space-y-2">
@@ -185,18 +178,18 @@ export function GHNTrackingFilters({
               <SelectValue placeholder="Chọn cách sắp xếp" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">Không sắp xếp</SelectItem>
-              {sortOptions.map((option) => (
+              {sortOptions.filter((option) => isLocal || !option.localOnly).map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {!isLocal && <p className="mt-1 text-xs text-muted-foreground">Ưu tiên xử lý chỉ khả dụng ở Local; bản cloud sắp xếp theo dữ liệu được chọn.</p>}
         </div>
 
         {/* Sort Order */}
-        {filters.sortBy && filters.sortBy !== 'none' && (
+        {filters.sortBy !== 'priority' && (
           <div className="sm:w-48">
             <label className="text-sm font-medium mb-2 block">Thứ tự</label>
             <Select value={filters.sortOrder} onValueChange={(value: 'asc' | 'desc') => updateFilters({ sortOrder: value })}>
@@ -204,8 +197,13 @@ export function GHNTrackingFilters({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="asc">A → Z</SelectItem>
-                <SelectItem value="desc">Z → A</SelectItem>
+                {filters.sortBy === 'created_date' ? <>
+                  <SelectItem value="desc">Mới nhất</SelectItem>
+                  <SelectItem value="asc">Cũ nhất</SelectItem>
+                </> : <>
+                  <SelectItem value="asc">A → Z</SelectItem>
+                  <SelectItem value="desc">Z → A</SelectItem>
+                </>}
               </SelectContent>
             </Select>
           </div>
@@ -214,5 +212,3 @@ export function GHNTrackingFilters({
     </div>
   );
 }
-
-export type { FilterState };

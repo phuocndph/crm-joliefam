@@ -4,6 +4,8 @@ import type { PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { pool } from "./db/bootstrap.js";
 import { businessDateKey } from './business-date.js';
+import {snapshotProductionImages} from './production-reference-images.js';
+import {executableEstimateOutput} from './production-uncut-cancellations.js';
 
 type Body = Record<string, unknown>;
 type Row = Record<string, any>;
@@ -68,7 +70,7 @@ const currentProductionLine = (lines: Row[], saved: Row) =>
   lines.find((line) => line.source_line_key === saved.source_line_key)
   || lines.find((line) => line.source_line_index === saved.source_line_index && String(saved.source_line_key || "").split(":").length > 3);
 
-async function normalizeOrderLines(client: Pick<PoolClient, "query">, order: Row) {
+export async function normalizeOrderLines(client: Pick<PoolClient, "query">, order: Row) {
   const items = Array.isArray(order.items) ? order.items.map(canonicalItem) : [];
   const candidates = items.map(sourceProductCandidate).filter((id) => uuidPattern.test(id));
   const products = candidates.length ? (await client.query("select id,sku,name from local_products where id=any($1::uuid[]) and is_active", [candidates])).rows : [];
@@ -506,10 +508,11 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
           const number = `SX-${businessDateKey().slice(0,7).replace("-","")}-${randomUUID().slice(0,8).toUpperCase()}`;
           const orderUuid = uuidPattern.test(String(request.order_id)) ? request.order_id : null;
           const po = (await client.query(`insert into local_production_orders(production_order_number,production_batch_number,product_id,quantity_planned,source_type,source_id,order_id,planned_start_date,planned_end_date,production_order_group_id,created_by,dispatch_priority,dispatch_reference,dispatch_notes,sales_request_id,workflow_generation)
-            values($1,$1,$2,$3,'FROM_ORDER',$4,$4,$5,$6,$7,$8,$9,$10,$11,$12,'WORKFLOW_V2') returning *`, [number, line.product_id, qty, orderUuid, req.body.planned_start_date || null, req.body.planned_end_date || request.due_date || null, groupId, d.actor(), priority, req.body.reference || null, req.body.notes || request.notes || null, request.id])).rows[0];
+            values($1,$1,$2,$3,'FROM_ORDER',$4,$4,$5,$6,$7,$8,$9,$10,$11,$12,'WORKFLOW_V3') returning *`, [number, line.product_id, qty, orderUuid, req.body.planned_start_date || null, req.body.planned_end_date || request.due_date || null, groupId, d.actor(), priority, req.body.reference || null, req.body.notes || request.notes || null, request.id])).rows[0];
           const snapshot = line.source_line_snapshot || {};
-          const item = (await client.query(`insert into local_production_order_items(production_order_id,product_id,product_sku,product_name,fabric_variant_id,source_order_item_key,color,size,dimensions,planned_quantity,notes,sales_request_line_id)
-            values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`, [po.id, line.product_id, line.product_sku, line.product_name, input.fabric_variant_id || snapshot.fabric_variant_id || null, line.source_line_key, input.color || snapshot.color || null, input.size || snapshot.size || null, input.dimensions || snapshot.dimensions || snapshot.specifications || null, qty, input.notes || req.body.notes || null, line.id])).rows[0];
+          const images=await snapshotProductionImages(client,line.product_id,input.reference_images);
+          const item = (await client.query(`insert into local_production_order_items(production_order_id,product_id,product_sku,product_name,fabric_variant_id,source_order_item_key,color,size,dimensions,planned_quantity,notes,sales_request_line_id,reference_images)
+            values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) returning *`, [po.id, line.product_id, line.product_sku, line.product_name, input.fabric_variant_id || snapshot.fabric_variant_id || null, line.source_line_key, input.color || snapshot.color || null, input.size || snapshot.size || null, input.dimensions || snapshot.dimensions || snapshot.specifications || null, qty, input.notes || req.body.notes || null, line.id,JSON.stringify(images)])).rows[0];
           const batch = (await client.query("insert into local_production_batches(production_order_id,batch_number,planned_quantity,status,created_by) values($1,$2,$3,'PLANNED',$4) returning *", [po.id, number, qty, d.actor()])).rows[0];
           await client.query("insert into local_production_sales_allocations(request_line_id,production_order_id,order_item_id,production_batch_id,quantity,created_by) values($1,$2,$3,$4,$5,$6)", [line.id, po.id, item.id, batch.id, qty, d.actor()]);
           orders.push({ ...po, order_item_id: item.id, production_batch_id: batch.id, request_line_id: line.id });
@@ -546,14 +549,31 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
 
   app.get("/api/production-orders/:id/cutting-estimates", async (req, res) => {
     try {
-      await capability(pool, ["production_cutting_plan", "production_view", "production_manage", "production_operations"]);
+      await capability(pool, ["production_cutting_plan", "production_view", "production_manage", "production_operations", "inventory_view"]);
       const estimates = (await pool.query(`select e.* from local_cutting_estimates e where e.production_order_id=$1 order by e.version_number desc`, [req.params.id])).rows;
       const ids = estimates.map((row: Row) => row.id);
       const lines = ids.length ? (await pool.query(`select l.*,i.code inventory_item_code,i.name inventory_item_name,w.name warehouse_name,
         coalesce((select -sum(m.quantity_delta) from local_inventory_movements m where m.cutting_estimate_line_id=l.id and m.quantity_delta<0),0) issued_quantity,
         coalesce((select sum(m.quantity_delta) from local_inventory_movements m where m.cutting_estimate_line_id=l.id and m.quantity_delta>0 and m.source_movement_id is not null),0) returned_quantity
         from local_cutting_estimate_lines l join local_inventory_items i on i.id=l.inventory_item_id join local_inventory_warehouses w on w.id=l.warehouse_id where l.estimate_id=any($1::uuid[]) order by l.created_at`, [ids])).rows : [];
-      res.json(estimates.map((estimate: Row) => ({ ...estimate, lines: lines.filter((line: Row) => line.estimate_id === estimate.id) })));
+      for(const line of lines){const estimate=estimates.find(e=>e.id===line.estimate_id);const output=estimate?.estimate_kind==='BASE'?await executableEstimateOutput(pool,estimate.production_batch_id,line.order_item_id,line.output_quantity):line.output_quantity;line.executable_output_quantity=output;line.required_quantity=cuttingRequirementForOutput(line,output);line.reconciliation_required=line.calculation_method==='MANUAL_MEASURED'&&Number(output)<Number(line.output_quantity);}
+      // Quantity only, restricted to the exact item/warehouse pairs of this estimate.
+      // Explicit planner/full warehouse permissions are operational rights, even for an employee.
+      const rights=(await pool.query('select permission_type from local_employee_permissions where user_id=$1 and enabled',[d.actor()])).rows.map(r=>r.permission_type);
+      const stockAllowed=d.role()!=='team_leader'&&(privileged()||rights.includes('production_cutting_plan')||['inventory_view','inventory_documents','inventory_confirm'].every(r=>rights.includes(r)));
+      const result=[];
+      for(const estimate of estimates){
+        const scoped=lines.filter((line:Row)=>line.estimate_id===estimate.id);
+        const stock=stockAllowed&&scoped.length?(await pool.query(`with demand as (
+          select inventory_item_id,warehouse_id,sum(greatest(required_quantity-issued_quantity+returned_quantity,0)) required_remaining
+          from jsonb_to_recordset($1::jsonb) as x(inventory_item_id uuid,warehouse_id uuid,required_quantity numeric,issued_quantity numeric,returned_quantity numeric)
+          group by inventory_item_id,warehouse_id), quantities as (
+          select d.*,i.base_unit unit,coalesce((select sum(m.quantity_delta) from local_inventory_movements m where m.inventory_item_id=d.inventory_item_id and m.warehouse_id=d.warehouse_id),0) stock_quantity
+          from demand d join local_inventory_items i on i.id=d.inventory_item_id)
+          select *,greatest(required_remaining-stock_quantity,0) shortage_quantity from quantities order by inventory_item_id,warehouse_id`,[JSON.stringify(scoped.map(l=>({inventory_item_id:l.inventory_item_id,warehouse_id:l.warehouse_id,required_quantity:l.required_quantity,issued_quantity:l.issued_quantity,returned_quantity:l.returned_quantity})))])).rows:undefined;
+        result.push({...estimate,lines:scoped,...(stockAllowed?{stock}: {})});
+      }
+      res.json(result);
     } catch (error) { d.sendError(res, error); }
   });
 
@@ -565,7 +585,7 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
         const estimateKind = String(req.body.estimate_kind || "BASE").trim().toUpperCase();
         if (!["BASE", "REMAKE"].includes(estimateKind)) fail("Loại dự toán cắt không hợp lệ.");
         const order = (await client.query("select * from local_production_orders where id=$1 for update", [req.params.id])).rows[0];
-        if (!order || order.workflow_generation !== "WORKFLOW_V2") fail("Lệnh legacy chỉ được xem; hãy tạo đợt sản xuất mới theo quy trình chuẩn.", 409);
+        if (!order || !['WORKFLOW_V2','WORKFLOW_V3'].includes(order.workflow_generation)) fail("Lệnh legacy chỉ được xem; hãy tạo đợt sản xuất mới theo quy trình chuẩn.", 409);
         const batch = (await client.query("select * from local_production_batches where id=$1 and production_order_id=$2 for update", [batchId, order.id])).rows[0];
         if (!batch) fail("Lô không thuộc lệnh sản xuất.");
         let baseEstimate: Row | null = null, sourceEvent: Row | null = null, remakeQuantity: string | null = null;
@@ -745,7 +765,9 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
           const net = (await client.query("select coalesce(-sum(quantity_delta),0) quantity from local_inventory_movements where cutting_estimate_line_id=$1", [line.id])).rows[0].quantity;
           const drafts = (await client.query(`select coalesce(sum(dl.quantity),0) quantity from local_inventory_document_lines dl
             join local_inventory_documents d on d.id=dl.document_id where dl.cutting_estimate_line_id=$1 and d.document_type='ISSUE' and d.status='DRAFT' and d.id<>$2`, [line.id, doc.id])).rows[0].quantity;
-          if ((await client.query("select $1::numeric+$2::numeric+$3::numeric>$4::numeric exceeds", [net, drafts, qty, line.estimated_quantity])).rows[0].exceeds) fail("Tổng cấp ròng và phiếu nháp vượt dự toán đã duyệt.", 409);
+          const output=estimate.estimate_kind==='BASE'?await executableEstimateOutput(client,estimate.production_batch_id,line.order_item_id,line.output_quantity):line.output_quantity;
+          const required=cuttingRequirementForOutput(line,output);
+          if ((await client.query("select $1::numeric+$2::numeric+$3::numeric>$4::numeric exceeds", [net, drafts, qty, required])).rows[0].exceeds) fail("Tổng cấp ròng và phiếu nháp vượt nhu cầu còn thực hiện theo dự toán đã duyệt.", 409);
           const created = await client.query(`insert into local_inventory_document_lines(document_id,inventory_item_id,quantity,unit,description,cutting_estimate_line_id)
             values($1,$2,$3,(select base_unit from local_inventory_items where id=$2),$4,$5) returning *`, [doc.id, line.inventory_item_id, qty, input.description || null, line.id]);
           documentLines.push(created.rows[0]);
@@ -760,7 +782,9 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
     try {
       const month = String(req.query.month || businessDateKey().slice(0, 7));
       if (!/^\d{4}-\d{2}$/.test(month)) fail("Tháng không hợp lệ.");
-      const worker = (await pool.query("select * from local_workers where user_id=$1 and is_active limit 1", [d.actor()])).rows[0];
+      const linkedWorkers=(await pool.query("select * from local_workers where user_id=$1 and is_active",[d.actor()])).rows;
+      if(linkedWorkers.length>1)fail('Tài khoản liên kết nhiều hồ sơ nhân sự đang hoạt động; cần quản lý kiểm tra.',409);
+      const worker = linkedWorkers[0];
       if (!worker) fail("Tài khoản chưa liên kết nhân sự.", 403);
       const reports = (await pool.query(`select e.id,e.work_date,e.quantity_good,e.status,e.production_entry_id,e.created_at,e.is_payable,a.piece_rate_code,a.rate_unit,o.production_order_number,b.batch_number,
         pe.rate_amount approved_rate,pe.calculated_amount approved_amount,pe.workflow_status approved_status,
@@ -777,7 +801,7 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
         const pendingAvailable = row.status === "SUBMITTED" && Number(row.profile_count) === 1 && row.piece_enabled === true && rateMatches && row.is_payable !== false;
         const unavailable_reason = approved ? null : row.is_payable === false ? "Báo cáo sửa/làm lại không tính lương" : Number(row.profile_count) !== 1 || row.piece_enabled !== true ? "Hồ sơ lương sản lượng thiếu, trùng hoặc chưa bật" : !rateMatches ? "Thiếu, trùng hoặc sai đơn vị đơn giá hiệu lực" : null;
         const eligibility_warning = approved && (Number(row.profile_count) !== 1 || row.piece_enabled !== true) ? "Hồ sơ hiện tại không còn đủ điều kiện sản lượng; khoản đã duyệt vẫn giữ nguyên theo ảnh chụp tại thời điểm duyệt." : null;
-        return { ...row, source_kind:'ASSIGNED_WORK', pending_amount: pendingAvailable ? Number(row.quantity_good) * Number(row.pending_rate) : null, approved_amount: approved ? Number(row.approved_amount) : null, unavailable_reason, eligibility_warning };
+        return { ...row, source_kind:'ASSIGNED_WORK', pending_eligible:pendingAvailable,pending_amount:null, approved_amount: approved ? row.approved_amount : null, unavailable_reason, eligibility_warning };
       });
       const standalone = (await pool.query(`select pe.id,pe.work_date,pe.quantity quantity_good,pe.workflow_status status,pe.id production_entry_id,pe.created_at,true is_payable,
         pe.piece_rate_code,pe.rate_unit_snapshot rate_unit,null::text production_order_number,null::text batch_number,pe.rate_amount approved_rate,
@@ -793,14 +817,17 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
           const approved = ['APPROVED','LOCKED'].includes(row.status) && row.approved_amount != null;
           const rateMatches = Number(row.rate_count) === 1 && row.pending_rate != null && String(row.pending_rate_unit || 'PIECE') === String(row.rate_unit || 'PIECE');
           const pendingAvailable = row.status === 'SUBMITTED' && Number(row.profile_count) === 1 && row.piece_enabled === true && rateMatches;
-          return { ...row, source_kind:'SELF_REPORTED_OUTPUT', pending_amount: pendingAvailable ? Number(row.quantity_good) * Number(row.pending_rate) : null,
-            approved_amount: approved ? Number(row.approved_amount) : null,
+          return { ...row, source_kind:'SELF_REPORTED_OUTPUT',pending_eligible:pendingAvailable,pending_amount:null,
+            approved_amount: approved ? row.approved_amount : null,
             unavailable_reason: row.status === 'SUBMITTED' && !pendingAvailable ? Number(row.profile_count) !== 1 || row.piece_enabled !== true ? 'Hồ sơ lương sản lượng thiếu, trùng hoặc chưa bật' : 'Thiếu, trùng hoặc sai đơn vị đơn giá hiệu lực' : null,
             eligibility_warning: approved && (Number(row.profile_count) !== 1 || row.piece_enabled !== true) ? 'Hồ sơ hiện tại không còn đủ điều kiện sản lượng; khoản đã duyệt vẫn giữ nguyên theo ảnh chụp tại thời điểm duyệt.' : null };
         });
       rows.push(...standalone);
+      const pending=(await pool.query('select id,case when pending_eligible then round(quantity_good*pending_rate,2) else null end pending_amount from jsonb_to_recordset($1::jsonb) as x(id text,quantity_good numeric,pending_rate numeric,pending_eligible boolean)',[JSON.stringify(rows)])).rows;
+      for(const row of rows)row.pending_amount=pending.find(x=>x.id===row.id)?.pending_amount??null;
+      const totals=(await pool.query("select coalesce(sum(pending_amount),0) pending_total,coalesce(sum(approved_amount),0) approved_total,coalesce(sum(approved_amount) filter(where approved_status='LOCKED'),0) locked_total,coalesce(sum(pending_amount) filter(where work_date=current_date),0) today_pending_total,coalesce(sum(approved_amount) filter(where work_date=current_date),0) today_approved_total from jsonb_to_recordset($1::jsonb) as x(pending_amount numeric,approved_amount numeric,approved_status text,work_date date)",[JSON.stringify(rows)])).rows[0];
       rows.sort((a,b) => String(b.work_date).localeCompare(String(a.work_date)) || String(b.created_at).localeCompare(String(a.created_at)));
-      res.json({ worker: { id: worker.id, employee_code: worker.employee_code, display_name: worker.display_name }, month, income_scope: "PRODUCT_OUTPUT_ONLY", pending_total: rows.reduce((sum, row) => sum + Number(row.pending_amount || 0), 0), approved_total: rows.reduce((sum, row) => sum + Number(row.approved_amount || 0), 0), locked_total: rows.filter((row) => row.approved_status === "LOCKED").reduce((sum, row) => sum + Number(row.approved_amount || 0), 0), rows });
+      res.json({ worker: { id: worker.id, employee_code: worker.employee_code, display_name: worker.display_name }, month, income_scope: "PRODUCT_OUTPUT_ONLY", ...totals, rows });
     } catch (error) { d.sendError(res, error); }
   });
 }

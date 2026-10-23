@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import LocalAiModelPicker, {type LocalAiModelCatalog} from '@/components/LocalAiModelPicker';
 type Provider='local'|'f5quota'|'beeknoee';
 type Status=Awaited<ReturnType<typeof localApi.aiProviders>>;
-export default function LocalAiProviderPanel({admin,locked,beginMutation,endMutation,onCatalog,onSelected}:{admin:boolean;locked:boolean;beginMutation:()=>boolean;endMutation:()=>void;onCatalog:(catalog:LocalAiModelCatalog)=>void;onSelected:(model:string,provider:Provider)=>void}) {
+export default function LocalAiProviderPanel({admin,locked,beginMutation,endMutation,onCatalog,onSelected,autoLoadModels=true}:{admin:boolean;locked:boolean;beginMutation:()=>boolean;endMutation:()=>void;onCatalog:(catalog:LocalAiModelCatalog)=>void;onSelected:(model:string,provider:Provider)=>void;autoLoadModels?:boolean}) {
  const [status,setStatus]=useState<Status|null>(null),[provider,setProvider]=useState<Provider>('local'),[model,setModel]=useState(''),[key,setKey]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [catalog,setCatalog]=useState<LocalAiModelCatalog>({provider:'local',models:[],loading:false,error:'',loaded:false});
  const generation=useRef(0), mounted=useRef(true), providerRef=useRef<Provider>('local'), onCatalogRef=useRef(onCatalog);
@@ -23,11 +23,11 @@ export default function LocalAiProviderPanel({admin,locked,beginMutation,endMuta
   try {const result=await localApi.aiProviderModels(value,transientKey);if(!mounted.current||request!==generation.current||providerRef.current!==value)return;publish({provider:value,models:result.data,loading:false,error:'',loaded:true});}
   catch(e){if(!mounted.current||request!==generation.current||providerRef.current!==value)return;publish({provider:value,models:[],loading:false,error:e instanceof Error?e.message:'Không tải được mô hình. Vui lòng thử lại.',loaded:false});}
  },[admin,publish]);
- const applyStatus=useCallback((value:Status)=>{generation.current++;setKey('');setStatus(value);setProvider(value.selected);providerRef.current=value.selected;setModel(value.providers.find(p=>p.provider===value.selected)?.model || '');setError('');publish({provider:value.selected,models:[],loading:false,error:'',loaded:false});if(value.providers.some(p=>p.provider===value.selected&&p.configured))void loadModels(value.selected);},[loadModels,publish]);
+ const applyStatus=useCallback((value:Status)=>{generation.current++;setKey('');setStatus(value);setProvider(value.selected);providerRef.current=value.selected;setModel(value.providers.find(p=>p.provider===value.selected)?.model || '');setError('');publish({provider:value.selected,models:[],loading:false,error:'',loaded:false});if(autoLoadModels&&value.providers.some(p=>p.provider===value.selected&&p.configured))void loadModels(value.selected);},[autoLoadModels,loadModels,publish]);
  const load=useCallback(async()=>{const request=++generation.current;try{const value=await localApi.aiProviders();if(!mounted.current||request!==generation.current)return;applyStatus(value);}catch(e){if(mounted.current&&request===generation.current)setError(e instanceof Error?e.message:'Không tải được kết nối AI.');}},[applyStatus]);
  const dispose=useCallback(()=>{mounted.current=false;generation.current++;},[]);
  useEffect(()=>{mounted.current=true;void load();return dispose;},[load,dispose]);
- const select=(value:Provider)=>{resetCatalog(value);setProvider(value);setKey('');setModel(status?.providers.find(p=>p.provider===value)?.model || (value==='f5quota'?'gpt-5.6-sol':'gemini-2.5-flash'));if(status?.providers.some(p=>p.provider===value&&p.configured))void loadModels(value);};
+ const select=(value:Provider)=>{resetCatalog(value);setProvider(value);setKey('');setModel(status?.providers.find(p=>p.provider===value)?.model || (value==='f5quota'?'gpt-5.6-sol':'gemini-2.5-flash'));if(autoLoadModels&&status?.providers.some(p=>p.provider===value&&p.configured))void loadModels(value);};
  const run=async(action:()=>Promise<void>)=>{if(!beginMutation())return;setBusy(true);setError('');try{await action();}catch(e){if(mounted.current)setError(e instanceof Error?e.message:'Không xử lý được kết nối AI.');}finally{endMutation();if(mounted.current)setBusy(false);}};
  const info=status?.providers.find(p=>p.provider===provider), canLoad=admin&&provider!=='local'&&(Boolean(key)||Boolean(info?.configured));
  const reloadModels=()=>void loadModels(provider,key || undefined);

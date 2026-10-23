@@ -1,3 +1,4 @@
+import ExternalIntegrationStatus from "@/components/ExternalIntegrationStatus";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -490,6 +491,7 @@ export default function AISettingsPage() {
         </Button>
       </div>
 
+      {isLocalBackend() && ["admin", "manager"].includes(userRole || "") && <ExternalIntegrationStatus />}
       {isLocalBackend()&&<LocalAiProviderPanel admin={userRole==='admin'} locked={mutationBusy||loading} beginMutation={beginLocalMutation} endMutation={endLocalMutation} onSelected={(model,provider)=>{selectionRevision.current++;catalogGeneration.current++;setLocalModelProvider(provider);activeProviderRef.current=provider;if(provider!=='local')setSettings(s=>({...s,ai_quote_text_model:model,ai_quote_image_model:model,ai_quote_ocr_model:model}));}} onCatalog={receiveCatalog}/>}
 
       <Tabs defaultValue="prompt" className="space-y-4">

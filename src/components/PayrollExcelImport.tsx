@@ -2,14 +2,15 @@ import { useRef, useState } from "react";
 import ExcelJS from "exceljs";
 import { Download, FileSpreadsheet, HelpCircle, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
-import { localApi } from "@/lib/local-api";
+import { localApi, type AttendanceDaySummary } from "@/lib/local-api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PayrollDialogContent as DialogContent } from "@/components/payroll/PayrollDialogContent";
 
 type ImportRow = { sheet: string; row: number; values: Record<string, unknown> };
-type ImportPreview = { fingerprint?: string; rows?: ImportRow[]; valid_rows?: number; invalid_rows?: number; errors?: Array<Record<string, unknown>>; warnings?: Array<Record<string, unknown>> };
+type ClosureReview = {row:number;employee_code:string;target_status:string;reason:string;summary:AttendanceDaySummary};
+type ImportPreview = { preview_token?: string | null; closure_reviews?: ClosureReview[]; fingerprint?: string; rows?: ImportRow[]; valid_rows?: number; invalid_rows?: number; errors?: Array<Record<string, unknown>>; warnings?: Array<Record<string, unknown>> };
 
 const TEMPLATE_URL = "/templates/Mau_nhap_lieu_cham_cong_tien_luong_v2.xlsx";
 
@@ -139,7 +140,7 @@ const valueLabels: Record<string, string> = {
   TRUE: "Có", FALSE: "Không", YES: "Có", NO: "Không",
   CUTTER: "Thợ cắt", SEWER: "Thợ may", IRONING: "Thợ ủi", QC: "Kiểm tra chất lượng", PACKER: "Đóng gói", HELPER: "Phụ trợ", SUPERVISOR: "Tổ trưởng", GENERIC: "Khác",
   PRESENT: "Có mặt", ABSENT: "Vắng", PAID_LEAVE: "Nghỉ phép có lương", UNPAID_LEAVE: "Nghỉ không lương", OFF: "Nghỉ định kỳ",
-  OPEN: "Mở", EMPLOYEE_CONFIRMED: "Nhân viên xác nhận", LEADER_CONFIRMED: "Tổ trưởng xác nhận", REOPENED: "Mở lại",
+  OPEN: "Mở", EMPLOYEE_CONFIRMED: "Quản lý xác nhận hộ", LEADER_CONFIRMED: "Chốt ngày", REOPENED: "Mở lại",
   MEAL: "Tiền ăn", SALARY_ADVANCE: "Tạm ứng", ALLOWANCE: "Phụ cấp", PENALTY: "Phạt",
   ACTIVE: "Đang làm", SUSPENDED: "Tạm ngưng", TERMINATED: "Đã nghỉ", EARNING: "Khoản cộng", DEDUCTION: "Khấu trừ",
   PIECE: "Sản phẩm", SET: "Bộ", PRODUCT: "Sản phẩm", NORMAL: "Ngày thường", SUNDAY: "Chủ nhật", HOLIDAY: "Ngày lễ",
@@ -205,13 +206,15 @@ export function PayrollExcelImport({ onImported }: { onImported?: () => void }) 
     if (!preview?.fingerprint || !preview.rows || (preview.invalid_rows ?? 0) > 0 || !source) return;
     setApplyBusy(true);
     try {
-      const result = await localApi.applyPayrollImport({ template_key: "payroll-v1", source_name: source.name, fingerprint: preview.fingerprint, rows: preview.rows });
+      const result = await localApi.applyPayrollImport({ template_key: "payroll-v1", source_name: source.name, fingerprint: preview.fingerprint, preview_token: preview.preview_token, rows: preview.rows });
       toast.success(`Đã nhập ${Number(result.imported || 0).toLocaleString("vi-VN")} dòng dữ liệu.`);
       setPreview(null); setSource(null); onImported?.();
     } catch (error) { toast.error(error instanceof Error ? error.message : "Không thể nhập dữ liệu."); }
     finally { setApplyBusy(false); }
   };
 
+  const closureReviews = preview?.closure_reviews ?? [];
+  const hasClosureRows = (preview?.rows ?? []).some(row=>row.sheet==='CHOT_NGAY');
   const errors = preview?.errors ?? [];
   const sheets = [...new Set((preview?.rows ?? []).map((row) => row.sheet))].map((sheet) => {
     const rows = (preview?.rows ?? []).filter((row) => row.sheet === sheet);
@@ -227,17 +230,33 @@ export function PayrollExcelImport({ onImported }: { onImported?: () => void }) 
     </div>
     <Dialog open={!!preview} onOpenChange={(open) => { if (!open && !applyBusy) { setPreview(null); setSource(null); } }}>
       <DialogContent className="max-w-3xl">
-        <DialogHeader><DialogTitle>Kiểm tra file nhập hàng loạt</DialogTitle><DialogDescription className="break-words">Tệp: {source?.name}<span className="mt-1 block">Dữ liệu nhập được tạo dưới dạng nháp hoặc chờ duyệt; hãy kiểm tra trước khi xác nhận.</span></DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Kiểm tra file nhập hàng loạt</DialogTitle><DialogDescription className="break-words">Tệp: {source?.name}<span className="mt-1 block">{hasClosureRows?'File này thay đổi xác nhận hoặc trạng thái chốt ngày. Xem toàn bộ nguồn và lý do của từng ngày trước khi nhập.':'Dữ liệu nhập được tạo dưới dạng nháp hoặc chờ duyệt; hãy kiểm tra trước khi xác nhận.'}</span></DialogDescription></DialogHeader>
         {preview && <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2"><div className="rounded-lg border bg-muted/30 p-3"><div className="text-xs text-muted-foreground">Dòng hợp lệ</div><div className="text-xl font-semibold text-emerald-700">{preview.valid_rows ?? 0}</div></div><div className="rounded-lg border bg-muted/30 p-3"><div className="text-xs text-muted-foreground">Dòng lỗi</div><div className="text-xl font-semibold text-red-700">{preview.invalid_rows ?? 0}</div></div><div className="rounded-lg border bg-muted/30 p-3"><div className="text-xs text-muted-foreground">Cảnh báo</div><div className="text-xl font-semibold">{preview.warnings?.length ?? 0}</div></div></div>
           {(preview.invalid_rows ?? 0) > 0 && <Alert variant="destructive"><AlertTitle>Chưa thể nhập: hãy sửa các dòng lỗi trong Excel</AlertTitle><AlertDescription><div className="max-h-56 space-y-2 overflow-y-auto text-sm">{errors.slice(0, 100).map((error, index) => <div key={index}><b>{sheetLabel(error.sheet)} · dòng {String(error.row)}</b><div>{fieldLabel(error.field)}: {readableMessage(error.message)}</div></div>)}{errors.length > 100 && <details><summary className="min-h-11 cursor-pointer py-3">Xem {errors.length - 100} lỗi còn lại</summary>{errors.slice(100).map((error, index) => <p key={index}>{sheetLabel(error.sheet)} · dòng {String(error.row)} · {fieldLabel(error.field)}: {readableMessage(error.message)}</p>)}</details>}</div></AlertDescription></Alert>}
-          {(preview.invalid_rows ?? 0) === 0 && <Alert><FileSpreadsheet className="h-4 w-4" /><AlertTitle>Đã kiểm tra xong</AlertTitle><AlertDescription>Toàn bộ dòng trong tệp đã vượt qua bước kiểm tra. Các bản ghi cần được duyệt tiếp trên màn hình nghiệp vụ.</AlertDescription></Alert>}
+          {(preview.invalid_rows ?? 0) === 0 && <Alert><FileSpreadsheet className="h-4 w-4" /><AlertTitle>Đã kiểm tra xong</AlertTitle><AlertDescription>{hasClosureRows?'Bản xem trước có hiệu lực 15 phút. Nguồn hoặc trạng thái thay đổi sẽ yêu cầu xem trước lại. Không tự động duyệt nguồn chờ.':'Toàn bộ dòng trong tệp đã vượt qua bước kiểm tra. Các bản ghi cần được duyệt tiếp trên màn hình nghiệp vụ.'}</AlertDescription></Alert>}
           {(preview.warnings?.length ?? 0) > 0 && <Alert className="border-amber-200 bg-amber-50"><AlertTitle>Có cảnh báo cần xem lại</AlertTitle><AlertDescription className="space-y-2 text-sm">{preview.warnings?.slice(0, 5).map((warning, index) => <div key={index}><b>{sheetLabel(warning.sheet)} · dòng {String(warning.row ?? "—")}</b>: {readableMessage(warning.message ?? fieldLabel(warning.field))}</div>)}{(preview.warnings?.length ?? 0) > 5 && <details><summary className="min-h-11 cursor-pointer py-3">Xem tất cả {preview.warnings?.length} cảnh báo</summary><div className="max-h-56 space-y-2 overflow-y-auto">{preview.warnings?.slice(5).map((warning, index) => <p key={index}>{sheetLabel(warning.sheet)} · dòng {String(warning.row ?? "—")}: {readableMessage(warning.message ?? fieldLabel(warning.field))}</p>)}</div></details>}</AlertDescription></Alert>}
+          {hasClosureRows && <Alert className="border-amber-200 bg-amber-50"><AlertTitle>Xác nhận / chốt / mở lại ngày công</AlertTitle><AlertDescription>Xác nhận hộ cần quản lý và lý do thật. Chốt ngày cần xác nhận còn hiệu lực và đã duyệt hết công, sản lượng, tăng ca. Mở lại cần lý do; kỳ lương khóa vẫn phải dùng quy trình điều chỉnh. Mọi file xác nhận/chốt/mở lại chỉ gồm dòng chốt ngày; nhập nguồn và thiết lập trong file riêng trước.</AlertDescription></Alert>}
+          {closureReviews.length>0 && <section className="space-y-3" aria-label="Toàn bộ ngày công cần xem lại"><h3 className="font-semibold">Xem lại từng ngày ({closureReviews.length})</h3>{closureReviews.map(review=><div key={review.row} className="space-y-2 rounded border p-3 text-sm">
+            <h4 className="font-semibold">Dòng {review.row} · {review.employee_code} · {review.summary.work_date}</h4>
+            <p>Thao tác: {previewCell('trang_thai_de_nghi',review.target_status)} · Lý do: {review.reason || 'Chưa nhập'}</p>
+            <p>Trạng thái ngày: {review.summary.day_status ? previewCell('trang_thai',review.summary.day_status) : 'Chưa ghi nhận trạng thái'} · {review.summary.classified?'Có nguồn / trạng thái để xác nhận':'Chưa có nguồn hợp lệ'}</p>
+            {review.summary.day_status_reason && <p>Ghi chú trạng thái: {review.summary.day_status_reason}</p>}
+            <p>{review.summary.payroll_locked?'Kỳ lương đã khóa':review.summary.closure?.status==='LEADER_CONFIRMED'?'Ngày đã chốt':review.summary.confirmation_current?'Xác nhận còn hiệu lực':'Chưa có xác nhận hiện hành'}</p>
+            {review.summary.closure?.confirmation_actor_id && <p>Người xác nhận: {review.summary.closure.confirmation_actor_name || review.summary.closure.confirmation_actor_id} · {review.summary.closure.confirmation_kind==='PROXY'?'Xác nhận hộ':'Nhân viên xác nhận'} · {review.summary.closure.confirmed_at} · {review.summary.closure.confirmation_reason}</p>}
+            {!review.summary.sources.length && <p>Chưa có phiếu công, sản lượng hoặc tăng ca.</p>}
+            {review.summary.sources.map(source=><div key={source.source_type+source.id} className="space-y-1 rounded border bg-background p-2">
+              <p className="font-medium">{source.source_type==='ATTENDANCE'?'Công':source.source_type==='PRODUCTION_ENTRY'?'Sản lượng':'Tăng ca'} · {({SUBMITTED:'Chờ duyệt',APPROVED:'Đã duyệt',REJECTED:'Bị từ chối',REVERSED:'Đã đảo',LOCKED:'Đã khóa'} as Record<string,string>)[source.status] || source.status}</p>
+              <p>{source.source_type==='ATTENDANCE'?(source.facts.method==='DAY'?`${source.facts.day_units} ngày công`:source.facts.method==='HOUR'?`${source.facts.check_in}–${source.facts.check_out} · nghỉ ${source.facts.break_minutes} phút · thực làm ${source.facts.worked_minutes} phút`:'Công sản lượng cũ cần đối soát'):source.source_type==='PRODUCTION_ENTRY'?`${source.facts.product_name || source.facts.piece_rate_code || 'Sản lượng'} · ${source.facts.quantity} sản phẩm`:`${source.facts.overtime_minutes} phút · ${source.facts.overtime_type==='SUNDAY_OVERTIME'?'Chủ nhật':source.facts.overtime_type==='HOLIDAY_OVERTIME'?'Ngày lễ':'Ngày thường'}`}</p>
+              {!!source.facts.notes && <p>Ghi chú: {String(source.facts.notes)}</p>}{!!source.facts.review_reason && <p>Lý do xử lý: {String(source.facts.review_reason)}</p>}
+              <p className="text-xs text-muted-foreground">Ghi bởi {source.recorded_by || 'Chưa có thông tin người ghi'} · {source.recorded_at || 'Chưa có thời gian ghi'}</p>
+            </div>)}
+          </div>)}</section>}
           <div className="space-y-2"><h3 className="text-sm font-semibold">Nội dung theo từng trang Excel</h3><p className="text-xs text-muted-foreground">Mở từng trang để đọc trước vài dòng. Số tài khoản được che; xác nhận nhập sẽ xử lý toàn bộ tệp.</p>
-            {sheets.map(({ sheet, rows, invalidCount }) => <details key={sheet} className="rounded-lg border bg-muted/10"><summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"><span className="font-medium">{sheetLabel(sheet)}</span><span className="text-xs text-muted-foreground">{rows.length} dòng · {invalidCount} dòng lỗi</span></summary><div className="space-y-3 border-t p-3">{rows.slice(0, 3).map((row) => <div key={row.row} className="rounded border bg-background p-3"><p className="mb-2 text-xs font-semibold">Dòng {row.row}</p><dl className="grid grid-cols-[minmax(90px,1fr)_minmax(0,2fr)] gap-x-3 gap-y-1 text-xs">{Object.entries(row.values).filter(([key]) => !["__example", "idempotency_key"].includes(key)).map(([key, value]) => <div key={key} className="contents"><dt className="text-muted-foreground">{fieldLabel(key)}</dt><dd className="break-words">{previewCell(key, value)}</dd></div>)}</dl></div>)}{rows.length > 3 && <p className="text-xs text-muted-foreground">Đang hiển thị 3/{rows.length} dòng.</p>}</div></details>)}
+            {sheets.map(({ sheet, rows, invalidCount }) => <details key={sheet} className="rounded-lg border bg-muted/10"><summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"><span className="font-medium">{sheetLabel(sheet)}</span><span className="text-xs text-muted-foreground">{rows.length} dòng · {invalidCount} dòng lỗi</span></summary><div className="space-y-3 border-t p-3">{(sheet==='CHOT_NGAY'?rows:rows.slice(0, 3)).map((row) => <div key={row.row} className="rounded border bg-background p-3"><p className="mb-2 text-xs font-semibold">Dòng {row.row}</p><dl className="grid grid-cols-[minmax(90px,1fr)_minmax(0,2fr)] gap-x-3 gap-y-1 text-xs">{Object.entries(row.values).filter(([key]) => !["__example", "idempotency_key"].includes(key)).map(([key, value]) => <div key={key} className="contents"><dt className="text-muted-foreground">{fieldLabel(key)}</dt><dd className="break-words">{previewCell(key, value)}</dd></div>)}</dl></div>)}{sheet!=='CHOT_NGAY' && rows.length > 3 && <p className="text-xs text-muted-foreground">Đang hiển thị 3/{rows.length} dòng.</p>}</div></details>)}
           </div>
         </div>}
-        <DialogFooter><Button variant="ghost" onClick={() => inputRef.current?.click()} disabled={applyBusy || busy}>Chọn tệp khác</Button><Button variant="outline" onClick={() => { setPreview(null); setSource(null); }} disabled={applyBusy}><X className="mr-2 h-4 w-4" />Đóng</Button><Button onClick={() => void apply()} disabled={applyBusy || busy || !preview?.fingerprint || !preview.rows?.length || (preview.invalid_rows ?? 0) > 0}>{applyBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Xác nhận nhập toàn bộ</Button></DialogFooter>
+        <DialogFooter><Button variant="ghost" onClick={() => inputRef.current?.click()} disabled={applyBusy || busy}>Chọn tệp khác</Button><Button variant="outline" onClick={() => { setPreview(null); setSource(null); }} disabled={applyBusy}><X className="mr-2 h-4 w-4" />Đóng</Button><Button onClick={() => void apply()} disabled={applyBusy || busy || !preview?.fingerprint || !preview.rows?.length || (preview.invalid_rows ?? 0) > 0 || (hasClosureRows && (!preview.preview_token || closureReviews.length!==preview.rows.filter(row=>row.sheet==='CHOT_NGAY').length))}>{applyBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Xác nhận nhập toàn bộ</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </>;

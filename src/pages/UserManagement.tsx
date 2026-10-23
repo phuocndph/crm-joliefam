@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole, UserRole } from '@/hooks/useUserRole';
 import { useAuthReady } from '@/hooks/useAuthReady';
@@ -49,7 +49,7 @@ const normalizeWorkerLink = (worker: LocalWorkerLinkResponse['worker']): LocalWo
 
 const UserManagement = () => {
   const localMode = isLocalBackend();
-  const { user } = useAuthReady();
+  const { user, isReady: authReady } = useAuthReady();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -68,6 +68,23 @@ const UserManagement = () => {
   const [linkLoading, setLinkLoading] = useState(false);
   const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
   const { toast } = useToast();
+  const userId = user?.id;
+  const canReadUsers = Boolean(userId && currentUserRole && (localMode
+    ? ['admin', 'manager'].includes(currentUserRole)
+    : ['admin', 'manager', 'accountant'].includes(currentUserRole)));
+  const requestIdentity = `${localMode}:${userId || ''}:${currentUserRole || ''}:${authReady && !roleLoading ? 'ready' : 'pending'}`;
+  const identityRef = useRef(requestIdentity);
+  identityRef.current = requestIdentity;
+  const mountedRef = useRef(true);
+  const profileGeneration = useRef(0);
+  const linkGeneration = useRef(0);
+  const [loadedIdentity, setLoadedIdentity] = useState('');
+  const [listError, setListError] = useState<string | null>(null);
+  const isCurrent = useCallback((identity: string) => mountedRef.current && identityRef.current === identity, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; profileGeneration.current += 1; linkGeneration.current += 1; };
+  }, []);
 
   // Form state
   const [email, setEmail] = useState('');
@@ -80,26 +97,30 @@ const UserManagement = () => {
     ? profiles.filter((profile) => profile.is_active !== false && profile.has_password === false).length
     : 0;
 
-  useEffect(() => {
-    if (currentUserRole && !roleLoading) {
-      fetchProfiles();
-    }
-  }, [currentUserRole, roleLoading]);
-
-  const fetchProfiles = async (isRefresh = false) => {
+  const fetchProfiles = useCallback(async (isRefresh = false) => {
+    if (!authReady || roleLoading || !canReadUsers || !isCurrent(requestIdentity)) return;
+    const identity = requestIdentity;
+    const generation = ++profileGeneration.current;
+    const current = () => isCurrent(identity) && generation === profileGeneration.current;
     if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setListError(null);
     
     try {
       if (localMode) {
         const data = await localApi.users();
-        setProfiles(data as unknown as Profile[]);
+        if (!current()) return;
         const workers = await localApi.workers();
-        setLocalWorkers(workers as unknown as LocalWorkerOption[]);
+        if (!current()) return;
         const links = await Promise.all((data as Array<{ user_id: string }>).map(async (profile) => {
           try { return [profile.user_id, normalizeWorkerLink((await localApi.workerLink(profile.user_id)).worker)] as const; }
           catch { return [profile.user_id, null] as const; }
         }));
+        if (!current()) return;
+        setProfiles(data as unknown as Profile[]);
+        setLocalWorkers(workers as unknown as LocalWorkerOption[]);
         setWorkerLinks(Object.fromEntries(links));
+        setLoadedIdentity(identity);
         return;
       }
 
@@ -109,13 +130,15 @@ const UserManagement = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+      if (!current()) return;
 
       // Get roles and manager information
       const profilesWithRoles = await Promise.all((data || []).map(async (profile) => {
-        const { data: roleData } = await supabase
+        const { data: roleData, error: roleError } = await supabase
           .from('user_roles')
           .select('role, assigned_by')
           .eq('user_id', profile.user_id);
+        if (roleError) throw roleError;
         
         let manager_name = null;
         
@@ -140,52 +163,83 @@ const UserManagement = () => {
         };
       }));
 
+      if (!current()) return;
       setProfiles(profilesWithRoles);
+      setLocalWorkers([]);
+      setWorkerLinks({});
+      setLoadedIdentity(identity);
     } catch (error) {
+      if (!current()) return;
       console.error('Error fetching profiles:', error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách người dùng",
-        variant: "destructive",
-      });
+      setProfiles([]);
+      setLocalWorkers([]);
+      setWorkerLinks({});
+      setSelectedUsers([]);
+      setLoadedIdentity(identity);
+      setListError('Không thể tải dữ liệu. Vui lòng kiểm tra kết nối rồi thử lại.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (current()) { setLoading(false); setRefreshing(false); }
     }
-  };
+  }, [authReady, roleLoading, canReadUsers, isCurrent, requestIdentity, localMode]);
+
+  useEffect(() => {
+    // Revoke the prior identity immediately; no delayed list/link response may
+    // repopulate it after an account, role or authorization state change.
+    profileGeneration.current += 1;
+    linkGeneration.current += 1;
+    setProfiles([]); setLocalWorkers([]); setWorkerLinks({}); setSelectedUsers([]);
+    setEditingProfile(null); setDeletingProfile(null); setResetPasswordProfile(null);
+    setShowChangePasswordDialog(false); setLinkingProfile(null); setLinkWorkerId(''); setLinkReason('');
+    setEmail(''); setPassword(''); setFirstName(''); setLastName(''); setPhone(''); setSelectedRole('employee');
+    setCreateUserLoading(false); setBulkDeleting(false); setLinkLoading(false);
+    setListError(null); setLoadedIdentity(''); setLoading(false); setRefreshing(false);
+    if (authReady && !roleLoading && canReadUsers) void fetchProfiles();
+  }, [authReady, roleLoading, canReadUsers, requestIdentity, fetchProfiles]);
 
   const openWorkerLink = async (profile: Profile) => {
-    if (!localMode) return;
+    if (!localMode || !canReadUsers) return;
+    const identity = requestIdentity;
+    const generation = ++linkGeneration.current;
+    const current = () => isCurrent(identity) && generation === linkGeneration.current;
     setLinkingProfile(profile);
     setLinkReason("");
     setLinkLoading(true);
     try {
       const result = await localApi.workerLink(profile.user_id);
+      if (!current()) return;
       setLinkWorkerId(result.worker?.worker_id || "");
       setWorkerLinks((current) => ({ ...current, [profile.user_id]: normalizeWorkerLink(result.worker) }));
     } catch (error) {
+      if (!current()) return;
       toast({ title: "Không tải được liên kết", description: error instanceof Error ? error.message : "Lỗi", variant: "destructive" });
       setLinkingProfile(null);
-    } finally { setLinkLoading(false); }
+    } finally { if (current()) setLinkLoading(false); }
   };
 
   const saveWorkerLink = async () => {
     if (!linkingProfile || !linkReason.trim()) return;
+    const identity = requestIdentity;
+    const generation = ++linkGeneration.current;
+    const current = () => isCurrent(identity) && generation === linkGeneration.current;
     setLinkLoading(true);
     try {
       const result = await localApi.saveWorkerLink(linkingProfile.user_id, linkWorkerId || null, linkReason.trim());
+      if (!current()) return;
       setWorkerLinks((current) => ({ ...current, [linkingProfile.user_id]: normalizeWorkerLink(result.worker) }));
       setLocalWorkers((current) => current.map((worker) => worker.id === linkWorkerId ? { ...worker, user_id: linkingProfile.user_id } : worker));
       toast({ title: "Đã cập nhật liên kết", description: "Tài khoản có thể sử dụng chấm công cá nhân theo hồ sơ mới." });
       setLinkingProfile(null);
       await fetchProfiles(true);
     } catch (error) {
+      if (!current()) return;
       toast({ title: "Không thể cập nhật liên kết", description: error instanceof Error ? error.message : "Lỗi", variant: "destructive" });
-    } finally { setLinkLoading(false); }
+    } finally { if (current()) setLinkLoading(false); }
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canReadUsers || !authReady || roleLoading) return;
+    const identity = requestIdentity;
     setCreateUserLoading(true);
 
     try {
@@ -198,9 +252,11 @@ const UserManagement = () => {
           phone,
           role: selectedRole,
         });
+        if (!isCurrent(identity)) return;
         toast({ title: "Thành công", description: `Đã tạo tài khoản cục bộ ${String(created.email || email)}.` });
         setEmail(''); setPassword(''); setFirstName(''); setLastName(''); setPhone(''); setSelectedRole('employee');
         await fetchProfiles();
+        if (!isCurrent(identity)) return;
         setSelectedUsers([]);
         return;
       }
@@ -220,6 +276,7 @@ const UserManagement = () => {
             role: selectedRole
           }
         });
+        if (!isCurrent(identity)) return;
 
         if (error || !data?.success) {
           throw new Error(error?.message || data?.error || "Không thể tạo tài khoản");
@@ -240,11 +297,13 @@ const UserManagement = () => {
         
         // Refresh profiles
         await fetchProfiles();
+        if (!isCurrent(identity)) return;
         setSelectedUsers([]);
       } else {
         throw new Error('Không có quyền tạo tài khoản này');
       }
     } catch (error: unknown) {
+      if (!isCurrent(identity)) return;
       console.error('Error creating user:', error);
       toast({
         title: "Lỗi",
@@ -252,7 +311,7 @@ const UserManagement = () => {
         variant: "destructive",
       });
     } finally {
-      setCreateUserLoading(false);
+      if (isCurrent(identity)) setCreateUserLoading(false);
     }
   };
 
@@ -329,7 +388,8 @@ const UserManagement = () => {
   };
 
   const handleBulkDelete = async () => {
-    if (selectedUsers.length === 0) return;
+    if (selectedUsers.length === 0 || !canReadUsers || !authReady || roleLoading) return;
+    const identity = requestIdentity;
 
     setBulkDeleting(true);
     
@@ -338,10 +398,12 @@ const UserManagement = () => {
         await Promise.all(selectedUsers.map((id) => localApi.deleteUser(id)));
       } else {
         const { error: rolesError } = await supabase.from('user_roles').delete().in('user_id', selectedUsers);
+        if (!isCurrent(identity)) return;
         if (rolesError) throw rolesError;
         const { error: profilesError } = await supabase.from('profiles').delete().in('user_id', selectedUsers);
         if (profilesError) throw profilesError;
       }
+      if (!isCurrent(identity)) return;
 
       toast({
         title: "Thành công",
@@ -351,6 +413,7 @@ const UserManagement = () => {
       setSelectedUsers([]);
       await fetchProfiles();
     } catch (error: unknown) {
+      if (!isCurrent(identity)) return;
       console.error('Error deleting users:', error);
       toast({
         title: "Lỗi",
@@ -358,7 +421,7 @@ const UserManagement = () => {
         variant: "destructive",
       });
     } finally {
-      setBulkDeleting(false);
+      if (isCurrent(identity)) setBulkDeleting(false);
     }
   };
 
@@ -377,11 +440,15 @@ const UserManagement = () => {
     </div>
   );
 
-  if (roleLoading || loading) {
+  if (!authReady || roleLoading) {
     return <div className="flex justify-center items-center h-64">Đang tải...</div>;
   }
 
-  if (!currentUserRole || currentUserRole === 'employee') {
+  if (!userId || !currentUserRole) {
+    return <Card className="mx-auto my-8 max-w-lg"><CardHeader><CardTitle>Chưa xác định được quyền truy cập</CardTitle><CardDescription>Không thể xác nhận tài khoản hoặc vai trò của bạn. Dữ liệu quản trị đã được ẩn để tránh truy cập nhầm.</CardDescription></CardHeader><CardContent><Button onClick={() => window.location.reload()}>Thử lại</Button></CardContent></Card>;
+  }
+
+  if (!canReadUsers) {
     return (
       <div className="flex justify-center items-center h-64">
         <Card className="w-96">
@@ -397,6 +464,14 @@ const UserManagement = () => {
         </Card>
       </div>
     );
+  }
+
+  if (listError && loadedIdentity === requestIdentity) {
+    return <Card className="mx-auto my-8 max-w-lg"><CardHeader><CardTitle>Không thể tải danh sách người dùng</CardTitle><CardDescription>{listError}</CardDescription></CardHeader><CardContent><Button disabled={refreshing || loading} onClick={() => void fetchProfiles()}>Thử lại</Button></CardContent></Card>;
+  }
+
+  if (loading || loadedIdentity !== requestIdentity) {
+    return <div className="flex justify-center items-center h-64">Đang tải...</div>;
   }
 
   return (

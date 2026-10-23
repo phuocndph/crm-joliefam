@@ -29,15 +29,21 @@ export function moduleRequirement(method: string, requestPath: string, body: Rec
   try { decodedPath = decodeURIComponent(requestPath); } catch { return false; }
   const path = decodedPath.toLowerCase().replace(/\/+$/, '');
   const read = method === 'GET' || method === 'HEAD';
+  // Payroll data has action and worker scope checks in canonical routes. Never
+  // expose raw imported versions through a compatibility alias, even to a
+  // manager whose role intentionally excludes bank/insurance management.
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local_)?(?:(?:list_|get_|create_|update_|approve_|discard_|resolve_|retire_|upsert_)?(?:payroll|worker_(?:rates|payroll|compensation)|product_piece_rate|employee_social_insurance|social_insurance|bank_accounts|production_workers)|factory_attendance)/.test(path)) return false;
   // Private service credentials are never available through generic adapters,
   // including to browser administrators. Reserved aliases fail closed.
   if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local_)?(?:integration|hermes)[_.-]/.test(path)) return false;
-  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:ai[_.-]private|ai[_.-]provider|f5quota|beeknoee)(?:[_.\/-]|$)/.test(path)) return false;
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:(?:integration|external)[_.-]?(?:private|settings)|external[_.-]?integration[_.-]?(?:private|settings)?|ghn[_.-]?(?:settings|config)|einvoice[_.-]?settings)(?:[._/-]|$)/.test(path)) return false;
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:ai[_.-]private|ai[_.-]provider|f5quota|beeknoee)(?:[._/-]|$)/.test(path)) return false;
   if (path.startsWith('/api/ai/providers')) return [];
   if (path === '/api/ai/my-settings') return null;
   const adapter = path.match(/^\/api\/local-(snapshot|table)\/([^/]+)/);
   if (adapter) {
     const [,kind,table] = adapter;
+    if (['einvoice_settings','integration_private','external_integration_settings','ghn_settings','ghn_order_attempts'].includes(table)) return false;
     if(table==='ai_config'&&!read)return null; // Handler enforces administrator, not manager.
     if (kind === 'snapshot' && read && table === 'user_roles') return null;
     if (kind === 'table' && canonicalTables.has(table)) return false;
@@ -89,7 +95,7 @@ export function moduleRequirement(method: string, requestPath: string, body: Rec
   if (path.startsWith('/api/order-payments')) return ['orders','cash_flow','transactions'];
   if (path.startsWith('/api/assignees')) return read ? lookupRights : [];
   if (path.startsWith('/api/shipping-companies')) return ['shipping_companies'];
-  if (path.startsWith('/api/ghn-tracking')) return ['ghn_tracking','orders'];
+  if (path.startsWith('/api/ghn-tracking') || path.startsWith('/api/ghn-orders')) return ['ghn_tracking','orders'];
   if (path.startsWith('/api/knowledge/')) return ['knowledge_base'];
   if (path.startsWith('/api/fabrics/')) return ['fabric_management'];
   if (path.startsWith('/api/cost/')) {
@@ -114,14 +120,17 @@ export function moduleRequirement(method: string, requestPath: string, body: Rec
     return [];
   }
   // These domains already apply per-worker/action/capability checks in their handlers.
+  if(read&&/^\/api\/production-dispatch\/assignments\/[^/]+\/pay-preview$/.test(path))return null; // Handler verifies the assignment belongs to the authenticated worker.
   if (read && path.startsWith('/api/manufacturing/')) {
     if (path.endsWith('/routing')) return ['production_view','production_manage','bom_view'];
     if (path.endsWith('/profile') || path.endsWith('/bom')) return ['bom_view','bom_manage','cutting_profiles','production_view'];
     return [...productLookupRights, 'bom_manage', 'cutting_profiles', 'production_manage'];
   }
+  if(read&&path==='/api/production/source-orders')return null; // Domain checks sales rights and source ownership.
+  if(read&&/^\/api\/production-orders\/[^/]+\/cutting-estimates$/.test(path))return null; // Planner's scoped domain capability is checked by handler.
   if (read && /^\/api\/production(?:-orders|-operations|-batches|-stage-events|\/(?:source-orders|fabric-variants|fabric-stock|fabric-allocations|scrap|rework))/.test(path)) return ['production_view','production_manage','production_operations'];
   if (read && /^\/api\/(?:bom|cutting|routing)(?:\/|-|$)/.test(path)) {
-    if (path.startsWith('/api/cutting')) return ['cutting_profiles','cutting_approve','bom_view','production_view'];
+    if (path.startsWith('/api/cutting')) return ['cutting_profiles','cutting_approve','bom_view','production_view','production_cutting_plan'];
     if (path.startsWith('/api/routing')) return ['production_view','production_manage','bom_view'];
     return ['bom_view','bom_manage','cutting_profiles','production_view'];
   }

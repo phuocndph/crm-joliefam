@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { approveLegacyPayrollFixture } from './payroll-approved-fixtures.mjs';
 import {
   actor, api, checkCount, checkpoint, close, dates, denied, isolated, key,
   manufacturing, must, ownedRollback, profiles, qaMetadata, refreshOwnedProjections, sql, token, unwrap, verifyRestart,
@@ -317,7 +318,7 @@ async function cuttingEstimate(f, main) {
   assert.equal(await stock(), 200);
   await denied("POST", `/api/cutting-estimates/${estimate.id}/material-issue`, { ...issueBody, lines: [{ estimate_line_id: estimate.lines[0].id, quantity: 1 }], idempotency_key: key("issue-over-plan") }, f.manager.session);
   const sourceMovement = (await sql("select id from local_inventory_movements where document_id=$1 and quantity_delta<0", [issue.id])).rows[0];
-  const returnBody = { document_type: "RETURN_IN", warehouse_id: f.warehouseId, production_order_id: main.id, transaction_at: dates.first, description: "Return10 and confirm cutting gate accounts for net stock", idempotency_key: key("return-fabric"), lines: [{ inventory_item_id: f.inventoryItem.id, quantity: 10, unit: "METER", source_movement_id: sourceMovement.id }] };
+  const returnBody = { document_type: "RETURN_IN", warehouse_id: f.warehouseId, production_order_id: main.id, transaction_at: dates.first, reason: "Return10 unused fabric and verify net cutting coverage", description: "Return10 and confirm cutting gate accounts for net stock", idempotency_key: key("return-fabric"), lines: [{ inventory_item_id: f.inventoryItem.id, quantity: 10, unit: "METER", source_movement_id: sourceMovement.id }] };
   const returned = await must("POST", "/api/inventory/documents", returnBody, f.manager.session);
   await must("POST", `/api/inventory/documents/${returned.id}/confirm`, { reason: "Return unused fabric" }, f.manager.session);
   await must("POST", `/api/inventory/documents/${returned.id}/confirm`, { reason: "Retry return" }, f.manager.session);
@@ -702,6 +703,10 @@ async function verifyUnusedSupplementSourceReversal(f, order, base, originalAssi
 
 async function productionAndEarnings(f, handoff, materials) {
   const main = handoff.main;
+  // Preserve historical two-stage completion coverage without permitting any
+  // client generation override; the separate workspace suite owns V3 closure.
+  assert.equal((await sql('select workflow_generation from local_production_orders where id=$1',[main.id])).rows[0].workflow_generation,'WORKFLOW_V3');
+  await sql("update local_production_orders set workflow_generation='WORKFLOW_V2' where id=$1",[main.id]);
   const publicationBody = (stage, quantity, label) => ({ production_order_id: main.id, production_batch_id: main.production_batch_id, order_item_id: main.order_item_id, stage, quantity, eligible_worker_type: stage === "CUTTING" ? "CUTTER" : "SEWING", eligible_supervisor_worker_id: f.manager.worker.id, assigned_from: dates.start, piece_rate_code: stage === "SEWING" ? f.pieceCode : undefined, notes: "Eligible team only", idempotency_key: key(label) });
   const publish = async (stage, quantity, label) => unwrap(await must("POST", `${dispatch}/publications`, publicationBody(stage, quantity, label), f.manager.session), "publication");
   const claim = async (publication, actor, quantity, label) => unwrap(await must("POST", `${dispatch}/publications/${publication.id}/claim`, { quantity, idempotency_key: key(label) }, actor.session), "assignment");
@@ -787,6 +792,9 @@ async function productionAndEarnings(f, handoff, materials) {
     assert.equal(unchanged.status, "SUBMITTED"); assert.equal(unchanged.production_entry_id, null);
   } finally { await sql("delete from local_product_rates where id=$1", [crossUnit.id]); }
   assert.equal(Number((await earnings(winner)).pending_total), 500010);
+  // Explicit approved synthetic calendar/rules keep historical financial
+  // fixtures current without restoring unsafe implicit server defaults.
+  await approveLegacyPayrollFixture({query:sql},dates.start,dates.end,26);
   const pendingRun = await must("POST", "/api/payroll/runs", { period_start: dates.start, period_end: dates.end, standard_days: 26, idempotency_key: key("pending-payroll-preview") }, f.admin);
   assert(!pendingRun.items.some((item) => item.source_type === "PRODUCTION_ENTRY" && [winner.worker.id, other.worker.id].includes(item.worker_id)), "Unapproved dispatch reports entered payroll.");
   await blockedComplete("close-pending-sew");
@@ -867,12 +875,14 @@ async function verifyOwnDayAndPayroll(f, winner, other, main, paidReport, repair
   const disabledRow = disabled.rows.find((row) => row.id === paidReport.id);
   assert.equal(Number(disabledRow.approved_amount), 250005);
   assert(disabledRow.unavailable_reason || disabledRow.eligibility_warning || disabledRow.source_warning, "Approved source disabled for payroll has no explicit eligibility warning.");
-  const disabledRun = await must("POST", "/api/payroll/runs", { period_start: dates.start, period_end: dates.end, standard_days: 26, idempotency_key: key("disabled-source-preview") }, f.admin);
-  assert(!disabledRun.items.some((item) => item.worker_id === winner.worker.id && item.source_type === "PRODUCTION_ENTRY"), "Disabled piece-output profile entered payroll despite the eligibility warning.");
+  await denied("POST", "/api/payroll/runs", { period_start: dates.start, period_end: dates.end, standard_days: 26, idempotency_key: key("disabled-source-preview") }, f.admin,[409]);
+  const disabledPreflight=await must('GET',`/api/payroll/preflight?period_start=${dates.start}&period_end=${dates.end}&standard_days=26`,undefined,f.admin);
+  assert(disabledPreflight.issues.some(issue=>issue.worker_id===winner.worker.id&&issue.severity==='BLOCKING'),'Disabled approved wage source must explicitly block payroll instead of silently disappearing.');
   await sql("update local_worker_payroll_profiles set piece_output_enabled=true where worker_id=$1 and status='APPROVED'", [winner.worker.id]);
   assert.equal(Number((await earnings(winner)).approved_total), 625012.5);
 
-  const confirmBody = { work_date: dates.first, reason: "Employee confirms own completed daily output", idempotency_key: key("own-day-confirm"), worker_id: other.worker.id, user_id: other.user.user_id };
+  const ownSummary=await must('GET',`/api/my-attendance/day-summary?date=${dates.first}`,undefined,winner.session);
+  const confirmBody = { work_date: dates.first,expected_revision:ownSummary.current_revision, reason: "Employee confirms own completed daily output", idempotency_key: key("own-day-confirm"), worker_id: other.worker.id, user_id: other.user.user_id };
   const ownDay = await must("POST", "/api/my-attendance/day-confirm", confirmBody, winner.session);
   assert.equal(ownDay.worker_id, winner.worker.id, "Self confirmation trusted caller-supplied worker identity.");
   assert.equal(ownDay.status, "EMPLOYEE_CONFIRMED");
@@ -882,11 +892,13 @@ async function verifyOwnDayAndPayroll(f, winner, other, main, paidReport, repair
   const actualDays = (await sql("select worker_id,status from local_day_closures where work_date=$1 order by worker_id", [dates.first])).rows;
   assert(actualDays.some((row) => row.worker_id === winner.worker.id && row.status === "EMPLOYEE_CONFIRMED"));
   assert(!actualDays.some((row) => row.worker_id === other.worker.id), "Spoofed self confirmation mutated another employee's day.");
-  await must("POST", "/api/my-attendance/day-confirm", { work_date: dates.first, idempotency_key: key("other-day-confirm") }, other.session);
+  const otherSummary=await must('GET',`/api/my-attendance/day-summary?date=${dates.first}`,undefined,other.session);
+  await must("POST", "/api/my-attendance/day-confirm", { work_date: dates.first,expected_revision:otherSummary.current_revision, idempotency_key: key("other-day-confirm") }, other.session);
   const closureBody = (worker, label) => ({ worker_id: worker.worker.id, work_date: dates.first, target_status: "LEADER_CONFIRMED", reason: "Manager verifies approved outputs", idempotency_key: key(label) });
   await denied("POST", "/api/attendance/closures", closureBody(winner, "outsider-closes-day"), f.outsider.session, [403]);
   for (const worker of [winner, other]) {
-    const body = closureBody(worker, `leader-${worker.worker.id}`);
+    const current=await must('GET',`/api/attendance/day-summary?worker_id=${worker.worker.id}&date=${dates.first}`,undefined,f.manager.session);
+    const body = {...closureBody(worker, `leader-${worker.worker.id}`),expected_revision:current.current_revision};
     const closedDay = await must("POST", "/api/attendance/closures", body, f.manager.session);
     assert.equal(closedDay.status, "LEADER_CONFIRMED");
     assert.equal((await must("POST", "/api/attendance/closures", body, f.manager.session)).id, closedDay.id);

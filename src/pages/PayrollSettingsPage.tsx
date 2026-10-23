@@ -1,4 +1,9 @@
+import { payrollWorkerMasterIssue } from "@/lib/payroll-worker-validation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import PayrollVersionSettings from "@/components/PayrollVersionSettings";
+import { listenPermissionRefresh } from '@/lib/permission-refresh';
+import { useUserRole } from '@/hooks/useUserRole';
+import { useEmployeePermissions } from '@/hooks/useEmployeePermissions';
 import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -6,7 +11,6 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowUpDown,
-  CalendarRange,
   CalendarCheck2,
   Check,
   CircleDollarSign,
@@ -17,11 +21,9 @@ import {
   Filter,
   FileText,
   Landmark,
-  LayoutDashboard,
   Loader2,
   LockKeyhole,
   Network,
-  PackageSearch,
   Pencil,
   Plus,
   RefreshCw,
@@ -29,14 +31,14 @@ import {
   Settings2,
   ShieldCheck,
   Trash2,
-  UserRoundCog,
   UsersRound,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { isLocalBackend } from "@/lib/runtime-config";
 import { useAuthReady } from "@/hooks/useAuthReady";
-import { downloadLocalPayrollRunCsv, localApi } from "@/lib/local-api";
+import PayrollBundleReview from "@/components/payroll/PayrollBundleReview";
+import { localApi } from "@/lib/local-api";
 import type {
   CompensationType,
   PayrollBankAccount,
@@ -105,9 +107,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { PayrollExcelImport } from "@/components/PayrollExcelImport";
+import PayrollMonthWorkbench from "@/components/payroll/PayrollMonthWorkbench";
+import PayrollBankProposal from "@/components/payroll/PayrollBankProposal";
+import PayrollWorkerRoster from "@/components/payroll/PayrollWorkerRoster";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const money = new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 });
@@ -119,7 +123,7 @@ const compensationLabels: Record<CompensationType, string> = {
   PIECE_RATE: "Thợ may theo sản phẩm",
   HOURLY: "Nhân viên theo giờ",
 };
-const payrollTabOptions = [["overview","Tổng quan"],["workers","Nhân sự"],["policies","Quy chế lương"],["groups","Nhóm chính sách"],["worker-rates","Lương tháng / giờ"],["rates","Bảng giá công may"],["insurance","BHXH"],["banks","Ngân hàng"],["adjustments","Phụ cấp / khấu trừ"],["runs","Kỳ lương"]];
+const payrollTabOptions = [["runs","Bảng lương tháng"],["workers","Nhân sự & mức lương"],["policies","Thiết lập chung"]];
 const payrollSettingsTabs = new Set(["overview", "workers", "policies", "groups", "worker-rates", "rates", "insurance", "banks", "adjustments", "runs"]);
 
 const normalizeSearchText = (value: unknown) => String(value ?? "")
@@ -178,16 +182,12 @@ function statusBadge(status: string) {
   return <Badge variant={variant}>{label}</Badge>;
 }
 
-function payrollIssueAction(code: string) {
-  if (["MISSING_ASSIGNMENT", "MISSING_POLICY_GROUP", "MISSING_PAYROLL_PROFILE"].includes(code)) {
-    return { label: "Hoàn thiện hồ sơ nhân sự", path: "/payroll-settings?tab=workers" };
-  }
-  if (["MISSING_PRIMARY_RATE", "MISSING_OVERTIME_RATE"].includes(code)) {
-    return { label: "Thiết lập mức lương", path: "/payroll-settings?tab=worker-rates" };
-  }
-  if (code === "MISSING_INSURANCE") return { label: "Thiết lập BHXH", path: "/payroll-settings?tab=insurance" };
-  if (code === "MISSING_MEAL_POLICY") return { label: "Xem quy chế lương", path: "/payroll-settings?tab=policies" };
-  return { label: "Kiểm tra chấm công", path: "/production-attendance" };
+function payrollContextLink(path:string, context:URLSearchParams, workerId?:string) {
+  const [base,query='']=path.split('?'); const next=new URLSearchParams(query);
+  for(const key of ['month','location']) {const value=context.get(key);if(value)next.set(key,value);}
+  if(workerId)next.set('worker',workerId);
+  if(base!=='/payroll-settings') {const back=new URLSearchParams(context);back.set('tab','runs');next.set('returnTo','/payroll-settings?'+back.toString());}
+  return base+'?'+next.toString();
 }
 
 function EmptyRow({ columns, message }: { columns: number; message: string }) {
@@ -312,7 +312,7 @@ function PayrollOverviewTab({
 
 
 
-    <div className="overflow-hidden rounded-xl border bg-card"><div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3"><div><h2 className="font-semibold">Ma trận cấu hình nhân sự</h2></div><Badge variant="outline">{visibleFrameworkRows.length}/{frameworkRows.length} · {asOf}</Badge></div><TableToolbar><div className="relative min-w-[220px] flex-1"><Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên, mã nhân sự…" className="h-9 pl-8" /></div><Select value={readinessFilter} onValueChange={(value: typeof readinessFilter) => setReadinessFilter(value)}><SelectTrigger className="h-9 w-[180px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Tất cả trạng thái</SelectItem><SelectItem value="READY">Sẵn sàng</SelectItem><SelectItem value="NEEDS_ACTION">Cần hoàn thiện</SelectItem></SelectContent></Select>{(search || readinessFilter !== "ALL") && <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setReadinessFilter("ALL"); }}>Xóa lọc</Button>}</TableToolbar><div className="max-h-[520px] overflow-auto"><Table disableWrapper className="min-w-[1320px]"><TableHeader className="sticky top-0 z-10 bg-muted/95"><TableRow><TableHead className="sticky left-0 z-20 w-[240px] bg-muted/95">Nhân sự</TableHead><TableHead>Loại lương chính</TableHead><TableHead>Nhóm chính sách</TableHead><TableHead>Mức lương / đơn giá</TableHead><TableHead>Sản phẩm bổ sung</TableHead><TableHead>BHXH</TableHead><TableHead>Phụ cấp / khấu trừ</TableHead><TableHead>Trạng thái khung</TableHead></TableRow></TableHeader><TableBody>{visibleFrameworkRows.length === 0 ? <EmptyRow columns={8} message={frameworkRows.length ? "Không có dòng phù hợp bộ lọc." : "Chưa có nhân sự đang hoạt động."} /> : visibleFrameworkRows.map((row) => <TableRow key={row.worker.id} className={row.issues.length ? "bg-amber-50/40" : undefined}><TableCell className="sticky left-0 z-[1] bg-background"><div className="font-medium">{row.worker.display_name}</div><div className="text-xs text-muted-foreground">{row.worker.employee_code} · {row.worker.position_title || "Chưa có vị trí"}</div></TableCell><TableCell>{row.compensationType ? compensationLabels[row.compensationType] : <span className="text-amber-700">Chưa phân loại</span>}</TableCell><TableCell>{row.group?.code ?? row.worker.current_policy_group_code ?? <span className="text-amber-700">Chưa gán</span>}</TableCell><TableCell className="font-medium">{primaryRateLabel(row)}</TableCell><TableCell>{currentPieceRates.length > 0 ? row.compensationType === "PIECE_RATE" ? "Nguồn thu nhập chính" : "Cộng khi có sản lượng duyệt" : "Chưa có đơn giá hiệu lực"}</TableCell><TableCell>{!canSeeInsurance ? "Không có quyền xem" : row.insuranceVersion ? money.format(row.insuranceVersion.employee_amount) : "Chưa tham gia / cấu hình"}</TableCell><TableCell>{row.workerAdjustments.length > 0 ? `${row.workerAdjustments.length} khoản đang xử lý` : "Không có khoản mở"}</TableCell><TableCell>{row.issues.length === 0 ? <Badge className="bg-emerald-600">Sẵn sàng khung</Badge> : <div className="space-y-1">{row.issues.map((issue) => <div key={issue} className="text-xs text-amber-800">• {issue}</div>)}</div>}</TableCell></TableRow>)}</TableBody></Table></div></div>
+    <div className="overflow-hidden rounded-xl border bg-card"><div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3"><div><h2 className="font-semibold">Ma trận cấu hình nhân sự</h2></div><Badge variant="outline">{visibleFrameworkRows.length}/{frameworkRows.length} · {asOf}</Badge></div><TableToolbar><div className="relative min-w-[220px] flex-1"><Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên, mã nhân sự…" className="h-9 pl-8" /></div><Select value={readinessFilter} onValueChange={(value: typeof readinessFilter) => setReadinessFilter(value)}><SelectTrigger className="h-9 w-[180px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Tất cả trạng thái</SelectItem><SelectItem value="READY">Đã thiết lập cơ bản</SelectItem><SelectItem value="NEEDS_ACTION">Cần hoàn thiện</SelectItem></SelectContent></Select>{(search || readinessFilter !== "ALL") && <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setReadinessFilter("ALL"); }}>Xóa lọc</Button>}</TableToolbar><div className="max-h-[520px] overflow-auto"><Table disableWrapper className="min-w-[1320px]"><TableHeader className="sticky top-0 z-10 bg-muted/95"><TableRow><TableHead className="sticky left-0 z-20 w-[240px] bg-muted/95">Nhân sự</TableHead><TableHead>Loại lương chính</TableHead><TableHead>Nhóm chính sách</TableHead><TableHead>Mức lương / đơn giá</TableHead><TableHead>Sản phẩm bổ sung</TableHead><TableHead>BHXH</TableHead><TableHead>Phụ cấp / khấu trừ</TableHead><TableHead>Trạng thái khung</TableHead></TableRow></TableHeader><TableBody>{visibleFrameworkRows.length === 0 ? <EmptyRow columns={8} message={frameworkRows.length ? "Không có dòng phù hợp bộ lọc." : "Chưa có nhân sự đang hoạt động."} /> : visibleFrameworkRows.map((row) => <TableRow key={row.worker.id} className={row.issues.length ? "bg-amber-50/40" : undefined}><TableCell className="sticky left-0 z-[1] bg-background"><div className="font-medium">{row.worker.display_name}</div><div className="text-xs text-muted-foreground">{row.worker.employee_code} · {row.worker.position_title || "Chưa có vị trí"}</div></TableCell><TableCell>{row.compensationType ? compensationLabels[row.compensationType] : <span className="text-amber-700">Chưa phân loại</span>}</TableCell><TableCell>{row.group?.code ?? row.worker.current_policy_group_code ?? <span className="text-amber-700">Chưa gán</span>}</TableCell><TableCell className="font-medium">{primaryRateLabel(row)}</TableCell><TableCell>{currentPieceRates.length > 0 ? row.compensationType === "PIECE_RATE" ? "Nguồn thu nhập chính" : "Cộng khi có sản lượng duyệt" : "Chưa có đơn giá hiệu lực"}</TableCell><TableCell>{!canSeeInsurance ? "Không có quyền xem" : row.insuranceVersion ? money.format(row.insuranceVersion.employee_amount) : "Chưa tham gia / cấu hình"}</TableCell><TableCell>{row.workerAdjustments.length > 0 ? `${row.workerAdjustments.length} khoản đang xử lý` : "Không có khoản mở"}</TableCell><TableCell>{row.issues.length === 0 ? <Badge className="bg-emerald-600">Sẵn sàng khung</Badge> : <div className="space-y-1">{row.issues.map((issue) => <div key={issue} className="text-xs text-amber-800">• {issue}</div>)}</div>}</TableCell></TableRow>)}</TableBody></Table></div></div>
     <PayrollHelp title="Hướng dẫn vận hành"><p>Kiểm tra các mục còn thiếu trong bảng, hoàn thiện và duyệt nguồn trước khi tính lương. Chỉ khóa kỳ khi đã đối soát và không còn lỗi chặn. Mục Quy chế lương hiện là danh mục công thức tham khảo, chưa có quy trình ban hành.</p><div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{workflowStages.map(({ step, title, description, path, Icon }) => <Link key={step} to={path} className="group flex min-w-0 items-start gap-3 rounded-lg border bg-background p-3 transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><Icon className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-medium text-muted-foreground">BƯỚC {step}</p><p className="font-medium">{title}</p><p className="mt-0.5 text-xs text-muted-foreground">{description}</p></div><ArrowRight className="mt-2 h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></Link>)}</div></PayrollHelp>
   </div>;
 }
@@ -333,7 +333,7 @@ function PayrollPoliciesTab() {
     <div className="flex flex-wrap items-center gap-2 text-sm"><Badge variant="outline">Chưa ban hành</Badge><span className="text-muted-foreground">Công thức tham khảo, chưa phải văn bản quy chế đã duyệt.</span></div>
 
     <div className="overflow-hidden rounded-xl border bg-card"><div className="border-b px-4 py-3"><h2 className="font-semibold">Danh mục quy chế cần hoàn thiện</h2></div><div className="overflow-x-auto"><Table className="min-w-[1050px]"><TableHeader><TableRow><TableHead>Mã</TableHead><TableHead>Quy chế</TableHead><TableHead>Đối tượng</TableHead><TableHead>Dữ liệu đầu vào</TableHead><TableHead>Công thức khung</TableHead><TableHead>Nhân viên xem</TableHead><TableHead>Trạng thái</TableHead></TableRow></TableHeader><TableBody>{payrollFrameworkPolicies.map((policy) => <TableRow key={policy.code}><TableCell className="font-mono text-xs">{policy.code}</TableCell><TableCell className="font-medium">{policy.name}</TableCell><TableCell>{policy.audience}</TableCell><TableCell>{policy.source}</TableCell><TableCell className="max-w-[320px]">{policy.formula}</TableCell><TableCell><Badge variant="outline">Chưa công bố</Badge></TableCell><TableCell><Badge variant="secondary">Tham khảo</Badge></TableCell></TableRow>)}</TableBody></Table></div></div>
-    <PayrollHelp title="Hướng dẫn đọc quy chế"><p>Bảng liệt kê đối tượng, nguồn dữ liệu và công thức để đối chiếu khi thiết lập lương. Đây là danh mục tham khảo; hiện chưa có chức năng tạo phiên bản văn bản, phê duyệt, đính kèm hoặc ban hành cho nhân viên.</p><p>Khi đối soát, kiểm tra nhóm chính sách và ngày hiệu lực của từng nhân sự, cùng các nguồn đã duyệt trong kỳ.</p></PayrollHelp>
+    <PayrollHelp title="Hướng dẫn đọc quy chế"><p>Bảng dưới là danh mục văn bản tham khảo để đối chiếu. Các phiên bản cấu hình tính lương và lịch công ở phía trên được duyệt riêng; chức năng đính kèm hoặc ban hành văn bản cho nhân viên chưa có.</p><p>Khi đối soát, kiểm tra nhóm chính sách và ngày hiệu lực của từng nhân sự, cùng các nguồn đã duyệt trong kỳ.</p></PayrollHelp>
   </div>;
 }
 
@@ -356,6 +356,7 @@ type WorkerForm = {
 type CentralPayrollProfileForm = {
   worker_id: string;
   idempotency_key: string;
+  selected_drafts?: {assignment_id?:string|null;profile_id?:string|null;rate_id?:string|null;insurance_id?:string|null};
   location_code: string;
   position_title: string;
   employment_start_date: string;
@@ -382,9 +383,11 @@ type CentralPayrollProfileForm = {
 };
 
 function WorkersTab({
-  workers, groups, assignments, profiles, workerRates, insurance, adjustments, productRates, teams, canManage, canManagePolicies, canManageRates, canManageInsurance, requestAction, refresh,
+  workers, groups, assignments, profiles, workerRates, insurance, adjustments, productRates, teams, dataReady, dataError, canManage, canManagePolicies, canManageRates, canManageInsurance, requestAction, refresh,
 }: {
   workers: PayrollWorker[];
+  dataReady: boolean;
+  dataError?: unknown;
   groups: PayrollPolicyGroup[];
   assignments: WorkerCompensationAssignment[];
   profiles: WorkerPayrollProfile[];
@@ -400,6 +403,9 @@ function WorkersTab({
   requestAction: RequestAction;
   refresh: () => Promise<void>;
 }) {
+  const [workerParams,setWorkerParams] = useSearchParams();
+  const [profileStep,setProfileStep] = useState(0);
+  const [bundleWorker,setBundleWorker] = useState<string|null>(null);
   const [search, setSearch] = useState("");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [readinessFilter, setReadinessFilter] = useState("ALL");
@@ -415,8 +421,9 @@ function WorkersTab({
   const [teamForm, setTeamForm] = useState({ supervisor_worker_id: "", worker_id: "", effective_from: today(), effective_to: "", reason: "" });
   const [teamOpen, setTeamOpen] = useState(false);
 
+  const assertDataReady = () => { if (!dataReady) throw new Error("Dữ liệu hồ sơ lương chưa đầy đủ. Hãy tải lại trước khi chỉnh sửa hoặc duyệt."); };
   const saveWorker = useMutation({
-    mutationFn: async (form: WorkerForm) => updatePayrollWorkerMaster({
+    mutationFn: async (form: WorkerForm) => { assertDataReady(); const issue=payrollWorkerMasterIssue(form);if(issue)throw new Error(issue);return updatePayrollWorkerMaster({
       worker_id: form.id,
       location_code: form.location_code || null,
       position_title: form.position_title || null,
@@ -424,12 +431,13 @@ function WorkersTab({
       employment_end_date: form.employment_end_date || null,
       payroll_status: form.payroll_status,
       reason: form.reason,
-    }),
+    }); },
     onSuccess: async () => { toast.success("Đã cập nhật hồ sơ nhân sự"); setWorkerForm(null); await refresh(); },
     onError: (error) => toast.error(errorMessage(error)),
   });
   const saveAssignment = useMutation({
     mutationFn: async (form: NonNullable<typeof assignmentForm>) => {
+      assertDataReady();
       if (!form.compensation_type) throw new Error("Hãy chọn hình thức lương.");
       return form.id
       ? updateWorkerCompensationAssignmentDraft({
@@ -448,11 +456,13 @@ function WorkersTab({
   });
   const saveCentralProfile = useMutation({
     mutationFn: async (form: CentralPayrollProfileForm) => {
+      assertDataReady();
       if (!form.compensation_type) throw new Error("Hãy chọn hình thức lương chính.");
       if (isLocalBackend()) {
         return saveWorkerPayrollBundle({
           worker_id: form.worker_id,
           idempotency_key: form.idempotency_key,
+          selected_drafts: form.selected_drafts,
           location_code: form.location_code || null,
           position_title: form.position_title || null,
           employment_start_date: form.employment_start_date || null,
@@ -467,11 +477,10 @@ function WorkersTab({
           meal_enabled: form.meal_enabled,
           allowances_enabled: form.allowances_enabled,
           deductions_enabled: form.deductions_enabled,
-          insurance_enabled: form.insurance_enabled,
+          ...(canManageInsurance ? {insurance_enabled:form.insurance_enabled,insurance_amount:form.insurance_amount === "" ? null : Number(form.insurance_amount),insurance_source_reference:form.insurance_source_reference || null} : {}),
           fixed_allowance_amount: Number(form.fixed_allowance_amount) || 0,
           fixed_deduction_amount: Number(form.fixed_deduction_amount) || 0,
-          insurance_amount: form.insurance_amount === "" ? null : Number(form.insurance_amount),
-          insurance_source_reference: form.insurance_source_reference || null,
+
           effective_from: form.effective_from,
           effective_to: form.effective_to || null,
           source_reference: form.source_reference || null,
@@ -556,13 +565,13 @@ function WorkersTab({
       }
       return { assignment, profile };
     },
-    onSuccess: async () => { toast.success("Đã lưu toàn bộ hồ sơ lương trong một giao dịch SQL cục bộ"); setProfileForm(null); await refresh(); },
-    onError: (error) => toast.error(`Chưa thể hoàn tất hồ sơ lương: ${errorMessage(error)}. Biểu mẫu vẫn mở; giao dịch SQL cục bộ đã được hoàn tác nên không có hồ sơ lưu dở.`),
+    onSuccess: async () => { toast.success(isLocalBackend()?"Đã lưu hồ sơ nhân sự và bộ lương nháp trong một giao dịch":"Đã lưu hồ sơ lương"); setProfileForm(null); await refresh(); },
+    onError: (error) => toast.error(`Chưa thể hoàn tất hồ sơ lương: ${errorMessage(error)}. Biểu mẫu vẫn mở để thử lại.`),
   });
   const saveTeam = useMutation({
-    mutationFn: () => createPayrollTeamAssignment({
+    mutationFn: () => { assertDataReady(); return createPayrollTeamAssignment({
       ...teamForm, effective_to: teamForm.effective_to || null,
-    }),
+    }); },
     onSuccess: async () => {
       toast.success("Đã phân công nhân sự cho tổ trưởng");
       setTeamOpen(false);
@@ -573,6 +582,9 @@ function WorkersTab({
   });
 
   const openCentralProfile = (worker: PayrollWorker) => {
+    if (!dataReady) { toast.error("Dữ liệu hồ sơ lương chưa đầy đủ."); return; }
+    if ([assignments,profiles,workerRates,canManageInsurance?insurance:[]].some(rows=>rows.filter(row=>row.worker_id===worker.id&&row.status==='DRAFT').length>1)) {toast.error('Có nhiều bản nháp. Hãy đối chiếu và chọn đúng bộ phiên bản trước; dùng danh mục nâng cao để sửa từng bản.');return;}
+    setProfileStep(0);
     const approvedAssignment = latestWorkerVersion(assignments, worker.id, "APPROVED", today());
     const draftAssignment = latestWorkerVersion(assignments, worker.id, "DRAFT");
     const compensationType = draftAssignment?.compensation_type ?? approvedAssignment?.compensation_type ?? worker.current_compensation_type ?? "";
@@ -588,6 +600,7 @@ function WorkersTab({
     const primaryAmount = compensationType === "HOURLY" ? rate?.hourly_rate : compensationType === "PIECE_RATE" ? null : rate?.monthly_rate;
     setProfileForm({
       worker_id: worker.id,
+      selected_drafts:{assignment_id:draftAssignment?.id||null,profile_id:draftProfile?.id||null,rate_id:draftRate?.id||null,...(canManageInsurance?{insurance_id:draftInsurance?.id||null}:{})},
       idempotency_key: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${worker.id}-payroll-bundle`,
       location_code: worker.location_code ?? "",
       position_title: worker.position_title ?? "",
@@ -619,44 +632,27 @@ function WorkersTab({
     + profiles.filter((item) => item.worker_id === workerId && item.status === "DRAFT").length
     + workerRates.filter((item) => item.worker_id === workerId && item.status === "DRAFT").length
     + insurance.filter((item) => item.worker_id === workerId && item.status === "DRAFT").length;
-  const approveWorkerDrafts = async (workerId: string, reason: string) => {
-    const assignmentDraft = latestWorkerVersion(assignments, workerId, "DRAFT");
-    const profileDraft = latestWorkerVersion(profiles, workerId, "DRAFT");
-    const rateDrafts = workerRates.filter((item) => item.worker_id === workerId && item.status === "DRAFT");
-    const insuranceDraft = latestWorkerVersion(insurance, workerId, "DRAFT");
-    if (assignmentDraft) await approveWorkerCompensationAssignment(assignmentDraft.id, reason);
-    for (const rateDraft of rateDrafts) await approveWorkerPayrollRate(rateDraft.id, reason);
-    if (profileDraft) await approveWorkerPayrollProfile(profileDraft.id, reason);
-    if (insuranceDraft) await approveSocialInsuranceVersion(insuranceDraft.id, reason);
-  };
 
-  const filtered = workers.filter((worker) =>
+  const filtered = workers.filter((worker) => (!workerParams.get("worker") || worker.id===workerParams.get("worker")) &&
     normalizeSearchText(`${worker.employee_code} ${worker.display_name} ${worker.position_title ?? ""}`)
       .includes(normalizeSearchText(search)),
   );
   const workerName = (id: string) => workers.find((worker) => worker.id === id)?.display_name ?? id;
   const groupMap = new Map(groups.map((group) => [group.id, group]));
   const approvedProductRates = productRates.filter((rate) => rate.status === "APPROVED" && isEffectiveVersion(rate.effective_from, rate.effective_to));
-  const canConfigureCentralProfile = isLocalBackend() && canManage && canManagePolicies && canManageRates && canManageInsurance;
+  const canConfigureCentralProfile = isLocalBackend() && canManage && canManagePolicies && canManageRates;
+  const workerMasterIssue = workerForm ? payrollWorkerMasterIssue(workerForm) : null;
   const centralProfileIssue = profileForm
-    ? profileForm.employment_end_date && profileForm.employment_start_date && profileForm.employment_end_date < profileForm.employment_start_date
-      ? "Ngày nghỉ việc không được trước ngày vào làm."
-      : profileForm.effective_to && profileForm.effective_to < profileForm.effective_from
-        ? "Ngày kết thúc hiệu lực không được trước ngày bắt đầu."
-        : profileForm.payroll_status === "TERMINATED" && !profileForm.employment_end_date
-          ? "Nhân sự đã nghỉ việc cần có ngày nghỉ việc."
-          : profileForm.allowances_enabled && !(Number(profileForm.fixed_allowance_amount) > 0)
-            ? "Phụ cấp cố định đang bật cần có số tiền lớn hơn 0."
-            : profileForm.deductions_enabled && !(Number(profileForm.fixed_deduction_amount) > 0)
-              ? "Khấu trừ cố định đang bật cần có số tiền lớn hơn 0."
-              : null
+    ? payrollWorkerMasterIssue(profileForm)
+      || (profileForm.effective_to && profileForm.effective_to < profileForm.effective_from ? "Ngày kết thúc hiệu lực không được trước ngày bắt đầu."
+        : profileForm.allowances_enabled && !(Number(profileForm.fixed_allowance_amount)>0) ? "Phụ cấp cố định đang bật cần có số tiền lớn hơn 0."
+        : profileForm.deductions_enabled && !(Number(profileForm.fixed_deduction_amount)>0) ? "Khấu trừ cố định đang bật cần có số tiền lớn hơn 0." : null)
     : null;
   const allProfileRows = filtered.map((worker) => {
     const assignment = latestWorkerVersion(assignments, worker.id, "APPROVED", today());
     const compensationType = assignment?.compensation_type ?? worker.current_compensation_type;
     const profile = latestWorkerVersion(profiles, worker.id, "APPROVED", today());
     const primaryRate = compensationType ? latestWorkerVersion(workerRates.filter((rate) => rate.compensation_type === compensationType), worker.id, "APPROVED", today()) : undefined;
-    const hourlyRate = latestWorkerVersion(workerRates.filter((rate) => rate.compensation_type === "HOURLY"), worker.id, "APPROVED", today());
     const insuranceVersion = latestWorkerVersion(insurance, worker.id, "APPROVED", today());
     const workerAdjustments = adjustments.filter((item) => item.worker_id === worker.id && !["REJECTED", "LOCKED"].includes(item.status));
     const issues: string[] = [];
@@ -666,8 +662,7 @@ function WorkersTab({
     if (compensationType && compensationType !== "PIECE_RATE" && !primaryRate) issues.push("Thiếu mức lương chính");
     if (isLocalBackend() && !profile) issues.push("Thiếu cấu hình nguồn bổ sung đã duyệt");
     if (profile?.piece_output_enabled && approvedProductRates.length === 0) issues.push("Nguồn sản lượng chưa có đơn giá");
-    if (profile?.overtime_enabled && !hourlyRate) issues.push("Tăng ca thiếu đơn giá giờ");
-    if (profile?.insurance_enabled && !insuranceVersion) issues.push("BHXH chưa được duyệt");
+    if (canManageInsurance && profile?.insurance_enabled && !insuranceVersion) issues.push("BHXH chưa được duyệt");
     if (profile?.allowances_enabled && profile.fixed_allowance_amount <= 0) issues.push("Phụ cấp cố định chưa có số tiền");
     if (profile?.deductions_enabled && profile.fixed_deduction_amount <= 0) issues.push("Khấu trừ cố định chưa có số tiền");
     return { worker, assignment, compensationType, profile, primaryRate, insuranceVersion, workerAdjustments, issues, draftCount: draftCountFor(worker.id), group: groupMap.get(assignment?.payroll_policy_group_id ?? worker.current_policy_group_id ?? "") };
@@ -683,7 +678,7 @@ function WorkersTab({
   const visibleTeams = teams.filter((item) => visibleWorkerIds.has(item.worker_id) || visibleWorkerIds.has(item.supervisor_worker_id));
   const missingCentralPermissions = [
     !canManage && "quản lý nhân sự", !canManagePolicies && "quản lý chính sách",
-    !canManageRates && "quản lý mức lương", !canManageInsurance && "quản lý BHXH",
+    !canManageRates && "quản lý mức lương",
   ].filter(Boolean);
   const centralProfileMissing = profileForm ? [
     !profileForm.compensation_type && "Chọn hình thức lương chính",
@@ -691,18 +686,18 @@ function WorkersTab({
     !profileForm.effective_from && "Điền ngày bắt đầu hiệu lực",
     !profileForm.reason.trim() && "Ghi lý do thay đổi",
     profileForm.compensation_type && profileForm.compensation_type !== "PIECE_RATE" && !(Number(profileForm.primary_amount) > 0) && "Điền mức lương chính lớn hơn 0 đồng",
-    profileForm.insurance_enabled && !(Number(profileForm.insurance_amount) > 0) && "Điền mức BHXH lớn hơn 0 đồng",
-    profileForm.insurance_enabled && !profileForm.insurance_source_reference.trim() && "Điền nguồn tham chiếu BHXH",
+    canManageInsurance && profileForm.insurance_enabled && !(Number(profileForm.insurance_amount) > 0) && "Điền mức BHXH lớn hơn 0 đồng",
+    canManageInsurance && profileForm.insurance_enabled && !profileForm.insurance_source_reference.trim() && "Điền nguồn tham chiếu BHXH",
     centralProfileIssue,
   ].filter((item): item is string => typeof item === "string" && item.length > 0) : [];
   const workerFilterControls = <div className="grid w-full min-w-0 grid-cols-2 gap-2 lg:w-auto lg:flex lg:flex-wrap">
-          <Select value={readinessFilter} onValueChange={setReadinessFilter}><SelectTrigger aria-label="Lọc độ hoàn thiện" className="lg:w-[155px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Độ hoàn thiện: tất cả</SelectItem><SelectItem value="READY">Sẵn sàng</SelectItem><SelectItem value="NEEDS_ACTION">Cần hoàn thiện</SelectItem></SelectContent></Select>
+          <Select value={readinessFilter} onValueChange={setReadinessFilter}><SelectTrigger aria-label="Lọc độ hoàn thiện" className="lg:w-[155px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Độ hoàn thiện: tất cả</SelectItem><SelectItem value="READY">Đã thiết lập cơ bản</SelectItem><SelectItem value="NEEDS_ACTION">Cần hoàn thiện</SelectItem></SelectContent></Select>
           <Select value={draftFilter} onValueChange={setDraftFilter}><SelectTrigger aria-label="Lọc bản nháp" className="lg:w-[140px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Bản nháp: tất cả</SelectItem><SelectItem value="DRAFT">Có bản nháp</SelectItem><SelectItem value="NO_DRAFT">Không có nháp</SelectItem></SelectContent></Select>
           <Select value={compensationFilter} onValueChange={setCompensationFilter}><SelectTrigger aria-label="Lọc hình thức lương" className="lg:w-[170px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Mọi hình thức lương</SelectItem>{Object.entries(compensationLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
           <Select value={payrollStatusFilter} onValueChange={setPayrollStatusFilter}><SelectTrigger aria-label="Lọc trạng thái lương" className="lg:w-[150px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Trạng thái: tất cả</SelectItem><SelectItem value="ACTIVE">Đang tính lương</SelectItem><SelectItem value="SUSPENDED">Tạm dừng</SelectItem><SelectItem value="TERMINATED">Đã nghỉ việc</SelectItem></SelectContent></Select>
         </div>;
   const workerActions = (row: typeof profileRows[number]) => <div className="flex flex-wrap justify-end gap-1">
-    {row.draftCount > 0 && canManagePolicies && <Button size="sm" variant="outline" onClick={() => requestAction({ title: "Duyệt hồ sơ lương", description: `Duyệt ${row.draftCount} phiên bản nháp của ${row.worker.display_name}.`, confirmLabel: "Duyệt tất cả", run: (reason) => approveWorkerDrafts(row.worker.id, reason) })}><Check className="mr-1 h-3.5 w-3.5" />{row.draftCount} nháp</Button>}
+    {row.draftCount > 0 && canConfigureCentralProfile && <Button size="sm" variant="outline" onClick={() => { if (dataReady) setBundleWorker(row.worker.id); }}><Check className="mr-1 h-3.5 w-3.5" />Đối chiếu {row.draftCount} nháp</Button>}
     {canConfigureCentralProfile && <Button size="sm" onClick={() => openCentralProfile(row.worker)}><Settings2 className="mr-1 h-3.5 w-3.5" />Thiết lập</Button>}
     {canManagePolicies && !canConfigureCentralProfile && <Button size="sm" variant="outline" onClick={() => setAssignmentForm({ worker_id: row.worker.id, compensation_type: row.compensationType ?? "", payroll_policy_group_id: row.assignment?.payroll_policy_group_id ?? row.worker.current_policy_group_id ?? "", effective_from: today(), effective_to: "", reason: "" })}>Phân loại</Button>}
     {canManage && <Button variant="ghost" size="icon" className="h-11 w-11 lg:h-10 lg:w-10" aria-label={`Sửa hồ sơ ${row.worker.display_name}`} title="Sửa hồ sơ nhân sự" onClick={() => setWorkerForm({ id: row.worker.id, location_code: row.worker.location_code ?? "", position_title: row.worker.position_title ?? "", employment_start_date: row.worker.employment_start_date ?? "", employment_end_date: row.worker.employment_end_date ?? "", payroll_status: row.worker.payroll_status, reason: "" })}><Pencil className="h-4 w-4" /></Button>}
@@ -711,6 +706,12 @@ function WorkersTab({
     ? `${approvedProductRates.length} đơn giá sản phẩm`
     : row.primaryRate ? `${money.format(row.compensationType === "HOURLY" ? row.primaryRate.hourly_rate ?? 0 : row.primaryRate.monthly_rate ?? 0)} / ${row.compensationType === "HOURLY" ? "giờ" : "tháng"}` : "Chưa có mức lương";
 
+
+  if (!dataReady) return <Alert variant={dataError ? "destructive" : "default"}>
+    <AlertTriangle className="h-4 w-4" />
+    <AlertTitle>{dataError ? "Chưa tải đủ hồ sơ lương" : "Đang tải đầy đủ hồ sơ lương…"}</AlertTitle>
+    <AlertDescription className="space-y-2"><p>{dataError ? errorMessage(dataError) : "Chờ các danh mục theo quyền tải xong trước khi thiết lập, chỉnh sửa hoặc duyệt."}</p><Button variant="outline" size="sm" onClick={() => void refresh()}>Thử tải lại</Button></AlertDescription>
+  </Alert>;
 
   return (
     <div className="space-y-5">
@@ -728,28 +729,13 @@ function WorkersTab({
       {isLocalBackend() && !canConfigureCentralProfile && missingCentralPermissions.length > 0 && <p className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">Thiết lập hồ sơ tập trung cần đủ quyền: {missingCentralPermissions.join(", ")}. Bạn vẫn có thể thao tác các phần đã được cấp quyền.</p>}
 
       <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-3 sm:px-4"><div><h3 className="hidden text-base font-semibold lg:block">Hồ sơ lương tập trung</h3></div><div className="flex gap-2"><Badge className="bg-emerald-600">{profileRows.filter((row) => row.issues.length === 0).length} sẵn sàng</Badge><Badge variant="outline">{profileRows.filter((row) => row.issues.length > 0).length} cần hoàn thiện</Badge></div></div>
-        <div className="hidden max-h-[620px] overflow-auto lg:block"><Table disableWrapper className="min-w-[1840px] table-fixed [&_td]:px-3 [&_td]:py-3 [&_th]:px-3">
-          <TableHeader className="sticky top-0 z-10 bg-muted/95"><TableRow><TableHead className="sticky left-0 z-20 w-[230px] border-r bg-muted">Nhân sự</TableHead><TableHead>Lương chính</TableHead><TableHead className="text-right">Mức lương</TableHead><TableHead>Nhóm chính sách</TableHead><TableHead>Nguồn bổ sung</TableHead><TableHead>BHXH</TableHead><TableHead className="text-right">Cố định cộng / trừ</TableHead><TableHead>Hiệu lực</TableHead><TableHead>Độ hoàn thiện</TableHead><TableHead className="sticky right-0 z-20 w-[240px] border-l bg-muted text-right">Thao tác</TableHead></TableRow></TableHeader>
-          <TableBody>{profileRows.length === 0 ? <EmptyRow columns={10} message="Không có nhân sự phù hợp." /> : profileRows.map((row) => <TableRow key={row.worker.id} className={row.issues.length ? "bg-amber-50/40" : undefined}>
-            <TableCell className="sticky left-0 z-[1] bg-background"><div className="font-medium">{row.worker.display_name}</div><div className="text-xs text-muted-foreground">{row.worker.employee_code} · {row.worker.position_title || "Chưa có vị trí"}</div><div className="mt-1">{statusBadge(row.worker.payroll_status)}</div></TableCell>
-            <TableCell>{row.compensationType ? compensationLabels[row.compensationType] : <span className="text-amber-700">Chưa phân loại</span>}</TableCell>
-            <TableCell className="text-right font-medium tabular-nums">{row.compensationType === "PIECE_RATE" ? `${approvedProductRates.length} đơn giá SP` : row.primaryRate ? money.format(row.compensationType === "HOURLY" ? row.primaryRate.hourly_rate ?? 0 : row.primaryRate.monthly_rate ?? 0) : "—"}</TableCell>
-            <TableCell>{row.group ? <><div className="font-medium">{row.group.code}</div><div className="text-xs text-muted-foreground">{row.group.name}</div></> : <span className="text-amber-700">Chưa gán</span>}</TableCell>
-            <TableCell><div className="flex max-w-[300px] flex-wrap gap-1">{row.profile?.piece_output_enabled && <Badge variant="outline">Sản lượng</Badge>}{row.profile?.overtime_enabled && <Badge variant="outline">Tăng ca</Badge>}{row.profile?.meal_enabled && <Badge variant="outline">Tiền ăn</Badge>}{row.profile?.allowances_enabled && <Badge variant="outline">Phụ cấp</Badge>}{row.profile?.deductions_enabled && <Badge variant="outline">Khấu trừ</Badge>}{!row.profile && <span className="text-xs text-muted-foreground">Chưa duyệt cấu hình</span>}</div></TableCell>
-            <TableCell>{row.profile?.insurance_enabled ? row.insuranceVersion ? <><div className="font-medium">{money.format(row.insuranceVersion.employee_amount)}</div><div className="text-xs text-muted-foreground">Đã duyệt</div></> : <span className="text-amber-700">Chờ cấu hình</span> : "Không áp dụng"}</TableCell>
-            <TableCell className="text-right tabular-nums"><div className="text-emerald-700">+{money.format(row.profile?.allowances_enabled ? row.profile.fixed_allowance_amount : 0)}</div><div className="text-rose-700">−{money.format(row.profile?.deductions_enabled ? row.profile.fixed_deduction_amount : 0)}</div></TableCell>
-            <TableCell>{row.assignment ? <>{row.assignment.effective_from}<div className="text-xs text-muted-foreground">đến {row.assignment.effective_to || "không giới hạn"}</div></> : "—"}</TableCell>
-            <TableCell>{row.issues.length === 0 ? <Badge className="bg-emerald-600">Sẵn sàng</Badge> : <div className="max-w-[260px] space-y-1">{row.issues.slice(0, 3).map((issue) => <div key={issue} className="text-xs text-amber-800">• {issue}</div>)}{row.issues.length > 3 && <div className="text-xs text-muted-foreground">+{row.issues.length - 3} mục khác</div>}</div>}</TableCell>
-            <TableCell className="sticky right-0 z-[2] border-l bg-background text-right">{workerActions(row)}</TableCell>
-          </TableRow>)}</TableBody>
-        </Table></div>
-        <div className="space-y-3 p-3 lg:hidden">
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-3 sm:px-4"><div><h3 className="hidden text-base font-semibold lg:block">Hồ sơ lương tập trung</h3></div><div className="flex gap-2"><Badge className="bg-emerald-600">{profileRows.filter((row) => row.issues.length === 0).length} đã thiết lập cơ bản</Badge><Badge variant="outline">{profileRows.filter((row) => row.issues.length > 0).length} cần hoàn thiện</Badge></div></div>
+        <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
           {profileRows.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Không có nhân sự phù hợp bộ lọc.</p>}
           {profileRows.map((row) => <article key={row.worker.id} className="rounded-lg border bg-background p-3">
             <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h4 className="break-words font-semibold">{row.worker.display_name}</h4><p className="text-xs text-muted-foreground">{row.worker.employee_code} · {row.worker.position_title || "Chưa có vị trí"}</p></div>{statusBadge(row.worker.payroll_status)}</div>
             <p className="mt-3 text-sm">{row.compensationType ? compensationLabels[row.compensationType] : "Chưa phân loại lương"}</p><p className="font-semibold tabular-nums">{primaryPayLabel(row)}</p>
-            <div className="my-3">{row.issues.length === 0 ? <Badge className="bg-emerald-600">Sẵn sàng</Badge> : <Badge variant="outline" className="text-amber-800">{row.issues.length} mục cần hoàn thiện</Badge>}</div>
+            <div className="my-3">{row.issues.length === 0 ? <Badge className="bg-emerald-600">Đã thiết lập · chưa kiểm tra kỳ</Badge> : <Badge variant="outline" className="text-amber-800">{row.issues.length} mục cần hoàn thiện</Badge>}</div>
             {workerActions(row)}
             <details className="mt-3 border-t pt-2"><summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">Xem đầy đủ hồ sơ</summary>
               <dl className="grid grid-cols-[100px_1fr] gap-x-3 gap-y-2 text-sm [&_dt]:text-muted-foreground [&_dd]:min-w-0 [&_dd]:break-words">
@@ -757,7 +743,7 @@ function WorkersTab({
                 <dt>Ngày vào / nghỉ</dt><dd>{row.worker.employment_start_date || "Chưa có"} / {row.worker.employment_end_date || "Chưa nghỉ"}</dd>
                 <dt>Nhóm chính sách</dt><dd>{row.group ? `${row.group.code} · ${row.group.name}` : "Chưa gán"}</dd>
                 <dt>Nguồn bổ sung</dt><dd>{[row.profile?.piece_output_enabled && "Sản lượng", row.profile?.overtime_enabled && "Tăng ca", row.profile?.meal_enabled && "Tiền ăn", row.profile?.allowances_enabled && "Phụ cấp", row.profile?.deductions_enabled && "Khấu trừ"].filter(Boolean).join(", ") || (row.profile ? "Không áp dụng" : "Chưa duyệt cấu hình")}</dd>
-                <dt>BHXH</dt><dd>{row.profile?.insurance_enabled ? row.insuranceVersion ? money.format(row.insuranceVersion.employee_amount) : "Chờ cấu hình" : "Không áp dụng"}</dd>
+                <dt>BHXH</dt><dd>{!canManageInsurance?"Theo quyền bảo hiểm":row.profile?.insurance_enabled ? row.insuranceVersion ? money.format(row.insuranceVersion.employee_amount) : "Chờ cấu hình" : "Không áp dụng"}</dd>
                 <dt>Phụ cấp cố định</dt><dd>+{money.format(row.profile?.allowances_enabled ? row.profile.fixed_allowance_amount : 0)}</dd>
                 <dt>Khấu trừ cố định</dt><dd>−{money.format(row.profile?.deductions_enabled ? row.profile.fixed_deduction_amount : 0)}</dd>
                 <dt>Hiệu lực</dt><dd>{row.assignment ? `${row.assignment.effective_from} đến ${row.assignment.effective_to || "không giới hạn"}` : "Chưa có"}</dd>
@@ -798,36 +784,40 @@ function WorkersTab({
         </TableBody></Table></div>
       </details>
 
-      <Dialog open={!!profileForm} onOpenChange={(open) => !open && !saveCentralProfile.isPending && setProfileForm(null)}><DialogContent className="sm:max-w-3xl"><DialogHeader><DialogTitle>Thiết lập hồ sơ lương</DialogTitle><DialogDescription>Thiết lập hồ sơ nhân sự, lương chính và các nguồn cộng trừ bổ sung. Mọi thay đổi cần được lưu nháp và duyệt trước khi có hiệu lực.</DialogDescription></DialogHeader>{profileForm && <div className="space-y-5">
-        <div className="rounded-lg border bg-muted/30 p-3"><div className="font-medium">{workerName(profileForm.worker_id)}</div><p className="text-xs text-muted-foreground">Mọi thay đổi được lưu thành phiên bản nháp; cần duyệt trước khi có hiệu lực.</p></div>
-        <div className="space-y-3"><div><h4 className="font-medium">1. Hồ sơ nhân sự</h4><p className="text-xs text-muted-foreground">Thông tin nền dùng chung cho chấm công và tính lương.</p></div><div className="grid gap-3 sm:grid-cols-2">
+      {bundleWorker&&<PayrollBundleReview key={bundleWorker} workerId={bundleWorker} workerName={workerName(bundleWorker)} groups={groups} versions={{assignment_id:assignments.filter(row=>row.worker_id===bundleWorker&&row.status==='DRAFT'),profile_id:profiles.filter(row=>row.worker_id===bundleWorker&&row.status==='DRAFT'),rate_id:workerRates.filter(row=>row.worker_id===bundleWorker&&row.status==='DRAFT'),...(canManageInsurance?{insurance_id:insurance.filter(row=>row.worker_id===bundleWorker&&row.status==='DRAFT')}:{})}} onClose={()=>setBundleWorker(null)} onApproved={refresh} />}
+      {workerParams.get('worker')&&<Button variant="outline" onClick={()=>{const next=new URLSearchParams(workerParams);next.delete('worker');setWorkerParams(next);}}>Xem tất cả nhân sự</Button>}
+      <Dialog open={!!profileForm} onOpenChange={(open) => !open && !saveCentralProfile.isPending && setProfileForm(null)}><DialogContent className="sm:max-w-3xl"><DialogHeader><DialogTitle>Thiết lập hồ sơ lương</DialogTitle><DialogDescription>Thiết lập hồ sơ nhân sự, lương chính và các nguồn cộng trừ bổ sung. Thông tin nhân sự áp dụng ngay khi lưu; phiên bản lương và BHXH chờ duyệt.</DialogDescription></DialogHeader>{profileForm && <div className="space-y-5">
+        <ol className="grid grid-cols-3 gap-2 text-xs">{['Cách trả lương','Các khoản áp dụng','Kiểm tra & lưu nháp'].map((label,index)=><li key={label}><Button size="sm" variant={profileStep===index?'default':'outline'} className="h-auto w-full whitespace-normal" onClick={()=>setProfileStep(index)}>{index+1}. {label}</Button></li>)}</ol>
+        {profileStep===2&&<div className="space-y-2 rounded border p-3 text-sm"><h4 className="font-semibold">3. Kiểm tra thay đổi trước khi lưu</h4><p>Cách trả: {compensationLabels[profileForm.compensation_type as CompensationType]||'Chưa chọn'} · Mức mới: {profileForm.primary_amount?money.format(Number(profileForm.primary_amount)):'Theo bảng giá sản phẩm'}</p><p>Mức cũ: {(()=>{const old=latestWorkerVersion(workerRates,profileForm.worker_id,'APPROVED',profileForm.effective_from);return old?money.format(Number(old.monthly_rate??old.hourly_rate??0)):'Chưa có';})()}</p><p>Hiệu lực: {profileForm.effective_from} → {profileForm.effective_to||'không giới hạn'}. Sau lưu, mở “Đối chiếu nháp” để duyệt đúng bộ.</p><p>Thông tin nhân sự áp dụng ngay: cơ sở {profileForm.location_code||'Chưa gán'}, vào làm {profileForm.employment_start_date||'Chưa có'}, trạng thái {profileForm.payroll_status}.</p>{!canManageInsurance&&<p>BHXH giữ nguyên trên máy chủ; tài khoản này không chỉnh sửa khoản bảo hiểm. Ngân hàng xác minh ở danh mục riêng.</p>}</div>}
+        <div className="rounded-lg border bg-muted/30 p-3"><div className="font-medium">{workerName(profileForm.worker_id)}</div><p className="text-xs text-muted-foreground">Lương và khoản cố định lưu nháp; cơ sở, ngày làm và trạng thái nhân sự áp dụng ngay.</p></div>
+        <div className={profileStep===0?"space-y-3":"hidden"}><div><h4 className="font-medium">Thông tin nhân sự · áp dụng ngay khi lưu</h4><p className="text-xs text-muted-foreground">Thông tin nền dùng chung cho chấm công và tính lương.</p></div><div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5"><Label>Cơ sở</Label><Input value={profileForm.location_code} onChange={(event) => setProfileForm({ ...profileForm, location_code: event.target.value })} /></div>
           <div className="space-y-1.5"><Label>Vị trí</Label><Input value={profileForm.position_title} onChange={(event) => setProfileForm({ ...profileForm, position_title: event.target.value })} /></div>
           <div className="space-y-1.5"><Label>Ngày vào làm</Label><Input type="date" value={profileForm.employment_start_date} onChange={(event) => setProfileForm({ ...profileForm, employment_start_date: event.target.value })} /></div>
           <div className="space-y-1.5"><Label>Ngày nghỉ việc</Label><Input type="date" value={profileForm.employment_end_date} onChange={(event) => setProfileForm({ ...profileForm, employment_end_date: event.target.value })} /></div>
           <div className="space-y-1.5 sm:col-span-2"><Label>Trạng thái lương</Label><Select value={profileForm.payroll_status} onValueChange={(value: PayrollWorker["payroll_status"]) => setProfileForm({ ...profileForm, payroll_status: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ACTIVE">Hoạt động</SelectItem><SelectItem value="SUSPENDED">Tạm dừng</SelectItem><SelectItem value="TERMINATED">Đã nghỉ</SelectItem></SelectContent></Select></div>
         </div></div>
-        <div className="space-y-3"><div><h4 className="font-medium">2. Lương chính và phạm vi áp dụng</h4><p className="text-xs text-muted-foreground">Mỗi nhân sự chỉ có một hình thức lương chính tại một thời điểm.</p></div><div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5"><Label>Hình thức lương chính</Label><Select value={profileForm.compensation_type} onValueChange={(value: CompensationType) => setProfileForm({ ...profileForm, compensation_type: value, primary_amount: "", piece_output_enabled: value === "PIECE_RATE" ? true : profileForm.piece_output_enabled })}><SelectTrigger><SelectValue placeholder="Chọn hình thức lương" /></SelectTrigger><SelectContent>{Object.entries(compensationLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+        <div className={profileStep===0?"space-y-3":"hidden"}><div><h4 className="font-medium">1. Cách trả lương · lưu phiên bản nháp</h4><p className="text-xs text-muted-foreground">Mỗi nhân sự chỉ có một hình thức lương chính tại một thời điểm.</p></div><div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5"><Label>Hình thức lương chính</Label><Select value={profileForm.compensation_type} onValueChange={(value: CompensationType) => setProfileForm({ ...profileForm, compensation_type: value, selected_drafts:{...profileForm.selected_drafts,rate_id:null}, primary_amount: "", piece_output_enabled: value === "PIECE_RATE" ? true : profileForm.piece_output_enabled })}><SelectTrigger><SelectValue placeholder="Chọn hình thức lương" /></SelectTrigger><SelectContent>{Object.entries(compensationLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-1.5"><Label>Nhóm chính sách</Label><Select value={profileForm.payroll_policy_group_id} onValueChange={(value) => setProfileForm({ ...profileForm, payroll_policy_group_id: value })}><SelectTrigger><SelectValue placeholder="Chọn nhóm chính sách" /></SelectTrigger><SelectContent>{groups.filter((group) => group.is_active).map((group) => <SelectItem key={group.id} value={group.id}>{group.code} - {group.name}</SelectItem>)}</SelectContent></Select></div>
           {profileForm.compensation_type && profileForm.compensation_type !== "PIECE_RATE" && <div className="space-y-1.5"><Label>{profileForm.compensation_type === "HOURLY" ? "Đơn giá giờ (đồng/giờ)" : "Mức lương tháng (đồng/tháng)"}</Label><Input type="number" min="0" value={profileForm.primary_amount} onChange={(event) => setProfileForm({ ...profileForm, primary_amount: event.target.value })} /></div>}
           {profileForm.compensation_type && profileForm.compensation_type !== "HOURLY" && profileForm.compensation_type !== "PIECE_RATE" && <div className="space-y-1.5"><Label>Phút năng suất chuẩn / tháng</Label><p className="text-xs text-muted-foreground">Tổng phút làm việc chuẩn trong tháng, dùng làm căn cứ phân bổ chi phí.</p><Input type="number" min="1" value={profileForm.monthly_productive_minutes} onChange={(event) => setProfileForm({ ...profileForm, monthly_productive_minutes: event.target.value })} /></div>}
           <div className="space-y-1.5"><Label>Hiệu lực từ</Label><Input type="date" value={profileForm.effective_from} onChange={(event) => setProfileForm({ ...profileForm, effective_from: event.target.value })} /></div>
           <div className="space-y-1.5"><Label>Đến ngày</Label><Input type="date" value={profileForm.effective_to} onChange={(event) => setProfileForm({ ...profileForm, effective_to: event.target.value })} /></div>
         </div></div>
-        <div className="space-y-3"><div><h4 className="font-medium">3. Nguồn thu nhập / khấu trừ bổ sung</h4><p className="text-xs text-muted-foreground">Mỗi nguồn được bật độc lập và chỉ áp dụng sau khi phiên bản được duyệt.</p></div><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {[{ key: "piece_output_enabled", label: "Sản lượng sản phẩm", hint: "Từ sản lượng đã duyệt" }, { key: "overtime_enabled", label: "Tăng ca", hint: "Cần đơn giá giờ" }, { key: "meal_enabled", label: "Tiền ăn", hint: "Theo ngày đủ điều kiện" }, { key: "allowances_enabled", label: "Phụ cấp cố định", hint: "Cộng mỗi kỳ" }, { key: "deductions_enabled", label: "Khấu trừ cố định", hint: "Trừ mỗi kỳ" }, { key: "insurance_enabled", label: "BHXH", hint: "Theo phiên bản BHXH" }].map((source) => <div key={source.key} className="flex items-center justify-between gap-3 rounded-lg border p-3"><div><Label htmlFor={`profile-${source.key}`}>{source.label}</Label><p className="text-xs text-muted-foreground">{source.hint}</p></div><Switch id={`profile-${source.key}`} checked={Boolean(profileForm[source.key as keyof CentralPayrollProfileForm])} onCheckedChange={(checked) => setProfileForm({ ...profileForm, [source.key]: checked })} /></div>)}
+        <div className={profileStep===1?"space-y-3":"hidden"}><div><h4 className="font-medium">2. Các khoản áp dụng</h4><p className="text-xs text-muted-foreground">Mỗi nguồn được bật độc lập và chỉ áp dụng sau khi phiên bản được duyệt.</p></div><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {[{ key: "piece_output_enabled", label: "Sản lượng sản phẩm", hint: "Từ sản lượng đã duyệt" }, { key: "overtime_enabled", label: "Tăng ca", hint: "Theo chính sách chung đã duyệt" }, { key: "meal_enabled", label: "Tiền ăn", hint: "Theo ngày đủ điều kiện" }, { key: "allowances_enabled", label: "Phụ cấp cố định", hint: "Cộng mỗi kỳ" }, { key: "deductions_enabled", label: "Khấu trừ cố định", hint: "Trừ mỗi kỳ" }, { key: "insurance_enabled", label: "BHXH", hint: "Theo phiên bản BHXH" }].filter(source=>source.key!=="insurance_enabled"||canManageInsurance).map((source) => <div key={source.key} className="flex items-center justify-between gap-3 rounded-lg border p-3"><div><Label htmlFor={`profile-${source.key}`}>{source.label}</Label><p className="text-xs text-muted-foreground">{source.hint}</p></div><Switch id={`profile-${source.key}`} checked={Boolean(profileForm[source.key as keyof CentralPayrollProfileForm])} onCheckedChange={(checked) => setProfileForm({ ...profileForm, [source.key]: checked })} /></div>)}
         </div><div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5"><Label>Phụ cấp cố định / kỳ (đồng)</Label><Input type="number" min="0" disabled={!profileForm.allowances_enabled} value={profileForm.fixed_allowance_amount} onChange={(event) => setProfileForm({ ...profileForm, fixed_allowance_amount: event.target.value })} /></div>
           <div className="space-y-1.5"><Label>Khấu trừ cố định / kỳ (đồng)</Label><Input type="number" min="0" disabled={!profileForm.deductions_enabled} value={profileForm.fixed_deduction_amount} onChange={(event) => setProfileForm({ ...profileForm, fixed_deduction_amount: event.target.value })} /></div>
         </div></div>
-        {profileForm.insurance_enabled && <div className="space-y-3"><h4 className="font-medium">4. Bảo hiểm</h4><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label>Mức BHXH nhân viên</Label><Input type="number" min="0" value={profileForm.insurance_amount} onChange={(event) => setProfileForm({ ...profileForm, insurance_amount: event.target.value })} /></div><div className="space-y-1.5"><Label>Nguồn tham chiếu BHXH</Label><Input value={profileForm.insurance_source_reference} onChange={(event) => setProfileForm({ ...profileForm, insurance_source_reference: event.target.value })} /></div></div></div>}
-        <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label>Nguồn tham chiếu</Label><Input value={profileForm.source_reference} onChange={(event) => setProfileForm({ ...profileForm, source_reference: event.target.value })} placeholder="Quyết định / hợp đồng / hồ sơ" /></div><div className="space-y-1.5"><Label>Lý do thay đổi</Label><Textarea value={profileForm.reason} onChange={(event) => setProfileForm({ ...profileForm, reason: event.target.value })} placeholder="Bắt buộc để lưu nhật ký" /></div></div>
+        {canManageInsurance && profileForm.insurance_enabled && profileStep===1 && <div className="space-y-3"><h4 className="font-medium">4. Bảo hiểm</h4><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label>Mức BHXH nhân viên</Label><Input type="number" min="0" value={profileForm.insurance_amount} onChange={(event) => setProfileForm({ ...profileForm, insurance_amount: event.target.value })} /></div><div className="space-y-1.5"><Label>Nguồn tham chiếu BHXH</Label><Input value={profileForm.insurance_source_reference} onChange={(event) => setProfileForm({ ...profileForm, insurance_source_reference: event.target.value })} /></div></div></div>}
+        <div className={profileStep===2?"grid gap-3 sm:grid-cols-2":"hidden"}><div className="space-y-1.5"><Label>Nguồn tham chiếu</Label><Input value={profileForm.source_reference} onChange={(event) => setProfileForm({ ...profileForm, source_reference: event.target.value })} placeholder="Quyết định / hợp đồng / hồ sơ" /></div><div className="space-y-1.5"><Label>Lý do thay đổi</Label><Textarea value={profileForm.reason} onChange={(event) => setProfileForm({ ...profileForm, reason: event.target.value })} placeholder="Bắt buộc để lưu nhật ký" /></div></div>
         </div>}
         {centralProfileMissing.length > 0 && <Alert id="central-profile-requirements" tabIndex={-1} className="border-amber-200 bg-amber-50"><AlertTitle>Cần hoàn thiện trước khi lưu</AlertTitle><AlertDescription><ul className="list-disc space-y-1 pl-4">{centralProfileMissing.map((issue) => <li key={issue}>{issue}</li>)}</ul></AlertDescription></Alert>}
         <DialogFooter className="flex-col items-stretch sm:flex-col">
           {centralProfileMissing.length > 0 && <div className="flex w-full items-center justify-between gap-2 text-xs text-amber-800"><span>Còn {centralProfileMissing.length} mục cần hoàn thiện</span><Button variant="ghost" size="sm" onClick={() => { const requirements = document.getElementById("central-profile-requirements"); requirements?.scrollIntoView({ block: "center", behavior: "smooth" }); requirements?.focus({ preventScroll: true }); }}>Xem yêu cầu</Button></div>}
-          <div className="flex w-full gap-2"><Button className="min-w-20" variant="outline" disabled={saveCentralProfile.isPending} onClick={() => setProfileForm(null)}>Hủy</Button><Button className="min-w-0 flex-1" title="Lưu các phiên bản nháp" aria-label="Lưu các phiên bản nháp" disabled={centralProfileMissing.length > 0 || saveCentralProfile.isPending} onClick={() => profileForm && saveCentralProfile.mutate(profileForm)}>{saveCentralProfile.isPending && <Loader2 className="h-4 w-4 animate-spin" />}Lưu nháp</Button></div>
+          <div className="flex w-full gap-2"><Button className="min-w-20" variant="outline" disabled={saveCentralProfile.isPending} onClick={() => setProfileForm(null)}>Hủy</Button><Button variant="outline" disabled={profileStep===0||saveCentralProfile.isPending} onClick={()=>setProfileStep(step=>step-1)}>Quay lại</Button>{profileStep<2?<Button className="flex-1" onClick={()=>setProfileStep(step=>step+1)}>Tiếp tục</Button>:<Button className="min-w-0 flex-1" title="Lưu các phiên bản nháp" aria-label="Lưu các phiên bản nháp" disabled={centralProfileMissing.length > 0 || saveCentralProfile.isPending} onClick={() => profileForm && saveCentralProfile.mutate(profileForm)}>{saveCentralProfile.isPending && <Loader2 className="h-4 w-4 animate-spin" />}Lưu nháp</Button>}</div>
         </DialogFooter></DialogContent></Dialog>
 
       <Dialog open={!!workerForm} onOpenChange={(open) => !open && !saveWorker.isPending && setWorkerForm(null)}><DialogContent><DialogHeader><DialogTitle>Cập nhật hồ sơ nhân sự</DialogTitle></DialogHeader>{workerForm && <div className="grid gap-4 sm:grid-cols-2">
@@ -837,10 +827,10 @@ function WorkersTab({
         <div className="space-y-2"><Label>Ngày nghỉ việc</Label><Input type="date" value={workerForm.employment_end_date} onChange={(e) => setWorkerForm({ ...workerForm, employment_end_date: e.target.value })} /></div>
         <div className="space-y-2 sm:col-span-2"><Label>Trạng thái lương</Label><Select value={workerForm.payroll_status} onValueChange={(value: WorkerForm["payroll_status"]) => setWorkerForm({ ...workerForm, payroll_status: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ACTIVE">Hoạt động</SelectItem><SelectItem value="SUSPENDED">Tạm dừng</SelectItem><SelectItem value="TERMINATED">Đã nghỉ</SelectItem></SelectContent></Select></div>
         <div className="space-y-2 sm:col-span-2"><Label>Lý do thay đổi</Label><Textarea value={workerForm.reason} onChange={(e) => setWorkerForm({ ...workerForm, reason: e.target.value })} /></div>
-      </div>}<DialogFooter><Button variant="outline" disabled={saveWorker.isPending} onClick={() => setWorkerForm(null)}>Hủy</Button><Button disabled={!workerForm?.reason.trim() || saveWorker.isPending} onClick={() => workerForm && saveWorker.mutate(workerForm)}>{saveWorker.isPending && <Loader2 className="h-4 w-4 animate-spin" />}Lưu</Button></DialogFooter></DialogContent></Dialog>
+      </div>}{workerMasterIssue&&<p role="alert" className="text-sm text-destructive">{workerMasterIssue}</p>}<DialogFooter><Button variant="outline" disabled={saveWorker.isPending} onClick={() => setWorkerForm(null)}>Hủy</Button><Button disabled={!workerForm?.reason.trim() || !!workerMasterIssue || saveWorker.isPending} onClick={() => workerForm && saveWorker.mutate(workerForm)}>{saveWorker.isPending && <Loader2 className="h-4 w-4 animate-spin" />}Lưu</Button></DialogFooter></DialogContent></Dialog>
 
       <Dialog open={!!assignmentForm} onOpenChange={(open) => !open && !saveAssignment.isPending && setAssignmentForm(null)}><DialogContent><DialogHeader><DialogTitle>{assignmentForm?.id ? "Sửa phân loại nháp" : "Tạo phân loại lương"}</DialogTitle></DialogHeader>{assignmentForm && <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2 sm:col-span-2"><Label>Nhân sự</Label><Select disabled={!!assignmentForm.id} value={assignmentForm.worker_id} onValueChange={(value) => setAssignmentForm({ ...assignmentForm, worker_id: value })}><SelectTrigger><SelectValue placeholder="Chọn nhân sự" /></SelectTrigger><SelectContent>{workers.map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.employee_code} - {worker.display_name}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-2 sm:col-span-2"><Label>Nhân sự</Label><Select disabled={!!assignmentForm.id} value={assignmentForm.worker_id} onValueChange={(value) => setAssignmentForm({ ...assignmentForm, worker_id: value })}><SelectTrigger><SelectValue placeholder="Chọn nhân sự" /></SelectTrigger><SelectContent>{workers.filter(worker=>!isLocalBackend()||!workerParams.get("worker")||worker.id===workerParams.get("worker")).map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.employee_code} - {worker.display_name}</SelectItem>)}</SelectContent></Select></div>
         <div className="space-y-2"><Label>Hình thức lương</Label><Select value={assignmentForm.compensation_type} onValueChange={(value: CompensationType) => setAssignmentForm({ ...assignmentForm, compensation_type: value })}><SelectTrigger><SelectValue placeholder="Chọn hình thức lương" /></SelectTrigger><SelectContent>{Object.entries(compensationLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
         <div className="space-y-2"><Label>Nhóm chính sách</Label><Select value={assignmentForm.payroll_policy_group_id} onValueChange={(value) => setAssignmentForm({ ...assignmentForm, payroll_policy_group_id: value })}><SelectTrigger><SelectValue placeholder="Chọn nhóm" /></SelectTrigger><SelectContent>{groups.filter((group) => group.is_active).map((group) => <SelectItem key={group.id} value={group.id}>{group.code} - {group.name}</SelectItem>)}</SelectContent></Select></div>
         <div className="space-y-2"><Label>Từ ngày</Label><Input type="date" value={assignmentForm.effective_from} onChange={(e) => setAssignmentForm({ ...assignmentForm, effective_from: e.target.value })} /></div>
@@ -850,7 +840,7 @@ function WorkersTab({
 
       <Dialog open={teamOpen} onOpenChange={(open) => !saveTeam.isPending && setTeamOpen(open)}><DialogContent><DialogHeader><DialogTitle>Phân công tổ phụ trách</DialogTitle></DialogHeader><div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2"><Label>Tổ trưởng</Label><Select value={teamForm.supervisor_worker_id} onValueChange={(value) => setTeamForm({ ...teamForm, supervisor_worker_id: value })}><SelectTrigger><SelectValue placeholder="Chọn tổ trưởng" /></SelectTrigger><SelectContent>{workers.filter((worker) => worker.user_id).map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.employee_code} - {worker.display_name}</SelectItem>)}</SelectContent></Select></div>
-        <div className="space-y-2"><Label>Nhân sự</Label><Select value={teamForm.worker_id} onValueChange={(value) => setTeamForm({ ...teamForm, worker_id: value })}><SelectTrigger><SelectValue placeholder="Chọn nhân sự" /></SelectTrigger><SelectContent>{workers.map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.employee_code} - {worker.display_name}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-2"><Label>Nhân sự</Label><Select value={teamForm.worker_id} onValueChange={(value) => setTeamForm({ ...teamForm, worker_id: value })}><SelectTrigger><SelectValue placeholder="Chọn nhân sự" /></SelectTrigger><SelectContent>{workers.filter(worker=>!isLocalBackend()||!workerParams.get("worker")||worker.id===workerParams.get("worker")).map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.employee_code} - {worker.display_name}</SelectItem>)}</SelectContent></Select></div>
         <div className="space-y-2"><Label>Từ ngày</Label><Input type="date" value={teamForm.effective_from} onChange={(e) => setTeamForm({ ...teamForm, effective_from: e.target.value })} /></div>
         <div className="space-y-2"><Label>Đến ngày</Label><Input type="date" value={teamForm.effective_to} onChange={(e) => setTeamForm({ ...teamForm, effective_to: e.target.value })} /></div>
         <div className="space-y-2 sm:col-span-2"><Label>Lý do</Label><Textarea value={teamForm.reason} onChange={(e) => setTeamForm({ ...teamForm, reason: e.target.value })} /></div>
@@ -923,7 +913,7 @@ function WorkerRatesTab({ workers, rates, canManage, requestAction, refresh }: {
     const worker = eligibleWorkers[0];
     const currentType = worker?.current_compensation_type;
     const compensationType = currentType && workerRateTypes.includes(currentType) ? currentType : "MONTHLY_HELPER";
-    setForm({ worker_id: worker?.id ?? "", compensation_type: compensationType, amount: "", monthly_productive_minutes: "12480", effective_from: today(), effective_to: "", source_reference: "luong_tong", reason: "", is_estimated: false });
+    setForm({ worker_id: worker?.id ?? "", compensation_type: compensationType, amount: "", monthly_productive_minutes: "", effective_from: today(), effective_to: "", source_reference: "luong_tong", reason: "", is_estimated: false });
   };
   const formValid = !!form?.worker_id && !!form.amount && Number(form.amount) >= 0 && !!form.effective_from
     && !!form.reason.trim() && (form.compensation_type === "HOURLY" || Number(form.monthly_productive_minutes) > 0);
@@ -939,7 +929,7 @@ function WorkerRatesTab({ workers, rates, canManage, requestAction, refresh }: {
       <div className="space-y-2 sm:col-span-2"><Label>Nhân sự</Label><Select disabled={!!form.id} value={form.worker_id} onValueChange={(value) => { const worker = workers.find((item) => item.id === value); const type = worker?.current_compensation_type && workerRateTypes.includes(worker.current_compensation_type) ? worker.current_compensation_type : form.compensation_type; setForm({ ...form, worker_id: value, compensation_type: type }); }}><SelectTrigger><SelectValue placeholder="Chọn nhân sự" /></SelectTrigger><SelectContent>{eligibleWorkers.map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.employee_code} - {worker.display_name}</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-2"><Label>Hình thức lương</Label><Select disabled={!!form.id} value={form.compensation_type} onValueChange={(value: CompensationType) => setForm({ ...form, compensation_type: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{workerRateTypes.map((value) => <SelectItem key={value} value={value}>{compensationLabels[value]}</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-2"><Label>{form.compensation_type === "HOURLY" ? "Lương mỗi giờ" : "Lương mỗi tháng"}</Label><Input type="number" min="0" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} /></div>
-      {form.compensation_type !== "HOURLY" && <div className="space-y-2 sm:col-span-2"><Label>Phút công chuẩn trong tháng</Label><Input type="number" min="1" value={form.monthly_productive_minutes} onChange={(event) => setForm({ ...form, monthly_productive_minutes: event.target.value })} /><p className="text-xs text-muted-foreground">Ví dụ 26 ngày × 8 giờ × 60 phút = 12.480.</p></div>}
+      {form.compensation_type !== "HOURLY" && <div className="space-y-2 sm:col-span-2"><Label>Phút công chuẩn trong tháng</Label><Input type="number" min="1" value={form.monthly_productive_minutes} onChange={(event) => setForm({ ...form, monthly_productive_minutes: event.target.value })} /><p className="text-xs text-muted-foreground">Nhập số phút công chuẩn theo lịch hoặc quy định đã chọn cho kỳ này. Hệ thống không tự giả định số ngày làm việc.</p></div>}
       <div className="space-y-2"><Label>Từ ngày</Label><Input type="date" value={form.effective_from} onChange={(event) => setForm({ ...form, effective_from: event.target.value })} /></div><div className="space-y-2"><Label>Đến ngày</Label><Input type="date" value={form.effective_to} onChange={(event) => setForm({ ...form, effective_to: event.target.value })} /></div>
       <div className="space-y-2 sm:col-span-2"><Label>Nguồn</Label><Input value={form.source_reference} onChange={(event) => setForm({ ...form, source_reference: event.target.value })} /></div><div className="flex items-center justify-between sm:col-span-2"><Label htmlFor="worker-rate-estimated">Mức tạm tính</Label><Switch id="worker-rate-estimated" checked={form.is_estimated} onCheckedChange={(value) => setForm({ ...form, is_estimated: value })} /></div><div className="space-y-2 sm:col-span-2"><Label>Lý do</Label><Textarea value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></div>
     </div>}<DialogFooter><Button variant="outline" disabled={mutation.isPending} onClick={() => setForm(null)}>Hủy</Button><Button disabled={!formValid || mutation.isPending} onClick={() => form && mutation.mutate(form)}>{mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}Lưu nháp</Button></DialogFooter></DialogContent></Dialog>
@@ -1131,7 +1121,7 @@ function BankAccountsTab({ workers, accounts, canManage, requestAction, refresh 
   });
   if (!canManage) return <DeniedPanel message="Chỉ kế toán hoặc quản trị viên được xem và quản lý tài khoản nhận lương." />;
   return <div className="space-y-4"><div className="flex justify-end"><Button onClick={() => setForm({ worker_id: "", account_number: "", account_name: "", bank_name: "", bank_code: "", is_primary: true, effective_from: today(), effective_to: "", source_reference: "PL", reason: "" })}><Plus className="h-4 w-4" />Thêm tài khoản</Button></div><RecordFilters search={search} onSearch={setSearch} status={statusFilter} onStatus={setStatusFilter} statuses={[["DRAFT","Nháp"],["VERIFIED","Đã xác minh"],["RETIRED","Đã kết thúc"]]} /><div className="overflow-x-auto border bg-background"><Table className="min-w-[760px]"><TableHeader><TableRow><TableHead>Nhân sự</TableHead><TableHead>Tài khoản</TableHead><TableHead>Ngân hàng</TableHead><TableHead>Hiệu lực</TableHead><TableHead>Trạng thái</TableHead><TableHead className="text-right">Thao tác</TableHead></TableRow></TableHeader><TableBody>{visibleAccounts.length === 0 && <EmptyRow columns={6} message="Không có tài khoản phù hợp bộ lọc." />}{visibleAccounts.map((account) => <TableRow key={account.id}><TableCell>{workerName(account.worker_id)}</TableCell><TableCell><div className="font-mono">{account.account_number_masked}</div><div className="text-xs text-muted-foreground">{account.account_name}</div></TableCell><TableCell>{account.bank_name}{account.bank_code ? ` (${account.bank_code})` : ""}</TableCell><TableCell>{account.effective_from} → {account.effective_to || "không giới hạn"}</TableCell><TableCell>{statusBadge(account.status)}</TableCell><TableCell className="space-x-1 text-right">{account.status === "DRAFT" && <><Button variant="ghost" size="icon" className="h-11 w-11 lg:h-10 lg:w-10" title="Sửa tài khoản nháp" aria-label={`Sửa tài khoản nháp · ${workerName(account.worker_id)}`} onClick={() => setForm({ id: account.id, worker_id: account.worker_id, account_number: account.account_number ?? "", account_name: account.account_name, bank_name: account.bank_name, bank_code: account.bank_code ?? "", is_primary: account.is_primary, effective_from: account.effective_from, effective_to: account.effective_to ?? "", source_reference: account.source_reference ?? "", reason: account.reason })}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-11 w-11 lg:h-10 lg:w-10" title="Xác minh tài khoản" aria-label={`Xác minh tài khoản · ${workerName(account.worker_id)}`} onClick={() => requestAction({ title: "Xác minh tài khoản", description: "Tài khoản đã xác minh không thể sửa trực tiếp.", confirmLabel: "Xác minh", run: (reason) => verifyBankAccount(account.id, reason) })}><Check className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-11 w-11 lg:h-10 lg:w-10" title="Hủy tài khoản nháp" aria-label={`Hủy tài khoản nháp · ${workerName(account.worker_id)}`} onClick={() => requestAction({ title: "Hủy tài khoản nháp", description: "Bản nháp sẽ bị xóa; số tài khoản không được ghi vào nhật ký.", confirmLabel: "Hủy nháp", destructive: true, run: (reason) => discardBankAccountDraft(account.id, reason) })}><Trash2 className="h-4 w-4" /></Button></>}</TableCell></TableRow>)}</TableBody></Table></div>
-    <Dialog open={!!form} onOpenChange={(open) => !open && !mutation.isPending && setForm(null)}><DialogContent><DialogHeader><DialogTitle>{form?.id ? "Sửa tài khoản nháp" : "Thêm tài khoản nhận lương"}</DialogTitle></DialogHeader>{form && <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2 sm:col-span-2"><Label>Nhân sự</Label><Select disabled={!!form.id} value={form.worker_id} onValueChange={(value) => setForm({ ...form, worker_id: value })}><SelectTrigger><SelectValue placeholder="Chọn nhân sự" /></SelectTrigger><SelectContent>{workers.map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.employee_code} - {worker.display_name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Số tài khoản</Label><Input inputMode="numeric" autoComplete="off" value={form.account_number} onChange={(e) => setForm({ ...form, account_number: e.target.value })} /></div><div className="space-y-2"><Label>Tên chủ tài khoản</Label><Input value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })} /></div><div className="space-y-2"><Label>Ngân hàng</Label><Input value={form.bank_name} onChange={(e) => setForm({ ...form, bank_name: e.target.value })} /></div><div className="space-y-2"><Label>Mã ngân hàng</Label><Input value={form.bank_code} onChange={(e) => setForm({ ...form, bank_code: e.target.value.toUpperCase() })} /></div><div className="space-y-2"><Label>Từ ngày</Label><Input type="date" value={form.effective_from} onChange={(e) => setForm({ ...form, effective_from: e.target.value })} /></div><div className="space-y-2"><Label>Đến ngày</Label><Input type="date" value={form.effective_to} onChange={(e) => setForm({ ...form, effective_to: e.target.value })} /></div><div className="flex items-center justify-between sm:col-span-2"><Label htmlFor="bank-primary">Tài khoản nhận lương chính</Label><Switch id="bank-primary" checked={form.is_primary} onCheckedChange={(value) => setForm({ ...form, is_primary: value })} /></div><div className="space-y-2 sm:col-span-2"><Label>Nguồn</Label><Input value={form.source_reference} onChange={(e) => setForm({ ...form, source_reference: e.target.value })} /></div><div className="space-y-2 sm:col-span-2"><Label>Lý do</Label><Textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></div></div>}<DialogFooter><Button variant="outline" disabled={mutation.isPending} onClick={() => setForm(null)}>Hủy</Button><Button disabled={!form?.worker_id || !form?.account_number.trim() || !form?.account_name.trim() || !form?.bank_name.trim() || !form?.reason.trim() || mutation.isPending} onClick={() => form && mutation.mutate(form)}>{mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}Lưu nháp</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={!!form} onOpenChange={(open) => !open && !mutation.isPending && setForm(null)}><DialogContent><DialogHeader><DialogTitle>{form?.id ? "Sửa tài khoản nháp" : "Thêm tài khoản nhận lương"}</DialogTitle></DialogHeader>{form && <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2 sm:col-span-2"><Label>Nhân sự</Label><Select disabled={!!form.id} value={form.worker_id} onValueChange={(value) => setForm({ ...form, worker_id: value })}><SelectTrigger><SelectValue placeholder="Chọn nhân sự" /></SelectTrigger><SelectContent>{workers.map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.employee_code} - {worker.display_name}</SelectItem>)}</SelectContent></Select></div>{isLocalBackend()&&<PayrollBankProposal key={`${form.id||"new"}:${form.worker_id}`} workerId={form.worker_id} current={form} onApply={proposal=>setForm({...form,...proposal})}/>}<div className="space-y-2"><Label>Số tài khoản</Label><Input inputMode="numeric" autoComplete="off" value={form.account_number} onChange={(e) => setForm({ ...form, account_number: e.target.value })} /></div><div className="space-y-2"><Label>Tên chủ tài khoản</Label><Input value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })} /></div><div className="space-y-2"><Label>Ngân hàng</Label><Input value={form.bank_name} onChange={(e) => setForm({ ...form, bank_name: e.target.value })} /></div><div className="space-y-2"><Label>Mã ngân hàng</Label><Input value={form.bank_code} onChange={(e) => setForm({ ...form, bank_code: e.target.value.toUpperCase() })} /></div><div className="space-y-2"><Label>Từ ngày</Label><Input type="date" value={form.effective_from} onChange={(e) => setForm({ ...form, effective_from: e.target.value })} /></div><div className="space-y-2"><Label>Đến ngày</Label><Input type="date" value={form.effective_to} onChange={(e) => setForm({ ...form, effective_to: e.target.value })} /></div><div className="flex items-center justify-between sm:col-span-2"><Label htmlFor="bank-primary">Tài khoản nhận lương chính</Label><Switch id="bank-primary" checked={form.is_primary} onCheckedChange={(value) => setForm({ ...form, is_primary: value })} /></div><div className="space-y-2 sm:col-span-2"><Label>Nguồn</Label><Input value={form.source_reference} onChange={(e) => setForm({ ...form, source_reference: e.target.value })} /></div><div className="space-y-2 sm:col-span-2"><Label>Lý do</Label><Textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></div></div>}<DialogFooter><Button variant="outline" disabled={mutation.isPending} onClick={() => setForm(null)}>Hủy</Button><Button disabled={!form?.worker_id || !form?.effective_from || !form?.account_number.trim() || !form?.account_name.trim() || !form?.bank_name.trim() || !form?.reason.trim() || mutation.isPending} onClick={() => form && mutation.mutate(form)}>{mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}Lưu nháp</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }
 
@@ -1146,6 +1136,13 @@ const adjustmentTypes = [
   ["MANUAL_ADJUSTMENT", "Điều chỉnh thủ công"],
 ] as const;
 function LocalPayrollAdjustmentsTab({ workers, adjustments, canManage, requestAction, refresh }: { workers: PayrollWorker[]; adjustments: PayrollAdjustment[]; canManage: boolean; requestAction: RequestAction; refresh: () => Promise<void> }) {
+  const [contextParams, setContextParams] = useSearchParams();
+  const contextWorker = contextParams.get("worker");
+  const contextLocation = contextParams.get("location");
+  const contextMonth = contextParams.get("month");
+  const monthMatch = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(contextMonth || "");
+  const contextStart = monthMatch ? `${contextMonth}-01` : null;
+  const contextEnd = monthMatch ? `${contextMonth}-${String(new Date(Number(monthMatch[1]), Number(monthMatch[2]), 0).getDate()).padStart(2,"0")}` : null;
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [form, setForm] = useState<AdjustmentForm | null>(null);
@@ -1158,184 +1155,19 @@ function LocalPayrollAdjustmentsTab({ workers, adjustments, canManage, requestAc
   const visibleAdjustments = adjustments.filter((adjustment) => {
     const worker = workers.find((item) => item.id === adjustment.worker_id);
     const typeLabel = adjustmentTypes.find(([value]) => value === adjustment.item_type)?.[1] ?? adjustment.item_type;
+    if (contextWorker && adjustment.worker_id !== contextWorker) return false;
+    if (contextLocation && contextLocation !== "ALL" && (worker?.location_code || "__UNASSIGNED__") !== contextLocation) return false;
+    if (contextStart && contextEnd && (adjustment.period_start > contextEnd || adjustment.period_end < contextStart)) return false;
     return (statusFilter === "ALL" || adjustment.status === statusFilter) && normalizeSearchText(`${worker?.employee_code ?? adjustment.employee_code ?? ""} ${workerName(adjustment.worker_id)} ${typeLabel} ${adjustment.source_reference ?? ""} ${adjustment.period_start} ${adjustment.period_end}`).includes(normalizeSearchText(search));
   });
   const createForm = () => setForm({ worker_id: "", period_start: today().slice(0, 7) + "-01", period_end: today(), item_type: "ALLOWANCE", item_direction: "EARNING", amount: "", source_reference: "", reason: "" });
   if (!canManage) return <DeniedPanel message="Cần quyền quản lý nhân sự hoặc chính sách lương để tạo điều chỉnh." />;
   return <div className="space-y-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">Phụ cấp và khấu trừ</h2></div><Button onClick={createForm} disabled={!workers.length}><Plus className="mr-2 h-4 w-4" />Tạo điều chỉnh</Button></div>
+    {(contextWorker || contextStart || (contextLocation && contextLocation !== "ALL")) && <div className="flex flex-wrap items-center gap-2 rounded border p-2 text-sm"><span>Phạm vi: {contextMonth || "Mọi kỳ"} · {contextWorker ? workerName(contextWorker) : "Mọi nhân sự"} · {contextLocation || "ALL"}</span><Button variant="ghost" size="sm" onClick={() => { const next=new URLSearchParams(contextParams); for(const key of ["worker","month","location"]) next.delete(key); setContextParams(next); }}>Bỏ lọc ngữ cảnh</Button></div>}
     <RecordFilters search={search} onSearch={setSearch} status={statusFilter} onStatus={setStatusFilter} statuses={[["DRAFT","Nháp"],["SUBMITTED","Chờ duyệt"],["APPROVED","Đã duyệt"],["REJECTED","Đã từ chối"],["LOCKED","Đã khóa"]]} />
-    <div className="overflow-x-auto rounded-lg border bg-background"><Table className="min-w-[760px]"><TableHeader><TableRow><TableHead>Kỳ</TableHead><TableHead>Nhân sự</TableHead><TableHead>Loại</TableHead><TableHead>Hướng</TableHead><TableHead>Số tiền</TableHead><TableHead>Trạng thái</TableHead><TableHead className="text-right">Thao tác</TableHead></TableRow></TableHeader><TableBody>{visibleAdjustments.length === 0 ? <EmptyRow columns={7} message="Không có điều chỉnh phù hợp bộ lọc." /> : visibleAdjustments.map((adjustment) => <TableRow key={adjustment.id}><TableCell>{adjustment.period_start} → {adjustment.period_end}</TableCell><TableCell><div className="font-medium">{workerName(adjustment.worker_id)}</div><div className="text-xs text-muted-foreground">{adjustment.employee_code}</div></TableCell><TableCell>{adjustmentTypes.find(([value]) => value === adjustment.item_type)?.[1] ?? adjustment.item_type}</TableCell><TableCell className={adjustment.item_direction === "DEDUCTION" ? "text-rose-600" : "text-emerald-700"}>{adjustment.item_direction === "DEDUCTION" ? "Khấu trừ" : "Khoản cộng"}</TableCell><TableCell className="font-medium">{money.format(adjustment.amount)}</TableCell><TableCell>{statusBadge(adjustment.status)}</TableCell><TableCell className="space-x-1 text-right">{adjustment.status === "DRAFT" && <Button variant="outline" size="sm" onClick={() => requestAction({ title: "Gửi duyệt điều chỉnh", description: "Điều chỉnh sẽ chờ người có quyền duyệt trước khi tính lương.", confirmLabel: "Gửi duyệt", run: (reason) => localApi.submitPayrollAdjustment(adjustment.id, { reason }) })}>Gửi duyệt</Button>}{adjustment.status === "SUBMITTED" && <><Button size="sm" onClick={() => requestAction({ title: "Duyệt điều chỉnh", description: "Khoản đã duyệt sẽ được đưa vào lần tính tiếp theo và không sửa trực tiếp.", confirmLabel: "Duyệt", run: (reason) => localApi.approvePayrollAdjustment(adjustment.id, { reason }) })}><Check className="mr-1 h-4 w-4" />Duyệt</Button><Button variant="ghost" size="sm" onClick={() => requestAction({ title: "Từ chối điều chỉnh", description: "Khoản bị từ chối sẽ không vào bảng lương.", confirmLabel: "Từ chối", destructive: true, run: (reason) => localApi.rejectPayrollAdjustment(adjustment.id, { reason }) })}>Từ chối</Button></>}</TableCell></TableRow>)}</TableBody></Table></div>
+    <div className="overflow-x-auto rounded-lg border bg-background"><Table className="min-w-[760px]"><TableHeader><TableRow><TableHead>Kỳ</TableHead><TableHead>Nhân sự</TableHead><TableHead>Loại</TableHead><TableHead>Hướng</TableHead><TableHead>Số tiền</TableHead><TableHead>Trạng thái</TableHead><TableHead className="text-right">Thao tác</TableHead></TableRow></TableHeader><TableBody>{visibleAdjustments.length === 0 ? <EmptyRow columns={7} message="Không có điều chỉnh phù hợp bộ lọc." /> : visibleAdjustments.map((adjustment) => <TableRow key={adjustment.id}><TableCell>{adjustment.period_start} → {adjustment.period_end}</TableCell><TableCell><div className="font-medium">{workerName(adjustment.worker_id)}</div><div className="text-xs text-muted-foreground">{adjustment.employee_code}</div></TableCell><TableCell>{adjustmentTypes.find(([value]) => value === adjustment.item_type)?.[1] ?? adjustment.item_type}</TableCell><TableCell className={adjustment.item_direction === "DEDUCTION" ? "text-rose-600" : "text-emerald-700"}>{adjustment.item_direction === "DEDUCTION" ? "Khấu trừ" : "Khoản cộng"}</TableCell><TableCell className="font-medium">{money.format(adjustment.amount)}</TableCell><TableCell>{statusBadge(adjustment.status)}</TableCell><TableCell className="space-x-1 text-right">{adjustment.status === "DRAFT" && <><Button variant="outline" size="sm" onClick={() => requestAction({ title: "Gửi duyệt điều chỉnh", description: "Điều chỉnh sẽ chờ người có quyền duyệt trước khi tính lương.", confirmLabel: "Gửi duyệt", run: (reason) => localApi.submitPayrollAdjustment(adjustment.id, { reason }) })}>Gửi duyệt</Button><Button variant="ghost" size="sm" onClick={() => requestAction({title:"Hủy khoản nháp",description:"Khoản nháp sẽ bị từ chối và không được tính lương. Cần ghi rõ lý do.",confirmLabel:"Hủy nháp",destructive:true,run:(reason)=>localApi.rejectPayrollAdjustment(adjustment.id,{reason})})}>Hủy nháp</Button></>}{adjustment.status === "SUBMITTED" && <><Button size="sm" onClick={() => requestAction({ title: "Duyệt điều chỉnh", description: "Khoản đã duyệt sẽ được đưa vào lần tính tiếp theo và không sửa trực tiếp.", confirmLabel: "Duyệt", run: (reason) => localApi.approvePayrollAdjustment(adjustment.id, { reason }) })}><Check className="mr-1 h-4 w-4" />Duyệt</Button><Button variant="ghost" size="sm" onClick={() => requestAction({ title: "Từ chối điều chỉnh", description: "Khoản bị từ chối sẽ không vào bảng lương.", confirmLabel: "Từ chối", destructive: true, run: (reason) => localApi.rejectPayrollAdjustment(adjustment.id, { reason }) })}>Từ chối</Button></>}</TableCell></TableRow>)}</TableBody></Table></div>
     <PayrollHelp><p>Khoản cộng hoặc khấu trừ cần có lý do và nguồn tham chiếu. Lưu nháp, gửi duyệt rồi mới tính lương; khoản đã đưa vào kỳ khóa không sửa trực tiếp.</p></PayrollHelp>
     <Dialog open={!!form} onOpenChange={(open) => !open && !mutation.isPending && setForm(null)}><DialogContent><DialogHeader><DialogTitle>Tạo điều chỉnh lương</DialogTitle></DialogHeader>{form && <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2 sm:col-span-2"><Label>Nhân sự</Label><Select value={form.worker_id} onValueChange={(value) => setForm({ ...form, worker_id: value })}><SelectTrigger><SelectValue placeholder="Chọn nhân sự" /></SelectTrigger><SelectContent>{workers.map((worker) => <SelectItem key={worker.id} value={worker.id}>{worker.employee_code} - {worker.display_name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Loại điều chỉnh</Label><Select value={form.item_type} onValueChange={(value) => setForm({ ...form, item_type: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{adjustmentTypes.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Hướng</Label><Select value={form.item_direction} onValueChange={(value: "EARNING" | "DEDUCTION") => setForm({ ...form, item_direction: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="EARNING">Khoản cộng</SelectItem><SelectItem value="DEDUCTION">Khấu trừ</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Từ ngày</Label><Input type="date" value={form.period_start} onChange={(e) => setForm({ ...form, period_start: e.target.value })} /></div><div className="space-y-2"><Label>Đến ngày</Label><Input type="date" value={form.period_end} onChange={(e) => setForm({ ...form, period_end: e.target.value })} /></div><div className="space-y-2"><Label>Số tiền</Label><Input type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></div><div className="space-y-2"><Label>Nguồn tham chiếu</Label><Input value={form.source_reference} onChange={(e) => setForm({ ...form, source_reference: e.target.value })} placeholder="Phiếu, quyết định, bảng kê..." /></div><div className="space-y-2 sm:col-span-2"><Label>Lý do</Label><Textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="Bắt buộc để đối soát và lưu nhật ký" /></div></div>}<DialogFooter><Button variant="outline" disabled={mutation.isPending} onClick={() => setForm(null)}>Hủy</Button><Button disabled={!form?.worker_id || !form?.amount || Number(form.amount) <= 0 || !form?.reason.trim() || mutation.isPending} onClick={() => form && mutation.mutate(form)}>{mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}Lưu nháp</Button></DialogFooter></DialogContent></Dialog>
-  </div>;
-}
-
-function LocalPayrollRunsTab({ runs, workers, workersReady, refresh }: { runs: Record<string, unknown>[]; workers: PayrollWorker[]; workersReady: boolean; refresh: () => Promise<void> }) {
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState(() => today().slice(0, 7));
-  const [standardDays, setStandardDays] = useState("26");
-  const [preflight, setPreflight] = useState<Record<string, unknown> | null>(null);
-  const [preflightSignature, setPreflightSignature] = useState<string | null>(null);
-  const [showAllRuns, setShowAllRuns] = useState(false);
-  const monthParts = /^(\d{4})-(\d{2})$/.exec(selectedMonth);
-  const periodYear = monthParts ? Number(monthParts[1]) : new Date().getFullYear();
-  const periodMonth = monthParts ? Number(monthParts[2]) : new Date().getMonth() + 1;
-  const periodStart = `${selectedMonth}-01`;
-  const periodEnd = `${selectedMonth}-${String(new Date(periodYear, periodMonth, 0).getDate()).padStart(2, "0")}`;
-  const scopedWorkerIds = useMemo(() => workers
-    .filter((worker) => worker.is_active && worker.payroll_status === "ACTIVE"
-      && (!worker.employment_start_date || worker.employment_start_date <= periodEnd)
-      && (!worker.employment_end_date || worker.employment_end_date >= periodStart))
-    .map((worker) => worker.id)
-    .sort(), [periodEnd, periodStart, workers]);
-  const periodSignature = `${periodStart}|${periodEnd}|${standardDays}|${scopedWorkerIds.join(",")}`;
-  const currentPeriodSignatureRef = useRef(periodSignature);
-  // Keep async callbacks in the same render frame as input changes; the
-  // effect below additionally clears already displayed results.
-  currentPeriodSignatureRef.current = periodSignature;
-  const detailQuery = useQuery({ queryKey: ["payroll-settings", "run", selectedRunId], queryFn: () => localApi.payrollRun(selectedRunId as string), enabled: !!selectedRunId });
-  const clearPeriodCheck = () => {
-    setPreflight(null);
-    setPreflightSignature(null);
-    setSelectedRunId(null);
-  };
-  // The employee roster may refresh independently while a request is in
-  // flight. Its result is valid only for the exact period/scope it captured.
-  useEffect(() => {
-    setPreflight(null);
-    setPreflightSignature(null);
-    setSelectedRunId(null);
-  }, [periodSignature]);
-  const preflightMutation = useMutation({
-    mutationFn: async () => {
-      const days = Number(standardDays);
-      if (!Number.isFinite(days) || days <= 0) throw new Error("Số ngày công chuẩn phải lớn hơn 0.");
-      const signature = periodSignature;
-      const result = await localApi.payrollPreflight({ period_start: periodStart, period_end: periodEnd, standard_days: days, worker_ids: scopedWorkerIds.join(",") });
-      return { result, signature };
-    },
-    onSuccess: ({ result, signature }) => {
-      if (signature !== currentPeriodSignatureRef.current) return;
-      setPreflight(result);
-      setPreflightSignature(signature);
-      if (Number(result.blocking_count ?? 0) === 0) toast.success("Dữ liệu kỳ lương đã sẵn sàng để tạo bản xem trước");
-      else toast.warning(`Kỳ lương còn ${String(result.blocking_count)} lỗi chặn cần xử lý`);
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const days = Number(standardDays);
-      if (!Number.isFinite(days) || days <= 0) throw new Error("Số ngày công chuẩn phải lớn hơn 0.");
-      const signature = periodSignature;
-      // Re-check on the server immediately before writing the snapshot.
-      const preflight = await localApi.payrollPreflight({ period_start: periodStart, period_end: periodEnd, standard_days: days, worker_ids: scopedWorkerIds.join(",") });
-      const blockingCount = Number(preflight.blocking_count ?? 0);
-      if (blockingCount > 0) throw Object.assign(new Error(`Còn ${blockingCount} lỗi chặn. Hãy hoàn thiện dữ liệu trước khi tạo preview.`), { preflight, signature });
-      const run = await localApi.createPayrollRun({ period_start: periodStart, period_end: periodEnd, standard_days: days, worker_ids: scopedWorkerIds, idempotency_key: `ui-payroll-${periodStart}-${Date.now()}` });
-      return { run, preflight, signature };
-    },
-    onSuccess: async ({ run, preflight: result, signature }) => {
-      if (signature === currentPeriodSignatureRef.current) {
-        setPreflight(result);
-        setPreflightSignature(signature);
-        setSelectedRunId(String(run.id));
-        toast.success("Đã tạo bản xem trước bảng lương");
-      } else {
-        toast.success("Đã tạo bản xem trước cho phạm vi trước đó; danh sách nhân sự hiện đã thay đổi.");
-      }
-      await refresh();
-    },
-    onError: (error) => {
-      const staleSafeError = error as Error & { preflight?: Record<string, unknown>; signature?: string };
-      if (staleSafeError.preflight && staleSafeError.signature === currentPeriodSignatureRef.current) {
-        setPreflight(staleSafeError.preflight);
-        setPreflightSignature(staleSafeError.signature);
-      }
-      toast.error(errorMessage(error));
-    },
-  });
-  const lockMutation = useMutation({
-    mutationFn: (id: string) => localApi.lockPayrollRun(id),
-    onSuccess: async () => { toast.success("Đã khóa kỳ lương"); await refresh(); if (selectedRunId) await detailQuery.refetch(); },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-  const exportMutation = useMutation({
-    mutationFn: (id: string) => downloadLocalPayrollRunCsv(id),
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-  const detail = detailQuery.data;
-  const preflightIssues = Array.isArray(preflight?.issues) ? preflight.issues as Record<string, unknown>[] : emptyRecordList;
-  const preflightWorkerNames = useMemo(() => new Map(
-    (Array.isArray(preflight?.workers) ? preflight.workers as Record<string, unknown>[] : emptyRecordList)
-      .map((worker) => [String(worker.worker_id), String(worker.display_name ?? worker.employee_code ?? worker.worker_id)] as const),
-  ), [preflight]);
-  const preflightIssueGroups = useMemo(() => {
-    const grouped = new Map<string, { code: string; message: string; count: number; workers: string[] }>();
-    preflightIssues.forEach((issue) => {
-      const code = String(issue.code ?? "UNKNOWN");
-      const existing = grouped.get(code) ?? { code, message: String(issue.message ?? ""), count: 0, workers: [] };
-      existing.count += 1;
-      const workerId = issue.worker_id ? String(issue.worker_id) : "";
-      const workerName = workerId ? preflightWorkerNames.get(workerId) : null;
-      if (workerName && !existing.workers.includes(workerName) && existing.workers.length < 3) existing.workers.push(workerName);
-      grouped.set(code, existing);
-    });
-    return [...grouped.values()].sort((left, right) => right.count - left.count || left.code.localeCompare(right.code));
-  }, [preflightIssues, preflightWorkerNames]);
-  const periodRuns = runs.filter((run) => String(run.period_start).slice(0, 10) === periodStart && String(run.period_end).slice(0, 10) === periodEnd);
-  const visibleRuns = showAllRuns ? runs : periodRuns;
-  const preflightReady = workersReady && preflightSignature === periodSignature && !!preflight && Number(preflight.blocking_count ?? 0) === 0;
-  const records = Array.isArray(detail?.records) ? detail.records as Record<string, unknown>[] : emptyRecordList;
-  const items = Array.isArray(detail?.items) ? detail.items as Record<string, unknown>[] : emptyRecordList;
-  const exceptions = Array.isArray(detail?.exceptions) ? detail.exceptions as Record<string, unknown>[] : emptyRecordList;
-  const payrollRows = useMemo(() => records.map((record) => {
-    const recordItems = items.filter((item) => String(item.payroll_record_id) === String(record.id));
-    const sum = (predicate: (item: Record<string, unknown>) => boolean) => recordItems
-      .filter(predicate)
-      .reduce((total, item) => total + Number(item.amount_precise ?? 0), 0);
-    const coreEarningTypes = new Set(["DAY_PAY", "HOURLY_PAY", "PIECE_RATE", "OVERTIME_PAY", "MEAL_ALLOWANCE"]);
-    return {
-      ...record,
-      dayPay: sum((item) => item.item_type === "DAY_PAY"),
-      hourlyPay: sum((item) => item.item_type === "HOURLY_PAY"),
-      piecePay: sum((item) => item.item_type === "PIECE_RATE"),
-      overtimePay: sum((item) => item.item_type === "OVERTIME_PAY"),
-      mealPay: sum((item) => item.item_type === "MEAL_ALLOWANCE"),
-      allowances: sum((item) => item.item_direction === "EARNING" && !coreEarningTypes.has(String(item.item_type))),
-      socialInsurance: sum((item) => item.item_direction === "DEDUCTION" && item.item_type === "SOCIAL_INSURANCE"),
-      otherDeductions: sum((item) => item.item_direction === "DEDUCTION" && item.item_type !== "SOCIAL_INSURANCE"),
-    };
-  }), [items, records]);
-
-  return <div className="space-y-4 rounded-xl border bg-card p-4 sm:p-6">
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="text-lg font-semibold">Kỳ lương</h2><p className="mt-1 text-xs text-muted-foreground">Phạm vi lần tính: {workersReady ? `${scopedWorkerIds.length} nhân sự payroll đang hiển thị và còn hiệu lực trong kỳ.` : "đang tải danh sách nhân sự để xác định phạm vi."}</p></div>
-      <div className="flex flex-wrap items-end gap-2"><div className="space-y-1"><Label htmlFor="payroll-period-month" className="text-xs">Kỳ lương</Label><div className="flex items-center gap-2"><CalendarRange className="h-4 w-4 text-muted-foreground" /><Input id="payroll-period-month" type="month" value={selectedMonth} onChange={(event) => { if (event.target.value) { setSelectedMonth(event.target.value); clearPeriodCheck(); } }} className="w-36" /></div></div><div className="space-y-1"><Label htmlFor="payroll-standard-days" className="text-xs">Ngày công chuẩn</Label><Input id="payroll-standard-days" type="number" min="0.01" step="0.5" value={standardDays} onChange={(event) => { setStandardDays(event.target.value); clearPeriodCheck(); }} className="w-32" /></div><Button variant="outline" onClick={() => preflightMutation.mutate()} disabled={!workersReady || preflightMutation.isPending || !Number.isFinite(Number(standardDays)) || Number(standardDays) <= 0}>{preflightMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Filter className="mr-2 h-4 w-4" />}Kiểm tra dữ liệu</Button><Button onClick={() => createMutation.mutate()} disabled={!workersReady || createMutation.isPending || !preflightReady}>{createMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Tạo bản xem trước</Button></div>
-    </div>
-
-    <PayrollHelp title="Hướng dẫn tính và khóa kỳ"><p>Chọn kỳ và số ngày công chuẩn, kiểm tra dữ liệu rồi tạo bản xem trước. Đối soát các khoản và ngoại lệ trước khi khóa; lần tính đã khóa không sửa trực tiếp.</p><p className="mt-2 text-xs text-amber-800">Khóa một run sẽ đóng toàn bộ kỳ cho nguồn chấm công/sản lượng phát sinh sau đó. Hệ thống sẽ chặn thao tác nếu phạm vi preview đang bỏ sót nhân sự payroll thực còn hoạt động.</p><details><summary className="min-h-11 cursor-pointer py-3 text-xs">Thông tin môi trường</summary><p className="text-xs">Kỳ này dùng dữ liệu chấm công, sản lượng, tăng ca và điều chỉnh đã duyệt trong cơ sở dữ liệu cục bộ. Dữ liệu bản public không bị ghi hoặc khóa.</p></details></PayrollHelp>
-
-    {!workersReady && <Alert><AlertTriangle className="h-4 w-4" /><AlertDescription>Chưa có danh sách nhân sự hoàn chỉnh, nên hệ thống tạm khóa kiểm tra và tạo preview để tránh dùng nhầm phạm vi.</AlertDescription></Alert>}
-    {preflight && <Alert variant={Number(preflight.blocking_count ?? 0) > 0 ? "destructive" : "default"}><AlertTriangle className="h-4 w-4" /><AlertDescription><div className="font-medium">{Number(preflight.blocking_count ?? 0) > 0 ? `Chưa thể tạo bản xem trước: còn ${String(preflight.blocking_count)} lỗi chặn.` : "Kiểm tra đầu vào đạt yêu cầu."}</div>{preflightIssueGroups.length > 0 && <div className="mt-3 grid gap-2 sm:grid-cols-2">{preflightIssueGroups.map((issue) => { const action = payrollIssueAction(issue.code); return <div key={issue.code} className="rounded-md border border-current/15 bg-background/70 p-3"><div className="flex items-center justify-between gap-2"><span className="font-mono text-xs font-semibold">{issue.code}</span><Badge variant="destructive">{issue.count}</Badge></div><p className="mt-1 text-xs">{issue.message}</p>{issue.workers.length > 0 && <p className="mt-1 truncate text-[11px] text-muted-foreground">Ví dụ: {issue.workers.join(", ")}{issue.count > issue.workers.length ? "…" : ""}</p>}<Link to={action.path} className="mt-2 inline-flex text-xs font-medium text-primary underline-offset-2 hover:underline">{action.label}<ArrowRight className="ml-1 h-3 w-3" /></Link></div>; })}</div>}</AlertDescription></Alert>}
-
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-lg border bg-background p-3"><p className="text-xs text-muted-foreground">Lần tính trong kỳ {selectedMonth.replace("-", "/")}</p><p className="mt-1 text-xl font-semibold tabular-nums">{periodRuns.length}</p></div><div className="rounded-lg border bg-background p-3"><p className="text-xs text-muted-foreground">Trạng thái kiểm tra</p><p className={`mt-1 text-sm font-semibold ${preflightReady ? "text-emerald-700" : preflight ? "text-amber-700" : "text-muted-foreground"}`}>{preflightReady ? "Sẵn sàng tạo bản xem trước" : preflight ? "Còn lỗi cần xử lý" : "Chưa kiểm tra"}</p></div><div className="rounded-lg border bg-background p-3"><p className="text-xs text-muted-foreground">Tổng thực nhận lần tính mới nhất</p><p className="mt-1 text-xl font-semibold tabular-nums">{periodRuns[0] ? money.format(Number(periodRuns[0].payment_total ?? 0)) : "—"}</p></div><div className="rounded-lg border bg-background p-3"><p className="text-xs text-muted-foreground">Hiển thị</p><Button variant="link" className="h-auto p-0 pt-1 text-sm" onClick={() => setShowAllRuns((current) => !current)}>{showAllRuns ? "Chỉ xem kỳ đang chọn" : "Xem toàn bộ lịch sử lần tính"}</Button></div></div>
-
-    <div className="overflow-x-auto rounded-lg border"><Table className="min-w-[760px]"><TableHeader><TableRow><TableHead>Kỳ</TableHead><TableHead>Trạng thái</TableHead><TableHead>Nhân sự</TableHead><TableHead>Tổng thực nhận</TableHead><TableHead>Lỗi chặn</TableHead><TableHead className="text-right">Thao tác</TableHead></TableRow></TableHeader><TableBody>
-      {visibleRuns.length === 0 ? <EmptyRow columns={6} message={showAllRuns ? "Chưa có lần tính lương cục bộ." : "Kỳ đang chọn chưa có lần tính. Hãy kiểm tra dữ liệu rồi tạo bản xem trước."} /> : visibleRuns.map((run) => { const id = String(run.id); const status = String(run.status); return <TableRow key={id}>
-        <TableCell>{String(run.period_start)} → {String(run.period_end)}<div className="text-xs text-muted-foreground">Lần tính #{String(run.run_number)}</div></TableCell>
-        <TableCell>{statusBadge(status)}</TableCell><TableCell>{String(run.record_count ?? 0)}</TableCell><TableCell className="font-medium">{money.format(Number(run.payment_total ?? 0))}</TableCell><TableCell>{Number(run.blocking_exception_count ?? 0) > 0 ? <Badge variant="destructive">{String(run.blocking_exception_count)}</Badge> : <span className="text-muted-foreground">0</span>}</TableCell>
-        <TableCell className="space-x-2 text-right"><Button variant="outline" size="sm" onClick={() => setSelectedRunId(id)}>Chi tiết</Button><Button variant="ghost" size="sm" disabled={exportMutation.isPending} onClick={() => exportMutation.mutate(id)}><Download className="mr-1 h-4 w-4" />CSV</Button>{status === "PREVIEW" && String(run.period_status) !== "CLOSED" && Number(run.blocking_exception_count ?? 0) === 0 && <Button size="sm" disabled={lockMutation.isPending} onClick={() => lockMutation.mutate(id)}><Check className="mr-1 h-4 w-4" />Khóa</Button>}</TableCell>
-      </TableRow>; })}
-    </TableBody></Table></div>
-
-    {selectedRunId && <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">Bảng lương tổng hợp kiểu Excel</h3><p className="text-xs text-muted-foreground">Lần tính {selectedRunId} · mỗi nguồn thu nhập/khấu trừ nằm ở một cột riêng.</p></div><Button variant="ghost" size="sm" onClick={() => setSelectedRunId(null)}>Đóng</Button></div>
-      {detailQuery.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : detailQuery.isError ? <Alert variant="destructive"><AlertDescription>{errorMessage(detailQuery.error)}</AlertDescription></Alert> : <>
-        <div className="max-h-[540px] overflow-auto rounded border bg-background"><Table disableWrapper className="min-w-[1600px]"><TableHeader className="sticky top-0 z-10 bg-muted/95"><TableRow><TableHead className="sticky left-0 z-20 w-[230px] bg-muted/95">Nhân viên</TableHead><TableHead className="text-right">Lương ngày/tháng</TableHead><TableHead className="text-right">Lương giờ</TableHead><TableHead className="text-right">Tiền sản phẩm</TableHead><TableHead className="text-right">Tăng ca</TableHead><TableHead className="text-right">Tiền ăn</TableHead><TableHead className="text-right">Phụ cấp / thưởng</TableHead><TableHead className="text-right">BHXH</TableHead><TableHead className="text-right">Khấu trừ khác</TableHead><TableHead className="text-right">Tổng thu nhập</TableHead><TableHead className="text-right">Thực nhận</TableHead><TableHead className="text-right">Thanh toán</TableHead></TableRow></TableHeader><TableBody>{payrollRows.length === 0 ? <EmptyRow columns={12} message="Lần tính chưa có dữ liệu đã duyệt." /> : payrollRows.map((record) => <TableRow key={String(record["id"])}><TableCell className="sticky left-0 z-[1] bg-background"><div className="font-medium">{String(record["worker_name"])}</div><div className="text-xs text-muted-foreground">{String(record["employee_code"])}</div></TableCell><TableCell className="text-right tabular-nums">{money.format(Number(record.dayPay))}</TableCell><TableCell className="text-right tabular-nums">{money.format(Number(record.hourlyPay))}</TableCell><TableCell className="text-right tabular-nums">{money.format(Number(record.piecePay))}</TableCell><TableCell className="text-right tabular-nums">{money.format(Number(record.overtimePay))}</TableCell><TableCell className="text-right tabular-nums">{money.format(Number(record.mealPay))}</TableCell><TableCell className="text-right tabular-nums">{money.format(Number(record.allowances))}</TableCell><TableCell className="text-right tabular-nums text-rose-700">{money.format(Number(record.socialInsurance))}</TableCell><TableCell className="text-right tabular-nums text-rose-700">{money.format(Number(record.otherDeductions))}</TableCell><TableCell className="text-right font-medium tabular-nums">{money.format(Number(record["gross_amount"] ?? 0))}</TableCell><TableCell className="text-right font-medium tabular-nums">{money.format(Number(record["net_amount"] ?? 0))}</TableCell><TableCell className="text-right font-semibold tabular-nums">{money.format(Number(record["payment_amount"] ?? 0))}</TableCell></TableRow>)}</TableBody></Table></div>
-        {exceptions.length > 0 && <div className="overflow-hidden rounded border bg-background"><div className="border-b px-3 py-2"><h4 className="text-sm font-semibold">Ngoại lệ cần xử lý</h4></div><div className="overflow-x-auto"><Table className="min-w-[760px]"><TableHeader><TableRow><TableHead>Mức độ</TableHead><TableHead>Nhân viên</TableHead><TableHead>Mã lỗi</TableHead><TableHead>Nội dung</TableHead></TableRow></TableHeader><TableBody>{exceptions.map((exception) => <TableRow key={String(exception.id)}><TableCell>{exception.severity === "BLOCKING" ? <Badge variant="destructive">Chặn khóa</Badge> : <Badge variant="outline">{String(exception.severity)}</Badge>}</TableCell><TableCell>{String(exception.worker_name ?? exception.employee_code ?? "Toàn kỳ")}</TableCell><TableCell className="font-mono text-xs">{String(exception.code)}</TableCell><TableCell>{String(exception.message)}</TableCell></TableRow>)}</TableBody></Table></div></div>}
-      </>}
-    </div>}
   </div>;
 }
 
@@ -1345,8 +1177,11 @@ export default function PayrollSettingsPage() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionReason, setActionReason] = useState("");
   const queryClient = useQueryClient();
+  const { role } = useUserRole(user);
+  const { hasPermission } = useEmployeePermissions(user,role);
+  useEffect(() => listenPermissionRefresh(() => { void queryClient.invalidateQueries({ queryKey: ['payroll-settings'] }); }), [queryClient]);
   const capabilitiesQuery = useQuery({ queryKey: ["payroll-settings", "capabilities", user?.id], queryFn: () => listPayrollCapabilities(user?.id), enabled: !!user });
-  const capabilityMap = useMemo(() => new Map((capabilitiesQuery.data ?? []).map((item) => [item.permission_type, item])), [capabilitiesQuery.data]);
+  const capabilityMap = useMemo(() => new Map((capabilitiesQuery.isError ? [] : capabilitiesQuery.data ?? []).map((item) => [item.permission_type, item])), [capabilitiesQuery.data, capabilitiesQuery.isError]);
   const can = (permission: PayrollPermissionType) => capabilityMap.get(permission)?.allowed === true;
   const canView = can("payroll_view");
   const canManageWorkers = can("payroll_worker_manage");
@@ -1356,21 +1191,44 @@ export default function PayrollSettingsPage() {
   const canManageInsurance = can("payroll_insurance_manage");
   const canManageBanks = can("payroll_bank_manage");
   const canManageAdjustments = canManageWorkers || canManagePolicies;
+  const canViewRuns = canView && ['admin','manager','accountant'].includes(role || '');
+  const canManageRuns = canViewRuns && canManagePolicies;
   const capabilityReady = capabilitiesQuery.isSuccess;
   const workerAccess = capabilityReady && (canView || canManageWorkers || canManagePolicies || canManageInsurance || canManageBanks);
 
-  const workersQuery = useQuery({ queryKey: ["payroll-settings", "workers"], queryFn: () => listPayrollWorkers(true), enabled: workerAccess });
-  const groupsQuery = useQuery({ queryKey: ["payroll-settings", "groups"], queryFn: listPayrollPolicyGroups, enabled: capabilityReady && (canView || canManagePolicies) });
-  const assignmentsQuery = useQuery({ queryKey: ["payroll-settings", "assignments"], queryFn: () => listWorkerCompensationAssignments(), enabled: capabilityReady && (canView || canManagePolicies) });
-  const workerProfilesQuery = useQuery({ queryKey: ["payroll-settings", "worker-profiles"], queryFn: () => listWorkerPayrollProfiles(), enabled: isLocalBackend() && workerAccess });
-  const teamsQuery = useQuery({ queryKey: ["payroll-settings", "teams"], queryFn: () => listPayrollTeamAssignments(), enabled: capabilityReady && (canView || canManageWorkers) });
-  const productsQuery = useQuery({ queryKey: ["payroll-settings", "products"], queryFn: () => listPayrollProducts(), enabled: capabilityReady && (canViewRates || canManageRates) });
-  const ratesQuery = useQuery({ queryKey: ["payroll-settings", "rates"], queryFn: () => listProductPieceRates(), enabled: capabilityReady && (canViewRates || canManageRates) });
-  const workerRatesQuery = useQuery({ queryKey: ["payroll-settings", "worker-rates"], queryFn: () => listWorkerPayrollRates(), enabled: capabilityReady && (canViewRates || canManageRates) });
-  const insuranceQuery = useQuery({ queryKey: ["payroll-settings", "insurance"], queryFn: () => listSocialInsuranceVersions(), enabled: capabilityReady && canManageInsurance });
-  const banksQuery = useQuery({ queryKey: ["payroll-settings", "banks"], queryFn: () => listWorkerBankAccounts(), enabled: capabilityReady && canManageBanks });
-  const adjustmentsQuery = useQuery({ queryKey: ["payroll-settings", "adjustments"], queryFn: () => localApi.payrollAdjustments(), enabled: isLocalBackend() && capabilityReady && (canView || canManageAdjustments) });
-  const localRunsQuery = useQuery({ queryKey: ["payroll-settings", "runs"], queryFn: () => localApi.payrollRuns(), enabled: isLocalBackend() && capabilityReady && canView });
+  const requestedTab = searchParams.get("tab");
+  const activeTab = requestedTab && payrollSettingsTabs.has(requestedTab) && (!["runs", "adjustments"].includes(requestedTab) || isLocalBackend()) ? requestedTab === "overview" ? (isLocalBackend()?"runs":"workers") : requestedTab : isLocalBackend()?"runs":"workers";
+  const primaryTab = ["workers","worker-rates","insurance","banks"].includes(activeTab)?"workers":["policies","groups","rates"].includes(activeTab)?"policies":"runs";
+  const navigateTab=(tab:string)=>{const next=new URLSearchParams(searchParams);next.set("tab",tab);setSearchParams(next);};
+  const focusedWorker = activeTab === "workers" && isLocalBackend() ? searchParams.get("worker") : null;
+  const loadWorkerDetails = !isLocalBackend() || !!focusedWorker;
+  const detailKey = focusedWorker || "all";
+  useEffect(()=>{setPendingAction(null);setActionReason("");},[focusedWorker,role,capabilitiesQuery.data]);
+  const scopeKey = `${user?.id || ''}:${role || ''}:${JSON.stringify(capabilitiesQuery.data || [])}`;
+  const workersQuery = useQuery({ queryKey: ["payroll-settings", "workers", scopeKey], queryFn: () => listPayrollWorkers(true), enabled: ["workers", "worker-rates", "insurance", "banks", "adjustments", "runs"].includes(activeTab) && workerAccess });
+  const groupsQuery = useQuery({ queryKey: ["payroll-settings", "groups", scopeKey], queryFn: listPayrollPolicyGroups, enabled: (activeTab === "groups" || activeTab === "workers" && loadWorkerDetails) && capabilityReady && (canView || canManagePolicies) });
+  const assignmentsQuery = useQuery({ queryKey: ["payroll-settings", "assignments", scopeKey, activeTab === "workers" ? detailKey : "all"], queryFn: () => listWorkerCompensationAssignments(activeTab === "workers" ? focusedWorker : undefined), enabled: activeTab === "workers" && loadWorkerDetails && capabilityReady && (canView || canManagePolicies) });
+  const workerProfilesQuery = useQuery({ queryKey: ["payroll-settings", "worker-profiles", scopeKey, activeTab === "workers" ? detailKey : "all"], queryFn: () => listWorkerPayrollProfiles(activeTab === "workers" ? focusedWorker : undefined), enabled: activeTab === "workers" && loadWorkerDetails && isLocalBackend() && workerAccess });
+  const teamsQuery = useQuery({ queryKey: ["payroll-settings", "teams", scopeKey, detailKey], queryFn: () => listPayrollTeamAssignments({ worker_id: focusedWorker }), enabled: activeTab === "workers" && loadWorkerDetails && capabilityReady && (canView || canManageWorkers) });
+  const productsQuery = useQuery({ queryKey: ["payroll-settings", "products", scopeKey], queryFn: () => listPayrollProducts(), enabled: ["rates"].includes(activeTab) && capabilityReady && (canViewRates || canManageRates) });
+  const ratesQuery = useQuery({ queryKey: ["payroll-settings", "rates", scopeKey], queryFn: () => listProductPieceRates(), enabled: (activeTab === "rates" || activeTab === "workers" && loadWorkerDetails) && capabilityReady && (canViewRates || canManageRates) });
+  const workerRatesQuery = useQuery({ queryKey: ["payroll-settings", "worker-rates", scopeKey, activeTab === "workers" ? detailKey : "all"], queryFn: () => listWorkerPayrollRates(activeTab === "workers" ? focusedWorker : undefined), enabled: (activeTab === "worker-rates" || activeTab === "workers" && loadWorkerDetails) && capabilityReady && (canViewRates || canManageRates) });
+  const insuranceQuery = useQuery({ queryKey: ["payroll-settings", "insurance", scopeKey, activeTab === "workers" ? detailKey : "all"], queryFn: () => listSocialInsuranceVersions(activeTab === "workers" ? focusedWorker : undefined), enabled: (activeTab === "insurance" || activeTab === "workers" && loadWorkerDetails) && capabilityReady && canManageInsurance });
+  const banksQuery = useQuery({ queryKey: ["payroll-settings", "banks", scopeKey], queryFn: () => listWorkerBankAccounts(), enabled: ["banks"].includes(activeTab) && capabilityReady && canManageBanks });
+  const adjustmentsQuery = useQuery({ queryKey: ["payroll-settings", "adjustments", scopeKey, activeTab === "workers" ? detailKey : "all"], queryFn: () => localApi.payrollAdjustments({workerId: activeTab === "workers" ? focusedWorker : undefined}), enabled: (activeTab === "adjustments" || activeTab === "workers" && loadWorkerDetails) && isLocalBackend() && capabilityReady && (canView || canManageAdjustments) });
+  const localRunsQuery = useQuery({ queryKey: ["payroll-settings", "runs", scopeKey], queryFn: () => localApi.payrollRuns(), enabled: ["runs"].includes(activeTab) && isLocalBackend() && capabilityReady && canViewRuns });
+
+  const workerEditingQueries = [
+    workersQuery,
+    ...((canView || canManagePolicies) ? [groupsQuery, assignmentsQuery] : []),
+    ...(isLocalBackend() && workerAccess ? [workerProfilesQuery] : []),
+    ...((canView || canManageWorkers) ? [teamsQuery] : []),
+    ...((canViewRates || canManageRates) ? [ratesQuery, workerRatesQuery] : []),
+    ...(canManageInsurance ? [insuranceQuery] : []),
+    ...(isLocalBackend() && (canView || canManageAdjustments) ? [adjustmentsQuery] : []),
+  ];
+  const workerEditingReady = loadWorkerDetails && workerEditingQueries.every(query => query.isSuccess && !query.isFetching);
+  const workerEditingError = workerEditingQueries.find(query => query.isError)?.error;
 
   const [showPayrollTestWorkers, setShowPayrollTestWorkers] = useState(false);
   const allPayrollWorkers = useMemo(() => workersQuery.data ?? [], [workersQuery.data]);
@@ -1402,38 +1260,38 @@ export default function PayrollSettingsPage() {
 
   const dataQueries = [workersQuery, groupsQuery, assignmentsQuery, workerProfilesQuery, teamsQuery, productsQuery, ratesQuery, workerRatesQuery, insuranceQuery, banksQuery, adjustmentsQuery, localRunsQuery];
   const firstError = dataQueries.find((query) => query.isError)?.error;
-  const loading = capabilitiesQuery.isLoading || (capabilityReady && dataQueries.some((query) => query.isLoading && query.fetchStatus !== "idle"));
   const capabilities = capabilitiesQuery.data ?? [];
-  const requestedTab = searchParams.get("tab");
-  const activeTab = requestedTab && payrollSettingsTabs.has(requestedTab) && (!["runs", "adjustments"].includes(requestedTab) || isLocalBackend()) ? requestedTab : "overview";
   const TestWorkerVisibilityIcon = showPayrollTestWorkers ? EyeOff : Eye;
 
-  if (!authReady || !user || loading) return <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  if (!authReady || !user || capabilitiesQuery.isLoading) return <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   if (capabilitiesQuery.isError) return <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertTitle>Không thể kiểm tra quyền tiền lương</AlertTitle><AlertDescription className="space-y-3"><p>{errorMessage(capabilitiesQuery.error)}</p><Button variant="outline" size="sm" onClick={() => void capabilitiesQuery.refetch()}>Thử lại</Button></AlertDescription></Alert>;
   if (!capabilities.some((item) => item.allowed)) return <DeniedPanel message="Tài khoản chưa được cấp quyền xem hoặc quản lý dữ liệu lương." />;
 
   return <div className="mx-auto w-full max-w-[1500px] space-y-4 [&_button:not([role=switch])]:min-h-11 [&_a.inline-flex]:min-h-11 [&_input]:min-h-11 lg:[&_button:not([role=switch])]:min-h-9 lg:[&_input]:min-h-10 lg:[&_a.inline-flex]:min-h-9">
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
-      <div className="flex min-w-0 flex-wrap items-center gap-2"><h1 className="flex min-h-11 min-w-0 items-center text-lg font-semibold tracking-tight sm:text-xl lg:min-h-9">Thiết lập tiền lương</h1>{testPayrollWorkers.length > 0 && <Badge variant="outline" className="text-[11px]">{showPayrollTestWorkers ? "Đang hiện dữ liệu kiểm thử" : `Đang ẩn ${testPayrollWorkers.length} dòng kiểm thử`}</Badge>}</div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2"><h1 className="flex min-h-11 min-w-0 items-center text-lg font-semibold tracking-tight sm:text-xl lg:min-h-9">Tiền lương</h1>{testPayrollWorkers.length > 0 && <Badge variant="outline" className="text-[11px]">{showPayrollTestWorkers ? "Đang hiện dữ liệu kiểm thử" : `Đang ẩn ${testPayrollWorkers.length} dòng kiểm thử`}</Badge>}</div>
       <div className="flex flex-wrap items-center justify-end gap-1 xl:col-start-3">
         {testPayrollWorkers.length > 0 && <Button variant={showPayrollTestWorkers ? "secondary" : "outline"} size="sm" className="h-11 lg:h-9" onClick={() => setShowPayrollTestWorkers((value) => !value)}><TestWorkerVisibilityIcon className="mr-1.5 h-4 w-4" />{showPayrollTestWorkers ? "Ẩn dữ liệu kiểm thử" : `Hiện dữ liệu kiểm thử (${testPayrollWorkers.length})`}</Button>}
         <Button asChild variant="outline" size="sm" className="h-11 w-11 px-0 lg:h-9 lg:w-auto lg:px-3"><Link to="/production-attendance" aria-label="Chấm công xưởng" title="Chấm công xưởng"><CalendarCheck2 className="h-4 w-4 lg:mr-1.5" /><span className="hidden lg:inline">Chấm công xưởng</span></Link></Button>
         <Button variant="ghost" size="icon" className="h-11 w-11 lg:h-9 lg:w-9" onClick={() => void refresh()} aria-label="Tải lại dữ liệu"><RefreshCw className="h-4 w-4" /></Button>
       </div>
-      <div className="col-span-2 min-w-0 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:w-[420px]"><PayrollExcelImport onImported={() => void refresh()} /></div>
     </div>
-    {firstError && <Alert className="border-amber-300 bg-amber-50 text-amber-950" variant="default"><AlertTriangle className="h-4 w-4" /><AlertTitle>Một phần dữ liệu chưa tải được</AlertTitle><AlertDescription>{errorMessage(firstError)}</AlertDescription></Alert>}
-    <Tabs value={activeTab} onValueChange={(tab) => { const next = new URLSearchParams(searchParams); next.set("tab", tab); setSearchParams(next, { replace: true }); }} className="space-y-4"><div className="lg:hidden"><Label htmlFor="payroll-section" className="mb-1.5 block text-xs text-muted-foreground">Nội dung thiết lập</Label><Select value={activeTab} onValueChange={(tab) => { const next = new URLSearchParams(searchParams); next.set("tab", tab); setSearchParams(next, { replace: true }); }}><SelectTrigger id="payroll-section" className="h-11 bg-background"><SelectValue /></SelectTrigger><SelectContent>{payrollTabOptions.filter(([value]) => isLocalBackend() || !["runs", "adjustments"].includes(value)).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div><TabsList className="hidden h-auto w-full grid-cols-3 gap-1 rounded-xl bg-muted/60 p-1 lg:grid xl:grid-cols-5"><TabsTrigger value="overview" className="min-h-9 justify-start px-2 text-xs sm:text-sm"><LayoutDashboard className="mr-1.5 h-4 w-4 shrink-0" />Tổng quan</TabsTrigger><TabsTrigger value="workers" className="min-h-9 justify-start px-2 text-xs sm:text-sm"><UsersRound className="mr-1.5 h-4 w-4 shrink-0" />Nhân sự</TabsTrigger><TabsTrigger value="policies" className="min-h-9 justify-start px-2 text-xs sm:text-sm"><FileText className="mr-1.5 h-4 w-4 shrink-0" />Quy chế lương</TabsTrigger><TabsTrigger value="groups" className="min-h-9 justify-start px-2 text-xs sm:text-sm"><UserRoundCog className="mr-1.5 h-4 w-4 shrink-0" />Nhóm chính sách</TabsTrigger><TabsTrigger value="worker-rates" className="min-h-9 justify-start px-2 text-xs sm:text-sm"><CircleDollarSign className="mr-1.5 h-4 w-4 shrink-0" />Lương tháng / giờ</TabsTrigger><TabsTrigger value="rates" className="min-h-9 justify-start px-2 text-xs sm:text-sm"><PackageSearch className="mr-1.5 h-4 w-4 shrink-0" />Bảng giá công may</TabsTrigger><TabsTrigger value="insurance" className="min-h-9 justify-start px-2 text-xs sm:text-sm"><ShieldCheck className="mr-1.5 h-4 w-4 shrink-0" />BHXH</TabsTrigger><TabsTrigger value="banks" className="min-h-9 justify-start px-2 text-xs sm:text-sm"><Landmark className="mr-1.5 h-4 w-4 shrink-0" />Ngân hàng</TabsTrigger>{isLocalBackend() && <><TabsTrigger value="adjustments" className="min-h-9 justify-start px-2 text-xs sm:text-sm"><CircleDollarSign className="mr-1.5 h-4 w-4 shrink-0" />Phụ cấp / khấu trừ</TabsTrigger><TabsTrigger value="runs" className="min-h-9 justify-start px-2 text-xs sm:text-sm"><CircleDollarSign className="mr-1.5 h-4 w-4 shrink-0" />Kỳ lương</TabsTrigger></>}</TabsList>
+    {dataQueries.some(query=>query.isFetching)&&<p role="status" className="text-xs text-muted-foreground">Đang tải dữ liệu từng phần…</p>}
+    {firstError && <Alert className="border-amber-300 bg-amber-50 text-amber-950" variant="default"><AlertTriangle className="h-4 w-4" /><AlertTitle>Một phần dữ liệu chưa tải được</AlertTitle><AlertDescription>{errorMessage(firstError)} <Button variant="outline" size="sm" onClick={()=>void refresh()}>Thử lại phần dữ liệu</Button></AlertDescription></Alert>}
+    <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted/60 p-1" aria-label="Phân hệ tiền lương">{payrollTabOptions.filter(([value])=>isLocalBackend()||value!=='runs').map(([value,label])=><Button key={value} variant={primaryTab===value?'default':'ghost'} className="h-auto min-h-12 whitespace-normal px-2 text-xs sm:text-sm" onClick={()=>navigateTab(value)}>{label}</Button>)}</div>
+    <div className="flex flex-wrap gap-2">{(primaryTab==='workers'?[["workers","Hồ sơ lương"],["worker-rates","Mức lương nâng cao"],["insurance","BHXH theo quyền"],["banks","Ngân hàng theo quyền"]]:primaryTab==='policies'?[["policies","Tăng ca, tiền ăn & lịch công"],["groups","Nhóm áp dụng"],["rates","Bảng giá công may"]]:[["runs","Tính và đối soát"],["adjustments","Khoản cộng / trừ trong tháng"]]).map(([value,label])=><Button size="sm" key={value} variant={activeTab===value?'secondary':'outline'} onClick={()=>navigateTab(value)}>{label}</Button>)}</div>
+    {searchParams.get('month')&&primaryTab!=='runs'&&<Button asChild variant="outline"><Link to={payrollContextLink('/payroll-settings?tab=runs',searchParams)}>← Trở lại kỳ {searchParams.get('month')}</Link></Button>}
+    <Tabs value={activeTab} onValueChange={navigateTab} className="space-y-4">
       <TabsContent value="overview"><PayrollOverviewTab workers={visiblePayrollWorkers} groups={groupsQuery.data ?? []} assignments={visibleAssignments} workerRates={visibleWorkerRates} productRates={ratesQuery.data ?? []} insurance={visibleInsurance} adjustments={visibleAdjustments} runs={(localRunsQuery.data ?? []) as Record<string, unknown>[]} canSeeRates={canViewRates || canManageRates} canSeeInsurance={canManageInsurance} /></TabsContent>
-      <TabsContent value="workers">{canView || canManageWorkers || canManagePolicies ? <WorkersTab workers={visiblePayrollWorkers} groups={groupsQuery.data ?? []} assignments={visibleAssignments} profiles={visibleWorkerProfiles} workerRates={visibleWorkerRates} insurance={visibleInsurance} adjustments={visibleAdjustments} productRates={ratesQuery.data ?? []} teams={visibleTeams} canManage={canManageWorkers} canManagePolicies={canManagePolicies} canManageRates={canManageRates} canManageInsurance={canManageInsurance} requestAction={requestAction} refresh={refresh} /> : <DeniedPanel message="Cần quyền xem hoặc quản lý nhân sự thuộc phân hệ tiền lương." />}</TabsContent>
-      <TabsContent value="policies">{canView || canManagePolicies ? <PayrollPoliciesTab /> : <DeniedPanel message="Cần quyền xem hoặc quản lý chính sách lương." />}</TabsContent>
+      <TabsContent value="workers">{canView || canManageWorkers || canManagePolicies ? isLocalBackend() && !focusedWorker ? <PayrollWorkerRoster workers={visiblePayrollWorkers} ready={workersQuery.isSuccess && !workersQuery.isFetching} error={workersQuery.error} refresh={refresh} /> : <WorkersTab key={`${scopeKey}:${focusedWorker || "all"}`} dataReady={workerEditingReady} dataError={workerEditingError} workers={visiblePayrollWorkers} groups={groupsQuery.data ?? []} assignments={visibleAssignments} profiles={visibleWorkerProfiles} workerRates={visibleWorkerRates} insurance={visibleInsurance} adjustments={visibleAdjustments} productRates={ratesQuery.data ?? []} teams={visibleTeams} canManage={canManageWorkers} canManagePolicies={canManagePolicies} canManageRates={canManageRates} canManageInsurance={canManageInsurance} requestAction={requestAction} refresh={refresh} /> : <DeniedPanel message="Cần quyền xem hoặc quản lý nhân sự thuộc phân hệ tiền lương." />}</TabsContent>
+      <TabsContent value="policies">{canView || canManagePolicies ? <div className="space-y-4">{isLocalBackend() && canViewRuns && <PayrollVersionSettings key={scopeKey} canManage={canManagePolicies} scopeKey={scopeKey} />}<PayrollHelp title="Hướng dẫn và tài liệu công thức tham khảo"><PayrollPoliciesTab /></PayrollHelp></div> : <DeniedPanel message="Cần quyền xem hoặc quản lý chính sách lương." />}</TabsContent>
       <TabsContent value="groups">{canView || canManagePolicies ? <PolicyGroupsTab groups={groupsQuery.data ?? []} canManage={canManagePolicies} refresh={refresh} /> : <DeniedPanel message="Cần quyền xem hoặc quản lý chính sách lương." />}</TabsContent>
       <TabsContent value="worker-rates">{canViewRates || canManageRates ? <WorkerRatesTab workers={visiblePayrollWorkers} rates={visibleWorkerRates} canManage={canManageRates} requestAction={requestAction} refresh={refresh} /> : <DeniedPanel message="Cần quyền xem mức lương nhân sự." />}</TabsContent>
       <TabsContent value="rates">{canViewRates || canManageRates ? <ProductRatesTab products={productsQuery.data ?? []} rates={ratesQuery.data ?? []} canManage={canManageRates} requestAction={requestAction} refresh={refresh} /> : <DeniedPanel message="Cần quyền xem đơn giá sản phẩm." />}</TabsContent>
        <TabsContent value="insurance"><InsuranceTab workers={visiblePayrollWorkers} versions={visibleInsurance} canManage={canManageInsurance} requestAction={requestAction} refresh={refresh} /></TabsContent>
-       <TabsContent value="banks"><BankAccountsTab workers={visiblePayrollWorkers} accounts={visibleBanks} canManage={canManageBanks} requestAction={requestAction} refresh={refresh} /></TabsContent>
+       <TabsContent value="banks"><BankAccountsTab key={scopeKey} workers={visiblePayrollWorkers} accounts={visibleBanks} canManage={canManageBanks} requestAction={requestAction} refresh={refresh} /></TabsContent>
        {isLocalBackend() && <TabsContent value="adjustments"><LocalPayrollAdjustmentsTab workers={visiblePayrollWorkers} adjustments={visibleAdjustments} canManage={canManageAdjustments} requestAction={requestAction} refresh={refresh} /></TabsContent>}
-       {isLocalBackend() && <TabsContent value="runs"><LocalPayrollRunsTab runs={(localRunsQuery.data ?? []) as Record<string, unknown>[]} workers={visiblePayrollWorkers} workersReady={workersQuery.isSuccess} refresh={refresh} /></TabsContent>}
+       {isLocalBackend() && <TabsContent value="runs">{canViewRuns ? <PayrollMonthWorkbench canSources={hasPermission("production_view") || hasPermission("production_operations") || hasPermission("production_manage")} canPolicies={canManagePolicies} canWorkers={canManageWorkers} canAdjustments={canManageAdjustments} key={scopeKey} scopeKey={scopeKey} runs={(localRunsQuery.data ?? []) as Record<string, unknown>[]} workers={visiblePayrollWorkers} workersReady={workersQuery.isSuccess} canManage={canManageRuns} refresh={refresh} /> : <DeniedPanel message="Kỳ lương tổng hợp chỉ dành cho quản lý, kế toán và quản trị viên. Nhân viên xem thu nhập tại Chấm công của tôi." />}</TabsContent>}
     </Tabs>
     <Dialog open={!!pendingAction} onOpenChange={(open) => { if (!open && !actionMutation.isPending) { setPendingAction(null); setActionReason(""); } }}><DialogContent><DialogHeader><DialogTitle>{pendingAction?.title}</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">{pendingAction?.description}</p><div className="space-y-2"><Label>Lý do</Label><Textarea value={actionReason} onChange={(e) => setActionReason(e.target.value)} placeholder="Ghi rõ lý do để lưu nhật ký" /></div><DialogFooter><Button variant="outline" disabled={actionMutation.isPending} onClick={() => { setPendingAction(null); setActionReason(""); }}>Hủy</Button><Button variant={pendingAction?.destructive ? "destructive" : "default"} disabled={!actionReason.trim() || actionMutation.isPending} onClick={() => actionMutation.mutate()}>{actionMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}{pendingAction?.confirmLabel}</Button></DialogFooter></DialogContent></Dialog>
   </div>;

@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    proxy: { "/api/local-storage": { target: "http://127.0.0.1:8787", changeOrigin: false } },
   },
   plugins: [
     react(),
@@ -27,8 +28,6 @@ export default defineConfig(({ mode }) => ({
   optimizeDeps: {
     // Force Vite to pre-bundle React as a single instance
     include: ["react", "react-dom", "react/jsx-runtime", "react-dom/client"],
-    // Force rebuild to clear stale cache causing duplicate React instances
-    force: true,
     esbuildOptions: {
       // Ensure consistent module resolution
       mainFields: ["module", "main"],

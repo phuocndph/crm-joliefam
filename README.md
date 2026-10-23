@@ -32,9 +32,16 @@ npm run dev:local
 ```
 
 Trình khởi động tạo PostgreSQL local, kiểm tra API ở cổng 8787 và mở Vite ở cổng
-8090. `npm run dev` chỉ chạy giao diện; không khởi động backend hay cơ sở dữ liệu.
-Không dùng thông tin kết nối phát triển cho VPS. Mật khẩu local và quyền tài khoản
-phải được bàn giao riêng; xem [chuyển đăng nhập local](docs/local-auth-transition.md).
+8090. Nếu phiên hiện tại đang dùng cổng 8083, chạy
+`npm run dev:local -- -UiPort 8083`; các liên kết UI khi đó cũng dùng cổng 8083.
+Mọi URL có `8090` trong tài liệu là ví dụ cho cổng mặc định và phải dùng cổng đã
+chọn khi truyền `-UiPort`.
+Giữ cửa sổ PowerShell của launcher mở trong suốt phiên làm việc: nó chạy Vite và
+dừng Local API do chính nó tạo khi thoát bình thường. Không chấm dứt cưỡng bức
+cửa sổ vì điều đó không bảo đảm dọn dẹp tiến trình. `npm run dev` chỉ chạy giao
+diện; không khởi động backend hay cơ sở dữ liệu. Không dùng thông tin kết nối phát
+triển cho VPS. Mật khẩu local và quyền tài khoản phải được bàn giao riêng; xem
+[chuyển đăng nhập local](docs/local-auth-transition.md).
 
 Nếu chạy trên hệ điều hành khác, dùng `npm run local:db:up`, thiết lập các biến
 trong mẫu `.env.local.example`, rồi chạy `npm run local:api` và `npm run dev` ở hai

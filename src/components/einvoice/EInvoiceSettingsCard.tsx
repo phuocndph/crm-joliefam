@@ -5,9 +5,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useEInvoiceSettings } from "@/hooks/useEInvoiceSettings";
+import { isLocalBackend } from "@/lib/runtime-config";
 import { CheckCircle2, XCircle, Loader2, Save, Wifi, AlertTriangle } from "lucide-react";
 
 export const EInvoiceSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
+  if (isLocalBackend()) {
+    return <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> Hóa đơn điện tử trên VPS local</CardTitle>
+        <CardDescription>Chế độ local chỉ tạo và lưu bản nháp nội bộ. Chưa phát hành hóa đơn, chưa tích hợp Viettel S-Invoice và không lưu thông tin đăng nhập nhà cung cấp.</CardDescription>
+      </CardHeader>
+      <CardContent className="text-sm text-muted-foreground space-y-2">
+        <p>Không có khóa API, mật khẩu hoặc nút kiểm tra kết nối trong chế độ này.</p>
+        <p>Hãy dùng quy trình phát hành đã được phê duyệt ở môi trường tích hợp khi chức năng live được triển khai riêng.</p>
+      </CardContent>
+    </Card>;
+  }
+  return <HostedEInvoiceSettingsCard canEdit={canEdit} />;
+};
+
+const HostedEInvoiceSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
   const { query, save, testLogin } = useEInvoiceSettings();
   const data = query.data;
   const settings = data?.settings;

@@ -18,6 +18,8 @@ import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { useFabricUsageByOrder } from "@/hooks/useFabrics";
 import { useAssignees } from "@/hooks/useAssignees";
 import { useManagers } from "@/hooks/useManagers";
+import { isLocalBackend } from "@/lib/runtime-config";
+import { LocalApiError, localApi } from "@/lib/local-api";
 interface Order {
   id: string;
   order_number: string;
@@ -150,33 +152,50 @@ const FabricUsageCell = ({
 };
 const GhnTrackingEditCell = ({ orderId, initialCodes, onDone }: { orderId: string; initialCodes: string[]; onDone: () => void }) => {
   const [value, setValue] = useState(initialCodes.join('\n'));
+  const [baseline, setBaseline] = useState(initialCodes);
+  const [saving, setSaving] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const queryClient = useQueryClient();
 
   const handleSave = async () => {
-    const newCodes = value.split('\n').map(c => c.trim()).filter(Boolean);
-
-    // Delete existing tracking records for this order
-    await supabase.from('ghn_tracking').delete().eq('order_id', orderId);
-
-    // Insert new ones - lấy đúng số đơn nội bộ từ DB
-    if (newCodes.length > 0) {
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('display_order_number, order_number')
-        .eq('id', orderId)
-        .maybeSingle();
-      const internalCode = orderData?.display_order_number || orderData?.order_number || null;
-
-      const inserts = newCodes.map(code => ({
-        ghn_order_code: code,
-        order_id: orderId,
-        internal_order_code: internalCode,
-      }));
-      await supabase.from('ghn_tracking').insert(inserts);
+    const newCodes = [...new Set(value.split('\n').map(c => c.trim()).filter(Boolean))];
+    setSaving(true); setSaveError('');
+    try {
+      if (isLocalBackend()) {
+        await localApi.replaceGhnTrackingByOrder(orderId, { orderCodes: newCodes, expectedOrderCodes: baseline });
+      } else {
+        // Hosted compatibility remains on its existing API; the local path is
+        // intentionally differential and server-authorized.
+        const { error: deleteError } = await supabase.from('ghn_tracking').delete().eq('order_id', orderId);
+        if (deleteError) throw deleteError;
+        if (newCodes.length > 0) {
+          const { data: orderData, error: orderError } = await supabase.from('orders').select('display_order_number, order_number').eq('id', orderId).maybeSingle();
+          if (orderError) throw orderError;
+          const { error: insertError } = await supabase.from('ghn_tracking').insert(newCodes.map(code => ({ ghn_order_code: code, order_id: orderId, internal_order_code: orderData?.display_order_number || orderData?.order_number || null })));
+          if (insertError) throw insertError;
+        }
+      }
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['orders'] }), queryClient.invalidateQueries({ queryKey: ['orders-infinite'] })]);
+      onDone();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể lưu mã GHN. Bản nháp vẫn được giữ để bạn thử lại.';
+      setSaveError(error instanceof LocalApiError && error.status === 409
+        ? `${message} Tải lại liên kết hiện tại trước khi lưu lại.`
+        : message);
     }
-
-    queryClient.invalidateQueries({ queryKey: ['orders'] });
-    onDone();
+    finally { setSaving(false); }
+  };
+  const reloadBaseline = async () => {
+    if (!isLocalBackend()) return;
+    setReloading(true);
+    try {
+      const current = await localApi.ghnTrackingByOrder(orderId);
+      setBaseline(current.orderCodes);
+      setSaveError('Đã tải lại liên kết hiện tại. Bản nháp của bạn vẫn được giữ; bấm lưu để áp dụng nó trên phiên bản mới.');
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Không thể tải lại liên kết GHN.');
+    } finally { setReloading(false); }
   };
 
   return (
@@ -184,19 +203,21 @@ const GhnTrackingEditCell = ({ orderId, initialCodes, onDone }: { orderId: strin
       <textarea
         value={value}
         onChange={e => setValue(e.target.value)}
+        disabled={saving}
         className="w-full min-h-[40px] resize-none rounded-md border border-input bg-background px-2 py-1 text-xs font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         placeholder="Nhập mã vận đơn (mỗi dòng 1 mã)..."
         rows={2}
         autoFocus
       />
       <div className="flex flex-col gap-0.5">
-        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={handleSave}>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" disabled={saving} onClick={handleSave}>
           <Check className="h-3 w-3" />
         </Button>
-        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={onDone}>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" disabled={saving} onClick={onDone}>
           <X className="h-3 w-3" />
         </Button>
       </div>
+      {saveError && <div className="flex items-start gap-1"><p className="text-xs text-destructive">{saveError}</p>{isLocalBackend() && <Button size="sm" variant="link" className="h-auto p-0 text-xs" disabled={saving || reloading} onClick={reloadBaseline}>{reloading ? 'Đang tải…' : 'Tải lại liên kết'}</Button>}</div>}
     </div>
   );
 };

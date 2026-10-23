@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import type { User as AuthUser } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -15,6 +15,7 @@ import { User, Shield, Settings, Save } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isLocalBackend, localAdminUser } from '@/lib/runtime-config';
 import { localApi } from '@/lib/local-api';
+import { notifyPermissionsChanged } from '@/lib/permission-refresh';
 
 interface Profile {
   id: string;
@@ -98,12 +99,17 @@ const permissionLabels = {
 const delegablePayrollPermissions = new Set<PermissionType>([
   'payroll_view', 'payroll_team_view', 'payroll_worker_manage',
 ]);
+const localOnlyPermissions = new Set(['production_sales_submit', 'production_sales_workflow', 'production_cutting_plan']);
 
 const EmployeePermissionManagement = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [employees, setEmployees] = useState<Profile[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Profile | null>(null);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [initialPermissions, setInitialPermissions] = useState<Permission[]>([]);
+  const [permissionsReady, setPermissionsReady] = useState(false);
+  const requestVersion = useRef(0);
+  const selectedUserId = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reasonOpen, setReasonOpen] = useState(false);
@@ -119,7 +125,6 @@ const EmployeePermissionManagement = () => {
 
   const fetchEmployees = useCallback(async () => {
     try {
-      console.log('Fetching employees...');
 
       if (isLocalBackend()) {
         const users = await localApi.users();
@@ -168,16 +173,14 @@ const EmployeePermissionManagement = () => {
         .select('user_id, email, first_name, last_name')
         .in('user_id', managerIds);
 
-      console.log('Profiles data:', profilesData);
-      console.log('Roles data:', rolesData);
-      console.log('Managers data:', managersData);
 
       // Filter và map employee profiles với thông tin manager
-      const employeeUserIds = rolesData?.map(r => r.user_id) || [];
+      const scopedRoles = (rolesData || []).filter(r => currentUserRole === 'admin' || (r.role === 'employee' && r.assigned_by === user?.id));
+      const employeeUserIds = scopedRoles.map(r => r.user_id);
       const employeeProfiles = (profilesData || []).filter(profile => 
         employeeUserIds.includes(profile.user_id)
       ).map(profile => {
-        const roleInfo = rolesData?.find(r => r.user_id === profile.user_id);
+        const roleInfo = scopedRoles.find(r => r.user_id === profile.user_id);
         const managerInfo = managersData?.find(m => m.user_id === roleInfo?.assigned_by);
         
         return {
@@ -191,7 +194,6 @@ const EmployeePermissionManagement = () => {
         };
       });
 
-      console.log('Employee profiles:', employeeProfiles);
       setEmployees(employeeProfiles);
     } catch (error) {
       console.error('Error fetching employees:', error);
@@ -203,7 +205,7 @@ const EmployeePermissionManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, currentUserRole, user?.id]);
 
   useEffect(() => {
     if (currentUserRole && (currentUserRole === 'admin' || currentUserRole === 'manager')) {
@@ -212,6 +214,10 @@ const EmployeePermissionManagement = () => {
   }, [currentUserRole, fetchEmployees]);
 
   const fetchPermissions = async (employeeUserId: string) => {
+    const version = ++requestVersion.current;
+    setPermissionsReady(false);
+    setPermissions([]);
+    setInitialPermissions([]);
     try {
       if (isLocalBackend()) {
         const data = await localApi.employeePermissions(employeeUserId);
@@ -219,7 +225,10 @@ const EmployeePermissionManagement = () => {
           permission_type: permissionType as PermissionType,
           enabled: data.find((permission) => permission.permission_type === permissionType)?.enabled === true,
         }));
+        if (version !== requestVersion.current || selectedUserId.current !== employeeUserId) return;
         setPermissions(allPermissions);
+        setInitialPermissions(allPermissions);
+        setPermissionsReady(true);
         return;
       }
       const { data, error } = await supabase
@@ -238,8 +247,12 @@ const EmployeePermissionManagement = () => {
         };
       });
 
+      if (version !== requestVersion.current || selectedUserId.current !== employeeUserId) return;
       setPermissions(allPermissions);
+      setInitialPermissions(allPermissions);
+      setPermissionsReady(true);
     } catch (error) {
+      if (version !== requestVersion.current) return;
       console.error('Error fetching permissions:', error);
       toast({
         title: "Lỗi",
@@ -267,26 +280,35 @@ const EmployeePermissionManagement = () => {
   };
 
   const savePermissions = async () => {
-    if (!selectedEmployee) return;
+    if (!selectedEmployee || !permissionsReady || saving) return;
+    const targetId = selectedEmployee.user_id;
+    const changes = permissions.filter(item => visiblePermissions.some(([key]) => key === item.permission_type) && initialPermissions.find(prior => prior.permission_type === item.permission_type)?.enabled !== item.enabled);
+    if (!changes.length) return;
 
     setSaving(true);
     try {
       if (isLocalBackend()) {
-        await localApi.saveEmployeePermissions(selectedEmployee.user_id, permissions.map(({ permission_type, enabled }) => ({ permission_type, enabled })), saveReason.trim());
+        await localApi.saveEmployeePermissions(targetId, changes, saveReason.trim());
+        notifyPermissionsChanged();
+        if (selectedUserId.current !== targetId) return;
+        setInitialPermissions(permissions);
         toast({ title: "Thành công", description: "Đã cập nhật quyền trên PostgreSQL cục bộ" });
         setReasonOpen(false);
         setSaveReason('');
         return;
       }
-      const { error } = await supabase.functions.invoke('save-employee-permissions', {
-        body: {
-          userId: selectedEmployee.user_id,
-          permissions,
-          reason: saveReason.trim(),
-        }
-      });
+      // A separate RPC fails safely on old deployments. Never send a partial
+      // list to the legacy replace endpoint (it deletes unsubmitted grants).
+      const { error } = await supabase.rpc('patch_employee_permissions' as never, {
+        p_user_id: targetId,
+        p_permissions: changes,
+        p_reason: saveReason.trim(),
+      } as never);
 
       if (error) throw error;
+      notifyPermissionsChanged();
+      if (selectedUserId.current !== targetId) return;
+      setInitialPermissions(permissions);
 
       toast({
         title: "Thành công",
@@ -307,20 +329,21 @@ const EmployeePermissionManagement = () => {
   };
 
   const openSaveDialog = () => {
-    if (!selectedEmployee) return;
+    if (!selectedEmployee || !permissionsReady || saving) return;
     setSaveReason('');
     setReasonOpen(true);
   };
 
   const visiblePermissions = Object.entries(permissionLabels).filter(([key]) => {
+    if (!isLocalBackend() && localOnlyPermissions.has(key)) return false;
     if (!key.startsWith('payroll_')) return true;
-    const permission = key as PermissionType;
-    const targetRole = selectedEmployee?.user_roles?.[0]?.role;
-    if (targetRole === 'employee') return delegablePayrollPermissions.has(permission);
-    return currentUserRole === 'admin';
+    return delegablePayrollPermissions.has(key as PermissionType);
   });
 
   const selectEmployee = (employee: Profile) => {
+    if (saving) return;
+    selectedUserId.current = employee.user_id;
+    setReasonOpen(false);
     setSelectedEmployee(employee);
     fetchPermissions(employee.user_id);
   };
@@ -335,7 +358,7 @@ const EmployeePermissionManagement = () => {
           </CardTitle>
           <CardDescription>
             {currentUserRole === 'accountant' 
-              ? 'Kế toán có quyền truy cập tất cả module (trừ quản lý người dùng) và không cần cấu hình permission riêng'
+              ? 'Kế toán sử dụng quyền theo vai trò và các quyền bổ sung được quản trị viên cấp.'
               : 'Bạn không có quyền quản lý phân quyền nhân viên'
             }
           </CardDescription>
@@ -428,6 +451,7 @@ const EmployeePermissionManagement = () => {
                       <Switch
                         id={key}
                         checked={isEnabled}
+                        disabled={!permissionsReady || saving}
                         onCheckedChange={(checked) => 
                           updatePermission(key as PermissionType, checked)
                         }
@@ -437,7 +461,7 @@ const EmployeePermissionManagement = () => {
                 })}
                 
                 <div className="pt-4 border-t">
-                  <Button onClick={openSaveDialog} disabled={saving} className="w-full">
+                  <Button onClick={openSaveDialog} disabled={saving || !permissionsReady || !permissions.some(item => visiblePermissions.some(([key]) => key === item.permission_type) && initialPermissions.find(prior => prior.permission_type === item.permission_type)?.enabled !== item.enabled)} className="w-full">
                     {saving ? (
                       <>Đang lưu...</>
                     ) : (

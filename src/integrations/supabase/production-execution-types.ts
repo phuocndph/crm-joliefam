@@ -158,6 +158,7 @@ export interface ProductionFabricStock {
 }
 
 export interface ProductionOrderItemMetadata {
+  reference_images?:string[]|null;
   id: string;
   production_order_id: string;
   product_id: string;
@@ -487,6 +488,10 @@ export interface FactoryAttendanceRow {
 }
 
 export interface FactoryAttendanceClosureRow {
+  current_revision?: string; confirmed_revision?: string | null;
+  confirmation_actor_name?: string | null;
+  confirmation_actor_id?: string | null; confirmation_kind?: 'SELF'|'PROXY'|null;
+  confirmation_reason?: string | null; confirmed_at?: string | null;
   worker_id: string;
   work_date: string;
   status: AttendanceClosureStatus;
@@ -566,6 +571,7 @@ export interface ProductionEntryProduct {
 }
 
 export interface ProductionEntryRow {
+  is_reversed?: boolean;
   id: string; worker_id: string; employee_code: string; worker_name: string; worker_type: WorkerType;
   rate_id?: string | null; product_id: string | null; product_sku: string | null; piece_rate_code?: string | null; product_name: string; work_date: string; quantity: number;
   production_order_operation_id: string | null; production_order_number: string | null;

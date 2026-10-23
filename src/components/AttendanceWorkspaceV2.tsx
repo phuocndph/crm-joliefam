@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { getLocalUserSession } from "@/lib/local-auth";
+import { useSearchParams } from "react-router-dom";
+import { useAuthReady } from "@/hooks/useAuthReady";
+import { useUserRole } from "@/hooks/useUserRole";
+import { localApi, type AttendanceDaySummary, type AttendanceBulkPreview } from "@/lib/local-api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -10,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -78,6 +84,10 @@ import {
 import { isLocalBackend } from "@/lib/runtime-config";
 import {
   attendanceValueLabel,
+  attendanceDayMatchesFilters,
+  attendanceDayInQueue,
+  attendanceBulkScopeSignature,
+  workerDayAction,
   buildWorkerDayAttendance,
   type WorkerDayAttendance,
 } from "@/lib/attendance-workspace";
@@ -106,6 +116,8 @@ import {
   X,
 } from "lucide-react";
 
+import { payrollSourceDate } from '@/lib/payroll-reconciliation';
+
 interface AttendanceWorkspaceV2Props {
   workers: ProductionWorker[];
   canRecord: boolean;
@@ -114,6 +126,8 @@ interface AttendanceWorkspaceV2Props {
   canConfirmDay: boolean;
   canManageDayClosure: boolean;
   canSetDayStatus: boolean;
+  initialMonth?: string;
+  initialDate?: string;
 }
 
 type QuickEntryForm = {
@@ -195,6 +209,25 @@ const makeIdempotencyKey = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`;
+type ReasonSubmission = { reason: string; key: string; generation: number };
+type AttendanceReasonAction =
+  | { kind: "ATTENDANCE_REVERSE"; id: string }
+  | { kind: "ATTENDANCE_WORKFLOW"; id: string; target: "REJECTED" | "LOCKED" }
+  | { kind: "PRODUCTION_REVERSE"; id: string }
+  | { kind: "PRODUCTION_WORKFLOW"; id: string; target: "REJECTED" }
+  | { kind: "OVERTIME_WORKFLOW"; id: string; target: "REJECTED" | "LOCKED"; fromDayDetail: boolean }
+  | { kind: "APPROVE_CLOSE" }
+  | { kind: "CLOSURE"; target: "EMPLOYEE_CONFIRMED" | "REOPENED" };
+type PendingAttendanceReason = {
+  action: AttendanceReasonAction; requestId: string; workerId: string; workDate: string;
+  title: string; required: boolean; contextDate: string; contextWorkerId: string | null;
+  sourceSignature?: string; reviewedSignature?: string;
+};
+const reasonDaySignature = (summary: AttendanceDaySummary) => JSON.stringify({
+  revision: summary.current_revision, fingerprint: summary.source_fingerprint,
+  closure: summary.closure, dayStatus: summary.day_status, dayStatusReason: summary.day_status_reason,
+  locked: summary.payroll_locked,
+});
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Không thể tải dữ liệu chấm công.";
 const amount = (value: number) =>
@@ -242,7 +275,7 @@ const historyActionLabels: Record<string, string> = {
   UPSERT: "Cập nhật",
 };
 
-type WorkspaceView = "DAY" | "MONTH" | "HISTORY" | "OVERTIME";
+type WorkspaceView = "QUEUE" | "DAY" | "MONTH" | "HISTORY" | "OVERTIME";
 
 type OvertimeForm = {
   workerId: string;
@@ -299,46 +332,55 @@ function entrySummary(entry: FactoryAttendanceRow) {
 
 export default function AttendanceWorkspaceV2({
   workers,
-  canRecord,
-  canApproveAttendance,
-  canReverse,
-  canConfirmDay,
-  canManageDayClosure,
+  canRecord: canRecordPermission,
+  canApproveAttendance: canApproveAttendancePermission,
+  canReverse: canReversePermission,
+  canConfirmDay: canConfirmDayPermission,
+  canManageDayClosure: canManageDayClosurePermission,
   canSetDayStatus: canSetDayStatusPermission,
+  initialMonth,
+  initialDate,
 }: AttendanceWorkspaceV2Props) {
   const isMobile = useIsMobile();
-  const [selectedDate, setSelectedDate] = useState(dateKey());
-  const [view, setView] = useState<WorkspaceView>("DAY");
-  const [search, setSearch] = useState("");
-  const [team, setTeam] = useState("ALL");
+  const [urlParams,setUrlParams]=useSearchParams();
+  const {user}=useAuthReady();const {role}=useUserRole(user);
+  const canProxyConfirm=['admin','manager'].includes(role||'');
+  const [detailSummary,setDetailSummary]=useState<AttendanceDaySummary|null>(null);
+  const [detailError,setDetailError]=useState<string|null>(null);
+  const [detailLoading,setDetailLoading]=useState(false);
+  const [bulkPreview,setBulkPreview]=useState<AttendanceBulkPreview|null>(null);
+  const [selectedDate, setSelectedDate] = useState(() => payrollSourceDate(urlParams.get("date")||initialDate,urlParams.get("month")||initialMonth||'') || (/^\d{4}-(0[1-9]|1[0-2])$/.test(initialMonth||"") ? `${initialMonth}-01` : dateKey()));
+  const [view, setView] = useState<WorkspaceView>(()=>["QUEUE","DAY","MONTH","HISTORY","OVERTIME"].includes(urlParams.get("mode")||"")?urlParams.get("mode") as WorkspaceView:"QUEUE");
+  const [search, setSearch] = useState(urlParams.get("search")||"");
+  const [team, setTeam] = useState(urlParams.get("team")||"ALL");
   const [methodFilter, setMethodFilter] = useState<"ALL" | AttendanceMethod>(
     "ALL",
   );
   const [workflowFilter, setWorkflowFilter] = useState("ALL");
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const activeAdvancedFilters = [team, methodFilter, workflowFilter].filter((value) => value !== "ALL").length;
-  const [attendanceRows, setAttendanceRows] = useState<FactoryAttendanceRow[]>(
+  const [attendanceRowsState, setAttendanceRows] = useState<FactoryAttendanceRow[]>(
     [],
   );
-  const [productionEntries, setProductionEntries] = useState<
+  const [productionEntriesState, setProductionEntries] = useState<
     ProductionEntryRow[]
   >([]);
-  const [overtimeRows, setOvertimeRows] = useState<FactoryOvertimeRow[]>([]);
+  const [overtimeRowsState, setOvertimeRows] = useState<FactoryOvertimeRow[]>([]);
   const [overtimeAvailable, setOvertimeAvailable] = useState(true);
   const [products, setProducts] = useState<ProductionEntryProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [productError, setProductError] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
-  const [dayStatuses, setDayStatuses] = useState<
+  const [dayStatusesState, setDayStatuses] = useState<
     Awaited<ReturnType<typeof listFactoryAttendanceDayStatusMonth>>
   >([]);
-  const [closures, setClosures] = useState<
+  const [closuresState, setClosures] = useState<
     Awaited<ReturnType<typeof listFactoryAttendanceClosures>>
   >([]);
-  const [historyEvents, setHistoryEvents] = useState<
+  const [historyEventsState, setHistoryEvents] = useState<
     Awaited<ReturnType<typeof listFactoryAttendanceHistoryMonth>>
   >([]);
-  const [workerMethods, setWorkerMethods] = useState<
+  const [workerMethodsState, setWorkerMethods] = useState<
     Awaited<ReturnType<typeof listWorkerAttendanceMethods>>
   >([]);
   const [meta, setMeta] = useState<{
@@ -371,9 +413,43 @@ export default function AttendanceWorkspaceV2({
     reason: string;
   }>({ status: "PRESENT", mealEligible: false, reason: "" });
   const [saving, setSaving] = useState(false);
+  const [pendingReason, setPendingReason] = useState<PendingAttendanceReason | null>(null);
+  const [reasonText, setReasonText] = useState("");
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const [reasonFieldInvalid, setReasonFieldInvalid] = useState(false);
+  const [reasonSnapshot, setReasonSnapshot] = useState<AttendanceDaySummary | null>(null);
+  const [reasonPreparing, setReasonPreparing] = useState(false);
+  const [reasonSubmitting, setReasonSubmitting] = useState(false);
+  const reasonActiveRef = useRef<string | null>(null);
+  const reasonInFlightRef = useRef(false);
+  const reasonRetryRef = useRef<{ signature: string; key: string } | null>(null);
+  const reasonTriggerRef = useRef<HTMLElement | null>(null);
+  const reasonTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const reasonValidateRef = useRef<(pending: PendingAttendanceReason, summary: AttendanceDaySummary) => boolean>(()=>false);
+  const reasonDispatchRef = useRef<(pending: PendingAttendanceReason, submission: ReasonSubmission) => Promise<boolean | void>>(async()=>false);
+  const reasonRenderValidateRef = useRef(reasonValidateRef.current);
+  const reasonRenderDispatchRef = useRef(reasonDispatchRef.current);
+  const reasonLifecycleRef = useRef({mounted:false,generation:0});
+  const reasonGenerationCurrent = (generation: number) => reasonLifecycleRef.current.mounted && reasonLifecycleRef.current.generation===generation;
+  const reasonSubmissionCurrent = (submission?: ReasonSubmission) => !submission || reasonGenerationCurrent(submission.generation);
+  useEffect(()=>{
+    const lifecycle=reasonLifecycleRef.current;
+    const generation=++lifecycle.generation;
+    lifecycle.mounted=true;
+    // Restore proxies on every setup, including StrictMode's setup/cleanup/setup.
+    reasonValidateRef.current=(pending,summary)=>lifecycle.mounted && reasonActiveRef.current===pending.requestId && reasonRenderValidateRef.current(pending,summary);
+    reasonDispatchRef.current=async(pending,submission)=>lifecycle.mounted && lifecycle.generation===submission.generation && reasonActiveRef.current===pending.requestId ? reasonRenderDispatchRef.current(pending,submission) : false;
+    return ()=>{
+      if (lifecycle.generation!==generation) return;
+      lifecycle.mounted=false; lifecycle.generation++;
+      reasonActiveRef.current=null; reasonRetryRef.current=null; reasonInFlightRef.current=false; reasonTriggerRef.current=null;
+      reasonValidateRef.current=()=>false; reasonDispatchRef.current=async()=>false;
+    };
+  },[]);
+
+
+
   const [bulkApprovalOpen, setBulkApprovalOpen] = useState(false);
-  const [bulkApprovalIdempotencyKey, setBulkApprovalIdempotencyKey] =
-    useState("");
   const [overtimeOpen, setOvertimeOpen] = useState(false);
   const [overtimeForm, setOvertimeForm] = useState<OvertimeForm>({
     workerId: "",
@@ -382,94 +458,133 @@ export default function AttendanceWorkspaceV2({
     minutes: "60",
     reason: "",
   });
+  const [methodError, setMethodError] = useState<string | null>(null);
+  const [methodsLoading, setMethodsLoading] = useState(true);
+  const [loadedMonth, setLoadedMonth] = useState("");
+  const [loadedMethodsDate, setLoadedMethodsDate] = useState("");
+  const attendanceRows = useMemo(() => loadedMonth === monthKey(selectedDate) ? attendanceRowsState : [], [loadedMonth, selectedDate, attendanceRowsState]);
+  const productionEntries = useMemo(() => loadedMonth === monthKey(selectedDate) ? productionEntriesState : [], [loadedMonth, selectedDate, productionEntriesState]);
+  const overtimeRows = useMemo(() => loadedMonth === monthKey(selectedDate) ? overtimeRowsState : [], [loadedMonth, selectedDate, overtimeRowsState]);
+  const dayStatuses = useMemo(() => loadedMonth === monthKey(selectedDate) ? dayStatusesState : [], [loadedMonth, selectedDate, dayStatusesState]);
+  const closures = useMemo(() => loadedMonth === monthKey(selectedDate) ? closuresState : [], [loadedMonth, selectedDate, closuresState]);
+  const historyEvents = useMemo(() => loadedMonth === monthKey(selectedDate) ? historyEventsState : [], [loadedMonth, selectedDate, historyEventsState]);
+  const workerMethods = useMemo(() => loadedMethodsDate === selectedDate ? workerMethodsState : [], [loadedMethodsDate, selectedDate, workerMethodsState]);
+  const sourceReady = loadedMonth === monthKey(selectedDate) && loadedMethodsDate === selectedDate && !loading && !loadError && !methodsLoading && !methodError;
+  const canRecord = canRecordPermission && sourceReady;
+  const canApproveAttendance = canApproveAttendancePermission && sourceReady;
+  const canReverse = canReversePermission && sourceReady;
+  const canConfirmDay = canConfirmDayPermission && sourceReady;
+  const canManageDayClosure = canManageDayClosurePermission && sourceReady;
   const dayStatusWritable =
-    canSetDayStatusPermission &&
+    canSetDayStatusPermission && sourceReady &&
     selectedWorker?.closureStatus !== "LEADER_CONFIRMED" &&
     selectedDate <= dateKey();
   const canSetDayStatus = dayStatusWritable;
 
-  const loadWorkspace = useCallback(async () => {
+  const workspaceMonth = monthKey(selectedDate);
+  const currentDateRef = useRef(selectedDate);
+  currentDateRef.current = selectedDate;
+  const monthRequestRef = useRef(0);
+  const methodRequestRef = useRef(0);
+  const productRequestRef = useRef(0);
+
+  const loadMonth = useCallback(async () => {
+    if (monthKey(currentDateRef.current) !== workspaceMonth) return;
+    const request = ++monthRequestRef.current;
+    setLoading(true);
     setLoadError(null);
     setRefreshing(true);
+    const results = await Promise.allSettled([
+      listFactoryAttendanceMonthWithMeta(workspaceMonth, true),
+      listProductionEntriesMonth(workspaceMonth, true),
+      listFactoryAttendanceDayStatusMonth(workspaceMonth),
+      listFactoryAttendanceClosures(workspaceMonth),
+      listFactoryOvertimeMonth(workspaceMonth),
+      listFactoryAttendanceHistoryMonth(workspaceMonth),
+    ]);
+    if (request !== monthRequestRef.current || monthKey(currentDateRef.current) !== workspaceMonth) return;
+    const [attendanceResult, productionResult, dayResult, closureResult, overtimeResult, historyResult] = results;
+    setAttendanceRows(attendanceResult.status === "fulfilled" ? attendanceResult.value.rows : []);
+    setProductionEntries(productionResult.status === "fulfilled" ? productionResult.value : []);
+    setMeta(attendanceResult.status === "fulfilled" ? {
+      timeClockAvailable: attendanceResult.value.timeClockAvailable,
+      workflowAvailable: attendanceResult.value.workflowAvailable,
+    } : { timeClockAvailable: false, workflowAvailable: false });
+    setDayStatuses(dayResult.status === "fulfilled" ? dayResult.value : []);
+    setClosures(closureResult.status === "fulfilled" ? closureResult.value : []);
+    setOvertimeRows(overtimeResult.status === "fulfilled" ? overtimeResult.value : []);
+    setHistoryEvents(historyResult.status === "fulfilled" ? historyResult.value : []);
+    setOvertimeAvailable(overtimeResult.status === "fulfilled");
+    const labels = ["Công ngày/giờ", "Sản lượng", "Trạng thái ngày", "Chốt ngày", "Tăng ca", "Lịch sử"];
+    const failures = results.flatMap((result, index) => result.status === "rejected" ? [`${labels[index]}: ${errorMessage(result.reason)}`] : []);
+    setLoadError(failures.length ? failures.join("; ") : null);
+    setLoadedMonth(workspaceMonth);
+    setLoading(false);
+    setRefreshing(false);
+  }, [workspaceMonth]);
+
+  const loadMethods = useCallback(async () => {
+    if (currentDateRef.current !== selectedDate) return;
+    const request = ++methodRequestRef.current;
+    setMethodsLoading(true);
+    setMethodError(null);
     try {
-      const month = monthKey(selectedDate);
-      const [
-        attendanceResult,
-        productionResult,
-        methodsResult,
-        dayResult,
-        closureResult,
-        overtimeResult,
-        historyResult,
-      ] = await Promise.allSettled([
-        listFactoryAttendanceMonthWithMeta(month, true),
-        listProductionEntriesMonth(month, true),
-        listWorkerAttendanceMethods(selectedDate),
-        listFactoryAttendanceDayStatusMonth(month),
-        listFactoryAttendanceClosures(month),
-        listFactoryOvertimeMonth(month),
-        listFactoryAttendanceHistoryMonth(month),
-      ]);
-      if (attendanceResult.status === "rejected") throw attendanceResult.reason;
-      setAttendanceRows(attendanceResult.value.rows);
-      setProductionEntries(
-        productionResult.status === "fulfilled" ? productionResult.value : [],
-      );
-      setMeta({
-        timeClockAvailable: attendanceResult.value.timeClockAvailable,
-        workflowAvailable: attendanceResult.value.workflowAvailable,
-      });
-      setWorkerMethods(
-        methodsResult.status === "fulfilled" ? methodsResult.value : [],
-      );
-      setDayStatuses(dayResult.status === "fulfilled" ? dayResult.value : []);
-      setClosures(
-        closureResult.status === "fulfilled" ? closureResult.value : [],
-      );
-      setOvertimeRows(
-        overtimeResult.status === "fulfilled" ? overtimeResult.value : [],
-      );
-      setHistoryEvents(
-        historyResult.status === "fulfilled" ? historyResult.value : [],
-      );
-      setOvertimeAvailable(overtimeResult.status === "fulfilled");
-      if (
-        productionResult.status === "rejected" ||
-        methodsResult.status === "rejected" ||
-        dayResult.status === "rejected" ||
-        closureResult.status === "rejected" ||
-        overtimeResult.status === "rejected" ||
-        historyResult.status === "rejected"
-      ) {
-        toast.warning(
-          "Một số dữ liệu phụ chưa sẵn sàng; bảng chấm công vẫn có thể sử dụng.",
-        );
-      }
+      const result = await listWorkerAttendanceMethods(selectedDate);
+      if (request !== methodRequestRef.current || currentDateRef.current !== selectedDate) return;
+      setWorkerMethods(result);
     } catch (error) {
-      setLoadError(errorMessage(error));
+      if (request !== methodRequestRef.current || currentDateRef.current !== selectedDate) return;
+      setWorkerMethods([]);
+      setMethodError(errorMessage(error));
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (request === methodRequestRef.current && currentDateRef.current === selectedDate) { setLoadedMethodsDate(selectedDate); setMethodsLoading(false); }
     }
   }, [selectedDate]);
 
+  const loadWorkspace = useCallback(async () => {
+    await Promise.all([loadMonth(), loadMethods()]);
+  }, [loadMonth, loadMethods]);
+
   const loadProducts = useCallback(async () => {
+    const request = ++productRequestRef.current;
     setProductsLoading(true);
     setProductError(null);
     try {
-      setProducts(await listProductionEntryProducts(selectedDate));
+      const result = await listProductionEntryProducts(selectedDate);
+      if (request === productRequestRef.current && currentDateRef.current === selectedDate) setProducts(result);
     } catch (error) {
+      if (request !== productRequestRef.current || currentDateRef.current !== selectedDate) return;
       setProducts([]);
       setProductError(errorMessage(error));
     } finally {
-      setProductsLoading(false);
+      if (request === productRequestRef.current && currentDateRef.current === selectedDate) setProductsLoading(false);
     }
   }, [selectedDate]);
 
   useEffect(() => {
-    void loadWorkspace();
-  }, [loadWorkspace]);
+    void loadMonth();
+    return () => { monthRequestRef.current += 1; };
+  }, [loadMonth]);
 
+  useEffect(() => {
+    void loadMethods();
+    setEntryTarget(null);
+    setProducts([]);
+    setProductsLoading(false);
+    return () => { methodRequestRef.current += 1; productRequestRef.current += 1; };
+  }, [loadMethods]);
+
+  const lastUrlRef=useRef(urlParams.toString());
+  useEffect(()=>{
+    const current=urlParams.toString();
+    if(current!==lastUrlRef.current){lastUrlRef.current=current;const date=payrollSourceDate(urlParams.get('date'),urlParams.get('month')||'');if(date)setSelectedDate(date);const mode=urlParams.get('mode');if(['QUEUE','DAY','MONTH','HISTORY','OVERTIME'].includes(mode||''))setView(mode as WorkspaceView);setTeam(urlParams.get('team')||'ALL');setSearch(urlParams.get('search')||'');return;}
+    const next=new URLSearchParams(urlParams);next.set('date',selectedDate);next.set('month',selectedDate.slice(0,7));next.set('mode',view);next.set('team',team);if(search)next.set('search',search);else next.delete('search');if(next.toString()!==current){lastUrlRef.current=next.toString();setUrlParams(next,{replace:true});}
+  },[selectedDate,view,team,search,urlParams,setUrlParams]);
+  const detailWorkerId=selectedWorker?.worker.id;
+  useEffect(()=>{
+    setDetailSummary(null);setDetailError(null);if(!isLocalBackend()||!detailWorkerId)return;
+    let cancelled=false;setDetailLoading(true);localApi.attendanceDaySummary(detailWorkerId,selectedDate).then(value=>{if(!cancelled)setDetailSummary(value);}).catch(error=>{if(!cancelled)setDetailError(errorMessage(error));}).finally(()=>{if(!cancelled)setDetailLoading(false);});return()=>{cancelled=true;};
+  },[detailWorkerId,selectedDate,loading]);
   const workerDays = useMemo(
     () =>
       buildWorkerDayAttendance({
@@ -477,6 +592,7 @@ export default function AttendanceWorkspaceV2({
         attendanceMethods: workerMethods,
         attendanceRows,
         productionEntries,
+        overtimeRows,
         dayStatuses,
         closures,
         workDate: selectedDate,
@@ -486,11 +602,14 @@ export default function AttendanceWorkspaceV2({
       closures,
       dayStatuses,
       productionEntries,
+      overtimeRows,
       selectedDate,
       workerMethods,
       workers,
     ],
   );
+  const openedPayrollDayRef=useRef('');
+  useEffect(()=>{const id=urlParams.get('worker'),date=urlParams.get('date');const key=`${id}:${date}`;if(id&&date===selectedDate&&sourceReady&&openedPayrollDayRef.current!==key){const row=workerDays.find(item=>item.worker.id===id);if(row){openedPayrollDayRef.current=key;setSelectedWorker(row);}}},[urlParams,selectedDate,sourceReady,workerDays]);
   const teams = useMemo(
     () =>
       [...new Set(workerDays.map((item) => item.worker.worker_type))].sort(),
@@ -505,28 +624,9 @@ export default function AttendanceWorkspaceV2({
           `${item.worker.display_name} ${item.worker.employee_code}`
             .toLocaleLowerCase("vi")
             .includes(normalized);
-        const matchesMethod =
-          methodFilter === "ALL" ||
-          item.attendanceMethod === methodFilter ||
-          item.activeEntries.some(
-            (entry) => entry.attendance_method === methodFilter,
-          ) ||
-          (methodFilter === "OUTPUT" &&
-            item.activeProductionEntries.length > 0);
-        const matchesWorkflow =
-          workflowFilter === "ALL" ||
-          (workflowFilter === "PENDING" && item.hasPending) ||
-          (workflowFilter === "REJECTED" && item.hasRejected) ||
-          (workflowFilter === "RECORDED" && item.isRecorded) ||
-          (workflowFilter === "MISSING" &&
-            !item.isRecorded &&
-            !item.dayStatus) ||
-          (workflowFilter === "CLOSED" &&
-            item.closureStatus === "LEADER_CONFIRMED");
         return (
           matchesSearch &&
-          matchesMethod &&
-          matchesWorkflow &&
+          attendanceDayMatchesFilters(item,methodFilter,workflowFilter) &&
           (team === "ALL" || item.worker.worker_type === team)
         );
       }),
@@ -536,12 +636,24 @@ export default function AttendanceWorkspaceV2({
   const today = dateKey();
   const selectedDateIsFuture = selectedDate > today;
   const selectedMonth = monthInputKey(selectedDate);
+  // Monthly views follow the caller's people scope, independent of the
+  // currently selected day's attendance method/status.
+  const allowedWorkerIds = useMemo(() => new Set(workers.map((worker) => worker.id)), [workers]);
+  const filteredOvertimeRows = useMemo(() => overtimeRows.filter((row) =>
+    allowedWorkerIds.has(row.worker_id) &&
+    (team === "ALL" || row.worker_type === team) &&
+    (!search.trim() || `${row.worker_name} ${row.employee_code}`.toLocaleLowerCase("vi").includes(search.trim().toLocaleLowerCase("vi"))) &&
+    (workflowFilter === "ALL" ||
+      (workflowFilter === "PENDING" && row.status === "SUBMITTED") ||
+      (workflowFilter === "REJECTED" && row.status === "REJECTED") ||
+      (workflowFilter === "RECORDED" && row.status !== "SUBMITTED" && row.status !== "REJECTED")),
+  ), [allowedWorkerIds, overtimeRows, search, team, workflowFilter]);
   const visibleWorkerIds = useMemo(
     () =>
       new Set(
-        workers.filter((worker) => worker.is_active).map((worker) => worker.id),
+        workerDays.map((row) => row.worker.id),
       ),
-    [workers],
+    [workerDays],
   );
   const selectedDateHasData = useMemo(
     () =>
@@ -610,6 +722,7 @@ export default function AttendanceWorkspaceV2({
         attendanceMethods: workerMethods,
         attendanceRows,
         productionEntries,
+        overtimeRows,
         dayStatuses,
         closures,
         workDate: day.dateKey,
@@ -628,13 +741,16 @@ export default function AttendanceWorkspaceV2({
     dayStatuses,
     monthDays,
     productionEntries,
+    overtimeRows,
     workerMethods,
     workers,
   ]);
+  const queueRows=useMemo(()=>[...monthRowsByWorker.values()].flatMap(days=>[...days.entries()].map(([workDate,row])=>({workDate,row}))).filter(({workDate,row})=>attendanceDayInQueue(row,workDate,today,methodFilter,workflowFilter)&&(!search.trim()||`${row.worker.display_name} ${row.worker.employee_code}`.toLocaleLowerCase('vi').includes(search.trim().toLocaleLowerCase('vi')))&&(team==='ALL'||row.worker.worker_type===team)).sort((a,b)=>workerDayAction(a.row).priority-workerDayAction(b.row).priority||a.workDate.localeCompare(b.workDate)||a.row.worker.display_name.localeCompare(b.row.worker.display_name)),[monthRowsByWorker,today,search,team,methodFilter,workflowFilter]);
+  useEffect(()=>{if(!selectedWorker)return;const current=workerDays.find(row=>row.worker.id===selectedWorker.worker.id);if(current&&current!==selectedWorker)setSelectedWorker(current);},[workerDays,selectedWorker]);
   const matrixWorkers = useMemo(() => {
     const normalized = search.trim().toLocaleLowerCase("vi");
     return workers
-      .filter((worker) => worker.is_active)
+      .filter((worker) => monthRowsByWorker.has(worker.id))
       .filter(
         (worker) =>
           !normalized ||
@@ -738,7 +854,7 @@ export default function AttendanceWorkspaceV2({
   const bulkApprovalScopeWorkers = useMemo(() => {
     const normalized = search.trim().toLocaleLowerCase("vi");
     return workers
-      .filter((worker) => worker.is_active)
+      .filter((worker) => monthRowsByWorker.has(worker.id))
       .filter((worker) => team === "ALL" || worker.worker_type === team)
       .filter(
         (worker) =>
@@ -747,11 +863,24 @@ export default function AttendanceWorkspaceV2({
             .toLocaleLowerCase("vi")
             .includes(normalized),
       );
-  }, [search, team, workers]);
+  }, [search, team, workers,monthRowsByWorker]);
   const bulkApprovalScopeWorkerIds = useMemo(
     () => bulkApprovalScopeWorkers.map((worker) => worker.id).sort(),
     [bulkApprovalScopeWorkers],
   );
+  const bulkScopeSignature=attendanceBulkScopeSignature(selectedMonth,team,search,bulkApprovalScopeWorkerIds);
+  const bulkScopeRef=useRef(bulkScopeSignature);
+  const bulkSessionIdentity=getLocalUserSession()?.token;
+  const bulkSessionRef=useRef(bulkSessionIdentity);
+  const bulkGeneration=useRef(0);
+  const bulkInFlight=useRef(false);
+  const bulkReviewed=useRef<{signature:string;month:string;workerIds:string[];label:string;key:string;preview:AttendanceBulkPreview}|null>(null);
+  // Invalidate synchronously: a response can arrive before the scope effect runs.
+  if(bulkScopeRef.current!==bulkScopeSignature || bulkSessionRef.current!==bulkSessionIdentity){bulkScopeRef.current=bulkScopeSignature;bulkSessionRef.current=bulkSessionIdentity;bulkGeneration.current++;bulkReviewed.current=null;}
+  useEffect(()=>{setBulkPreview(null);setBulkApprovalOpen(false);
+    if(bulkInFlight.current){bulkInFlight.current=false;setSaving(false);}
+  },[bulkScopeSignature,bulkSessionIdentity]);
+  useEffect(()=>()=>{bulkGeneration.current++;bulkInFlight.current=false;bulkReviewed.current=null;},[]);
   const bulkPendingCounts = useMemo(() => {
     const scopedWorkerIds = new Set(bulkApprovalScopeWorkerIds);
     const inSelectedMonth = (workerId: string, workDate: string) =>
@@ -786,7 +915,7 @@ export default function AttendanceWorkspaceV2({
     bulkPendingCounts.PRODUCTION_ENTRY +
     bulkPendingCounts.OVERTIME;
   const bulkApprovalAvailable =
-    isLocalBackend() && canApproveAttendance && meta.workflowAvailable;
+    isLocalBackend() && canApproveAttendance && meta.workflowAvailable && !loading && !loadError && !methodError && !methodsLoading;
   const bulkApprovalScopeLabel = useMemo(
     () =>
       [
@@ -800,6 +929,7 @@ export default function AttendanceWorkspaceV2({
   const historyRows = useMemo(() => {
     type HistoryItem = {
       id: string;
+      workerId: string | null;
       date: string;
       worker: string;
       code: string;
@@ -814,6 +944,7 @@ export default function AttendanceWorkspaceV2({
     attendanceRows.forEach((entry) =>
       items.push({
         id: `attendance-${entry.id}`,
+        workerId: entry.worker_id,
         date: entry.work_date.slice(0, 10),
         worker: entry.worker_name,
         code: entry.employee_code,
@@ -830,6 +961,7 @@ export default function AttendanceWorkspaceV2({
     productionEntries.forEach((entry) =>
       items.push({
         id: `production-${entry.id}`,
+        workerId: entry.worker_id,
         date: entry.work_date.slice(0, 10),
         worker: entry.worker_name,
         code: entry.employee_code,
@@ -844,6 +976,7 @@ export default function AttendanceWorkspaceV2({
     overtimeRows.forEach((entry) =>
       items.push({
         id: `overtime-${entry.id}`,
+        workerId: entry.worker_id,
         date: entry.work_date.slice(0, 10),
         worker: entry.worker_name,
         code: entry.employee_code,
@@ -858,6 +991,7 @@ export default function AttendanceWorkspaceV2({
     dayStatuses.forEach((entry) =>
       items.push({
         id: `day-status-${entry.worker_id}-${entry.work_date}`,
+        workerId: entry.worker_id,
         date: entry.work_date.slice(0, 10),
         worker: entry.worker_name,
         code: entry.employee_code,
@@ -883,6 +1017,7 @@ export default function AttendanceWorkspaceV2({
       const actor = event.actor_id ? ` · ${event.actor_id}` : "";
       items.push({
         id: `audit-${event.id}`,
+        workerId: event.worker_id,
         date: event.work_date?.slice(0, 10) ?? "—",
         worker: event.worker_name ?? "Không xác định",
         code: event.employee_code ?? "—",
@@ -895,6 +1030,7 @@ export default function AttendanceWorkspaceV2({
       });
     });
     return items
+      .filter((item) => Boolean(item.workerId && allowedWorkerIds.has(item.workerId)))
       .filter(
         (item) =>
           !search.trim() ||
@@ -905,7 +1041,7 @@ export default function AttendanceWorkspaceV2({
       .filter(
         (item) =>
           team === "ALL" ||
-          workers.find((worker) => worker.employee_code === item.code)
+          workers.find((worker) => worker.id === item.workerId)
             ?.worker_type === team,
       )
       .filter(
@@ -925,6 +1061,7 @@ export default function AttendanceWorkspaceV2({
           b.createdAt.localeCompare(a.createdAt),
       );
   }, [
+    allowedWorkerIds,
     attendanceRows,
     dayStatuses,
     historyEvents,
@@ -979,19 +1116,19 @@ export default function AttendanceWorkspaceV2({
       color: "text-primary",
     },
     {
-      label: "Đã có dữ liệu",
+      label: "Người/ngày ghi nhận",
       value: kpis.recorded.toLocaleString("vi-VN"),
       Icon: CalendarCheck2,
       color: "text-emerald-600",
     },
     {
-      label: "Chờ duyệt",
+      label: "Người/ngày chờ duyệt",
       value: kpis.pending.toLocaleString("vi-VN"),
       Icon: Clock3,
       color: "text-amber-600",
     },
     {
-      label: "Đã chốt ngày",
+      label: "Người/ngày đã chốt",
       value: kpis.closed.toLocaleString("vi-VN"),
       Icon: LockKeyhole,
       color: "text-slate-600",
@@ -1008,6 +1145,8 @@ export default function AttendanceWorkspaceV2({
     row: WorkerDayAttendance,
     method: AttendanceMethod = row.attendanceMethod,
   ) => {
+    const configured=workerMethods.filter(item=>item.worker_id===row.worker.id);
+    if(!configured.some(item=>item.attendance_method===method)){toast.error('Ngày này chưa có cách chấm công tương ứng được duyệt; kiểm tra thiết lập lương trước.');return;}
     setEntryTarget(row);
     setEntryForm({
       workerId: row.worker.id,
@@ -1035,7 +1174,7 @@ export default function AttendanceWorkspaceV2({
   };
 
   const handleQuickEntry = async () => {
-    if (!entryTarget) return;
+    if (!entryTarget || !canRecord) return;
     if (selectedDateIsFuture) {
       toast.error("Ngày chấm công không được ở tương lai.");
       return;
@@ -1160,111 +1299,151 @@ export default function AttendanceWorkspaceV2({
     }
   };
 
-  const handleReverse = async (entry: FactoryAttendanceRow) => {
+  const requestAttendanceReason = async (
+    action: AttendanceReasonAction, workerId: string, workDate: string,
+    title: string, required: boolean, source?: unknown, reviewed?: AttendanceDaySummary,
+  ) => {
+    if (!reasonLifecycleRef.current.mounted || saving || reasonActiveRef.current || reasonInFlightRef.current || !sourceReady) return;
+    const generation=reasonLifecycleRef.current.generation;
+    const requestId = makeIdempotencyKey();
+    reasonTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    reasonActiveRef.current = requestId;
+    reasonRetryRef.current = null;
+    setReasonText(""); setReasonError(null); setReasonFieldInvalid(false); setReasonSnapshot(null); setReasonPreparing(true);
+    setPendingReason({action,requestId,workerId,workDate,title,required,contextDate:selectedDate,contextWorkerId:selectedWorker?.worker.id ?? null,
+      sourceSignature:source ? JSON.stringify(source) : undefined,reviewedSignature:reviewed ? reasonDaySignature(reviewed) : undefined});
+    try {
+      const summary = await localApi.attendanceDaySummary(workerId,workDate);
+      if (!reasonGenerationCurrent(generation) || reasonActiveRef.current !== requestId) return;
+      if (summary.worker_id !== workerId || summary.work_date !== workDate || (reviewed && reasonDaySignature(reviewed)!==reasonDaySignature(summary))) {
+        setReasonError('Nguồn ngày đã thay đổi. Đóng hộp thoại, tải lại và xem lại ngày trước khi thao tác.');
+        return;
+      }
+      setReasonSnapshot(summary);
+    } catch (error) {
+      if (reasonGenerationCurrent(generation) && reasonActiveRef.current === requestId) setReasonError(errorMessage(error));
+    } finally {
+      if (reasonGenerationCurrent(generation) && reasonActiveRef.current === requestId) setReasonPreparing(false);
+    }
+  };
+
+  const handleReverse = async (entry: FactoryAttendanceRow, submission?: ReasonSubmission) => {
+    if (!reasonSubmissionCurrent(submission)) return;
     if (
       !canReverse ||
       entry.workflow_status !== "APPROVED" ||
       entry.is_reversed
     )
       return;
-    const reason = window.prompt("Lý do đảo bản ghi chấm công (bắt buộc):", "");
-    if (!reason?.trim()) return;
+    if (!submission) return requestAttendanceReason({kind:'ATTENDANCE_REVERSE',id:entry.id},entry.worker_id,entry.work_date.slice(0,10),'Đảo bản ghi chấm công',true,entry);
+    const reason = submission.reason;
+    if (!reason.trim()) return;
     setSaving(true);
     try {
       await reverseFactoryAttendance(
         entry.id,
         reason.trim(),
-        makeIdempotencyKey(),
+        submission?.key ?? makeIdempotencyKey(),
       );
+      if (!reasonSubmissionCurrent(submission)) return;
       toast.success("Đã đảo bản ghi chấm công");
       await loadWorkspace();
-      setSelectedWorker(null);
+      if (!submission) setSelectedWorker(null);
+      return true;
     } catch (error) {
-      toast.error(errorMessage(error));
+      if (reasonSubmissionCurrent(submission)) toast.error(errorMessage(error));
     } finally {
-      setSaving(false);
+      if (reasonSubmissionCurrent(submission)) setSaving(false);
     }
   };
 
   const handleWorkflow = async (
     entry: FactoryAttendanceRow,
     target: Exclude<AttendanceWorkflowStatus, "REVERSED">,
+    submission?: ReasonSubmission,
   ) => {
-    if (!meta.workflowAvailable) return;
-    const reason =
-      target === "REJECTED"
-        ? window.prompt("Lý do từ chối bản ghi:", "")
-        : target === "LOCKED"
-          ? window.prompt("Lý do khóa bản ghi (tùy chọn):", "")
-          : "";
-    if (target === "REJECTED" && !reason?.trim()) return;
+    if (!reasonSubmissionCurrent(submission)) return;
+    if (!meta.workflowAvailable || !canApproveAttendance) return;
+    if (!submission && (target === 'REJECTED' || target === 'LOCKED')) return requestAttendanceReason({kind:'ATTENDANCE_WORKFLOW',id:entry.id,target},entry.worker_id,entry.work_date.slice(0,10),target==='REJECTED'?'Từ chối bản ghi chấm công':'Khóa bản ghi chấm công',target==='REJECTED',entry);
+    const reason = submission?.reason ?? '';
+    if (target === "REJECTED" && !reason.trim()) return;
     setSaving(true);
     try {
       await setFactoryAttendanceStatus({
         attendance_record_id: entry.id,
         target_status: target,
         reason: reason?.trim() || null,
-        idempotency_key: makeIdempotencyKey(),
+        idempotency_key: submission?.key ?? makeIdempotencyKey(),
       });
+      if (!reasonSubmissionCurrent(submission)) return;
       toast.success(`Đã chuyển trạng thái: ${statusLabels[target]}`);
       await loadWorkspace();
-      setSelectedWorker(null);
+      if (!submission) setSelectedWorker(null);
+      return true;
     } catch (error) {
-      toast.error(errorMessage(error));
+      if (reasonSubmissionCurrent(submission)) toast.error(errorMessage(error));
     } finally {
-      setSaving(false);
+      if (reasonSubmissionCurrent(submission)) setSaving(false);
     }
   };
 
   const handleProductionWorkflow = async (
     entry: ProductionEntryRow,
     target: "APPROVED" | "REJECTED",
+    submission?: ReasonSubmission,
   ) => {
-    const reason =
-      target === "REJECTED"
-        ? window.prompt("Lý do từ chối sản lượng (bắt buộc):", "")
-        : "";
-    if (target === "REJECTED" && !reason?.trim()) return;
+    if (!reasonSubmissionCurrent(submission)) return;
+    if (!sourceReady || !canApproveAttendance) return;
+    if (!submission && target === 'REJECTED') return requestAttendanceReason({kind:'PRODUCTION_WORKFLOW',id:entry.id,target},entry.worker_id,entry.work_date.slice(0,10),'Từ chối sản lượng',true,entry);
+    const reason = submission?.reason ?? '';
+    if (target === "REJECTED" && !reason.trim()) return;
     setSaving(true);
     try {
       await setProductionEntryStatus({
         production_entry_id: entry.id,
         target_status: target,
         reason: reason?.trim() || null,
-        idempotency_key: makeIdempotencyKey(),
+        idempotency_key: submission?.key ?? makeIdempotencyKey(),
       });
+      if (!reasonSubmissionCurrent(submission)) return;
       toast.success(`Đã chuyển trạng thái sản lượng: ${statusLabels[target]}`);
       await loadWorkspace();
-      setSelectedWorker(null);
+      if (!submission) setSelectedWorker(null);
+      return true;
     } catch (error) {
-      toast.error(errorMessage(error));
+      if (reasonSubmissionCurrent(submission)) toast.error(errorMessage(error));
     } finally {
-      setSaving(false);
+      if (reasonSubmissionCurrent(submission)) setSaving(false);
     }
   };
 
-  const handleProductionReverse = async (entry: ProductionEntryRow) => {
+  const handleProductionReverse = async (entry: ProductionEntryRow, submission?: ReasonSubmission) => {
+    if (!reasonSubmissionCurrent(submission)) return;
     if (!canReverse || entry.workflow_status !== "APPROVED") return;
-    const reason = window.prompt("Lý do đảo bản ghi sản lượng (bắt buộc):", "");
-    if (!reason?.trim()) return;
+    if (!submission) return requestAttendanceReason({kind:'PRODUCTION_REVERSE',id:entry.id},entry.worker_id,entry.work_date.slice(0,10),'Đảo bản ghi sản lượng',true,entry);
+    const reason = submission.reason;
+    if (!reason.trim()) return;
     setSaving(true);
     try {
       await reverseProductionEntry(
         entry.id,
         reason.trim(),
-        makeIdempotencyKey(),
+        submission?.key ?? makeIdempotencyKey(),
       );
+      if (!reasonSubmissionCurrent(submission)) return;
       toast.success("Đã đảo bản ghi sản lượng");
       await loadWorkspace();
-      setSelectedWorker(null);
+      if (!submission) setSelectedWorker(null);
+      return true;
     } catch (error) {
-      toast.error(errorMessage(error));
+      if (reasonSubmissionCurrent(submission)) toast.error(errorMessage(error));
     } finally {
-      setSaving(false);
+      if (reasonSubmissionCurrent(submission)) setSaving(false);
     }
   };
 
   const handleOvertime = async () => {
+    if (!canRecord) return;
     const minutes = Number(overtimeForm.minutes);
     if (!overtimeForm.workerId) {
       toast.error("Chọn nhân sự cần ghi tăng ca.");
@@ -1306,75 +1485,81 @@ export default function AttendanceWorkspaceV2({
   const handleOvertimeWorkflow = async (
     entry: FactoryOvertimeRow,
     target: "APPROVED" | "REJECTED" | "LOCKED",
+    fromDayDetail = false,
+    submission?: ReasonSubmission,
   ) => {
-    if (!meta.workflowAvailable) {
+    if (!reasonSubmissionCurrent(submission)) return;
+    if (saving) return;
+    if (fromDayDetail && (!selectedWorker || !detailSummary || detailLoading || detailError
+      || detailSummary.worker_id !== selectedWorker.worker.id || detailSummary.work_date !== selectedDate
+      || entry.worker_id !== selectedWorker.worker.id || entry.work_date.slice(0,10) !== selectedDate
+      || detailSummary.payroll_locked || detailSummary.closure?.status === "LEADER_CONFIRMED"
+      || selectedWorker.closureStatus === "LEADER_CONFIRMED" || entry.status !== "SUBMITTED"
+      || !detailSummary.sources.some(source => source.source_type === "OVERTIME" && source.id === entry.id && source.status === "SUBMITTED"))) return;
+    if (!meta.workflowAvailable || !sourceReady || !canApproveAttendance) {
       toast.error("Luồng duyệt chưa sẵn sàng.");
       return;
     }
-    const reason =
-      target === "REJECTED"
-        ? window.prompt("Lý do từ chối tăng ca (bắt buộc):", "")
-        : target === "LOCKED"
-          ? window.prompt("Lý do khóa tăng ca (tùy chọn):", "")
-          : "";
-    if (target === "REJECTED" && !reason?.trim()) return;
+    if (!submission && (target === 'REJECTED' || target === 'LOCKED')) return requestAttendanceReason({kind:'OVERTIME_WORKFLOW',id:entry.id,target,fromDayDetail},entry.worker_id,entry.work_date.slice(0,10),target==='REJECTED'?'Từ chối tăng ca':'Khóa tăng ca',target==='REJECTED',entry,fromDayDetail ? detailSummary ?? undefined : undefined);
+    const reason = submission?.reason ?? '';
+    if (target === "REJECTED" && !reason.trim()) return;
     setSaving(true);
     try {
       await setFactoryOvertimeStatus({
         overtime_record_id: entry.id,
         target_status: target,
         reason: reason?.trim() || null,
-        idempotency_key: makeIdempotencyKey(),
+        idempotency_key: submission?.key ?? makeIdempotencyKey(),
       });
+      if (!reasonSubmissionCurrent(submission)) return;
       toast.success(`Đã chuyển tăng ca sang ${statusLabels[target]}`);
       await loadWorkspace();
+      return true;
     } catch (error) {
-      toast.error(errorMessage(error));
+      if (reasonSubmissionCurrent(submission)) toast.error(errorMessage(error));
     } finally {
-      setSaving(false);
+      if (reasonSubmissionCurrent(submission)) setSaving(false);
     }
   };
 
-  const openBulkApprovalDialog = () => {
-    if (!bulkApprovalAvailable || bulkPendingTotal === 0) return;
-    setBulkApprovalIdempotencyKey(makeIdempotencyKey());
-    setBulkApprovalOpen(true);
+  const openBulkApprovalDialog = async () => {
+    if (!bulkApprovalAvailable || bulkPendingTotal===0 || bulkInFlight.current || saving || !reasonLifecycleRef.current.mounted) return;
+    const scope={signature:bulkScopeSignature,month:selectedMonth,workerIds:[...bulkApprovalScopeWorkerIds],label:bulkApprovalScopeLabel};
+    const generation=++bulkGeneration.current;
+    const session=getLocalUserSession()?.token;
+    const current=()=>reasonLifecycleRef.current.mounted && bulkGeneration.current===generation && bulkScopeRef.current===scope.signature && session===getLocalUserSession()?.token;
+    bulkInFlight.current=true;setSaving(true);setBulkPreview(null);bulkReviewed.current=null;
+    try {
+      const preview=await localApi.previewAttendanceBulk({month:scope.month,worker_ids:scope.workerIds,source_types:['ATTENDANCE','PRODUCTION_ENTRY','OVERTIME'],target_status:'APPROVED'});
+      if(!current())return;
+      const key=makeIdempotencyKey();
+      bulkReviewed.current={...scope,key,preview};
+      setBulkPreview(preview);setBulkApprovalOpen(true);
+    } catch(error){if(current())toast.error(errorMessage(error));}
+    finally{if(current()){bulkInFlight.current=false;setSaving(false);}}
   };
 
   const handleBulkApproval = async () => {
-    if (!bulkApprovalAvailable || bulkPendingTotal === 0) return;
-    const idempotencyKey = bulkApprovalIdempotencyKey || makeIdempotencyKey();
-    if (!bulkApprovalIdempotencyKey)
-      setBulkApprovalIdempotencyKey(idempotencyKey);
-    setSaving(true);
+    const reviewed=bulkReviewed.current;
+    if(!bulkApprovalAvailable || !reviewed || reviewed.signature!==bulkScopeRef.current || !bulkPreview || bulkInFlight.current || saving) return;
+    const generation=++bulkGeneration.current;
+    const session=getLocalUserSession()?.token;
+    const current=()=>reasonLifecycleRef.current.mounted && bulkGeneration.current===generation && reviewed.signature===bulkScopeRef.current && session===getLocalUserSession()?.token;
+    bulkInFlight.current=true;setSaving(true);
     try {
-      const result = await bulkFactoryAttendanceWorkflow({
-        target_status: "APPROVED",
-        month: selectedMonth,
-        worker_ids: bulkApprovalScopeWorkerIds,
-        source_types: ["ATTENDANCE", "PRODUCTION_ENTRY", "OVERTIME"],
-        idempotency_key: idempotencyKey,
-      });
-      const counts = result.processed.by_source;
-      const action = result.reused
-        ? "Đã xác nhận lại lượt duyệt hàng loạt"
-        : "Đã duyệt";
-      toast.success(
-        `${action} ${result.processed.count.toLocaleString("vi-VN")} bản ghi: công ${counts.ATTENDANCE.toLocaleString("vi-VN")} · sản lượng ${counts.PRODUCTION_ENTRY.toLocaleString("vi-VN")} · tăng ca ${counts.OVERTIME.toLocaleString("vi-VN")}${result.skipped.count > 0 ? ` · bỏ qua ${result.skipped.count.toLocaleString("vi-VN")} bản ghi đã thay đổi` : ""}.`,
-      );
-      setBulkApprovalOpen(false);
-      setBulkApprovalIdempotencyKey("");
-      // Reloads attendance, product output and overtime together so the matrix
-      // cannot temporarily show a mixed post-batch state.
+      const result=await bulkFactoryAttendanceWorkflow({target_status:'APPROVED',month:reviewed.month,worker_ids:reviewed.workerIds,source_types:['ATTENDANCE','PRODUCTION_ENTRY','OVERTIME'],idempotency_key:reviewed.key,preview_fingerprint:reviewed.preview.fingerprint});
+      if(!current())return;
+      const counts=result.processed.by_source;
+      const action=result.reused?'Đã xác nhận lại lượt duyệt hàng loạt':'Đã duyệt';
+      toast.success(`${action} ${result.processed.count.toLocaleString('vi-VN')} bản ghi: công ${counts.ATTENDANCE.toLocaleString('vi-VN')} · sản lượng ${counts.PRODUCTION_ENTRY.toLocaleString('vi-VN')} · tăng ca ${counts.OVERTIME.toLocaleString('vi-VN')}${result.skipped.count>0?` · bỏ qua ${result.skipped.count.toLocaleString('vi-VN')} bản ghi đã thay đổi`:''}.`);
+      setBulkApprovalOpen(false);bulkReviewed.current=null;
       await loadWorkspace();
-    } catch (error) {
-      toast.error(errorMessage(error));
-    } finally {
-      setSaving(false);
-    }
+    }catch(error){if(current())toast.error(errorMessage(error));}
+    finally{if(current()){bulkInFlight.current=false;setSaving(false);}}
   };
 
   const handleExport = async () => {
+    if (!sourceReady) { toast.error("Dữ liệu chưa đầy đủ. Hãy tải lại trước khi xuất bảng chấm công."); return; }
     if (
       !attendanceRows.length &&
       !productionEntries.length &&
@@ -1419,9 +1604,20 @@ export default function AttendanceWorkspaceV2({
     }
   };
 
-  const handleClosure = async (row: WorkerDayAttendance) => {
+  const handleApproveClose=async(submission?: ReasonSubmission)=>{
+    if (!reasonSubmissionCurrent(submission)) return;
+    if(!sourceReady||!selectedWorker||!detailSummary||detailLoading||detailError||detailSummary.work_date!==selectedDate||detailSummary.worker_id!==selectedWorker.worker.id||!canApproveAttendance||!canManageDayClosure||detailSummary.payroll_locked||detailSummary.closure?.status==='LEADER_CONFIRMED')return;
+    const proxy=!detailSummary.confirmation_current||detailSummary.closure?.status!=='EMPLOYEE_CONFIRMED';
+    if(proxy&&!canProxyConfirm)return;
+    if(proxy&&!submission)return requestAttendanceReason({kind:'APPROVE_CLOSE'},selectedWorker.worker.id,selectedDate,'Xác nhận hộ, duyệt và chốt ngày',true,undefined,detailSummary);
+    const reason=submission?.reason??'';if(proxy&&!reason.trim())return;
+    setSaving(true);try{await localApi.approveCloseAttendanceDay({worker_id:selectedWorker.worker.id,work_date:selectedDate,expected_revision:detailSummary.current_revision,source_fingerprint:detailSummary.source_fingerprint,proxy_confirm:proxy,reason:reason?.trim()||null,idempotency_key:submission?.key??makeIdempotencyKey()});if(!reasonSubmissionCurrent(submission))return;toast.success('Đã duyệt nguồn và chốt ngày trong cùng giao dịch');await loadWorkspace();return true;}catch(error){if(reasonSubmissionCurrent(submission))toast.error(errorMessage(error));}finally{if(reasonSubmissionCurrent(submission))setSaving(false);}
+  };
+  const handleClosure = async (row: WorkerDayAttendance, submission?: ReasonSubmission) => {
+    if (!reasonSubmissionCurrent(submission)) return;
+    if(!detailSummary || detailSummary.worker_id!==row.worker.id || detailSummary.work_date!==selectedDate || detailLoading || detailError)return;
     const next =
-      row.closureStatus === "OPEN" || row.closureStatus === "REOPENED"
+      row.closureStatus === "OPEN" || row.closureStatus === "REOPENED" || row.confirmationStale
         ? "EMPLOYEE_CONFIRMED"
         : row.closureStatus === "EMPLOYEE_CONFIRMED"
           ? "LEADER_CONFIRMED"
@@ -1432,27 +1628,127 @@ export default function AttendanceWorkspaceV2({
       !canManageDayClosure
     )
       return;
-    const reason =
-      next === "REOPENED" ? window.prompt("Lý do mở lại ngày công:", "") : "";
-    if (next === "REOPENED" && !reason?.trim()) return;
+    if (next==='EMPLOYEE_CONFIRMED' && !canProxyConfirm) return;
+    if (!submission && (next==='REOPENED' || next==='EMPLOYEE_CONFIRMED')) return requestAttendanceReason({kind:'CLOSURE',target:next},row.worker.id,selectedDate,next==='REOPENED'?'Mở lại ngày công':'Quản lý xác nhận hộ',true,undefined,detailSummary);
+    const reason = submission?.reason ?? '';
+    if (["REOPENED","EMPLOYEE_CONFIRMED"].includes(next) && !reason.trim()) return;
     setSaving(true);
     try {
       await setFactoryAttendanceDayClosure({
         worker_id: row.worker.id,
         work_date: selectedDate,
         target_status: next,
+        expected_revision:detailSummary.current_revision,
         reason: reason?.trim() || null,
-        idempotency_key: makeIdempotencyKey(),
+        idempotency_key: submission?.key ?? makeIdempotencyKey(),
       });
+      if (!reasonSubmissionCurrent(submission)) return;
       toast.success(
         next === "REOPENED" ? "Đã mở lại ngày công" : "Đã cập nhật chốt ngày",
       );
       await loadWorkspace();
-      setSelectedWorker(null);
+      return true;
     } catch (error) {
-      toast.error(errorMessage(error));
+      if (reasonSubmissionCurrent(submission)) toast.error(errorMessage(error));
     } finally {
-      setSaving(false);
+      if (reasonSubmissionCurrent(submission)) setSaving(false);
+    }
+  };
+
+  // These refs always point at the current render's permissions, loaded rows,
+  // selected day and dispatchers, including after the submit-time source read.
+  reasonRenderValidateRef.current = (pending, summary) => {
+    if (!sourceReady || saving || selectedDate !== pending.contextDate || (selectedWorker?.worker.id ?? null) !== pending.contextWorkerId
+      || summary.worker_id !== pending.workerId || summary.work_date !== pending.workDate || summary.payroll_locked) return false;
+    const action = pending.action;
+    const reopening = action.kind === 'CLOSURE' && action.target === 'REOPENED';
+    if (summary.closure?.status === 'LEADER_CONFIRMED' && !reopening) return false;
+    if (pending.reviewedSignature && (!selectedWorker || !detailSummary || detailLoading || detailError
+      || selectedWorker.worker.id !== pending.workerId || detailSummary.worker_id !== pending.workerId || detailSummary.work_date !== pending.workDate
+      || reasonDaySignature(detailSummary) !== pending.reviewedSignature)) return false;
+    switch (action.kind) {
+      case 'ATTENDANCE_REVERSE': {
+        const entry = attendanceRows.find(row=>row.id===action.id);
+        return !!entry && canReverse && entry.workflow_status==='APPROVED' && !entry.is_reversed && JSON.stringify(entry)===pending.sourceSignature;
+      }
+      case 'ATTENDANCE_WORKFLOW': {
+        const entry = attendanceRows.find(row=>row.id===action.id);
+        return !!entry && canApproveAttendance && meta.workflowAvailable && !entry.is_reversed
+          && entry.workflow_status===(action.target==='LOCKED'?'APPROVED':'SUBMITTED') && JSON.stringify(entry)===pending.sourceSignature;
+      }
+      case 'PRODUCTION_REVERSE': {
+        const entry = productionEntries.find(row=>row.id===action.id);
+        return !!entry && canReverse && !entry.is_reversed && entry.workflow_status==='APPROVED' && JSON.stringify(entry)===pending.sourceSignature;
+      }
+      case 'PRODUCTION_WORKFLOW': {
+        const entry = productionEntries.find(row=>row.id===action.id);
+        return !!entry && canApproveAttendance && !entry.is_reversed && entry.workflow_status==='SUBMITTED' && JSON.stringify(entry)===pending.sourceSignature;
+      }
+      case 'OVERTIME_WORKFLOW': {
+        const entry = overtimeRows.find(row=>row.id===action.id);
+        return !!entry && canApproveAttendance && meta.workflowAvailable && entry.worker_id===pending.workerId && entry.work_date.slice(0,10)===pending.workDate
+          && entry.status===(action.target==='LOCKED'?'APPROVED':'SUBMITTED') && JSON.stringify(entry)===pending.sourceSignature;
+      }
+      case 'APPROVE_CLOSE':
+        return !!selectedWorker && !!detailSummary && canApproveAttendance && canManageDayClosure && canProxyConfirm && detailSummary.classified
+          && (!detailSummary.confirmation_current || detailSummary.closure?.status!=='EMPLOYEE_CONFIRMED');
+      case 'CLOSURE': {
+        if (!selectedWorker || !detailSummary) return false;
+        const next = selectedWorker.closureStatus==='OPEN' || selectedWorker.closureStatus==='REOPENED' || selectedWorker.confirmationStale
+          ? 'EMPLOYEE_CONFIRMED' : selectedWorker.closureStatus==='EMPLOYEE_CONFIRMED' ? 'LEADER_CONFIRMED' : 'REOPENED';
+        return next===action.target && (action.target==='EMPLOYEE_CONFIRMED' ? canConfirmDay && canProxyConfirm : canManageDayClosure);
+      }
+    }
+  };
+  reasonRenderDispatchRef.current = async (pending, submission) => {
+    const action = pending.action;
+    switch (action.kind) {
+      case 'ATTENDANCE_REVERSE': {const row=attendanceRows.find(entry=>entry.id===action.id);return row ? handleReverse(row,submission) : false;}
+      case 'ATTENDANCE_WORKFLOW': {const row=attendanceRows.find(entry=>entry.id===action.id);return row ? handleWorkflow(row,action.target,submission) : false;}
+      case 'PRODUCTION_REVERSE': {const row=productionEntries.find(entry=>entry.id===action.id);return row ? handleProductionReverse(row,submission) : false;}
+      case 'PRODUCTION_WORKFLOW': {const row=productionEntries.find(entry=>entry.id===action.id);return row ? handleProductionWorkflow(row,action.target,submission) : false;}
+      case 'OVERTIME_WORKFLOW': {const row=overtimeRows.find(entry=>entry.id===action.id);return row ? handleOvertimeWorkflow(row,action.target,action.fromDayDetail,submission) : false;}
+      case 'APPROVE_CLOSE': return handleApproveClose(submission);
+      case 'CLOSURE': return selectedWorker ? handleClosure(selectedWorker,submission) : false;
+    }
+  };
+  const closeAttendanceReason = () => {
+    if (!reasonLifecycleRef.current.mounted || reasonInFlightRef.current) return;
+    reasonActiveRef.current = null; reasonRetryRef.current = null;
+    setPendingReason(null); setReasonText(''); setReasonError(null); setReasonSnapshot(null); setReasonPreparing(false);
+  };
+  const submitAttendanceReason = async () => {
+    if (!reasonLifecycleRef.current.mounted || reasonInFlightRef.current || saving || !pendingReason || reasonPreparing || !reasonSnapshot) return;
+    const generation=reasonLifecycleRef.current.generation;
+    const reason = reasonText.trim();
+    if (pendingReason.required && !reason) {
+      setReasonFieldInvalid(true); setReasonError('Vui lòng nhập lý do trước khi xác nhận.'); reasonTextareaRef.current?.focus(); return;
+    }
+    const pending = pendingReason;
+    if (!reasonValidateRef.current(pending,reasonSnapshot)) {
+      setReasonError('Ngày, nguồn hoặc quyền thao tác đã thay đổi. Đóng hộp thoại và xem lại ngày trước khi thao tác.'); setReasonSnapshot(null); return;
+    }
+    // Set synchronously before the first await, so rapid clicks/Enter cannot duplicate a mutation.
+    reasonInFlightRef.current = true; setReasonSubmitting(true); setReasonError(null); setReasonFieldInvalid(false);
+    try {
+      const current = await localApi.attendanceDaySummary(pending.workerId,pending.workDate);
+      if (!reasonGenerationCurrent(generation)) return;
+      if (reasonActiveRef.current !== pending.requestId || reasonDaySignature(current)!==reasonDaySignature(reasonSnapshot)
+        || !reasonValidateRef.current(pending,current)) {
+        setReasonError('Nguồn hoặc xác nhận ngày đã thay đổi. Đóng hộp thoại, tải lại và xem lại toàn ngày.'); setReasonSnapshot(null); return;
+      }
+      const signature = JSON.stringify({action:pending.action,workerId:pending.workerId,date:pending.workDate,snapshot:reasonDaySignature(reasonSnapshot),reason});
+      if (reasonRetryRef.current?.signature !== signature) reasonRetryRef.current = {signature,key:makeIdempotencyKey()};
+      if (!reasonGenerationCurrent(generation) || reasonActiveRef.current!==pending.requestId) return;
+      const success = await reasonDispatchRef.current(pending,{reason,key:reasonRetryRef.current.key,generation});
+      if (!reasonGenerationCurrent(generation)) return;
+      if (success) {
+        reasonActiveRef.current=null; reasonRetryRef.current=null; setPendingReason(null); setReasonText(''); setReasonSnapshot(null);
+      } else setReasonError('Chưa hoàn tất thao tác. Lý do được giữ lại; kiểm tra thông báo lỗi và thử lại khi dữ liệu còn đúng.');
+    } catch (error) {
+      if (reasonGenerationCurrent(generation)) setReasonError(errorMessage(error));
+    } finally {
+      if (reasonGenerationCurrent(generation)) {reasonInFlightRef.current=false; setReasonSubmitting(false);}
     }
   };
 
@@ -1507,100 +1803,169 @@ export default function AttendanceWorkspaceV2({
 
   return (
     <div className="min-w-0 space-y-3">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] gap-2 sm:w-auto sm:grid-cols-[156px_auto_auto]">
-          <Input
-            type="date"
-            max={today}
-            value={selectedDate <= today ? selectedDate : today}
-            onChange={(event) => {
-              if (event.target.value && event.target.value <= today)
-                setSelectedDate(event.target.value);
-            }}
-            className="h-11 min-w-0 w-full px-2 text-sm lg:h-9"
-            aria-label="Chọn ngày chấm công"
-          />
-          <Button
-            variant="outline"
-            className="h-11 w-11 px-0 sm:w-auto sm:px-3 lg:h-9"
-            onClick={() => setSelectedDate(today)}
-            disabled={selectedDate === today}
-            aria-label="Chọn hôm nay"
-            title="Hôm nay"
-          >
-            <CalendarCheck2 className="h-4 w-4 sm:hidden" /><span className="hidden sm:inline">Hôm nay</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 lg:h-9 lg:w-9"
-            onClick={() => void loadWorkspace()}
-            disabled={refreshing}
-            aria-label="Tải lại"
-          >
-            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-          </Button>
-        </div>
-        <div className="flex min-w-0 flex-1 basis-full gap-2 sm:basis-[220px]">
-          <div className="relative min-w-0 flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      {/* TẦNG 1 & 2 GỘP GỌN: Thanh lọc tìm kiếm, thời gian & dải trạng thái nhanh */}
+      <div className="rounded-lg border bg-card p-3 shadow-sm space-y-2.5">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] gap-1.5 sm:w-auto sm:grid-cols-[150px_auto_auto]">
             <Input
-              className="h-11 pl-9 text-sm lg:h-9"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Tìm tên hoặc mã nhân viên"
-              aria-label="Tìm nhân viên"
+              type="date"
+              max={today}
+              value={selectedDate <= today ? selectedDate : today}
+              onChange={(event) => {
+                if (event.target.value && event.target.value <= today)
+                  setSelectedDate(event.target.value);
+              }}
+              className="h-10 min-w-0 w-full px-2 text-sm lg:h-9"
+              aria-label="Chọn ngày chấm công"
             />
+            <Button
+              variant="outline"
+              className="h-10 w-10 px-0 sm:w-auto sm:px-3 lg:h-9"
+              onClick={() => setSelectedDate(today)}
+              disabled={selectedDate === today}
+              aria-label="Chọn hôm nay"
+              title="Hôm nay"
+            >
+              <CalendarCheck2 className="h-4 w-4 sm:hidden" />
+              <span className="hidden sm:inline">Hôm nay</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 lg:h-9 lg:w-9"
+              onClick={() => void loadWorkspace()}
+              disabled={refreshing}
+              aria-label="Tải lại"
+            >
+              <RefreshCw
+                className={cn("h-4 w-4", refreshing && "animate-spin")}
+              />
+            </Button>
           </div>
-          <Button variant="outline" size="sm" className="h-11 shrink-0 gap-1.5 px-2 lg:hidden" aria-expanded={advancedFiltersOpen} aria-controls="attendance-advanced-filters" onClick={() => setAdvancedFiltersOpen((current) => !current)}>
-            <Filter className="h-4 w-4" />Lọc{activeAdvancedFilters > 0 && <span className="tabular-nums">({activeAdvancedFilters})</span>}
-          </Button>
-        </div>
-        <div id="attendance-advanced-filters" className={cn("w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:w-auto", advancedFiltersOpen ? "grid" : "hidden")}>
-              <Select value={team} onValueChange={setTeam}>
-                <SelectTrigger className="h-11 w-full min-w-0 whitespace-nowrap text-sm lg:h-9 lg:w-[140px]" aria-label="Lọc theo tổ">
-                  <SelectValue placeholder="Tất cả tổ" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Tất cả tổ</SelectItem>
-                  {teams.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {workerTypeLabels[item] ?? item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={methodFilter}
-                onValueChange={(value) =>
-                  setMethodFilter(value as "ALL" | AttendanceMethod)
-                }
+
+          <div className="flex min-w-0 flex-1 basis-full gap-1.5 sm:basis-[220px]">
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-10 pl-9 text-sm lg:h-9"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tìm tên hoặc mã nhân viên..."
+                aria-label="Tìm nhân viên"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 shrink-0 gap-1.5 px-2.5 lg:hidden"
+              aria-expanded={advancedFiltersOpen}
+              aria-controls="attendance-advanced-filters"
+              onClick={() => setAdvancedFiltersOpen((current) => !current)}
+            >
+              <Filter className="h-4 w-4" />
+              Lọc
+              {activeAdvancedFilters > 0 && (
+                <span className="tabular-nums">({activeAdvancedFilters})</span>
+              )}
+            </Button>
+          </div>
+
+          <div
+            id="attendance-advanced-filters"
+            className={cn(
+              "w-full min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-2 lg:flex lg:w-auto",
+              advancedFiltersOpen ? "grid" : "hidden",
+            )}
+          >
+            <Select value={team} onValueChange={setTeam}>
+              <SelectTrigger
+                className="h-10 w-full min-w-0 whitespace-nowrap text-sm lg:h-9 lg:w-[140px]"
+                aria-label="Lọc theo tổ"
               >
-                <SelectTrigger className="h-11 w-full min-w-0 whitespace-nowrap text-sm lg:h-9 lg:w-[165px]" aria-label="Lọc hình thức chấm công">
-                  <SelectValue placeholder="Mọi hình thức" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Mọi hình thức</SelectItem>
-                  {Object.entries(methodLabels).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={workflowFilter} onValueChange={setWorkflowFilter}>
-                <SelectTrigger className="h-11 w-full min-w-0 whitespace-nowrap text-sm lg:h-9 lg:w-[175px]" aria-label="Lọc trạng thái xử lý">
-                  <SelectValue placeholder="Mọi trạng thái" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Mọi trạng thái</SelectItem>
-                  <SelectItem value="PENDING">Chờ duyệt</SelectItem>
-                  <SelectItem value="REJECTED">Bị từ chối</SelectItem>
-                  <SelectItem value="RECORDED">Đã có dữ liệu</SelectItem>
-                  <SelectItem value="MISSING">Chưa chấm công</SelectItem>
-                  <SelectItem value="CLOSED">Đã chốt ngày</SelectItem>
-                </SelectContent>
-              </Select>
+                <SelectValue placeholder="Tất cả tổ" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tất cả tổ</SelectItem>
+                {teams.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {workerTypeLabels[item] ?? item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={methodFilter}
+              onValueChange={(value) =>
+                setMethodFilter(value as "ALL" | AttendanceMethod)
+              }
+            >
+              <SelectTrigger
+                className="h-10 w-full min-w-0 whitespace-nowrap text-sm lg:h-9 lg:w-[160px]"
+                aria-label="Lọc hình thức chấm công"
+              >
+                <SelectValue placeholder="Mọi hình thức" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Mọi hình thức</SelectItem>
+                {Object.entries(methodLabels).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="group"
+            aria-label="Lọc nhanh trạng thái chấm công"
+          >
+            {(
+              [
+                ["ALL", "Tất cả"],
+                ["PENDING", "Chờ duyệt"],
+                ["REJECTED", "Bị từ chối"],
+                ["MISSING", "Chưa ghi nhận"],
+                ["CLOSED", "Đã chốt ngày"],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                className="h-9 rounded-full px-3.5 text-xs sm:text-sm"
+                variant={workflowFilter === value ? "default" : "outline"}
+                aria-pressed={workflowFilter === value}
+                onClick={() => {
+                  setWorkflowFilter(value);
+                  if (
+                    view === "QUEUE" &&
+                    (value === "MISSING" || value === "CLOSED")
+                  )
+                    setView("DAY");
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+
+          <div
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
+            aria-label="Thống kê nhân sự theo ngày và bộ lọc đang chọn"
+          >
+            {kpiCards.map(({ label, value, color }) => (
+              <div key={label} className="flex items-baseline gap-1">
+                <span className="text-muted-foreground">{label}:</span>
+                <span className={cn("font-semibold tabular-nums", color)}>
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1614,12 +1979,17 @@ export default function AttendanceWorkspaceV2({
           </AlertDescription>
         </Alert>
       )}
-      {loadError && (
+      {(loadError || methodError) && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Không thể tải bảng chấm công</AlertTitle>
           <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-            <span>{loadError}</span>
+            <span>
+              {[loadError, methodError && `Cấu hình hình thức: ${methodError}`]
+                .filter(Boolean)
+                .join("; ")}{" "}
+              Dữ liệu chưa đầy đủ; hãy tải lại trước khi đối soát.
+            </span>
             <Button
               variant="outline"
               size="sm"
@@ -1677,40 +2047,45 @@ export default function AttendanceWorkspaceV2({
         </Alert>
       )}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b pb-2 text-xs" aria-label="Thống kê nhân sự theo ngày và bộ lọc đang chọn">
-        {kpiCards.map(({ label, value, color }) => (
-          <div key={label} className="flex items-baseline gap-1.5">
-            <span className="text-muted-foreground">{label}:</span>
-            <span className={cn("font-semibold tabular-nums", color)}>{value}</span>
-          </div>
-        ))}
-      </div>
-
       <Tabs
         value={view}
         onValueChange={(value) => setView(value as WorkspaceView)}
         className="space-y-3"
       >
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <TabsList className="grid h-auto w-full min-w-0 grid-cols-4 sm:flex sm:w-auto">
-            <TabsTrigger value="DAY" className="min-h-11 min-w-0 gap-1 px-1 text-xs sm:px-3 sm:text-sm lg:min-h-9">
+          <TabsList className="grid h-auto w-full min-w-0 grid-cols-3 gap-1 sm:flex sm:w-auto sm:flex-wrap">
+            <TabsTrigger value="QUEUE" className="min-h-10 min-w-0 whitespace-normal px-2 text-xs sm:text-sm lg:min-h-9">
+              Cần xử lý ({queueRows.length})
+            </TabsTrigger>
+            <TabsTrigger
+              value="DAY"
+              className="min-h-10 min-w-0 gap-1 px-2 text-xs sm:px-3 sm:text-sm lg:min-h-9"
+            >
               <CalendarDays className="hidden h-4 w-4 sm:block" />
-              Ngày
+              Theo ngày
             </TabsTrigger>
-            <TabsTrigger value="MONTH" className="min-h-11 min-w-0 gap-1 px-1 text-xs sm:px-3 sm:text-sm lg:min-h-9">
+            <TabsTrigger
+              value="MONTH"
+              className="min-h-10 min-w-0 gap-1 px-2 text-xs sm:px-3 sm:text-sm lg:min-h-9"
+            >
               <CalendarDays className="hidden h-4 w-4 sm:block" />
-              Tháng
+              Theo tháng
             </TabsTrigger>
-            <TabsTrigger value="HISTORY" className="min-h-11 min-w-0 gap-1 px-1 text-xs sm:px-3 sm:text-sm lg:min-h-9">
-              <History className="hidden h-4 w-4 sm:block" />
-              Lịch sử
-            </TabsTrigger>
-            <TabsTrigger value="OVERTIME" className="min-h-11 min-w-0 gap-1 px-1 text-xs sm:px-3 sm:text-sm lg:min-h-9">
-              <Timer className="hidden h-4 w-4 sm:block" />
+            <TabsTrigger
+              value="OVERTIME"
+              className="min-h-10 min-w-0 px-2.5 text-xs sm:text-sm lg:min-h-9"
+            >
               Tăng ca
             </TabsTrigger>
+            <TabsTrigger
+              value="HISTORY"
+              className="min-h-10 min-w-0 px-2.5 text-xs sm:text-sm lg:min-h-9"
+            >
+              Lịch sử
+            </TabsTrigger>
           </TabsList>
-          <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+
+          <div className="grid w-full min-w-0 grid-cols-2 gap-1.5 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
             <Input
               type="month"
               max={today.slice(0, 7)}
@@ -1720,16 +2095,35 @@ export default function AttendanceWorkspaceV2({
                   event.target.value &&
                   event.target.value <= today.slice(0, 7)
                 )
-                  setSelectedDate(`${event.target.value}-01`);
+                  setSelectedDate(
+                    `${event.target.value}-${
+                      selectedDate.slice(8, 10) <=
+                      String(
+                        new Date(
+                          Number(event.target.value.slice(0, 4)),
+                          Number(event.target.value.slice(5, 7)),
+                          0,
+                        ).getDate(),
+                      ).padStart(2, "0")
+                        ? selectedDate.slice(8, 10)
+                        : String(
+                            new Date(
+                              Number(event.target.value.slice(0, 4)),
+                              Number(event.target.value.slice(5, 7)),
+                              0,
+                            ).getDate(),
+                          ).padStart(2, "0")
+                    }`,
+                  );
               }}
-              className="col-span-2 h-11 min-w-0 w-full text-sm sm:w-[180px] lg:h-9"
+              className="col-span-2 h-10 min-w-0 w-full text-sm sm:w-[165px] lg:h-9"
               aria-label="Chọn tháng"
             />
             {canRecord && (
               <Button
                 size="sm"
                 variant="outline"
-                className="h-11 gap-1.5 px-2.5 lg:h-9"
+                className="h-10 gap-1.5 px-2.5 lg:h-9"
                 onClick={() => {
                   setOvertimeForm((current) => ({
                     ...current,
@@ -1751,15 +2145,124 @@ export default function AttendanceWorkspaceV2({
             <Button
               size="sm"
               variant="outline"
-              className="h-11 gap-1.5 px-2.5 lg:h-9"
+              className="h-10 gap-1.5 px-2.5 lg:h-9"
               onClick={() => void handleExport()}
-              disabled={saving || loading}
+              disabled={saving || !sourceReady}
             >
               <Download className="h-4 w-4" />
               Xuất Excel
             </Button>
           </div>
         </div>
+
+        <TabsContent value="QUEUE" className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3.5 py-2 text-xs text-muted-foreground sm:text-sm">
+            <span>
+              <strong className="text-foreground">{queueRows.length}</strong>{" "}
+              người/ngày cần xử lý ·{" "}
+              <strong className="text-foreground">
+                {queueRows.reduce(
+                  (n, item) => n + item.row.pendingRecordCount,
+                  0,
+                )}
+              </strong>{" "}
+              bản ghi chờ duyệt · tháng {selectedMonth}
+            </span>
+            <span className="text-xs">
+              Ngày chưa ghi nhận không được xem là vắng.
+            </span>
+          </div>
+
+          {!sourceReady ? (
+            <Card>
+              <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                <p role="status">
+                  {loadError || methodError || "Đang tải đầy đủ nguồn…"}
+                </p>
+              </CardContent>
+            </Card>
+          ) : queueRows.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                <p>
+                  {workflowFilter === "CLOSED"
+                    ? "Hàng chờ chỉ gồm ngày chưa chốt; chọn tab Theo ngày hoặc Bảng tháng để xem ngày đã chốt."
+                    : workflowFilter === "MISSING"
+                      ? "Hàng chờ chỉ gồm ngày đã ghi nhận hoặc cần sửa; chọn tab Theo ngày hoặc Bảng tháng để xem ngày chưa ghi nhận."
+                      : "Không có ngày cần xử lý trong phạm vi này."}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="overflow-hidden">
+              <div className="divide-y">
+                {queueRows.map(({ row, workDate }) => {
+                  const action = workerDayAction(row);
+                  return (
+                    <div
+                      key={row.worker.id + workDate}
+                      className={cn(
+                        "flex flex-col gap-2.5 p-3.5 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between",
+                        row.hasPending && "bg-amber-50/40",
+                        row.hasRejected && !row.hasPending && "bg-rose-50/40",
+                      )}
+                    >
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-foreground">
+                            {row.worker.display_name} · {workDate}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            ({row.worker.employee_code} ·{" "}
+                            {workerTypeLabels[row.worker.worker_type] ??
+                              row.worker.worker_type}
+                            )
+                          </span>
+                          <Badge
+                            variant={
+                              row.hasPending
+                                ? "default"
+                                : row.hasRejected
+                                  ? "destructive"
+                                  : "outline"
+                            }
+                            className="text-xs"
+                          >
+                            {action.label}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground sm:text-sm">
+                          {action.reason} ·{" "}
+                          <span className="font-medium text-foreground">
+                            {attendanceValueLabel(row)}
+                          </span>
+                        </p>
+                        {row.hasRejected && (
+                          <p className="text-xs text-rose-700">
+                            Có phiếu bị từ chối trong lịch sử; xem chi tiết để
+                            đối soát.
+                          </p>
+                        )}
+                      </div>
+                      <div className="shrink-0">
+                        <Button
+                          size="sm"
+                          className="w-full sm:w-auto"
+                          onClick={() => {
+                            setSelectedDate(workDate);
+                            openDetails(row);
+                          }}
+                        >
+                          Xử lý ngày
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+        </TabsContent>
 
         <TabsContent value="DAY" className="mt-0">
           {loading ? (
@@ -1997,7 +2500,7 @@ export default function AttendanceWorkspaceV2({
                                 )}
                                 {!row.isRecorded && !row.dayStatus && (
                                   <span className="text-xs text-muted-foreground">
-                                    Chưa chấm
+                                    Chưa ghi nhận
                                   </span>
                                 )}
                               </div>
@@ -2080,7 +2583,7 @@ export default function AttendanceWorkspaceV2({
                                     size="sm"
                                     variant="ghost"
                                     className="h-8 px-2 text-xs"
-                                    onClick={() => void handleClosure(row)}
+                                    onClick={() => openDetails(row)}
                                     disabled={saving}
                                   >
                                     {row.closureStatus ===
@@ -2538,7 +3041,7 @@ export default function AttendanceWorkspaceV2({
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="tabular-nums">
-                  {overtimeRows
+                  {filteredOvertimeRows
                     .reduce((total, row) => total + row.overtime_minutes, 0)
                     .toLocaleString("vi-VN")}{" "}
                   phút
@@ -2584,7 +3087,7 @@ export default function AttendanceWorkspaceV2({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {overtimeRows.length === 0 ? (
+                    {filteredOvertimeRows.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={7}
@@ -2594,25 +3097,7 @@ export default function AttendanceWorkspaceV2({
                         </TableCell>
                       </TableRow>
                     ) : (
-                      overtimeRows
-                        .filter(
-                          (row) =>
-                            (team === "ALL" || row.worker_type === team) &&
-                            (!search.trim() ||
-                              `${row.worker_name} ${row.employee_code}`
-                                .toLocaleLowerCase("vi")
-                                .includes(
-                                  search.trim().toLocaleLowerCase("vi"),
-                                )) &&
-                            (workflowFilter === "ALL" ||
-                              (workflowFilter === "PENDING" &&
-                                row.status === "SUBMITTED") ||
-                              (workflowFilter === "REJECTED" &&
-                                row.status === "REJECTED") ||
-                              (workflowFilter === "RECORDED" &&
-                                row.status !== "SUBMITTED" &&
-                                row.status !== "REJECTED")),
-                        )
+                      filteredOvertimeRows
                         .map((row) => (
                           <TableRow key={row.id}>
                             <TableCell className="whitespace-nowrap">
@@ -2706,7 +3191,7 @@ export default function AttendanceWorkspaceV2({
         onOpenChange={(open) => {
           if (saving) return;
           setBulkApprovalOpen(open);
-          if (!open) setBulkApprovalIdempotencyKey("");
+          if (!open) {bulkReviewed.current=null;setBulkPreview(null);}
         }}
       >
         <AlertDialogContent>
@@ -2715,7 +3200,7 @@ export default function AttendanceWorkspaceV2({
               Duyệt toàn bộ bản ghi chờ duyệt?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {bulkApprovalScopeLabel}
+              {bulkReviewed.current?.label ?? bulkApprovalScopeLabel}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-3 text-sm">
@@ -2728,19 +3213,19 @@ export default function AttendanceWorkspaceV2({
               <div>
                 <p className="text-xs text-muted-foreground">Ngày / giờ</p>
                 <p className="font-semibold tabular-nums">
-                  {bulkPendingCounts.ATTENDANCE.toLocaleString("vi-VN")}
+                  {(bulkPreview?.counts.ATTENDANCE??0).toLocaleString("vi-VN")}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Sản lượng</p>
                 <p className="font-semibold tabular-nums">
-                  {bulkPendingCounts.PRODUCTION_ENTRY.toLocaleString("vi-VN")}
+                  {(bulkPreview?.counts.PRODUCTION_ENTRY??0).toLocaleString("vi-VN")}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Tăng ca</p>
                 <p className="font-semibold tabular-nums">
-                  {bulkPendingCounts.OVERTIME.toLocaleString("vi-VN")}
+                  {(bulkPreview?.counts.OVERTIME??0).toLocaleString("vi-VN")}
                 </p>
               </div>
             </div>
@@ -2753,15 +3238,15 @@ export default function AttendanceWorkspaceV2({
               </AlertDescription>
             </Alert>
           </div>
-          <AlertDialogFooter>
+          <p className="text-sm">{bulkPreview?.worker_day_count??0} người/ngày · Phạm vi toàn tháng, theo tổ/tìm người; bỏ qua bộ lọc hình thức và trạng thái hiển thị.</p><AlertDialogFooter>
             <AlertDialogCancel disabled={saving}>Hủy</AlertDialogCancel>
             <Button
               type="button"
               onClick={() => void handleBulkApproval()}
-              disabled={saving || bulkPendingTotal === 0}
+              disabled={saving || (bulkPreview?.record_count??0) === 0}
             >
               {saving && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}Xác
-              nhận duyệt {bulkPendingTotal.toLocaleString("vi-VN")} bản ghi
+              nhận duyệt {(bulkPreview?.record_count??0).toLocaleString("vi-VN")} bản ghi
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2789,6 +3274,39 @@ export default function AttendanceWorkspaceV2({
                     selectedWorker.worker.worker_type}
                 </SheetDescription>
               </SheetHeader>
+              <div className="space-y-3 py-4">
+                <p className="font-medium">{workerDayAction(selectedWorker).label}</p><p className="text-sm">{workerDayAction(selectedWorker).reason}</p>
+                {detailLoading?<p>Đang kiểm tra toàn ngày…</p>:detailError?<Alert variant="destructive"><AlertDescription>{detailError}<Button variant="outline" onClick={()=>void loadWorkspace()}>Thử lại</Button></AlertDescription></Alert>:detailSummary&&<>
+                  {detailSummary.payroll_locked&&<Alert><AlertDescription>Đã khóa kỳ lương; dùng quy trình điều chỉnh.</AlertDescription></Alert>}
+                  <p className="text-sm">{detailSummary.sources.filter(row=>row.status==='SUBMITTED').length} bản ghi chờ duyệt · Trạng thái ngày: {dayStatusLabels[detailSummary.day_status as FactoryAttendanceDayStatus]||'Chưa ghi nhận'}</p>
+                  {detailSummary.sources.map(source=>{
+                    const overtimeEntry = source.source_type === 'OVERTIME'
+                      ? selectedWorker.overtimeRows.find(row => row.id === source.id && row.worker_id === selectedWorker.worker.id && row.work_date.slice(0,10) === selectedDate)
+                      : undefined;
+                    const overtimeActionDisabled = !overtimeEntry || overtimeEntry.status !== 'SUBMITTED'
+                      || !sourceReady || !canApproveAttendance || !meta.workflowAvailable || saving || detailLoading || !!detailError
+                      || detailSummary.worker_id !== selectedWorker.worker.id || detailSummary.work_date !== selectedDate
+                      || detailSummary.payroll_locked || detailSummary.closure?.status === 'LEADER_CONFIRMED' || selectedWorker.closureStatus === 'LEADER_CONFIRMED';
+                    return <div key={source.source_type+source.id} className="rounded border p-3 text-sm"><p className="font-medium">{source.source_type==='ATTENDANCE'?'Công':source.source_type==='PRODUCTION_ENTRY'?'Sản lượng':'Tăng ca'} · {statusLabels[source.status as AttendanceWorkflowStatus]||source.status}</p><p>{source.source_type==='ATTENDANCE'?(source.facts.method==='DAY'?`${source.facts.day_units} ngày công`:source.facts.method==='HOUR'?`${source.facts.check_in}–${source.facts.check_out} · nghỉ ${source.facts.break_minutes} phút · ${source.facts.worked_minutes} phút`:'Công sản lượng cũ cần đối soát'):source.source_type==='PRODUCTION_ENTRY'?`${source.facts.product_name||source.facts.piece_rate_code||'Sản lượng'} · ${source.facts.quantity} sản phẩm`:`${source.facts.overtime_minutes} phút`}</p>{!!source.facts.notes&&<p>{String(source.facts.notes)}</p>}{!!source.facts.review_reason&&<p>Lý do: {String(source.facts.review_reason)}</p>}{source.recorded_by&&<p className="text-xs text-muted-foreground">Ghi bởi {source.recorded_by} · {source.recorded_at}</p>}
+                    {source.source_type === 'OVERTIME' && source.status === 'SUBMITTED' && canApproveAttendancePermission && <div className="mt-2 flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" disabled={overtimeActionDisabled} onClick={()=>{if(overtimeEntry)void handleOvertimeWorkflow(overtimeEntry,'APPROVED',true);}}>Duyệt tăng ca</Button>
+                      <Button size="sm" variant="outline" className="text-destructive" disabled={overtimeActionDisabled} onClick={()=>{if(overtimeEntry)void handleOvertimeWorkflow(overtimeEntry,'REJECTED',true);}}>Từ chối tăng ca</Button>
+                    </div>}
+                    </div>;
+                  })}
+                  {selectedWorker.needsCorrection && <div className="space-y-2 rounded border p-3">
+                    <p className="text-sm">Giữ phiếu bị từ chối để đối soát; ghi nguồn thay thế đúng thực tế.</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" disabled={!canRecord || saving || detailLoading || !!detailError || detailSummary.worker_id !== selectedWorker.worker.id || detailSummary.work_date !== selectedDate || detailSummary.payroll_locked || selectedWorker.closureStatus === 'LEADER_CONFIRMED' || detailSummary.closure?.status === 'LEADER_CONFIRMED'} onClick={()=>openEntry(selectedWorker)}>Ghi công / sản lượng thay thế</Button>
+                      {selectedWorker.overtimeRows.some(row=>row.status==='REJECTED') && <Button variant="outline" disabled={!canRecord || !overtimeAvailable || saving || detailLoading || !!detailError || detailSummary.worker_id !== selectedWorker.worker.id || detailSummary.work_date !== selectedDate || detailSummary.payroll_locked || selectedWorker.closureStatus === 'LEADER_CONFIRMED' || detailSummary.closure?.status === 'LEADER_CONFIRMED'} onClick={()=>{setOvertimeForm({workerId:selectedWorker.worker.id,workDate:selectedDate,type:'NORMAL_OVERTIME',minutes:'60',reason:''});setOvertimeOpen(true);}}>Ghi tăng ca thay thế</Button>}
+                    </div>
+                  </div>}
+                  {detailSummary.closure?.confirmation_actor_id&&<p className="text-sm">{detailSummary.closure.confirmation_kind==='PROXY'?'Xác nhận hộ':'Xác nhận'}: {detailSummary.closure.confirmation_actor_name||detailSummary.closure.confirmation_actor_id} · {detailSummary.closure.confirmed_at} {detailSummary.closure.confirmation_reason&&`· ${detailSummary.closure.confirmation_reason}`}</p>}
+                  {!detailSummary.payroll_locked&&detailSummary.closure?.status!=='LEADER_CONFIRMED'&&<Button className="w-full" disabled={!sourceReady||saving||!detailSummary.classified||!canApproveAttendance||!canManageDayClosure||(!detailSummary.confirmation_current&&!canProxyConfirm)} onClick={()=>void handleApproveClose()}>{(!detailSummary.confirmation_current||detailSummary.closure?.status!=='EMPLOYEE_CONFIRMED')?'Xác nhận hộ có lý do, duyệt & chốt':'Duyệt & chốt ngày'}</Button>}
+                  {!detailSummary.confirmation_current&&!canProxyConfirm&&<p className="text-sm">Cần nhân viên xác nhận lại hoặc quản lý xác nhận hộ. Tổ trưởng không được xác nhận hộ.</p>}
+                </>}
+              </div>
+              <details><summary className="cursor-pointer rounded border p-3 font-medium">Chi tiết nguồn và thao tác khác</summary>
               <div className="space-y-5 py-5">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-md border p-3">
@@ -3126,11 +3644,13 @@ export default function AttendanceWorkspaceV2({
                   </Button>
                 </div>
               </div>
+              </details>
               <SheetFooter className="gap-2 sm:justify-between">
+                <Button variant="outline" onClick={()=>{const index=queueRows.findIndex(item=>item.row.worker.id===selectedWorker.worker.id&&item.workDate===selectedDate);const next=queueRows[index+1]||queueRows[0];if(next){setSelectedDate(next.workDate);openDetails(next.row);}else setSelectedWorker(null);}} disabled={saving||!queueRows.length}>Người tiếp theo</Button>
                 <Button
                   variant="outline"
                   onClick={() => void handleClosure(selectedWorker)}
-                  disabled={!canClosure(selectedWorker) || saving}
+                  disabled={!canClosure(selectedWorker) || saving || detailLoading || !!detailError || !detailSummary || (selectedWorker.closureStatus!=="LEADER_CONFIRMED"&&!canProxyConfirm&&!detailSummary.confirmation_current)}
                 >
                   {selectedWorker.closureStatus === "LEADER_CONFIRMED"
                     ? "Mở lại ngày"
@@ -3147,6 +3667,38 @@ export default function AttendanceWorkspaceV2({
           )}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={!!pendingReason} onOpenChange={open=>{if(!open)closeAttendanceReason();}}>
+        <DialogContent className="z-[70] flex max-h-[90dvh] w-[calc(100%-1rem)] flex-col overflow-hidden p-4 sm:max-w-lg sm:p-6 [&>button]:hidden"
+          onOpenAutoFocus={event=>{event.preventDefault();if(reasonLifecycleRef.current.mounted)reasonTextareaRef.current?.focus();}}
+          onCloseAutoFocus={event=>{event.preventDefault();if(reasonLifecycleRef.current.mounted)reasonTriggerRef.current?.focus();}}
+          onEscapeKeyDown={event=>{if(reasonInFlightRef.current)event.preventDefault();}}
+          onPointerDownOutside={event=>{if(reasonInFlightRef.current)event.preventDefault();}}
+          onInteractOutside={event=>{if(reasonInFlightRef.current)event.preventDefault();}}>
+          <DialogHeader><DialogTitle>{pendingReason?.title || 'Nhập lý do'}</DialogTitle><DialogDescription>
+            {workers.find(worker=>worker.id===pendingReason?.workerId)?.display_name || pendingReason?.workerId} · {pendingReason?.workDate}
+            <span className="mt-1 block">{pendingReason?.required?'Bắt buộc nhập lý do.':'Lý do tùy chọn; chọn Hủy để không thực hiện thao tác.'} Nguồn ngày sẽ được kiểm tra lại trước khi gửi.</span>
+          </DialogDescription></DialogHeader>
+          <form className="flex min-h-0 flex-col gap-4" onSubmit={event=>{event.preventDefault();void submitAttendanceReason();}}>
+            <div className="min-h-0 space-y-2 overflow-y-auto px-1">
+              <Label htmlFor="attendance-action-reason">Lý do {pendingReason?.required?'(bắt buộc)':'(tùy chọn)'}</Label>
+              <Textarea ref={reasonTextareaRef} id="attendance-action-reason" value={reasonText}
+                disabled={reasonSubmitting} aria-required={pendingReason?.required} aria-invalid={reasonFieldInvalid}
+                aria-describedby={reasonError?'attendance-action-reason-error':undefined}
+                onChange={event=>{setReasonText(event.target.value);setReasonFieldInvalid(false);}}
+                className="min-h-28"/>
+              {reasonPreparing && <p role="status" className="text-sm">Đang kiểm tra nguồn ngày…</p>}
+              {reasonError && <p id="attendance-action-reason-error" role="alert" className="text-sm text-destructive">{reasonError}</p>}
+            </div>
+            <DialogFooter className="shrink-0 gap-2">
+              <Button type="button" variant="outline" disabled={reasonSubmitting} onClick={closeAttendanceReason}>Hủy</Button>
+              <Button type="submit" disabled={reasonSubmitting || reasonPreparing || !reasonSnapshot || saving}>
+                {reasonSubmitting && <RefreshCw className="mr-2 h-4 w-4 animate-spin"/>}{reasonSubmitting?'Đang xử lý…':'Xác nhận thao tác'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={overtimeOpen} onOpenChange={setOvertimeOpen}>
         <SheetContent
@@ -3179,7 +3731,7 @@ export default function AttendanceWorkspaceV2({
                 </SelectTrigger>
                 <SelectContent>
                   {workers
-                    .filter((worker) => worker.is_active)
+                    .filter((worker) => monthRowsByWorker.has(worker.id))
                     .map((worker) => (
                       <SelectItem key={worker.id} value={worker.id}>
                         {worker.employee_code} · {worker.display_name}
@@ -3272,7 +3824,7 @@ export default function AttendanceWorkspaceV2({
             <Button variant="outline" onClick={() => setOvertimeOpen(false)}>
               Hủy
             </Button>
-            <Button onClick={() => void handleOvertime()} disabled={saving}>
+            <Button onClick={() => void handleOvertime()} disabled={saving || !canRecord}>
               {saving && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}Gửi
               tăng ca
             </Button>
@@ -3551,7 +4103,7 @@ export default function AttendanceWorkspaceV2({
             <Button
               onClick={() => void handleQuickEntry()}
               disabled={
-                saving ||
+                saving || !canRecord ||
                 (entryForm.method === "OUTPUT" &&
                   (!selectedProduct || !selectedProduct.rate_available))
               }

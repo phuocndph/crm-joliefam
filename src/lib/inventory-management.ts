@@ -61,6 +61,7 @@ export interface InventoryReturnSource {
   id: string; document_number: string; inventory_item_id: string; warehouse_id: string; location_id: string | null;
   movement_kind: string; original_quantity: number; returned_quantity: number; remaining_quantity: number;
   unit: InventoryUnit; transaction_at: string;
+  production_order_id?:string|null;production_batch_id?:string|null;cutting_estimate_id?:string|null;cutting_estimate_line_id?:string|null;order_item_id?:string|null;inventory_item_code?:string;inventory_item_name?:string;warehouse_name?:string;
 }
 export interface InventoryReconciliation {
   inventory_item_id: string; warehouse_id: string; location_id: string | null; ledger_quantity: number;

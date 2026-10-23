@@ -26,6 +26,7 @@ import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { QuoteSupplementDialog } from './QuoteSupplementDialog';
 import { fetchQuoteData } from '@/hooks/useQuotes';
 import { isLocalBackend, localAdminUser } from '@/lib/runtime-config';
+import { calculateQuote, assertSavedQuoteFinancials, quoteContactSnapshot, type CalculatedQuoteItem } from '@/lib/quote-calculation';
 
 interface QuotePreviewDialogProps {
   open: boolean;
@@ -100,10 +101,6 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
   // Parse customer info - prioritize quote.customerName from hook
   const notes = quote.notes || '';
-  const customerName = quote.customerName || notes.match(/Khách hàng:\s*(.+)/)?.[1] || 'NGUYEN DUC PHUOC';
-  const phone = quote.customerPhone || notes.match(/Điện thoại:\s*(.+)/)?.[1] || '';
-  const email = notes.match(/Email:\s*(.+)/)?.[1] || '';
-  const address = quote.customerAddress || notes.match(/Địa chỉ:\s*(.+)/)?.[1] || '';
   const expiryDate = (() => {
     const value = quote.expiryDate || notes.match(/Ngày hết hạn:\s*(.+)/)?.[1];
     if (!value) return '-';
@@ -132,39 +129,28 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
   } catch (error) {
     console.error('Could not parse quote data:', error);
   }
+  const customerName = quoteContactSnapshot(quote, quoteData, 'customerName', /(?:^|\n)Khách hàng:[ \t]*([^\r\n]*)/, 'Không có tên');
+  const phone = quoteContactSnapshot(quote, quoteData, 'customerPhone', /(?:^|\n)Điện thoại:[ \t]*([^\r\n]*)/);
+  const email = quoteContactSnapshot(quote, quoteData, 'customerEmail', /(?:^|\n)Email:[ \t]*([^\r\n]*)/);
+  const address = quoteContactSnapshot(quote, quoteData, 'customerAddress', /(?:^|\n)Địa chỉ:[ \t]*([^\r\n]*)/);
   
   // Ensure all item totals are correctly calculated
-  const correctedItems = items.map((item: any) => ({
-    ...item,
-    total: (item.quantity || 1) * (item.price || 0) // Recalculate to ensure accuracy
-  }));
-  
-  // Calculate totals based on corrected items
-  const rawSubtotal = correctedItems.reduce((sum: number, item: any) => sum + item.total, 0);
-  
-  // Get saved quote data
-  const includeVAT = quoteData.includeVAT || false;
-  const vatRate = quoteData.vatRate || 8;
-  
-  // Subtotal is always the pre-VAT amount (TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT)
-  const subtotal = rawSubtotal;
-  
-  // Calculate VAT amount based on whether VAT is included
-  let vatAmount = 0;
-  if (includeVAT) {
-    // Calculate VAT from subtotal (subtotal is "TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT")
-    vatAmount = Math.round(subtotal * vatRate / 100);
+  const includeVAT = quote.include_vat ?? quoteData.includeVAT ?? false;
+  const vatRate = Number(quote.vat_rate ?? quoteData.vatRate ?? 8);
+  const payment1 = Number(quoteData.payment1 ?? 0), payment2 = Number(quoteData.payment2 ?? 0);
+  let calculationError = '';
+  let calculation = { items: [] as CalculatedQuoteItem[], subtotal: 0, vatAmount: 0, total: 0, remaining: 0 };
+  try {
+    const calculated = calculateQuote({ items, includeVAT, vatRate, payment1, payment2 });
+    calculation = calculated;
+    assertSavedQuoteFinancials(quote, calculated, quoteData);
   }
-
-  const payment1 = quoteData.payment1 || 0;
-  const payment2 = quoteData.payment2 || 0;
-  const totalWithVat = subtotal + vatAmount;
-  
-  // Check if payment settings exist in quote data (meaning payment plan was configured)
-  // A payment plan exists if payment1 is explicitly set (even if 0)
-  const hasPaymentPlan = 'payment1' in quoteData;
-  const firstPayment = hasPaymentPlan ? payment1 : 0;
-  const remaining = hasPaymentPlan ? totalWithVat - firstPayment : totalWithVat;
+  catch (error) { calculationError = (error as Error).message; }
+  const correctedItems = calculation.items;
+  const { subtotal, vatAmount, total: totalWithVat, remaining } = calculation;
+  const firstPayment = payment1;
+  const hasPaymentPlan = 'payment1' in quoteData || 'payment2' in quoteData;
+  const quoteTitle = String(quoteData.title || quote.title || 'BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN');
 
   // Current date for display
   const currentDate = new Date();
@@ -278,7 +264,8 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       // Quote title - merge from A to I
       worksheet.mergeCells(`A${currentRow}:I${currentRow}`);
       const titleCell = worksheet.getCell(`A${currentRow}`);
-      titleCell.value = 'BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN';
+      if (calculationError) throw new Error(calculationError);
+      titleCell.value = quoteTitle;
       titleCell.font = { name: 'Times New Roman', bold: true, size: 18, color: { argb: templateSettings.quoteTitleColor.replace('#', 'FF') } };
       titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
@@ -402,7 +389,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
         // Column G: THÀNH TIỀN = SỐ LƯỢNG * ĐƠN GIÁ (Formula)
         const cellG = worksheet.getCell(`G${currentRow}`);
-        cellG.value = { formula: `E${currentRow}*F${currentRow}` };
+        cellG.value = { formula: `ROUND(E${currentRow}*F${currentRow},0)`, result: item.total };
         cellG.font = { name: 'Times New Roman', size: 10 };
         cellG.alignment = { horizontal: 'center', vertical: 'middle' };
         cellG.numFmt = '#,##0';
@@ -486,7 +473,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       if (includeVAT) {
         // Row 2: GTGT = Subtotal * vatRate% (use column E for formulas now)
         vatRow = currentRow;
-        addTotalRow(`GTGT (${vatRate}%)`, { formula: `E${subtotalRow}*${vatRate}/100` }, true);
+        addTotalRow(`GTGT (${vatRate}%)`, { formula: `ROUND(E${subtotalRow}*${vatRate}/100,0)` }, true);
         
         // Row 3: TỔNG TIỀN ĐÃ BAO GỒM GTGT = Subtotal + VAT
         totalWithVatRow = currentRow;
@@ -496,11 +483,13 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
       // Row 4: THANH TOÁN LẦN 1 (editable value) - ensure it's a number
       const payment1Row = currentRow;
       const safeFirstPayment = typeof firstPayment === 'number' && !isNaN(firstPayment) ? firstPayment : 0;
-      addTotalRow('THANH TOÁN LẦN 1', safeFirstPayment, false);
+      addTotalRow('DỰ KIẾN THANH TOÁN LẦN 1', safeFirstPayment, false);
+      const payment2Row = currentRow;
+      addTotalRow('DỰ KIẾN THANH TOÁN LẦN 2', payment2, false);
 
       // Row 5: CÒN LẠI = Total - Payment1 (use column E for formulas now)
       const totalRefRow = includeVAT ? totalWithVatRow : subtotalRow;
-      addTotalRow('CÒN LẠI', { formula: `E${totalRefRow}-E${payment1Row}` }, true);
+      addTotalRow('CÒN LẠI THEO KẾ HOẠCH', { formula: `E${totalRefRow}-E${payment1Row}-E${payment2Row}` }, true);
 
       currentRow += 2;
 
@@ -944,7 +933,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                     <td>${item.specifications || ''}</td>
                     <td>${item.category || item.description || ''}</td>
                     <td class="text-center">${item.quantity}</td>
-                    <td class="text-right">${parseFloat(item.price).toLocaleString('vi-VN')}</td>
+                    <td class="text-right">${item.price.toLocaleString('vi-VN')}</td>
                     <td class="text-right font-medium">${item.total.toLocaleString('vi-VN')}</td>
                     <td>${item.notes || ''}</td>
                   </tr>
@@ -969,11 +958,12 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
               </div>
             ` : ''}
             <div class="total-row">
-              <div class="total-label">THANH TOÁN LẦN 1:</div>
+              <div class="total-label">DỰ KIẾN THANH TOÁN LẦN 1:</div>
               <div class="total-amount">${firstPayment.toLocaleString('vi-VN')}</div>
             </div>
+            <div class="total-row"><div class="total-label">DỰ KIẾN THANH TOÁN LẦN 2:</div><div class="total-amount">${payment2.toLocaleString('vi-VN')}</div></div>
             <div class="total-row final-total">
-              <div>CÒN LẠI:</div>
+              <div>CÒN LẠI THEO KẾ HOẠCH:</div>
               <div>${remaining.toLocaleString('vi-VN')}</div>
             </div>
           </div>
@@ -1049,6 +1039,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             Xem trước báo giá #{quoteNumber}
           </DialogTitle>
         </DialogHeader>
+        {calculationError && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">Báo giá cũ có dữ liệu chưa hợp lệ: {calculationError} Vui lòng kiểm tra hoặc nhân bản để sửa; chưa thể xuất/in.</p>}
         
         <div className="flex-shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-3 mb-4">
           <div className="flex flex-col sm:flex-row gap-3">
@@ -1056,6 +1047,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             <div className="flex flex-wrap gap-2">
               <Button 
                 onClick={handlePrint} 
+                disabled={Boolean(calculationError)}
                 variant="secondary" 
                 size="sm"
                 className="font-medium"
@@ -1067,7 +1059,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
 
             {/* Secondary Actions */}
             <div className="flex flex-wrap gap-2 sm:ml-auto">
-              <Button onClick={handleExportExcel} variant="outline" size="sm">
+              <Button onClick={handleExportExcel} disabled={Boolean(calculationError)} variant="outline" size="sm">
                 <Download className="w-4 h-4 mr-2" />
                 Excel
               </Button>
@@ -1130,7 +1122,7 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
             
             <div className="py-5 text-center">
               <h2 className="text-xl font-bold tracking-wide sm:text-2xl" style={{ color: templateSettings.quoteTitleColor }}>
-                BẢNG BÁO GIÁ ĐỒ VẢI KHÁCH SẠN
+                {quoteTitle}
               </h2>
               <p className="mt-1 text-sm italic text-slate-500">Hà Nội ngày {quoteDate.getDate()} tháng {quoteDate.getMonth() + 1} năm {quoteDate.getFullYear()}</p>
             </div>
@@ -1228,11 +1220,15 @@ export function QuotePreviewDialog({ open, onOpenChange, quote }: QuotePreviewDi
                    {hasPaymentPlan && (
                      <>
                        <tr>
-                         <td className="border-b border-slate-200 px-3 py-2 text-slate-600">THANH TOÁN LẦN 1</td>
+                         <td className="border-b border-slate-200 px-3 py-2 text-slate-600">DỰ KIẾN THANH TOÁN LẦN 1</td>
                          <td className="border-b border-slate-200 px-3 py-2 text-right tabular-nums text-slate-700">{formatCurrency(firstPayment)}</td>
                        </tr>
                        <tr>
-                         <td className="px-3 py-2 font-bold text-slate-700">CÒN LẠI</td>
+                         <td className="border-b border-slate-200 px-3 py-2 text-slate-600">DỰ KIẾN THANH TOÁN LẦN 2</td>
+                         <td className="border-b border-slate-200 px-3 py-2 text-right tabular-nums text-slate-700">{formatCurrency(payment2)}</td>
+                       </tr>
+                       <tr>
+                         <td className="px-3 py-2 font-bold text-slate-700">CÒN LẠI THEO KẾ HOẠCH</td>
                          <td className="px-3 py-2 text-right font-bold tabular-nums text-slate-900">{formatCurrency(remaining)}</td>
                        </tr>
                      </>

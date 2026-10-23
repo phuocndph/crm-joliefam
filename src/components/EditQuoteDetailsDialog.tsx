@@ -32,6 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { isLocalBackend, localAdminUser } from "@/lib/runtime-config";
 import { localApi } from "@/lib/local-api";
+import { getLocalMe } from '@/lib/local-auth';
 
 const statusOptions = [
   { value: "draft", label: "Nháp" },
@@ -67,6 +68,11 @@ export function EditQuoteDetailsDialog({
     const fetchManagerId = async () => {
       setIsLoadingUser(true); // Start loading
       try {
+        if (isLocalBackend()) {
+          const me = await getLocalMe();
+          setManagerId(me.assigned_by || me.user_id);
+          return;
+        }
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data: roleData } = await supabase
@@ -111,8 +117,11 @@ export function EditQuoteDetailsDialog({
     setLoading(true);
     try {
       if (isLocalBackend()) {
+        if (quote.status === 'approved') throw new Error('Báo giá đã duyệt không thể sửa. Hãy nhân bản thành bản nháp mới.');
         await localApi.updateQuote(quote.id, { created_at: createdDate.toISOString(), status });
         await queryClient.invalidateQueries({ queryKey: ['quotes'] });
+        await queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
+        await queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
         toast({ title: "Thành công", description: "Thông tin báo giá đã được cập nhật trên local." });
         onUpdate();
         onOpenChange(false);
@@ -166,7 +175,7 @@ export function EditQuoteDetailsDialog({
       console.error('Error updating quote details:', error);
       toast({
         title: "Lỗi",
-        description: "Không thể cập nhật thông tin báo giá",
+        description: error instanceof Error ? error.message : "Không thể cập nhật thông tin báo giá",
         variant: "destructive",
       });
     } finally {
@@ -220,7 +229,7 @@ export function EditQuoteDetailsDialog({
                 <SelectValue placeholder="Chọn trạng thái" />
               </SelectTrigger>
               <SelectContent>
-                {statusOptions.map((option) => (
+                {statusOptions.filter(option => !isLocalBackend() || option.value !== 'approved').map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>

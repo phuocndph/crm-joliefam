@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { listPayrollCapabilities } from '@/lib/payroll-master-data';
 import type { PayrollCapability, PayrollPermissionType } from '@/integrations/supabase/production-execution-types';
 import { isLocalBackend } from '@/lib/runtime-config';
 import { localApi } from '@/lib/local-api';
+import { listenPermissionRefresh } from '@/lib/permission-refresh';
+import { captureLocalAuthGuard, type LocalAuthGuard } from '@/lib/local-auth';
 
 export type PermissionType = 
   | 'dashboard'
@@ -64,41 +66,74 @@ export interface EmployeePermission {
 
 export const useEmployeePermissions = (user: User | null, userRole: string | null) => {
   const localMode = isLocalBackend();
+  const userId = user?.id;
   const [permissions, setPermissions] = useState<EmployeePermission[]>([]);
   const [payrollCapabilities, setPayrollCapabilities] = useState<PayrollCapability[]>([]);
   const [loading, setLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
+  const [loadedIdentity, setLoadedIdentity] = useState('');
+  const [payrollIdentity, setPayrollIdentity] = useState('');
+  const [permissionDataIdentity, setPermissionDataIdentity] = useState('');
+  const identity = `${localMode}:${userId || ''}:${userRole || ''}`;
+  const authorization = useRef<{identity: string; guard: LocalAuthGuard} | null>(null);
+  const hardRefresh = useRef(true);
+  const refreshGeneration = useRef(0);
+  useEffect(() => listenPermissionRefresh(reason => {
+    refreshGeneration.current++;
+    // Navigation pin pruning must wait for the new permission read, including
+    // a foreground refresh that otherwise retains the last display state.
+    setPermissionDataIdentity('');
+    if (reason === 'permissions-changed' || !localMode) {
+      hardRefresh.current = true; authorization.current = null;
+      setPermissions([]); setPayrollCapabilities([]); setLoadedIdentity(''); setPayrollIdentity(''); setPermissionDataIdentity(''); setLoading(true);
+    }
+    setRevision(value => value + 1);
+  }), [localMode]);
 
   useEffect(() => {
+    let cancelled = false;
+    const request = refreshGeneration.current;
+    const current = () => !cancelled && request === refreshGeneration.current;
     const fetchPermissions = async () => {
       if (localMode) {
-        if (!user || !userRole) {
+        if (!userId || !userRole) {
+          authorization.current = null; hardRefresh.current = true;
           setPermissions([]);
           setPayrollCapabilities([]);
+          setPermissionDataIdentity('');
           setLoading(false);
           return;
         }
-        setLoading(true);
-        Promise.all([
-          localApi.employeePermissions(user.id),
-          localApi.payrollCapabilities(user.id),
-        ]).then(([generic, payroll]) => {
-          setPermissions(generic.map((item) => ({ permission_type: item.permission_type as PermissionType, enabled: item.enabled })));
-          setPayrollCapabilities(payroll as unknown as PayrollCapability[]);
-        }).catch((error) => {
-          console.error('Error fetching local permissions:', error);
-          setPermissions([]);
-          setPayrollCapabilities([]);
-        }).finally(() => setLoading(false));
+        let retain = !hardRefresh.current && authorization.current?.identity === identity;
+        try { authorization.current?.guard.assertCurrent(); } catch { retain = false; }
+        if (!retain) { setLoading(true); setPermissions([]); setPayrollCapabilities([]); setLoadedIdentity(''); setPayrollIdentity(''); setPermissionDataIdentity(''); }
+        try {
+          const guard = await captureLocalAuthGuard(userId);
+          guard.assertCurrent();
+          const [generic, payroll] = await Promise.all([localApi.employeePermissions(userId), localApi.payrollCapabilities(userId)]);
+          guard.assertCurrent();
+          if (current()) {
+            setPermissions(generic.map(item => ({ permission_type: item.permission_type as PermissionType, enabled: item.enabled })));
+            setPayrollCapabilities(payroll as unknown as PayrollCapability[]);
+            setLoadedIdentity(identity); setPayrollIdentity(identity);
+            setPermissionDataIdentity(identity);
+            authorization.current = {identity, guard}; hardRefresh.current = false;
+          }
+        } catch {
+          if (current()) { authorization.current = null; hardRefresh.current = true; setPermissions([]); setPayrollCapabilities([]); setLoadedIdentity(''); setPayrollIdentity(''); setPermissionDataIdentity(''); }
+        } finally { if (current()) setLoading(false); }
         return;
       }
-      if (!user || !userRole) {
+      if (!userId || !userRole) {
         setPermissions([]);
         setPayrollCapabilities([]);
+        setPermissionDataIdentity('');
         setLoading(false);
         return;
       }
 
       setLoading(true);
+      setPermissionDataIdentity('');
       try {
         // `team_leader` is a local PostgreSQL role; never query the public
         // Supabase permission tables for it.
@@ -106,61 +141,70 @@ export const useEmployeePermissions = (user: User | null, userRole: string | nul
           ? supabase
               .from('employee_permissions')
               .select('permission_type, enabled')
-              .eq('user_id', user.id)
+              .eq('user_id', userId)
           : Promise.resolve({ data: [], error: null });
-        const [genericResult, payrollResult] = await Promise.allSettled([
-          genericPermissionsPromise,
-          listPayrollCapabilities(user.id),
-        ]);
+        let genericSucceeded = false;
+        let payrollSucceeded = false;
+        const markPermissionDataResolved = () => {
+          if (current() && genericSucceeded && payrollSucceeded) setPermissionDataIdentity(identity);
+        };
+        void listPayrollCapabilities(userId).then(data => {
+          if (current()) {
+            setPayrollCapabilities(data); setPayrollIdentity(identity);
+            payrollSucceeded = true; markPermissionDataResolved();
+          }
+        }).catch(() => {
+          if (current()) { setPayrollCapabilities([]); setPayrollIdentity(identity); }
+        });
+        const genericResult = await genericPermissionsPromise;
+        if (cancelled) return;
 
-        if (genericResult.status === 'fulfilled' && !genericResult.value.error) {
-          setPermissions((genericResult.value.data || []) as EmployeePermission[]);
-        } else {
+        if (genericResult.error) {
           console.error(
             'Error fetching permissions:',
-            genericResult.status === 'rejected' ? genericResult.reason : genericResult.value.error,
+            genericResult.error,
           );
           setPermissions([]);
-        }
-        if (payrollResult.status === 'fulfilled') {
-          setPayrollCapabilities(payrollResult.value);
         } else {
-          console.error('Error fetching payroll capabilities:', payrollResult.reason);
-          setPayrollCapabilities([]);
+          setPermissions((genericResult.data || []) as EmployeePermission[]);
+          genericSucceeded = true; markPermissionDataResolved();
         }
       } catch (error) {
+        if (cancelled) return;
         console.error('Error fetching permissions:', error);
         setPermissions([]);
-        setPayrollCapabilities([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) { setLoadedIdentity(identity); setLoading(false); }
       }
     };
 
-    fetchPermissions();
-  }, [localMode, user, userRole]);
+    void fetchPermissions();
+    return () => { cancelled = true; };
+  }, [identity, localMode, userId, userRole, revision]);
 
   const hasPermission = (permissionType: PermissionType): boolean => {
-    if (userRole === 'admin' || userRole === 'manager') return true;
     if (permissionType.startsWith('payroll_')) {
-      return payrollCapabilities.some(
+      return payrollIdentity === identity && payrollCapabilities.some(
         capability => capability.permission_type === permissionType && capability.allowed,
       );
     }
+    if (userRole === 'admin' || userRole === 'manager') return true;
 
     // Kế toán và Employee kiểm tra quyền cụ thể
     if (userRole === 'accountant' || userRole === 'employee' || (localMode && userRole === 'team_leader')) {
       const permission = permissions.find(p => p.permission_type === permissionType);
-      return permission?.enabled || false;
+      return loadedIdentity === identity && (permission?.enabled || false);
     }
 
     return false;
   };
 
   return {
-    permissions,
-    payrollCapabilities,
+    permissions: loadedIdentity === identity ? permissions : [],
+    payrollCapabilities: payrollIdentity === identity ? payrollCapabilities : [],
     loading,
+    /** True only after the full generic + payroll permission read succeeded for this identity. */
+    permissionDataResolved: permissionDataIdentity === identity,
     hasPermission
   };
 };

@@ -167,8 +167,33 @@ const currentToken = async () => {
   return (await loadSession()).token;
 };
 
+/** In-memory, single-send authorization boundary; never serialized with drafts. */
+export interface LocalAuthGuard {assertCurrent:()=>void;authorizationToken:()=>string}
+export const captureLocalAuthGuard=async(expectedActor:string):Promise<LocalAuthGuard>=>{
+  if(!isLocalBackend())throw authenticationError();
+  const generation=sessionGeneration,storedIdentity=localStorage.getItem(USER_SESSION_KEY);
+  const userSession=getLocalUserSession();
+  if(hasStoredLocalUserSession()&&!userSession)throw authenticationError();
+  const session=userSession||await loadSession(),userMode=!!userSession;
+  const assertCurrent=()=>{
+    if(!isLocalBackend()||generation!==sessionGeneration||localStorage.getItem(USER_SESSION_KEY)!==storedIdentity||session.actor!==expectedActor||!sessionStillValid(session))throw authenticationError();
+    if(userMode){
+      const current=getLocalUserSession(),stored=readStoredUserSession();
+      if(!current||current.actor!==expectedActor||current.token!==session.token||!stored||stored.actor!==expectedActor||stored.token!==session.token)throw authenticationError();
+    }else if(hasStoredLocalUserSession()||!cachedSession||cachedSession.actor!==expectedActor||cachedSession.token!==session.token)throw authenticationError();
+  };
+  assertCurrent();
+  return {assertCurrent,authorizationToken:()=>{assertCurrent();return session.token;}};
+};
+
 /** Fetch local SQL endpoints với token caller hiện tại (user hoặc admin). */
-export const localFetch = async (input: RequestInfo | URL, init: RequestInit = {}, allowRefresh = true): Promise<Response> => {
+export const localFetch = async (input: RequestInfo | URL, init: RequestInit = {}, allowRefresh = true,guard?:LocalAuthGuard): Promise<Response> => {
+  if(guard){
+    // No await/current-token lookup, demo fallback or refresh between this check and fetch.
+    const token=guard.authorizationToken(),headers=new Headers(init.headers);
+    headers.set('authorization',`Bearer ${token}`);guard.assertCurrent();
+    const response=await fetch(input,{...init,headers});guard.assertCurrent();return response;
+  }
   if (!isLocalBackend()) return fetch(input, init);
 
   const userRequest = hasStoredLocalUserSession();

@@ -3,12 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { isLocalBackend } from "@/lib/runtime-config";
 import { Building2, ArrowRight, Shield, Users, BarChart3, Zap } from "lucide-react";
+import { getLocalPostAuthPath } from '@/lib/post-auth-path';
 
 const Index = () => {
   useEffect(() => {
     if (isLocalBackend()) {
-      window.location.assign("/dashboard");
-      return;
+      let current=true;
+      const fallback=window.matchMedia('(max-width: 767px)').matches?'/menu':'/dashboard';
+      void getLocalPostAuthPath(fallback).then(path=>{if(current)window.location.assign(path);}).catch(()=>{if(current)window.location.assign('/auth');});
+      return()=>{current=false;};
     }
     // Check if user is already logged in
     const checkUser = async () => {

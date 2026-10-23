@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import pg from "pg";
+import { approveLegacyPayrollFixture } from './payroll-approved-fixtures.mjs';
 
 const base = String(process.env.LOCAL_API_URL || "").replace(/\/$/, "");
 const databaseUrl = String(process.env.LOCAL_DATABASE_URL || "");
@@ -16,13 +17,17 @@ const health = await healthResponse.json();
 assert.equal(healthResponse.ok, true, "health endpoint failed");
 assert.equal(health.database, expectedDatabase, "API does not target the owned database");
 
-const sessionResponse = await fetch(`${base}/api/local-auth/session`, { headers: { origin: "http://127.0.0.1:8090" } });
+// Disposable production-mode harnesses provide their own normal fixture login.
+const sessionResponse = process.env.LOCAL_TEST_AUTH_TOKEN
+  ? { ok: true, json: async () => ({ token: process.env.LOCAL_TEST_AUTH_TOKEN }) }
+  : await fetch(`${base}/api/local-auth/session`, { headers: { origin: "http://127.0.0.1:8090" } });
 const session = await sessionResponse.json();
 assert.equal(sessionResponse.ok, true, "local auth bootstrap failed");
 assert.ok(session.token, "local auth token missing");
-const headers = { "content-type": "application/json", origin: "http://127.0.0.1:8090", authorization: `Bearer ${session.token}` };
+const headers = { "content-type": "application/json", origin: process.env.LOCAL_TEST_ORIGIN || "http://127.0.0.1:8090", authorization: `Bearer ${session.token}` };
 
 const request = async (method, path, body) => {
+  if (path.startsWith('/api/payroll/preflight') || (method === 'POST' && path === '/api/payroll/runs')) await approveLegacyPayrollFixture(pool, period.period_start, period.period_end, 26);
   const response = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   let payload = {};
   try { payload = await response.json(); } catch { /* asserted by caller */ }

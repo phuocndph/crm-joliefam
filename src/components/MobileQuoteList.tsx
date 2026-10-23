@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { isLocalBackend } from '@/lib/runtime-config';
 import {
   Eye, Edit, Trash2, MoreVertical, Calendar, User, CheckCircle, XCircle,
   Copy, Calculator, FileSignature, FileText,
@@ -102,8 +103,8 @@ export const MobileQuoteList: React.FC<Props> = ({
               <Button size="sm" variant="outline" className="flex-1 h-9 gap-1" onClick={() => onView(q)}>
                 <Eye className="h-3.5 w-3.5" /> Xem
               </Button>
-              <Button size="sm" variant="outline" className="flex-1 h-9 gap-1" onClick={() => onEdit(q)}>
-                <Edit className="h-3.5 w-3.5" /> Sửa
+              <Button size="sm" variant="outline" className="flex-1 h-9 gap-1" onClick={() => isLocalBackend() && q.status === 'approved' ? onDuplicate(q) : onEdit(q)}>
+                <Edit className="h-3.5 w-3.5" /> {isLocalBackend() && q.status === 'approved' ? 'Nhân bản để sửa' : 'Sửa'}
               </Button>
               {canApprove && q.status === "draft" && (
                 <Button
@@ -135,7 +136,7 @@ export const MobileQuoteList: React.FC<Props> = ({
                       <XCircle className="h-4 w-4 mr-2" /> Từ chối
                     </DropdownMenuItem>
                   )}
-                  {canEditDetails && (
+                  {canEditDetails && !(isLocalBackend() && q.status === 'approved') && (
                     <DropdownMenuItem onClick={() => onEditDetails(q)}>
                       <Calendar className="h-4 w-4 mr-2" /> Sửa ngày & trạng thái
                     </DropdownMenuItem>
@@ -143,7 +144,7 @@ export const MobileQuoteList: React.FC<Props> = ({
                   <DropdownMenuItem onClick={() => onToContract(q)} className="text-primary">
                     <FileSignature className="h-4 w-4 mr-2" /> Tạo hợp đồng
                   </DropdownMenuItem>
-                  {canManage && (
+                  {canManage && !(isLocalBackend() && q.status === 'approved') && (
                     <DropdownMenuItem onClick={() => onDelete(q)} className="text-red-600 focus:text-red-600">
                       <Trash2 className="h-4 w-4 mr-2" /> Xóa
                     </DropdownMenuItem>

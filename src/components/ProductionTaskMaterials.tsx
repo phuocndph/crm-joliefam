@@ -1,0 +1,8 @@
+import type {DispatchMaterial} from '@/lib/production-dispatch-types';
+import {dispatchNumber} from '@/lib/production-dispatch-types';
+const units:Record<string,string>={METER:'m',KG:'kg',PIECE:'cái',ROLL:'cuộn',SET:'bộ',BAG:'túi',BOX:'hộp'};
+export default function ProductionTaskMaterials({materials,noMaterialRequired}:{materials?:DispatchMaterial[];noMaterialRequired?:boolean}){
+  if(noMaterialRequired&&!materials?.length)return <p className="rounded bg-blue-50 p-3 text-base text-blue-900">Dự toán đã duyệt xác nhận lô này không cần cấp vật tư.</p>;
+  if(!materials?.length)return <p className="rounded bg-blue-50 p-3 text-base text-blue-900">Chưa có dòng vật tư duyệt cho phần việc này. Kiểm tra hướng dẫn với quản lý trước khi cắt.</p>;
+  return <section className="space-y-2 rounded border border-blue-200 bg-blue-50 p-3 text-blue-950"><p className="font-semibold">Vải / vật tư của dòng sản phẩm trong lô</p>{materials.map(m=><div key={m.estimate_line_id} className="border-t border-blue-200 pt-2"><p className="font-medium">{m.inventory_item_code} · {m.inventory_item_name}</p><p>{[m.variant_name,m.color&&`Màu ${m.color}`,m.width_code&&`Khổ ${m.width_code}`].filter(Boolean).join(' · ')}</p><p>Dự kiến <strong>{dispatchNumber(m.estimated_quantity)} {units[m.unit]||m.unit}</strong> · Đã cấp {dispatchNumber(m.issued_quantity)} · Đã hoàn {dispatchNumber(m.returned_quantity)}</p><p className="text-sm">Kho {m.warehouse_name}{m.estimate_kind==='REMAKE'?' · Dự toán làm lại':''}</p></div>)}<p className="text-sm">Đây là vật tư cả dòng trong lô, không phải phần riêng mỗi người. Cắt đúng phần đã nhận và hướng dẫn bàn giao.</p></section>;
+}

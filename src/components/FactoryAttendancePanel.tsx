@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, BriefcaseBusiness, CalendarDays, Check, CircleDollarSign, Clock3, Download, History, Loader2, LockKeyhole, PackageCheck, Plus, RotateCcw, Settings2, Timer, UserPlus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -404,7 +404,8 @@ export default function FactoryAttendancePanel({
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState(() => normalizeAttendancePanelTab(initialTab));
   const [selectedWorkDate, setSelectedWorkDate] = useState(localDateKey());
-  const [selectedMonth, setSelectedMonth] = useState(localMonthKey());
+  const [sourceParams]=useSearchParams();
+  const [selectedMonth, setSelectedMonth] = useState(()=>/^\d{4}-(0[1-9]|1[0-2])$/.test(sourceParams.get("month")||"")?sourceParams.get("month")!:localMonthKey());
   const [rows, setRows] = useState<FactoryAttendanceRow[]>([]);
   const [timeClockAvailable, setTimeClockAvailable] = useState<boolean | null>(null);
   const [workflowAvailable, setWorkflowAvailable] = useState<boolean | null>(null);
@@ -425,7 +426,8 @@ export default function FactoryAttendancePanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [methodsError, setMethodsError] = useState<string | null>(null);
   const [ratesError, setRatesError] = useState<string | null>(null);
-  const [workerFilter, setWorkerFilter] = useState("ALL");
+  const [workerFilter, setWorkerFilter] = useState(()=>sourceParams.get("worker")||"ALL");
+  useEffect(()=>{const month=sourceParams.get("month");if(month&&/^\d{4}-(0[1-9]|1[0-2])$/.test(month))setSelectedMonth(month);setWorkerFilter(sourceParams.get("worker")||"ALL");},[sourceParams]);
   const [methodFilter, setMethodFilter] = useState<AttendanceMethod | "ALL">("ALL");
   const [workflowFilter, setWorkflowFilter] = useState<AttendanceWorkflowStatus | "ALL">("ALL");
   const [attendanceOpen, setAttendanceOpen] = useState(false);

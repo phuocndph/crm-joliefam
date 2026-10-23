@@ -1,25 +1,26 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from '@tanstack/react-query';
 import type { User as AuthUser } from "@supabase/supabase-js";
-import { useNavigate, Outlet } from "react-router-dom";
+import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/ui/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Building2,
-  LogOut,
-  Settings,
-  Bell,
-  User,
-  Key
-} from "lucide-react";
+import { Building2, LogOut, User, Key } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import { isLocalBackend, isLocalDemoEnabled, localAdminUser } from "@/lib/runtime-config";
 import { clearLocalSession, getLocalMe, hasStoredLocalUserSession, logoutLocal } from "@/lib/local-auth";
+import { NavigationSearch } from "@/components/navigation/NavigationSearch";
+import { NavigationProvider, useNavigation } from "@/components/navigation/NavigationContext";
+
+function DesktopNavigationSearch({ pathname }: { pathname: string }) {
+  const { visibleItems, favoriteIds, toggleFavorite } = useNavigation();
+  return <NavigationSearch items={visibleItems} pathname={pathname} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} responsiveCompact />;
+}
 
 const MainLayout = () => {
   const queryClient = useQueryClient();
@@ -27,7 +28,9 @@ const MainLayout = () => {
   const [loading, setLoading] = useState(true);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { role: userRole, loading: roleLoading } = useUserRole(user);
+  const { hasPermission, loading: permissionsLoading, permissionDataResolved } = useEmployeePermissions(user, userRole);
 
   useEffect(() => {
     if (isLocalBackend()) {
@@ -123,15 +126,12 @@ const MainLayout = () => {
     }
   };
 
-  if (loading || roleLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Đang tải...</div>
-      </div>
-    );
-  }
+  if (loading || roleLoading || permissionsLoading) return <NavigationProvider actorId={user?.id} role={userRole} hasPermission={hasPermission} accessResolved={permissionDataResolved}>
+    <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-pulse text-muted-foreground">Đang tải quyền truy cập...</div></div>
+  </NavigationProvider>;
 
   return (
+    <NavigationProvider actorId={user?.id} role={userRole} hasPermission={hasPermission} accessResolved={permissionDataResolved}>
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
         {/* Sidebar */}
@@ -155,9 +155,7 @@ const MainLayout = () => {
             </div>
             
             <div className="flex shrink-0 items-center gap-1 sm:gap-2 xl:gap-4">
-              <Button variant="ghost" size="icon" className="hidden hover:bg-sidebar-accent lg:inline-flex">
-                <Bell className="h-5 w-5" />
-              </Button>
+              <div className="hidden md:block lg:w-56 xl:w-72"><DesktopNavigationSearch pathname={location.pathname} /></div>
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -166,9 +164,6 @@ const MainLayout = () => {
                 title="Đổi mật khẩu"
               >
                 <Key className="h-5 w-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="hidden hover:bg-sidebar-accent lg:inline-flex">
-                <Settings className="h-5 w-5" />
               </Button>
               
               <div className="flex items-center gap-2 border-l pl-2 xl:gap-3 xl:pl-4">
@@ -209,6 +204,7 @@ const MainLayout = () => {
         onOpenChange={setShowChangePasswordDialog}
       />
     </SidebarProvider>
+    </NavigationProvider>
   );
 };
 

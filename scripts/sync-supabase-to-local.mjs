@@ -72,6 +72,20 @@ function sourceClient(env) {
   return createClient(url, apiKey, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers } });
 }
 
+/** A paginated RLS-filtered read is not proof that unseen rows were deleted.
+ * The API validates the credential on each read; inspect only the selected
+ * credential's non-secret class here. Never log or return credential values. */
+export function hasAuthoritativeSecuritySource(env) {
+  if (env.SUPABASE_ACCESS_TOKEN || env.SUPABASE_USER_ACCESS_TOKEN) return false;
+  const key = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY || env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (typeof key !== 'string') return false;
+  if (key.startsWith('sb_secret_')) return true;
+  try {
+    const payload = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString('utf8'));
+    return payload.role === 'service_role';
+  } catch { return false; }
+}
+
 async function readTable(client, table, pageSize, since = null, allowSinceFallback = true) {
   const rows = [];
   let stableOrdering = true;
@@ -125,23 +139,7 @@ async function syncAuthProfiles(client, localPool) {
       where local_user_profiles.local_modified_at is null`,
     [user.id, user.email || `unknown+${user.id}@local.invalid`, firstName, lastName, phone, user.created_at || new Date().toISOString()]);
   }
-  // A user can exist in Auth without a public.profiles row. Once its local
-  // profile is present, backfill role/permission snapshot rows that were
-  // previously blocked by the foreign-key join in the bootstrap migration.
-  await localPool.query(`
-    insert into local_user_roles
-      (user_id,role,assigned_by,is_snapshot_record,source_snapshot_key,created_at,updated_at)
-    select s.payload->>'user_id', s.payload->>'role', s.payload->>'assigned_by', true, s.source_key,
-      coalesce(nullif(s.payload->>'created_at','')::timestamptz, s.first_seen_at),
-      coalesce(nullif(s.payload->>'updated_at','')::timestamptz, s.last_seen_at)
-    from local_source_snapshots s
-    join local_user_profiles p on p.user_id=s.payload->>'user_id'
-    where s.source='SUPABASE' and s.source_table='user_roles' and not s.is_deleted
-      and s.payload->>'role' in ('admin','manager','accountant','employee')
-    on conflict (user_id,role) do update set
-      assigned_by=excluded.assigned_by, source_snapshot_key=excluded.source_snapshot_key,
-      updated_at=excluded.updated_at
-    where local_user_roles.local_modified_at is null`);
+  // Role and grant reconciliation is atomic with the canonical projections.
   return { users: users.length };
 }
 
@@ -156,6 +154,7 @@ export async function refreshCanonicalProjections(localPool) {
   try {
     await client.query("begin");
     await client.query("select pg_advisory_xact_lock(hashtextextended('production-source-sync',0))");
+    await refreshPermissionProjections(client);
     await client.query(`
       insert into local_projection_tombstones(source_table,source_key,tombstone_kind)
       select s.source_table,s.source_key,'SOURCE'
@@ -472,6 +471,53 @@ export async function refreshCanonicalProjections(localPool) {
   }
 }
 
+/** Local account overrides win for the complete user's role/grant set. Only
+ * confirmed source tombstones revoke imported rows; failed/incremental reads
+ * never imply deletion. Called inside the projection transaction. */
+export async function refreshPermissionProjections(client) {
+  // A source row may change its semantic key while retaining its source ID.
+  // Disable the old tuple as well; it must not survive as an extra role/grant.
+  await client.query(`update local_user_roles r set is_active=false,updated_at=now()
+    from local_source_snapshots s where s.source='SUPABASE' and s.source_table='user_roles'
+      and r.source_snapshot_key=s.source_key and r.is_snapshot_record and r.local_modified_at is null
+      and (s.is_deleted or s.payload->>'user_id' is distinct from r.user_id or s.payload->>'role' is distinct from r.role)
+      and not exists(select 1 from local_user_roles own where own.user_id=r.user_id and own.local_modified_at is not null)
+      and not exists(select 1 from local_source_snapshots live where live.source='SUPABASE' and live.source_table='user_roles' and not live.is_deleted and live.payload->>'user_id'=r.user_id and live.payload->>'role'=r.role)`);
+  await client.query(`update local_employee_permissions ep set enabled=false,updated_at=now()
+    from local_source_snapshots s where s.source='SUPABASE' and s.source_table='employee_permissions'
+      and ep.source_snapshot_key=s.source_key and ep.is_snapshot_record and ep.local_modified_at is null
+      and (s.is_deleted or s.payload->>'user_id' is distinct from ep.user_id or s.payload->>'permission_type' is distinct from ep.permission_type)
+      and not exists(select 1 from local_employee_permissions own where own.user_id=ep.user_id and own.local_modified_at is not null)
+      and not exists(select 1 from local_source_snapshots live where live.source='SUPABASE' and live.source_table='employee_permissions' and not live.is_deleted and live.payload->>'user_id'=ep.user_id and live.payload->>'permission_type'=ep.permission_type)`);
+  await client.query(`insert into local_user_roles(user_id,role,assigned_by,is_active,is_snapshot_record,source_snapshot_key,created_at,updated_at)
+    select s.payload->>'user_id',s.payload->>'role',s.payload->>'assigned_by',coalesce((s.payload->>'is_active')::boolean,true),true,s.source_key,
+      coalesce(nullif(s.payload->>'created_at','')::timestamptz,s.first_seen_at),coalesce(nullif(s.payload->>'updated_at','')::timestamptz,s.last_seen_at)
+    from local_source_snapshots s join local_user_profiles p on p.user_id=s.payload->>'user_id'
+    where s.source='SUPABASE' and s.source_table='user_roles' and not s.is_deleted
+      and s.payload->>'role' in ('admin','manager','accountant','employee')
+      and not exists(select 1 from local_user_roles own where own.user_id=p.user_id and own.local_modified_at is not null)
+    on conflict(user_id,role) do update set assigned_by=excluded.assigned_by,is_active=excluded.is_active,source_snapshot_key=excluded.source_snapshot_key,updated_at=excluded.updated_at
+    where local_user_roles.local_modified_at is null and local_user_roles.is_snapshot_record`);
+  await client.query(`update local_user_roles r set is_active=false,updated_at=now()
+    from local_source_snapshots s where s.source='SUPABASE' and s.source_table='user_roles' and s.is_deleted
+      and r.source_snapshot_key=s.source_key and r.is_snapshot_record and r.local_modified_at is null
+      and not exists(select 1 from local_user_roles own where own.user_id=r.user_id and own.local_modified_at is not null)
+      and not exists(select 1 from local_source_snapshots live where live.source='SUPABASE' and live.source_table='user_roles' and not live.is_deleted and live.payload->>'user_id'=r.user_id and live.payload->>'role'=r.role)`);
+  await client.query(`insert into local_employee_permissions(user_id,permission_type,enabled,assigned_by,is_snapshot_record,source_snapshot_key,created_at,updated_at)
+    select s.payload->>'user_id',s.payload->>'permission_type',coalesce((s.payload->>'enabled')::boolean,false),coalesce(s.payload->>'assigned_by',s.payload->>'created_by'),true,s.source_key,
+      coalesce(nullif(s.payload->>'created_at','')::timestamptz,s.first_seen_at),coalesce(nullif(s.payload->>'updated_at','')::timestamptz,s.last_seen_at)
+    from local_source_snapshots s join local_user_profiles p on p.user_id=s.payload->>'user_id'
+    where s.source='SUPABASE' and s.source_table='employee_permissions' and not s.is_deleted and nullif(s.payload->>'permission_type','') is not null
+      and not exists(select 1 from local_employee_permissions own where own.user_id=p.user_id and own.local_modified_at is not null)
+    on conflict(user_id,permission_type) do update set enabled=excluded.enabled,assigned_by=excluded.assigned_by,source_snapshot_key=excluded.source_snapshot_key,updated_at=excluded.updated_at
+    where local_employee_permissions.local_modified_at is null and local_employee_permissions.is_snapshot_record`);
+  await client.query(`update local_employee_permissions ep set enabled=false,updated_at=now()
+    from local_source_snapshots s where s.source='SUPABASE' and s.source_table='employee_permissions' and s.is_deleted
+      and ep.source_snapshot_key=s.source_key and ep.is_snapshot_record and ep.local_modified_at is null
+      and not exists(select 1 from local_employee_permissions own where own.user_id=ep.user_id and own.local_modified_at is not null)
+      and not exists(select 1 from local_source_snapshots live where live.source='SUPABASE' and live.source_table='employee_permissions' and not live.is_deleted and live.payload->>'user_id'=ep.user_id and live.payload->>'permission_type'=ep.permission_type)`);
+}
+
 async function main() {
   const env = await loadEnv();
   const requested = argValue("--tables");
@@ -483,6 +529,7 @@ async function main() {
   const incremental = process.argv.includes("--incremental");
   const mode = apply ? (incremental ? "INCREMENTAL" : "SNAPSHOT") : "DRY_RUN";
   const client = sourceClient(env);
+  const authoritativeSecuritySource = hasAuthoritativeSecuritySource(env);
   const localPool = apply ? new Pool({ connectionString: env.LOCAL_DATABASE_URL || "postgres://crm_local:crm_local_dev_only@127.0.0.1:55432/crm_local" }) : null;
   const stats = {};
   const startedAt = new Date().toISOString();
@@ -508,7 +555,10 @@ async function main() {
     for (const table of tables) {
       const tableStat = { rows: 0, changed: 0, unchanged: 0, error: null };
       try {
-        const read = await readTable(client, table, pageSize, incrementalSince);
+        // Security tables are small and deletion-sensitive: a delta cannot
+        // represent a removed role. Read them fully even during incremental sync.
+        const securityTable = ['user_roles','employee_permissions'].includes(table);
+        const read = await readTable(client, table, pageSize, securityTable ? null : incrementalSince);
         const rows = read.rows;
         tableStat.rows = rows.length;
         tableStat.since = incrementalSince;
@@ -537,7 +587,8 @@ async function main() {
             if (!previous.rows[0] || previous.rows[0].source_hash !== sourceHash) tableStat.changed += 1;
             else tableStat.unchanged += 1;
           }
-          if (!incremental && read.complete) {
+          tableStat.securityDeletionSkipped = securityTable && !authoritativeSecuritySource;
+          if ((!incremental || securityTable) && read.complete && (!securityTable || authoritativeSecuritySource)) {
             const deleted = await localPool.query(`
               update local_source_snapshots
               set is_deleted=true, sync_run_id=$2

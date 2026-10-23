@@ -520,14 +520,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
 
       if (uploadError) throw uploadError;
 
-      // Delete old file
-      const { error: deleteError } = await supabase.storage
-        .from('product-images')
-        .remove([oldPath]);
-
-      if (deleteError) {
-        console.error('Error deleting old file:', deleteError);
-      }
+      // Preserve old URL: saved quotes/orders may still reference this object.
 
       toast({
         title: "Thành công",
@@ -589,7 +582,7 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
           const { error: uploadError } = await supabase.storage
             .from('product-images')
             .upload(newPath, fileData, {
-              upsert: true,
+              upsert: false,
               cacheControl: '3600'
             });
 
@@ -598,15 +591,8 @@ const ProductImageLibrary = ({ onSelectImage, selectedCategory, hideDeleteButton
             throw uploadError;
           }
 
-          // Delete old file after successful upload
-          const { error: deleteError } = await supabase.storage
-            .from('product-images')
-            .remove([file.fullPath]);
+          // Keep original object as a compatibility alias for saved documents.
 
-          if (deleteError) {
-            console.error('Delete error:', deleteError);
-            // Continue with other files even if delete fails
-          }
         }
       }
 

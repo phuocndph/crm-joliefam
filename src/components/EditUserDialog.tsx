@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { isLocalBackend } from '@/lib/runtime-config';
 import { localApi } from '@/lib/local-api';
+import { notifyPermissionsChanged } from '@/lib/permission-refresh';
 
 interface Profile {
   id: string;
@@ -67,6 +68,7 @@ const EditUserDialog = ({ open, onOpenChange, profile, currentUserRole, onUserUp
           role: selectedRole,
         });
         toast({ title: "Thành công", description: "Cập nhật thông tin người dùng local thành công" });
+        notifyPermissionsChanged();
         onUserUpdated();
         onOpenChange(false);
         return;
@@ -109,14 +111,15 @@ const EditUserDialog = ({ open, onOpenChange, profile, currentUserRole, onUserUp
         title: "Thành công",
         description: "Cập nhật thông tin người dùng thành công",
       });
+      notifyPermissionsChanged();
 
       onUserUpdated();
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating user:', error);
       toast({
         title: "Lỗi",
-        description: error.message || "Không thể cập nhật thông tin người dùng",
+        description: error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' && error.message.trim() ? error.message : "Không thể cập nhật thông tin người dùng",
         variant: "destructive",
       });
     } finally {

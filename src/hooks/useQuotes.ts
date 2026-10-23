@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
 import { isLocalBackend } from '@/lib/runtime-config';
 import { localApi } from '@/lib/local-api';
+import { formatQuote } from './useInfiniteQuotes';
 
 export const useQuotes = (opts?: { managerId?: string | null }) => {
   const queryClient = useQueryClient();
@@ -35,18 +36,7 @@ export const useQuotes = (opts?: { managerId?: string | null }) => {
       console.log('🔍 Fetching quotes with manager filter:', opts?.managerId);
       if (isLocalBackend()) {
         const rows = await localApi.quotes({ managerId: opts?.managerId, limit: 200 });
-        return rows.map((quote: any) => ({
-          ...quote,
-          customerName: quote.customers?.name || 'Không có tên',
-          customerEmail: quote.customers?.email || '',
-          customerPhone: quote.customers?.phone || '',
-          customerAddress: quote.customers?.address || '',
-          customerCompany: quote.customers?.company || '',
-          quoteDate: quote.created_at,
-          expiryDate: quote.created_at,
-          responsible: quote.assignees?.name || 'Chưa phân công',
-          totalAmount: quote.total_amount || 0,
-        }));
+        return rows.map(formatQuote);
       }
       
       // Egress optimization: exclude heavy `quote_data` JSONB from list query.
@@ -152,6 +142,8 @@ export const useUpdateQuote = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
@@ -175,6 +167,8 @@ export const useDeleteQuote = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
     },
   });
 };

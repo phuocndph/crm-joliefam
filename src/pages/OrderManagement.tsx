@@ -40,6 +40,8 @@ import { vi } from "date-fns/locale";
 import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { isLocalBackend } from "@/lib/runtime-config";
 import { localApi } from "@/lib/local-api";
+import { LocalGhnPrintDialog } from "@/components/LocalGhnPrintDialog";
+import { LOCAL_GHN_CREATED_EVENT, useLocalGhnCreateHost } from "@/components/LocalGhnCreateHost";
 
 interface Order {
   id: string;
@@ -72,7 +74,7 @@ interface Order {
   assignees?: {
     name: string;
   } | null;
-  ghn_tracking?: { ghn_order_code: string }[] | null;
+  ghn_tracking?: { id?: string; ghn_order_code: string }[] | null;
 }
 
 const statusConfig = {
@@ -129,6 +131,7 @@ const paymentStatusConfig = {
 };
 
 export default function OrderManagement() {
+  const localGhnHost = useLocalGhnCreateHost();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
@@ -142,6 +145,7 @@ export default function OrderManagement() {
   const [orderToGHNTracking, setOrderToGHNTracking] = useState<Order | null>(null);
   const [orderToCreateGHN, setOrderToCreateGHN] = useState<Order | null>(null);
   const [standaloneGHNOpen, setStandaloneGHNOpen] = useState(false);
+  const [printDialogIds, setPrintDialogIds] = useState<string[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("orders");
   const [bulkSyncing, setBulkSyncing] = useState(false);
@@ -175,6 +179,17 @@ export default function OrderManagement() {
   const sentinelRef = useInfiniteScroll(hasNextPage, isFetchingNextPage, fetchNextPage);
   const { data: orderStats } = useOrdersStats(managerFilter, authReady && !!user);
   const { data: dupOrderNumbers } = useDuplicateOrderNumbers();
+  useEffect(() => {
+    const refresh = () => { void loadOrders(); };
+    window.addEventListener(LOCAL_GHN_CREATED_EVENT, refresh);
+    return () => window.removeEventListener(LOCAL_GHN_CREATED_EVENT, refresh);
+  }, [loadOrders]);
+  const openGhn = (order?: Order) => {
+    if (!isLocalBackend()) { if (order) setOrderToCreateGHN(order); else setStandaloneGHNOpen(true); return; }
+    if (localGhnHost) void localGhnHost({ order, remainingAmount: order ? calculateRemainingAmount(order) : 0 }).catch(error => {
+      toast({ title: 'Chưa mở được vận đơn', description: error instanceof Error ? error.message : 'Vui lòng đăng nhập lại.', variant: 'destructive' });
+    });
+  };
   // Xóa dữ liệu cũ theo đúng bộ lọc sau khi auth/role sẵn sàng rồi tải lại từ server.
   // `resetQueries` tránh trường hợp refetch giữ lại các page cũ trên bản publish.
   useEffect(() => {
@@ -443,7 +458,7 @@ export default function OrderManagement() {
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <h1 className="text-xl font-bold text-foreground">Quản lý Đơn hàng</h1>
-          <div className="flex items-center gap-2">
+          <div className="flex max-w-full flex-wrap items-center gap-2">
             {(userRole === 'admin' || userRole === 'accountant') && (
               <ManagerSelector
                 selectedManagerId={selectedManagerId}
@@ -454,7 +469,7 @@ export default function OrderManagement() {
               <Plus className="h-3.5 w-3.5" />
               Tạo báo giá
             </Button>
-            <Button onClick={() => setStandaloneGHNOpen(true)} size="sm" variant="outline" className="gap-1.5">
+            <Button onClick={() => openGhn()} size="sm" variant="outline" className="gap-1.5">
               <Truck className="h-3.5 w-3.5" />
               Tạo đơn GHN
             </Button>
@@ -598,7 +613,7 @@ export default function OrderManagement() {
                   onDelete={(o) => setOrderToDelete(o)}
                   onAddPayment={(o) => setOrderToPayment(o)}
                   onEditNumber={(o) => setOrderToEditNumber(o)}
-                  onCreateGHN={(o) => setOrderToCreateGHN(o)}
+                  onCreateGHN={(o) => openGhn(o)}
                   onGHNTracking={(o) => setOrderToGHNTracking(o)}
                 />
               ) : (
@@ -808,6 +823,11 @@ export default function OrderManagement() {
                     <Button
                       onClick={async () => {
                         const codes = selectedOrder.ghn_tracking!.map((t: any) => t.ghn_order_code);
+                        if (isLocalBackend()) {
+                          const ids = selectedOrder.ghn_tracking!.map((tracking) => tracking.id).filter((id): id is string => Boolean(id));
+                          if (ids.length !== codes.length) { toast({ title: 'Không thể in', description: 'Thiếu mã lưu cục bộ. Hãy tải lại danh sách đơn.', variant: 'destructive' }); return; }
+                          setPrintDialogIds(ids); return;
+                        }
                         try {
                           const { data, error } = await supabase.functions.invoke('ghn-tracking', {
                             body: { action: 'print_a5', orderCodes: codes }
@@ -831,7 +851,7 @@ export default function OrderManagement() {
                     </Button>
                   )}
                   {(!selectedOrder?.ghn_tracking || (Array.isArray(selectedOrder?.ghn_tracking) && selectedOrder.ghn_tracking.length === 0)) && (
-                    <Button onClick={() => setOrderToCreateGHN(selectedOrder)} variant="outline" className="gap-2">
+                    <Button onClick={() => openGhn(selectedOrder)} variant="outline" className="gap-2">
                       <Truck className="h-4 w-4" />
                       Tạo đơn GHN
                     </Button>
@@ -921,7 +941,7 @@ export default function OrderManagement() {
       )}
 
       {/* Create GHN Order Dialog */}
-      {orderToCreateGHN && (
+      {!isLocalBackend() && orderToCreateGHN && (
         <CreateGHNOrderDialog
           order={orderToCreateGHN}
           open={!!orderToCreateGHN}
@@ -934,14 +954,14 @@ export default function OrderManagement() {
       )}
 
       {/* Standalone GHN Order Dialog (không gắn với đơn nội bộ) */}
-      <CreateGHNOrderDialog
+      {!isLocalBackend() && <CreateGHNOrderDialog
         open={standaloneGHNOpen}
         onOpenChange={setStandaloneGHNOpen}
         onSuccess={() => {
           loadOrders();
-          setStandaloneGHNOpen(false);
         }}
-      />
+      />}
+      <LocalGhnPrintDialog open={isLocalBackend() && printDialogIds.length > 0} onOpenChange={(open) => { if (!open) setPrintDialogIds([]); }} ids={printDialogIds} />
 
     </div>
   );

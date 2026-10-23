@@ -15,6 +15,7 @@ const LocalDashboardPage = lazy(() => import("./pages/LocalDashboardPage"));
 const UserManagement = lazy(() => import("./pages/UserManagement"));
 const ProfileReviewPage = lazy(() => import("./pages/ProfileReviewPage"));
 const IntegrationAccessPage = lazy(() => import("./pages/IntegrationAccessPage"));
+const ApiSettingsPage = lazy(() => import("./pages/ApiSettingsPage"));
 const CustomerManagement = lazy(() => import("./pages/CustomerManagement"));
 const LocalCustomerManagementPage = lazy(() => import("./pages/LocalCustomerManagementPage"));
 const ProductManagement = lazy(() => import("./pages/ProductManagement"));
@@ -30,6 +31,7 @@ const CostManagementPage = lazy(() => import("./pages/CostManagementPage"));
 const InventoryManagementPage = lazy(() => import("./pages/InventoryManagementPage"));
 const LocalProductCatalogPage = lazy(() => import("./pages/LocalProductCatalogPage"));
 const ProductionOrdersPage = lazy(() => import("./pages/ProductionOrdersPage"));
+const ProductionWorkspacePage = lazy(() => import("./pages/ProductionWorkspacePage"));
 const ProductionAttendancePage = lazy(() => import("./pages/ProductionAttendancePage"));
 const ProductionAttendanceV2Page = lazy(() => import("./pages/ProductionAttendanceV2Page"));
 const PayrollSettingsPage = lazy(() => import("./pages/PayrollSettingsPage"));
@@ -46,6 +48,7 @@ import MainLayout from "./components/layout/MainLayout";
 import MobileLayout from "./components/layout/MobileLayout";
 import NotFound from "./pages/NotFound";
 import { isLocalBackend } from "@/lib/runtime-config";
+import { LocalGhnCreateHostProvider } from "@/components/LocalGhnCreateHost";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -140,6 +143,7 @@ const AppRoutes = () => {
         <Route path="user-management" element={<UserManagement />} />
         <Route path="profile-review" element={<ProfileReviewPage />} />
         <Route path="integration-access" element={<IntegrationAccessPage />} />
+        <Route path="api-settings" element={<ApiSettingsPage />} />
         {/* Keep the complete CRM screens in local mode as well. Their Supabase
             calls are routed through the local adapter, so local SQL does not
             replace or hide the existing customer/product workflows. */}
@@ -155,7 +159,8 @@ const AppRoutes = () => {
         <Route path="reports" element={<ReportsPage />} />
           <Route path="cost-management" element={<CostManagementPage />} />
           <Route path="inventory-management" element={<InventoryManagementPage />} />
-          <Route path="production-orders" element={<ProductionOrdersPage />} />
+          <Route path="production-orders" element={isLocalBackend()?<ProductionWorkspacePage/>:<ProductionOrdersPage />} />
+          <Route path="production-orders-legacy" element={<ProductionOrdersPage />} />
           {/* Local SQL uses the new single-screen workspace; public Supabase keeps V1 unchanged. */}
           <Route path="production-attendance" element={isLocalBackend() ? <ProductionAttendanceV2Page /> : <ProductionAttendancePage />} />
           <Route path="production-attendance-v2" element={<ProductionAttendanceV2Page />} />
@@ -190,11 +195,13 @@ const App = () => {
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <LocalGhnCreateHostProvider>
             <ErrorBoundary fallback={<AppErrorFallback />}>
               <Suspense fallback={<RouteLoadingFallback />}>
                 <AppRoutes />
               </Suspense>
             </ErrorBoundary>
+            </LocalGhnCreateHostProvider>
           </BrowserRouter>
         </SafeTooltipProvider>
       </ThemeProvider>

@@ -1,337 +1,115 @@
-import { 
-  Home, 
-  Users, 
-  Package, 
-  FileText, 
-  ShoppingCart, 
-  TrendingUp, 
-  CreditCard, 
-  BarChart3,
-  Settings,
-  UserCheck,
-  Truck,
-  Scissors,
-  BookOpen,
-  FileSignature,
-  Receipt,
-  Sparkles,
-  Globe,
-  Container,
-  CircleDollarSign,
-  Boxes,
-  Factory,
-  CalendarCheck2,
-  WalletCards,
-  UserRound,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import type { User } from "@supabase/supabase-js";
-import { NavLink, useLocation } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useUserRole } from "@/hooks/useUserRole";
-import { useEmployeePermissions, type PermissionType } from "@/hooks/useEmployeePermissions";
-import { isLocalBackend, isLocalDemoEnabled, localAdminUser } from "@/lib/runtime-config";
-import { getLocalMe, hasStoredLocalUserSession, hasLocalUserSession } from "@/lib/local-auth";
-
+import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, Star } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from "@/components/ui/sidebar";
+  NAVIGATION_GROUPS,
+  navigationGroupForPath,
+  navigationItemsByGroup,
+  navigationItemsInSection,
+  type NavigationGroupId,
+  type NavigationGroup,
+  type NavigationItem,
+} from '@/lib/navigation-catalog';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Sidebar, SidebarContent, useSidebar } from '@/components/ui/sidebar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { NavigationItemRow } from '@/components/navigation/NavigationItemRow';
+import { useNavigation } from '@/components/navigation/NavigationContext';
+import { cn } from '@/lib/utils';
 
-type MenuItem = { title: string; url: string; icon: LucideIcon; description: string; permission: PermissionType | PermissionType[]; integrationAdmin?: boolean };
+const closedGroups = (): Record<NavigationGroupId, boolean> => ({
+  sales: false, operations: false, delivery: false, people: false, finance: false, system: false,
+});
 
-const menuItems: MenuItem[] = [
-  { title: 'API & kết nối Agent', url: '/integration-access', icon: Settings, description: 'Cấp khóa và quyền cho Hermes', permission: 'user_management', integrationAdmin: true },
-  {
-    title: "Tổng quan",
-    url: "/dashboard",
-    icon: Home,
-    description: "Tổng quan & thống kê",
-    permission: "dashboard" as const
-  },
-  { 
-    title: "Khách hàng", 
-    url: "/customers", 
-    icon: Users,
-    description: "Quản lý danh sách khách hàng",
-    permission: "customers" as const
-  },
-  { 
-    title: "Chăm sóc KH", 
-    url: "/customer-care", 
-    icon: UserCheck,
-    description: "Hệ thống chăm sóc khách hàng",
-    permission: "customers" as const
-  },
-  { 
-    title: "Sản phẩm", 
-    url: "/products", 
-    icon: Package,
-    description: "Quản lý kho hàng và giá",
-    permission: "products" as const
-  },
-  { 
-    title: "Quản lý vải", 
-    url: "/fabrics", 
-    icon: Scissors,
-    description: "Quản lý kho vải xưởng sản xuất",
-    permission: "fabric_management" as const
-  },
-  {
-    title: "Kho & vật tư",
-    url: "/inventory-management",
-    icon: Boxes,
-    description: "Nhập xuất kho và giá vốn vật tư",
-    permission: "inventory_view" as const
-  },
-  {
-    title: "Lệnh sản xuất",
-    url: "/production-orders",
-    icon: Factory,
-    description: "Kế hoạch và thực tế sản xuất",
-    permission: "production_view" as const
-  },
-  {
-    title: "Chấm công xưởng",
-    url: "/production-attendance",
-    icon: CalendarCheck2,
-    description: "Bảng công toàn bộ nhân sự xưởng",
-    permission: "production_view" as const
-  },
-  {
-    title: "Chấm công của tôi",
-    url: "/my-attendance",
-    icon: UserCheck,
-    description: "Tự ghi chấm công và sản lượng của bạn",
-    permission: "__self_attendance__" as unknown as PermissionType
-  },
-  {
-    title: "Hồ sơ của tôi",
-    url: "/my-profile",
-    icon: UserRound,
-    description: "Tự khai và cập nhật hồ sơ nhân sự",
-    permission: "__self_profile__" as unknown as PermissionType
-  },
-  {
-    title: "Thiết lập tiền lương",
-    url: "/payroll-settings",
-    icon: WalletCards,
-    description: "Nhân sự, đơn giá và dữ liệu trả lương",
-    permission: "payroll_view" as const
-  },
-  { 
-    title: "Báo giá", 
-    url: "/quotes", 
-    icon: FileText,
-    description: "Tạo và quản lý báo giá",
-    permission: "quotes" as const
-  },
-  { 
-    title: "Đơn hàng", 
-    url: "/orders", 
-    icon: ShoppingCart,
-    description: "Xử lý và theo dõi đơn hàng",
-    permission: "orders" as const
-  },
-  { 
-    title: "Hợp đồng", 
-    url: "/contracts", 
-    icon: FileSignature,
-    description: "Quản lý hợp đồng khách hàng",
-    permission: "contracts" as const
-  },
-  { 
-    title: "Hoá đơn ĐT", 
-    url: "/einvoices", 
-    icon: Receipt,
-    description: "Quản lý hoá đơn điện tử",
-    permission: "contracts" as const
-  },
-  {
-    title: "Theo dõi GHN", 
-    url: "/ghn-tracking", 
-    icon: Truck,
-    description: "Theo dõi giao hàng GHN",
-    permission: "ghn_tracking" as const
-  },
-  { 
-    title: "Dòng tiền", 
-    url: "/cash-flow", 
-    icon: TrendingUp,
-    description: "Quản lý thu chi",
-    permission: "cash_flow" as const
-  },
-  { 
-    title: "Giao dịch", 
-    url: "/transactions", 
-    icon: CreditCard,
-    description: "Lịch sử thanh toán",
-    permission: "transactions" as const
-  },
-  { 
-    title: "Báo cáo", 
-    url: "/reports", 
-    icon: BarChart3,
-    description: "Thống kê và phân tích",
-    permission: "reports" as const
-  },
-  {
-    title: "Chi phí & Giá thành",
-    url: "/cost-management",
-    icon: CircleDollarSign,
-    description: "Giao dịch và phân loại chi phí",
-    permission: ["cost_transactions", "cost_categories", "cost_centers", "cost_objects", "transaction_types", "cost_audit"]
-  },
-  {
-    title: "Kho Kiến Thức", 
-    url: "/knowledge-base", 
-    icon: BookOpen,
-    description: "AI hỗ trợ bán hàng",
-    permission: "knowledge_base" as const
-  },
-  { 
-    title: "Cài đặt AI", 
-    url: "/ai-settings", 
-    icon: Sparkles,
-    description: "Cấu hình công cụ AI cho báo giá",
-    permission: "user_management" as const
-  },
-  { 
-    title: "Cào dữ liệu", 
-    url: "/web-scraper", 
-    icon: Globe,
-    description: "Trích xuất dữ liệu từ trang web",
-    permission: "user_management" as const
-  },
-  { 
-    title: "Nhà xe", 
-    url: "/shipping-companies", 
-    icon: Container,
-    description: "Quản lý nhà xe vận chuyển",
-    permission: "shipping_companies" as const
-  },
-  { 
-    title: "Quản lý nhân viên", 
-    url: "/user-management", 
-    icon: Settings,
-    description: "Phân quyền người dùng",
-    permission: "user_management" as const
-  },
-  {
-    title: "Duyệt hồ sơ nhân sự",
-    url: "/profile-review",
-    icon: UserCheck,
-    description: "Xác nhận hồ sơ nhân viên tự khai",
-    permission: "user_management" as const
-  }
-];
+function CollapsedNavigationLink({ item, active }: { item: NavigationItem; active: boolean }) {
+  return <Tooltip>
+    <TooltipTrigger asChild>
+      <NavLink
+        to={item.path}
+        title={item.label}
+        aria-label={item.label}
+        aria-current={active ? 'page' : undefined}
+        className={cn('flex h-10 items-center justify-center rounded-md hover:bg-sidebar-accent', active && 'bg-sidebar-accent text-sidebar-accent-foreground')}
+      >
+        <item.icon className="h-4 w-4" aria-hidden="true" />
+      </NavLink>
+    </TooltipTrigger>
+    <TooltipContent side="right">{item.label}</TooltipContent>
+  </Tooltip>;
+}
+
+function CollapsedGroupPopover({ group, items, active, favoriteIds, onToggleFavorite }: {
+  group: NavigationGroup;
+  items: readonly NavigationItem[];
+  active: (path: string) => boolean;
+  favoriteIds: readonly string[];
+  onToggleFavorite: ReturnType<typeof useNavigation>['toggleFavorite'];
+}) {
+  const [open, setOpen] = useState(false);
+  return <Popover open={open} onOpenChange={setOpen}>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <PopoverTrigger asChild><Button type="button" variant="ghost" size="icon" title={group.label} aria-label={group.label} className="h-10 w-full"><group.icon className="h-4 w-4" /></Button></PopoverTrigger>
+      </TooltipTrigger>
+      <TooltipContent side="right">{group.label}</TooltipContent>
+    </Tooltip>
+    <PopoverContent side="right" align="start" className="w-64 p-2">
+      <p className="px-2 pb-1 text-sm font-semibold">{group.label}</p>
+      {items.map(item => <NavigationItemRow key={item.id} item={item} active={active(item.path)} favorite={favoriteIds.includes(item.id)} onToggleFavorite={onToggleFavorite} onNavigate={() => setOpen(false)} />)}
+    </PopoverContent>
+  </Popover>;
+}
 
 export function AppSidebar() {
   const { state } = useSidebar();
-  const collapsed = state === "collapsed";
+  const collapsed = state === 'collapsed';
   const location = useLocation();
-  const currentPath = location.pathname;
-  
-  const [user, setUser] = useState<User | null>(null);
-  const { role: userRole } = useUserRole(user);
-  const { hasPermission } = useEmployeePermissions(user, userRole);
+  const { visibleItems, favoriteIds, visibleFavoriteItems, toggleFavorite } = useNavigation();
+  const activeGroup = navigationGroupForPath(location.pathname, visibleItems);
+  const [openGroups, setOpenGroups] = useState<Record<NavigationGroupId, boolean>>(() => ({
+    ...closedGroups(),
+    ...(activeGroup ? { [activeGroup]: true } : {}),
+  }));
+  const topItems = navigationItemsInSection(visibleItems, 'top');
+  const accountItems = navigationItemsInSection(visibleItems, 'account');
+  const active = (path: string) => location.pathname === path;
 
   useEffect(() => {
-    if (isLocalBackend()) {
-      if (!hasStoredLocalUserSession()) {
-        setUser(isLocalDemoEnabled() ? localAdminUser as unknown as User : null);
-      } else {
-        void getLocalMe()
-          .then((me) => setUser({
-            ...localAdminUser,
-            id: me.user_id,
-            email: me.email,
-            user_metadata: { first_name: me.first_name ?? '', last_name: me.last_name ?? '' },
-          } as unknown as User))
-          .catch(() => setUser(null));
-      }
-      return;
-    }
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-  }, []);
+    if (activeGroup) setOpenGroups(current => current[activeGroup] ? current : { ...current, [activeGroup]: true });
+  }, [activeGroup]);
 
-  const isActive = (path: string) => currentPath === path;
-  const getNavCls = (isActive: boolean) =>
-    isActive 
-      ? "bg-primary text-white hover:bg-primary hover:text-white shadow-brand" 
-      : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors";
+  return <Sidebar className="border-r bg-sidebar" collapsible="icon">
+    <SidebarContent className="flex h-full p-2">
+      {!collapsed && <div className="px-2 py-2"><p className="text-sm font-semibold text-sidebar-foreground">Điều hướng</p><p className="text-xs text-sidebar-foreground/60">Ctrl B để thu gọn menu</p></div>}
+      <nav className="min-h-0 space-y-1 overflow-y-auto" aria-label="Điều hướng chính">
+        {!collapsed && topItems.map(item => <NavigationItemRow key={item.id} item={item} active={active(item.path)} favorite={favoriteIds.includes(item.id)} onToggleFavorite={toggleFavorite} />)}
+        {collapsed && <div className="space-y-1">{topItems.map(item => <CollapsedNavigationLink key={item.id} item={item} active={active(item.path)} />)}</div>}
 
-  // Filter menu items based on user permissions
-  const selfAttendanceVisible = isLocalBackend() && hasLocalUserSession();
-  const filteredMenuItems = menuItems.filter((item) => {
-    if (item.integrationAdmin) return isLocalBackend() && hasLocalUserSession() && userRole === 'admin' && user?.id !== 'local-admin';
-    if ((item.permission as string) === "__self_attendance__" || (item.permission as string) === "__self_profile__") return selfAttendanceVisible;
-    return Array.isArray(item.permission)
-      ? item.permission.some((permission) => hasPermission(permission))
-      : hasPermission(item.permission);
-  });
+        {!collapsed && visibleFavoriteItems.length > 0 && <section className="border-y py-2" aria-label="Đã ghim">
+          <p className="flex items-center gap-2 px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60"><Star className="h-3.5 w-3.5 fill-current" />Đã ghim</p>
+          {visibleFavoriteItems.map(item => <NavigationItemRow key={`pin-${item.id}`} item={item} active={active(item.path)} favorite onToggleFavorite={toggleFavorite} />)}
+        </section>}
 
-  return (
-    <Sidebar
-      className={`transition-all duration-300 ${collapsed ? "w-14" : "w-64"} border-r bg-sidebar`}
-      collapsible="icon"
-    >
-      <SidebarContent className="p-0">
-        {/* Header */}
-        <div className={`px-4 py-4 border-b ${collapsed ? 'px-2' : ''}`}>
-          {!collapsed && (
-            <h2 className="text-base font-semibold text-sidebar-foreground truncate">
-              CRM Pro
-            </h2>
-          )}
-        </div>
+        {NAVIGATION_GROUPS.map(group => {
+          const items = navigationItemsByGroup(visibleItems, group.id);
+          if (!items.length) return null;
+          if (collapsed) return <CollapsedGroupPopover key={group.id} group={group} items={items} active={active} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} />;
 
-        {/* Navigation Menu */}
-        <div className="px-2 py-2">
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu className="space-y-0.5">
-                {filteredMenuItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
-                      className={`${getNavCls(isActive(item.url))} h-auto p-0`}
-                      tooltip={collapsed ? item.title : undefined}
-                    >
-                      <NavLink 
-                        to={item.url} 
-                        className="flex items-center gap-2 px-2 py-2 rounded-md transition-all duration-200 group"
-                      >
-                        <item.icon className="h-4 w-4 flex-shrink-0" />
-                        {!collapsed && (
-                          <div className="flex-1 min-w-0">
-                            <div className={`font-medium text-sm truncate ${isActive(item.url) ? 'text-white' : 'text-sidebar-foreground group-hover:text-sidebar-accent-foreground'}`}>
-                              {item.title}
-                            </div>
-                            <div className={`text-xs truncate ${isActive(item.url) ? 'text-white/80' : 'text-sidebar-foreground/60 group-hover:text-sidebar-accent-foreground/70'}`}>
-                              {item.description}
-                            </div>
-                          </div>
-                        )}
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </div>
-      </SidebarContent>
-    </Sidebar>
-  );
+          const expanded = openGroups[group.id];
+          return <section key={group.id} className="border-b border-sidebar-border/60 pb-1">
+            <Button type="button" variant="ghost" className="h-10 w-full justify-start gap-2 px-2 text-sm font-semibold" aria-expanded={expanded} onClick={() => setOpenGroups(current => ({ ...current, [group.id]: !current[group.id] }))}>
+              <group.icon className="h-4 w-4" /><span className="flex-1 text-left">{group.label}</span>{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </Button>
+            {expanded && <div className="space-y-1 pb-1">{items.map(item => <NavigationItemRow key={item.id} item={item} active={active(item.path)} favorite={favoriteIds.includes(item.id)} onToggleFavorite={toggleFavorite} />)}</div>}
+          </section>;
+        })}
+      </nav>
+      {!collapsed && accountItems.length > 0 && <footer className="mt-auto border-t pt-2" aria-label="Tài khoản">
+        <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60">Tài khoản</p>
+        {accountItems.map(item => <NavigationItemRow key={item.id} item={item} active={active(item.path)} />)}
+      </footer>}
+      {collapsed && accountItems.length > 0 && <div className="mt-auto space-y-1 border-t pt-2">{accountItems.map(item => <CollapsedNavigationLink key={item.id} item={item} active={active(item.path)} />)}</div>}
+    </SidebarContent>
+  </Sidebar>;
 }

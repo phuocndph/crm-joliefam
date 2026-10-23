@@ -121,7 +121,7 @@ export default function ProductionOrdersPage() {
   const { execute: createAttempt } = useDispatchMutation();
   const { role, loading: roleLoading } = useUserRole(user);
   const { hasPermission, loading: permLoading } = useEmployeePermissions(user, role);
-  const canView = hasPermission("production_view") || hasPermission("production_sales_submit") || hasPermission("production_sales_workflow") || hasPermission("production_cutting_plan");
+  const canView = hasPermission("production_view") || hasPermission("production_manage") || hasPermission("production_operations") || hasPermission("production_sales_submit") || hasPermission("production_sales_workflow") || hasPermission("production_cutting_plan");
   const canManage = hasPermission("production_manage");
   const canRelease = hasPermission("production_release");
   const canComplete = hasPermission("production_complete");

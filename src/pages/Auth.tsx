@@ -12,6 +12,7 @@ import { Eye, EyeOff, Building2, User, Mail, Lock, ShieldCheck } from "lucide-re
 import { toast } from "@/hooks/use-toast";
 import { isLocalBackend, isLocalDemoEnabled } from "@/lib/runtime-config";
 import { loginLocal, hasLocalUserSession, getLocalMe, logoutLocal, clearLocalSession } from "@/lib/local-auth";
+import { getLocalPostAuthPath } from '@/lib/post-auth-path';
 
 const REMEMBER_EMAIL_KEY = "remembered_email";
 
@@ -50,8 +51,8 @@ const Auth = () => {
       // Local: nếu đã có phiên người dùng thì vào thẳng dashboard;
       // nếu chưa thì hiện form đăng nhập email/mật khẩu.
       if (hasLocalUserSession()) {
-        void getLocalMe(true)
-          .then(() => { if (!cancelled) navigate(getPostAuthPath(), { replace: true }); })
+        void getLocalPostAuthPath(getPostAuthPath())
+          .then(path => { if (!cancelled) navigate(path, { replace: true }); })
           .catch(() => {
             if (cancelled) return;
             // Remove an expired/corrupt browser token so the next local
@@ -93,7 +94,7 @@ const Auth = () => {
           else localStorage.removeItem(REMEMBER_EMAIL_KEY);
         } catch { /* bỏ qua */ }
         toast({ title: "Đăng nhập thành công!", description: "Chào mừng bạn trở lại hệ thống CRM." });
-        navigate(getPostAuthPath());
+        navigate(await getLocalPostAuthPath(getPostAuthPath()));
         return;
       }
       const { data, error } = await supabase.auth.signInWithPassword({

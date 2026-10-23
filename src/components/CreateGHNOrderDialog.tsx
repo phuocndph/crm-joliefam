@@ -19,6 +19,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounce } from "@/hooks/useDebounce";
+import { LocalCreateGHNOrderDialog } from './LocalCreateGHNOrderDialog';
 
 interface Province { ProvinceID: number; ProvinceName: string; NameExtension?: string[]; }
 interface District { DistrictID: number; DistrictName: string; NameExtension?: string[]; }
@@ -120,7 +121,7 @@ const parseWeightRange = (name: string): { min: number; max: number } => {
   return { min: 0, max: Infinity };
 };
 
-interface CreateGHNOrderDialogProps {
+export interface CreateGHNOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order?: {
@@ -136,7 +137,11 @@ interface CreateGHNOrderDialogProps {
   onSuccess?: () => void;
 }
 
-export function CreateGHNOrderDialog({ open, onOpenChange, order, remainingAmount = 0, onSuccess }: CreateGHNOrderDialogProps) {
+export function CreateGHNOrderDialog(props:CreateGHNOrderDialogProps) {
+  return isLocalBackend()?<LocalCreateGHNOrderDialog {...props}/>:<HostedCreateGHNOrderDialog {...props}/>;
+}
+
+function HostedCreateGHNOrderDialog({ open, onOpenChange, order, remainingAmount = 0, onSuccess }: CreateGHNOrderDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);

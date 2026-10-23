@@ -788,6 +788,7 @@ export async function reverseProductionEntry(
 }
 
 export async function setFactoryAttendanceDayClosure(input: {
+  expected_revision?: string;
   worker_id: string;
   work_date: string;
   target_status: "EMPLOYEE_CONFIRMED" | "LEADER_CONFIRMED" | "REOPENED";

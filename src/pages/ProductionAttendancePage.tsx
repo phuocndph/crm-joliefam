@@ -30,6 +30,8 @@ function errorMessage(error: unknown) {
 export default function ProductionAttendancePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get("tab") || undefined;
+  const returnCandidate=searchParams.get("returnTo")||"";
+  const returnTo=/^\/payroll-settings(?:\?|$)/.test(returnCandidate)?returnCandidate:null;
   const { user, isReady: authReady } = useAuthReady();
   const { role, loading: roleLoading } = useUserRole(user);
   const { hasPermission, loading: permissionLoading } = useEmployeePermissions(user, role);
@@ -119,8 +121,9 @@ export default function ProductionAttendancePage() {
           <AlertTitle>Không thể tải danh sách nhân sự</AlertTitle>
           <AlertDescription className="space-y-3"><p>{loadError}</p><Button variant="outline" size="sm" onClick={() => void loadWorkers()}>Thử tải lại</Button></AlertDescription>
         </Alert>
-      ) : (
-        <FactoryAttendancePanel
+      ) : (<>
+        {returnTo&&<Button asChild variant="outline" className="mb-3"><Link to={returnTo}>← Trở lại đối soát lương</Link></Button>}
+      <FactoryAttendancePanel
           workers={workers}
           canRecord={canOperate || canManage}
           canApproveAttendance={canApproveAttendance}
@@ -133,7 +136,7 @@ export default function ProductionAttendancePage() {
           initialTab={initialTab}
           onWorkersChanged={loadWorkers}
         />
-      )}
+      </>)}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { approveLegacyPayrollFixture } from './payroll-approved-fixtures.mjs';
 
 const base = String(process.env.LOCAL_API_URL || "").replace(/\/$/, "");
 const databaseUrl = String(process.env.LOCAL_DATABASE_URL || "");
@@ -97,9 +98,14 @@ async function seedPayrollProfiles(workerIds, suffix = "") {
   }
 }
 
-async function createReleasedOrder(admin, productId, quantity, suffix) {
+async function createReleasedOrder(admin, productId, quantity, suffix, historicalCompletion = true) {
   const group = await must("POST", "/api/production-orders/groups", { source_type: "MANUAL", order_id: null, notes: suffix, idempotency_key: key(`create-${suffix}`), lines: [{ product_id: productId, quantity }] }, admin);
   const order = group.orders[0];
+  // This two-stage dispatch suite is historical V2 regression coverage. Verify
+  // the API still creates V3, then explicitly seed historical metadata through
+  // isolated SQL; the workspace suite exercises canonical V3 end to end.
+  assert.equal((await sql("select workflow_generation from local_production_orders where id=$1", [order.id])).rows[0].workflow_generation, "WORKFLOW_V3");
+  if (historicalCompletion) await sql("update local_production_orders set workflow_generation='WORKFLOW_V2' where id=$1", [order.id]);
   await must("POST", `/api/production-orders/${order.id}/release`, { idempotency_key: key(`release-${suffix}`) }, admin);
   const batches = await must("GET", `/api/production-orders/${order.id}/batches`, undefined, admin);
   assert.equal(batches.length, 1, "Released order should have one default batch.");
@@ -188,7 +194,7 @@ async function assertNoClosedObligations(orderId) {
 }
 
 async function assertCompletionQuantityValidation(session, productId) {
-  const zero = await createReleasedOrder(session, productId, 1, "ZERO-COMPLETION");
+  const zero = await createReleasedOrder(session, productId, 1, "ZERO-COMPLETION", true);
   const zeroBody = { quantity_good: 0, quantity_scrap: 0, idempotency_key: key("zero-completion") };
   await denied("POST", `/api/production-orders/${zero.order.id}/complete`, zeroBody, session, [400]);
   // The legacy URL is an alias rewritten through the modern completion
@@ -196,7 +202,7 @@ async function assertCompletionQuantityValidation(session, productId) {
   await denied("POST", `/api/legacy-production-orders/${zero.order.id}/complete`, zeroBody, session, [400]);
   assert.notEqual((await sql("select status from local_production_orders where id=$1", [zero.order.id])).rows[0].status, "COMPLETED", "A zero/zero completion changed the order state.");
 
-  const allScrap = await createReleasedOrder(session, productId, 1, "ALL-SCRAP-COMPLETION");
+  const allScrap = await createReleasedOrder(session, productId, 1, "ALL-SCRAP-COMPLETION", true);
   // A missing/zero routing standard only removes the efficiency metric; it
   // is not a prerequisite for an otherwise valid completion.
   await sql("update local_production_orders set standard_minutes_total=0 where id=$1", [allScrap.order.id]);
@@ -224,7 +230,7 @@ async function extendedWorkflow(admin, manager, employee, other, product, pieceC
   await denied("GET", `${dispatch}/rates?date=${firstDate}`, undefined, employee.session, [403]);
   const defaultManagerDraft = await must("POST", "/api/production-orders", { product_id: product.id, quantity: 1, source_type: "MANUAL", idempotency_key: key("default-manager-single-draft") }, defaultManager.session);
   assert.equal(defaultManagerDraft.status, "DRAFT", "Default manager cannot create a single manual production draft.");
-  const fixture = await createReleasedOrder(defaultManager.session, product.id, 10, "CLOSE-STATES");
+  const fixture = await createReleasedOrder(defaultManager.session, product.id, 10, "CLOSE-STATES", true);
   await must("GET", `${dispatch}?orderId=${fixture.order.id}`, undefined, defaultManager.session);
 
   const groupBody = { order_id: null, source_type: "MANUAL", notes: "Group-level instructions", lines: [{ product_id: product.id, quantity: 3 }] };
@@ -279,11 +285,10 @@ async function extendedWorkflow(admin, manager, employee, other, product, pieceC
   await assertCloseBlocked(defaultManager.session, fixture, "pending-report");
   await must("POST", `/api/legacy-production-orders/${fixture.order.id}/status`, { target_status: "ON_HOLD", reason: "Pause pending review" }, defaultManager.session);
   await denied("POST", reportPath(pending.row.id, "review"), { target_status: "APPROVED", idempotency_key: key("hold-review") }, defaultManager.session);
-  await must("POST", `/api/legacy-production-orders/${fixture.order.id}/status`, { target_status: "IN_PROGRESS" }, defaultManager.session);
+  await must("POST", `/api/legacy-production-orders/${fixture.order.id}/status`, { target_status: "IN_PROGRESS", reason: "Review can continue after pause" }, defaultManager.session);
   await review(defaultManager.session, pending.row.id, "APPROVED", "close-settled");
-  // New manual orders follow the full workflow: settled cutting alone is no
-  // longer a finished-product completion. Keep the original closure checks and
-  // supply genuine approved sewing rather than a legacy fixture exemption.
+  // This explicitly historical fixture retains the V2 sewing requirement;
+  // V3 four-stage receipt closure is exercised by the workspace suite.
   const closeSewing = await assign(defaultManager.session, fixture.order, fixture.batch, other.worker.id, "SEWING", 10, "close-sewing", { piece_rate_code: pieceCode });
   await accept(other.session, closeSewing.row.id, 10, "close-sewing-accept");
   const closeSewingReport = await report(other.session, closeSewing.row.id, 10, "close-sewing-report");
@@ -293,12 +298,12 @@ async function extendedWorkflow(admin, manager, employee, other, product, pieceC
 
   // Closing and dispatch allocation must share the same locked parent.
   for (let i = 0; i < 4; i += 1) {
-    const concurrent = await createReleasedOrder(defaultManager.session, product.id, 1, `CLOSE-RACE-${i}`);
+    const concurrent = await createReleasedOrder(defaultManager.session, product.id, 1, `CLOSE-RACE-${i}`, true);
     const results = await Promise.all([
       api("POST", `/api/production-orders/${concurrent.order.id}/complete`, { quantity_good: 0, idempotency_key: key(`race-close-${i}`) }, defaultManager.session),
       api("POST", `${dispatch}/assignments`, { production_order_id: concurrent.order.id, production_batch_id: concurrent.batch.id, worker_id: employee.worker.id, stage: "CUTTING", quantity: 1, assigned_from: periodStart, idempotency_key: key(`race-allocate-${i}`) }, defaultManager.session),
     ]);
-    assert(results.some((r) => r.ok) && results.every((r) => r.ok || [400, 403, 409, 422].includes(r.status)), "Close/allocation race returned uncontrolled failure.");
+    assert(results.some((r) => r.ok) && results.every((r) => r.ok || [400, 403, 409, 422].includes(r.status)), `Close/allocation race returned uncontrolled failure: ${JSON.stringify(results.map(r=>({status:r.status,message:r.payload.message})))}`);
     await assertNoClosedObligations(concurrent.order.id);
     checks += 2;
   }
@@ -331,7 +336,7 @@ async function extendedWorkflow(admin, manager, employee, other, product, pieceC
   assert.deepEqual(await splitState(), expectedSplitState, "Rejected whole-batch split changed quantities.");
   await denied("POST", `${dispatch}/batches/${atomicSplit.batch.id}/split`, { ...atomicSplitBody, batch_number: `EMPLOYEE-SPLIT-${token}`, idempotency_key: key("atomic-split-employee") }, employee.session, [403]);
   for (const terminalStatus of ["COMPLETED", "CANCELLED"]) {
-    const terminalBatch = await createReleasedOrder(defaultManager.session, product.id, 3, `BATCH-${terminalStatus}`);
+    const terminalBatch = await createReleasedOrder(defaultManager.session, product.id, 3, `BATCH-${terminalStatus}`, terminalStatus === "COMPLETED");
     if (terminalStatus === "COMPLETED") await must("POST", `/api/production-batches/${terminalBatch.batch.id}/status`, { target_status: "IN_PROGRESS" }, defaultManager.session);
     await must("POST", `/api/production-batches/${terminalBatch.batch.id}/status`, { target_status: terminalStatus, reason: "Terminal batch guard fixture" }, defaultManager.session);
     await denied("PATCH", `${dispatch}/batches/${terminalBatch.batch.id}`, { planned_quantity: 2, reason: "Cannot edit terminal batch", idempotency_key: key(`terminal-batch-${terminalStatus}`) }, defaultManager.session);
@@ -594,6 +599,9 @@ if (process.argv.includes("--verify-restart")) {
   }
   await sql("update local_production_orders set status='IN_PROGRESS' where id=$1", [main.order.id]);
 
+  // Calendar approval is an explicit synthetic prerequisite, never an implied
+  // server fallback. Use the shared historical financial fixture with guarded SQL.
+  await approveLegacyPayrollFixture({query:sql},periodStart,periodEnd,26);
   const run = await must("POST", "/api/payroll/runs", { period_start: periodStart, period_end: periodEnd, standard_days: 26, idempotency_key: key("payroll") }, admin);
   const details = await must("GET", `/api/payroll/runs/${run.id}`, undefined, admin);
   const linkedItems = details.items.filter((item) => entryIds.includes(item.source_id));

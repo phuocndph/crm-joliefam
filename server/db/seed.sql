@@ -73,10 +73,11 @@ INSERT INTO local_day_statuses (worker_id, work_date, status, meal_eligible, rea
 SELECT id, CURRENT_DATE - 2, 'ABSENT', false, 'Demo trường hợp nghỉ/vắng', 'seed-day-status-001'
 FROM local_workers WHERE employee_code = 'DEMO-LOCAL'
 ON CONFLICT (idempotency_key) DO NOTHING;
-INSERT INTO local_day_closures (worker_id, work_date, status, reason, idempotency_key)
-SELECT id, CURRENT_DATE - 1, 'LEADER_CONFIRMED', 'Demo ngày công đã chốt', 'seed-closure-001'
-FROM local_workers WHERE employee_code = 'DAY-001'
+INSERT INTO local_day_closures (worker_id, work_date, status, reason, idempotency_key,confirmation_actor_id,confirmation_kind,confirmation_reason,confirmed_revision)
+SELECT w.id, CURRENT_DATE - 1, 'EMPLOYEE_CONFIRMED', 'Demo ngày công đã chốt', 'seed-closure-001','local-admin','PROXY','Xác nhận dữ liệu minh họa khi tạo cơ sở dữ liệu mới',coalesce(r.revision,0)
+FROM local_workers w LEFT JOIN local_attendance_day_revisions r ON r.worker_id=w.id AND r.work_date=CURRENT_DATE-1 WHERE w.employee_code = 'DAY-001'
 ON CONFLICT (idempotency_key) DO NOTHING;
+UPDATE local_day_closures SET status='LEADER_CONFIRMED' WHERE idempotency_key='seed-closure-001' AND status='EMPLOYEE_CONFIRMED';
 INSERT INTO local_overtime (worker_id, work_date, overtime_type, overtime_minutes, reason, status, idempotency_key)
 SELECT id, CURRENT_DATE, 'NORMAL_OVERTIME', 120, 'Đơn hàng cần hoàn thiện gấp', 'SUBMITTED', 'seed-overtime-001'
 FROM local_workers WHERE employee_code = 'HOUR-001'
