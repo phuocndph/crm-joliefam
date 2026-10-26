@@ -3,15 +3,50 @@ export type GhnQuoteService = { service_id: number; service_type_id: number; sho
 export const ghnServiceChoiceKey = (service: GhnQuoteService) => `${service.service_id}:${service.service_type_id}`;
 export const GHN_PACKED_PARCEL_NAME = 'Kiện hàng đã đóng gói';
 export type GhnQuoteItem = { name: string; quantity: number; weight: number; length: number; width: number; height: number };
-export type GhnProductLine = { name: string; quantity: number };
-export type GhnFeeData = { to_district_id: number; to_ward_code: string; weight: number; cod_value: number; insurance_value: number; length?: number; width?: number; height?: number; items?: GhnQuoteItem[] };
+export type GhnProductLine = { name: string; quantity: number; weight?: number; code?: string };
+export type GhnFeeData = { to_district_id: number; to_ward_code: string; weight: number; cod_value: number; insurance_value: number; cod_failed_amount?: number; length?: number; width?: number; height?: number; items?: GhnQuoteItem[] };
 export type GhnQuoteSnapshot = {
   key: string;
   kind: 'preliminary' | 'final';
   feeData: GhnFeeData;
 };
 export type GhnMeasuredParcel = { weight: number; length?: number; width?: number; height?: number };
-type QuoteInput = { provinceId: string; districtId: string; wardCode: string; address: string; items?: Array<GhnProductLine | GhnQuoteItem>; cod: number; insurance: number; parcel?: GhnMeasuredParcel };
+export const GHN_QUOTE_TTL_MS = 60000;
+export const GHN_FEE_COMPONENT_LABELS = {
+  service_fee: 'Phí dịch vụ', insurance_fee: 'Phí bảo hiểm', cod_fee: 'Phí thu hộ COD',
+  pick_station_fee: 'Phí điểm lấy hàng', coupon_value: 'Giảm giá (GHN)', r2s_fee: 'Phí giao lại',
+  return_again: 'Phí trả lại lần nữa', document_return: 'Phí hoàn chứng từ', double_check: 'Phí đồng kiểm',
+  pick_remote_areas_fee: 'Phụ phí lấy hàng vùng xa', deliver_remote_areas_fee: 'Phụ phí giao hàng vùng xa',
+  cod_failed_fee: 'Phí thu tiền khi giao thất bại', change_to_address_fee: 'Phí đổi địa chỉ nhận',
+  change_return_address_fee: 'Phí đổi địa chỉ trả', return: 'Phí hoàn hàng',
+} as const;
+export type GhnFeeComponent = keyof typeof GHN_FEE_COMPONENT_LABELS;
+export type GhnFeeQuote = { total: number; components: Partial<Record<GhnFeeComponent, number>>; quotedAt: number; expiresAt: number };
+export const isGhnQuoteFresh = (quote: Pick<GhnFeeQuote, 'quotedAt' | 'expiresAt'> | null | undefined, now = Date.now()) => Boolean(quote && Number.isSafeInteger(quote.quotedAt) && Number.isSafeInteger(quote.expiresAt) && quote.quotedAt <= now && now < quote.expiresAt);
+
+/** Provider total is authoritative; components are explanatory, never summed. */
+export function parseGhnFeeQuote(value: unknown, now = Date.now(), ttlMs = GHN_QUOTE_TTL_MS): GhnFeeQuote {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('GHN trả về báo giá không hợp lệ.');
+  const row = value as Record<string, unknown>;
+  if (typeof row.total !== 'number' || !Number.isSafeInteger(row.total) || row.total < 0) throw new Error('GHN trả về tổng cước không hợp lệ.');
+  const components: GhnFeeQuote['components'] = {};
+  for (const field of Object.keys(GHN_FEE_COMPONENT_LABELS) as GhnFeeComponent[]) {
+    if (row[field] === undefined) continue;
+    if (typeof row[field] !== 'number' || !Number.isSafeInteger(row[field]) || (field !== 'coupon_value' && row[field] < 0)) throw new Error('GHN trả về chi tiết cước không hợp lệ.');
+    components[field] = row[field];
+  }
+  return { total: row.total, components, quotedAt: now, expiresAt: now + ttlMs };
+}
+
+/** Delivery-success amount excludes insurance principal and failed-delivery COD. */
+export function ghnRecipientAmount(cod: number, payment: string, quote: GhnFeeQuote | null | undefined, now = Date.now()): number | null {
+  if (!Number.isSafeInteger(cod) || cod < 0 || cod > 50000000 || !['1', '2'].includes(payment)) return null;
+  if (payment === '1') return cod;
+  if (!isGhnQuoteFresh(quote, now) || !Number.isSafeInteger(quote!.total) || quote!.total < 0) return null;
+  const amount = cod + quote!.total;
+  return Number.isSafeInteger(amount) ? amount : null;
+}
+type QuoteInput = { provinceId: string; districtId: string; wardCode: string; address: string; items?: Array<GhnProductLine | GhnQuoteItem>; cod: number; insurance: number; codFailed?: number; parcel?: GhnMeasuredParcel; parcels?: readonly GhnMeasuredParcel[] };
 const integer = (value: number, min: number, max: number) => Number.isSafeInteger(value) && value >= min && value <= max;
 const physical = (row: Partial<GhnQuoteItem>): row is GhnQuoteItem => integer(Number(row.quantity), 1, 1000) && integer(Number(row.weight), 1, 50000) && [row.length, row.width, row.height].every(value => integer(Number(value), 1, 200));
 
@@ -25,19 +60,19 @@ export function parseGhnKilograms(value: string): number | null {
   return integer(grams, 1, 50000) ? grams : null;
 }
 
-/** One packed parcel cannot use GHN type 2 at/above 20 kg or type 5 below it. */
-export function isGhnServiceEligible(service: Pick<GhnQuoteService, 'service_type_id'>, weight: number): boolean {
-  return integer(weight, 1, 50000) && (weight < 20000 ? service.service_type_id === 2 : service.service_type_id === 5);
+/** Multi-parcel orders use type 5, including when total weight is below 20 kg. */
+export function isGhnServiceEligible(service: Pick<GhnQuoteService, 'service_type_id'>, weight: number, parcelCount = 1): boolean {
+  return integer(weight, 1, 50000) && integer(parcelCount, 1, 100) && (weight < 20000 && parcelCount === 1 ? service.service_type_id === 2 : service.service_type_id === 5);
 }
 
-export function eligibleGhnServices(services: readonly GhnQuoteService[], weight: number): GhnQuoteService[] {
-  return services.filter(service => isGhnServiceEligible(service, weight));
+export function eligibleGhnServices(services: readonly GhnQuoteService[], weight: number, parcelCount = 1): GhnQuoteService[] {
+  return services.filter(service => isGhnServiceEligible(service, weight, parcelCount));
 }
 
 // Names/content are required only when creating an order. Fee requests use
 // deterministic labels so editing a name cannot change the parcel identity.
 export function buildGhnPackedContent(items: readonly GhnProductLine[]): string {
-  return items.map(row => `${row.name.trim()} × ${row.quantity}`).join(', ');
+  return items.map(row => `${row.name.trim()}${row.code?.trim() ? ` [${row.code.trim()}]` : ''} × ${row.quantity}`).join(', ');
 }
 
 /** GHN displays item names in its goods description, so retain real contents on create. */
@@ -49,9 +84,25 @@ export function buildGhnPackedParcelItemName(items: readonly GhnProductLine[]): 
   return `${prefix}…`;
 }
 
+export function ghnQuoteParcelName(index: number, count: number): string {
+  return count === 1 ? GHN_PACKED_PARCEL_NAME : `${GHN_PACKED_PARCEL_NAME} ${index + 1}/${count}`;
+}
+
+/** Keep physical parcels independent of product quantities; content remains order-level. */
+export function buildGhnCreateParcelItemName(items: readonly GhnProductLine[], index: number, count: number): string {
+  if (count === 1) return buildGhnPackedParcelItemName(items);
+  const content = `Kiện ${index + 1}/${count}: ${index === 0 ? buildGhnPackedContent(items) : 'Cùng đơn hàng'}`;
+  if (content.length <= 200) return content;
+  let prefix = content.slice(0, 199);
+  if (/^[\uD800-\uDBFF]$/.test(prefix.at(-1) || '')) prefix = prefix.slice(0, -1);
+  return `${prefix}…`;
+}
+
 export function validateGhnCreateItems(items: readonly GhnProductLine[]): string {
   if (!items.length || items.length > 100 || items.some(row => !row.name.trim() || row.name.trim().length > 200)) return 'Nhập tên cho từng sản phẩm (tối đa 100 sản phẩm, 200 ký tự mỗi tên) để tạo vận đơn.';
   if (items.some(row => !integer(row.quantity, 1, 1000))) return 'Số lượng mỗi sản phẩm phải là số nguyên từ 1 đến 1.000.';
+  if (items.some(row => row.code !== undefined && (typeof row.code !== 'string' || row.code.trim().length > 100))) return 'Mã sản phẩm không được vượt quá 100 ký tự.';
+  if (items.some(row => row.weight !== undefined && !integer(row.weight, 1, 50000))) return 'Khối lượng mỗi sản phẩm phải là số nguyên từ 1 đến 50.000 gram.';
   if (buildGhnPackedContent(items).length > 2000) return 'Tổng nội dung sản phẩm không được vượt quá 2.000 ký tự để tạo vận đơn.';
   return '';
 }
@@ -60,6 +111,20 @@ export function buildGhnQuoteSnapshot(input: QuoteInput): { snapshot: GhnQuoteSn
   const fail = (error: string) => ({ snapshot: null, error });
   if (!integer(Number(input.provinceId), 1, 99999999) || !integer(Number(input.districtId), 1, 99999999) || !/^[A-Za-z0-9_-]{1,30}$/.test(input.wardCode) || !input.address.trim()) return fail('Chọn đủ địa chỉ tỉnh / thành, quận / huyện và phường / xã để tính cước.');
   if (!integer(input.cod, 0, 50000000) || !integer(input.insurance, 0, 5000000)) return fail('COD phải là số nguyên từ 0 đến 50 triệu; bảo hiểm từ 0 đến 5 triệu đồng.');
+  if (input.codFailed !== undefined && !integer(input.codFailed, 0, 50000000)) return fail('Tiền thu khi giao thất bại phải là số nguyên từ 0 đến 50 triệu đồng.');
+  if (input.parcels) {
+    if (!integer(input.parcels.length, 1, 100)) return fail('Mỗi vận đơn có từ 1 đến 100 kiện.');
+    if (input.parcels.length === 1) return buildGhnQuoteSnapshot({ ...input, parcels: undefined, parcel: input.parcels[0] });
+    const invalid = input.parcels.findIndex(row => !integer(row.weight, 1, 50000) || ![row.length, row.width, row.height].every(value => integer(Number(value), 1, 200)));
+    if (invalid >= 0) return fail(`Kiện ${invalid + 1}: nhập cân nặng 1–50.000 gram và đủ dài × rộng × cao 1–200 cm để tính cước nhiều kiện.`);
+    const weight = input.parcels.reduce((sum, row) => sum + row.weight, 0);
+    if (!integer(weight, 1, 50000)) return fail('Tổng cân nặng của vận đơn không được vượt quá 50.000 gram (50 kg).');
+    // Type 5 is priced from each item. There is no documented combined box:
+    // omit root dimensions rather than manufacture a bounding box.
+    const feeData: GhnFeeData = { to_district_id: Number(input.districtId), to_ward_code: input.wardCode, weight, cod_value: input.cod, insurance_value: input.insurance, items: input.parcels.map((row, index) => ({ name: ghnQuoteParcelName(index, input.parcels!.length), quantity: 1, weight: row.weight, length: row.length!, width: row.width!, height: row.height! })) };
+    if (input.codFailed !== undefined) feeData.cod_failed_amount = input.codFailed;
+    return { snapshot: { key: JSON.stringify([input.provinceId, input.address, 'final', feeData]), kind: 'final', feeData }, error: '' };
+  }
   let parcel = input.parcel;
   // Compatibility fallback for older pure callers. The local dialog always
   // supplies an explicit measured parcel and never derives physical data here.
@@ -73,11 +138,12 @@ export function buildGhnQuoteSnapshot(input: QuoteInput): { snapshot: GhnQuoteSn
       height: legacy.reduce((sum, row) => sum + row.height * row.quantity, 0),
     };
   }
-  if (!integer(parcel.weight, 1, 50000)) return fail('Nhập khối lượng kiện đã cân từ 0,001 đến 50 kg.');
+  if (!integer(parcel.weight, 1, 50000)) return fail('Nhập khối lượng kiện đã cân từ 1 đến 50.000 gram.');
   const dimensions = [parcel.length, parcel.width, parcel.height];
   const hasDimension = dimensions.some(value => value !== undefined && value !== 0);
   if (hasDimension && dimensions.some(value => !integer(Number(value), 1, 200))) return fail('Khi đã nhập kích thước, cần đủ dài × rộng × cao từ 1 đến 200 cm để tính cước chính xác.');
   const base: GhnFeeData = { to_district_id: Number(input.districtId), to_ward_code: input.wardCode, weight: parcel.weight, cod_value: input.cod, insurance_value: input.insurance };
+  if (input.codFailed !== undefined) base.cod_failed_amount = input.codFailed;
   if (!hasDimension) return { snapshot: { key: JSON.stringify([input.provinceId, input.address, 'preliminary', base]), kind: 'preliminary', feeData: base }, error: '' };
   const feeData: GhnFeeData = { ...base, length: parcel.length!, width: parcel.width!, height: parcel.height!, items: [{ name: GHN_PACKED_PARCEL_NAME, quantity: 1, weight: parcel.weight, length: parcel.length!, width: parcel.width!, height: parcel.height! }] };
   return { snapshot: { key: JSON.stringify([input.provinceId, input.address, 'final', feeData]), kind: 'final', feeData }, error: '' };
@@ -89,25 +155,27 @@ export class StaleGhnQuoteError extends Error {
 type Read = <T>(action: string, body: Record<string, unknown>) => Promise<T>;
 type CacheEntry<T> = { promise: Promise<T>; ready: boolean; value?: T };
 type Job = { generation: number; run: () => Promise<void>; cancel: () => void };
-export type GhnShopQuote = { shop: GhnQuoteShop; service: GhnQuoteService; total: number; services: GhnQuoteService[]; snapshotKey: string };
+export type GhnShopQuote = GhnFeeQuote & { shop: GhnQuoteShop; service: GhnQuoteService; services: GhnQuoteService[]; snapshotKey: string };
 export type GhnQuoteComparison = { quotes: GhnShopQuote[]; failures: { shop: GhnQuoteShop; service?: GhnQuoteService; message: string }[]; noServices: GhnQuoteShop[] };
 /** Partial comparisons are never a global cheapest recommendation. */
-export function findGhnAutomaticCheapest(comparison: GhnQuoteComparison | null, snapshotKey: string | undefined): GhnShopQuote | undefined {
-  if (!snapshotKey || !comparison || comparison.failures.length || !comparison.quotes.length || comparison.quotes.some(row => row.snapshotKey !== snapshotKey)) return undefined;
+export function findGhnAutomaticCheapest(comparison: GhnQuoteComparison | null, snapshotKey: string | undefined, now = Date.now()): GhnShopQuote | undefined {
+  if (!snapshotKey || !comparison || comparison.failures.length || !comparison.quotes.length || comparison.quotes.some(row => row.snapshotKey !== snapshotKey || !isGhnQuoteFresh(row, now))) return undefined;
   return comparison.quotes[0];
 }
 
-export function findGhnSelectedQuote(comparison: GhnQuoteComparison | null, snapshotKey: string | undefined, shopId: string, service: GhnQuoteService | undefined): GhnShopQuote | undefined {
+export function findGhnSelectedQuote(comparison: GhnQuoteComparison | null, snapshotKey: string | undefined, shopId: string, service: GhnQuoteService | undefined, now = Date.now()): GhnShopQuote | undefined {
   if (!snapshotKey || !service) return undefined;
-  return comparison?.quotes.find(row => row.snapshotKey === snapshotKey && String(row.shop._id) === shopId && row.service.service_id === service.service_id && row.service.service_type_id === service.service_type_id);
+  return comparison?.quotes.find(row => isGhnQuoteFresh(row, now) && row.snapshotKey === snapshotKey && String(row.shop._id) === shopId && row.service.service_id === service.service_id && row.service.service_type_id === service.service_type_id);
 }
 
 /** One scheduler survives resets, so stale in-flight reads still occupy a slot. */
-export function createGhnQuoteSession(read: Read) {
+export function createGhnQuoteSession(read: Read, options: { now?: () => number; ttlMs?: number } = {}) {
   let generation = 0, active = 0;
+  const now = options.now || Date.now, ttlMs = options.ttlMs ?? GHN_QUOTE_TTL_MS;
   const queue: Job[] = [];
   const services = new Map<string, CacheEntry<GhnQuoteService[]>>();
-  const quotes = new Map<string, CacheEntry<number>>();
+  const quotes = new Map<string, CacheEntry<GhnFeeQuote>>();
+  const quoteKey = (shopId: string, service: GhnQuoteService, snapshot: GhnQuoteSnapshot) => JSON.stringify([snapshot.key, shopId, service.service_id, service.service_type_id]);
   const drain = () => {
     while (active < 3 && queue.length) {
       const job = queue.shift()!;
@@ -133,9 +201,23 @@ export function createGhnQuoteSession(read: Read) {
     cache.set(key, entry);
     return entry.promise;
   };
+  const quoteDetail = (shopId: string, service: GhnQuoteService, snapshot: GhnQuoteSnapshot, token = generation) => {
+    if (!isGhnServiceEligible(service, snapshot.feeData.weight, snapshot.feeData.items?.length || 1)) return Promise.reject<GhnFeeQuote>(new Error('Dịch vụ GHN không phù hợp với khối lượng hoặc số kiện hàng.'));
+    const key = quoteKey(shopId, service, snapshot), existing = quotes.get(key);
+    if (existing?.ready && !isGhnQuoteFresh(existing.value, now())) quotes.delete(key);
+    return cached(quotes, key, async () => {
+      const result = await read<unknown>('calculate_fee', { shopId, feeData: { ...snapshot.feeData, service_id: service.service_id, service_type_id: service.service_type_id } });
+      return parseGhnFeeQuote(result, now(), ttlMs);
+    }, token);
+  };
+  const peekQuoteDetail = (shopId: string, service: GhnQuoteService, snapshot: GhnQuoteSnapshot) => {
+    const quote = quotes.get(quoteKey(shopId, service, snapshot))?.value;
+    return isGhnQuoteFresh(quote, now()) ? quote : undefined;
+  };
   return {
     capture: () => generation,
     current: (token: number) => token === generation,
+    fresh: (quote: GhnFeeQuote) => isGhnQuoteFresh(quote, now()),
     invalidate(resetServices = false) {
       generation++;
       for (const job of queue.splice(0)) job.cancel();
@@ -153,16 +235,10 @@ export function createGhnQuoteSession(read: Read) {
         });
       }, token);
     },
-    quote(shopId: string, service: GhnQuoteService, snapshot: GhnQuoteSnapshot, token = generation) {
-      if (!isGhnServiceEligible(service, snapshot.feeData.weight)) return Promise.reject<number>(new Error('Dịch vụ GHN không phù hợp với khối lượng kiện hàng.'));
-      return cached(quotes, JSON.stringify([snapshot.key, shopId, service.service_id, service.service_type_id]), async () => {
-        const result = await read<{ total: number }>('calculate_fee', { shopId, feeData: { ...snapshot.feeData, service_id: service.service_id, service_type_id: service.service_type_id } });
-        if (!integer(result.total, 0, Number.MAX_SAFE_INTEGER)) throw new Error('GHN trả về tổng cước không hợp lệ.');
-        return result.total;
-      }, token);
-    },
+    quoteDetail, peekQuoteDetail,
+    quote(shopId: string, service: GhnQuoteService, snapshot: GhnQuoteSnapshot, token = generation) { return quoteDetail(shopId, service, snapshot, token).then(quote => quote.total); },
     peekQuote(shopId: string, service: GhnQuoteService, snapshot: GhnQuoteSnapshot) {
-      return quotes.get(JSON.stringify([snapshot.key, shopId, service.service_id, service.service_type_id]))?.value;
+      return peekQuoteDetail(shopId, service, snapshot)?.total;
     },
   };
 }
@@ -173,15 +249,22 @@ export async function compareGhnShopQuotes(session: GhnQuoteSession, shops: GhnQ
   // Fan-out is queued by the shared session, including automatic selected fees.
   await Promise.all(shops.map(async shop => {
     try {
-      const services = eligibleGhnServices(await session.services(String(shop._id), snapshot.feeData.to_district_id, token), snapshot.feeData.weight);
+      const services = eligibleGhnServices(await session.services(String(shop._id), snapshot.feeData.to_district_id, token), snapshot.feeData.weight, snapshot.feeData.items?.length || 1);
       if (!services.length) result.noServices.push(shop);
       await Promise.all(services.map(async service => {
-        try { const total = await session.quote(String(shop._id), service, snapshot, token); result.quotes.push({ shop, service, total, services, snapshotKey: snapshot.key }); }
+        try { const quote = await session.quoteDetail(String(shop._id), service, snapshot, token); result.quotes.push({ shop, service, ...quote, services, snapshotKey: snapshot.key }); }
         catch (cause) { if (cause instanceof StaleGhnQuoteError) throw cause; result.failures.push({ shop, service, message: cause instanceof Error ? cause.message : 'Không tính được cước.' }); }
       }));
     } catch (cause) { if (cause instanceof StaleGhnQuoteError) throw cause; result.failures.push({ shop, message: cause instanceof Error ? cause.message : 'Không tải được dịch vụ.' }); }
   }));
   if (!session.current(token)) throw new StaleGhnQuoteError();
+  // A very slow matrix must not trigger an endless immediate expiry/retry loop.
+  // Expired members become explicit incomplete results requiring operator retry.
+  result.quotes = result.quotes.filter(row => {
+    if (session.fresh(row)) return true;
+    result.failures.push({ shop: row.shop, service: row.service, message: 'Báo giá hết hạn trong lúc so sánh. Bấm Tính lại cước hoặc chọn thủ công.' });
+    return false;
+  });
   result.quotes.sort((a, b) => a.total - b.total || a.shop._id - b.shop._id || a.service.service_type_id - b.service.service_type_id || a.service.service_id - b.service.service_id);
   result.failures.sort((a, b) => a.shop._id - b.shop._id || (a.service?.service_id || 0) - (b.service?.service_id || 0));
   result.noServices.sort((a, b) => a._id - b._id);

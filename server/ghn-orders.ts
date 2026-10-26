@@ -12,7 +12,7 @@ const item = z.object({ name: z.string().trim().min(1).max(200), quantity: integ
 const payload = z.object({
   to_name: z.string().trim().min(1).max(100), to_phone: z.string().trim().regex(/^(?:0\d{9}|\+84\d{9})$/),
   to_address: z.string().trim().min(3).max(500), to_district_id: integer(99999999,1), to_ward_code: z.string().regex(/^[A-Za-z0-9_-]{1,30}$/),
-  weight: integer(50000,1), length: integer(200,1), width: integer(200,1), height: integer(200,1),
+  weight: integer(50000,1), length: integer(200,1).optional(), width: integer(200,1).optional(), height: integer(200,1).optional(),
   cod_amount: integer(50000000), insurance_value: integer(5000000), cod_failed_amount: integer(50000000).default(0),
   note: z.string().trim().max(1000).default(''), required_note: z.enum(['KHONGCHOXEMHANG','CHOXEMHANGKHONGTHU','CHOTHUHANG']),
   content: z.string().trim().min(1).max(2000), payment_type_id: z.union([z.literal(1),z.literal(2)]),
@@ -21,27 +21,56 @@ const payload = z.object({
 const createSchema = z.object({ idempotencyKey: z.string().uuid(), shopId: z.string().regex(/^[1-9]\d{0,15}$/),
   orderId: z.string().min(1).max(100).nullable().default(null), orderNumber: z.string().trim().max(100).default(''),
   provinceId: integer(99999999,1), orderData: payload,
+  // Optional metadata has no defaults/transforms: historical request hashes stay unchanged.
+  productLines: z.array(z.object({ name: z.string().min(1).max(200), quantity: integer(1000,1), weight: integer(50000,1).optional(), code: z.string().min(1).max(100).optional() }).strict()).min(1).max(100).optional(),
 }).strict();
 type Input = z.infer<typeof createSchema>;
+
+export const validateGhnProductLines = (input: Pick<Input, 'productLines' | 'orderData'>) => {
+  if (input.productLines === undefined) return;
+  if (input.productLines.some(row => !row.name.trim() || row.code !== undefined && !row.code.trim())) throw fail('Thông tin sản phẩm không hợp lệ.');
+  const content = input.productLines.map(row => `${row.name.trim()}${row.code?.trim() ? ` [${row.code.trim()}]` : ''} × ${row.quantity}`).join(', ');
+  if (content.length > 2000 || input.orderData.content !== content) throw fail('Nội dung vận đơn không khớp danh sách sản phẩm đã khai.');
+};
 type Attempt = { id:string; actor_id:string; manager_id:string; tenant_id:string; order_id:string|null; scope_key:string; shop_id:string; config_revision:number; idempotency_key:string; payload_hash:string; client_order_code:string; status:string; order_code:string|null; request_data:Input; result_data:Record<string,unknown> };
 type Queryable = Pool | PoolClient;
 type ProviderEnvelope = {code:number;message?:string;code_message?:string;data:Record<string,unknown>};
 const scopeKey = (orderId: string|null) => orderId ? 'order:'+orderId : 'standalone';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const publicAttempt = (row: Attempt) => ({ success: true, data: { attempt_status: row.status, reference: row.client_order_code, request_key: row.idempotency_key, ...(row.order_code ? {order_code:row.order_code} : {}), ...row.result_data } });
-export const ghnPackedParcelItemName = (content: string) => {
+export const ghnPackedParcelItemName = (content: string, index = 0, count = 1) => {
+  if (count > 1) content = `Kiện ${index + 1}/${count}: ${index === 0 ? content : 'Cùng đơn hàng'}`;
   if (content.length <= 200) return content;
   let prefix = content.slice(0, 199);
   if (/^[\uD800-\uDBFF]$/.test(prefix.charAt(prefix.length - 1))) prefix = prefix.slice(0, -1);
   return `${prefix}…`;
 };
 export const validateGhnPackedParcel = (orderData: Input['orderData']) => {
-  if (orderData.items.length !== 1) throw fail('Mỗi vận đơn GHN chỉ có một kiện đã đóng gói.', 400);
-  const parcel = orderData.items[0];
-  if (parcel.name !== ghnPackedParcelItemName(orderData.content) || parcel.quantity !== 1 || parcel.price !== 0) throw fail('Kiện GHN phải có đúng nội dung hàng gửi và số lượng một.', 400);
-  if (parcel.weight !== orderData.weight || parcel.length !== orderData.length || parcel.width !== orderData.width || parcel.height !== orderData.height) throw fail('Thông số kiện GHN không khớp khối lượng và kích thước đã cân, đo.', 400);
-  const expectedServiceType = orderData.weight < 20000 ? 2 : 5;
-  if (orderData.service_type_id !== expectedServiceType) throw fail(`Kiện ${orderData.weight < 20000 ? 'dưới 20 kg' : 'từ 20 kg'} phải dùng dịch vụ GHN loại ${expectedServiceType}.`, 400);
+  const count = orderData.items.length;
+  if (count < 1 || count > 100) throw fail('Mỗi vận đơn GHN có từ 1 đến 100 kiện.', 400);
+  orderData.items.forEach((parcel, index) => {
+    if (parcel.name !== ghnPackedParcelItemName(orderData.content, index, count) || parcel.quantity !== 1 || parcel.price !== 0) throw fail('Mỗi kiện GHN phải có đúng nội dung hàng gửi và số lượng một.', 400);
+  });
+  if (orderData.items.reduce((sum, parcel) => sum + parcel.weight, 0) !== orderData.weight) throw fail('Tổng cân nặng các kiện không khớp cân nặng vận đơn.', 400);
+  if (count === 1) {
+    const parcel = orderData.items[0];
+    if (parcel.length !== orderData.length || parcel.width !== orderData.width || parcel.height !== orderData.height) throw fail('Thông số kiện GHN không khớp kích thước đã đo.', 400);
+  } else if (['length', 'width', 'height'].some(field => orderData[field as 'length' | 'width' | 'height'] !== undefined)) throw fail('Vận đơn nhiều kiện sử dụng kích thước riêng của từng kiện.', 400);
+  const expectedServiceType = count > 1 || orderData.weight >= 20000 ? 5 : 2;
+  if (orderData.service_type_id !== expectedServiceType) throw fail('Loại dịch vụ GHN không phù hợp với tổng cân nặng hoặc số kiện.', 400);
+};
+
+/** Missing or different parcel evidence must never resolve an uncertain create. */
+export const ghnMultiParcelEvidenceMatches = (submitted: Input['orderData'], value: unknown): boolean => {
+  if (submitted.items.length <= 1) return true; // Historical single-parcel reconciliation is unchanged.
+  if (!Array.isArray(value) || value.length !== submitted.items.length) return false;
+  const signature = (row: Record<string, unknown>) => {
+    if (typeof row.name !== 'string' || !['quantity', 'weight', 'length', 'width', 'height'].every(field => typeof row[field] === 'number' && Number.isSafeInteger(row[field]) && Number(row[field]) > 0)) return null;
+    return JSON.stringify([row.name, row.quantity, row.weight, row.length, row.width, row.height]);
+  };
+  const actual = value.map(row => row && typeof row === 'object' && !Array.isArray(row) ? signature(row) : null);
+  if (actual.some(row => row === null)) return false;
+  return JSON.stringify(actual.sort()) === JSON.stringify(submitted.items.map(row => signature(row)).sort());
 };
 
 export class GhnOrders {
@@ -99,7 +128,8 @@ export class GhnOrders {
     const service = (await read('get_services',{shopId:sender.id,toDistrictId:input.orderData.to_district_id})).find(row => row.service_id === input.orderData.service_id && row.service_type_id === input.orderData.service_type_id);
     if (!service) throw fail('Dịch vụ GHN không còn phù hợp với cửa hàng và địa chỉ đã chọn.');
     validateGhnPackedParcel(input.orderData);
-    return { ...input.orderData, to_province_name:String(province.ProvinceName), to_district_name:String(district.DistrictName), to_ward_name:String(ward.WardName), is_new_to_address:false, from_district_id:sender.district };
+    const originWard = sender.metadata.ward_code;
+    return { ...input.orderData, to_province_name:String(province.ProvinceName), to_district_name:String(district.DistrictName), to_ward_name:String(ward.WardName), is_new_to_address:false, from_district_id:sender.district, ...(typeof originWard==='string'&&/^[\w-]{1,30}$/.test(originWard)?{from_ward_code:originWard}:{}) };
   }
   async create(actor:string,raw:unknown) {
     const input = createSchema.parse(raw);
@@ -110,8 +140,9 @@ export class GhnOrders {
       if (existing.payload_hash !== fingerprint) throw fail('Lượt này đã gửi nội dung khác. Kiểm tra trạng thái trước khi tạo đơn mới.',409);
       return this.status(actor,input.idempotencyKey);
     }
-    // Keep historical replays above this point. New requests must have one
-    // measured packed parcel before any provider discovery or dispatch occurs.
+    // Keep historical replays above this point. New requests must carry the
+    // complete measured parcel manifest before provider discovery or dispatch.
+    validateGhnProductLines(input);
     validateGhnPackedParcel(input.orderData);
     await this.scope(this.pool,actor,input.orderId,true);
     const config = await this.config();
@@ -231,7 +262,9 @@ export class GhnOrders {
         const text=await response.text(); if(text.length>2000000) throw new Error();
         const result=JSON.parse(text), data=result.data;
         const submitted=row.request_data.orderData;
-        const same=data && ['to_name','to_phone','to_address','to_ward_code'].every(field=>String(data[field])===String(submitted[field as keyof typeof submitted])) && ['to_district_id','weight','length','width','height','cod_amount','insurance_value','service_type_id','payment_type_id'].every(field=>Number(data[field])===Number(submitted[field as keyof typeof submitted]));
+        const failedCodMatches=data && (data.cod_failed_amount === undefined ? submitted.cod_failed_amount === 0 : typeof data.cod_failed_amount === 'number' && Number.isSafeInteger(data.cod_failed_amount) && data.cod_failed_amount === submitted.cod_failed_amount);
+        const physicalFields = submitted.items.length > 1 ? ['to_district_id','weight','cod_amount','insurance_value','service_type_id','payment_type_id'] : ['to_district_id','weight','length','width','height','cod_amount','insurance_value','service_type_id','payment_type_id'];
+        const same=data && failedCodMatches && ghnMultiParcelEvidenceMatches(submitted, data.items) && ['to_name','to_phone','to_address','to_ward_code'].every(field=>String(data[field])===String(submitted[field as keyof typeof submitted])) && physicalFields.every(field=>Number(data[field])===Number(submitted[field as keyof typeof submitted]));
         if (response.ok && result.code===200 && same && String(data.shop_id)===row.shop_id && data.client_order_code===row.client_order_code && /^[A-Za-z0-9_-]{3,60}$/.test(data.order_code||'')) {
           row=(await this.pool.query<Attempt>(`update integration_private.ghn_order_attempts set status='REMOTE_CREATED',order_code=$2,result_data=$3::jsonb,updated_at=now() where id=$1 and status in ('IN_FLIGHT','UNKNOWN') returning *`,[row.id,data.order_code,JSON.stringify(this.safeResult(data))])).rows[0]||await this.read(actor,key);
           if(row.status==='REMOTE_CREATED') return this.finalize(row);

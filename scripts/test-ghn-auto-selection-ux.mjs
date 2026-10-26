@@ -16,7 +16,7 @@ const shops = [3, 1, 2].map(shop);
 const input = { provinceId: '202', districtId: '1444', wardCode: '020308', address: 'test address', parcel: { weight: 1000, length: 10, width: 10, height: 10 }, cod: 0, insurance: 0 };
 const snapshot = buildGhnQuoteSnapshot(input).snapshot;
 assert.ok(snapshot);
-const row = (id, type, total) => ({ shop: shop(id), service: service(53320, type), total, services: [service(53320, 2), service(53320, 5)], snapshotKey: snapshot.key });
+const row = (id, type, total) => ({ shop: shop(id), service: service(53320, type), total, components:{}, quotedAt:Date.now(),expiresAt:Date.now()+60000, services: [service(53320, 2), service(53320, 5)], snapshotKey: snapshot.key });
 
 await check('auto recommendation fails closed for null, empty, partial and any stale row', () => {
   const a = row(1, 2, 10000), b = row(2, 5, 12000);
@@ -125,6 +125,7 @@ await check('directory reclick reopens after mouse selection/Escape without clea
 });
 
 const dialog=await readFile(new URL('../src/components/LocalCreateGHNOrderDialog.tsx',import.meta.url),'utf8');
+const addressDialog=await readFile(new URL('../src/components/GhnReceiverAddressDialog.tsx',import.meta.url),'utf8');
 await check('dialog Escape capture contract prevents only its own expanded GHN picker dismissal',()=>{
   // Extract and execute the actual JSX callback, not a duplicate implementation.
   // DOM containment and selector matching below are synthetic contracts; browser
@@ -138,7 +139,7 @@ await check('dialog Escape capture contract prevents only its own expanded GHN p
   input().props.onFocus();harness.render();
   const focused={matches:selector=>selector==='[data-ghn-directory-combobox="true"][aria-expanded="true"]'&&input().props['data-ghn-directory-combobox']==='true'&&input().props['aria-expanded']===true};
   const reference={current:{ownerDocument:{activeElement:focused},contains:node=>node===focused}};
-  const callback=vm.runInNewContext(javascript+'\ncallback;',{dialogContent:reference});
+  const callback=vm.runInNewContext(javascript+'\ncallback;',{dialogContent:reference,addressEditorOpen:false});
   const capture=event('Escape');callback(capture);assert.equal(capture.prevented,true,'Radix capture sees expanded child');
   const bubble=event('Escape');input().props.onKeyDown(bubble);harness.render();assert.ok(bubble.prevented&&bubble.stopped);assert.equal(input().props['aria-expanded'],false,'picker still closes itself');
   const closed=event('Escape');callback(closed);assert.equal(closed.prevented,false,'normal Escape remains available after child closes');
@@ -151,18 +152,21 @@ await check('static dialog wiring: auto default, all-shop comparison, intent gua
   assert.match(dialog,/compareGhnShopQuotes\(session,shops,snapshot\)/);
   assert.match(dialog,/selectionIntent\.current!==intent\|\|latestMode\.current!=='auto'/);
   assert.match(dialog,/selectionIntent\.current\+\+;latestMode\.current=mode/);
-  assert.match(dialog,/const currentComparison=comparison\?\.context===quoteContext\?comparison.data:null/);
+  assert.match(dialog,/const currentComparison=comparison\?\.context===quoteContext&&comparison.data.quotes.every\(row=>isGhnQuoteFresh\(row\)\)\?comparison.data:null/);
   assert.match(dialog,/const autoSelectionReady=selectionMode==='manual'\|\|Boolean\(automaticCheapest/);
   assert.match(dialog,/if\(!recoveryReady\|\|locked\|\|attempt\|\|matchingAddress\|\|compareBusy\|\|dataBusy\|\|feeBusy\|\|!autoSelectionReady/);
-  assert.match(dialog,/disabled=\{!recoveryReady\|\|locked\|\|matchingAddress\|\|dataBusy\|\|feeBusy\|\|compareBusy\|\|!autoSelectionReady/);
+  assert.match(dialog,/const canCreate=!recoveryReady\|\|locked\|\|matchingAddress\|\|dataBusy\|\|feeBusy\|\|compareBusy\|\|!autoSelectionReady/);
+  assert.match(dialog,/disabled=\{canCreate\}/);
   const refresh=dialog.slice(dialog.indexOf('const refreshQuote='),dialog.indexOf('const applyAttempt='));
   assert.match(refresh,/selectionMode==='manual'&&\(!shopId\|\|!selectedService\)/);assert.match(refresh,/invalidate\(\)/);assert.match(refresh,/setQuoteRevision/);
 });
 await check('static address/layout wiring uses one directory per level and parent-child clear, scroll body/fixed footer',()=>{
-  assert.equal((dialog.match(/<GhnDirectorySearch /g)||[]).length,3);
+  const address=addressDialog;
+  assert.equal((address.match(/<GhnDirectorySearch /g)||[]).length,3);
   assert.match(dialog,/const selectProvince=[\s\S]*?setProvinceId\(value\);setDistrictId\(''\);setWardCode\(''\)/);
   assert.match(dialog,/const selectDistrict=[\s\S]*?setDistrictId\(value\);setWardCode\(''\)/);
-  assert.match(dialog,/parentKey=\{provinceId\}/);assert.match(dialog,/parentKey=\{districtId\}/);
-  assert.match(dialog,/min-h-0 flex-1[^"\n]*overflow-y-auto/);assert.match(dialog,/shrink-0[^"\n]*border-t/);
+  assert.match(address,/parentKey=\{draft.provinceId\}/);assert.match(address,/parentKey=\{draft.districtId\}/);
+  assert.match(dialog,/<main className="min-h-0 min-w-0 flex-1[^"\n]*overflow-y-auto/);assert.match(dialog,/shrink-0[^"\n]*border-t/);
+  assert.match(dialog,/flex min-h-0 flex-1 flex-col overflow-hidden lg:grid/,'mobile content and actions are sibling flex rows, not one shared long scroller');
 });
 console.log('PASS '+count+' GHN auto-selection UX groups (pure/synthetic handlers + static wiring, not rendered browser interaction).');

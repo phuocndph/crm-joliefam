@@ -36,14 +36,15 @@ export function moduleRequirement(method: string, requestPath: string, body: Rec
   // Private service credentials are never available through generic adapters,
   // including to browser administrators. Reserved aliases fail closed.
   if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local_)?(?:integration|hermes)[_.-]/.test(path)) return false;
-  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:(?:integration|external)[_.-]?(?:private|settings)|external[_.-]?integration[_.-]?(?:private|settings)?|ghn[_.-]?(?:settings|config)|einvoice[_.-]?settings)(?:[._/-]|$)/.test(path)) return false;
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:(?:list|get|create|update|save|set|upsert|delete)[_.-])?goong[_.-]?(?:settings|config)(?:[._/-]|$)/.test(path)) return false;
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:(?:integration|external)[_.-]?(?:private|settings)|external[_.-]?integration[_.-]?(?:private|settings)?|(?:ghn|goong)[_.-]?(?:settings|config)|einvoice[_.-]?settings)(?:[._/-]|$)/.test(path)) return false;
   if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:ai[_.-]private|ai[_.-]provider|f5quota|beeknoee)(?:[._/-]|$)/.test(path)) return false;
   if (path.startsWith('/api/ai/providers')) return [];
   if (path === '/api/ai/my-settings') return null;
   const adapter = path.match(/^\/api\/local-(snapshot|table)\/([^/]+)/);
   if (adapter) {
     const [,kind,table] = adapter;
-    if (['einvoice_settings','integration_private','external_integration_settings','ghn_settings','ghn_order_attempts'].includes(table)) return false;
+    if (['einvoice_settings','integration_private','external_integration_settings','ghn_settings','goong_settings','ghn_order_attempts'].includes(table)) return false;
     if(table==='ai_config'&&!read)return null; // Handler enforces administrator, not manager.
     if (kind === 'snapshot' && read && table === 'user_roles') return null;
     if (kind === 'table' && canonicalTables.has(table)) return false;

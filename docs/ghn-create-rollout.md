@@ -7,7 +7,7 @@ Thay đổi này chuẩn bị mã nguồn để người vận hành cập nhậ
 1. Chốt chính xác diff đưa lên GitHub. Working tree hiện có nhiều thay đổi ngoài GHN, gồm migration trước 061; không sao chép riêng vài file rồi bỏ các phụ thuộc hiện tại.
 2. Sao lưu database và cấu hình ngoài Git; xác minh có thể khôi phục trên staging. Khóa GHN trong `integration_private.ghn_settings` hiện lưu plaintext-at-rest. Người có quyền database/operator/backup nằm trong ranh giới bảo mật.
 3. Kiểm tra `local_schema_migrations`, checksum và toàn bộ migration chưa áp dụng. Bootstrap Node tự chạy mọi migration mới theo thứ tự trong một transaction; cập nhật mã rồi khởi động API có thể áp dụng cả migration không liên quan GHN. Không sửa migration đã áp dụng, không xóa ledger để chạy lại.
-4. Chạy staging với bản sao database đã che dữ liệu nhạy cảm. Cần 061 (`ghn_settings`) trước 062 (`ghn_order_attempts`), cùng các bảng auth, quyền, đơn hàng, tombstone, audit và tracking hiện có. Kiểm tra schema riêng không đi qua snapshot/compatibility/sync.
+4. Chạy staging với bản sao database đã che dữ liệu nhạy cảm. Cần 061 (`ghn_settings`) trước 062 (`ghn_order_attempts`), cùng các bảng auth, quyền, đơn hàng, tombstone, audit và tracking hiện có. Gợi ý địa chỉ dùng thêm 063 (`goong_settings`), bảng cấu hình riêng có RLS và không cấp quyền public. Kiểm tra schema riêng không đi qua snapshot/compatibility/sync.
 5. Xác nhận máy chủ dùng Compose, PM2 hay quy trình khác rồi dùng quy trình vận hành đó; chưa có lệnh triển khai chung đã xác minh. Push GitHub không tự cập nhật máy chủ. Chỉ cập nhật API/web sau khi preflight và backup đạt yêu cầu.
 
 ## Cấu hình và kiểm tra
@@ -15,6 +15,8 @@ Thay đổi này chuẩn bị mã nguồn để người vận hành cập nhậ
 Đăng nhập tài khoản quản trị thật, vào Cài đặt API. Nhập khóa, bấm Lấy cửa hàng từ GHN, chọn các cửa hàng được phép và cửa hàng mặc định, rồi Lưu cấu hình. Khóa và danh sách shop là cùng một nguồn cho tạo đơn, dịch vụ, tính cước và theo dõi. Trường khóa trống giữ khóa đã lưu khi đang ENABLED; không tự sao chép khóa env. Đã tắt chặn các yêu cầu GHN mới, gồm đối soát provider; vẫn đọc được kết quả lượt tạo đã lưu trong CRM.
 
 Kiểm tra kết nối là chỉ-đọc, có thể gọi nhiều trang cửa hàng cố định. Tạo đơn là thao tác có ảnh hưởng thật và chỉ chạy khi người dùng bấm Tạo vận đơn. Kiểm thử staging dùng mock trước; kiểm tra GHN thật cần người vận hành chủ động xác nhận cửa hàng, người nhận và chi phí.
+
+Goong cấu hình độc lập trong Cài đặt API, bằng khóa đã lưu hoặc `GOONG_API_KEY` ở máy chủ. Đọc/lưu cấu hình không gọi provider; chỉ khi bật và nhân viên sửa ô địa chỉ thì đoạn nhập mới được gửi Goong. Trạng thái đã cấu hình không đảm bảo khóa đã kết nối hoặc còn quota. Khi thiếu khóa/tắt/lỗi, giữ nhập và chọn địa chỉ GHN thủ công. Không cần provider Goong để tạo vận đơn đã chọn đủ bộ địa chỉ GHN.
 
 ## Lượt tạo và khôi phục
 
@@ -42,4 +44,4 @@ Chi tiết kiểm chứng, giới hạn và preflight local:
 
 ## Giới hạn
 
-Địa chỉ hiện dùng danh mục tỉnh/quận/phường GHN; tên địa chỉ do server tra cứu và kiểm tra quan hệ, mã ward giữ nguyên chuỗi. GHN lấy hàng tại địa chỉ shop; chưa hỗ trợ điểm gửi tùy chọn, Goong hoặc địa chỉ mới hai cấp. Hỗ trợ service type 2/5 theo dịch vụ khả dụng, tối đa 50 kg, 200 cm mỗi chiều, COD 50 triệu, bảo hiểm 5 triệu. Các kiện gộp dùng max dài/rộng và tổng cao; kiểm tra đúng thực tế đóng gói. Phí cuối có thể thay đổi khi GHN cân đo.
+Địa chỉ hiện dùng danh mục tỉnh/quận/phường GHN; tên địa chỉ do server tra cứu và kiểm tra quan hệ, mã ward giữ nguyên chuỗi. Popup hỗ trợ gợi ý địa chỉ Goong khi được bật trong Cài đặt API; xem `ghn-address-recognition.md`. GHN lấy hàng tại địa chỉ shop; chưa hỗ trợ điểm gửi tùy chọn hoặc tự chuyển địa chỉ mới hai cấp sang mã GHN. Hỗ trợ service type 2/5 theo dịch vụ khả dụng, tối đa 50 kg, 200 cm mỗi chiều, COD 50 triệu, bảo hiểm 5 triệu. Mỗi vận đơn hiện dùng đúng một kiện đã cân, đo thực tế; số đo gốc và item giống nhau, không cộng/suy kích thước từ các sản phẩm. Phí cuối có thể thay đổi khi GHN cân đo.

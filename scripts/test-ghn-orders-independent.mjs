@@ -65,7 +65,11 @@ const provider = async (rawUrl, init = {}) => {
     lookupCount++; assert.equal(init.method, 'GET');
     if (lookupMode === 'missing') return json({ code: 404, message: 'Synthetic missing result' }, 404);
     const body = lastCreate.body;
-    return json({ code: 200, data: { ...body, order_code: `SYNTHETIC${createCount}`, shop_id: Number(lastCreate.shop), ...(lookupMode === 'wrong-reference' ? { client_order_code: 'different-reference' } : {}), ...(lookupMode === 'wrong-shop' ? { shop_id: 123 } : {}), ...(lookupMode === 'wrong-recipient' ? { to_phone: '0900000004' } : {}) } });
+    const data = { ...body, order_code: `SYNTHETIC${createCount}`, shop_id: Number(lastCreate.shop), ...(lookupMode === 'wrong-reference' ? { client_order_code: 'different-reference' } : {}), ...(lookupMode === 'wrong-shop' ? { shop_id: 123 } : {}), ...(lookupMode === 'wrong-recipient' ? { to_phone: '0900000004' } : {}) };
+    if (lookupMode === 'missing-failed-cod') delete data.cod_failed_amount;
+    if (lookupMode === 'wrong-failed-cod') data.cod_failed_amount = body.cod_failed_amount + 1;
+    if (lookupMode === 'null-failed-cod') data.cod_failed_amount = null;
+    return json({ code: 200, data });
   }
   if (endpoint === 'v2/a5/gen-token') {
     printCount++; lastPrint = { url: String(rawUrl), init, body: JSON.parse(init.body) };
@@ -293,6 +297,19 @@ try {
     assert.equal((await service.status('admin-fixture', request.idempotencyKey, true)).data.attempt_status, 'SUCCESS');
     assert.equal(createCount, 1); assert.equal(lookupCount, 5);
     assert.equal((await pool.query('select count(*)::int n from local_auth_audit_events')).rows[0].n, 1);
+  });
+  await reset();
+  await check('reconcile requires exact positive failed-delivery COD, historical missing only for zero', async () => {
+    for (const amount of [0, 12000]) {
+      await reset();createMode='timeout';const request=input();request.orderData.cod_failed_amount=amount;
+      assert.equal((await service.create('admin-fixture',request)).data.attempt_status,'UNKNOWN');
+      for (const mode of ['wrong-failed-cod','null-failed-cod',...(amount?['missing-failed-cod']:[])]) {
+        lookupMode=mode;assert.equal((await service.status('admin-fixture',request.idempotencyKey,true)).data.attempt_status,'UNKNOWN',mode);
+        assert.equal(createCount,1);assert.equal((await pool.query('select count(*)::int n from local_ghn_tracking')).rows[0].n,0);
+      }
+      lookupMode=amount?'success':'missing-failed-cod';
+      assert.equal((await service.status('admin-fixture',request.idempotencyKey,true)).data.attempt_status,'SUCCESS');assert.equal(createCount,1);
+    }
   });
   await reset();
   await check('structured provider HTTP 400 is a definitive rejection', async () => {

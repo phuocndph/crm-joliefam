@@ -5,6 +5,7 @@ import { localApi } from '@/lib/local-api';
 import { getLocalMe, hasLocalUserSession } from '@/lib/local-auth';
 import { isLocalBackend } from '@/lib/runtime-config';
 import LocalAiProviderPanel from '@/components/LocalAiProviderPanel';
+import { LocalGoongSettingsPanel } from '@/components/LocalGoongSettingsPanel';
 import type { LocalAiModelCatalog } from '@/components/LocalAiModelPicker';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -124,7 +125,8 @@ export default function ApiSettingsPage() {
         </> : error ? <div role="alert" className="rounded border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"><p>{error}</p><Button className="mt-2" size="sm" variant="outline" onClick={() => void reload()}>Thử lại</Button></div> : null}
       </CardContent>
     </Card>
+    <LocalGoongSettingsPanel actor={me?.user_id || ''} />
     <LocalAiProviderPanel admin locked={aiBusy || saving || testing} beginMutation={() => { if (aiBusy) return false; setAiBusy(true); return true; }} endMutation={() => setAiBusy(false)} onCatalog={(_catalog: LocalAiModelCatalog) => undefined} onSelected={() => undefined} autoLoadModels={false} />
-    <Card><CardHeader><CardTitle className="text-lg">Phạm vi cài đặt</CardTitle><CardDescription><Link className="underline" to="/ai-settings">Cài đặt AI nâng cao</Link> vẫn quản lý prompt và luồng báo giá. <Link className="underline" to="/integration-access">API & kết nối Agent</Link> quản lý khóa inbound cho Agent, tách biệt hoàn toàn với khóa GHN ra ngoài.</CardDescription></CardHeader><CardContent className="text-sm text-muted-foreground"><p>VietQR không cần khóa. Goong chưa hỗ trợ. Viettel S-Invoice trên VPS local chỉ lưu bản nháp và không có biểu mẫu thông tin đăng nhập.</p></CardContent></Card>
+    <Card><CardHeader><CardTitle className="text-lg">Phạm vi cài đặt</CardTitle><CardDescription><Link className="underline" to="/ai-settings">Cài đặt AI nâng cao</Link> vẫn quản lý prompt và luồng báo giá. <Link className="underline" to="/integration-access">API & kết nối Agent</Link> quản lý khóa inbound cho Agent, tách biệt hoàn toàn với khóa GHN ra ngoài.</CardDescription></CardHeader><CardContent className="text-sm text-muted-foreground"><p>VietQR không cần khóa. Goong hỗ trợ gợi ý địa chỉ khi được bật ở trên. Viettel S-Invoice trên VPS local chỉ lưu bản nháp và không có biểu mẫu thông tin đăng nhập.</p></CardContent></Card>
   </main>;
 }

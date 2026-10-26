@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  buildGhnPackedContent, buildGhnPackedParcelItemName, buildGhnQuoteSnapshot, compareGhnShopQuotes,
+  buildGhnPackedContent, buildGhnPackedParcelItemName, buildGhnCreateParcelItemName, buildGhnQuoteSnapshot, compareGhnShopQuotes,
   createGhnQuoteSession, eligibleGhnServices, findGhnAutomaticCheapest,
   isGhnServiceEligible, parseGhnKilograms, StaleGhnQuoteError,
   validateGhnCreateItems,
@@ -190,9 +190,9 @@ try {
       to_name: 'Synthetic Recipient', to_phone: '0900000003', to_address: 'Synthetic destination', to_district_id: 1444, to_ward_code: '020308',
       weight: value.feeData.weight, length: value.feeData.length, width: value.feeData.width, height: value.feeData.height,
       cod_amount: 100000, insurance_value: 200000, cod_failed_amount: 0, note: '', required_note: 'KHONGCHOXEMHANG',
-      content: buildGhnPackedContent(products), payment_type_id: 1, service_type_id: value.feeData.weight < 20000 ? 2 : 5, service_id: 53320,
+      content: buildGhnPackedContent(products), payment_type_id: 1, service_type_id: value.feeData.weight < 20000 && value.feeData.items?.length === 1 ? 2 : 5, service_id: 53320,
       // Quote item labels are price-neutral; create carries the actual contents.
-      items: (value.feeData.items || []).map(row => ({ ...row, name: buildGhnPackedContent(products), price: 0 })),
+      items: (value.feeData.items || []).map((row,index) => ({ ...row, name: buildGhnCreateParcelItemName(products,index,value.feeData.items.length), price: 0 })),
     },
   });
   const makeRuntime = () => {
@@ -206,8 +206,9 @@ try {
       if (path === 'master-data/district') return response({ code: 200, data: [{ DistrictID: 1444, ProvinceID: 202, DistrictName: 'Synthetic District' }] });
       if (path === 'master-data/ward') return response({ code: 200, data: [{ WardCode: '020308', DistrictID: 1444, WardName: 'Synthetic Ward' }] });
       if (path === 'v2/shipping-order/available-services') return response({ code: 200, data: structuredClone(services) });
-      if (path === 'v2/shipping-order/fee') { wire.fee.push(structuredClone(body)); return response({ code: 200, data: { total: body.items ? body.items[0].weight * 4 : 12345 } }); }
-      if (path === 'v2/shipping-order/create') { wire.create.push(structuredClone(body)); return response({ code: 200, data: { order_code: 'TESTBILLING' + wire.create.length, total_fee: body.items[0].weight * 4 } }); }
+      if (path === 'v2/shipping-order/fee') { wire.fee.push(structuredClone(body)); return response({ code: 200, data: { total: body.items ? body.items.reduce((sum,row)=>sum+row.weight*4,0) : 12345 } }); }
+      if (path === 'v2/shipping-order/create') { wire.create.push(structuredClone(body)); if(wire.throwCreate)throw new Error('Synthetic lost response'); return response({ code: 200, data: { order_code: 'TESTBILLING' + wire.create.length, total_fee: body.items.reduce((sum,row)=>sum+row.weight*4,0) } }); }
+      if (path === 'v2/shipping-order/detail-by-client-code') return response({code:200,data:wire.lookup||{}});
       throw new Error('Unexpected injected provider route: ' + path);
     };
     const adapter = new ExternalReadAdapters({}, provider, async () => structuredClone(config));
@@ -278,6 +279,65 @@ try {
     const changed = structuredClone(request); changed.orderData.items[0].weight = 20000;
     await assert.rejects(() => service.create('billing-fixture-admin', changed), error => error.status === 409);
     assert.equal(wire.all.length, 0); assert.equal(db.reservations, 0);
+  });
+
+  await check('multiple physical parcels quote and create identically while COD and products remain order-level', async () => {
+    for(const weights of [[1000,2000],[20000,20000],[25000,25000]]){
+      const runtime=makeRuntime(),parcels=weights.map((weight,index)=>({...packed(weight),length:40+index}));
+      const made=buildGhnQuoteSnapshot({...input(undefined),parcels});assert.ok(made.snapshot,made.error);const value=made.snapshot;
+      const request=createInput(value),quote=await runtime.adapter.ghn({action:'calculate_fee',shopId:'123',feeData:{...value.feeData,service_id:53320,service_type_id:5}});
+      const result=await runtime.service.create('billing-fixture-admin',request);assert.equal(result.data.attempt_status,'SUCCESS');assert.equal(result.data.total_fee,quote.data.total);
+      const fee=runtime.wire.fee.at(-1),sent=runtime.wire.create.at(-1);assert.equal(sent.weight,weights.reduce((a,b)=>a+b,0));assert.equal(sent.service_type_id,5);
+      for(const field of ['length','width','height']){assert.equal(fee[field],undefined);assert.equal(sent[field],undefined);}
+      assert.deepEqual(sent.items.map(({name,price,...physical})=>physical),fee.items.map(({name,...physical})=>physical));
+      assert.equal(sent.items.length,2);assert.equal(sent.cod_amount,100000);assert.equal(sent.insurance_value,200000);assert.equal(sent.items[0].quantity,1);assert.equal(sent.items[1].quantity,1);
+      assert.equal(sent.items[0].name,ghnPackedParcelItemName(sent.content,0,2));assert.equal(sent.items[1].name,'Kiện 2/2: Cùng đơn hàng');
+      assert.match(sent.content,/× 3/);assert.match(sent.content,/× 7/);
+      const before=runtime.wire.create.length;await runtime.service.create('billing-fixture-admin',request);assert.equal(runtime.wire.create.length,before);
+    }
+  });
+
+  await check('multi adapter/create reject changed sums, root boxes, multiplied quantities and wrong service before dispatch',async()=>{
+    const value=buildGhnQuoteSnapshot({...input(undefined),parcels:[packed(1000),packed(2000)]}).snapshot;
+    const runtime=makeRuntime();
+    for(const mutate of [data=>data.weight++,data=>{data.length=40;data.width=30;data.height=20;},data=>data.items[1].quantity=2,data=>data.items[1].height=0,data=>data.service_type_id=2]){
+      const fee={...structuredClone(value.feeData),service_id:53320,service_type_id:5};mutate(fee);await assert.rejects(()=>runtime.adapter.ghn({action:'calculate_fee',shopId:'123',feeData:fee}));
+      const request=createInput(value);mutate(request.orderData);await assert.rejects(()=>runtime.service.create('billing-fixture-admin',request));
+    }
+    assert.equal(runtime.wire.fee.length,0);assert.equal(runtime.wire.create.length,0);assert.equal(runtime.db.reservations,0);
+  });
+
+  await check('uncertain multi create requires matching per-parcel evidence before success and never creates twice',async()=>{
+    const runtime=makeRuntime(),value=buildGhnQuoteSnapshot({...input(undefined),parcels:[packed(1000),packed(2000)]}).snapshot,request=createInput(value);
+    runtime.wire.throwCreate=true;assert.equal((await runtime.service.create('billing-fixture-admin',request)).data.attempt_status,'UNKNOWN');
+    const submitted=runtime.wire.create[0];
+    const valid={...structuredClone(submitted),shop_id:123,order_code:'TESTMULTIRECOVERED'};
+    for(const patch of [{items:undefined},{items:[submitted.items[0]]},{items:submitted.items.map((row,index)=>({...row,weight:row.weight+(index===0?100:-100)}))},{items:submitted.items.map(row=>({...row,weight:String(row.weight)}))}]){
+      runtime.wire.lookup={...valid,...patch};assert.equal((await runtime.service.status('billing-fixture-admin',request.idempotencyKey,true)).data.attempt_status,'UNKNOWN');assert.equal(runtime.wire.create.length,1);
+    }
+    runtime.wire.lookup={...valid,items:[...valid.items].reverse()};assert.equal((await runtime.service.status('billing-fixture-admin',request.idempotencyKey,true)).data.attempt_status,'SUCCESS');assert.equal(runtime.wire.create.length,1);
+  });
+
+  await check('optional unit-product metadata persists without becoming physical items or provider fields',async()=>{
+    const runtime=makeRuntime(),value=snapshot(packed(4000)),request=createInput(value);
+    request.productLines=[{name:'Synthetic unit product',quantity:2,weight:2000,code:'TEST-UNIT'}];
+    request.orderData.content=buildGhnPackedContent(request.productLines);request.orderData.items[0].name=ghnPackedParcelItemName(request.orderData.content);
+    assert.equal((await runtime.service.create('billing-fixture-admin',request)).data.attempt_status,'SUCCESS');
+    assert.deepEqual(runtime.db.attempts[0].request_data.productLines,request.productLines);
+    const sent=runtime.wire.create[0];assert.equal(Object.hasOwn(sent,'productLines'),false);assert.equal(sent.weight,4000);assert.equal(sent.items.length,1);assert.equal(sent.items[0].quantity,1);assert.equal(sent.service_type_id,2);assert.match(sent.content,/\[TEST-UNIT\] × 2/);
+    await runtime.service.create('billing-fixture-admin',request);assert.equal(runtime.wire.create.length,1,'same metadata retries safely');
+    const altered=structuredClone(request);altered.productLines[0].weight=3000;await assert.rejects(()=>runtime.service.create('billing-fixture-admin',altered),error=>error.status===409);
+  });
+
+  await check('forged or invalid new product metadata is rejected before dispatch while manual gross weight stays independent',async()=>{
+    const runtime=makeRuntime(),request=createInput(snapshot(packed(5000)));
+    request.productLines=structuredClone(products);request.productLines[0].weight=2000;
+    assert.equal((await runtime.service.create('billing-fixture-admin',request)).data.attempt_status,'SUCCESS','manual gross may differ from known unit weights');
+    const before=runtime.wire.create.length;
+    for(const mutate of [row=>row.productLines[0].weight=0,row=>row.productLines[0].quantity=0,row=>row.productLines[0].code='x'.repeat(101),row=>row.productLines[0].name='forged',row=>row.productLines[0].weight='2000']){
+      const bad=structuredClone(request);bad.idempotencyKey=randomUUID();mutate(bad);await assert.rejects(()=>runtime.service.create('billing-fixture-admin',bad));
+    }
+    assert.equal(runtime.wire.create.length,before);
   });
 
   console.log('GHN_PARCEL_BILLING_INDEPENDENT_PASS ' + JSON.stringify({ groups: checks.length, network: 'injected only; global fetch denied', database: 'strict in-memory fixture, NOT PostgreSQL integration', checks }));

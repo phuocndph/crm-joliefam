@@ -70,6 +70,7 @@ const quoteCustomerErrorDetails = (payload: unknown): LocalApiErrorDetails | und
   return { code: 'QUOTE_CUSTOMER_CONFLICT', candidates };
 };
 export type GhnOrderAttempt = { attempt_status:'IN_FLIGHT'|'UNKNOWN'|'REMOTE_CREATED'|'SUCCESS'|'REJECTED'; reference:string; request_key:string; order_code?:string; total_fee?:number; expected_delivery_time?:string; message?:string };
+export type LocalGoongSettings = { configured: boolean; source: 'server_env' | 'saved' | 'disabled'; mode: 'INHERIT_ENV' | 'ENABLED' | 'DISABLED'; revision: number; has_saved_key: boolean; provider: 'goong' };
 
 export interface LocalSelfProfile {
   user_id: string;
@@ -309,6 +310,8 @@ export const localApi = {
   health: () => request<{ ok: boolean; backend: string }>("/health"),
   localFunction,
   externalIntegrationStatus: () => request<{ghn:{configured:boolean};tax:{configured:boolean}}>("/api/external-integrations/status"),
+  externalGoongSettings: (authGuard?: LocalAuthGuard) => request<LocalGoongSettings>('/api/external-integrations/goong', { authGuard }),
+  saveExternalGoongSettings: (body: { mode: LocalGoongSettings['mode']; revision: number; api_key?: string }, authGuard?: LocalAuthGuard) => request<LocalGoongSettings>('/api/external-integrations/goong', { method: 'PUT', body, authGuard }),
   externalGhnSettings: () => request<{configured:boolean;source:'server_env'|'saved'|'disabled';mode:'INHERIT_ENV'|'ENABLED'|'DISABLED';revision:number;configured_shop_count:number;has_saved_key:boolean;primary_shop_id:string;allowed_shop_ids:string[]}>('/api/external-integrations/ghn'),
   saveExternalGhnSettings: (body:{mode:'INHERIT_ENV'|'ENABLED'|'DISABLED';revision:number;api_key?:string;primary_shop_id?:string;allowed_shop_ids?:string}) => request<{configured:boolean;source:'server_env'|'saved'|'disabled';mode:'INHERIT_ENV'|'ENABLED'|'DISABLED';revision:number;configured_shop_count:number;has_saved_key:boolean;primary_shop_id:string;allowed_shop_ids:string[]}>('/api/external-integrations/ghn',{method:'PUT',body}),
   testExternalGhnSettings: () => request<{configured:boolean;connected:boolean;message:string;checked_at:string}>('/api/external-integrations/ghn/test',{method:'POST',body:{}}),

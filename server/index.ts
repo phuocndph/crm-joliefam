@@ -39,6 +39,7 @@ import { businessDateKey } from './business-date.js';
 import { registerIntegrationAccess } from './integration-access.js';
 import { LocalAiProvider, registerAiProviders } from './ai-provider.js';
 import { ExternalIntegrationSettings, registerExternalIntegrationSettings } from './external-integration-settings.js';
+import { GoongIntegrationSettings, registerGoongIntegrationSettings } from './goong-integration-settings.js';
 import { LocalAiWorkflows } from './ai-workflows.js';
 import { registerProductionDispatch, assertProductionDispatchSettled } from "./production-dispatch.js";
 import { registerProductionWorkspace } from "./production-workspace.js";
@@ -1139,10 +1140,12 @@ const aiWorkflows = new LocalAiWorkflows(pool, aiProvider);
 registerAiProviders(app, aiProvider, currentLocalActor, currentLocalRole);
 registerPayrollRules(app, pool, currentLocalActor, currentLocalRole);
 const externalSettings = new ExternalIntegrationSettings(pool);
-const externalRead = new ExternalReadAdapters(process.env, fetch, () => externalSettings.snapshot());
+const goongSettings = new GoongIntegrationSettings(pool);
+const externalRead = new ExternalReadAdapters(process.env, fetch, () => externalSettings.snapshot(), () => goongSettings.snapshot());
 const ghnOrders = new GhnOrders(pool, externalRead);
 registerGhnOrders(app, ghnOrders, currentLocalActor);
 registerExternalIntegrationSettings(app, externalSettings, externalRead, currentLocalActor, currentLocalRole);
+registerGoongIntegrationSettings(app, goongSettings, currentLocalActor, currentLocalRole);
 registerGhnTracking(app, pool, externalRead, currentLocalActor, sendError);
 registerGhnTrackingManagement(app, new GhnTrackingManagement(pool, externalRead), currentLocalActor, sendError);
 app.get('/api/external-integrations/status', async (_req, res) => {
@@ -1605,6 +1608,7 @@ app.post("/api/local-functions/:name", async (req, res) => {
       });
     }
     if (name === "ghn-tracking") {
+      res.setHeader('Cache-Control', 'no-store');
       const action = String(body.action || '');
       if (action === 'create_order') {
         const {action: _action, ...createBody} = body;
@@ -1614,7 +1618,7 @@ app.post("/api/local-functions/:name", async (req, res) => {
         const code = String(body.orderCode || body.order_code || '').trim();
         await requireGhnTrackingVisible(pool, currentLocalActor(), code);
       }
-      try { return res.json(await externalRead.ghn(body)); }
+      try { return res.json(await externalRead.ghn(body, undefined, currentLocalActor())); }
       catch (error) { return res.status(Number((error as {status?:number}).status || 502)).json({ success: false, error: error instanceof Error ? error.message : 'Không truy cập được GHN.' }); }
     }
     if (name === "vinvoice-api") {

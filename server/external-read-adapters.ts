@@ -1,3 +1,5 @@
+import { GoongAddressAdapter, goongEnvironment, goongPublicStatus, type GoongRuntimeConfig } from './goong-address-adapter.js';
+
 type Body = Record<string, any>;
 type Fetcher = typeof fetch;
 type GhnDiscoveryCategory = 'token' | 'auth' | 'ip' | 'request' | 'rate';
@@ -49,7 +51,10 @@ const requestJson = async (url: string, init: RequestInit, fetcher: Fetcher) => 
 };
 
 export class ExternalReadAdapters {
-  constructor(private env: NodeJS.ProcessEnv = process.env, private fetcher: Fetcher = fetch, private configResolver?: () => Promise<GhnRuntimeConfig>) {}
+  private goong: GoongAddressAdapter;
+  constructor(private env: NodeJS.ProcessEnv = process.env, private fetcher: Fetcher = fetch, private configResolver?: () => Promise<GhnRuntimeConfig>, goongResolver?: () => Promise<GoongRuntimeConfig>) {
+    this.goong = new GoongAddressAdapter(goongResolver || (async () => goongEnvironment(this.env)), fetcher);
+  }
   private ghnShops() {
     const main = this.env.GHN_SHOP_ID?.trim() || '';
     const shops = [...new Set([main, ...(this.env.GHN_SHOP_IDS || '').split(',').map(value => value.trim()).filter(Boolean)])];
@@ -120,23 +125,29 @@ export class ExternalReadAdapters {
     if (!shop) throw failure('Khóa GHN không truy cập được cửa hàng đã chọn.', 502);
     return { id, district: positive(shop.district_id, 'Quận gửi'), metadata: shop };
   }
-  private statusFor(config: GhnRuntimeConfig) {
-    return { ghn: { configured: config.configured, configured_shop_count: config.shops.length, mode: 'read_and_create', source: config.source, settings_mode: config.mode, revision: config.revision, has_saved_key: config.hasSavedKey, variables: ['GHN_API_KEY', 'GHN_SHOP_ID', 'GHN_SHOP_IDS'], writes_supported: true, create_supported:true, edit_supported:false, cancel_supported:false, print_supported:true }, tax: { configured: true, mode: 'public_read_only', provider: 'VietQR' }, goong: { configured: false, mode: 'unsupported', variables: ['GOONG_API_KEY'] }, einvoice: { configured: false, mode: 'draft_only', live_supported: false }, ai: { mode: 'existing_settings', settings_path: '/ai-settings' } };
+  private statusFor(config: GhnRuntimeConfig, goong = goongPublicStatus(goongEnvironment(this.env))) {
+    return { ghn: { configured: config.configured, configured_shop_count: config.shops.length, mode: 'read_and_create', source: config.source, settings_mode: config.mode, revision: config.revision, has_saved_key: config.hasSavedKey, variables: ['GHN_API_KEY', 'GHN_SHOP_ID', 'GHN_SHOP_IDS'], writes_supported: true, create_supported:true, edit_supported:false, cancel_supported:false, print_supported:true }, tax: { configured: true, mode: 'public_read_only', provider: 'VietQR' }, goong: { ...goong, capability: 'address_autocomplete', settings_path: '/api-settings', variables: ['GOONG_API_KEY'] }, einvoice: { configured: false, mode: 'draft_only', live_supported: false }, ai: { mode: 'existing_settings', settings_path: '/ai-settings' } };
   }
   status() {
     return this.statusFor(this.staticConfig());
   }
-  async getStatus() { return this.statusFor(await this.snapshot()); }
+  async getStatus() { return this.statusFor(await this.snapshot(), await this.goong.status()); }
   async taxCode(value: unknown) {
     const code = String(value || '').trim(); if (!/^\d{10}(?:-?\d{3})?$/.test(code)) throw failure('Mã số thuế phải gồm 10 hoặc 13 chữ số.');
     const result = await requestJson(`https://api.vietqr.io/v2/business/${encodeURIComponent(code)}`, {}, this.fetcher);
     if (result.code !== '00' || !result.data || typeof result.data.name !== 'string') throw failure('Không tìm thấy doanh nghiệp với mã số thuế này.', 404);
     return { company_name: result.data.name, address: typeof result.data.address === 'string' ? result.data.address : '', tax_code: code, representative: '', position: '', phone: '', bank_name: '', bank_account: '', bank_holder: '', source: 'vietqr', local_only: false };
   }
-  async ghn(body: Body, runtimeConfig?: GhnRuntimeConfig) {
+  async ghn(body: Body, runtimeConfig?: GhnRuntimeConfig, actor = '') {
     const action = String(body.action || '');
+    if (action === 'address_autocomplete' || action === 'address_autocomplete_status') {
+      const keys = action === 'address_autocomplete' ? ['action', 'input'] : ['action'];
+      if (Object.keys(body).some(key => !keys.includes(key))) throw failure('Dữ liệu tìm địa chỉ không hợp lệ.');
+    }
+    if (action === 'address_autocomplete_status') return { success: true, data: await this.goong.status(), source: 'goong' };
+    if (action === 'address_autocomplete') return { success: true, data: await this.goong.autocomplete(body.input, actor), source: 'goong' };
     const supported = ['get_provinces', 'get_districts', 'get_wards', 'get_shops', 'get_services', 'calculate_fee', 'track', 'track_order', 'get_order_detail'];
-    if (!supported.includes(action)) return { success: false, error: action === 'address_autocomplete' ? 'Gợi ý địa chỉ Goong chưa được tích hợp trên VPS.' : 'Thao tác này chưa được hỗ trợ an toàn trên VPS. Chưa gửi hoặc thay đổi vận đơn GHN.', mode: 'read_only' };
+    if (!supported.includes(action)) return { success: false, error: 'Thao tác này chưa được hỗ trợ an toàn trên VPS. Chưa gửi hoặc thay đổi vận đơn GHN.', mode: 'read_only' };
     const config = runtimeConfig || await this.snapshot();
     const token = config.token, shops = config.shops;
     let shop = config.primaryShop;
@@ -149,31 +160,43 @@ export class ExternalReadAdapters {
     if (action === 'get_shops') { endpoint = 'v2/shop/all'; data = { offset: 0, limit: 50, client_phone: '' }; }
     if (action === 'get_services') { const sender = await this.sender(config, body.shopId); shop = sender.id; endpoint = 'v2/shipping-order/available-services'; data = { shop_id: Number(shop), from_district: sender.district, to_district: positive(body.toDistrictId, 'Quận nhận') }; }
     if (action === 'calculate_fee') {
-      endpoint = 'v2/shipping-order/fee'; const fee = body.feeData || {};
+      endpoint = 'v2/shipping-order/fee';
+      if (!body.feeData || typeof body.feeData !== 'object' || Array.isArray(body.feeData)) throw failure('Thông tin tính cước không hợp lệ.');
+      const fee = body.feeData;
       const sender = await this.sender(config, body.shopId); shop = sender.id;
       const weight = ghnInteger(fee.weight, 1, 50000, 'Khối lượng');
       data = { shop_id: Number(shop), to_district_id: positive(fee.to_district_id, 'Quận nhận'), weight };
-      for (const key of ['from_district_id', 'service_id', 'service_type_id', 'insurance_value', 'cod_value', 'cod_failed_amount']) if (fee[key] !== undefined) { const number = Number(fee[key]); if (!Number.isSafeInteger(number) || number < 0) throw failure('Thông tin tính cước không hợp lệ.'); data[key] = number; }
+      for (const key of ['from_district_id', 'service_id', 'service_type_id']) if (fee[key] !== undefined) { const number = Number(fee[key]); if (!Number.isSafeInteger(number) || number < 0) throw failure('Thông tin tính cước không hợp lệ.'); data[key] = number; }
+      for (const [key, max] of [['insurance_value', 5000000], ['cod_value', 50000000], ['cod_failed_amount', 50000000]] as const) {
+        if (fee[key] === undefined) continue;
+        if (typeof fee[key] !== 'number' || !Number.isSafeInteger(fee[key]) || fee[key] < 0 || fee[key] > max) throw failure('COD tối đa 50 triệu; giá trị khai báo bảo hiểm tối đa 5 triệu đồng, phải là số nguyên không âm.');
+        data[key] = fee[key];
+      }
       if (typeof fee.to_ward_code !== 'string' || !/^[\w-]{1,30}$/.test(fee.to_ward_code)) throw failure('Mã phường/xã không hợp lệ.'); data.to_ward_code = fee.to_ward_code;
       if (fee.from_district_id !== undefined && Number(fee.from_district_id) !== sender.district) throw failure('Quận gửi không khớp cửa hàng GHN.');
       data.from_district_id = sender.district;
+      const originWard = sender.metadata.ward_code;
+      if (fee.from_ward_code !== undefined && (typeof fee.from_ward_code !== 'string' || fee.from_ward_code !== originWard)) throw failure('Phường/xã gửi không khớp cửa hàng GHN.');
+      // Only trusted shop discovery determines the pickup ward. Without it GHN
+      // applies its documented ShopId address fallback; never invent geography.
+      if (typeof originWard === 'string' && /^[\w-]{1,30}$/.test(originWard)) data.from_ward_code = originWard;
       const dimensionFields = ['length', 'width', 'height'] as const;
       const dimensionsProvided = dimensionFields.filter(field => fee[field] !== undefined);
       if (dimensionsProvided.length && dimensionsProvided.length !== dimensionFields.length) throw failure('Khi tính cước với kích thước, cần nhập đủ dài × rộng × cao.');
       if (dimensionsProvided.length === dimensionFields.length) for (const field of dimensionFields) data[field] = ghnInteger(fee[field], 1, 200, 'Kích thước kiện hàng');
-      if (fee.service_type_id === undefined || Number(fee.service_type_id) !== (weight < 20000 ? 2 : 5)) throw failure('Loại dịch vụ GHN không phù hợp với khối lượng kiện hàng.');
       if (fee.items !== undefined && !Array.isArray(fee.items)) throw failure('Danh sách kiện hàng không hợp lệ.');
+      const parcelCount = Array.isArray(fee.items) ? fee.items.length : 1;
+      if (fee.service_type_id === undefined || Number(fee.service_type_id) !== (weight < 20000 && parcelCount === 1 ? 2 : 5)) throw failure('Loại dịch vụ GHN không phù hợp với cân nặng hoặc số kiện.');
       if (dimensionsProvided.length === dimensionFields.length && fee.items === undefined) throw failure('Báo giá hoàn chỉnh phải có đúng một kiện đã đóng gói.');
       if (Array.isArray(fee.items)) {
-        if (fee.items.length !== 1 || dimensionsProvided.length !== dimensionFields.length) throw failure('Báo giá hoàn chỉnh phải có đúng một kiện đã đóng gói và đủ ba chiều.');
-        const row = fee.items[0];
-        if (!row || typeof row.name !== 'string' || row.name.trim() !== 'Kiện hàng đã đóng gói' || ghnInteger(row.quantity, 1, 1, 'Số lượng kiện') !== 1) throw failure('Kiện đã đóng gói không hợp lệ.');
-        const itemWeight = ghnInteger(row.weight, 1, 50000, 'Khối lượng kiện hàng');
-        const itemLength = ghnInteger(row.length, 1, 200, 'Kích thước kiện hàng');
-        const itemWidth = ghnInteger(row.width, 1, 200, 'Kích thước kiện hàng');
-        const itemHeight = ghnInteger(row.height, 1, 200, 'Kích thước kiện hàng');
-        if (itemWeight !== weight || itemLength !== data.length || itemWidth !== data.width || itemHeight !== data.height) throw failure('Thông số kiện trong báo giá không khớp kiện đã cân, đo.');
-        data.items = [{ name: row.name.trim(), quantity: 1, weight: itemWeight, length: itemLength, width: itemWidth, height: itemHeight }];
+        if (parcelCount < 1 || parcelCount > 100 || (parcelCount === 1 ? dimensionsProvided.length !== 3 : dimensionsProvided.length !== 0)) throw failure('Báo giá cần kích thước riêng của từng kiện; không gộp kích thước nhiều kiện.');
+        data.items = fee.items.map((row: Body, index: number) => {
+          const expectedName = parcelCount === 1 ? 'Kiện hàng đã đóng gói' : `Kiện hàng đã đóng gói ${index + 1}/${parcelCount}`;
+          if (!row || typeof row.name !== 'string' || row.name.trim() !== expectedName || ghnInteger(row.quantity, 1, 1, 'Số lượng kiện') !== 1) throw failure('Kiện đã đóng gói không hợp lệ.');
+          return { name: row.name.trim(), quantity: 1, weight: ghnInteger(row.weight, 1, 50000, 'Khối lượng kiện hàng'), length: ghnInteger(row.length, 1, 200, 'Kích thước kiện hàng'), width: ghnInteger(row.width, 1, 200, 'Kích thước kiện hàng'), height: ghnInteger(row.height, 1, 200, 'Kích thước kiện hàng') };
+        });
+        if (data.items.reduce((sum: number, row: Body) => sum + row.weight, 0) !== weight) throw failure('Tổng cân nặng các kiện không khớp vận đơn.');
+        if (parcelCount === 1 && dimensionFields.some(field => data.items[0][field] !== data[field])) throw failure('Thông số kiện trong báo giá không khớp kiện đã đo.');
       }
     }
     const tracking = ['track', 'track_order', 'get_order_detail'].includes(action);
