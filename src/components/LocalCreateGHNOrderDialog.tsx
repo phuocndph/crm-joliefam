@@ -12,12 +12,12 @@ import { CheckCircle2, Copy, Loader2, Plus, Printer, RefreshCw, Truck, X } from 
 import type { CreateGHNOrderDialogProps } from './CreateGHNOrderDialog';
 import { GhnDirectorySearch } from './GhnDirectorySearch';
 import { createAddressGeneration, matchProvince, matchDistrict, matchWard, matchProvinceTail, matchDistrictTail, matchWardTail, filterGhnDirectory, ghnAddressSuggestionQuery, type AddressLevel, type GhnProvince as Province, type GhnDistrict as District, type GhnWard as Ward } from '@/lib/ghn-address-match';
-import { buildGhnQuoteSnapshot, compareGhnShopQuotes, createGhnQuoteSession, findGhnSelectedQuote, findGhnAutomaticCheapest, ghnServiceChoiceKey, validateGhnCreateItems, type GhnQuoteComparison, type GhnShopQuote } from '@/lib/ghn-quote-comparison';
+import { buildGhnPackedContent, buildGhnPackedParcelItemName, buildGhnQuoteSnapshot, compareGhnShopQuotes, createGhnQuoteSession, eligibleGhnServices, findGhnSelectedQuote, findGhnAutomaticCheapest, ghnServiceChoiceKey, parseGhnKilograms, validateGhnCreateItems, type GhnQuoteComparison, type GhnShopQuote } from '@/lib/ghn-quote-comparison';
 
 type Shop={_id:number;name:string;address:string;district_id:number};
 type Service={service_id:number;service_type_id:number;short_name:string};
-type Item={name:string;quantity:number;weight:number;length:number;width:number;height:number};
-const blankItem=():Item=>({name:'',quantity:1,weight:0,length:0,width:0,height:0});
+type Item={name:string;quantity:number};
+const blankItem=():Item=>({name:'',quantity:1});
 const blankParcel=()=>({weight:0,length:0,width:0,height:0});
 const metadataAddress=(value:string)=>/^\s*(?:ngày hết hạn|ngay het han|email|mã số thuế|ma so thue)\s*:/i.test(value);
 const unresolved=(attempt:GhnOrderAttempt|null)=>Boolean(attempt && ['IN_FLIGHT','UNKNOWN','REMOTE_CREATED'].includes(attempt.attempt_status));
@@ -45,8 +45,8 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   const [toName,setToName]=useState(''),[toPhone,setToPhone]=useState(''),[toAddress,setToAddress]=useState('');
   const [items,setItems]=useState<Item[]>([blankItem()]);
   const [parcel,setParcel]=useState(blankParcel);
+  const [parcelWeightInput,setParcelWeightInput]=useState('');
   const [prefillWarning,setPrefillWarning]=useState('');
-  const [pickupConsent,setPickupConsent]=useState('');
   const [discardOpen,setDiscardOpen]=useState(false);
   const pendingDestination=useRef<string|null>(null);
   const initialForm=useRef('');
@@ -81,6 +81,11 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   const readForSession=useCallback(async<T,>(action:string,body:Record<string,unknown>={})=>{
     const pinned=assertSessionAuth();
     try{return await read<T>(action,body,pinned);}
+    catch(cause){
+      const feeData=body.feeData as Record<string,unknown>|undefined;
+      if(action==='calculate_fee'&&Number(feeData?.service_type_id)===5&&['length','width','height'].every(field=>feeData?.[field]===undefined)) throw new Error(`Cần kích thước kiện để GHN báo cước hoàn chỉnh. ${errorText(cause)}`);
+      throw cause;
+    }
     finally{assertSessionAuth();}
   },[assertSessionAuth]);
   const quoteSession=useRef<ReturnType<typeof createGhnQuoteSession>>();
@@ -90,10 +95,9 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   const selectedService=serviceRoute.current===routeKey?services.find(row=>ghnServiceChoiceKey(row)===serviceChoice):undefined;
   const unresolvedAttempt=unresolved(attempt);
   const locked=busy || initializing || unresolvedAttempt;
-  // Keep the memo stable for name-only edits, including while a quote is pending
-  // or failed. Only physical item fields belong to the quote request lifecycle.
-  const quoteItemsKey=JSON.stringify(items.map(row=>({name:'',quantity:row.quantity,weight:row.weight,length:row.length,width:row.width,height:row.height})));
-  const quoteInput=useMemo(()=>buildGhnQuoteSnapshot({provinceId,districtId,wardCode,address:toAddress,items:JSON.parse(quoteItemsKey) as Item[],cod,insurance,parcel}),[provinceId,districtId,wardCode,toAddress,quoteItemsKey,cod,insurance,parcel]);
+  // Product names and quantities describe the content only. The single measured
+  // packed parcel is the sole physical input for both quote and create requests.
+  const quoteInput=useMemo(()=>buildGhnQuoteSnapshot({provinceId,districtId,wardCode,address:toAddress,cod,insurance,parcel}),[provinceId,districtId,wardCode,toAddress,cod,insurance,parcel]);
   // This identity excludes the chosen shop/service so comparison rows stay usable
   // while the operator chooses. Every price-affecting input is included.
   const quoteContext=JSON.stringify([open,order?.id,reload,locked,matchingAddress,dataBusy,quoteRevision,selectionMode,quoteInput.snapshot?.key||null]);
@@ -105,13 +109,13 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   const nameError=!toName.trim()||toName.trim().length>100?'Nhập tên người nhận (1–100 ký tự).':'';
   const phoneError=!/^(?:0\d{9}|\+84\d{9})$/.test(toPhone.trim())?'Nhập số điện thoại 10 số bắt đầu bằng 0, hoặc +84 và 9 số.':'';
   const streetError=toAddress.trim().length<3||toAddress.trim().length>500?'Nhập địa chỉ đầy đủ (3–500 ký tự).':metadataAddress(toAddress)?'Nội dung này giống thông tin hồ sơ, không phải địa chỉ nhận hàng. Vui lòng nhập lại.':'';
-  const parcelValid=Number.isInteger(parcel.weight)&&parcel.weight>=1&&parcel.weight<=50000&&[parcel.length,parcel.width,parcel.height].every(value=>Number.isInteger(value)&&value>=1&&value<=200);
-  const itemPhysicalError=items.some(row=>!Number.isInteger(row.quantity)||row.quantity<1||row.quantity>1000||!Number.isInteger(row.weight)||row.weight<1||row.weight>50000||[row.length,row.width,row.height].some(value=>!Number.isInteger(value)||value<1||value>200));
-  const createValidationError=nameError||phoneError||streetError||quoteInput.error||validateGhnCreateItems(items);
-  const reviewKey=fee!==null&&autoSelectionReady&&quoteInput.snapshot&&selectedService?JSON.stringify([quoteInput.snapshot.key,shopId,selectedService.service_id,selectedService.service_type_id,fee,payment,cod]):'';
-  const pickupConfirmed=Boolean(reviewKey&&pickupConsent===reviewKey);
-  useLayoutEffect(()=>{setPickupConsent('');},[reviewKey]);
-  const formSignature=JSON.stringify([toName,toPhone,toAddress,provinceId,districtId,wardCode,items,parcel,cod,insurance,payment,note,requiredNote,selectionMode]);
+  const parcelWeightValid=Number.isInteger(parcel.weight)&&parcel.weight>=1&&parcel.weight<=50000;
+  const parcelDimensionsComplete=[parcel.length,parcel.width,parcel.height].every(value=>Number.isInteger(value)&&value>=1&&value<=200);
+  const parcelDimensionsPartial=[parcel.length,parcel.width,parcel.height].some(value=>value!==0)&&!parcelDimensionsComplete;
+  const parcelValid=parcelWeightValid&&parcelDimensionsComplete;
+  const parcelCreateError=!parcelWeightValid?'Nhập khối lượng kiện đã cân từ 0,001 đến 50 kg.':!parcelDimensionsComplete?'Nhập đủ dài × rộng × cao của kiện (1–200 cm) trước khi tạo vận đơn.':'';
+  const createValidationError=nameError||phoneError||streetError||quoteInput.error||parcelCreateError||validateGhnCreateItems(items);
+  const formSignature=JSON.stringify([toName,toPhone,toAddress,provinceId,districtId,wardCode,items,parcel,parcelWeightInput,cod,insurance,payment,note,requiredNote,selectionMode]);
 
   const currentAttemptSession=useCallback((token:AttemptSession)=>{
     const current=attemptSession.current;
@@ -129,8 +133,8 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
     setCod(remainingAmount);setInsurance(Math.min(order?.total_amount||remainingAmount,5000000));setPayment('2');setRequiredNote('CHOXEMHANGKHONGTHU');
     setNote(order?'Đơn hàng '+(order.display_order_number||order.order_number):'');
     setItems([{...blankItem(),name:order?'Đơn hàng '+(order.display_order_number||order.order_number):''}]);
-    setParcel(blankParcel());setPickupConsent('');
-    initialForm.current=JSON.stringify([order?.customers?.name||'',badPhone?'':phone,badAddress?'':address,'','','',[{...blankItem(),name:order?'Đơn hàng '+(order.display_order_number||order.order_number):''}],blankParcel(),remainingAmount,Math.min(order?.total_amount||remainingAmount,5000000),'2',order?'Đơn hàng '+(order.display_order_number||order.order_number):'','CHOXEMHANGKHONGTHU','auto']);
+    setParcel(blankParcel());setParcelWeightInput('');
+    initialForm.current=JSON.stringify([order?.customers?.name||'',badPhone?'':phone,badAddress?'':address,'','','',[{...blankItem(),name:order?'Đơn hàng '+(order.display_order_number||order.order_number):''}],blankParcel(),'',remainingAmount,Math.min(order?.total_amount||remainingAmount,5000000),'2',order?'Đơn hàng '+(order.display_order_number||order.order_number):'','CHOXEMHANGKHONGTHU','auto']);
     setSelectionMode('auto');latestMode.current='auto';setManualAddress(false);setShowAllQuotes(false);
     setError('');setLocationError('');setServiceError('');setPrintUrl('');setPrintError('');setPrintBusy(false);setCopyMessage('');
   },[]);
@@ -347,14 +351,13 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
     void session.services(shopId,Number(districtId),token).then(available=>{
       if(!active||!session.current(token))return;
       const sameRoute=serviceRoute.current===routeKey;
-      serviceRoute.current=routeKey;setServices(available);
-      // A valid manual choice survives weight changes. GHN availability, rather
-      // than the former 20 kg heuristic, determines the selectable services.
-      setServiceChoice(previous=>sameRoute&&available.some(row=>ghnServiceChoiceKey(row)===previous)?previous:available[0]?ghnServiceChoiceKey(available[0]):'');
-      if(!available.length)setServiceError('Không có dịch vụ GHN phù hợp tuyến này. Chọn cửa hàng hoặc địa chỉ khác.');
+      const eligible=eligibleGhnServices(available,parcel.weight);
+      serviceRoute.current=routeKey;setServices(eligible);
+      setServiceChoice(previous=>sameRoute&&eligible.some(row=>ghnServiceChoiceKey(row)===previous)?previous:eligible[0]?ghnServiceChoiceKey(eligible[0]):'');
+      if(!eligible.length)setServiceError('Không có dịch vụ GHN phù hợp với khối lượng kiện này và tuyến đã chọn.');
     }).catch(cause=>{if(active&&session.current(token))setServiceError(errorText(cause));}).finally(()=>{if(active&&session.current(token))setServicesBusy(false);});
     return()=>{active=false;};
-  },[open,locked,shopId,districtId,matchingAddress,dataBusy,routeKey,quoteContext,selectionMode]);
+  },[open,locked,shopId,districtId,matchingAddress,dataBusy,routeKey,quoteContext,selectionMode,parcel.weight]);
 
   useEffect(()=>{
     setFeeError('');setFeeBusy(false);
@@ -453,12 +456,14 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   };
   const submit=async()=>{
     if(createValidationError){setError(createValidationError);return;}
-    if(!pickupConfirmed){setError('Xác nhận điểm lấy hàng, thu hộ và bên trả cước trong phần kiểm tra trước khi tạo.');return;}
-    if(!recoveryReady||locked||attempt||matchingAddress||compareBusy||dataBusy||feeBusy||!autoSelectionReady||!quoteInput.snapshot||!selectedService||fee===null||!requestKey)return;
+    const snapshot=quoteInput.snapshot;
+    if(!snapshot||snapshot.kind!=='final'){setError('Cần nhập đủ dài × rộng × cao để có báo giá hoàn chỉnh trước khi tạo vận đơn.');return;}
+    if(!recoveryReady||locked||attempt||matchingAddress||compareBusy||dataBusy||feeBusy||!autoSelectionReady||!selectedService||fee===null||!requestKey)return;
     const token={...attemptSession.current};setBusy(true);setError('');
     try{
-      const measured=quoteInput.snapshot.feeData;
-      const result=await localApi.createGhnOrder({idempotencyKey:requestKey,shopId,orderId:order?.id||null,orderNumber:order?.display_order_number||order?.order_number||'',provinceId:Number(provinceId),orderData:{to_name:toName,to_phone:toPhone,to_address:toAddress,to_district_id:Number(districtId),to_ward_code:wardCode,weight:measured.weight,length:measured.length,width:measured.width,height:measured.height,cod_amount:cod,insurance_value:insurance,cod_failed_amount:0,note,required_note:requiredNote,content:items.map(row=>row.name).join(', '),payment_type_id:Number(payment),service_type_id:selectedService.service_type_id,service_id:selectedService.service_id,items:items.map(row=>({...row,price:0}))}},assertSessionAuth());
+      const measured=snapshot.feeData;
+      const content=buildGhnPackedContent(items);
+      const result=await localApi.createGhnOrder({idempotencyKey:requestKey,shopId,orderId:order?.id||null,orderNumber:order?.display_order_number||order?.order_number||'',provinceId:Number(provinceId),orderData:{to_name:toName,to_phone:toPhone,to_address:toAddress,to_district_id:Number(districtId),to_ward_code:wardCode,weight:measured.weight,length:measured.length!,width:measured.width!,height:measured.height!,cod_amount:cod,insurance_value:insurance,cod_failed_amount:0,note,required_note:requiredNote,content,payment_type_id:Number(payment),service_type_id:selectedService.service_type_id,service_id:selectedService.service_id,items:[{name:buildGhnPackedParcelItemName(items),quantity:1,weight:measured.weight,length:measured.length!,width:measured.width!,height:measured.height!,price:0}]}},assertSessionAuth());
       applyAttempt(result.data,token);
     }catch(cause){
       if(!currentAttemptSession(token))return;
@@ -569,17 +574,21 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
       </section>
       <section className="space-y-4 rounded-lg border p-3 sm:p-4" aria-labelledby="ghn-parcel-heading"><h3 id="ghn-parcel-heading" className="font-semibold">2. Kiện hàng đã đóng gói</h3>
       <p id="ghn-parcel-help" className="text-sm text-muted-foreground">Cân và đo cả kiện sau khi đóng gói. Đây là thông số kiện gửi, không phải kích thước từng sản phẩm.</p>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{([['weight','Khối lượng (g)',50000],['length','Dài (cm)',200],['width','Rộng (cm)',200],['height','Cao (cm)',200]] as const).map(([field,label,max])=><label key={field} className="block space-y-1.5">{label} *<Input id={'ghn-parcel-'+field} type="number" inputMode="numeric" min={1} max={max} value={parcel[field]||''} placeholder="Nhập số đo" aria-invalid={!Number.isInteger(parcel[field])||parcel[field]<1||parcel[field]>max} aria-describedby="ghn-parcel-help ghn-parcel-error" onChange={event=>setParcel(previous=>({...previous,[field]:Number(event.target.value)}))}/></label>)}</div>
-      {!parcelValid&&<p id="ghn-parcel-error" className="text-sm text-destructive">Cần đủ khối lượng (1–50.000 g), dài × rộng × cao (1–200 cm), bằng số nguyên.</p>}
+      <div className="grid gap-3 sm:grid-cols-4"><label className="block space-y-1.5 sm:col-span-1">Khối lượng kiện (kg) *<Input id="ghn-parcel-weight" type="text" inputMode="decimal" value={parcelWeightInput} placeholder="Ví dụ: 20,5" aria-invalid={parcelWeightInput!==''&&!parcelWeightValid} aria-describedby="ghn-parcel-help ghn-parcel-error" onChange={event=>{const value=event.target.value;setParcelWeightInput(value);setParcel(previous=>({...previous,weight:parseGhnKilograms(value)??0}));}}/></label>{([['length','Dài (cm)'],['width','Rộng (cm)'],['height','Cao (cm)']] as const).map(([field,label])=><label key={field} className="block space-y-1.5">{label}<Input id={'ghn-parcel-'+field} type="number" inputMode="numeric" min={1} max={200} value={parcel[field]||''} placeholder="Nhập số đo" aria-invalid={parcel[field]!==0&&(!Number.isInteger(parcel[field])||parcel[field]<1||parcel[field]>200)} aria-describedby="ghn-parcel-help ghn-parcel-error" onChange={event=>setParcel(previous=>({...previous,[field]:Number(event.target.value)}))}/></label>)}</div>
+      <p className="text-sm text-muted-foreground">Nhập kg tối đa 3 chữ số thập phân, dùng dấu phẩy hoặc dấu chấm. Khoảng hợp lệ: 0,001–50 kg.</p>
+      <p className="text-sm text-muted-foreground">Báo giá sơ bộ chỉ theo cân nặng. Để GHN báo cước hoàn chỉnh và tạo vận đơn, nhập đủ ba chiều.</p>
+      {!parcelWeightValid&&<p id="ghn-parcel-error" className="text-sm text-destructive">Nhập khối lượng kiện từ 0,001 đến 50 kg, tối đa 3 chữ số thập phân.</p>}
+      {parcelDimensionsPartial&&<p id="ghn-parcel-error" className="text-sm text-destructive">Nhập đủ dài × rộng × cao từ 1 đến 200 cm, hoặc để trống cả ba để chỉ báo giá sơ bộ.</p>}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3"><h4 className="font-medium">Hàng bên trong kiện</h4><Button type="button" variant="outline" size="sm" disabled={items.length>=100} onClick={()=>setItems(previous=>[...previous,blankItem()])}><Plus className="mr-1 h-4 w-4"/>Thêm sản phẩm</Button></div>
       <p className="text-sm text-muted-foreground">Đơn nội bộ chỉ gợi ý tên kiện. Kiểm tra và khai đúng nội dung, số lượng thực gửi.</p>
       <div className="space-y-3">{items.map((row,index)=><div key={index} className="rounded-md border bg-muted/10 p-3 space-y-3"><div className="grid grid-cols-[minmax(0,1fr)_85px_auto] items-end gap-2"><label className="min-w-0 space-y-1.5">Tên sản phẩm *<Input id={'ghn-item-name-'+index} aria-label={'Tên sản phẩm '+(index+1)} placeholder="Tên sản phẩm" value={row.name} onChange={event=>updateItem(index,'name',event.target.value)} maxLength={200} aria-invalid={!row.name.trim()} aria-describedby={!row.name.trim()?'ghn-item-error-'+index:undefined}/></label><label className="space-y-1.5">Số lượng *<Input aria-label={'Số lượng sản phẩm '+(index+1)} type="number" inputMode="numeric" min={1} max={1000} value={row.quantity||''} aria-invalid={!Number.isInteger(row.quantity)||row.quantity<1||row.quantity>1000} onChange={event=>updateItem(index,'quantity',Number(event.target.value))}/></label>{items.length>1&&<Button className="min-w-11" type="button" size="icon" variant="ghost" aria-label={'Xóa sản phẩm '+(index+1)} onClick={()=>setItems(previous=>previous.filter((_,i)=>i!==index))}><X className="h-4 w-4"/></Button>}</div>{!row.name.trim()&&<p id={'ghn-item-error-'+index} className="text-sm text-destructive">Nhập tên sản phẩm thực gửi.</p>}
-      <details open={itemPhysicalError?true:undefined} className="rounded-md border bg-background p-3"><summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">Thông số từng sản phẩm GHN yêu cầu *</summary><p id={'ghn-item-physical-help-'+index} className="mb-3 text-sm text-muted-foreground">Nhập khối lượng và kích thước của 1 sản phẩm trong dòng này. Không chia đều hoặc tự suy ra từ kiện. GHN có thể dùng thông số này khi tính cước từng dịch vụ.</p><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{([['weight','Khối lượng (g)'],['length','Dài (cm)'],['width','Rộng (cm)'],['height','Cao (cm)']] as const).map(([field,label])=><label key={field} className="block space-y-1.5">{label}<Input aria-label={label+' sản phẩm '+(index+1)} type="number" inputMode="numeric" min={1} max={field==='weight'?50000:200} value={row[field]||''} placeholder="Nhập thực tế" aria-invalid={!Number.isInteger(row[field])||row[field]<1||row[field]>(field==='weight'?50000:200)} aria-describedby={'ghn-item-physical-help-'+index} onChange={event=>updateItem(index,field,Number(event.target.value))}/></label>)}</div></details></div>)}</div>
+      </div>)}</div>
       </section>
       <section className="space-y-4 rounded-lg border p-3 sm:p-4" aria-labelledby="ghn-payment-heading"><h3 id="ghn-payment-heading" className="font-semibold">3. Thu hộ & người trả cước</h3><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm space-y-1.5 block">Thu hộ COD (đ)<Input id="ghn-cod" type="number" inputMode="numeric" min={0} max={50000000} value={cod} aria-invalid={!Number.isSafeInteger(cod)||cod<0||cod>50000000} aria-describedby="ghn-cod-help" onChange={event=>setCod(Number(event.target.value))}/><span id="ghn-cod-help" className="block text-sm text-muted-foreground">Tiền hàng GHN thu từ người nhận; không bao gồm cước vận chuyển.</span></label><label className="text-sm space-y-1.5 block">Bên trả cước<select id="ghn-payment" className={selectClass} value={payment} onChange={event=>setPayment(event.target.value)}><option value="1">Người gửi trả cước</option><option value="2">Người nhận trả cước</option></select></label><label className="text-sm space-y-1.5 block">Giá trị bảo hiểm (đ)<Input id="ghn-insurance" type="number" inputMode="numeric" min={0} max={5000000} value={insurance} aria-invalid={!Number.isSafeInteger(insurance)||insurance<0||insurance>5000000} onChange={event=>setInsurance(Number(event.target.value))}/></label></div>
       </section>
       <section className="rounded-lg border p-3 sm:p-4 space-y-3" aria-labelledby="ghn-rates-heading" aria-label="So sánh cước cửa hàng GHN">
         <h3 id="ghn-rates-heading" className="font-semibold">4. Cửa hàng gửi & cước</h3>
+        {quoteInput.snapshot?.kind==='preliminary'&&<p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">Cước sơ bộ theo khối lượng. GHN có thể từ chối hoặc thay đổi cước sau khi nhập kích thước đầy đủ.</p>}
         <div role="radiogroup" aria-label="Cách chọn cửa hàng gửi" className="grid gap-2 sm:grid-cols-2">
           <label className={'flex cursor-pointer items-start gap-2 rounded-md border p-3 text-sm '+(selectionMode==='auto'?'border-primary bg-primary/5':'')}><input type="radio" name="ghn-selection-mode" className="mt-0.5" checked={selectionMode==='auto'} onChange={()=>changeSelectionMode('auto')}/><span><strong className="block">Tự chọn cước thấp nhất</strong><span className="text-xs text-muted-foreground">So sánh toàn bộ {shops.length} cửa hàng đã cấu hình.</span></span></label>
           <label className={'flex cursor-pointer items-start gap-2 rounded-md border p-3 text-sm '+(selectionMode==='manual'?'border-primary bg-primary/5':'')}><input type="radio" name="ghn-selection-mode" className="mt-0.5" checked={selectionMode==='manual'} onChange={()=>changeSelectionMode('manual')}/><span><strong className="block">Tôi chọn thủ công</strong><span className="text-xs text-muted-foreground">Giữ cửa hàng và dịch vụ do bạn chọn.</span></span></label>
@@ -604,19 +613,19 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
       <details className="rounded-lg border p-3 sm:p-4"><summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">Tùy chọn giao hàng & cấu hình</summary><div className="mt-4 space-y-4"><label className="text-sm space-y-1.5 block">Lưu ý giao hàng<select className={selectClass} value={requiredNote} onChange={event=>setRequiredNote(event.target.value)}><option value="KHONGCHOXEMHANG">Không cho xem hàng</option><option value="CHOXEMHANGKHONGTHU">Cho xem, không cho thử</option><option value="CHOTHUHANG">Cho thử hàng</option></select></label><label className="text-sm space-y-1.5 block">Ghi chú<Textarea value={note} onChange={event=>setNote(event.target.value)} maxLength={1000} rows={2}/></label><div className="flex flex-wrap items-center gap-3 border-t pt-3"><Button type="button" variant="link" disabled={busy||initializing||unresolvedAttempt} onClick={openApiSettings}>Cài đặt API</Button><Button type="button" size="sm" variant="outline" disabled={busy||initializing||dataBusy||unresolved(attempt)} onClick={reloadAddress}><RefreshCw className="mr-2 h-4 w-4"/>Tải lại cửa hàng / địa chỉ</Button></div></div></details>
     </fieldset>}
     </div>
-    {recoveryReady&&!attempt&&<aside id="ghn-review" className="space-y-4 rounded-lg border bg-muted/20 p-4 lg:sticky lg:top-0" aria-label="Kiểm tra trước khi tạo"><h3 className="font-semibold">Kiểm tra trước khi tạo</h3><dl className="space-y-3 text-sm"><div><dt className="text-muted-foreground">Người nhận</dt><dd className="break-words font-medium">{toName||'Chưa nhập'} · {toPhone||'Chưa có SĐT'}</dd></div><div><dt className="text-muted-foreground">Kiện đã đóng gói</dt><dd>{parcelValid?`${parcel.weight.toLocaleString('vi-VN')} g · ${parcel.length} × ${parcel.width} × ${parcel.height} cm`:'Chưa đủ số cân / đo'}</dd></div><div><dt className="text-muted-foreground">Thu hộ COD</dt><dd className="font-semibold">{money(cod)}</dd></div><div><dt className="text-muted-foreground">Bên trả cước</dt><dd className="font-semibold">{payment==='2'?'Người nhận trả cước':'Người gửi trả cước'}</dd></div><div className="rounded-md border border-primary/20 bg-primary/5 p-3"><dt className="font-medium">GHN đến lấy hàng tại</dt><dd className="mt-1 break-words">{selectedShop&&(selectionMode==='manual'||autoSelectionReady)?<><strong>{selectedShop.name}</strong><p className="mt-1">{selectedShop.address}</p><p className="mt-1 text-muted-foreground">{selectedService?.short_name}</p></>:'Chờ chọn cửa hàng và dịch vụ'}</dd></div><div><dt className="text-muted-foreground">{selectionMode==='auto'?'Cước thấp nhất dự kiến':'Cước dự kiến'}</dt><dd className="text-xl font-bold text-primary">{feeBusy||compareBusy?'Đang tính…':fee===null||!autoSelectionReady?'Chưa có':money(fee)}</dd></div></dl>
+    {recoveryReady&&!attempt&&<aside id="ghn-review" className="space-y-4 rounded-lg border bg-muted/20 p-4 lg:sticky lg:top-0" aria-label="Kiểm tra trước khi tạo"><h3 className="font-semibold">Kiểm tra trước khi tạo</h3><dl className="space-y-3 text-sm"><div><dt className="text-muted-foreground">Người nhận</dt><dd className="break-words font-medium">{toName||'Chưa nhập'} · {toPhone||'Chưa có SĐT'}</dd></div><div><dt className="text-muted-foreground">Kiện đã đóng gói</dt><dd>{parcelWeightValid?`${(parcel.weight/1000).toLocaleString('vi-VN',{maximumFractionDigits:3})} kg (${parcel.weight.toLocaleString('vi-VN')} g)${parcelDimensionsComplete?` · ${parcel.length} × ${parcel.width} × ${parcel.height} cm`:' · Chưa nhập — chỉ báo giá sơ bộ'}`:'Chưa nhập khối lượng kiện'}</dd></div><div><dt className="text-muted-foreground">Thu hộ COD</dt><dd className="font-semibold">{money(cod)}</dd></div><div><dt className="text-muted-foreground">Bên trả cước</dt><dd className="font-semibold">{payment==='2'?'Người nhận trả cước':'Người gửi trả cước'}</dd></div><div className="rounded-md border border-primary/20 bg-primary/5 p-3"><dt className="font-medium">GHN đến lấy hàng tại</dt><dd className="mt-1 break-words">{selectedShop&&(selectionMode==='manual'||autoSelectionReady)?<><strong>{selectedShop.name}</strong><p className="mt-1">{selectedShop.address}</p><p className="mt-1 text-muted-foreground">{selectedService?.short_name}</p></>:'Chờ chọn cửa hàng và dịch vụ'}</dd></div><div><dt className="text-muted-foreground">{quoteInput.snapshot?.kind==='preliminary'?'Cước sơ bộ theo khối lượng':selectionMode==='auto'?'Cước thấp nhất dự kiến':'Cước dự kiến'}</dt><dd className="text-xl font-bold text-primary">{feeBusy||compareBusy?'Đang tính…':fee===null||!autoSelectionReady?'Chưa có':money(fee)}</dd></div></dl>
       <Button type="button" className="w-full" size="sm" variant="outline" disabled={locked||matchingAddress||dataBusy||feeBusy||compareBusy||!quoteInput.snapshot||!shops.length||(selectionMode==='manual'&&(!shopId||!selectedService))} onClick={refreshQuote}><RefreshCw className="mr-1 h-4 w-4"/>Tính lại cước</Button>
       {feeError&&<p role="alert" className="text-sm text-destructive">{feeError} Bấm tính lại cước để thử lại.</p>}
       {feePrerequisite&&<p role="status" className="text-sm text-muted-foreground">{feePrerequisite}</p>}
-      <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-md border p-3 text-sm"><input id="ghn-pickup-confirm" type="checkbox" className="mt-1 h-5 w-5 shrink-0" disabled={locked||!reviewKey} checked={pickupConfirmed} onChange={event=>setPickupConsent(event.target.checked?reviewKey:'')}/><span>Tôi đã kiểm tra điểm lấy hàng, COD và bên trả cước.</span></label><p className="text-sm text-muted-foreground">Cước dự kiến; GHN có thể điều chỉnh sau khi cân, đo thực tế.</p>
+      <p className="text-sm text-muted-foreground">Cước dự kiến; GHN có thể điều chỉnh sau khi cân, đo thực tế.</p>
     </aside>}
     </div></div>
     {recoveryReady?<div className="shrink-0 space-y-2 border-t bg-background p-3 sm:px-6" aria-label="Cước và thao tác vận đơn GHN">
-      {!attempt&&<div className="flex items-center justify-between gap-2"><p className="text-sm">Cước: <strong>{feeBusy||compareBusy?'Đang tính…':fee===null||!autoSelectionReady?'Chưa có':money(fee)}</strong></p>{(createValidationError||!pickupConfirmed)&&<Button type="button" size="sm" variant="ghost" disabled={locked} onClick={()=>{
+      {!attempt&&<div className="flex items-center justify-between gap-2"><p className="text-sm">{quoteInput.snapshot?.kind==='preliminary'?'Cước sơ bộ':'Cước'}: <strong>{feeBusy||compareBusy?'Đang tính…':fee===null||!autoSelectionReady?'Chưa có':money(fee)}</strong></p>{createValidationError&&<Button type="button" size="sm" variant="ghost" disabled={locked} onClick={()=>{
         if(!provinceId||!districtId||!wardCode)setManualAddress(true);
-        requestAnimationFrame(()=>{const target=dialogContent.current?.querySelector<HTMLElement>('[aria-invalid="true"]')||dialogContent.current?.querySelector<HTMLElement>(!provinceId?'#ghn-province':!districtId?'#ghn-district':!wardCode?'#ghn-ward':'#ghn-pickup-confirm');target?.scrollIntoView({block:'center',behavior:'smooth'});target?.focus();});
-      }}>{createValidationError?'Hoàn tất thông tin':'Kiểm tra & xác nhận'}</Button>}</div>}
-      <div className="flex justify-end gap-2"><Button variant="outline" onClick={()=>changeOpen(false)}>Đóng</Button>{!attempt&&<Button className="min-w-40" disabled={!recoveryReady||locked||matchingAddress||dataBusy||feeBusy||compareBusy||!autoSelectionReady||fee===null||!quoteInput.snapshot||!selectedService||Boolean(createValidationError)||!pickupConfirmed} onClick={()=>void submit()}>{busy&&<Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{busy?'Đang tạo…':'Tạo vận đơn'}</Button>}</div>
+        requestAnimationFrame(()=>{const target=dialogContent.current?.querySelector<HTMLElement>('[aria-invalid="true"]')||dialogContent.current?.querySelector<HTMLElement>(!provinceId?'#ghn-province':!districtId?'#ghn-district':!wardCode?'#ghn-ward':'#ghn-parcel-weight');target?.scrollIntoView({block:'center',behavior:'smooth'});target?.focus();});
+      }}>Hoàn tất thông tin</Button>}</div>}
+      <div className="flex justify-end gap-2"><Button variant="outline" onClick={()=>changeOpen(false)}>Đóng</Button>{!attempt&&<Button className="min-w-40" disabled={!recoveryReady||locked||matchingAddress||dataBusy||feeBusy||compareBusy||!autoSelectionReady||fee===null||quoteInput.snapshot?.kind!=='final'||!selectedService||Boolean(createValidationError)} onClick={()=>void submit()}>{busy&&<Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{busy?'Đang tạo…':'Tạo vận đơn'}</Button>}</div>
     </div>:<div className="flex shrink-0 justify-end gap-2 border-t p-4 sm:px-6">{!initializing&&<Button type="button" variant="outline" onClick={reloadAddress}>Thử tải lại</Button>}<Button type="button" variant="outline" onClick={()=>changeOpen(false)}>Đóng</Button></div>}
   </DialogContent></Dialog><AlertDialog open={discardOpen} onOpenChange={value=>{if(!value)cancelDiscard();}}><AlertDialogContent className="w-[calc(100%-2rem)] max-w-md"><AlertDialogHeader><AlertDialogTitle>Bỏ bản nháp vận đơn?</AlertDialogTitle><AlertDialogDescription>Thông tin bạn vừa nhập chưa được tạo thành vận đơn. Chọn tiếp tục nhập để giữ lại, hoặc bỏ bản nháp để rời khỏi biểu mẫu.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter className="gap-2"><AlertDialogCancel className="min-h-11" onClick={cancelDiscard}>Tiếp tục nhập</AlertDialogCancel><AlertDialogAction className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={event=>{event.preventDefault();confirmDiscard();}}>Bỏ bản nháp</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></>;
 }

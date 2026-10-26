@@ -38,13 +38,15 @@ const contextHarness = ({ recent = null } = {}) => {
     useCallback: callback => callback, cancelAddressMatch() {},
     open: true, order: undefined, remainingAmount: 0, requestKey: 'current-key', storageKey: 'test-storage', attempt: null,
     recoveryReady: true, locked: false, matchingAddress: false, compareBusy: false, dataBusy: false, feeBusy: false,
-    autoSelectionReady: true, pickupConfirmed: true, quoteInput: { snapshot: { key: 'test-fee', feeData: { weight: 1200, length: 20, width: 30, height: 40 } } }, selectedService: { service_id: 53320, service_type_id: 2 },
+    autoSelectionReady: true, quoteInput: { snapshot: { key: 'test-fee', kind: 'final', feeData: { weight: 1200, length: 20, width: 30, height: 40 } } }, selectedService: { service_id: 53320, service_type_id: 2 },
     fee: 25000, shopId: '456', provinceId: '202', districtId: '1444', wardCode: '020308',
-    toName: 'test recipient', toPhone: '0900000003', toAddress: 'test synthetic address', items: [{ name: 'test parcel', quantity: 1, weight: 1000, length: 10, width: 10, height: 10 }],
+    toName: 'test recipient', toPhone: '0900000003', toAddress: 'test synthetic address', items: [{ name: 'test parcel', quantity: 1 }], parcelWeightInput: '1,2',
     totalWeight: 1000, packageLength: 10, packageWidth: 10, packageHeight: 10, cod: 0, insurance: 0, note: '', requiredNote: 'KHONGCHOXEMHANG', payment: '1',
     createValidationError: '', busy: false, initializing: false, unresolvedAttempt: false, printBusy: false,
     crypto: { randomUUID: () => 'new-key-' + ++keyIndex }, navigator: { clipboard: { writeText: async () => {} } },
     storageSet: (key, value) => calls.storage.push({ key, value }), errorText: error => String(error?.message || error),
+    buildGhnPackedContent: rows => rows.map(row => `${row.name.trim()} × ${row.quantity}`).join(', '),
+    buildGhnPackedParcelItemName: rows => rows.map(row => `${row.name.trim()} × ${row.quantity}`).join(', ').slice(0, 200),
     getLocalMe: async () => ({ user_id: 'fixture-admin' }),
     captureLocalAuthGuard: async () => guard, getLocalUserSession: () => ({ actor: 'fixture-admin' }), navigate: value => calls.navigation.push(value),
     onSuccess: () => calls.notifications++, onOpenChange: value => calls.openChanges.push(value),
@@ -165,20 +167,21 @@ await check('directory reload preserves recipient/items/draft within same open o
   h.context.open = false; h.context.resetGeneration(); h.context.open = true; h.context.resetGeneration();
     assert.equal(h.context.toName, ''); assert.equal(h.context.toAddress, ''); assert.notEqual(h.context.items, items); assert.equal(h.context.items[0].name, '');
 });
-await check('create uses exact measured fee parcel, untouched item details and visible COD/payer', async () => {
+await check('create uses exact measured fee parcel and one canonical item while retaining content/COD/payer', async () => {
   const h = contextHarness();
   await h.context.submit();
   assert.equal(h.calls.creates.length, 1);
   const payload = h.calls.creates[0].orderData;
   for (const field of ['weight', 'length', 'width', 'height']) assert.equal(payload[field], h.context.quoteInput.snapshot.feeData[field], field);
   assert.notEqual(payload.weight, h.context.totalWeight, 'measured weight must not fall back to old item-derived weight');
-  assert.equal(payload.items[0].weight, 1000, 'item detail is not fabricated to fit the parcel');
+  assert.equal(JSON.stringify(payload.items), JSON.stringify([{ name: 'test parcel × 1', quantity: 1, weight: 1200, length: 20, width: 30, height: 40, price: 0 }]));
+  assert.equal(payload.content, 'test parcel × 1');
   assert.equal(payload.cod_amount, h.context.cod); assert.equal(payload.payment_type_id, Number(h.context.payment));
 });
-await check('unconfirmed pickup fails closed, even with a complete current quote', async () => {
-  const h = contextHarness(); h.context.pickupConfirmed = false;
+await check('preliminary quote cannot create until complete dimensions supply a final snapshot', async () => {
+  const h = contextHarness(); h.context.quoteInput.snapshot.kind = 'preliminary';
   await h.context.submit();
-  assert.equal(h.calls.creates.length, 0); assert.match(h.context.error, /Xác nhận điểm lấy hàng/);
+  assert.equal(h.calls.creates.length, 0); assert.match(h.context.error, /dài × rộng × cao/);
 });
 await check('dirty close opens in-app confirmation; cancel keeps draft, confirm discards; pending locks never show it', () => {
   const dirty = contextHarness(); dirty.context.initialForm.current = 'old-form';
@@ -255,18 +258,8 @@ await check('dialog actor switch while create is pending cannot notify or apply 
   const pending = h.context.submit(); h.changeActor(); gate.resolve({ data: freshSuccess('current-key') }); await pending;
   assert.equal(h.context.attempt, null); assert.equal(h.calls.notifications, 0); assert.deepEqual(h.calls.openChanges, [false]);
 });
-await check('review confirmation is tied to parcel/shop/service/fee/payer/COD and reset on change', () => {
-  const h = contextHarness();
-  const evaluate = () => vm.runInContext(compile('reviewKey', initializers.get('reviewKey')) + '\nreviewKey;', h.context);
-  const base = evaluate(); assert.ok(base);
-  for (const [name, value] of [['shopId', 'other-shop'], ['fee', 26000], ['payment', '2'], ['cod', 1000], ['autoSelectionReady', false]]) {
-    const previous = h.context[name]; h.context[name] = value; assert.notEqual(evaluate(), base, name); h.context[name] = previous;
-  }
-  h.context.selectedService = { service_id: 53320, service_type_id: 5 }; assert.notEqual(evaluate(), base);
-  h.context.selectedService.service_type_id = 2; h.context.quoteInput.snapshot.key = 'changed-measured-parcel'; assert.notEqual(evaluate(), base);
-  const reset = effects.find(row => row.kind === 'useLayoutEffect' && row.text.includes("setPickupConsent('')") && !row.text.includes('resetForm'));
-  assert.ok(reset, 'actual review-change effect exists'); h.context.pickupConsent = base;
-  vm.runInContext(compile('resetConsent', reset.text), h.context); h.context.resetConsent(); assert.equal(h.context.pickupConsent, '');
+await check('pickup consent checkbox has no remaining state, submit, or JSX dependency', () => {
+  assert.equal(/pickupConfirmed|pickupConsent|reviewKey|ghn-pickup-confirm|Tôi đã kiểm tra điểm lấy hàng, COD và bên trả cước/.test(source), false);
 });
 await check('prefill flags malformed metadata without modifying original customer data or guessing parcel', () => {
   const h = contextHarness();

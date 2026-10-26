@@ -5,37 +5,29 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { buildGhnQuoteSnapshot } from '../src/lib/ghn-quote-comparison.ts';
+import { GHN_PACKED_PARCEL_NAME, buildGhnQuoteSnapshot, parseGhnKilograms } from '../src/lib/ghn-quote-comparison.ts';
 
 let count = 0;
 const check = async (name, run) => { await run(); count++; console.log('PASS independent GHN parcel/host: ' + name); };
-const input = { provinceId: '202', districtId: '1444', wardCode: '020308', address: 'Synthetic address', cod: 100000, insurance: 200000, items: [{ name: 'Synthetic item', quantity: 3, weight: 1000, length: 10, width: 20, height: 30 }] };
+const input = { provinceId: '202', districtId: '1444', wardCode: '020308', address: 'Synthetic address', cod: 100000, insurance: 200000, items: [{ name: 'Synthetic item', quantity: 3 }] };
 const measured = { weight: 5000, length: 40, width: 50, height: 60 };
-await check('optional measured parcel overrides legacy aggregation without altering item truth', () => {
-  const legacy = buildGhnQuoteSnapshot(input).snapshot;
-  assert.deepEqual([legacy.feeData.weight, legacy.feeData.length, legacy.feeData.width, legacy.feeData.height], [3000, 10, 20, 90]);
+await check('explicit measured parcel is the only physical truth and does not read product rows', () => {
   const source = structuredClone({ ...input, parcel: measured }), before = structuredClone(source);
   const actual = buildGhnQuoteSnapshot(source).snapshot;
+  assert.equal(actual.kind, 'final');
   for (const field of Object.keys(measured)) assert.equal(actual.feeData[field], measured[field]);
-  assert.deepEqual(source, before); assert.equal(actual.feeData.items[0].weight, 1000); assert.notEqual(actual.key, legacy.key);
-  source.items[0].weight = 999; source.parcel.weight = 999;
-  assert.equal(actual.feeData.weight, 5000); assert.equal(actual.feeData.items[0].weight, 1000, 'detached snapshot');
+  assert.deepEqual(source, before); assert.deepEqual(actual.feeData.items, [{ name: GHN_PACKED_PARCEL_NAME, quantity: 1, ...measured }]);
+  source.items[0].name = 'Renamed'; source.parcel.weight = 999;
+  assert.equal(actual.feeData.weight, 5000); assert.equal(actual.feeData.items[0].weight, 5000, 'detached canonical parcel');
   assert.equal(buildGhnQuoteSnapshot({ ...input, parcel: measured, items: input.items.map(row => ({ ...row, name: 'Renamed' })) }).snapshot.key, actual.key);
 });
-await check('measured boundaries fail closed, item validation remains mandatory', () => {
-  for (const field of ['weight', 'length', 'width', 'height']) {
-    const max = field === 'weight' ? 50000 : 200;
-    for (const invalid of [0, -1, 1.5, max + 1, NaN, Infinity]) {
-      assert.equal(buildGhnQuoteSnapshot({ ...input, parcel: { ...measured, [field]: invalid } }).snapshot, null, field + ':' + invalid);
-    }
-    for (const valid of [1, max]) assert.ok(buildGhnQuoteSnapshot({ ...input, parcel: { ...measured, [field]: valid } }).snapshot);
-  }
-  for (const invalid of [{ ...input.items[0], weight: 0 }, { ...input.items[0], quantity: 0 }, { ...input.items[0], height: 201 }]) {
-    assert.equal(buildGhnQuoteSnapshot({ ...input, items: [invalid], parcel: measured }).snapshot, null);
-  }
-  const many = [{ ...input.items[0], quantity: 1000 }];
-  assert.equal(buildGhnQuoteSnapshot({ ...input, items: many }).snapshot, null, 'legacy aggregate exceeds limit');
-  assert.ok(buildGhnQuoteSnapshot({ ...input, items: many, parcel: measured }).snapshot, 'measured parcel is authoritative, not naive summed packing');
+await check('measured dimensions are all-or-none and kilograms convert without product physical fields', () => {
+  for (const invalid of [0, -1, 1.5, 50001, NaN, Infinity]) assert.equal(buildGhnQuoteSnapshot({ ...input, parcel: { ...measured, weight: invalid } }).snapshot, null, 'weight:' + invalid);
+  for (const field of ['length', 'width', 'height']) for (const invalid of [-1, 0.5, 201, NaN]) assert.equal(buildGhnQuoteSnapshot({ ...input, parcel: { ...measured, [field]: invalid } }).snapshot, null, field + ':' + invalid);
+  for (const partial of [{ length: 40 }, { width: 50 }, { height: 60 }, { length: 40, width: 50 }]) assert.equal(buildGhnQuoteSnapshot({ ...input, parcel: { weight: 5000, ...partial } }).snapshot, null);
+  const preliminary = buildGhnQuoteSnapshot({ ...input, parcel: { weight: 5000 } }).snapshot;
+  assert.equal(preliminary.kind, 'preliminary'); assert.equal('items' in preliminary.feeData, false);
+  assert.equal(parseGhnKilograms('5,000'), 5000);
 });
 
 const source = await readFile(new URL('../src/components/LocalGhnCreateHost.tsx', import.meta.url), 'utf8');

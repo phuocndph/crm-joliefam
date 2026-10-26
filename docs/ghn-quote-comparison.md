@@ -1,40 +1,61 @@
-# So sánh cước GHN local
+# Cước GHN local và kiện hàng đã đóng gói
 
-## Cập nhật tự động chọn và UX ngày 23/10/2026
+## Nguồn dữ liệu vật lý
 
-Mặc định **Tự chọn cước thấp nhất**: sau 400 ms ngừng sửa, tính tất cả cửa hàng đã cấu hình với dịch vụ loại 2/5 khả dụng và tự chọn tổng cước thấp nhất khi toàn bộ so sánh hoàn tất, không có lỗi và đúng dữ liệu hiện tại. `noServices` là một loại trừ đã biết. Lỗi một phần/toàn bộ khóa tạo trong chế độ tự động, cho tính lại hoặc chủ động chuyển **Tôi chọn thủ công**; không gọi báo giá thành công một phần là rẻ nhất toàn bộ. Tính lại trong auto chạy lại mọi shop; trong manual chạy cặp hiện tại. Chọn tay có chủ đích không bị kết quả auto cũ ghi đè. Điểm lấy hàng được hiển thị nổi bật vì auto có thể đổi cửa hàng GHN đến lấy. Bảng chi tiết nằm trong **Xem N mức cước**.
+Mỗi vận đơn dùng đúng một **kiện hàng đã đóng gói** đã được cân và đo thực tế. Đây là nguồn duy nhất cho `weight`, `length`, `width`, `height` ở cả báo giá và tạo vận đơn. Các dòng sản phẩm chỉ mô tả nội dung (`name`, `quantity`), không được dùng để cộng cân nặng, suy kích thước hoặc tạo nhiều kiện.
 
-Xem báo cáo nghiệm thu mới nhất tại [ghn-auto-selection-ux-2026-10-23.md](ghn-auto-selection-ux-2026-10-23.md). Phần mô tả và các mốc kiểm thử bên dưới là lịch sử trước thay đổi auto, không còn là mặc định hiện tại.
+- Giao diện nhập khối lượng bằng kg, chấp nhận dấu phẩy hoặc dấu chấm và tối đa ba chữ số thập phân. Giá trị được đổi chính xác một lần sang gram.
+- GHN dùng gram. Giá trị hợp lệ là 1–50.000 g (0,001–50 kg).
+- Dưới 20.000 g chỉ dùng dịch vụ loại 2. Từ 20.000 g, kể cả đúng 20 kg, chỉ dùng loại 5.
+- Báo giá sơ bộ có thể chỉ gửi cân nặng, địa chỉ, COD và bảo hiểm. Nó không gửi `length`, `width`, `height` hoặc `items`.
+- Nếu đã nhập một chiều thì phải nhập đủ dài × rộng × cao, mỗi chiều 1–200 cm. Báo giá hoàn chỉnh chứa đúng một item có các số đo bằng với trường gốc.
+- Tạo vận đơn luôn cần báo giá hoàn chỉnh, một item `quantity: 1` trùng khớp toàn bộ số đo kiện. Tên item được suy từ nội dung thực gửi (tối đa 200 ký tự); trường `content` giữ mô tả đầy đủ tối đa 2.000 ký tự.
 
-## Thiết kế trước chế độ tự động (lịch sử)
+Server lặp lại kiểm tra một-kiện, khớp số đo và biên dịch vụ trước khi tìm dịch vụ/gửi nhà cung cấp. Lượt idempotency lịch sử vẫn được trả lại trước các kiểm tra mới để giữ nguyên khả năng khôi phục `IN_FLIGHT`, `UNKNOWN` và `REMOTE_CREATED`.
 
-Dialog giữ cửa hàng hiện tại/mặc định và tự tính cước của dịch vụ đã chọn sau 400 ms ngừng sửa. Bấm **So sánh cước các cửa hàng** mới tính tất cả cửa hàng đã cấu hình, với mọi dịch vụ khả dụng loại 2/5. Các báo giá dùng cùng địa chỉ nhận, kiện gộp, từng sản phẩm, COD và bảo hiểm đang nhập; thứ tự theo tổng cước GHN, sau đó ID shop, loại dịch vụ và ID dịch vụ để ổn định khi bằng giá. Không có quy tắc loại dịch vụ bắt buộc ở mốc 20 kg; lựa chọn dịch vụ còn hợp lệ được giữ nguyên khi đổi cân nặng.
+Tham chiếu GHN:
 
-Báo giá chỉ cần đủ địa chỉ GHN và thông số kiện/COD/bảo hiểm hợp lệ. Yêu cầu đọc cước dùng tên tạm xác định `Sản phẩm 1`, `Sản phẩm 2`…; sửa tên không đổi danh tính báo giá. Tên người dùng nhập được giữ nguyên cho yêu cầu tạo đơn; tên trống, tên quá 200 ký tự hoặc tổng nội dung quá 2.000 ký tự vẫn khóa tạo đơn và hiện lý do ở chân dialog. Các kiểm tra này áp dụng cả trước khi gửi yêu cầu tạo, cùng kiểm tra địa chỉ, số điện thoại và kiện hàng.
+- [Calculate fee](https://developer.ghn.vn/en/docs/order/calculate-fee)
+- [Create order](https://developer.ghn.vn/en/docs/order/create)
 
-Chân dialog luôn hiển thị cước, trạng thái, lỗi/điều kiện còn thiếu và thao tác; phần nhập liệu cuộn riêng. **Tính lại cước** có sau cả thành công và thất bại, xóa cache báo giá và phản hồi đang chờ rồi tính mới cho lựa chọn hiện tại; giữ nguyên địa chỉ, shop, dịch vụ, kiện, mã idempotency và cache danh mục dịch vụ. Kết quả so sánh thành công của đúng shop + ID dịch vụ + loại dịch vụ hiện tại được đưa về chân dialog, xóa lỗi cước trước đó, không gọi đọc thêm. Lựa chọn tại thời điểm kết quả được hiển thị quyết định cước được áp dụng.
+## Tự chọn và làm mới cước
 
-Kết quả hiển thị ID/tên/địa chỉ lấy hàng, dịch vụ và tổng dự kiến. Người dùng bấm Chọn mới đổi shop + dịch vụ; phản hồi muộn không tự đổi lựa chọn. Chọn shop khác đổi địa chỉ GHN đến lấy. Khi một phần tính cước lỗi, đề xuất chỉ là thấp nhất trong báo giá thành công; hiển thị rõ dịch vụ lỗi/không khả dụng và cho so sánh lại. Thành công được tái sử dụng, lỗi được phép tải lại. Giá không phải cam kết; cần nhập đúng cân nặng/kích thước đóng gói thực tế (giá trị mặc định chỉ là gợi ý), GHN có thể điều chỉnh sau cân/đo.
+Mặc định dialog đợi 400 ms sau lần sửa hợp lệ rồi so sánh mọi cửa hàng/dịch vụ phù hợp. Báo giá cũ bị xóa ngay khi địa chỉ, kiện, COD hoặc bảo hiểm thay đổi. Chế độ tự động chỉ chọn rẻ nhất khi toàn bộ kết quả hợp lệ; có thể chuyển sang chọn thủ công. Hàng đợi giới hạn ba request đồng thời. Kết quả và cache luôn gắn với snapshot kiện hiện tại.
 
-Cùng một hàng đợi tối đa ba request dịch vụ/cước đang chạy cho cả lựa chọn hiện tại và bảng so sánh. Danh mục dịch vụ được nhớ theo shop + quận nhận trong phiên dialog; báo giá được nhớ theo đúng toàn bộ dữ liệu hiện tại. Đổi địa chỉ/kiện/COD/bảo hiểm, hủy nhận diện, đổi đơn, đóng/mở hoặc tải lại vô hiệu hóa cước cũ, hủy việc đang chờ và bỏ phản hồi muộn. Tải lại/đóng/mở xóa cache dịch vụ. Nút tạo khóa khi đang so sánh hoặc chưa có cước khớp đúng shop/dịch vụ/dữ liệu hiện tại. Server vẫn tự xác minh shop/dịch vụ; hợp đồng tạo và sổ idempotency/khôi phục không thay đổi, không gửi thêm trường tổng cước vào schema tạo nghiêm ngặt.
+Sản phẩm có thể chưa đặt tên khi lấy báo giá. Tên/số lượng sản phẩm chỉ chặn bước tạo đơn. Nếu GHN không nhận báo giá chỉ theo cân nặng, giao diện nêu rõ cần kích thước kiện và vẫn hiển thị lỗi nhà cung cấp để người dùng có thể thử lại.
 
-Kiểm thử không gọi GHN: `node --import tsx scripts/test-ghn-quote-comparison.mjs`. Fixture UI hiện có giữ cước mặc định; stdin `quotes-weight-service` đảo cửa hàng rẻ nhất sau 20 kg và phân biệt giá dịch vụ, `quotes-fail-456`/`quotes-all-fail`, `quotes-no-services-456`, `quotes-delay-123`/`quotes-delay-456` (2,5 giây), `quotes-reset`. `quotes-shared-service-id` cho hai loại 2/5 cùng ID 53320, loại 5 rẻ hơn (17.000 đ tại shop 456 ở chế độ giá mặc định), để kiểm tra lựa chọn chính xác cả ID và loại dịch vụ. Sau đổi dữ liệu giả lập hãy sửa kiện hoặc tải lại dialog để nhận dữ liệu mới. `state` trả bộ đếm dịch vụ/cước theo shop/cặp, mức đồng thời và cặp shop/dịch vụ đã tạo thử; không chứa địa chỉ khách hoặc khóa. `feeByServicePair` phân biệt cả shop, ID và loại dịch vụ; `feeByPair` cũ vẫn được giữ. Các điều khiển tạo UNKNOWN/đối soát hiện có vẫn giữ nguyên.
+## Fixture và kiểm thử
 
-Fixture bổ sung `quotes-fail-next-123-2` (thay shop bằng 123/456, loại bằng 2/5) chỉ làm lỗi lần đọc cước kế tiếp của đúng cặp, để kiểm tra so sánh khôi phục cước đã chọn. `quotes-price-plus-1000` tăng mọi giá thêm 1.000 đ cho các lần đọc mới, giữ nguyên payload; bấm **Tính lại cước** để nhận giá mới mà không đổi địa chỉ hay tạo đơn. `quotes-reset` đặt lại cả hai điều khiển này. Yêu cầu đang chờ giữ mức tăng giá tại lúc bắt đầu.
+`scripts/start-ghn-orders-ui-fixture.mjs` chỉ là fixture bộ nhớ, không đọc `.env`, không truy cập database hay gọi GHN. Trong chế độ `quotes-weight-service`, mức giá **tổng hợp** được tính từ `feeData.items[0].weight`: 20 kg là 80.000 đ và 40 kg là 160.000 đ trước phần điều chỉnh theo fixture. Đây chỉ là số để phát hiện lỗi payload 20 → 40 kg vẫn giữ item 1 kg, không phải biểu cước GHN.
 
-## Kết quả xác minh ngày 23/10/2026
+Các kiểm thử không gọi GHN thật:
 
-- Review độc lập PASS sau vòng sửa đầu tiên: UI dùng cặp ID + loại dịch vụ nhất quán, kể cả hai loại cùng ID.
-- `node --import tsx scripts/test-ghn-quote-comparison.mjs` và `scripts/test-ghn-address-match.mjs` PASS; kiểm thử độc lập PASS 7 nhóm. `scripts/test-ghn-orders-independent.mjs` PASS 10 nhóm bằng database dùng một lần và provider tổng hợp; `scripts/test-assets-integrations.mjs` PASS 10 kiểm tra. TypeScript server PASS; ESLint các file liên quan có 0 lỗi, 1 cảnh báo hook khởi tạo đã có. TypeScript app còn đúng 5 lỗi nền tại `ProductionWorkspacePage.tsx` dòng 124/126.
-- Build `vite build --mode crmdev` với `VITE_BACKEND_MODE=local`, API `http://127.0.0.1:8787` PASS (4.312 module, 18,35 giây). UI cổng 8083 và API cổng 8787 trả HTTP 200; UI phục vụ entry `index-zJrhn3wg` và chunk mới `OrderManagement-BT9wkr3c`.
-- Trình duyệt fixture xác minh: cửa hàng đắt hơn do người dùng chọn vẫn được giữ; chọn báo giá rẻ nhất không thêm request đọc; kiện 25 kg đảo đề xuất sang shop 456, dịch vụ loại 5, 33.000 đ. Sửa về 1.000 g khi phản hồi đang trễ bỏ bảng cũ, giữ cước hiện tại 25.000 đ; tối đa 3 request dịch vụ/cước đồng thời trong instance. Lỗi một phần/toàn bộ hiển thị đúng; tạo bị khóa khi chưa có cước hợp lệ.
-- Khôi phục UNKNOWN qua đóng/mở giữ cùng mã tham chiếu và đúng 1 lần tạo tổng hợp, cặp shop 456 / dịch vụ 100039 / loại 5 / 25 kg. Fixture hai loại cùng ID cho đủ 4 báo giá; chọn shop 456 / ID 53320 / loại 5 / 17.000 đ tạo SUCCESS tổng hợp đúng cặp, đúng 1 lần. Ảnh chứng minh chỉ có dữ liệu tổng hợp: `C:/Users/Lenovo/.codex/tmp/ghn-quote-proof/cheapest-shop-synthetic.png`.
+- `node --import tsx scripts/test-ghn-quote-comparison.mjs`
+- `node --import tsx scripts/test-ghn-quote-comparison-independent.mjs`
+- `node --import tsx scripts/test-ghn-parcel-host-independent.mjs`
+- `node --import tsx scripts/test-ghn-quote-refresh-regression.mjs`
+- `node --import tsx scripts/test-ghn-auto-selection-ux.mjs`
+- `node --import tsx scripts/test-ghn-success-lifecycle.mjs`
 
-Không gọi provider thật, không đổi database vận hành, không khởi động lại máy chủ, push hoặc triển khai. Chưa kiểm tra cước GHN thật hay xác minh riêng trên thiết bị di động. Giới hạn 3 request áp dụng mỗi instance dialog; unmount rồi mở instance mới có thể tạm chồng 3 request cũ và 3 request mới, nhưng phản hồi cũ bị bỏ. Cần kiểm tra địa chỉ lấy hàng thực tế; cước vẫn là ước tính và GHN có thể điều chỉnh sau cân/đo.
+Không có cam kết cước trong fixture. Cước thực tế vẫn do GHN quyết định sau khi nhận kiện, cân và đo.
 
-## Xác minh sửa cập nhật cước ngày 23/10/2026
+## Nghiệm thu ngày 24/10/2026
 
-- Review và kiểm thử độc lập PASS, không còn phát hiện cần sửa. Kiểm thử bổ sung `node --import tsx scripts/test-ghn-quote-refresh-regression.mjs` PASS 4 nhóm; hai bộ kiểm thử so sánh cước trước đó vẫn PASS. ESLint các file liên quan có 0 lỗi; TypeScript app chỉ còn đúng 5 lỗi nền đã ghi nhận tại `ProductionWorkspacePage.tsx` dòng 124/126.
-- Trình duyệt fixture xác minh tên sản phẩm trống vẫn có cước nhưng tạo đơn bị khóa với yêu cầu nhập tên; lỗi tính cước tự động của lựa chọn hiện tại được so sánh thành công khôi phục về 25.000 đ. Tính lại với cùng payload lấy giá mới từ 25.000 lên 26.000 đ, giữ địa chỉ và không tăng số lượt đọc danh mục dịch vụ. Đổi shop hoặc cân nặng tự cập nhật cước.
-- Trên viewport di động 390 × 720, chân dialog hiển thị trong màn hình (mép dưới tại 690 px); phần thông tin cuộn riêng. Build `vite build --mode crmdev` với backend local PASS: 4.312 module, 17,23 giây; UI cổng 8083 phục vụ entry `index-G8_zdEjC` và chunk `OrderManagement-D_UiQpip`.
-- Các xác minh sửa lỗi dùng fixture tổng hợp: không tạo vận đơn thật, không ghi database vận hành, không gọi provider thật. Bước tìm nguyên nhân trước đó có thực hiện các yêu cầu đọc cước GHN thật; không tạo vận đơn từ các yêu cầu đọc này.
+Phát hiện gốc: thay đổi cân nặng kiện từ 20.000 lên 40.000 g tạo request mới nhưng các `items` cũ vẫn có cân nặng độc lập. Theo hợp đồng GHN, loại 5 tính cước theo từng kiện trong `items`. Bản sửa thống nhất một kiện giữa báo cước và tạo đơn; không tự xây biểu giá vận chuyển.
+
+- Reviewer độc lập không phát hiện lỗi production trên bộ hash đã đóng băng. Kiểm thử riêng xác minh gram/kg, ngưỡng dịch vụ, payload, phản hồi cũ, báo giá sơ bộ/đầy đủ và replay UNKNOWN lịch sử.
+- `tsc --noEmit -p tsconfig.app.json`, `tsc --noEmit -p tsconfig.server.json` và `npm run build:server`: đạt. Build frontend local bằng `vite build --mode crmdev`: đạt, 4.322 module, 16,50 giây; còn cảnh báo Browserslist/chunk lớn.
+- ESLint bốn tệp production còn một lỗi nền có sẵn `no-explicit-any` tại dòng 1 của `server/external-read-adapters.ts`; không phải kết quả lint sạch toàn dự án.
+- Trình duyệt fixture: địa chỉ tự nhận diện; chưa đặt tên sản phẩm/chưa nhập kích thước vẫn lấy cước sơ bộ. Nhập một chiều xóa cước cũ ngay. Đủ kích thước: 20 kg → 80.000 đ, 40 kg → 160.000 đ theo **giá giả lập**. `19,999` kg được đổi thành 19.999 g và chọn loại 2; 20/40 kg chọn loại 5.
+- Tạo đúng một vận đơn bộ nhớ `FIXTUREGHN0001`, shop 123, loại 5, 40.000 g; popup mã đơn và liên kết in A5 hoạt động. Không mở liên kết in GHN thật. Bấm tạo đơn mới xóa mã/thông tin cũ.
+- Mobile 390 × 720: dialog có `clientWidth = scrollWidth = 372`, chân thao tác nằm trong viewport (mép dưới 697,4 px). Không còn checkbox xác nhận thừa.
+- Ảnh nghiệm thu chỉ chứa dữ liệu giả: `C:/Users/Lenovo/.codex/tmp/ghn-billing-proof/final-40kg-synthetic.png`.
+- Runtime local: kiểm tra chỉ đọc xác nhận không có migration thiếu/checksum lệch, seed đã được ghi và không có lượt GHN đang gửi. Khởi động lại API nguồn tại 8787, tắt đồng bộ tự động trong tiến trình khởi động này. Health/CORS đạt cho UI 8083. UI phục vụ entry `index-DGG4org4.js`, chunk mới `OrderManagement-B1UnesKr.js`, HTTP 200.
+
+Không tạo vận đơn GHN thật, không kiểm chứng mức cước tài khoản GHN thật, không thêm migration, commit, push hay deploy lên bản chính trong lần sửa này. Báo giá loại 5 chỉ theo cân nặng có thể bị GHN từ chối; cần nhập kích thước thật để có báo giá đầy đủ và tạo đơn. Luồng hiện tại hỗ trợ một kiện/vận đơn, chưa phải đóng gói nhiều kiện.
+
+### Kiểm tra lại sau khi khôi phục coverage
+
+Đã khôi phục các kiểm thử giới hạn ba request qua nhiều thế hệ, cache/retry chỉ lỗi, phản hồi cũ, tổng cước sai kiểu, ID dịch vụ trùng và fingerprint địa chỉ/COD/bảo hiểm. Khi chạy lại, ca test giới hạn nội dung mới có lỗi tính dữ liệu mẫu: 1.984 thay vì 2.000 ký tự. Chỉ sửa dữ liệu mẫu cuối từ 126 thành 142 ký tự và nhãn tổng nhóm từ 7 thành 6; không đổi production.
+
+Rerun cuối: comparison độc lập 10 nhóm, refresh 6 nhóm, billing độc lập 13 nhóm đều đạt. Các suite comparison, auto UX, lifecycle, parcel/host, auth và địa chỉ đạt; orders integration 14 nhóm đạt với PostgreSQL dùng một lần, đã dọn container. TypeScript app/server đạt. Bốn tệp production và fixture giữ nguyên hash đã review. Sau phiên trước tiến trình local đã dừng; đã mở lại đúng API 8787 và UI 8083, kiểm tra HTTP 200 cho cả hai và entry/chunk mới. Chưa kiểm tra cước tài khoản GHN thật.

@@ -43,6 +43,13 @@ const secondOrder = {
   customers: { ...linkedOrder.customers, name: 'Người nhận thử thứ hai', phone: '0900000004', address: '987 Đường Giả Lập — địa chỉ thử thứ hai' },
 };
 const fixtureOrders = [linkedOrder, secondOrder];
+const packedParcelItemName = content => {
+  const value = String(content || '');
+  if (value.length <= 200) return value;
+  let prefix = value.slice(0, 199);
+  if (/^[\uD800-\uDBFF]$/.test(prefix.charAt(prefix.length - 1))) prefix = prefix.slice(0, -1);
+  return `${prefix}…`;
+};
 let mode = 'ENABLED', revision = 1, primary = '123', allowed = ['123', '456'];
 let nextCreateUnknown = false, reconcileSuccess = false, selectedAi = 'local';
 let quoteScenario = 'default', quoteFailure = '', quoteDelayShop = '', quoteNoServices = '', quoteSharedServiceId = false;
@@ -145,10 +152,21 @@ app.post('/api/local-functions/ghn-tracking', async (req, res) => {
   else if (body.action === 'get_wards') data = Number(body.districtId) === 1444 ? wards : [];
   else if (body.action === 'get_services') data = quoteNoServices === shop ? [] : [{ service_id: 53320, short_name: 'Dịch vụ thử — hàng nhẹ', service_type_id: 2 }, { service_id: quoteSharedServiceId ? 53320 : 100039, short_name: 'Dịch vụ thử — hàng nặng', service_type_id: 5 }];
   else if (body.action === 'calculate_fee') {
-    const heavy = Number(body.feeData?.weight) >= 20000, service5 = Number(body.feeData?.service_type_id) === 5;
+    const feeData = body.feeData || {}, item = feeData.items?.[0];
+    const dimensionFields = ['length', 'width', 'height'];
+    const rootDimensions = dimensionFields.filter(field => feeData[field] !== undefined);
+    if (rootDimensions.length && rootDimensions.length !== dimensionFields.length) return res.status(400).json({ message: 'Kích thước kiện phải có đủ dài, rộng, cao (giả lập).' });
+    if (feeData.items) {
+      const matchesParcel = Array.isArray(feeData.items) && feeData.items.length === 1 && item?.name === 'Kiện hàng đã đóng gói' && Number(item.quantity) === 1 && rootDimensions.length === 3
+        && Number(item.weight) === Number(feeData.weight) && dimensionFields.every(field => Number(item[field]) === Number(feeData[field]));
+      if (!matchesParcel) return res.status(400).json({ message: 'Kiện trong báo giá phải khớp kiện đã cân, đo (giả lập).' });
+    } else if (rootDimensions.length) return res.status(400).json({ message: 'Báo giá đầy đủ cần kiện đã đóng gói chuẩn (giả lập).' });
+    // Final pricing deliberately reads the canonical item, never only root weight.
+    const physicalWeight = Number(item?.weight ?? feeData.weight);
+    const heavy = physicalWeight >= 20000, service5 = Number(feeData.service_type_id) === 5;
+    if ((!heavy && service5) || (heavy && !service5)) return res.status(400).json({ message: 'Loại dịch vụ không phù hợp khối lượng kiện (giả lập).' });
     const total = quoteScenario === 'weight-service'
-      ? heavy ? shop === '123' ? service5 ? 44000 : 50000 : service5 ? 33000 : 39000
-        : shop === '123' ? service5 ? 31000 : 25000 : service5 ? 35000 : 29000
+      ? physicalWeight * 4
       : quoteSharedServiceId && service5 ? shop === '123' ? 19000 : 17000 : shop === '123' ? 25000 : 29000;
     data = { service_fee: total + priceDelta - 1000, insurance_fee: 1000, cod_fee: 0, r2s_fee: 0, coupon_value: 0, total: total + priceDelta };
   }
@@ -160,18 +178,22 @@ app.post('/api/ghn-orders', async (req, res) => {
   const input = req.body || {}, key = String(input.idempotencyKey || ''), shopId = String(input.shopId || '');
   if (!key || !allowed.includes(shopId) || mode === 'DISABLED') return res.status(400).json({ message: 'Yêu cầu tạo thử không hợp lệ.' });
   const orderData = input.orderData || {};
-  // Match the real server's early validation boundary so an invalid new form
-  // can be tested after a historical SUCCESS without creating another record.
-  if (!/^(?:0\d{9}|\+84\d{9})$/.test(String(orderData.to_phone || '')) || !String(orderData.to_name || '').trim() || Number(input.provinceId) !== 202 || Number(orderData.to_district_id) !== 1444 || orderData.to_ward_code !== '020308' || !orderData.items?.length || orderData.items.some(item => !String(item.name || '').trim() || !Number.isInteger(item.weight) || item.weight < 1)) return res.status(400).json({ message: 'Thông tin tạo đơn GHN không hợp lệ (giả lập).' });
   const fingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');
   const previous = attempts.get(key);
   if (previous) {
     if (previous.fingerprint !== fingerprint) return res.status(409).json({ message: 'Mã yêu cầu đã dùng cho thông tin khác (giả lập).' });
     counters.replays++; return res.json({ success: true, data: previous.result });
   }
+  const item = orderData.items?.[0], dimensions = ['length', 'width', 'height'];
+  const expectedServiceType = Number(orderData.weight) < 20000 ? 2 : 5;
+  const canonicalParcel = Array.isArray(orderData.items) && orderData.items.length === 1 && item?.name === packedParcelItemName(orderData.content) && Number(item.quantity) === 1 && Number(item.price) === 0
+    && Number.isInteger(orderData.weight) && orderData.weight >= 1 && orderData.weight <= 50000
+    && dimensions.every(field => Number.isInteger(orderData[field]) && orderData[field] >= 1 && orderData[field] <= 200 && Number(item[field]) === Number(orderData[field]))
+    && Number(item.weight) === Number(orderData.weight) && Number(orderData.service_type_id) === expectedServiceType;
+  if (!/^(?:0\d{9}|\+84\d{9})$/.test(String(orderData.to_phone || '')) || !String(orderData.to_name || '').trim() || Number(input.provinceId) !== 202 || Number(orderData.to_district_id) !== 1444 || orderData.to_ward_code !== '020308' || !canonicalParcel) return res.status(400).json({ message: 'Thông tin tạo đơn GHN không hợp lệ (giả lập).' });
   counters.dispatchedCreates++;
   const sequence = counters.dispatchedCreates;
-  const row = { fingerprint, sequence, shopId, serviceId: orderData.service_id, serviceType: orderData.service_type_id, weight: orderData.weight, orderId: input.orderId || null, result: { attempt_status: nextCreateUnknown ? 'UNKNOWN' : 'SUCCESS', reference: `FIXTURE-REF-${String(sequence).padStart(4, '0')}`, request_key: key } };
+  const row = { fingerprint, sequence, shopId, serviceId: orderData.service_id, serviceType: orderData.service_type_id, weight: item.weight, orderId: input.orderId || null, result: { attempt_status: nextCreateUnknown ? 'UNKNOWN' : 'SUCCESS', reference: `FIXTURE-REF-${String(sequence).padStart(4, '0')}`, request_key: key } };
   nextCreateUnknown = false;
   if (row.result.attempt_status === 'SUCCESS') created(row);
   attempts.set(key, row);

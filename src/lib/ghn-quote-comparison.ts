@@ -1,35 +1,86 @@
 export type GhnQuoteShop = { _id: number; name: string; address: string; district_id: number };
 export type GhnQuoteService = { service_id: number; service_type_id: number; short_name: string };
 export const ghnServiceChoiceKey = (service: GhnQuoteService) => `${service.service_id}:${service.service_type_id}`;
+export const GHN_PACKED_PARCEL_NAME = 'Kiện hàng đã đóng gói';
 export type GhnQuoteItem = { name: string; quantity: number; weight: number; length: number; width: number; height: number };
+export type GhnProductLine = { name: string; quantity: number };
+export type GhnFeeData = { to_district_id: number; to_ward_code: string; weight: number; cod_value: number; insurance_value: number; length?: number; width?: number; height?: number; items?: GhnQuoteItem[] };
 export type GhnQuoteSnapshot = {
   key: string;
-  feeData: { to_district_id: number; to_ward_code: string; weight: number; length: number; width: number; height: number; cod_value: number; insurance_value: number; items: GhnQuoteItem[] };
+  kind: 'preliminary' | 'final';
+  feeData: GhnFeeData;
 };
-export type GhnMeasuredParcel = { weight: number; length: number; width: number; height: number };
-type QuoteInput = { provinceId: string; districtId: string; wardCode: string; address: string; items: GhnQuoteItem[]; cod: number; insurance: number; parcel?: GhnMeasuredParcel };
+export type GhnMeasuredParcel = { weight: number; length?: number; width?: number; height?: number };
+type QuoteInput = { provinceId: string; districtId: string; wardCode: string; address: string; items?: Array<GhnProductLine | GhnQuoteItem>; cod: number; insurance: number; parcel?: GhnMeasuredParcel };
 const integer = (value: number, min: number, max: number) => Number.isSafeInteger(value) && value >= min && value <= max;
+const physical = (row: Partial<GhnQuoteItem>): row is GhnQuoteItem => integer(Number(row.quantity), 1, 1000) && integer(Number(row.weight), 1, 50000) && [row.length, row.width, row.height].every(value => integer(Number(value), 1, 200));
+
+/** Converts a Vietnamese kg entry to provider grams without floating-point rounding. */
+export function parseGhnKilograms(value: string): number | null {
+  const match = value.trim().match(/^(\d+)(?:[,.](\d{1,3}))?$/);
+  if (!match) return null;
+  const kilograms = Number(match[1]);
+  const fraction = Number((match[2] || '').padEnd(3, '0'));
+  const grams = kilograms * 1000 + fraction;
+  return integer(grams, 1, 50000) ? grams : null;
+}
+
+/** One packed parcel cannot use GHN type 2 at/above 20 kg or type 5 below it. */
+export function isGhnServiceEligible(service: Pick<GhnQuoteService, 'service_type_id'>, weight: number): boolean {
+  return integer(weight, 1, 50000) && (weight < 20000 ? service.service_type_id === 2 : service.service_type_id === 5);
+}
+
+export function eligibleGhnServices(services: readonly GhnQuoteService[], weight: number): GhnQuoteService[] {
+  return services.filter(service => isGhnServiceEligible(service, weight));
+}
 
 // Names/content are required only when creating an order. Fee requests use
 // deterministic labels so editing a name cannot change the parcel identity.
-export function validateGhnCreateItems(items: GhnQuoteItem[]): string {
+export function buildGhnPackedContent(items: readonly GhnProductLine[]): string {
+  return items.map(row => `${row.name.trim()} × ${row.quantity}`).join(', ');
+}
+
+/** GHN displays item names in its goods description, so retain real contents on create. */
+export function buildGhnPackedParcelItemName(items: readonly GhnProductLine[]): string {
+  const content = buildGhnPackedContent(items);
+  if (content.length <= 200) return content;
+  let prefix = content.slice(0, 199);
+  if (/^[\uD800-\uDBFF]$/.test(prefix.at(-1) || '')) prefix = prefix.slice(0, -1);
+  return `${prefix}…`;
+}
+
+export function validateGhnCreateItems(items: readonly GhnProductLine[]): string {
   if (!items.length || items.length > 100 || items.some(row => !row.name.trim() || row.name.trim().length > 200)) return 'Nhập tên cho từng sản phẩm (tối đa 100 sản phẩm, 200 ký tự mỗi tên) để tạo vận đơn.';
-  if (items.map(row => row.name).join(', ').trim().length > 2000) return 'Tổng tên sản phẩm không được vượt quá 2.000 ký tự để tạo vận đơn.';
+  if (items.some(row => !integer(row.quantity, 1, 1000))) return 'Số lượng mỗi sản phẩm phải là số nguyên từ 1 đến 1.000.';
+  if (buildGhnPackedContent(items).length > 2000) return 'Tổng nội dung sản phẩm không được vượt quá 2.000 ký tự để tạo vận đơn.';
   return '';
 }
 
 export function buildGhnQuoteSnapshot(input: QuoteInput): { snapshot: GhnQuoteSnapshot | null; error: string } {
   const fail = (error: string) => ({ snapshot: null, error });
   if (!integer(Number(input.provinceId), 1, 99999999) || !integer(Number(input.districtId), 1, 99999999) || !/^[A-Za-z0-9_-]{1,30}$/.test(input.wardCode) || !input.address.trim()) return fail('Chọn đủ địa chỉ tỉnh / thành, quận / huyện và phường / xã để tính cước.');
-  if (!input.items.length || input.items.length > 100) return fail('Nhập từ 1 đến 100 sản phẩm để tính cước.');
-  if (input.items.some(row => !integer(row.quantity, 1, 1000) || !integer(row.weight, 1, 50000) || [row.length, row.width, row.height].some(value => !integer(value, 1, 200)))) return fail('Số lượng, gram và kích thước phải là số nguyên dương: tối đa 1.000 sản phẩm mỗi dòng, 50.000 g, 200 cm mỗi chiều.');
-  const weight = input.parcel?.weight ?? input.items.reduce((sum, row) => sum + row.weight * row.quantity, 0);
-  const length = input.parcel?.length ?? Math.max(...input.items.map(row => row.length)), width = input.parcel?.width ?? Math.max(...input.items.map(row => row.width));
-  const height = input.parcel?.height ?? input.items.reduce((sum, row) => sum + row.height * row.quantity, 0);
-  if (!integer(weight, 1, 50000) || [length, width, height].some(value => !integer(value, 1, 200))) return fail(input.parcel ? 'Nhập khối lượng kiện đã cân (1–50.000 g) và ba chiều đã đo (1–200 cm), bằng số nguyên.' : 'Kiện gộp vượt giới hạn: tối đa 50 kg và 200 cm mỗi chiều. Kiểm tra lại cách đóng gói.');
   if (!integer(input.cod, 0, 50000000) || !integer(input.insurance, 0, 5000000)) return fail('COD phải là số nguyên từ 0 đến 50 triệu; bảo hiểm từ 0 đến 5 triệu đồng.');
-  const feeData = { to_district_id: Number(input.districtId), to_ward_code: input.wardCode, weight, length, width, height, cod_value: input.cod, insurance_value: input.insurance, items: input.items.map((row, index) => ({ ...row, name: `Sản phẩm ${index + 1}` })) };
-  return { snapshot: { key: JSON.stringify([input.provinceId, input.address, feeData]), feeData }, error: '' };
+  let parcel = input.parcel;
+  // Compatibility fallback for older pure callers. The local dialog always
+  // supplies an explicit measured parcel and never derives physical data here.
+  if (!parcel) {
+    const legacy = (input.items || []) as GhnQuoteItem[];
+    if (!legacy.length || legacy.length > 100 || legacy.some(row => !physical(row))) return fail('Nhập kiện đã cân hoặc đầy đủ dữ liệu kiện cũ để tính cước.');
+    parcel = {
+      weight: legacy.reduce((sum, row) => sum + row.weight * row.quantity, 0),
+      length: Math.max(...legacy.map(row => row.length)),
+      width: Math.max(...legacy.map(row => row.width)),
+      height: legacy.reduce((sum, row) => sum + row.height * row.quantity, 0),
+    };
+  }
+  if (!integer(parcel.weight, 1, 50000)) return fail('Nhập khối lượng kiện đã cân từ 0,001 đến 50 kg.');
+  const dimensions = [parcel.length, parcel.width, parcel.height];
+  const hasDimension = dimensions.some(value => value !== undefined && value !== 0);
+  if (hasDimension && dimensions.some(value => !integer(Number(value), 1, 200))) return fail('Khi đã nhập kích thước, cần đủ dài × rộng × cao từ 1 đến 200 cm để tính cước chính xác.');
+  const base: GhnFeeData = { to_district_id: Number(input.districtId), to_ward_code: input.wardCode, weight: parcel.weight, cod_value: input.cod, insurance_value: input.insurance };
+  if (!hasDimension) return { snapshot: { key: JSON.stringify([input.provinceId, input.address, 'preliminary', base]), kind: 'preliminary', feeData: base }, error: '' };
+  const feeData: GhnFeeData = { ...base, length: parcel.length!, width: parcel.width!, height: parcel.height!, items: [{ name: GHN_PACKED_PARCEL_NAME, quantity: 1, weight: parcel.weight, length: parcel.length!, width: parcel.width!, height: parcel.height! }] };
+  return { snapshot: { key: JSON.stringify([input.provinceId, input.address, 'final', feeData]), kind: 'final', feeData }, error: '' };
 }
 
 export class StaleGhnQuoteError extends Error {
@@ -103,6 +154,7 @@ export function createGhnQuoteSession(read: Read) {
       }, token);
     },
     quote(shopId: string, service: GhnQuoteService, snapshot: GhnQuoteSnapshot, token = generation) {
+      if (!isGhnServiceEligible(service, snapshot.feeData.weight)) return Promise.reject<number>(new Error('Dịch vụ GHN không phù hợp với khối lượng kiện hàng.'));
       return cached(quotes, JSON.stringify([snapshot.key, shopId, service.service_id, service.service_type_id]), async () => {
         const result = await read<{ total: number }>('calculate_fee', { shopId, feeData: { ...snapshot.feeData, service_id: service.service_id, service_type_id: service.service_type_id } });
         if (!integer(result.total, 0, Number.MAX_SAFE_INTEGER)) throw new Error('GHN trả về tổng cước không hợp lệ.');
@@ -121,7 +173,7 @@ export async function compareGhnShopQuotes(session: GhnQuoteSession, shops: GhnQ
   // Fan-out is queued by the shared session, including automatic selected fees.
   await Promise.all(shops.map(async shop => {
     try {
-      const services = await session.services(String(shop._id), snapshot.feeData.to_district_id, token);
+      const services = eligibleGhnServices(await session.services(String(shop._id), snapshot.feeData.to_district_id, token), snapshot.feeData.weight);
       if (!services.length) result.noServices.push(shop);
       await Promise.all(services.map(async service => {
         try { const total = await session.quote(String(shop._id), service, snapshot, token); result.quotes.push({ shop, service, total, services, snapshotKey: snapshot.key }); }

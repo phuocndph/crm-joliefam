@@ -15,6 +15,11 @@ export type GhnRuntimeConfig = {
 const failure = (message: string, status = 400) => Object.assign(new Error(message), { status });
 export const positiveShop = (value: unknown, label = 'Shop') => { const number = Number(value); if (!/^[1-9]\d*$/.test(String(value)) || !Number.isSafeInteger(number) || number <= 0) throw failure(`${label} không hợp lệ.`); return number; };
 const positive = positiveShop;
+const ghnInteger = (value: unknown, min: number, max: number, label: string) => {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < min || number > max) throw failure(`${label} không hợp lệ.`);
+  return number;
+};
 const ghnKeyPattern = /^[!-~]{8,512}$/;
 const normalizedGhnKey = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 const discoveryCategory = (result: Body): GhnDiscoveryCategory => {
@@ -146,19 +151,29 @@ export class ExternalReadAdapters {
     if (action === 'calculate_fee') {
       endpoint = 'v2/shipping-order/fee'; const fee = body.feeData || {};
       const sender = await this.sender(config, body.shopId); shop = sender.id;
-      data = { shop_id: Number(shop), to_district_id: positive(fee.to_district_id, 'Quận nhận'), weight: positive(fee.weight, 'Khối lượng') };
-      for (const key of ['from_district_id', 'service_id', 'service_type_id', 'length', 'width', 'height', 'insurance_value', 'cod_value', 'cod_failed_amount']) if (fee[key] !== undefined) { const number = Number(fee[key]); if (!Number.isSafeInteger(number) || number < 0) throw failure('Thông tin tính cước không hợp lệ.'); data[key] = number; }
+      const weight = ghnInteger(fee.weight, 1, 50000, 'Khối lượng');
+      data = { shop_id: Number(shop), to_district_id: positive(fee.to_district_id, 'Quận nhận'), weight };
+      for (const key of ['from_district_id', 'service_id', 'service_type_id', 'insurance_value', 'cod_value', 'cod_failed_amount']) if (fee[key] !== undefined) { const number = Number(fee[key]); if (!Number.isSafeInteger(number) || number < 0) throw failure('Thông tin tính cước không hợp lệ.'); data[key] = number; }
       if (typeof fee.to_ward_code !== 'string' || !/^[\w-]{1,30}$/.test(fee.to_ward_code)) throw failure('Mã phường/xã không hợp lệ.'); data.to_ward_code = fee.to_ward_code;
       if (fee.from_district_id !== undefined && Number(fee.from_district_id) !== sender.district) throw failure('Quận gửi không khớp cửa hàng GHN.');
       data.from_district_id = sender.district;
+      const dimensionFields = ['length', 'width', 'height'] as const;
+      const dimensionsProvided = dimensionFields.filter(field => fee[field] !== undefined);
+      if (dimensionsProvided.length && dimensionsProvided.length !== dimensionFields.length) throw failure('Khi tính cước với kích thước, cần nhập đủ dài × rộng × cao.');
+      if (dimensionsProvided.length === dimensionFields.length) for (const field of dimensionFields) data[field] = ghnInteger(fee[field], 1, 200, 'Kích thước kiện hàng');
+      if (fee.service_type_id === undefined || Number(fee.service_type_id) !== (weight < 20000 ? 2 : 5)) throw failure('Loại dịch vụ GHN không phù hợp với khối lượng kiện hàng.');
+      if (fee.items !== undefined && !Array.isArray(fee.items)) throw failure('Danh sách kiện hàng không hợp lệ.');
+      if (dimensionsProvided.length === dimensionFields.length && fee.items === undefined) throw failure('Báo giá hoàn chỉnh phải có đúng một kiện đã đóng gói.');
       if (Array.isArray(fee.items)) {
-        if (!fee.items.length || fee.items.length>100) throw failure('Danh sách kiện hàng không hợp lệ.');
-        data.items=fee.items.map((row:Body)=>{
-          if(typeof row.name!=='string'||!row.name.trim()||row.name.length>200) throw failure('Tên kiện hàng không hợp lệ.');
-          const result:Body={name:row.name.trim()};
-          for(const field of ['quantity','weight','length','width','height']) { const number=positive(row[field],'Kiện hàng'); if(number>(['length','width','height'].includes(field)?200:field==='quantity'?1000:50000)) throw failure('Kiện hàng vượt giới hạn GHN.'); result[field]=number; }
-          return result;
-        });
+        if (fee.items.length !== 1 || dimensionsProvided.length !== dimensionFields.length) throw failure('Báo giá hoàn chỉnh phải có đúng một kiện đã đóng gói và đủ ba chiều.');
+        const row = fee.items[0];
+        if (!row || typeof row.name !== 'string' || row.name.trim() !== 'Kiện hàng đã đóng gói' || ghnInteger(row.quantity, 1, 1, 'Số lượng kiện') !== 1) throw failure('Kiện đã đóng gói không hợp lệ.');
+        const itemWeight = ghnInteger(row.weight, 1, 50000, 'Khối lượng kiện hàng');
+        const itemLength = ghnInteger(row.length, 1, 200, 'Kích thước kiện hàng');
+        const itemWidth = ghnInteger(row.width, 1, 200, 'Kích thước kiện hàng');
+        const itemHeight = ghnInteger(row.height, 1, 200, 'Kích thước kiện hàng');
+        if (itemWeight !== weight || itemLength !== data.length || itemWidth !== data.width || itemHeight !== data.height) throw failure('Thông số kiện trong báo giá không khớp kiện đã cân, đo.');
+        data.items = [{ name: row.name.trim(), quantity: 1, weight: itemWeight, length: itemLength, width: itemWidth, height: itemHeight }];
       }
     }
     const tracking = ['track', 'track_order', 'get_order_detail'].includes(action);

@@ -13,7 +13,7 @@ const check = async (name, run) => { await run(); count++; console.log('PASS GHN
 const shop = _id => ({ _id, name: 'test shop ' + _id, address: 'test pickup ' + _id, district_id: _id + 100 });
 const service = (id, type) => ({ service_id: id, service_type_id: type, short_name: 'test type ' + type });
 const shops = [3, 1, 2].map(shop);
-const input = { provinceId: '202', districtId: '1444', wardCode: '020308', address: 'test address', items: [{ name: 'test item', quantity: 1, weight: 1000, length: 10, width: 10, height: 10 }], cod: 0, insurance: 0 };
+const input = { provinceId: '202', districtId: '1444', wardCode: '020308', address: 'test address', parcel: { weight: 1000, length: 10, width: 10, height: 10 }, cod: 0, insurance: 0 };
 const snapshot = buildGhnQuoteSnapshot(input).snapshot;
 assert.ok(snapshot);
 const row = (id, type, total) => ({ shop: shop(id), service: service(53320, type), total, services: [service(53320, 2), service(53320, 5)], snapshotKey: snapshot.key });
@@ -29,18 +29,20 @@ await check('auto recommendation fails closed for null, empty, partial and any s
 await check('full matrix picks total zero correctly and deterministic tie by shop/type/ID', async () => {
   const session = createGhnQuoteSession(async (action) => action === 'get_services' ? [service(900, 5), service(901, 2), service(899, 2)] : { total: 0 });
   const result = await compareGhnShopQuotes(session, shops, snapshot);
-  assert.equal(result.quotes.length, 9);
+  assert.equal(result.quotes.length, 6);
   assert.equal(result.failures.length, 0);
   const chosen = findGhnAutomaticCheapest(result, snapshot.key);
   assert.deepEqual([chosen.shop._id, chosen.service.service_type_id, chosen.service.service_id, chosen.total], [1, 2, 899, 0]);
-  assert.deepEqual(result.quotes.map(r => [r.shop._id, r.service.service_type_id, r.service.service_id]), [[1,2,899],[1,2,901],[1,5,900],[2,2,899],[2,2,901],[2,5,900],[3,2,899],[3,2,901],[3,5,900]]);
+  assert.deepEqual(result.quotes.map(r => [r.shop._id, r.service.service_type_id, r.service.service_id]), [[1,2,899],[1,2,901],[2,2,899],[2,2,901],[3,2,899],[3,2,901]]);
 });
 await check('shared service ID/type stays distinct and exact manual selected quote is retained', async () => {
+  const heavySnapshot = buildGhnQuoteSnapshot({ ...input, parcel: { weight: 20000, length: 10, width: 10, height: 10 } }).snapshot;
+  assert.ok(heavySnapshot);
   const session = createGhnQuoteSession(async (action, body) => action === 'get_services' ? [service(53320, 2), service(53320, 5)] : { total: Number(body.shopId) * 10000 + body.feeData.service_type_id });
-  const result = await compareGhnShopQuotes(session, shops, snapshot);
+  const result = await compareGhnShopQuotes(session, shops, heavySnapshot);
   assert.notEqual(ghnServiceChoiceKey(service(53320,2)), ghnServiceChoiceKey(service(53320,5)));
-  assert.equal(findGhnSelectedQuote(result, snapshot.key, '3', service(53320,5)).total, 30005);
-  assert.equal(findGhnAutomaticCheapest(result, snapshot.key).total, 10002);
+  assert.equal(findGhnSelectedQuote(result, heavySnapshot.key, '3', service(53320,5)).total, 30005);
+  assert.equal(findGhnAutomaticCheapest(result, heavySnapshot.key).total, 10005);
   assert.equal(findGhnSelectedQuote(result, 'stale', '3', service(53320,5)), undefined);
 });
 await check('partial and all-failed results never become auto cheapest; successful retry recovers', async () => {
