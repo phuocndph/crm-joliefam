@@ -205,6 +205,66 @@ export async function listProductionWorkers(): Promise<ProductionWorker[]> {
   if (error) throw error;
   return (data ?? []) as ProductionWorker[];
 }
+
+export async function quickCreateProductionWorker(input: {
+  display_name: string;
+  worker_type?: string;
+  employee_code?: string;
+}): Promise<ProductionWorker> {
+  const displayName = String(input.display_name || "").trim();
+  if (!displayName) {
+    throw new Error("Vui lòng nhập họ tên nhân viên.");
+  }
+  const workerType =
+    input.worker_type && input.worker_type !== "ALL"
+      ? input.worker_type
+      : "SEWER";
+
+  if (isLocalBackend()) {
+    // Let the local transaction assign a code so a name-only quick add cannot
+    // manufacture pay rates or race on a browser-derived employee code.
+    return localApi.createWorker({
+      ...(input.employee_code
+        ? { employee_code: String(input.employee_code).trim().toUpperCase() }
+        : {}),
+      display_name: displayName,
+      worker_type: workerType,
+    });
+  }
+
+  const existing = await listProductionWorkers().catch(() => [] as ProductionWorker[]);
+  let employeeCode = String(input.employee_code || "").trim().toUpperCase();
+  if (!employeeCode) {
+    const usedCodes = new Set(existing.map((w) => String(w.employee_code || "").trim().toUpperCase()));
+    let nextNum = existing.length + 1;
+    for (const w of existing) {
+      const m = /^NV0*(\d+)$/i.exec(String(w.employee_code || "").trim());
+      if (m) {
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n >= nextNum) nextNum = n + 1;
+      }
+    }
+    employeeCode = `NV${String(nextNum).padStart(3, "0")}`;
+    while (usedCodes.has(employeeCode)) {
+      nextNum += 1;
+      employeeCode = `NV${String(nextNum).padStart(3, "0")}`;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("production_workers")
+    .insert({
+      employee_code: employeeCode,
+      display_name: displayName,
+      worker_type: workerType,
+      is_active: true,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as unknown as ProductionWorker;
+}
+
 export async function listWorkerCompensationRates(
   workerId?: string | null,
 ): Promise<WorkerCompensationRate[]> {
@@ -718,6 +778,8 @@ export async function recordProductionEntry(input: {
   production_order_operation_id?: string | null;
   idempotency_key: string;
   notes?: string | null;
+  standalone_reason?:string;
+  work_kind?:string;
 }) {
   if (isLocalBackend()) return localApi.recordProductionEntry(input);
   const { data, error } = await supabase.rpc("record_production_entry", {

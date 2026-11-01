@@ -1,3 +1,4 @@
+import { useAuthReady } from "@/hooks/useAuthReady";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { isLocalBackend } from '@/lib/runtime-config';
@@ -34,9 +35,11 @@ const defaultArticles = [
 
 export const useContractTemplates = () => {
   const queryClient = useQueryClient();
+  const { user, isReady } = useAuthReady();
 
   return useQuery({
-    queryKey: ['contract_templates'],
+    queryKey: ['contract_templates', user?.id],
+    enabled: isReady && Boolean(user),
     queryFn: async () => {
       if (isLocalBackend()) {
         const data = await localApi.contractTemplates();

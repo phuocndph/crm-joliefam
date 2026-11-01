@@ -1,6 +1,6 @@
 import { useState, type Ref } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Star } from 'lucide-react';
+import { Pin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { NavigationItem } from '@/lib/navigation-catalog';
@@ -49,13 +49,13 @@ export function NavigationItemRow({ id, rowRef, item, active = false, favorite =
       type="button"
       variant="ghost"
       size="icon"
-      className={cn('mr-1 h-8 w-8 shrink-0', active && 'hover:bg-primary-foreground/15 hover:text-primary-foreground')}
+      className={cn('mr-1 h-8 w-7 shrink-0 text-muted-foreground/60 hover:text-foreground [&_svg]:size-3.5 [@media(pointer:coarse)]:w-8', favorite && 'text-sidebar-foreground', active && 'text-primary-foreground/75 hover:bg-primary-foreground/15 hover:text-primary-foreground')}
       aria-label={favorite ? `Bỏ ghim ${item.label}` : `Ghim ${item.label}`}
       aria-pressed={favorite}
       title={favorite ? 'Bỏ ghim' : 'Ghim'}
       onClick={toggle}
     >
-      <Star className={cn('h-4 w-4', favorite && 'fill-current')} aria-hidden="true" />
+      <Pin className={cn('h-3.5 w-3.5', favorite && 'fill-current')} aria-hidden="true" />
     </Button>}
     <span className="sr-only" aria-live="polite">{pinMessage}</span>
   </div>;

@@ -1,3 +1,4 @@
+import { quoteCalendarDate, quoteCalendarDateIso, resolveQuoteDates } from '@/lib/quote-dates';
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,7 +97,7 @@ export function EditQuoteDetailsDialog({
 
   useEffect(() => {
     if (quote) {
-      setCreatedDate(new Date(quote.created_at));
+      setCreatedDate(quoteCalendarDate(resolveQuoteDates(quote).quoteDate));
       setStatus(quote.status);
     }
   }, [quote]);
@@ -118,7 +119,7 @@ export function EditQuoteDetailsDialog({
     try {
       if (isLocalBackend()) {
         if (quote.status === 'approved') throw new Error('Báo giá đã duyệt không thể sửa. Hãy nhân bản thành bản nháp mới.');
-        await localApi.updateQuote(quote.id, { created_at: createdDate.toISOString(), status });
+        await localApi.updateQuote(quote.id, { created_at: quoteCalendarDateIso(createdDate), status });
         await queryClient.invalidateQueries({ queryKey: ['quotes'] });
         await queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
         await queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
@@ -130,7 +131,7 @@ export function EditQuoteDetailsDialog({
       const { error } = await supabase
         .from('quotes')
         .update({
-          created_at: createdDate.toISOString(),
+          created_at: quoteCalendarDateIso(createdDate),
           status: status,
         })
         .eq('id', quote.id);

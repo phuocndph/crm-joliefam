@@ -10,6 +10,7 @@ import { useDuplicateOrderNumbers } from "@/hooks/useDuplicateOrderNumbers";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useEmployeePermissions } from "@/hooks/useEmployeePermissions";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { ManagerSelector } from "@/components/ManagerSelector";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -41,6 +42,8 @@ import { getOrderDisplayNumber } from "@/lib/orderUtils";
 import { isLocalBackend } from "@/lib/runtime-config";
 import { localApi } from "@/lib/local-api";
 import { LocalGhnPrintDialog } from "@/components/LocalGhnPrintDialog";
+import OrderShipmentDialog from '@/components/OrderShipmentDialog';
+import {ZcrmOrderReviewPanel} from '@/components/ZcrmOrderReviewPanel';
 import { LOCAL_GHN_CREATED_EVENT, useLocalGhnCreateHost } from "@/components/LocalGhnCreateHost";
 
 interface Order {
@@ -137,6 +140,7 @@ export default function OrderManagement() {
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [sortBy, setSortBy] = useState("order_number");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [shipmentOrderId,setShipmentOrderId]=useState<string|null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
@@ -156,7 +160,10 @@ export default function OrderManagement() {
 
   const { user, isReady } = useAuthReady();
   const { role: userRole, roleReady } = useUserRole(user);
+  const { hasPermission: hasEmployeePermission, loading: employeePermissionsLoading } = useEmployeePermissions(user, userRole);
   const authReady = isReady && roleReady;
+  const canShipOrders=authReady&&!employeePermissionsLoading&&isLocalBackend()&&userRole!=='team_leader'&&(['admin','manager'].includes(userRole||'')||['orders','ghn_tracking','shipping_companies'].some(permission=>hasEmployeePermission(permission as Parameters<typeof hasEmployeePermission>[0])));
+  const canSendToProduction = authReady && !employeePermissionsLoading && isLocalBackend() && (hasEmployeePermission('production_sales_submit') || hasEmployeePermission('production_sales_workflow'));
 
   useEffect(() => {
     document.title = "Quản lý Đơn hàng | Hệ thống";
@@ -253,22 +260,24 @@ export default function OrderManagement() {
     }
   });
 
-  // Auto-open order detail from URL parameter
-  useEffect(() => {
-    const orderId = searchParams.get('order_id');
-    if (orderId && orders.length > 0) {
-      const order = orders.find(o => o.id === orderId);
-      if (order) {
-        setSelectedOrder(order);
-        // Clear the URL parameter after opening
-        setSearchParams(prev => {
-          const newParams = new URLSearchParams(prev);
-          newParams.delete('order_id');
-          return newParams;
-        });
-      }
-    }
-  }, [orders, searchParams, setSearchParams]);
+  const deepOrderId=searchParams.get('order_id')||searchParams.get('orderId');
+  const [deepLinkError,setDeepLinkError]=useState('');
+  useEffect(()=>{
+    if(!deepOrderId||!authReady)return;
+    const controller=new AbortController();let active=true;setDeepLinkError('');
+    const resolve=async()=>{try{
+      const order=await (async()=>{
+        if(isLocalBackend())return localApi.order(deepOrderId,controller.signal);
+        const {data,error}=await supabase.from('orders').select(`*,customers!left(name,email,phone,company,customer_code,address,addresses),assignees(name),ghn_tracking(ghn_order_code),order_payments(payment_amount,payment_date,payment_type)`).eq('id',deepOrderId).abortSignal(controller.signal).maybeSingle();
+        if(error)throw error;if(!data)return null;
+        const payments=Array.isArray(data.order_payments)?data.order_payments:[];
+        return {...data,total_paid:payments.reduce((sum,p)=>sum+Number(p.payment_amount||0),0)};
+      })();
+      if(!active)return;if(!order)throw new Error('Không tìm thấy đơn trong phạm vi được phép.');setSelectedOrder(order as unknown as Order);
+      setSearchParams(prev=>{const next=new URLSearchParams(prev);next.delete('order_id');next.delete('orderId');return next;},{replace:true});
+    }catch(e){if(active)setDeepLinkError(e instanceof Error?e.message:'Không tải được đơn được liên kết.');}};
+    void resolve();return()=>{active=false;controller.abort();};
+  },[deepOrderId,authReady,setSearchParams,user?.id]);
 
   // Update selectedOrder when orders data changes
   useEffect(() => {
@@ -280,6 +289,7 @@ export default function OrderManagement() {
     }
   }, [orders, selectedOrder?.id]);
 
+  const refreshReviewedOrder=async(id:string)=>{if(selectedOrder?.id!==id)return;try{setSelectedOrder(await localApi.order(id) as unknown as Order);}catch(e){setSelectedOrder(null);toast({title:'Hồ sơ đơn đã thay đổi',description:e instanceof Error?e.message:'Hãy mở lại đơn.'});}};
   const handleCreateOrder = () => {
     loadOrders();
     setShowCreateForm(false);
@@ -431,7 +441,7 @@ export default function OrderManagement() {
 
   const calculateRemainingAmount = (order: Order | null): number => {
     if (!order) return 0;
-    return Math.max(0, (order.total_amount || 0) - calculateTotalPaid(order));
+    return typeof (order as any).remaining_amount==='number'?(order as any).remaining_amount:Math.max(0,(order.total_amount||0)-calculateTotalPaid(order));
   };
 
   const statusFilterChips = [
@@ -527,6 +537,8 @@ export default function OrderManagement() {
       </div>
 
       {/* Cảnh báo trùng số đơn (gây lỗi auto-link mã GHN) */}
+      {deepLinkError&&<p role="alert" className="border border-destructive/40 p-3 text-sm text-destructive">{deepLinkError}</p>}
+      {isLocalBackend() && authReady && ['admin','manager'].includes(userRole || '') && <ZcrmOrderReviewPanel onReviewed={refreshReviewedOrder} />}
       {duplicateOrderNumbers.length > 0 && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -677,6 +689,7 @@ export default function OrderManagement() {
         </TabsContent>
       </Tabs>
 
+      <OrderShipmentDialog orderId={shipmentOrderId} onClose={()=>setShipmentOrderId(null)} onSaved={async()=>{await loadOrders();}}/>
       {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={open => !open && setSelectedOrder(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -819,6 +832,13 @@ export default function OrderManagement() {
 
                 {/* Action Buttons */}
                 <div className="flex justify-end space-x-2 pt-4 border-t border-gray-300 mt-4">
+                  {canShipOrders&&selectedOrder&&<Button className="min-h-11 gap-2" variant="outline" onClick={()=>{setShipmentOrderId(selectedOrder.id);setSelectedOrder(null);}}><Truck className="h-4 w-4"/>Giao hàng</Button>}
+                  {canSendToProduction && selectedOrder && !['cancelled', 'returned'].includes(selectedOrder.status) && (
+                    <Button onClick={() => { setSelectedOrder(null); navigate(`/production-orders?source_order=${encodeURIComponent(selectedOrder.id)}`); }} variant="outline" className="gap-2">
+                      <Package className="h-4 w-4" />
+                      Gửi đơn này sang sản xuất
+                    </Button>
+                  )}
                   {selectedOrder?.ghn_tracking && Array.isArray(selectedOrder.ghn_tracking) && selectedOrder.ghn_tracking.length > 0 && (
                     <Button
                       onClick={async () => {

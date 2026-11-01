@@ -1,3 +1,4 @@
+import { canonicalContract, validateContractDates, contractLineAmount, contractPrefillItems } from "@/lib/contract-calculation";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,9 @@ interface CreateContractFormProps {
     items?: any[];
     total_amount?: number;
     title?: string;
+    include_vat?: boolean;
+    vat_rate?: number;
+    manager_id?: string | null;
   };
 }
 
@@ -58,8 +62,8 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     seller_representative: "​",
     seller_position: "Giám đốc",
     include_shipping: true,
-    include_vat: false,
-    vat_rate: 8,
+    include_vat: prefillData?.include_vat ?? false,
+    vat_rate: prefillData?.vat_rate ?? 8,
     deposit_percentage: 70,
     deposit_mode: "percent" as "percent" | "amount" | "none",
     deposit_fixed_amount: 0,
@@ -72,10 +76,10 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   });
 
   const [items, setItems] = useState<any[]>(
-    prefillData?.items?.length ? prefillData.items.map((it: any) => ({
+    prefillData?.items?.length ? contractPrefillItems(prefillData.items).map((it) => ({
       name: it.name || "",
       specifications: it.specifications || it.description || "",
-      quantity: it.quantity || 1,
+      quantity: it.quantity ?? 1,
       price: it.price || 0
     })) : [{ ...emptyItem }]
   );
@@ -101,7 +105,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       ...prev,
       include_vat: tmpl.include_vat,
       vat_rate: tmpl.vat_rate,
-      deposit_percentage: tmpl.payment_terms?.deposit_percentage || 70,
+      deposit_percentage: tmpl.payment_terms?.deposit_percentage ?? 70,
       legal_basis: tmpl.legal_basis || prev.legal_basis,
       articles: tmpl.articles?.length ? tmpl.articles : prev.articles
     }));
@@ -306,14 +310,12 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
   };
 
   // Calculations
-  const subtotal = items.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0);
-  const vatAmount = formData.include_vat ? subtotal * formData.vat_rate / 100 : 0;
-  const totalAmount = subtotal + vatAmount;
-  const depositAmount = formData.deposit_mode === "none" ?
-  0 :
-  formData.deposit_mode === "percent" ?
-  totalAmount * formData.deposit_percentage / 100 :
-  formData.deposit_fixed_amount;
+  let calculationError = "";
+  let calculated = { subtotal: 0, vat_amount: 0, total_amount: 0, deposit_amount: 0 };
+  try {
+    calculated = canonicalContract({ ...formData, items, deposit_amount: formData.deposit_fixed_amount, seller_info: { deposit_mode: formData.deposit_mode } });
+  } catch (error) { calculationError = error instanceof Error ? error.message : "Dữ liệu số tiền không hợp lệ."; }
+  const subtotal = calculated.subtotal, vatAmount = calculated.vat_amount, totalAmount = calculated.total_amount, depositAmount = calculated.deposit_amount;
 
   const addItem = () => setItems([...items, { ...emptyItem }]);
   const removeItem = (i: number) => setItems(items.filter((_, j) => j !== i));
@@ -323,7 +325,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     setItems(u);
   };
 
-  const formatCurrency = (val: number) => val.toLocaleString("vi-VN") + " ₫";
+  const formatCurrency = (val: number) => calculationError ? '—' : val.toLocaleString("vi-VN") + " ₫";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -349,10 +351,13 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
     };
 
     try {
+      if (calculationError) throw new Error(calculationError);
+      validateContractDates(formData);
       await createContract.mutateAsync({
         contract_number: formData.contract_number,
         customer_id: formData.customer_id || null,
         quote_id: formData.quote_id || null,
+        ...(prefillData?.manager_id ? { manager_id: prefillData.manager_id } : {}),
         order_id: formData.order_id || null,
         title: formData.title,
         total_amount: totalAmount,
@@ -366,7 +371,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
         start_date: formData.start_date || null,
         end_date: formData.end_date || null,
         notes: formData.notes || null,
-        items: items.map((it, i) => ({ ...it, total: it.quantity * it.price, stt: i + 1 })),
+        items: items.map((it, i) => ({ ...it, total: contractLineAmount(it.quantity, it.price), stt: i + 1 })),
         terms: formData.articles.map((a) => `${a.title}\n${a.content}`),
         legal_basis: formData.legal_basis,
         seller_info: sellerInfo,
@@ -384,6 +389,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-2">
+      {calculationError && <p role="alert" className="rounded-md border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900">{calculationError}</p>}
       {/* Template selection */}
       {templates && templates.length > 0 &&
       <div>
@@ -399,7 +405,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
         </div>
       }
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label>Số hợp đồng</Label>
           <Input value={formData.contract_number} onChange={(e) => setFormData((p) => ({ ...p, contract_number: e.target.value }))} />
@@ -414,7 +420,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
         <Label className="text-base font-semibold">THÔNG TIN BÊN A (Bên bán)</Label>
         <p className="text-xs text-muted-foreground">Thông tin công ty được lấy từ Cài đặt mẫu. Bạn chỉ cần bổ sung người đại diện.</p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>Người đại diện Bên A</Label>
             <Input value={formData.seller_representative} onChange={(e) => setFormData((p) => ({ ...p, seller_representative: e.target.value }))} placeholder="Ông/Bà..." />
@@ -483,7 +489,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>Người đại diện</Label>
             <Input value={buyerInfo.representative} onChange={(e) => setBuyerInfo((p) => ({ ...p, representative: e.target.value }))} placeholder="Ông/Bà..." />
@@ -499,7 +505,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           <Input value={buyerInfo.address} onChange={(e) => setBuyerInfo((p) => ({ ...p, address: e.target.value }))} placeholder="Địa chỉ doanh nghiệp" />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>Mã số thuế</Label>
             <div className="flex gap-1">
@@ -515,7 +521,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <Label>Ngân hàng</Label>
             <Input value={buyerInfo.bank_name} onChange={(e) => setBuyerInfo((p) => ({ ...p, bank_name: e.target.value }))} placeholder="Tên ngân hàng" />
@@ -561,7 +567,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
             const newItems = extractedItems.map((it) => ({
               name: it.name || "",
               specifications: it.specifications || "",
-              quantity: it.quantity || 1,
+              quantity: it.quantity ?? 1,
               price: it.price || 0
             }));
             // Always replace old items with new extracted items
@@ -590,7 +596,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
                   <td className="p-1"><Input value={item.specifications} onChange={(e) => updateItem(i, "specifications", e.target.value)} placeholder="Kích thước" className="h-8" /></td>
                   <td className="p-1 px-[5px] py-[8px]"><Input type="number" value={item.quantity} onChange={(e) => updateItem(i, "quantity", Number(e.target.value))} className="h-8 text-right" /></td>
                   <td className="p-1"><Input type="number" value={item.price} onChange={(e) => updateItem(i, "price", Number(e.target.value))} className="h-8 text-right" /></td>
-                  <td className="p-2 text-right font-medium">{formatCurrency(item.quantity * item.price)}</td>
+                  <td className="p-2 text-right font-medium">{formatCurrency(contractLineAmount(item.quantity, item.price))}</td>
                   <td className="p-1">
                     {items.length > 1 &&
                   <Button type="button" size="icon" variant="ghost" onClick={() => removeItem(i)} className="h-7 w-7 text-destructive">
@@ -659,7 +665,7 @@ export const CreateContractForm = ({ onSuccess, prefillData }: CreateContractFor
       </div>
 
       {/* Dates */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <Label>Ngày ký</Label>
           <Input type="date" value={formData.contract_date} onChange={(e) => setFormData((p) => ({ ...p, contract_date: e.target.value }))} />

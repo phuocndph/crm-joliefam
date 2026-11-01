@@ -37,6 +37,8 @@ services:
       LOCAL_STORAGE_ROOT: /app/storage
       LOCAL_DEMO_AUTH: "false"
       LOCAL_INTEGRATION_API: ${LOCAL_INTEGRATION_API:-false}
+      LOCAL_ZCRM_API: ${LOCAL_ZCRM_API:-false}
+      ZCRM_ENCRYPTION_KEY: ${ZCRM_ENCRYPTION_KEY:-}
       LOCAL_SYNC_AUTO: ${LOCAL_SYNC_AUTO:-false}
       GHN_API_KEY: ${GHN_API_KEY:-}
       GHN_SHOP_ID: ${GHN_SHOP_ID:-}

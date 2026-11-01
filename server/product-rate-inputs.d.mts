@@ -1,0 +1,16 @@
+export type RateFields={code:string;name:string;rate:string;unit:'PIECE';effective_from:string;effective_to:string|null};
+export type RateSource=Record<string,unknown>&{id:string;piece_rate_code:unknown;piece_rate_name:unknown;rate_exact:unknown;rate_unit:unknown;effective_from:unknown;effective_to:unknown;status:unknown};
+export type ParsedRateSource=RateSource&RateFields;
+export function rateText(value:unknown,label:string,min?:number,max?:number):string;
+export function exactRateText(value:unknown,label?:string):string;
+export function rateInput(value:unknown,label?:string):string;
+export function rateDate(value:unknown,label?:string):string;
+export function rateUnit(value:unknown):'PIECE';
+export function rateNameKey(value:unknown):string;
+export function cliRateCodeKey(value:unknown):string;
+export function rateFields(value:{code:unknown;name:unknown;rate:unknown;unit?:unknown;effective_from:unknown;effective_to?:unknown}):RateFields;
+export function catalogRateFields(body:Record<string,unknown>,defaultDate:string):RateFields;
+export function rateCellValue(value:unknown,field:string,context:string):unknown;
+export function rateRangesOverlap(a:Pick<RateFields,'effective_from'|'effective_to'>,b:Pick<RateFields,'effective_from'|'effective_to'>):boolean;
+export function matchingRateSources(rows:RateSource[],requestedCode:string,keyOf:(value:unknown)=>string):ParsedRateSource[];
+export function assertRateInsertAllowed(rows:RateSource[],value:RateFields,keyOf:(value:unknown)=>string,options?:{draft?:boolean}):ParsedRateSource[];

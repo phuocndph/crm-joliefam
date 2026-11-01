@@ -131,7 +131,7 @@ export const CreateFrameworkContractForm = ({ onSuccess }: Props) => {
         total_amount: 0,
         deposit_amount: 0,
         notes,
-        manager_id: user?.id,
+
         seller_info: {
           company_name: companySettings.companyName,
           address: companySettings.address,
@@ -166,7 +166,7 @@ export const CreateFrameworkContractForm = ({ onSuccess }: Props) => {
   return (
     <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
       {/* Basic info */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label>Mã hợp đồng</Label>
           <Input value={contractNumber} readOnly className="bg-muted" />
@@ -180,7 +180,7 @@ export const CreateFrameworkContractForm = ({ onSuccess }: Props) => {
       {/* Seller info */}
       <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
         <h3 className="font-semibold text-sm">BÊN A (Bên cung cấp)</h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Công ty</Label>
             <Input value={companySettings.companyName || ""} readOnly className="bg-muted text-xs" />
@@ -232,7 +232,7 @@ export const CreateFrameworkContractForm = ({ onSuccess }: Props) => {
           </Select>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Tên công ty *</Label>
             <Input value={buyerInfo.company_name} onChange={e => setBuyerInfo(p => ({ ...p, company_name: e.target.value }))} className="text-xs" />

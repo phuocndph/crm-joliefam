@@ -138,6 +138,7 @@ const canonicalReadEndpoints: Record<string, string> = {
   quotes: '/api/quotes?limit=5000',
   orders: '/api/orders?limit=5000',
   contracts: '/api/contracts',
+  contract_templates: '/api/contract-templates',
   transactions: '/api/transactions',
   expenses: '/api/expenses',
   assignees: '/api/assignees',
@@ -166,7 +167,8 @@ const canonicalReadEndpoints: Record<string, string> = {
 
 const canonicalWriteEndpoints: Record<string, string> = {
   customers: '/api/customers', quotes: '/api/quotes', orders: '/api/orders',
-  contracts: '/api/contracts', transactions: '/api/transactions', expenses: '/api/expenses',
+  contracts: '/api/contracts',
+  contract_templates: '/api/contract-templates', transactions: '/api/transactions', expenses: '/api/expenses',
   assignees: '/api/assignees', shipping_companies: '/api/shipping-companies', price_lists: '/api/catalog/price-lists',
   ghn_tracking: '/api/ghn-tracking', products: '/api/catalog/products', inventory_items: '/api/inventory/items',
   fabric_types: '/api/fabrics/types', fabric_variants: '/api/fabrics/variants', fabric_widths: '/api/fabrics/widths',
@@ -288,6 +290,7 @@ const createLocalQuery = (table: string) => {
           quotes: '/api/quotes',
           orders: '/api/orders',
           contracts: '/api/contracts',
+  contract_templates: '/api/contract-templates',
           transactions: '/api/transactions',
           order_payments: '/api/order-payments',
           assignees: '/api/assignees',

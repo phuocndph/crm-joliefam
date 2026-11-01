@@ -41,114 +41,46 @@ export const fuzzyMatch = (text: string, pattern: string): boolean => {
   return patternIdx === normalizedPattern.length;
 };
 
-// Calculate search relevance score with stricter matching
-export const calculateSearchScore = (product: SearchableProduct, searchTerm: string): number => {
-  if (!searchTerm.trim()) return 0;
-  
-  const searchWords = searchTerm.toLowerCase().trim().split(/\s+/);
-  const productName = removeAccents(product.name.toLowerCase());
-  const productSku = removeAccents((product.sku || '').toLowerCase());
-  const productCategory = removeAccents((product.category || '').toLowerCase());
-  const productDesc = removeAccents((product.description || '').toLowerCase());
-  const productSpecs = removeAccents((product.specifications || '').toLowerCase());
-  
-  let score = 0;
-  let matchedWords = 0;
-  let exactMatches = 0;
-  
-  searchWords.forEach(word => {
-    const normalizedWord = removeAccents(word);
+// One normalized phrase drives membership, scoring and complete-match bonuses.
+export const normalizeProductSearch = (value: string): string =>
+  removeAccents(value).toLowerCase().trim().replace(/\s+/g, ' ');
+
+const scoreNormalizedProduct = (product: SearchableProduct, phrase: string): number => {
+  if (!phrase) return 0;
+  const words = phrase.split(' ');
+  const name = normalizeProductSearch(product.name), sku = normalizeProductSearch(product.sku || '');
+  const category = normalizeProductSearch(product.category || ''), description = normalizeProductSearch(product.description || ''), specifications = normalizeProductSearch(product.specifications || '');
+  const nameWords = name.split(/\s+/);
+  let score = 0, exactMatches = 0;
+  for (const word of words) {
     let wordScore = 0;
-    let hasExactMatch = false;
-    
-    // Very high priority for exact SKU matches
-    if (productSku === normalizedWord) {
-      wordScore += 50;
-      hasExactMatch = true;
-      exactMatches++;
-    } else if (productSku.includes(normalizedWord)) {
-      wordScore += 25;
+    if (sku === word) { wordScore += 50; exactMatches++; }
+    else if (sku.includes(word)) wordScore += 25;
+    if (nameWords.includes(word)) { wordScore += 40; exactMatches++; }
+    else if (word.length >= 2 && nameWords.some(part => part.startsWith(word))) wordScore += 25;
+    else if (word.length >= 3 && name.includes(word)) wordScore += 20;
+    const escaped = word.replace(/[.*+?^{}$()|[\]\\]/g, '\\$&');
+    const boundary = new RegExp('\\b' + escaped + '\\b', 'i');
+    if (boundary.test(name)) wordScore += 15;
+    if (boundary.test(sku)) wordScore += 18;
+    if (word.length >= 3 && category.includes(word)) wordScore += 10;
+    if (word.length >= 4) {
+      if (description.includes(word)) wordScore += 5;
+      if (specifications.includes(word)) wordScore += 6;
     }
-    
-    // High priority for exact name word matches
-    const nameWords = productName.split(/\s+/);
-    if (nameWords.includes(normalizedWord)) {
-      wordScore += 40;
-      hasExactMatch = true;
-      exactMatches++;
-    } else if (productName.includes(normalizedWord)) {
-      // Only partial matches if word is significant length (3+ chars)
-      if (normalizedWord.length >= 3) {
-        wordScore += 20;
-        if (productName.startsWith(normalizedWord)) wordScore += 5;
-      }
-    }
-    
-    // Exact word boundary matches (whole words only)
-    const wordBoundaryRegex = new RegExp(`\\b${normalizedWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-    if (wordBoundaryRegex.test(productName)) {
-      wordScore += 15;
-      hasExactMatch = true;
-    }
-    if (wordBoundaryRegex.test(productSku)) {
-      wordScore += 18;
-      hasExactMatch = true;
-    }
-    
-    // Category matches (only for significant words)
-    if (normalizedWord.length >= 3 && productCategory.includes(normalizedWord)) {
-      wordScore += 10;
-    }
-    
-    // Description matches (lower priority, only for longer words)
-    if (normalizedWord.length >= 4) {
-      if (productDesc.includes(normalizedWord)) wordScore += 5;
-      if (productSpecs.includes(normalizedWord)) wordScore += 6;
-    }
-    
-    // Only count meaningful matches
-    if (wordScore > 0) {
-      matchedWords++;
-      score += wordScore;
-    }
-    
-    // Penalty for very short words with no exact matches
-    if (normalizedWord.length <= 2 && !hasExactMatch) {
-      wordScore = Math.max(0, wordScore - 10);
-    }
-  });
-  
-  // Require all search words to have some match
-  if (matchedWords < searchWords.length) {
-    return 0;
+    // Every token must match; ranking never discards an otherwise valid name/SKU match.
+    if (wordScore === 0) return 0;
+    score += wordScore;
   }
-  
-  // Big bonus for having exact matches for most search words
-  const exactMatchRatio = exactMatches / searchWords.length;
-  if (exactMatchRatio >= 0.7) {
-    score += 30;
-  }
-  
-  // Bonus for matching all search words with high relevance
-  if (matchedWords === searchWords.length && searchWords.length > 1) {
-    score += 20;
-  }
-  
-  // Bonus for exact complete matches
-  const searchPhrase = removeAccents(searchTerm.toLowerCase());
-  if (productName === searchPhrase || productSku === searchPhrase) {
-    score += 40;
-  }
-  
-  // Penalty for products with too many unrelated words
-  const productWordCount = productName.split(/\s+/).length;
-  const searchWordCount = searchWords.length;
-  if (productWordCount > searchWordCount * 3) {
-    score = Math.max(0, score - 10);
-  }
-  
+  if (exactMatches / words.length >= 0.7) score += 30;
+  if (words.length > 1) score += 20;
+  if (name === phrase) score += 40;
+  if (sku === phrase) score += 10000;
   return score;
 };
+
+export const calculateSearchScore = (product: SearchableProduct, searchTerm: string): number =>
+  scoreNormalizedProduct(product, normalizeProductSearch(searchTerm));
 
 // Define the product category hierarchy and order
 const CATEGORY_ORDER = [
@@ -218,9 +150,9 @@ const getCategoryOrderIndex = (category: string | null): number => {
 };
 
 // Enhanced search hook with improved relevance filtering
-export const useProductSearch = (products: SearchableProduct[], searchTerm: string, debounceMs = 300) => {
-  return useMemo(() => {
-    if (!searchTerm.trim()) {
+export const searchProducts = (products: SearchableProduct[], searchTerm: string) => {
+    const phrase = normalizeProductSearch(searchTerm);
+    if (!phrase) {
       // When no search, group by category and sort by predefined order
       const grouped = products.reduce((acc, product) => {
         const category = product.category || 'Khác';
@@ -239,7 +171,7 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
       });
       
       // Sort all products by category order first, then by SKU
-      const sortedProducts = products.sort((a, b) => {
+      const sortedProducts = [...products].sort((a, b) => {
         const categoryOrderA = getCategoryOrderIndex(a.category);
         const categoryOrderB = getCategoryOrderIndex(b.category);
         
@@ -277,14 +209,12 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
     const scoredProducts = products
       .map(product => ({
         ...product,
-        searchScore: calculateSearchScore(product, searchTerm)
+        searchScore: scoreNormalizedProduct(product, phrase)
       }))
-      .filter(product => {
-        // Stricter filtering: require higher scores for more precise results
-        const minScore = searchTerm.length <= 2 ? 25 : 15; // Much higher threshold
-        return product.searchScore >= minScore;
-      })
+      .filter(product => product.searchScore > 0)
       .sort((a, b) => {
+        const exactSkuDiff = Number(normalizeProductSearch(b.sku || '') === phrase) - Number(normalizeProductSearch(a.sku || '') === phrase);
+        if (exactSkuDiff) return exactSkuDiff;
         // Primary sort: by score (descending)
         const scoreDiff = b.searchScore - a.searchScore;
         if (scoreDiff !== 0) return scoreDiff;
@@ -294,7 +224,7 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
         if (categoryCompare !== 0) return categoryCompare;
         
         // Tertiary sort: by SKU
-        return (a.sku || '').localeCompare(b.sku || '', 'vi', { numeric: true });
+        return (a.sku || '').localeCompare(b.sku || '', 'vi', { numeric: true }) || a.id.localeCompare(b.id);
       });
     
     // Show all relevant results without limiting
@@ -315,8 +245,10 @@ export const useProductSearch = (products: SearchableProduct[], searchTerm: stri
       resultCount: topResults.length,
       totalMatches: scoredProducts.length // Track total matches before limiting
     };
-  }, [products, searchTerm]);
 };
+
+export const useProductSearch = (products: SearchableProduct[], searchTerm: string) =>
+  useMemo(() => searchProducts(products, searchTerm), [products, searchTerm]);
 
 // Highlight search terms in text
 export const highlightSearchTerms = (text: string, searchTerm: string): string => {

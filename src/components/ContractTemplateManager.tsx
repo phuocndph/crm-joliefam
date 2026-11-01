@@ -1,3 +1,5 @@
+import { useAuthReady } from "@/hooks/useAuthReady";
+import { useUserRole } from "@/hooks/useUserRole";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +32,10 @@ const defaultTemplate = {
 };
 
 export const ContractTemplateManager = () => {
-  const { data: templates, isLoading } = useContractTemplates();
+  const { data: templates, isLoading, isError, refetch } = useContractTemplates();
+  const { user } = useAuthReady();
+  const { role } = useUserRole(user);
+  const canManage = role === "admin" || role === "manager";
   const createTemplate = useCreateContractTemplate();
   const updateTemplate = useUpdateContractTemplate();
   const deleteTemplate = useDeleteContractTemplate();
@@ -97,10 +102,10 @@ export const ContractTemplateManager = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Mẫu hợp đồng</h2>
-        <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1" />Tạo mẫu mới</Button>
+        {canManage && <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1" />Tạo mẫu mới</Button>}
       </div>
 
-      {isLoading ? (
+      {isError ? <div role="alert">Không tải được mẫu hợp đồng. <Button variant="link" onClick={() => refetch()}>Thử lại</Button></div> : isLoading ? (
         <p className="text-muted-foreground text-center py-8">Đang tải...</p>
       ) : !templates?.length ? (
         <Card>
@@ -113,17 +118,17 @@ export const ContractTemplateManager = () => {
         <div className="grid gap-3">
           {templates.map((t: any) => (
             <Card key={t.id}>
-              <CardContent className="p-4 flex items-center justify-between">
+              <CardContent className="p-4 flex flex-wrap gap-3 items-center justify-between">
                 <div>
                   <p className="font-medium">{t.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {t.articles?.length || 0} điều khoản • VAT: {t.include_vat ? `${t.vat_rate}%` : "Không"} • Cọc: {t.payment_terms?.deposit_percentage || 70}%
+                    {t.articles?.length || 0} điều khoản • VAT: {t.include_vat ? `${t.vat_rate}%` : "Không"} • Cọc: {t.payment_terms?.deposit_percentage ?? 70}%
                   </p>
                 </div>
-                <div className="flex gap-1">
-                  <Button size="icon" variant="ghost" onClick={() => openEdit(t)}><Edit className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => handleDelete(t.id)} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                </div>
+                {canManage && <div className="flex gap-1">
+                  <Button size="icon" variant="ghost" aria-label={`Sửa mẫu ${t.name}`} onClick={() => openEdit(t)}><Edit className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" aria-label={`Xóa mẫu ${t.name}`} onClick={() => { if (confirm(`Xóa mẫu hợp đồng ${t.name}?`)) handleDelete(t.id); }} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                </div>}
               </CardContent>
             </Card>
           ))}

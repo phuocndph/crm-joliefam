@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {GhnTrackingManagement} from '../server/ghn-tracking.ts';
+const config={configured:true,mode:'ENABLED',revision:1,token:'fake',shops:['123','456']};
+const rows=Array.from({length:523},(_,i)=>({order_code:`TEST${String(i).padStart(5,'0')}`,status:['delivered','returned','cancel','lost','damage','delivering'][i%6]}));
+const existing=new Set([rows[0].order_code]),deleted=new Set([rows[1].order_code]);let deny=false,repeat=false,failCode='',calls=0;
+const pool={query:async(sql,args)=>{if(sql.includes('local_user_profiles'))return{rows:deny?[]:[{role:'admin'}]};if(sql.startsWith('select 1 from local_ghn_tracking'))return{rows:existing.has(args[0])||deleted.has(args[0])?[{}]:[]};throw Error('Unexpected SQL '+sql);}};
+const adapter={snapshot:async()=>structuredClone(config)};
+const provider=async(url,init)=>{calls++;assert.equal(init.method,'POST');const body=JSON.parse(init.body);assert.equal(body.status,undefined);const offset=repeat?0:body.offset;const list=init.headers.ShopId==='123'?rows:[];return new Response(JSON.stringify({code:200,data:{orders:list.slice(offset,offset+body.limit),total:list.length}}));};
+const service=new GhnTrackingManagement(pool,adapter,provider);
+const imported=[];service.import=async(actor,body,options)=>{assert.equal(options.activeOnly,false);assert.equal(options.missingOnly,true);assert.equal(body.order_id,undefined);if(body.ghn_order_code===failCode)throw Error('fake');existing.add(body.ghn_order_code);imported.push(body.ghn_order_code);return{raw_data:{shop_id:123}};};
+let cursor,result,pages=0;do{result=await service.importPage('admin',{...(cursor?{cursor}:{})});cursor=result.next_cursor;pages++;assert.ok(pages<100);}while(result.has_more);
+assert.equal(result.complete,true);assert.equal(imported.length,521);assert.equal(result.totals[0].scanned,523);assert.equal(result.totals[0].added,521);assert.equal(result.totals[0].skipped,2);assert.equal(result.totals[1].complete,true);assert.ok(pages>50);
+const first=await service.importPage('admin',{});await assert.rejects(()=>service.importPage('other',{cursor:first.next_cursor}),/hết hạn/);config.revision++;await assert.rejects(()=>service.importPage('admin',{cursor:first.next_cursor}),/hết hạn/);config.revision--;deny=true;await assert.rejects(()=>service.importPage('admin',{}),/không còn hoạt động/);deny=false;
+repeat=true;const repeated=await service.importPage('admin',{});await assert.rejects(()=>service.importPage('admin',{cursor:repeated.next_cursor}),/lặp lại/);repeat=false;
+existing.delete(rows[3].order_code);failCode=rows[3].order_code;const partial=await service.importPage('admin',{});assert.equal(partial.halted,true);assert.equal(partial.scanned,3);assert.equal(partial.complete,false);failCode='';const resumed=await service.importPage('admin',{cursor:partial.next_cursor});assert.equal(resumed.halted,false);assert.equal(resumed.totals[0].failed,0);
+console.log('PASS historical import actual paging: >500, all terminal statuses, existing/tombstone skips, multi-shop totals, permission/config cursor binding, repeated-page stop, partial failure/resume. Fake provider/SQL only.');

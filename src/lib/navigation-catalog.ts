@@ -86,8 +86,7 @@ export const NAVIGATION_CATALOG: readonly NavigationItem[] = Object.freeze([
   item({ id: 'ghn-tracking', section: 'group', groupId: 'delivery', label: 'Theo dõi GHN', path: '/ghn-tracking', icon: Truck, aliases: ['vận chuyển ghn', 'ghn', 'tracking', 'giao hàng'], permission: 'ghn_tracking' }),
   item({ id: 'shipping-companies', section: 'group', groupId: 'delivery', label: 'Đơn vị vận chuyển', path: '/shipping-companies', icon: Building, aliases: ['nhà xe', 'vận tải'], permission: 'shipping_companies' }),
 
-  item({ id: 'production-attendance', section: 'group', groupId: 'people', label: 'Chấm công xưởng', path: '/production-attendance', icon: CalendarCheck2, aliases: ['bảng công', 'attendance', 'xưởng'], permissions: attendancePermissions }),
-  item({ id: 'payroll-settings', section: 'group', groupId: 'people', label: 'Tiền lương', path: '/payroll-settings', icon: WalletCards, aliases: ['lương', 'payroll', 'thu nhập'], permissions: payrollPermissions }),
+  item({ id: 'production-attendance', section: 'group', groupId: 'people', label: 'Chấm công & Tính lương', path: '/production-attendance', icon: CalendarCheck2, aliases: ['bảng công', 'attendance', 'xưởng', 'tiền lương', 'lương', 'payroll', 'thu nhập', 'đơn giá công may'], permissions: [...attendancePermissions, ...payrollPermissions] }),
   item({ id: 'profile-review', section: 'group', groupId: 'people', label: 'Duyệt hồ sơ', path: '/profile-review', icon: Users2, aliases: ['duyệt hồ sơ nhân sự', 'nhân sự'], permission: 'user_management' }),
 
   item({ id: 'cash-flow', section: 'group', groupId: 'finance', label: 'Thu chi', path: '/cash-flow', icon: CreditCard, aliases: ['dòng tiền', 'cash flow'], permission: 'cash_flow' }),
@@ -128,7 +127,8 @@ export function navigationItemsByGroup(items: readonly NavigationItem[], groupId
 }
 
 export function navigationGroupForPath(pathname: string, items: readonly NavigationItem[]): NavigationGroupId | null {
-  return items.find(item => item.path === pathname)?.groupId || null;
+  const normalizedPath = pathname === '/payroll-settings' ? '/production-attendance' : pathname;
+  return items.find(item => item.path === normalizedPath)?.groupId || null;
 }
 
 export function normalizeNavigationSearch(value: string): string {

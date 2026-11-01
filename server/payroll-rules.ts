@@ -1,5 +1,6 @@
 import type { Express } from 'express';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
+import {payrollOvertimeRateMatchesBasis} from './payroll-snapshot.js';
 type Queryable = Pick<PoolClient, 'query'>;
 type Row = QueryResultRow;
 export const payrollLocation = (value: unknown) => String(value || '').trim() || '__UNASSIGNED__';
@@ -32,7 +33,7 @@ export async function resolvePayrollRule(db: Queryable, kind: string, date: stri
 export async function payrollV3OvertimeRate(db: Queryable, context: Row, date: string, calendar: Row) {
   const rows = (await db.query(`select *,rate_amount::text amount_numeric from local_worker_rates where worker_id=$1 and status='APPROVED' and effective_from<=$2::date and (effective_to is null or effective_to>=$2::date)
     and (attendance_method='HOUR' or (attendance_method='DAY' and $3::text in ('MONTHLY_MANAGER','MONTHLY_HELPER')))`,[context.worker.id,date,context.assignment.compensation_type])).rows;
-  const hourly=rows.filter(row=>row.attendance_method==='HOUR'), winners=hourly.length?hourly:rows;
+  const winners=rows.filter(row=>payrollOvertimeRateMatchesBasis(row,context.assignment.compensation_type));
   if (winners.length!==1) throw Object.assign(invalid(`Tăng ca ngày ${date} cần đúng một đơn giá cơ sở hợp lệ.`),{resolution_target:'WORKER'});
   const rate=winners[0];
   const amount=(await db.query("select case when $1='HOUR' then $2::numeric else $2::numeric/$3::numeric/($4::numeric/60) end::text unit_rate",[rate.attendance_method,rate.amount_numeric,calendar.days_numeric,calendar.minutes_numeric])).rows[0].unit_rate;

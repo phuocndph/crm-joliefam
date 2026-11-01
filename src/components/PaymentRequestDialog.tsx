@@ -1,3 +1,7 @@
+import { contractDateLabel } from "@/lib/contract-calculation";
+import { usePaymentRequestContract } from "@/hooks/useContracts";
+import { savedSellerValue } from "@/lib/contract-document";
+import { paymentRequestCurrency, paymentRequestDateValid, paymentRequestField, paymentRequestFinancialView, paymentRequestLabels, paymentRequestProse, paymentRequestToday } from "@/lib/payment-request";
 import { useRef, useState, useEffect, useMemo } from "react";
 import { OnlineStampSignature } from "@/components/OnlineStampSignature";
 import { Switch } from "@/components/ui/switch";
@@ -6,10 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CurrencyInput } from "@/components/ui/currency-input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Printer, FileDown, FileText, Save, RotateCcw } from "lucide-react";
+import { Printer, FileDown, FileText, Save, RotateCcw, RefreshCw } from "lucide-react";
 import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
 import { exportElementToPDF } from "@/lib/pdfUtils";
@@ -44,27 +46,30 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const { settings: companySettings } = useTemplateSettings();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const contractQuery = usePaymentRequestContract(contract?.id, open);
+  const financial = paymentRequestFinancialView(contract, contractQuery.data);
+  const currentContract = contractQuery.data?.id === contract?.id ? contractQuery.data : contract;
   const [showOnlineStamp, setShowOnlineStamp] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [action, setAction] = useState<string | null>(null);
+  const actionLock = useRef(false);
+  const dirty = useRef(false);
+  const session = useRef({ id: '', open: false });
+  const localProse = useRef<{ id: string; value: unknown } | null>(null);
 
-  const defaults = useMemo(() => {
-    const seller = contract?.seller_info || {};
-    const buyer = contract?.buyer_info || {};
-    const totalAmount = contract?.total_amount || 0;
-    const depositAmount = contract?.deposit_amount || 0;
-    const remainingAmount = totalAmount - depositAmount;
-    const sellerName = companySettings.companyName || seller.company_name || "";
-    const sellerBank = companySettings.bankInfo || seller.bank_info || "";
-    const sellerTaxCode = companySettings.taxCode || seller.tax_code || "";
-    const sellerAddress = companySettings.address || seller.address || "";
-    const sellerPhone = companySettings.phone || seller.phone || "";
+  const { defaults, previousDefaults } = useMemo(() => {
+    const seller = currentContract?.seller_info || {};
+    const buyer = currentContract?.buyer_info || {};
+    const sellerName = savedSellerValue(seller, "company_name", companySettings.companyName);
+    const sellerBank = savedSellerValue(seller, "bank_info", companySettings.bankInfo);
+    const sellerTaxCode = paymentRequestField(savedSellerValue(seller, "tax_code", companySettings.taxCode), 'tax');
+    const sellerAddress = paymentRequestField(savedSellerValue(seller, "address", companySettings.address), 'address');
+    const sellerPhone = paymentRequestField(savedSellerValue(seller, "phone", companySettings.phone), 'phone');
     const sellerRep = seller.representative || "";
     const sellerPos = seller.position || "Giám đốc";
-    const buyerName = buyer.company_name || contract?.customers?.company || contract?.customers?.name || "...";
-    const buyerAddress = buyer.address || contract?.customers?.address || "";
+    const buyerName = buyer.company_name || currentContract?.customers?.company || currentContract?.customers?.name || "...";
+    const buyerAddress = paymentRequestField(String(buyer.address || currentContract?.customers?.address || ""), 'address');
     const buyerRep = buyer.representative || "";
     const buyerPos = buyer.position || "";
-    const depositPct = contract?.deposit_percentage || 70;
 
     const sellerBlockLines = [
       `- Tên đơn vị: ${sellerName}`,
@@ -81,10 +86,13 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
       `- Nội dung chuyển khoản: Thanh toán HĐ số ${contract?.contract_number || ""}`,
     ].filter(Boolean).join("\n");
 
-    return {
+    const introLead = `Căn cứ Hợp đồng số ${contract?.contract_number || ""} ký ngày ${contract?.contract_date ? contractDateLabel(contract.contract_date) : ""} giữa hai bên về việc cung cấp hàng hóa, ${sellerName} kính đề nghị Quý Công ty `;
+    const oldIntroLead = `Căn cứ Hợp đồng số ${contract?.contract_number || ""} ký ngày ${contract?.contract_date ? new Date(contract.contract_date).toLocaleDateString("vi-VN") : ""} giữa hai bên về việc cung cấp hàng hóa, ${sellerName} kính đề nghị Quý Công ty `;
+    const closing = `Kính đề nghị Quý Công ty/Đơn vị sắp xếp thanh toán đúng hạn theo thông tin nêu trên.${sellerPhone ? ` Mọi thắc mắc xin vui lòng liên hệ theo số điện thoại: ${sellerPhone} để được hỗ trợ.` : ""}`;
+    return { defaults: {
       company_header: sellerName.toUpperCase(),
       document_number: "",
-      request_date: new Date().toISOString().split("T")[0],
+      request_date: paymentRequestToday(),
       title: "ĐỀ NGHỊ THANH TOÁN",
       subtitle: `V/v: Đề nghị thanh toán theo Hợp đồng số ${contract?.contract_number || ""}`,
       recipient: `Kính gửi: ${buyerName}`,
@@ -92,20 +100,13 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
       recipient_rep: buyerRep ? `Người đại diện: ${buyerRep}${buyerPos ? ` – Chức vụ: ${buyerPos}` : ""}` : "",
       seller_block_title: "Đơn vị đề nghị thanh toán:",
       seller_block_text: sellerBlockLines,
-      intro: `Căn cứ Hợp đồng số ${contract?.contract_number || ""} ký ngày ${contract?.contract_date ? new Date(contract.contract_date).toLocaleDateString("vi-VN") : ""} giữa hai bên về việc cung cấp hàng hóa, ${sellerName} kính đề nghị Quý Công ty thanh toán số tiền theo bảng chi tiết dưới đây:`,
+      intro: `${introLead}thanh toán số tiền còn lại sau khi nhận hàng theo điều khoản thanh toán đã thỏa thuận tại hợp đồng, cụ thể như sau:`,
       table_title: "I. BẢNG CHI TIẾT THANH TOÁN",
-      row1_label: "Tổng giá trị Hợp đồng",
-      row1_amount: totalAmount,
-      row2_label: `Đã thanh toán đợt 1 (Đặt cọc ${depositPct}%)`,
-      row2_amount: depositAmount,
-      row3_label: "Số tiền đề nghị thanh toán đợt này",
-      phase: "remaining" as "deposit" | "remaining" | "full" | "custom",
-      amount: remainingAmount,
       bank_title: "II. THÔNG TIN CHUYỂN KHOẢN",
       bank_text: bankLines,
       notes_title: "III. GHI CHÚ",
       notes: "",
-      closing: `Kính đề nghị Quý Công ty/Đơn vị sắp xếp thanh toán đúng hạn theo thông tin nêu trên.${sellerPhone ? ` Mọi thắc mắc xin vui lòng liên hệ theo số điện thoại: ${sellerPhone} để được hỗ trợ.` : ""}`,
+      closing,
       closing2: "Trân trọng./",
       sign_label_a: sellerName.toUpperCase(),
       sign_label_b: "XÁC NHẬN BÊN MUA",
@@ -113,96 +114,110 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
       sign_caption_b: "(Ký, đóng dấu)",
       sign_name_a: sellerRep,
       sign_name_b: buyerRep,
-    };
-  }, [contract, companySettings]);
+    }, previousDefaults: {
+      intro: [
+        `${introLead}thanh toán phần giá trị còn lại theo điều khoản giao nhận và thanh toán của hợp đồng, sau khi trừ các khoản đã thanh toán theo chứng từ thu, cụ thể như sau:`,
+        `${oldIntroLead}thanh toán số tiền theo bảng chi tiết dưới đây:`,
+      ],
+      closing: [closing],
+    } };
+  }, [contract, currentContract, companySettings]);
 
   const [state, setState] = useState<any>(defaults);
 
+  useEffect(() => () => { session.current.open = false; }, []);
+
   useEffect(() => {
-    if (!contract) return;
-    const saved = contract.document_overrides?.[FORM_KEY];
-    const synced = syncContractNumberInOverrides(saved, contract.contract_number);
-    setState({ ...defaults, ...(synced || {}) });
-  }, [contract, defaults]);
+    if (!open || !contract) { session.current.open = false; return; }
+    const newSession = !session.current.open || session.current.id !== contract.id;
+    if (newSession) localProse.current = null;
+    session.current = { id: contract.id, open: true };
+    if (newSession || !dirty.current) {
+      const saved = localProse.current?.id === contract.id ? localProse.current.value : currentContract.document_overrides?.[FORM_KEY];
+      const synced = syncContractNumberInOverrides(saved, contract.contract_number);
+      setState(paymentRequestProse(defaults, synced, previousDefaults));
+      dirty.current = false;
+    }
+  }, [open, contract, currentContract, defaults, previousDefaults]);
 
   if (!contract) return null;
 
-  const set = (k: string, v: any) => setState((s: any) => ({ ...s, [k]: v }));
+  const set = (k: string, v: string) => { dirty.current = true; setState((s: any) => ({ ...s, [k]: v })); };
 
-  const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
-  const formatDate = (d: string) => d ? new Date(d).toLocaleDateString("vi-VN") : ".../.../...";
+  const formatCurrency = paymentRequestCurrency;
   const dateParts = formatDateParts(state.request_date);
+  const disabled = !financial.ready || contractQuery.isFetching || contractQuery.isPending || contractQuery.isError || !paymentRequestDateValid(state.request_date) || Boolean(action);
 
-  const phases = [
-    { value: "deposit", label: `Đợt 1 - Đặt cọc (${contract.deposit_percentage || 70}%)`, amount: contract.deposit_amount || 0 },
-    { value: "remaining", label: `Đợt 2 - Còn lại (${100 - (contract.deposit_percentage || 70)}%)`, amount: (contract.total_amount || 0) - (contract.deposit_amount || 0) },
-    { value: "full", label: "Toàn bộ giá trị hợp đồng", amount: contract.total_amount || 0 },
-    { value: "custom", label: "Số khác (tự nhập)", amount: state.amount },
-  ];
-  const onPhaseChange = (v: string) => {
-    const p = phases.find(x => x.value === v);
-    if (!p) return;
-    setState((s: any) => ({ ...s, phase: v, amount: v === "custom" ? s.amount : p.amount }));
+  const preflight = async () => {
+    if (!open || !paymentRequestDateValid(state.request_date)) throw new Error('Ngày đề nghị chưa hợp lệ.');
+    const refreshed = await contractQuery.refetch();
+    if (!session.current.open || session.current.id !== contract.id) throw new Error('Biểu mẫu đã đóng hoặc chuyển sang hợp đồng khác.');
+    if (refreshed.error || !refreshed.data) throw new Error('Không tải được điều khoản thanh toán của hợp đồng. Vui lòng thử lại.');
+    const fresh = paymentRequestFinancialView(contract, refreshed.data);
+    if (!fresh.ready) throw new Error(fresh.reason);
+    if (fresh.fingerprint !== financial.fingerprint) throw new Error('Số tiền đã thay đổi. Biểu mẫu đã được cập nhật; vui lòng kiểm tra lại trước khi tiếp tục.');
+    return { source: refreshed.data, financial: fresh };
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    const next = { ...(contract.document_overrides || {}), [FORM_KEY]: state };
-    try {
+  const runAction = async (name: string, perform: (fresh: Awaited<ReturnType<typeof preflight>>) => Promise<void> | void) => {
+    if (actionLock.current) return;
+    actionLock.current = true;
+    setAction(name);
+    try { await perform(await preflight()); }
+    catch (error) { toast({ title: 'Chưa thể ' + name.toLowerCase(), description: error instanceof Error ? error.message : 'Vui lòng đối chiếu lại dữ liệu.', variant: 'destructive' }); }
+    finally { actionLock.current = false; setAction(null); }
+  };
+
+  const handleSave = () => runAction('Lưu', async fresh => {
+    const submitted = { ...state, calculation_version: 3, calculation_basis: 'contract_terms', phase: 'remaining',
+      row1_label: paymentRequestLabels.total, row1_amount: fresh.financial.total,
+      row2_label: paymentRequestLabels.advance, row2_amount: fresh.financial.advance,
+      row3_label: paymentRequestLabels.remaining, amount: fresh.financial.remaining };
+    const next = { ...(fresh.source.document_overrides as Record<string, unknown> || {}), [FORM_KEY]: submitted };
       if (isLocalBackend()) await localApi.updateContract(contract.id, { document_overrides: next });
       else {
         const { error } = await supabase.from("contracts").update({ document_overrides: next }).eq("id", contract.id);
         if (error) throw error;
       }
-    } catch (error) {
-      setSaving(false);
-      toast({ title: "Lỗi lưu", description: error instanceof Error ? error.message : "Không thể lưu đề nghị", variant: "destructive" });
-      return;
-    }
-    setSaving(false);
+    localProse.current = { id: contract.id, value: submitted };
+    dirty.current = false;
     qc.invalidateQueries({ queryKey: ["contracts"] });
     toast({ title: "Đã lưu nội dung biểu mẫu" });
-  };
+  });
 
-  const handleRestore = async () => {
-    const next = { ...(contract.document_overrides || {}) };
-    delete next[FORM_KEY];
-    try {
-      if (isLocalBackend()) await localApi.updateContract(contract.id, { document_overrides: next });
-      else {
-        const { error } = await supabase.from("contracts").update({ document_overrides: next }).eq("id", contract.id);
-        if (error) throw error;
-      }
-    } catch (error) {
-      toast({ title: "Lỗi", description: error instanceof Error ? error.message : "Không thể khôi phục đề nghị", variant: "destructive" });
-      return;
-    }
+  const handleRestore = () => {
+    dirty.current = true;
     setState(defaults);
-    qc.invalidateQueries({ queryKey: ["contracts"] });
-    toast({ title: "Đã khôi phục mặc định" });
+    toast({ title: "Đã đặt lại bản nháp", description: 'Bấm Lưu để giữ nội dung mới.' });
   };
 
-  const handlePrint = () => {
-    const content = printRef.current;
-    if (!content) return;
+  const handlePrint = async () => {
+    if (actionLock.current || !printRef.current) return;
     const win = window.open("", "_blank");
-    if (!win) return;
+    if (!win) { toast({ title: 'Trình duyệt đã chặn cửa sổ in', variant: 'destructive' }); return; }
+    let printed = false;
+    await runAction('In', () => {
+    const content = printRef.current;
+    if (!content) throw new Error('Chưa tải được bản xem trước.');
     win.document.write(`<html><head><title>DNTT - ${contract.contract_number}</title>
     <style>@page{margin:20mm}body{font-family:'Times New Roman',serif;padding:20px;font-size:13px;line-height:1.6}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:6px 8px}th{background:#f0f0f0}</style></head><body>${content.innerHTML}</body></html>`);
     win.document.close();
     win.print();
+    printed = true;
+    });
+    if (!printed) win.close();
   };
 
-  const handleDownloadPDF = async () => {
+  const handleDownloadPDF = () => runAction('Xuất PDF', async () => {
     if (!printRef.current) return;
     try {
       toast({ title: "Đang tạo PDF..." });
       await exportElementToPDF(printRef.current, `DNTT-${contract.contract_number}.pdf`);
       toast({ title: "Đã tải PDF thành công!" });
     } catch { toast({ title: "Lỗi tạo PDF", variant: "destructive" }); }
-  };
+  });
 
-  const handleDownloadWord = async () => {
+  const handleDownloadWord = () => runAction('Xuất Word', async () => {
     try {
       toast({ title: "Đang tạo file Word..." });
       const borderStyle = { top: { style: BorderStyle.SINGLE, size: 1 }, bottom: { style: BorderStyle.SINGLE, size: 1 }, left: { style: BorderStyle.SINGLE, size: 1 }, right: { style: BorderStyle.SINGLE, size: 1 } };
@@ -250,9 +265,9 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
             })
           ),
         }),
-        mkRow("1", state.row1_label, state.row1_amount),
-        mkRow("2", state.row2_label, state.row2_amount),
-        mkRow("3", state.row3_label, state.amount, true, "1a56db"),
+        mkRow("1", paymentRequestLabels.total, financial.total),
+        mkRow("2", paymentRequestLabels.advance, financial.advance),
+        mkRow("3", paymentRequestLabels.remaining, financial.remaining, true, "1a56db"),
       ];
 
       const children: any[] = [
@@ -315,7 +330,7 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
       console.error("Word export error:", err);
       toast({ title: "Lỗi tạo file Word", variant: "destructive" });
     }
-  };
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -324,24 +339,28 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
           <DialogTitle>Đề nghị Thanh toán - {contract.contract_number}</DialogTitle>
         </DialogHeader>
 
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium">Thanh toán sau khi nhận hàng theo hợp đồng</p>
+            <Button size="sm" variant="outline" disabled={Boolean(action) || contractQuery.isFetching} onClick={() => contractQuery.refetch()}><RefreshCw className="mr-1 h-4 w-4" />Làm mới số tiền</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Số tiền đề nghị sau khi nhận hàng = tổng giá trị hợp đồng − tạm ứng theo hợp đồng. Biểu mẫu được lập theo điều khoản thanh toán đã thỏa thuận.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div><Label htmlFor="payment-total">{paymentRequestLabels.total}</Label><Input id="payment-total" readOnly value={formatCurrency(financial.total)} /></div>
+            <div><Label htmlFor="payment-advance">{paymentRequestLabels.advance}</Label><Input id="payment-advance" readOnly value={formatCurrency(financial.advance)} /></div>
+            <div><Label htmlFor="payment-remaining">{paymentRequestLabels.remaining}</Label><Input id="payment-remaining" readOnly value={formatCurrency(financial.remaining)} className="font-semibold text-primary" /></div>
+          </div>
+          {(contractQuery.isFetching || contractQuery.isPending || contractQuery.isError || !financial.ready) && <p role="status" className="text-sm">{contractQuery.isFetching || contractQuery.isPending ? 'Đang tải điều khoản thanh toán của hợp đồng…' : contractQuery.isError ? 'Không tải được hợp đồng. Vui lòng làm mới số tiền.' : financial.reason}</p>}
+        </div>
+        <fieldset disabled={Boolean(action)}>
         <Accordion type="single" collapsible defaultValue="basic" className="mb-4">
           <AccordionItem value="basic">
             <AccordionTrigger>Thông tin cơ bản</AccordionTrigger>
             <AccordionContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 p-1">
-                <div><Label>Số công văn</Label><Input value={state.document_number} onChange={e => set("document_number", e.target.value)} placeholder="VD: 01/ĐNTT" /></div>
-                <div><Label>Ngày đề nghị</Label><Input type="date" value={state.request_date} onChange={e => set("request_date", e.target.value)} /></div>
-                <div>
-                  <Label>Đợt thanh toán</Label>
-                  <Select value={state.phase} onValueChange={onPhaseChange}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-popover z-[100]">
-                      {phases.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div><Label>Số tiền đề nghị</Label><CurrencyInput value={state.amount} onChange={v => set("amount", v)} /></div>
-                <div className="md:col-span-4"><Label>Ghi chú</Label><Textarea value={state.notes} onChange={e => set("notes", e.target.value)} rows={2} /></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-1">
+                <div><Label htmlFor="payment-number">Số công văn</Label><Input id="payment-number" value={state.document_number} onChange={e => set("document_number", e.target.value)} placeholder="VD: 01/ĐNTT" /></div>
+                <div><Label htmlFor="payment-date">Ngày đề nghị</Label><Input id="payment-date" type="date" value={state.request_date} onChange={e => set("request_date", e.target.value)} />{!paymentRequestDateValid(state.request_date) && <p className="text-sm text-destructive">Vui lòng nhập ngày đề nghị hợp lệ.</p>}</div>
+                <div className="md:col-span-2"><Label htmlFor="payment-notes">Ghi chú</Label><Textarea id="payment-notes" value={state.notes} onChange={e => set("notes", e.target.value)} rows={2} /></div>
               </div>
             </AccordionContent>
           </AccordionItem>
@@ -364,15 +383,6 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
                 <div><Label>Thông tin đơn vị đề nghị (mỗi dòng 1 mục)</Label><Textarea value={state.seller_block_text} onChange={e => set("seller_block_text", e.target.value)} rows={5} /></div>
                 <div><Label>Đoạn mở đầu</Label><Textarea value={state.intro} onChange={e => set("intro", e.target.value)} rows={3} /></div>
                 <div><Label>Tiêu đề bảng</Label><Input value={state.table_title} onChange={e => set("table_title", e.target.value)} /></div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div><Label>Nhãn dòng 1</Label><Input value={state.row1_label} onChange={e => set("row1_label", e.target.value)} /></div>
-                  <div><Label>Số tiền dòng 1</Label><CurrencyInput value={state.row1_amount} onChange={v => set("row1_amount", v)} /></div>
-                  <div></div>
-                  <div><Label>Nhãn dòng 2</Label><Input value={state.row2_label} onChange={e => set("row2_label", e.target.value)} /></div>
-                  <div><Label>Số tiền dòng 2</Label><CurrencyInput value={state.row2_amount} onChange={v => set("row2_amount", v)} /></div>
-                  <div></div>
-                  <div className="col-span-2"><Label>Nhãn dòng 3 (đề nghị thanh toán)</Label><Input value={state.row3_label} onChange={e => set("row3_label", e.target.value)} /></div>
-                </div>
                 <div><Label>Tiêu đề khối chuyển khoản</Label><Input value={state.bank_title} onChange={e => set("bank_title", e.target.value)} /></div>
                 <div><Label>Thông tin chuyển khoản</Label><Textarea value={state.bank_text} onChange={e => set("bank_text", e.target.value)} rows={5} /></div>
                 <div><Label>Tiêu đề ghi chú</Label><Input value={state.notes_title} onChange={e => set("notes_title", e.target.value)} /></div>
@@ -387,17 +397,18 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
+        </fieldset>
 
         <div className="flex flex-wrap gap-2 mb-4 items-center">
-          <Button size="sm" onClick={handleSave} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? "Đang lưu..." : "Lưu"}</Button>
-          <Button size="sm" variant="outline" onClick={handleRestore}><RotateCcw className="h-4 w-4 mr-1" />Khôi phục mặc định</Button>
+          <Button size="sm" onClick={handleSave} disabled={disabled}><Save className="h-4 w-4 mr-1" />{action === 'Lưu' ? "Đang lưu..." : "Lưu"}</Button>
+          <Button size="sm" variant="outline" onClick={handleRestore} disabled={Boolean(action)}><RotateCcw className="h-4 w-4 mr-1" />Đặt lại bản nháp</Button>
           <div className="border-l mx-1 h-6" />
-          <Button size="sm" variant="outline" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />In</Button>
-          <Button size="sm" variant="outline" onClick={handleDownloadPDF}><FileDown className="h-4 w-4 mr-1" />Xuất PDF</Button>
-          <Button size="sm" variant="outline" onClick={handleDownloadWord}><FileText className="h-4 w-4 mr-1" />Xuất Word</Button>
+          <Button size="sm" variant="outline" onClick={handlePrint} disabled={disabled}><Printer className="h-4 w-4 mr-1" />In</Button>
+          <Button size="sm" variant="outline" onClick={handleDownloadPDF} disabled={disabled}><FileDown className="h-4 w-4 mr-1" />Xuất PDF</Button>
+          <Button size="sm" variant="outline" onClick={handleDownloadWord} disabled={disabled}><FileText className="h-4 w-4 mr-1" />Xuất Word</Button>
           <div className="border-l mx-1 h-6" />
           <div className="flex items-center gap-2">
-            <Switch checked={showOnlineStamp} onCheckedChange={setShowOnlineStamp} />
+            <Switch checked={showOnlineStamp} onCheckedChange={setShowOnlineStamp} disabled={Boolean(action)} />
             <span className="text-xs font-medium">Ký & đóng dấu online</span>
           </div>
         </div>
@@ -447,9 +458,9 @@ export const PaymentRequestDialog = ({ open, onOpenChange, contract }: Props) =>
               </tr>
             </thead>
             <tbody>
-              <tr><td className="border border-gray-400 p-2 text-center">1</td><td className="border border-gray-400 p-2">{state.row1_label}</td><td className="border border-gray-400 p-2 text-right">{formatCurrency(state.row1_amount)}</td></tr>
-              <tr><td className="border border-gray-400 p-2 text-center">2</td><td className="border border-gray-400 p-2">{state.row2_label}</td><td className="border border-gray-400 p-2 text-right">{formatCurrency(state.row2_amount)}</td></tr>
-              <tr><td className="border border-gray-400 p-2 text-center font-bold">3</td><td className="border border-gray-400 p-2 font-bold">{state.row3_label}</td><td className="border border-gray-400 p-2 text-right font-bold" style={{ color: "#1a56db" }}>{formatCurrency(state.amount)}</td></tr>
+              <tr><td className="border border-gray-400 p-2 text-center">1</td><td className="border border-gray-400 p-2">{paymentRequestLabels.total}</td><td className="border border-gray-400 p-2 text-right">{formatCurrency(financial.total)}</td></tr>
+              <tr><td className="border border-gray-400 p-2 text-center">2</td><td className="border border-gray-400 p-2">{paymentRequestLabels.advance}</td><td className="border border-gray-400 p-2 text-right">{formatCurrency(financial.advance)}</td></tr>
+              <tr><td className="border border-gray-400 p-2 text-center font-bold">3</td><td className="border border-gray-400 p-2 font-bold">{paymentRequestLabels.remaining}</td><td className="border border-gray-400 p-2 text-right font-bold" style={{ color: "#1a56db" }}>{formatCurrency(financial.remaining)}</td></tr>
             </tbody>
           </table>
 

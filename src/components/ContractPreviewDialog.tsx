@@ -1,3 +1,6 @@
+import { ContractInvoiceSummary } from '@/components/einvoice/ContractInvoiceSummary';
+import { contractDateLabel } from "@/lib/contract-calculation";
+import { savedSellerValue } from "@/lib/contract-document";
 import { useRef, useState } from "react";
 import { OnlineStampSignature } from "@/components/OnlineStampSignature";
 import { Switch } from "@/components/ui/switch";
@@ -42,7 +45,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
 
   const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
   const formatCurrencyNoSymbol = (val: number) => (val || 0).toLocaleString("vi-VN");
-  const formatDate = (d: string) => d ? new Date(d).toLocaleDateString("vi-VN") : "—";
+  const formatDate = (d: string) => d ? contractDateLabel(d) : "—";
   const status = statusMap[contract.status] || statusMap.draft;
   const items = Array.isArray(contract.items) ? contract.items : [];
   const articles = Array.isArray(contract.articles) ? contract.articles : [];
@@ -153,12 +156,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
     try {
       toast({ title: "Đang tạo file Word..." });
 
-      const sellerName = companySettings.companyName || seller.company_name;
-      const sellerAddress = companySettings.address || seller.address;
-      const sellerPhone = companySettings.phone || seller.phone;
-      const sellerTaxCode = companySettings.taxCode || seller.tax_code;
-      const sellerBank = companySettings.bankInfo || seller.bank_info;
-      const sellerHQ = companySettings.headquarters || seller.headquarters;
+      const sellerName = savedSellerValue(seller, "company_name", companySettings.companyName);
+      const sellerAddress = savedSellerValue(seller, "address", companySettings.address);
+      const sellerPhone = savedSellerValue(seller, "phone", companySettings.phone);
+      const sellerTaxCode = savedSellerValue(seller, "tax_code", companySettings.taxCode);
+      const sellerBank = savedSellerValue(seller, "bank_info", companySettings.bankInfo);
+      const sellerHQ = savedSellerValue(seller, "headquarters", companySettings.headquarters);
 
       const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
       const buyerAddress = buyer.address || contract.customers?.address || "—";
@@ -436,12 +439,12 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
           {/* Party A - Seller */}
           <div className="p-3 border rounded">
             <p className="font-bold mb-1">BÊN A (Bên bán):</p>
-            <p><strong>Công ty:</strong> {companySettings.companyName || seller.company_name}</p>
+            <p><strong>Công ty:</strong> {savedSellerValue(seller, "company_name", companySettings.companyName)}</p>
             {(seller.representative) && <p><strong>Người đại diện:</strong> {seller.representative}{seller.position ? ` - Chức vụ: ${seller.position}` : ""}</p>}
-            <p><strong>Địa chỉ:</strong> {companySettings.address || seller.address}</p>
-            <p><strong>Điện thoại:</strong> {companySettings.phone || seller.phone}</p>
-            {(companySettings.taxCode || seller.tax_code) && <p><strong>Mã số thuế:</strong> {companySettings.taxCode || seller.tax_code}</p>}
-            {(companySettings.bankInfo || seller.bank_info) && <p><strong>Ngân hàng:</strong> {companySettings.bankInfo || seller.bank_info}</p>}
+            <p><strong>Địa chỉ:</strong> {savedSellerValue(seller, "address", companySettings.address)}</p>
+            <p><strong>Điện thoại:</strong> {savedSellerValue(seller, "phone", companySettings.phone)}</p>
+            {(savedSellerValue(seller, "tax_code", companySettings.taxCode)) && <p><strong>Mã số thuế:</strong> {savedSellerValue(seller, "tax_code", companySettings.taxCode)}</p>}
+            {(savedSellerValue(seller, "bank_info", companySettings.bankInfo)) && <p><strong>Ngân hàng:</strong> {savedSellerValue(seller, "bank_info", companySettings.bankInfo)}</p>}
           </div>
 
           {/* Party B - Buyer */}
@@ -612,6 +615,7 @@ export const ContractPreviewDialog = ({ open, onOpenChange, contract }: Props) =
             </div>
           </div>
         </div>
+        <ContractInvoiceSummary contractId={contract.id}/>
       </DialogContent>
     </Dialog>
   );

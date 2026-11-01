@@ -1,3 +1,6 @@
+import { normalizeQuoteFilters, quoteReadError } from '@/lib/quote-filters';
+import { useAssignees } from '@/hooks/useAssignees';
+import { formatQuoteDate, quoteCalendarDate, quoteCalendarDateIso, resolveQuoteDates } from '@/lib/quote-dates';
 import { lazy, Suspense, useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -79,11 +82,11 @@ import { localApi } from "@/lib/local-api";
 const QuotePreviewDialog = lazy(() => import("@/components/QuotePreviewDialog").then(m => ({ default: m.QuotePreviewDialog })));
 
 const statusLabels = {
-  draft: { label: "Nháp", color: "bg-gray-100 text-gray-800" },
-  sent: { label: "Đã gửi", color: "bg-blue-100 text-blue-800" },
-  approved: { label: "Đã duyệt", color: "bg-green-100 text-green-800" },
-  rejected: { label: "Từ chối", color: "bg-red-100 text-red-800" },
-  expired: { label: "Hết hạn", color: "bg-orange-100 text-orange-800" },
+  draft: { label: "Nháp", color: "border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-100" },
+  sent: { label: "Đã gửi", color: "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-100" },
+  approved: { label: "Đã duyệt", color: "border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50" },
+  rejected: { label: "Từ chối", color: "border border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-50" },
+  expired: { label: "Hết hạn", color: "border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50" },
 };
 
 export default function QuotesPage() {
@@ -103,6 +106,17 @@ export default function QuotesPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
+  const [quoteFilters, setQuoteFilters] = useState(() => normalizeQuoteFilters());
+  const [filterDraft, setFilterDraft] = useState(() => normalizeQuoteFilters());
+  const [filterError, setFilterError] = useState('');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const { data: filterAssignees = [], isLoading: assigneesLoading, isError: assigneesError, refetch: retryAssignees } = useAssignees();
+  const activeFilterCount = [quoteFilters.status, quoteFilters.assigneeId, quoteFilters.dateFrom, quoteFilters.dateTo].filter(Boolean).length;
+  const applyFilters = () => {
+    try { setQuoteFilters(normalizeQuoteFilters(filterDraft)); setFilterError(''); setFilterOpen(false); }
+    catch (error) { setFilterError(quoteReadError(error)); }
+  };
+  const clearFilters = () => { setQuoteFilters(normalizeQuoteFilters()); setFilterDraft(normalizeQuoteFilters()); setSearchTerm(''); setFilterError(''); };
   const debouncedSearch = useDebounce(searchTerm, 350);
   const managerFilter = userRole === 'manager' ? user?.id : 'all';
 
@@ -113,14 +127,17 @@ export default function QuotesPage() {
     refetch: refetchQuotes,
     fetchNextPage,
     hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteQuotes({ managerId: managerFilter, search: debouncedSearch });
+    isFetchingNextPage, isError: quotesError, error: quotesErrorDetail, isFetchNextPageError,
+  } = useInfiniteQuotes({ ...quoteFilters, managerId: managerFilter, search: debouncedSearch });
 
   const quotes = (quotesPages?.pages || []).flat();
-  const sentinelRef = useInfiniteScroll(hasNextPage, isFetchingNextPage, fetchNextPage);
+  const sentinelRef = useInfiniteScroll(hasNextPage && !quotesError, isFetchingNextPage, fetchNextPage);
 
   // Lightweight stats (separate query so they reflect ALL quotes, not just loaded pages)
-  const { data: statsData } = useQuotesStats(managerFilter);
+  const { data: statsData, isLoading: statsLoading, isError: statsError, error: statsErrorDetail, refetch: retryStats } = useQuotesStats({ ...quoteFilters, managerId: managerFilter, search: debouncedSearch });
+  const statsReady = Boolean(statsData && !statsError);
+  const listReadError = quotesError && !isFetchNextPageError;
+  const hasActiveQuery = Boolean(debouncedSearch.trim() || activeFilterCount);
 
   const deleteQuoteMutation = useDeleteQuote();
 
@@ -141,24 +158,8 @@ export default function QuotesPage() {
 
   // Real-time subscription is now handled in useQuotes hook
 
-  // Server already filters by quote_number/notes; client-side narrows by customer name
-  const filteredQuotes = quotes
-    .filter((quote) => {
-      if (!debouncedSearch) return true;
-      const q = debouncedSearch.toLowerCase();
-      return (
-        quote.customerName?.toLowerCase().includes(q) ||
-        quote.quote_number?.toLowerCase().includes(q) ||
-        quote.status?.toLowerCase().includes(q)
-      );
-    })
-    .sort((a, b) => {
-      // Draft quotes first
-      if (a.status === 'draft' && b.status !== 'draft') return -1;
-      if (b.status === 'draft' && a.status !== 'draft') return 1;
-      // Then sort by creation date (newest first)
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
+  // Membership and order are authoritative in the query, including across page boundaries.
+  const filteredQuotes = quotes;
 
   const handleCreateQuote = async () => {
     setShowCreateForm(false);
@@ -468,25 +469,25 @@ export default function QuotesPage() {
   const stats = [
     {
       title: "Tổng báo giá",
-      value: statsData?.total ?? 0,
+      value: statsLoading ? 'Đang tải…' : statsReady ? statsData.total : 'Chưa xác định',
       icon: FileText,
       color: "text-blue-600",
     },
     {
       title: "Đã gửi",
-      value: statsData?.sent ?? 0,
+      value: statsLoading ? 'Đang tải…' : statsReady ? statsData.sent : 'Chưa xác định',
       icon: Clock,
       color: "text-yellow-600",
     },
     {
       title: "Được duyệt",
-      value: statsData?.approved ?? 0,
+      value: statsLoading ? 'Đang tải…' : statsReady ? statsData.approved : 'Chưa xác định',
       icon: CheckCircle,
       color: "text-green-600",
     },
     {
-      title: "Tổng giá trị",
-      value: `${(statsData?.totalValue ?? 0).toLocaleString("vi-VN")} VNĐ`,
+      title: "Giá trị đã duyệt",
+      value: statsLoading ? "Đang tải…" : statsReady ? `${statsData.totalValue.toLocaleString("vi-VN")} VNĐ` : "Chưa xác định",
       icon: AlertCircle,
       color: "text-purple-600",
     },
@@ -495,15 +496,19 @@ export default function QuotesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gradient-subtle rounded-lg border p-6 shadow-soft">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="space-y-1">
+      <div className="bg-gradient-subtle rounded-lg border p-4 sm:p-6 shadow-soft">
+        <div className="flex min-w-0 flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+          <div className="min-w-0 space-y-1">
             <h1 className="text-3xl font-bold text-foreground">Quản lý Báo giá</h1>
             <p className="text-muted-foreground">
               Tạo và quản lý báo giá cho khách hàng
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex min-w-0 w-full flex-wrap gap-2 xl:w-auto xl:justify-end">
+            <Button onClick={() => setShowCreateForm(true)} className="w-full gap-2 sm:w-auto">
+              <Plus className="h-4 w-4" />
+              Tạo báo giá mới
+            </Button>
             <CreateAssigneeForm onSuccess={refetchQuotes} />
             {(userRole === 'manager' || userRole === 'admin') && (
               <>
@@ -525,10 +530,6 @@ export default function QuotesPage() {
                 </Button>
               </>
             )}
-            <Button onClick={() => setShowCreateForm(true)} className="gap-2">
-              <Plus className="h-4 w-4" />
-              Tạo báo giá mới
-            </Button>
           </div>
         </div>
       </div>
@@ -552,6 +553,7 @@ export default function QuotesPage() {
         ))}
       </div>
 
+      {statsError && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-md border border-destructive/40 p-3 text-sm"><span>Không tải được thống kê. {quoteReadError(statsErrorDetail)}</span><Button type="button" variant="outline" size="sm" onClick={() => void retryStats()}>Thử lại thống kê</Button></div>}
       {/* Search and Filter */}
       <Card>
         <CardHeader>
@@ -560,24 +562,38 @@ export default function QuotesPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Tìm kiếm theo tên khách hàng, số báo giá..."
+                placeholder="Tìm số báo giá, thông tin khách hàng đã lưu..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
             </div>
-            <Button variant="outline" className="gap-2">
-              <Filter className="h-4 w-4" />
-              Lọc
-            </Button>
+            <Popover open={filterOpen} onOpenChange={open => { setFilterOpen(open); if (open) { setFilterDraft(quoteFilters); setFilterError(''); } }}>
+              <PopoverTrigger asChild><Button type="button" variant="outline" className="gap-2"><Filter className="h-4 w-4" />Lọc{activeFilterCount > 0 && ` (${activeFilterCount})`}</Button></PopoverTrigger>
+              <PopoverContent align="end" className="max-h-[var(--radix-popover-content-available-height)] w-80 space-y-3 overflow-y-auto">
+                <h3 className="font-semibold">Lọc báo giá</h3>
+                <label className="block space-y-1 text-sm"><span>Trạng thái</span><select aria-label="Lọc trạng thái" className="h-10 w-full rounded-md border bg-background px-2" value={filterDraft.status} onChange={event => { const value = event.target.value; setFilterDraft(previous => ({ ...previous, status: value })); }}><option value="">Tất cả trạng thái</option>{Object.entries(statusLabels).map(([value, status]) => <option key={value} value={value}>{status.label}</option>)}</select></label>
+                <label className="block space-y-1 text-sm"><span>Người phụ trách</span><select aria-label="Lọc người phụ trách" className="h-10 w-full rounded-md border bg-background px-2" value={filterDraft.assigneeId} onChange={event => { const value = event.target.value; setFilterDraft(previous => ({ ...previous, assigneeId: value })); }}><option value="">Tất cả người phụ trách</option><option value="__unassigned__">Chưa phân công</option>{filterAssignees.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
+                {assigneesLoading && <p className="text-xs text-muted-foreground">Đang tải người phụ trách…</p>}
+                {assigneesError && <div role="alert" className="text-xs text-destructive">Không tải được người phụ trách. <Button type="button" variant="link" size="sm" onClick={() => void retryAssignees()}>Thử lại</Button></div>}
+                <label className="block space-y-1 text-sm"><span>Ngày báo giá từ</span><Input aria-label="Ngày báo giá từ" type="date" value={filterDraft.dateFrom} onChange={event => { const value = event.target.value; setFilterDraft(previous => ({ ...previous, dateFrom: value })); }} /></label>
+                <label className="block space-y-1 text-sm"><span>Ngày báo giá đến</span><Input aria-label="Ngày báo giá đến" type="date" value={filterDraft.dateTo} onChange={event => { const value = event.target.value; setFilterDraft(previous => ({ ...previous, dateTo: value })); }} /></label>
+                {filterError && <p role="alert" className="text-sm text-destructive">{filterError}</p>}
+                <div className="flex justify-between gap-2"><Button type="button" variant="outline" onClick={clearFilters}>Xóa tất cả</Button><Button type="button" onClick={applyFilters}>Áp dụng</Button></div>
+              </PopoverContent>
+            </Popover>
+            {hasActiveQuery && <Button type="button" variant="ghost" onClick={clearFilters}>Xóa bộ lọc và tìm kiếm</Button>}
           </div>
         </CardHeader>
         <CardContent>
+          {listReadError && <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-destructive/40 p-3 text-sm"><span>Không tải được danh sách báo giá. {quoteReadError(quotesErrorDetail)}</span><Button type="button" variant="outline" size="sm" onClick={() => void refetchQuotes()}>Thử lại danh sách</Button></div>}
           <div className="rounded-md border">
             {isMobile ? (
               <div className="p-2">
                 {loading ? (
                   <div className="text-center py-8 text-sm text-muted-foreground">Đang tải...</div>
+                ) : listReadError && quotes.length === 0 ? null : filteredQuotes.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">{hasActiveQuery ? 'Không tìm thấy báo giá phù hợp' : 'Chưa có báo giá nào'}</div>
                 ) : (
                   <MobileQuoteList
                     quotes={filteredQuotes}
@@ -632,15 +648,15 @@ export default function QuotesPage() {
                       Đang tải...
                     </TableCell>
                   </TableRow>
-                ) : filteredQuotes.length === 0 ? (
+                ) : listReadError && quotes.length === 0 ? null : filteredQuotes.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-8">
                       <div className="flex flex-col items-center gap-2">
                         <FileText className="h-8 w-8 text-muted-foreground" />
                         <p className="text-muted-foreground">
-                          {searchTerm ? "Không tìm thấy báo giá nào" : "Chưa có báo giá nào"}
+                          {hasActiveQuery ? "Không tìm thấy báo giá phù hợp" : "Chưa có báo giá nào"}
                         </p>
-                        {!searchTerm && (
+                        {!hasActiveQuery && (
                           <Button onClick={() => setShowCreateForm(true)} variant="outline" className="gap-2">
                             <Plus className="h-4 w-4" />
                             Tạo báo giá đầu tiên
@@ -653,7 +669,14 @@ export default function QuotesPage() {
                   filteredQuotes.map((quote) => (
                     <TableRow key={quote.id} className="hover:bg-muted/60 transition-colors">
                       <TableCell className="font-medium">
-                        {quote.quote_number || `QUOTE-${quote.id.slice(0, 8)}`}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedQuote(quote)}
+                          className="text-left font-medium text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-xs cursor-pointer"
+                          title="Xem trước báo giá"
+                        >
+                          {quote.quote_number || `QUOTE-${quote.id.slice(0, 8)}`}
+                        </button>
                       </TableCell>
                       <TableCell>{quote.customerName}</TableCell>
                       <TableCell>
@@ -670,20 +693,18 @@ export default function QuotesPage() {
                         <Popover>
                           <PopoverTrigger asChild>
                             <button disabled={isLocalBackend() && quote.status === 'approved'} className="text-left hover:underline cursor-pointer text-sm px-1 py-0.5 rounded hover:bg-muted transition-colors disabled:cursor-default disabled:no-underline">
-                              {new Date(quote.quoteDate || quote.created_at).toLocaleDateString("vi-VN")}
+                              {formatQuoteDate(resolveQuoteDates(quote).quoteDate)}
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
                             <CalendarComponent
                               mode="single"
-                              selected={new Date(quote.quoteDate || quote.created_at)}
+                              selected={quoteCalendarDate(resolveQuoteDates(quote).quoteDate)}
                               onSelect={async (date) => {
                                 if (!date) return;
-                                // Set to noon to avoid timezone shift issues
-                                const adjustedDate = new Date(date);
-                                adjustedDate.setHours(12, 0, 0, 0);
+                                const adjustedDate = quoteCalendarDateIso(date);
                                 if (isLocalBackend()) {
-                                  await localApi.updateQuote(quote.id, { created_at: adjustedDate.toISOString() });
+                                  await localApi.updateQuote(quote.id, { created_at: adjustedDate });
                                   queryClient.invalidateQueries({ queryKey: ['quotes'] });
                                   queryClient.invalidateQueries({ queryKey: ['quotes-infinite'] });
                                   queryClient.invalidateQueries({ queryKey: ['quotes-stats'] });
@@ -692,7 +713,7 @@ export default function QuotesPage() {
                                 }
                                 const { data: updated, error } = await supabase
                                   .from('quotes')
-                                  .update({ created_at: adjustedDate.toISOString() })
+                                  .update({ created_at: adjustedDate })
                                   .eq('id', quote.id)
                                   .select();
                                 if (error || !updated?.length) {
@@ -713,20 +734,20 @@ export default function QuotesPage() {
                         <Popover>
                           <PopoverTrigger asChild>
                             <button disabled={isLocalBackend() && quote.status === 'approved'} className="text-left hover:underline cursor-pointer text-sm px-1 py-0.5 rounded hover:bg-muted transition-colors disabled:cursor-default disabled:no-underline">
-                              {new Date(quote.expiryDate).toLocaleDateString("vi-VN")}
+                              {formatQuoteDate(resolveQuoteDates(quote).expiryDate)}
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
                             <CalendarComponent
                               mode="single"
-                              selected={new Date(quote.expiryDate)}
+                              selected={quoteCalendarDate(resolveQuoteDates(quote).expiryDate)}
                               onSelect={async (date) => {
                                 if (!date) return;
                                 const currentNotes = quote.notes || '';
                                 const expiryDateStr = format(date, "dd/MM/yyyy");
                                 let updatedNotes = currentNotes;
-                                if (/Ngày hết hạn:\s*.+/.test(currentNotes)) {
-                                  updatedNotes = currentNotes.replace(/Ngày hết hạn:\s*.+/, `Ngày hết hạn: ${expiryDateStr}`);
+                                if (/(?:^|\r?\n)Ngày hết hạn:[ \t]*[^\r\n]*/.test(currentNotes)) {
+                                  updatedNotes = currentNotes.replace(/(^|\r?\n)Ngày hết hạn:[ \t]*[^\r\n]*/, (_line, prefix) => `${prefix}Ngày hết hạn: ${expiryDateStr}`);
                                 } else {
                                   updatedNotes = currentNotes + `\nNgày hết hạn: ${expiryDateStr}`;
                                 }
@@ -790,7 +811,7 @@ export default function QuotesPage() {
                                 Báo giá phụ
                               </DropdownMenuItem>
                             )}
-                            {(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')) && quote.status === 'draft' && (
+                            {(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')) && ['draft', 'sent'].includes(quote.status) && (
                               <DropdownMenuItem
                                 onClick={() => handleApproveQuote(quote)}
                                 className="text-green-600 hover:bg-green-600 hover:text-white transition-colors"
@@ -799,7 +820,7 @@ export default function QuotesPage() {
                                 Duyệt báo giá
                               </DropdownMenuItem>
                             )}
-                            {(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')) && quote.status === 'draft' && (
+                            {(userRole === 'manager' || userRole === 'admin' || hasPermission('quote_approval')) && ['draft', 'sent'].includes(quote.status) && (
                               <DropdownMenuItem
                                 onClick={() => handleRejectQuote(quote.id)}
                                 className="text-orange-600 hover:bg-orange-600 hover:text-white transition-colors"
@@ -867,12 +888,13 @@ export default function QuotesPage() {
             </Table>
             )}
           </div>
+          {isFetchNextPageError && <div role="alert" className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-destructive/40 p-3 text-sm"><span>Không tải được trang tiếp theo. Các báo giá đã tải được giữ nguyên. {quoteReadError(quotesErrorDetail)}</span><Button type="button" variant="outline" size="sm" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>Thử tải thêm</Button></div>}
           {/* Infinite scroll sentinel */}
           <div ref={sentinelRef} className="h-10 flex items-center justify-center">
             {isFetchingNextPage && (
               <span className="text-sm text-muted-foreground">Đang tải thêm...</span>
             )}
-            {!hasNextPage && quotes.length > 0 && (
+            {!hasNextPage && !quotesError && quotes.length > 0 && (
               <span className="text-xs text-muted-foreground">Đã tải hết</span>
             )}
           </div>
@@ -881,9 +903,10 @@ export default function QuotesPage() {
 
       {/* Create Quote Dialog */}
       <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto p-0">
+        <DialogContent className="flex w-[96vw] min-w-0 max-w-7xl h-[92dvh] max-h-[92dvh] flex-col overflow-clip p-0 gap-0 [&>button.absolute]:hidden">
           <DialogHeader className="sr-only">
             <DialogTitle>Tạo báo giá mới</DialogTitle>
+            <DialogDescription>Nhập khách hàng, sản phẩm và kế hoạch thanh toán để tạo báo giá.</DialogDescription>
           </DialogHeader>
           <CreateQuoteForm 
             onClose={() => setShowCreateForm(false)}
@@ -894,9 +917,10 @@ export default function QuotesPage() {
 
       {/* Edit Quote Dialog */}
       <Dialog open={!!editingQuote} onOpenChange={(open) => !open && setEditingQuote(null)}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto p-0">
+        <DialogContent className="flex w-[96vw] min-w-0 max-w-7xl h-[92dvh] max-h-[92dvh] flex-col overflow-clip p-0 gap-0 [&>button.absolute]:hidden">
           <DialogHeader className="sr-only">
             <DialogTitle>Chỉnh sửa báo giá</DialogTitle>
+            <DialogDescription>Điều chỉnh thông tin và sản phẩm, sau đó lưu báo giá.</DialogDescription>
           </DialogHeader>
           <CreateQuoteForm 
             onClose={() => setEditingQuote(null)}
@@ -907,15 +931,56 @@ export default function QuotesPage() {
       </Dialog>
 
       {/* Quote Preview Dialog */}
-      {selectedQuote && (
+      {selectedQuote && (() => {
+        const selectedIdx = filteredQuotes.findIndex((q) => q.id === selectedQuote.id);
+        const prevQuote = selectedIdx > 0 ? filteredQuotes[selectedIdx - 1] : null;
+        const nextQuote = selectedIdx >= 0 && selectedIdx < filteredQuotes.length - 1 ? filteredQuotes[selectedIdx + 1] : null;
+        const posLabel = selectedIdx >= 0 ? `${selectedIdx + 1}/${filteredQuotes.length}` : undefined;
+        return (
         <Suspense fallback={null}>
           <QuotePreviewDialog 
             open 
             onOpenChange={(open) => !open && setSelectedQuote(null)} 
-            quote={selectedQuote} 
+            quote={selectedQuote}
+            onPrevQuote={prevQuote ? () => setSelectedQuote(prevQuote) : undefined}
+            onNextQuote={nextQuote ? () => setSelectedQuote(nextQuote) : undefined}
+            positionLabel={posLabel}
+            onEdit={async (q) => {
+              setSelectedQuote(null);
+              const quoteDataRaw = q.quote_data ?? (await fetchQuoteData(String(q.id)));
+              setEditingQuote({ ...q, quote_data: quoteDataRaw });
+            }}
+            onEditDetails={(q) => {
+              setSelectedQuote(null);
+              setEditingQuoteDetails(q);
+            }}
+            onDuplicate={async (q) => {
+              setSelectedQuote(null);
+              await handleDuplicateQuote(q);
+            }}
+            onApprove={async (q) => {
+              setSelectedQuote(null);
+              await handleApproveQuote(q);
+            }}
+            onReject={async (q) => {
+              setSelectedQuote(null);
+              await handleRejectQuote(String(q.id));
+            }}
+            onToContract={(q) => {
+              const items = Array.isArray(q.items) ? q.items : [];
+              const params = new URLSearchParams({
+                from_quote: String(q.id || ''),
+                customer_id: String(q.customer_id || ''),
+                total: String(q.total_amount || 0),
+                title: `HĐ từ báo giá ${String(q.quote_number || '')}`,
+                items: JSON.stringify(items),
+              });
+              window.location.href = `/contracts?${params.toString()}`;
+            }}
           />
         </Suspense>
-      )}
+        );
+      })()}
 
       {/* Quote Supplement Dialog */}
         <QuoteSupplementDialog

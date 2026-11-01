@@ -32,9 +32,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { useUserRole } from "@/hooks/useUserRole";
-import { localApi, type AttendanceDaySummary, type MyAttendanceContext } from "@/lib/local-api";
+import { localApi, type AttendanceDaySummary, type MyAttendanceContext, type SelfPayrollMonth } from "@/lib/local-api";
+import { formatPayrollDecimal } from '@/lib/payroll-reconciliation';
 import MyProductionDispatch from "@/components/MyProductionDispatch";
 import { attendanceDayNeedsCorrection } from "@/lib/attendance-workspace";
+import { attendanceIncomeSummary } from "@/lib/attendance-income-summary";
 import {
   getLocalMe,
   getLocalUserSession,
@@ -45,7 +47,6 @@ import { isLocalBackend } from "@/lib/runtime-config";
 import type {
   FactoryAttendanceRow,
   FactoryAttendanceClosureRow,
-  ProductionEntryProduct,
 } from "@/integrations/supabase/production-execution-types";
 import type { ProductEarnings } from "@/lib/production-dispatch-types";
 import {
@@ -124,10 +125,11 @@ export default function MyAttendancePage() {
   const [dayStatusesState, setDayStatuses] = useState<Record<string, unknown>[]>([]);
   const [overtimeState, setOvertime] = useState<Record<string, unknown>[]>([]);
   const [prodEntriesState, setProdEntries] = useState<Record<string, unknown>[]>([]);
-  const [products, setProducts] = useState<ProductionEntryProduct[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
   const [loadingRows, setLoadingRows] = useState(false);
-  const [earnings, setEarnings] = useState<ProductEarnings | null>(null);
+  const [earningsState, setEarnings] = useState<{data:ProductEarnings;session:string|undefined;workerId:string} | null>(null);
+  const [monthlyPayroll,setMonthlyPayroll]=useState<{data:SelfPayrollMonth;session:string|undefined;workerId:string}|null>(null);
+  const [monthlyPayrollError,setMonthlyPayrollError]=useState('');
+  const [monthlyPayrollLoading,setMonthlyPayrollLoading]=useState(false);
   const [confirmingDay, setConfirmingDay] = useState(false);
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
   const [sourceLoadErrors,setSourceLoadErrors] = useState<string[]>([]);
@@ -140,6 +142,7 @@ export default function MyAttendancePage() {
   const dayStatuses = loadedMonth === month ? dayStatusesState : [];
   const overtime = loadedMonth === month ? overtimeState : [];
   const prodEntries = useMemo(() => loadedMonth === month ? prodEntriesState : [], [loadedMonth, month, prodEntriesState]);
+  const earnings = loadedMonth === month && earningsState?.data.month === month && earningsState.session === getLocalUserSession()?.token && earningsState.workerId === me?.worker_id ? earningsState.data : null;
 
   // form state
   const [method, setMethod] = useState<Method>("HOUR");
@@ -149,8 +152,6 @@ export default function MyAttendancePage() {
   const [breakMin, setBreakMin] = useState("60");
   const [dayUnits, setDayUnits] = useState("1");
   const [dayStatus, setDayStatus] = useState("PRESENT");
-  const [productId, setProductId] = useState("");
-  const [outputQty, setOutputQty] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const overtimeDate=workDate;
@@ -179,40 +180,49 @@ export default function MyAttendancePage() {
   },[mode,workDate,contextLoading,attendanceContext]);
 
   const loadAll = useCallback(async () => {
-    if (!localMode || currentMonthRef.current !== month) return;
+    if (!localMode || currentMonthRef.current !== month || !me?.worker_id) return;
     const request = ++monthRequestRef.current;
     const session = getLocalUserSession()?.token;
     setLoadingRows(true);
     setLoadErrors([]);
+    setMonthlyPayrollLoading(true);
+    setMonthlyPayrollError('');
     const results = await Promise.allSettled([
-      localApi.myAttendance(`${month}-01`),
-      localApi.myOvertime(`${month}-01`),
-      localApi.myProductionEntries(`${month}-01`),
+      localApi.myAttendance(month),
+      localApi.myOvertime(month),
+      localApi.myProductionEntries(month),
       localApi.myProductEarnings(month),
-      localApi.myDayStatuses(`${month}-01`),
+      localApi.myDayStatuses(month),
       localApi.myAttendanceClosures(month),
+      localApi.myPayrollMonth(month),
     ]);
     if (request !== monthRequestRef.current || currentMonthRef.current !== month || session!==getLocalUserSession()?.token) return;
-    const [att, ot, pe, earningResult, days,closureResult] = results;
+    const [att, ot, pe, earningResult, days,closureResult,payrollResult] = results;
+    setMonthlyPayroll(payrollResult.status==='fulfilled'?{data:payrollResult.value,session,workerId:me.worker_id}:null);
+    setMonthlyPayrollError(payrollResult.status==='rejected'?(payrollResult.reason instanceof Error?payrollResult.reason.message:'Không tải được lương tháng.'):'');
+    setMonthlyPayrollLoading(false);
     setClosures(closureResult.status==='fulfilled'?closureResult.value:[]);
     setRows(att.status === "fulfilled" ? att.value.rows || [] : []);
     setOvertime(ot.status === "fulfilled" ? ot.value || [] : []);
     setProdEntries(pe.status === "fulfilled" ? pe.value || [] : []);
-    setEarnings(earningResult.status === "fulfilled" ? earningResult.value : null);
+    setEarnings(earningResult.status === "fulfilled" ? {data:earningResult.value,session,workerId:me.worker_id} : null);
     setDayStatuses(days.status === "fulfilled" ? days.value || [] : []);
     const labels = ["Công ngày/giờ", "Tăng ca", "Sản lượng", "Thu nhập sản lượng", "Trạng thái ngày", "Xác nhận ngày"];
-    setLoadErrors(results.flatMap((result, index) => result.status === "rejected"
+    setLoadErrors(results.slice(0,6).flatMap((result, index) => result.status === "rejected"
       ? [`${labels[index]}: ${result.reason instanceof Error ? result.reason.message : "Không tải được dữ liệu"}`] : []));
-    setSourceLoadErrors(results.flatMap((result,index)=>index!==3 && result.status==='rejected' ? [labels[index]] : []));
+    setSourceLoadErrors(results.slice(0,6).flatMap((result,index)=>index!==3 && result.status==='rejected' ? [labels[index]] : []));
     setLoadedMonth(month);
     setLoadingRows(false);
-  }, [localMode, month]);
+  }, [localMode, month,me?.worker_id]);
 
   useEffect(() => () => { monthRequestRef.current += 1; }, []);
 
   useEffect(() => {
     if (localMode && hasUser && me?.worker_id) void loadAll();
   }, [localMode, hasUser, me?.worker_id, loadAll]);
+  useEffect(()=>{if(!localMode||!hasUser||!me?.worker_id)return;const refresh=()=>{if(document.visibilityState==='visible')void loadAll();};window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);const timer=window.setInterval(refresh,30000);return()=>{window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);window.clearInterval(timer);};},[localMode,hasUser,me?.worker_id,loadAll]);
+  const currentMonthlyPayroll=monthlyPayroll?.data.month===month&&monthlyPayroll.session===getLocalUserSession()?.token&&monthlyPayroll.workerId===me?.worker_id&&!monthlyPayrollError?monthlyPayroll.data:null;
+  const canonicalMonthMoney=(value:string|null|undefined)=>value==null?'—':formatPayrollDecimal(value)+' ₫';
 
   useEffect(()=>{if(mode==='TODAY' && workDate.slice(0,7)!==month)setMonth(workDate.slice(0,7));},[mode,workDate,month]);
   useEffect(()=>{
@@ -239,43 +249,6 @@ export default function MyAttendancePage() {
       toast({ title: "Không thể xác nhận ngày công", description: error instanceof Error ? error.message : "Ngày đã bị khóa hoặc cần quản lý mở lại.", variant: "destructive" });
     } finally { setConfirmingDay(false); }
   };
-
-  useEffect(() => {
-    setProductId("");
-  }, [method, workDate]);
-
-  useEffect(() => {
-    if (!localMode || !hasUser || method !== "OUTPUT" || !me?.worker_id) {
-      setProducts([]);
-      setLoadingProducts(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoadingProducts(true);
-    localApi
-      .productionProducts(workDate)
-      .then((items) => {
-        if (cancelled) return;
-        setProducts((items || []).filter((item) => item.rate_available));
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setProducts([]);
-        toast({
-          title: "Không tải được danh sách sản phẩm",
-          description: error instanceof Error ? error.message : "Lỗi",
-          variant: "destructive",
-        });
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingProducts(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [localMode, hasUser, me?.worker_id, method, workDate, toast]);
 
   useEffect(() => {
     if (!localMode || !hasUser || !me?.worker_id) {
@@ -349,10 +322,6 @@ export default function MyAttendancePage() {
     let submittedHours = 0;
     let approvedDays = 0;
     let submittedDays = 0;
-    let approvedOutput = 0;
-    let submittedOutput = 0;
-    let approvedAmount = 0;
-    let submittedAmount = 0;
 
     for (const row of rows) {
       const status = String(row.workflow_status || "SUBMITTED");
@@ -372,29 +341,6 @@ export default function MyAttendancePage() {
         if (approved) approvedDays += Number(row.day_units || 0);
         if (submitted) submittedDays += Number(row.day_units || 0);
       }
-      const amount =
-        row.cost_visible && row.calculated_amount !== null
-          ? Number(row.calculated_amount || 0)
-          : 0;
-      if (approved) approvedAmount += amount;
-      if (submitted) submittedAmount += amount;
-    }
-
-    for (const entry of prodEntries) {
-      const status = String(
-        entry.workflow_status || entry.status || "SUBMITTED",
-      );
-      if (entry.is_reversed || status === "REJECTED" || status === "REVERSED")
-        continue;
-      const quantity = Number(entry.quantity || 0);
-      if (approvedStatuses.has(status)) approvedOutput += quantity;
-      if (submittedStatuses.has(status)) submittedOutput += quantity;
-      const amount =
-        entry.cost_visible && entry.calculated_amount !== null
-          ? Number(entry.calculated_amount || 0)
-          : 0;
-      if (approvedStatuses.has(status)) approvedAmount += amount;
-      if (submittedStatuses.has(status)) submittedAmount += amount;
     }
 
     return {
@@ -402,25 +348,27 @@ export default function MyAttendancePage() {
       submittedHours,
       approvedDays,
       submittedDays,
-      approvedOutput,
-      submittedOutput,
-      approvedAmount,
-      submittedAmount,
+      ...attendanceIncomeSummary(rows, earnings, month),
     };
-  }, [rows, prodEntries]);
+  }, [rows, earnings, month]);
+
+  const [showFormulaDetail, setShowFormulaDetail] = useState(false);
+  const todayStats = useMemo(() => {
+    let days = 0;
+    let hours = 0;
+    for (const row of rows) {
+      if (row.is_reversed || String(row.workflow_status) === "REJECTED") continue;
+      if (String(row.work_date).slice(0, 10) !== workDate) continue;
+      if (row.attendance_method === "DAY") days += Number(row.day_units || 0);
+      if (row.attendance_method === "HOUR") hours += Number(row.work_hours || 0);
+    }
+    return { days, hours, ...attendanceIncomeSummary(rows, earnings, month, workDate) };
+  }, [rows, earnings, month, workDate]);
 
   const contextReady = !contextLoading && !contextError && attendanceContext?.work_date === workDate && attendanceContext.configured;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!me?.worker_id || !contextReady) return;
-    if (method === "OUTPUT" && (!productId || Number(outputQty) <= 0)) {
-      toast({
-        title: "Thiếu thông tin sản lượng",
-        description: "Chọn sản phẩm và nhập số lượng lớn hơn 0.",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (!me?.worker_id || !contextReady || method === "OUTPUT") return;
     if (attendanceContext?.mode === "MONTHLY" && !DAY_STATUS_LABEL[dayStatus]) {
       toast({
         title: "Chọn trạng thái ngày công",
@@ -434,8 +382,6 @@ export default function MyAttendancePage() {
       const fingerprint = JSON.stringify({
         method,
         workDate,
-        productId: method === "OUTPUT" ? productId : null,
-        outputQty: method === "OUTPUT" ? outputQty : null,
         checkIn: method === "HOUR" ? checkIn : null,
         checkOut: method === "HOUR" ? checkOut : null,
         breakMin: method === "HOUR" ? breakMin : null,
@@ -455,17 +401,6 @@ export default function MyAttendancePage() {
           work_date: workDate,
           status: dayStatus,
           reason: notes || null,
-          idempotency_key: idempotencyKey,
-        });
-      } else if (method === "OUTPUT") {
-        const selectedRate = products.find((item) => item.id === productId);
-        await localApi.recordMyProductionEntry({
-          rate_id: productId,
-          product_id: selectedRate?.product_id ?? null,
-          piece_rate_code: selectedRate?.piece_rate_code ?? null,
-          work_date: workDate,
-          quantity: Number(outputQty),
-          notes: notes || null,
           idempotency_key: idempotencyKey,
         });
       } else {
@@ -488,13 +423,10 @@ export default function MyAttendancePage() {
         title:
           attendanceContext?.mode === "MONTHLY" && dayStatus !== "PRESENT"
             ? "Đã gửi trạng thái ngày công"
-            : method === "OUTPUT"
-              ? "Đã gửi phiếu sản lượng"
-              : "Đã ghi chấm công",
+            : "Đã ghi chấm công",
         description: "Bản ghi đang chờ quản lý duyệt.",
       });
       setNotes("");
-      setOutputQty("");
       await loadAll();
       attendanceRequestRef.current = null;
     } catch (e2) {
@@ -518,7 +450,6 @@ export default function MyAttendancePage() {
     setCheckOut(String(row.check_out_time || "17:00").slice(0, 5));
     setBreakMin(String(row.break_minutes ?? 60));
     setDayUnits(String(row.day_units ?? "1"));
-    setOutputQty(String(row.output_quantity ?? ""));
     setNotes(
       row.workflow_reason
         ? `Sửa theo phản hồi quản lý: ${row.workflow_reason}`
@@ -603,18 +534,125 @@ export default function MyAttendancePage() {
 
   return (
     <div className="attendance-page mx-auto max-w-6xl space-y-6 p-3 text-base sm:p-5 md:p-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Chấm công của tôi</h1>
-        <p className="mt-1 text-base text-muted-foreground sm:text-lg">
-          {me.worker_name} · Mã {me.employee_code} ·{" "}
-          {role === "employee" ? "Nhân viên" : role}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Chấm công của tôi</h1>
+          <p className="text-sm text-muted-foreground sm:text-base">
+            {me.worker_name} · Mã {me.employee_code} ·{" "}
+            {contextLoading ? "Đang tải..." : attendanceContext?.label || (role === "employee" ? "Nhân viên" : role)}
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="h-9">
+          <Link to="/my-profile">Hồ sơ cá nhân</Link>
+        </Button>
       </div>
 
+      {/* 3 Ô CHỈ SỐ TÓM TẮT RÕ RÀNG */}
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        <div className="rounded-xl border bg-card p-3.5 shadow-sm">
+          <p className="text-xs font-medium text-muted-foreground">
+            1. Công & Sản lượng ({workDate})
+          </p>
+          <p className="mt-1 text-xl font-bold tabular-nums">
+            {todayStats.output > 0
+              ? `${todayStats.output.toLocaleString("vi-VN")} SP`
+              : todayStats.hours > 0
+                ? `${todayStats.hours.toFixed(1)} giờ`
+                : todayStats.days > 0
+                  ? `${todayStats.days.toLocaleString("vi-VN")} công`
+                  : todayStats.output === null ? "Chưa đủ dữ liệu" : "Chưa ghi nhận"}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {todayStats.output === null
+              ? 'Chưa tải đủ dữ liệu sản lượng.'
+              : todayStats.output > 0 && todayStats.days > 0
+                ? `+${todayStats.days} ngày công`
+                : todayStats.output > 0
+                  ? 'Đã ghi nhận sản lượng'
+                  : todayStats.hours > 0 || todayStats.days > 0
+                    ? 'Đã ghi nhận'
+                    : 'Bấm bên dưới để báo cáo'}
+          </p>
+        </div>
+
+        <div className="rounded-xl border bg-card p-3.5 shadow-sm">
+          <p className="text-xs font-medium text-muted-foreground">
+            2. Tạm tính ngày ({workDate})
+          </p>
+          <p className="mt-1 text-xl font-bold tabular-nums text-emerald-700">
+            {todayStats.unavailable ? (todayStats.knownAmount > 0 ? fmtMoney(todayStats.knownAmount) : 'Chưa đủ dữ liệu') : fmtMoney(todayStats.amount)}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {todayStats.unavailable ? 'Chưa đủ dữ liệu thu nhập sản lượng; số đã xác định chưa phải tổng đầy đủ.' : 'Gồm công ngày/giờ và thu nhập sản lượng đã xác định.'}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium text-primary">
+              3. {currentMonthlyPayroll?.status==='LOCKED'?'Lương đã khóa':'Lương dự kiến'} tháng {month}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs text-primary underline"
+              onClick={() => setShowFormulaDetail((prev) => !prev)}
+            >
+              {showFormulaDetail ? "Ẩn chi tiết" : "Xem chi tiết"}
+            </Button>
+          </div>
+          <p className="mt-1 text-xl font-bold tabular-nums text-primary">
+            {canonicalMonthMoney(currentMonthlyPayroll?.amounts?.payment)}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {monthlyPayrollLoading?'Đang cập nhật kết quả…':currentMonthlyPayroll?.status==='BLOCKED'?'Chưa thể tính: cấu hình hoặc nguồn lương cần được quản lý đối soát.':currentMonthlyPayroll?.status==='LOCKED'?'Kết quả từ bảng lương đã khóa.':'Đã gồm tăng ca, phụ cấp và khấu trừ theo cấu hình đã duyệt.'}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {currentMonthlyPayroll?`${currentMonthlyPayroll.pending_count} nguồn chờ duyệt chưa được tính vào số tiền này.`:monthlyPayrollError||'Đang tải lương tháng theo nguồn đã duyệt.'}
+          </p>
+          {monthlyPayrollError&&<Button variant="outline" className="mt-2 min-h-11" disabled={monthlyPayrollLoading} onClick={()=>void loadAll()}>Tải lại lương tháng</Button>}
+        </div>
+      </div>
+
+      {showFormulaDetail && (
+        <div className="space-y-3">
+          {currentMonthlyPayroll?.amounts&&<div className="grid grid-cols-2 gap-3 border p-3 text-sm"><div>Tổng thu nhập<p className="font-semibold">{canonicalMonthMoney(currentMonthlyPayroll.amounts.gross)}</p></div><div>Khấu trừ<p className="font-semibold">{canonicalMonthMoney(currentMonthlyPayroll.amounts.deductions)}</p></div><div>Sau khấu trừ<p className="font-semibold">{canonicalMonthMoney(currentMonthlyPayroll.amounts.net)}</p></div><div>Số thanh toán<p className="font-semibold">{canonicalMonthMoney(currentMonthlyPayroll.amounts.payment)}</p></div></div>}
+          {currentMonthlyPayroll?.issues.map((issue,index)=><p className="text-sm text-amber-800" key={index}>{issue.message}</p>)}
+          {!!currentMonthlyPayroll?.items.length&&<div className="overflow-x-auto border"><Table><TableHeader><TableRow><TableHead>Khoản tính</TableHead><TableHead>Số lượng</TableHead><TableHead>Đơn giá</TableHead><TableHead>Thành tiền</TableHead></TableRow></TableHeader><TableBody>{currentMonthlyPayroll.items.map((item,index)=><TableRow key={index}><TableCell>{({DAY_PAY:'Lương ngày công',HOURLY_PAY:'Lương giờ',PIECE_RATE:'Lương sản lượng',OVERTIME_PAY:'Tăng ca',MEAL_ALLOWANCE:'Ăn ca',FIXED_ALLOWANCE:'Phụ cấp',SOCIAL_INSURANCE:'Bảo hiểm',FIXED_DEDUCTION:'Khấu trừ cố định',BONUS:'Thưởng',PENALTY:'Phạt / trừ khác',SALARY_ADVANCE:'Tạm ứng'} as Record<string,string>)[item.item_type]||'Khoản lương khác'}</TableCell><TableCell>{formatPayrollDecimal(item.quantity)}</TableCell><TableCell>{canonicalMonthMoney(item.unit_rate)}</TableCell><TableCell>{item.item_direction==='DEDUCTION'?'−':''}{canonicalMonthMoney(item.amount_precise)}</TableCell></TableRow>)}</TableBody></Table></div>}
+        <div className="grid grid-cols-2 gap-2 rounded-xl border bg-muted/20 p-3 text-xs sm:grid-cols-4">
+          <div>
+            <span className="text-muted-foreground">Ngày công tháng:</span>
+            <p className="font-semibold">
+              {summary.approvedDays} đã duyệt · {summary.submittedDays} chờ
+            </p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Giờ công tháng:</span>
+            <p className="font-semibold">
+              {summary.approvedHours.toFixed(1)}h đã duyệt · {summary.submittedHours.toFixed(1)}h chờ
+            </p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Sản lượng tháng:</span>
+            <p className="font-semibold">
+              {summary.approvedOutput?.toLocaleString("vi-VN") ?? '—'} SP duyệt · {summary.submittedOutput?.toLocaleString("vi-VN") ?? '—'} chờ
+            </p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Chế độ tính:</span>
+            <p className="font-semibold">
+              {attendanceContext?.label || "Theo cấu hình nhân sự"}
+            </p>
+          </div>
+        </div>
+        </div>
+      )}
+
       <nav className="grid grid-cols-3 gap-2" aria-label="Nội dung chấm công">
-        <Button className="min-h-12 whitespace-normal px-2" aria-pressed={mode==='TODAY'} variant={mode==='TODAY'?'default':'outline'} onClick={()=>setMode('TODAY')}>Hôm nay</Button>
-        <Button className="min-h-12 whitespace-normal px-2" aria-pressed={mode==='MONTH'||mode==='INCOME'} variant={mode==='MONTH'||mode==='INCOME'?'default':'outline'} onClick={()=>setMode(lastMonthMode)}>Công & thu nhập</Button>
-        <Button className="min-h-12 whitespace-normal px-2" aria-pressed={mode==='PROFILE'} variant={mode==='PROFILE'?'default':'outline'} onClick={()=>setMode('PROFILE')}>Hồ sơ</Button>
+        <Button className="min-h-11 whitespace-normal px-2" aria-pressed={mode==='TODAY'} variant={mode==='TODAY'?'default':'outline'} onClick={()=>setMode('TODAY')}>Chấm công hôm nay</Button>
+        <Button className="min-h-11 whitespace-normal px-2" aria-pressed={mode==='MONTH'||mode==='INCOME'} variant={mode==='MONTH'||mode==='INCOME'?'default':'outline'} onClick={()=>setMode(lastMonthMode)}>Lịch sử & Thu nhập</Button>
+        <Button className="min-h-11 whitespace-normal px-2" aria-pressed={mode==='PROFILE'} variant={mode==='PROFILE'?'default':'outline'} onClick={()=>setMode('PROFILE')}>Hồ sơ</Button>
       </nav>
       {(mode==='MONTH'||mode==='INCOME') && <nav className="flex flex-wrap gap-2" aria-label="Tra cứu tháng">{([['MONTH','Bảng công tháng'],['INCOME','Thu nhập sản lượng']] as const).map(([value,label])=><Button key={value} className="min-h-12" aria-pressed={mode===value} variant={mode===value?'secondary':'outline'} onClick={()=>setMode(value)}>{label}</Button>)}</nav>}
       {mode!=='PROFILE' && <div className="space-y-1"><Label htmlFor="attendance-context-date">{mode==='TODAY'?'Ngày đang ghi nhận':'Tháng tra cứu'}</Label>{mode==='TODAY'?<Input id="attendance-context-date" type="date" value={workDate} max={todayKey()} onChange={event=>{if(event.target.value)setWorkDate(event.target.value);}} className="max-w-xs"/>:<Input id="attendance-context-date" type="month" value={month} onChange={event=>{if(event.target.value)setMonth(event.target.value);}} className="max-w-xs"/>}</div>}
@@ -623,33 +661,7 @@ export default function MyAttendancePage() {
         <Card><CardHeader><CardTitle>Cách chấm công đang áp dụng</CardTitle><CardDescription>Thông tin áp dụng cho ngày {workDate}.</CardDescription></CardHeader><CardContent className="space-y-3"><p className="text-lg font-semibold">{contextLoading?'Đang tải cấu hình…':attendanceContext?.label||'Chưa cấu hình'}</p><p>{contextError||attendanceContext?.instructions||'Liên hệ quản lý để kiểm tra hình thức và đơn giá được duyệt.'}</p><div className="flex flex-wrap gap-2">{attendanceContext?.components.map(component=><Badge key={component.rate_id} variant="secondary">{component.label}</Badge>)}</div><p className="text-sm text-muted-foreground">Cần điều chỉnh chế độ lương hoặc xem quy chế đang áp dụng: liên hệ quản lý nhân sự.</p></CardContent></Card>
       </div>
       <div hidden={mode!=='TODAY'} className="space-y-6">
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-primary">
-              Cách chấm công đã được cấu hình
-            </p>
-            <p className="mt-1 text-xl font-bold">
-              {contextLoading
-                ? "Đang tải cấu hình…"
-                : attendanceContext?.label || "Chưa cấu hình"}
-            </p>
-            <p className="mt-1 text-base text-muted-foreground">
-              {attendanceContext?.instructions ||
-                "Liên hệ quản lý nếu thông tin chưa đúng."}
-            </p>
-          </div>
-          {!!attendanceContext?.components.length && (
-            <div className="flex flex-wrap gap-2">
-              {attendanceContext.components.map((component) => (
-                <Badge key={component.rate_id} variant="secondary" className="px-3 py-1 text-sm">
-                  {component.label}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+
 
       {contextError && <Alert variant="destructive"><AlertTitle>Chưa tải được cấu hình ngày {workDate}</AlertTitle><AlertDescription className="space-y-2"><p>{contextError}</p><Button variant="outline" size="sm" onClick={() => setContextRetry(value => value + 1)}>Thử tải lại cấu hình</Button></AlertDescription></Alert>}
       {/* Form ghi chấm công */}
@@ -664,7 +676,7 @@ export default function MyAttendancePage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form id="attendance-edit-form" tabIndex={-1} aria-label="Sửa và gửi lại chấm công" onSubmit={submit} className="grid gap-5 md:grid-cols-2">
+          {method === "OUTPUT" ? <div className="space-y-3"><p className="text-sm text-muted-foreground">Chọn việc đã nhận để báo số lượng hoàn thành. Mã công được xác định từ hồ sơ đã duyệt của dòng sản phẩm.</p><MyProductionDispatch onChanged={loadAll} /></div> : <form id="attendance-edit-form" tabIndex={-1} aria-label="Sửa và gửi lại chấm công" onSubmit={submit} className="grid gap-5 md:grid-cols-2">
             {method === "HOUR" && (
               <>
                 <div className="space-y-2">
@@ -727,60 +739,6 @@ export default function MyAttendancePage() {
                 </div>
               </div>
             )}
-            {method === "OUTPUT" && (
-              <>
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Sản phẩm</Label>
-                  <Select
-                    value={productId}
-                    onValueChange={setProductId}
-                    disabled={loadingProducts}
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={
-                          loadingProducts
-                            ? "Đang tải sản phẩm..."
-                            : "Chọn sản phẩm"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          {product.piece_rate_code || "Chưa có mã công may Excel"}{" "}
-                          · {product.name}
-                          {product.sku &&
-                          product.piece_rate_code &&
-                          product.sku !== product.piece_rate_code
-                            ? ` · SKU ${product.sku}`
-                            : ""}
-                          {product.rate_unit ? ` · ${product.rate_unit}` : ""}
-                        </SelectItem>
-                      ))}
-                      {!loadingProducts && products.length === 0 && (
-                        <div className="px-2 py-3 text-sm text-muted-foreground">
-                          Chưa có sản phẩm được cấu hình đơn giá cho ngày này.
-                        </div>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Số lượng sản phẩm</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={outputQty}
-                    onChange={(e) => setOutputQty(e.target.value)}
-                    required
-                    placeholder="VD: 120"
-                  />
-                </div>
-              </>
-            )}
-
             <div className="space-y-2 md:col-span-2">
               <Label>Ghi chú (tuỳ chọn)</Label>
               <Textarea
@@ -794,9 +752,7 @@ export default function MyAttendancePage() {
               <Button
                 type="submit"
                 disabled={
-                  submitting || !contextReady ||
-                  (method === "OUTPUT" &&
-                    (!productId || Number(outputQty) <= 0))
+                  submitting || !contextReady
                 }
                 className="w-full md:w-auto"
               >
@@ -804,12 +760,10 @@ export default function MyAttendancePage() {
                   ? "Đang ghi..."
                   : attendanceContext?.mode === "MONTHLY" && dayStatus !== "PRESENT"
                     ? "Gửi trạng thái ngày công"
-                    : method === "OUTPUT"
-                    ? "Gửi phiếu sản lượng"
                     : "Ghi chấm công"}
               </Button>
             </div>
-          </form>
+          </form>}
         </CardContent>
       </Card> : <Alert>
         <ShieldCheck className="h-5 w-5" />
@@ -877,7 +831,7 @@ export default function MyAttendancePage() {
         </AlertDescription>
       </Alert>}
 
-      {mode==='TODAY'&&<details className="rounded-lg border p-4"><summary className="cursor-pointer font-medium">Việc sản xuất và tiến độ</summary><p className="my-2 text-sm text-muted-foreground">Sản lượng đã báo cáo từ việc sản xuất xuất hiện trong tóm tắt ngày; không nhập lại cùng sản lượng bằng phiếu thủ công.</p><MyProductionDispatch /></details>}
+      {mode==='TODAY'&&method!=='OUTPUT'&&<details className="rounded-lg border p-4"><summary className="cursor-pointer font-medium">Việc sản xuất và tiến độ</summary><p className="my-2 text-sm text-muted-foreground">Sản lượng đã báo cáo từ việc sản xuất xuất hiện trong tóm tắt ngày; không nhập lại cùng sản lượng bằng phiếu thủ công.</p><MyProductionDispatch onChanged={loadAll} /></details>}
       <div hidden={mode!=='INCOME'} className="space-y-6">
 
       <Card>
@@ -925,11 +879,11 @@ export default function MyAttendancePage() {
             <PackageCheck className="h-8 w-8 text-muted-foreground" />
             <div>
               <div className="text-2xl font-bold">
-                {summary.approvedOutput.toLocaleString("vi-VN")}
+                {summary.approvedOutput?.toLocaleString("vi-VN") ?? '—'}
               </div>
               <div className="text-sm text-muted-foreground">
                 Sản lượng đã duyệt · chờ{" "}
-                {summary.submittedOutput.toLocaleString("vi-VN")}
+                {summary.submittedOutput?.toLocaleString("vi-VN") ?? '—'}
               </div>
             </div>
           </CardContent>
@@ -944,6 +898,7 @@ export default function MyAttendancePage() {
               <div className="text-sm text-muted-foreground">
                 Tiền công đã duyệt/khóa
                 <div>Chờ duyệt: {fmtMoney(summary.submittedAmount)}</div>
+                {summary.unavailable && <div className="text-xs">Chưa đủ dữ liệu thu nhập sản lượng.</div>}
                 <div className="text-xs">Chưa gồm toàn bộ khoản lương tháng và tăng ca.</div>
               </div>
             </div>

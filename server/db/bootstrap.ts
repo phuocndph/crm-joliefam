@@ -5,6 +5,8 @@ import { Pool, types } from "pg";
 import { createHash } from "node:crypto";
 import { runtime } from '../runtime.js';
 import { BUSINESS_TIMEZONE, businessTimezoneConnectionOptions } from './business-timezone.js';
+import { verifyItem5aInstallation } from './item5a-install.js';
+import { verifyInstalledSchema } from './installed-schema.js';
 
 // Keep PostgreSQL DATE values as YYYY-MM-DD strings for the date-based UI.
 types.setTypeParser(1082, (value) => value);
@@ -14,7 +16,26 @@ const root = path.resolve(here, "../..");
 export const databaseUrl = runtime.databaseUrl;
 export const pool = new Pool({ ...businessTimezoneConnectionOptions(databaseUrl, process.env.PGOPTIONS), max: 10 });
 
+async function assertVerifiedItem5aReceiptOnlyFinancialSchema() {
+  const row = (await pool.query(`select
+    to_regclass('public.local_order_refunds') refunds,
+    to_regclass('public.local_order_returns') returns`)).rows[0];
+  if (row?.refunds || row?.returns) {
+    throw new Error('Chế độ Item5A đã xác minh chỉ cho phép sổ thu. Phát hiện sổ hoàn/trả; cần bảo trì cấu trúc bên ngoài API và khởi động lại để xác minh lại.');
+  }
+}
+
 export async function bootstrapDatabase() {
+  if (runtime.startupMode === 'serve-installed') {
+    const result = await verifyInstalledSchema(pool);
+    await assertVerifiedItem5aReceiptOnlyFinancialSchema();
+    return result;
+  }
+  if (runtime.startupMode !== 'normal') {
+    const result = await verifyItem5aInstallation(pool, { expectedDatabase: 'crm_local', expectedUser: 'crm_local', expectedOwner: 'crm_local' });
+    await assertVerifiedItem5aReceiptOnlyFinancialSchema();
+    return result;
+  }
   const migrationsDir = path.join(here, "migrations");
   const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
   const client = await pool.connect();

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -15,53 +16,42 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FileDown, Printer, FileSpreadsheet, Search, RefreshCw } from "lucide-react";
+import { Printer, Search, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { getTemplateSettings } from "./QuoteTemplateSettings";
+import { useTemplateSettings } from "@/hooks/useTemplateSettings";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { isLocalBackend } from '@/lib/runtime-config';
 import { localApi } from '@/lib/local-api';
-import { quoteDisplayItems } from '@/lib/quote-calculation';
+import { quoteDisplayItems, quoteContactSnapshot } from '@/lib/quote-calculation';
+import { escapeQuoteHtml } from '@/lib/quote-document';
+
+interface ProductCostRow {
+  id: string;
+  sku?: string | null;
+  cost_price?: number | null;
+  price_list_id?: string | null;
+}
 
 interface QuoteSupplementDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  quote: any;
+  quote: Record<string, unknown> | null;
   onUpdate?: () => void;
 }
 
 export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: QuoteSupplementDialogProps) {
-  const [templateSettings, setTemplateSettings] = useState<any>({});
+  const { settings: templateSettings, refetch: refetchTemplateSettings } = useTemplateSettings();
   const [searchTerm, setSearchTerm] = useState("");
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<ProductCostRow[]>([]);
   const [isUpdatingOrder, setIsUpdatingOrder] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (open && quote) {
-      loadTemplateSettings();
-      loadProductsData();
-    }
-  }, [open, quote]);
-
-  const loadTemplateSettings = async () => {
+  const loadProductsData = useCallback(async () => {
+    if (!quote) return;
     try {
-      // Get template settings from QuoteTemplateSettings
-      const settings = getTemplateSettings();
-      setTemplateSettings(settings);
-    } catch (error) {
-      console.error('Error loading template settings:', error);
-      // Fallback to default settings if error occurs
-      setTemplateSettings(getTemplateSettings());
-    }
-  };
-
-  const loadProductsData = async () => {
-    try {
-      // Parse quote items to get product IDs or SKUs
-      let quoteItems = [];
+      let quoteItems: Array<Record<string, unknown>> = [];
       try {
         quoteItems = quoteDisplayItems(quote.items);
       } catch (error) {
@@ -74,18 +64,25 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
         return;
       }
 
-      // Extract unique product IDs (if available) or SKUs for matching
       const productIds = quoteItems
-        .map((item: any) => item.originalProductId)
-        .filter((id: any) => id);
-      
+        .map((item: Record<string, unknown>) => item.originalProductId)
+        .filter((id: unknown) => id);
+
       const productSkus = quoteItems
-        .map((item: any) => item.sku)
-        .filter((sku: any) => sku);
+        .map((item: Record<string, unknown>) => item.sku)
+        .filter((sku: unknown) => sku);
 
-      let productsData = [];
+      if (isLocalBackend()) {
+        const allLocalProducts = await localApi.catalogProducts({});
+        const matched = Array.isArray(allLocalProducts)
+          ? allLocalProducts.filter((p) => productIds.includes(p.id) || (p.sku && productSkus.includes(p.sku)))
+          : [];
+        setProducts(matched);
+        return;
+      }
 
-      // Try to fetch by product IDs first
+      let productsData: ProductCostRow[] = [];
+
       if (productIds.length > 0) {
         const { data: idData, error: idError } = await supabase
           .from('products')
@@ -97,7 +94,6 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
         }
       }
 
-      // If no data from IDs, try to fetch by SKUs
       if (productsData.length === 0 && productSkus.length > 0) {
         const { data: skuData, error: skuError } = await supabase
           .from('products')
@@ -110,26 +106,47 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
       }
 
       setProducts(productsData || []);
-      console.log('Loaded products data:', productsData);
     } catch (error) {
       console.error('Error loading products data:', error);
       setProducts([]);
     }
-  };
+  }, [quote]);
+
+  useEffect(() => {
+    if (open && quote) {
+      refetchTemplateSettings();
+      loadProductsData();
+    }
+  }, [open, quote, refetchTemplateSettings, loadProductsData]);
 
   if (!quote) return null;
 
-  // Parse customer information
+  let quoteData: Record<string, unknown> = {};
+  try {
+    quoteData = quote.quote_data
+      ? (typeof quote.quote_data === 'string' ? JSON.parse(quote.quote_data) : quote.quote_data)
+      : {};
+  } catch {
+    quoteData = {};
+  }
+
   const customerInfo = {
-    name: quote.customerName || 'Không có tên',
-    company: quote.customerCompany || '',
-    address: quote.customerAddress || '',
-    phone: quote.customerPhone || '',
-    email: quote.customerEmail || '',
+    name: quoteContactSnapshot(quote, quoteData, 'customerName', /(?:^|\n)Khách hàng:[ \t]*([^\r\n]*)/, 'Không có tên'),
+    company: String(quote.customerCompany || ''),
+    address: quoteContactSnapshot(quote, quoteData, 'customerAddress', /(?:^|\n)Địa chỉ:[ \t]*([^\r\n]*)/),
+    phone: quoteContactSnapshot(quote, quoteData, 'customerPhone', /(?:^|\n)Điện thoại:[ \t]*([^\r\n]*)/),
+    email: quoteContactSnapshot(quote, quoteData, 'customerEmail', /(?:^|\n)Email:[ \t]*([^\r\n]*)/),
   };
 
-  // Parse quote items
-  let quoteItems = [];
+  const cleanPrefix = (value: unknown, pattern: RegExp) =>
+    typeof value === 'string' ? value.trim().replace(pattern, '').trim() : '';
+
+  const companyName = templateSettings.companyTitle || templateSettings.companyName || 'CÔNG TY TNHH GIA LỘC HƯNG PHÁT';
+  const companyAddress = cleanPrefix(templateSettings.address, /^(?:địa\s*chỉ|trụ\s*sở)\s*[:：-]\s*/iu);
+  const companyPhone = cleanPrefix(templateSettings.phone, /^(?:điện\s*thoại|sđt|đt|tel)\s*[:：-]\s*/iu);
+  const companyTaxCode = cleanPrefix(templateSettings.taxCode, /^(?:mã\s*số\s*thuế|mst)\s*[:：-]\s*/iu);
+
+  let quoteItems: Array<Record<string, unknown>> = [];
   try {
     quoteItems = quoteDisplayItems(quote.items);
   } catch (error) {
@@ -137,47 +154,37 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
     quoteItems = [];
   }
 
-  // Filter items based on search term
-  const filteredItems = quoteItems.filter((item: any) =>
+  const filteredItems = quoteItems.filter((item: Record<string, unknown>) =>
     String(item.name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(item.sku ?? '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Helper function to get cost price from products data
-  const getCostPrice = (item: any): number => {
-    // Try to match by originalProductId first
+  const getCostPrice = (item: Record<string, unknown>): number => {
     let product = products.find(p => p.id === item.originalProductId);
-    
-    // If not found, try to match by SKU
     if (!product && item.sku) {
       product = products.find(p => p.sku === item.sku);
     }
-    
-    return product?.cost_price || 0;
+    return Number(product?.cost_price ?? 0);
   };
 
-  // Calculate totals with cost price and profit
-  const calculations = filteredItems.reduce((acc: any, item: any) => {
-    const quantity = item.quantity || 0;
-    const price = item.price || 0;
+  const calculations = filteredItems.reduce<{ totalRevenue: number; totalCost: number; totalProfit: number }>((acc, item) => {
+    const quantity = Number(item.quantity || 0);
+    const price = Number(item.price || 0);
     const costPrice = getCostPrice(item);
-    
+
     const revenue = quantity * price;
     const totalCost = quantity * costPrice;
     const profit = revenue - totalCost;
-    
+
     acc.totalRevenue += revenue;
     acc.totalCost += totalCost;
     acc.totalProfit += profit;
-    
+
     return acc;
   }, { totalRevenue: 0, totalCost: 0, totalProfit: 0 });
 
   const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND'
-    }).format(amount);
+    return new Intl.NumberFormat('vi-VN').format(amount) + ' đ';
   };
 
   const pushToOrdersFlow = async () => {
@@ -191,36 +198,27 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
     }
 
     setIsUpdatingOrder(true);
-    
+
     try {
       if (isLocalBackend()) {
-        const result = await localApi.approveQuote(quote.id);
+        const result = await localApi.approveQuote(String(quote.id));
         await Promise.all(['quotes', 'quotes-infinite', 'quotes-stats', 'orders', 'orders-infinite', 'orders-stats'].map(key => queryClient.invalidateQueries({ queryKey: [key] })));
         toast({ title: 'Đã kiểm tra liên kết đơn hàng', description: `Đơn ${String(result.order.order_number || '')} được giữ nguyên dữ liệu vận hành; không ghi nhận tiền thu từ kế hoạch.` });
         onUpdate?.();
         return;
       }
-      console.log('🚀 Bắt đầu đẩy báo giá sang đơn hàng:', quote.quote_number);
-      
-      // Find existing order by quote_id
+
       const { data: existingOrders, error: findError } = await supabase
         .from('orders')
         .select('*')
         .eq('quote_id', quote.id);
-      
-      if (findError) {
-        console.error('Lỗi tìm kiếm đơn hàng:', findError);
-        throw findError;
-      }
+
+      if (findError) throw findError;
 
       if (existingOrders && existingOrders.length > 0) {
-        // Update existing order
         const order = existingOrders[0];
-        console.log('📝 Cập nhật đơn hàng hiện có:', order.order_number);
-        
-        // Use subtotal if quote doesn't include VAT, otherwise use total with VAT
-        const orderTotal = quote.include_vat ? quote.total_amount : quote.subtotal;
-        
+        const orderTotal = Number(quote.include_vat ? quote.total_amount : quote.subtotal);
+
         const { error: updateError } = await supabase
           .from('orders')
           .update({
@@ -238,26 +236,21 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
           description: `Đã cập nhật đơn hàng ${order.order_number} từ báo giá`,
         });
       } else {
-        // Create new order if none exists
-        console.log('➕ Tạo đơn hàng mới từ báo giá');
-        
-        // Use subtotal if quote doesn't include VAT, otherwise use total with VAT
-        const orderTotal = quote.include_vat ? quote.total_amount : quote.subtotal;
-        
+        const orderTotal = Number(quote.include_vat ? quote.total_amount : quote.subtotal);
         const orderNumber = `ORD-${Date.now()}`;
         const { error: createError } = await supabase
           .from('orders')
           .insert({
             order_number: orderNumber,
-            customer_id: quote.customer_id,
-            manager_id: quote.manager_id,
-            assignee_id: quote.assignee_id,
+            customer_id: String(quote.customer_id || ''),
+            manager_id: String(quote.manager_id || ''),
+            assignee_id: quote.assignee_id ? String(quote.assignee_id) : null,
             total_amount: orderTotal,
             status: 'pending',
-            items: quote.items,
+            items: quote.items as never,
             notes: null,
             tenant_id: 'default',
-            quote_id: quote.id,
+            quote_id: String(quote.id || ''),
           });
 
         if (createError) throw createError;
@@ -268,15 +261,12 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
         });
       }
 
-      // Invalidate queries to refresh UI
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       onUpdate?.();
-      
-    } catch (error: any) {
-      console.error('❌ Lỗi khi đẩy sang đơn hàng:', error);
+    } catch (error: unknown) {
       toast({
         title: "Lỗi",
-        description: error.message || "Không thể đẩy báo giá sang đơn hàng",
+        description: (error instanceof Error ? error.message : "") || "Không thể đẩy báo giá sang đơn hàng",
         variant: "destructive",
       });
     } finally {
@@ -284,103 +274,100 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
     }
   };
 
+  const quoteCode = String(quote.quote_number || quote.quoteNumber || `QUOTE-${String(quote.id || '').slice(0, 8) || 'N/A'}`);
+
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(`
         <html>
           <head>
-            <title>Báo giá phụ - ${quote.quote_number}</title>
+            <title>Phụ lục báo giá - ${escapeQuoteHtml(quoteCode)}</title>
             <style>
-              body { font-family: Arial, sans-serif; margin: 20px; }
-              .header { text-align: center; margin-bottom: 30px; }
-              .company-info { margin-bottom: 20px; }
-              .customer-info { margin-bottom: 20px; }
-              table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-              th { background-color: #f2f2f2; }
+              body { font-family: "Times New Roman", serif; margin: 20px; color: #0f172a; font-size: 13px; }
+              .header { text-align: center; margin-bottom: 20px; }
+              .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+              .info-card { border: 1px solid #cbd5e1; padding: 10px 12px; border-radius: 4px; }
+              table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+              th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+              th { background-color: #f8fafc; font-weight: bold; }
               .text-right { text-align: right; }
-              .totals { margin-top: 20px; }
-              .profit-positive { color: green; }
-              .profit-negative { color: red; }
+              .totals { margin-top: 12px; }
             </style>
           </head>
           <body>
             <div class="header">
-              <h2>BÁO GIÁ PHỤ</h2>
-              <p>Số: ${quote.quote_number || `QUOTE-${quote.id.slice(0, 8)}`}</p>
+              <h2>PHỤ LỤC BÁO GIÁ (NỘI BỘ)</h2>
+              <p>Số báo giá: ${escapeQuoteHtml(quoteCode)}</p>
             </div>
-            
-            <div class="company-info">
-              <h3>Thông tin công ty:</h3>
-              <p>${templateSettings.companyName}</p>
-              <p>${templateSettings.companyAddress}</p>
-              <p>Điện thoại: ${templateSettings.companyPhone}</p>
-              <p>Email: ${templateSettings.companyEmail}</p>
+
+            <div class="info-grid">
+              <div class="info-card">
+                <strong>Đơn vị cung cấp:</strong>
+                <p>${escapeQuoteHtml(companyName)}</p>
+                ${companyAddress ? `<p>Địa chỉ: ${escapeQuoteHtml(companyAddress)}</p>` : ''}
+                ${companyPhone ? `<p>Điện thoại: ${escapeQuoteHtml(companyPhone)}</p>` : ''}
+              </div>
+              <div class="info-card">
+                <strong>Khách hàng:</strong>
+                <p>Tên KH: ${escapeQuoteHtml(customerInfo.name)}</p>
+                ${customerInfo.phone ? `<p>Điện thoại: ${escapeQuoteHtml(customerInfo.phone)}</p>` : ''}
+                ${customerInfo.address ? `<p>Địa chỉ: ${escapeQuoteHtml(customerInfo.address)}</p>` : ''}
+              </div>
             </div>
-            
-            <div class="customer-info">
-              <h3>Thông tin khách hàng:</h3>
-              <p>Tên: ${customerInfo.name}</p>
-              ${customerInfo.company ? `<p>Công ty: ${customerInfo.company}</p>` : ''}
-              ${customerInfo.address ? `<p>Địa chỉ: ${customerInfo.address}</p>` : ''}
-              ${customerInfo.phone ? `<p>Điện thoại: ${customerInfo.phone}</p>` : ''}
-              ${customerInfo.email ? `<p>Email: ${customerInfo.email}</p>` : ''}
-            </div>
-            
+
             <table>
               <thead>
                 <tr>
                   <th>STT</th>
                   <th>Tên sản phẩm</th>
                   <th>Mã SP</th>
-                  <th>Số lượng</th>
-                  <th>Giá bán</th>
-                  <th>Giá gốc</th>
-                  <th>Doanh thu</th>
-                  <th>Chi phí</th>
-                  <th>Lợi nhuận</th>
+                  <th class="text-right">SL</th>
+                  <th class="text-right">Giá bán</th>
+                  <th class="text-right">Giá vốn</th>
+                  <th class="text-right">Doanh thu</th>
+                  <th class="text-right">Chi phí</th>
+                  <th class="text-right">Lợi nhuận</th>
                 </tr>
               </thead>
               <tbody>
-                ${filteredItems.map((item: any, index: number) => {
-                  const quantity = item.quantity || 0;
-                  const price = item.price || 0;
+                ${filteredItems.map((item: Record<string, unknown>, index: number) => {
+                  const quantity = Number(item.quantity || 0);
+                  const price = Number(item.price || 0);
                   const costPrice = getCostPrice(item);
                   const revenue = quantity * price;
                   const totalCost = quantity * costPrice;
                   const profit = revenue - totalCost;
-                  
                   return `
                     <tr>
                       <td>${index + 1}</td>
-                      <td>${item.name || ''}</td>
-                      <td>${item.sku || ''}</td>
-                      <td class="text-right">${quantity}</td>
-                      <td class="text-right">${formatCurrency(price)}</td>
-                      <td class="text-right">${formatCurrency(costPrice)}</td>
-                      <td class="text-right">${formatCurrency(revenue)}</td>
-                      <td class="text-right">${formatCurrency(totalCost)}</td>
-                      <td class="text-right ${profit >= 0 ? 'profit-positive' : 'profit-negative'}">${formatCurrency(profit)}</td>
+                      <td>${escapeQuoteHtml(item.name || '')}</td>
+                      <td>${escapeQuoteHtml(item.sku || '-')}</td>
+                      <td class="text-right">${escapeQuoteHtml(quantity)}</td>
+                      <td class="text-right">${escapeQuoteHtml(formatCurrency(price))}</td>
+                      <td class="text-right">${escapeQuoteHtml(formatCurrency(costPrice))}</td>
+                      <td class="text-right">${escapeQuoteHtml(formatCurrency(revenue))}</td>
+                      <td class="text-right">${escapeQuoteHtml(formatCurrency(totalCost))}</td>
+                      <td class="text-right"><strong>${escapeQuoteHtml(formatCurrency(profit))}</strong></td>
                     </tr>
                   `;
                 }).join('')}
               </tbody>
             </table>
-            
+
             <div class="totals">
-              <table style="width: 50%; margin-left: auto;">
+              <table style="width: 360px; margin-left: auto;">
                 <tr>
                   <td><strong>Tổng doanh thu:</strong></td>
-                  <td class="text-right"><strong>${formatCurrency(calculations.totalRevenue)}</strong></td>
+                  <td class="text-right"><strong>${escapeQuoteHtml(formatCurrency(calculations.totalRevenue))}</strong></td>
                 </tr>
                 <tr>
                   <td><strong>Tổng chi phí:</strong></td>
-                  <td class="text-right"><strong>${formatCurrency(calculations.totalCost)}</strong></td>
+                  <td class="text-right"><strong>${escapeQuoteHtml(formatCurrency(calculations.totalCost))}</strong></td>
                 </tr>
-                <tr class="${calculations.totalProfit >= 0 ? 'profit-positive' : 'profit-negative'}">
-                  <td><strong>Tổng lợi nhuận:</strong></td>
-                  <td class="text-right"><strong>${formatCurrency(calculations.totalProfit)}</strong></td>
+                <tr>
+                  <td><strong>Tổng lợi nhuận dự kiến:</strong></td>
+                  <td class="text-right"><strong>${escapeQuoteHtml(formatCurrency(calculations.totalProfit))}</strong></td>
                 </tr>
               </table>
             </div>
@@ -394,115 +381,126 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            <span>Báo giá phụ - {quote.quote_number || `QUOTE-${quote.id.slice(0, 8)}`}</span>
-            <div className="flex gap-2">
+      <DialogContent className="flex h-[min(90dvh,calc(100dvh-1rem))] w-[calc(100vw-1rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
+        <DialogHeader className="flex-shrink-0 border-b border-border bg-card px-4 py-3 pr-14 sm:px-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 text-left">
+              <DialogTitle className="text-base font-semibold text-foreground sm:text-lg">
+                Phụ lục báo giá #{quoteCode}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Bảng tính chi phí giá vốn và lợi nhuận dự kiến nội bộ ({filteredItems.length} dòng sản phẩm)
+              </DialogDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
               {quote?.status === 'approved' && (
                 <Button
                   variant="default"
                   size="sm"
                   onClick={pushToOrdersFlow}
                   disabled={isUpdatingOrder}
-                  className="gap-2"
+                  className="h-8 px-3 text-xs font-medium"
                 >
-                  <RefreshCw className={`h-4 w-4 ${isUpdatingOrder ? 'animate-spin' : ''}`} />
-                  {isUpdatingOrder ? 'Đang xử lý...' : 'Đẩy sang đơn hàng'}
+                  <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isUpdatingOrder ? 'animate-spin' : ''}`} />
+                  {isUpdatingOrder ? 'Đang xử lý...' : 'Đồng bộ đơn hàng'}
                 </Button>
               )}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handlePrint}
-                className="gap-2"
+                className="h-8 px-3 text-xs font-medium"
               >
-                <Printer className="h-4 w-4" />
-                In
+                <Printer className="mr-1.5 h-3.5 w-3.5" />
+                In phụ lục
               </Button>
             </div>
-          </DialogTitle>
+          </div>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Company Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <h3 className="font-semibold text-lg">Thông tin công ty</h3>
-              <div className="text-sm space-y-1">
-                <p className="font-medium">{templateSettings.companyName}</p>
-                <p>{templateSettings.companyAddress}</p>
-                <p>Điện thoại: {templateSettings.companyPhone}</p>
-                <p>Email: {templateSettings.companyEmail}</p>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="rounded-md border border-border bg-muted/20 p-3">
+              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Đơn vị cung cấp
+              </h3>
+              <div className="space-y-0.5 text-xs leading-5 text-foreground sm:text-sm">
+                <p className="font-semibold">{companyName}</p>
+                {companyAddress && <p className="text-muted-foreground">Địa chỉ: {companyAddress}</p>}
+                <p className="text-muted-foreground">
+                  Điện thoại: {companyPhone || '-'}
+                  {companyTaxCode ? ` | MST: ${companyTaxCode}` : ''}
+                </p>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <h3 className="font-semibold text-lg">Thông tin khách hàng</h3>
-              <div className="text-sm space-y-1">
-                <p className="font-medium">{customerInfo.name}</p>
-                {customerInfo.company && <p>Công ty: {customerInfo.company}</p>}
-                {customerInfo.address && <p>Địa chỉ: {customerInfo.address}</p>}
-                {customerInfo.phone && <p>Điện thoại: {customerInfo.phone}</p>}
-                {customerInfo.email && <p>Email: {customerInfo.email}</p>}
+            <div className="rounded-md border border-border bg-muted/20 p-3">
+              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Khách hàng
+              </h3>
+              <div className="space-y-0.5 text-xs leading-5 text-foreground sm:text-sm">
+                <p className="font-semibold">{customerInfo.name}</p>
+                {customerInfo.phone && <p className="text-muted-foreground">Điện thoại: {customerInfo.phone}</p>}
+                {customerInfo.address && <p className="text-muted-foreground">Địa chỉ: {customerInfo.address}</p>}
+                {customerInfo.email && <p className="text-muted-foreground">Email: {customerInfo.email}</p>}
               </div>
             </div>
           </div>
 
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              placeholder="Tìm kiếm sản phẩm..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Tìm theo tên hoặc mã sản phẩm..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-8 pl-8 text-xs sm:text-sm"
+              />
+            </div>
           </div>
 
-          {/* Quote Items Table */}
-          <div className="border rounded-lg overflow-auto">
-            <Table>
+          <div className="overflow-x-auto rounded-md border border-border">
+            <Table disableWrapper className="min-w-[780px] w-full">
               <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">STT</TableHead>
-                  <TableHead>Tên sản phẩm</TableHead>
-                  <TableHead>Mã SP</TableHead>
-                  <TableHead className="text-right">Số lượng</TableHead>
-                  <TableHead className="text-right">Giá bán</TableHead>
-                  <TableHead className="text-right">Giá gốc</TableHead>
-                  <TableHead className="text-right">Doanh thu</TableHead>
-                  <TableHead className="text-right">Chi phí</TableHead>
-                  <TableHead className="text-right">Lợi nhuận</TableHead>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="h-9 w-10 px-2 text-center text-xs font-semibold">STT</TableHead>
+                  <TableHead className="h-9 px-2.5 text-xs font-semibold">Sản phẩm</TableHead>
+                  <TableHead className="h-9 w-28 px-2 text-xs font-semibold">Mã SP</TableHead>
+                  <TableHead className="h-9 w-16 px-2 text-right text-xs font-semibold">SL</TableHead>
+                  <TableHead className="h-9 w-28 px-2 text-right text-xs font-semibold">Giá bán</TableHead>
+                  <TableHead className="h-9 w-28 px-2 text-right text-xs font-semibold">Giá vốn</TableHead>
+                  <TableHead className="h-9 w-32 px-2 text-right text-xs font-semibold">Doanh thu</TableHead>
+                  <TableHead className="h-9 w-32 px-2 text-right text-xs font-semibold">Chi phí</TableHead>
+                  <TableHead className="h-9 w-32 px-2.5 text-right text-xs font-semibold">Lợi nhuận</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                      {searchTerm ? "Không tìm thấy sản phẩm nào" : "Chưa có sản phẩm nào"}
+                    <TableCell colSpan={9} className="py-6 text-center text-xs text-muted-foreground">
+                      {searchTerm ? "Không tìm thấy sản phẩm phù hợp" : "Chưa có sản phẩm nào"}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredItems.map((item: any, index: number) => {
-                    const quantity = item.quantity || 0;
-                    const price = item.price || 0;
+                  filteredItems.map((item: Record<string, unknown>, index: number) => {
+                    const quantity = Number(item.quantity || 0);
+                    const price = Number(item.price || 0);
                     const costPrice = getCostPrice(item);
                     const revenue = quantity * price;
                     const totalCost = quantity * costPrice;
                     const profit = revenue - totalCost;
 
                     return (
-                      <TableRow key={index}>
-                        <TableCell>{index + 1}</TableCell>
-                        <TableCell className="font-medium">{item.name || ''}</TableCell>
-                        <TableCell>{item.sku || ''}</TableCell>
-                        <TableCell className="text-right">{quantity}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(price)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(costPrice)}</TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(revenue)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(totalCost)}</TableCell>
-                        <TableCell className={`text-right font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <TableRow key={index} className="even:bg-muted/15">
+                        <TableCell className="px-2 py-2 text-center text-xs tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                        <TableCell className="px-2.5 py-2 text-xs font-medium sm:text-sm">{String(item.name || '-')}</TableCell>
+                        <TableCell className="px-2 py-2 text-xs text-muted-foreground">{String(item.sku || '-')}</TableCell>
+                        <TableCell className="px-2 py-2 text-right text-xs tabular-nums">{quantity}</TableCell>
+                        <TableCell className="px-2 py-2 text-right text-xs tabular-nums whitespace-nowrap">{formatCurrency(price)}</TableCell>
+                        <TableCell className="px-2 py-2 text-right text-xs tabular-nums whitespace-nowrap text-muted-foreground">{formatCurrency(costPrice)}</TableCell>
+                        <TableCell className="px-2 py-2 text-right text-xs font-medium tabular-nums whitespace-nowrap">{formatCurrency(revenue)}</TableCell>
+                        <TableCell className="px-2 py-2 text-right text-xs tabular-nums whitespace-nowrap text-muted-foreground">{formatCurrency(totalCost)}</TableCell>
+                        <TableCell className={`px-2.5 py-2 text-right text-xs font-semibold tabular-nums whitespace-nowrap ${profit < 0 ? 'text-destructive' : 'text-foreground'}`}>
                           {formatCurrency(profit)}
                         </TableCell>
                       </TableRow>
@@ -513,20 +511,21 @@ export function QuoteSupplementDialog({ open, onOpenChange, quote, onUpdate }: Q
             </Table>
           </div>
 
-          {/* Summary */}
           <div className="flex justify-end">
-            <div className="w-80 space-y-2">
-              <div className="flex justify-between py-2 border-b">
-                <span className="font-medium">Tổng doanh thu:</span>
-                <span className="font-medium">{formatCurrency(calculations.totalRevenue)}</span>
+            <div className="w-full max-w-sm rounded-md border border-border bg-muted/20 p-3 text-xs sm:text-sm">
+              <div className="flex justify-between border-b border-border/70 py-1.5">
+                <span className="text-muted-foreground">Tổng doanh thu (trước thuế):</span>
+                <span className="font-medium tabular-nums">{formatCurrency(calculations.totalRevenue)}</span>
               </div>
-              <div className="flex justify-between py-2 border-b">
-                <span className="font-medium">Tổng chi phí:</span>
-                <span className="font-medium">{formatCurrency(calculations.totalCost)}</span>
+              <div className="flex justify-between border-b border-border/70 py-1.5">
+                <span className="text-muted-foreground">Tổng chi phí giá vốn:</span>
+                <span className="font-medium tabular-nums">{formatCurrency(calculations.totalCost)}</span>
               </div>
-              <div className={`flex justify-between py-2 font-bold text-lg ${calculations.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                <span>Tổng lợi nhuận:</span>
-                <span>{formatCurrency(calculations.totalProfit)}</span>
+              <div className="flex justify-between pt-2 font-semibold">
+                <span>Lợi nhuận gộp dự kiến:</span>
+                <span className={`tabular-nums ${calculations.totalProfit < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                  {formatCurrency(calculations.totalProfit)}
+                </span>
               </div>
             </div>
           </div>

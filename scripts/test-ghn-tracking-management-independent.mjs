@@ -182,6 +182,26 @@ try {
     await rejected(() => service.byOrder('inactive', 'order-one'));
     assert.equal(calls.length, 0);
   });
+  await check('recipient convention overrides linked CRM/cache, supports suffixes and search, preserves scope without writes', async () => {
+    const cases = [['2588p','2588'],['2588P','2588'],['2588h','2588'],['2588H','2588'],['123','123'],['12345','12345'],['12',null],['123456',null],['1234x',null],['1234 note','1234']];
+    for (let i=0;i<cases.length;i++) {
+      await seed('NAME'+i, { orderId: i===0 ? 'order-one' : null });
+      await pool.query("update local_ghn_tracking set customer_name=$2,internal_order_code='STALE-CRM' where ghn_order_code=$1", ['NAME'+i,'Recipient_'+cases[i][0]]);
+    }
+    await seed('FOREIGN123', { orderId: 'order-other', manager: 'other', tenant: 'tenant-two' });
+    const before = await snapshot();
+    const result = await service.list('manager', {});
+    for (let i=0;i<cases.length;i++) assert.equal(result.rows.find(row=>row.ghn_order_code==='NAME'+i).internal_order_code,cases[i][1]);
+    assert.equal(result.rows.some(row=>row.ghn_order_code==='FOREIGN123'),false);
+    assert.equal((await service.list('manager',{search:'2588'})).total,4);
+    assert.equal((await service.list('manager',{search:'RENAMED-DISPLAY'})).total,0);
+    assert.equal(await snapshot(),before); assert.equal(calls.length,0);
+    await pool.query("update local_ghn_tracking set customer_name='Recipient_9999H' where ghn_order_code='NAME0'");
+    assert.equal((await service.byOrder('manager','order-one')).rows[0].internal_order_code,'9999');
+    await pool.query("update local_ghn_tracking set raw_data=jsonb_build_object('local_ghn_status_refresh',jsonb_build_object('to_name','Recipient_7777p')) where ghn_order_code='NAME0'");
+    assert.equal((await service.byOrder('manager','order-one')).rows[0].internal_order_code,'7777');
+    assert.equal((await service.list('manager',{search:'7777'})).total,1);
+  });
   await check('unchanged replacement preserves every stored byte and never calls provider', async () => {
     await seed('KEEP123', { orderId: 'order-one' }); await seed('KEEP456', { orderId: 'order-one', rawShop: 456 });
     const before = await snapshot();

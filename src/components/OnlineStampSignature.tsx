@@ -88,7 +88,7 @@ export const OnlineStampSignature = ({ show, sellerRep, sellerPos, editable = fa
   const hasSignature = !!settings.signatureUrl;
 
   if (!hasStamp && !hasSignature) {
-    return <div style={{ height: 80 }} />;
+    return <div style={{ height: 48 }} />;
   }
 
   const handleMouseDown = (type: "stamp" | "sig", mode: "drag" | "resize", e: React.MouseEvent) => {
@@ -115,18 +115,18 @@ export const OnlineStampSignature = ({ show, sellerRep, sellerPos, editable = fa
     }
   };
 
-  const containerHeight = editable ? 220 : 160;
+  const containerHeight = editable ? 220 : 110;
 
   return (
     <>
       <div
         ref={containerRef}
-        className={`relative ${editable ? "border-2 border-dashed border-blue-300 bg-blue-50/30 rounded" : ""}`}
+        className={`relative ${editable ? "border border-dashed border-border bg-muted/20 rounded" : ""}`}
         style={{ height: containerHeight, width: "100%", userSelect: dragging || resizing ? "none" : "auto" }}
       >
         {editable && (
           <div className="absolute top-1 left-1 flex items-center gap-1 z-10">
-            <span className="text-[10px] text-blue-500 bg-white/80 px-1 rounded">
+            <span className="text-[10px] text-muted-foreground bg-background/90 border border-border px-1.5 py-0.5 rounded">
               <Move className="w-3 h-3 inline mr-0.5" />Kéo thả &nbsp;
               <Maximize2 className="w-3 h-3 inline mr-0.5" />Resize góc
             </span>
@@ -135,7 +135,7 @@ export const OnlineStampSignature = ({ show, sellerRep, sellerPos, editable = fa
 
         {hasStamp && (
           <div
-            className={`absolute ${editable ? "cursor-move ring-2 ring-blue-400 ring-dashed rounded" : ""}`}
+            className={`absolute ${editable ? "cursor-move ring-1 ring-slate-500 ring-dashed rounded" : ""}`}
             style={{
               left: `${stampPos.x}%`,
               top: `${stampPos.y}%`,
@@ -155,7 +155,7 @@ export const OnlineStampSignature = ({ show, sellerRep, sellerPos, editable = fa
             />
             {editable && (
               <div
-                className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500 rounded-tl cursor-se-resize"
+                className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-slate-700 rounded-tl cursor-se-resize"
                 onMouseDown={(e) => handleMouseDown("stamp", "resize", e)}
               />
             )}
@@ -164,7 +164,7 @@ export const OnlineStampSignature = ({ show, sellerRep, sellerPos, editable = fa
 
         {hasSignature && (
           <div
-            className={`absolute ${editable ? "cursor-move ring-2 ring-green-400 ring-dashed rounded" : ""}`}
+            className={`absolute ${editable ? "cursor-move ring-1 ring-slate-600 ring-dashed rounded" : ""}`}
             style={{
               left: `${sigPos.x}%`,
               top: `${sigPos.y}%`,
@@ -184,7 +184,7 @@ export const OnlineStampSignature = ({ show, sellerRep, sellerPos, editable = fa
             />
             {editable && (
               <div
-                className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-tl cursor-se-resize"
+                className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-slate-700 rounded-tl cursor-se-resize"
                 onMouseDown={(e) => handleMouseDown("sig", "resize", e)}
               />
             )}

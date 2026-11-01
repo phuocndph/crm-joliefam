@@ -1,3 +1,10 @@
+export type GhnEditResult = { attemptId: string; info: { status: string }; cod: { status: string }; snapshotSynced: boolean };
+import type { QuoteQueryOptions } from '@/lib/quote-filters';
+import type {ProductRateQuote,ProductRateQuoteRequest} from '@/lib/product-rate-quote-types';
+import type {LocalProductRateRow,LocalProductRateCreate,LocalProductRateUpdate,LocalProductRateAction} from '@/lib/product-rate-authoring-types';
+import type { ProductSupplyPage, ProductSupplyDecision, ProductSupplyHistory } from '@/lib/product-supply-types';
+import type {TechnicalProduct,TechnicalProfileDetail,TechnicalProfileInput,TechnicalProfileSaved,TechnicalProfileHistory} from '@/lib/product-technical-types';
+import type {LaborCode,LaborResolution,LaborDecisionInput,LaborDecisionVersion} from '@/lib/product-labor-types';
 import type {
   AttendanceMethod,
   AttendanceWorkflowStatus,
@@ -47,6 +54,13 @@ export interface LocalWorkerLinkResponse {
     is_active: boolean;
   } | null;
 }
+
+export type SelfPayrollMonth = {
+  month:string;status:'PREVIEW'|'LOCKED'|'BLOCKED';calculated_at:string;
+  amounts:{gross:string;deductions:string;net:string;payment:string}|null;
+  items:Array<{item_type:string;item_direction:'EARNING'|'DEDUCTION';quantity:string;unit_rate:string;multiplier:string;amount_precise:string;formula:string}>;
+  pending_count:number;pending_message:string|null;issues:Array<{code:string;message:string}>;
+};
 
 export interface LocalProfileRequest {
   user_id: string; email: string; first_name: string | null; last_name: string | null; phone: string | null;
@@ -232,20 +246,25 @@ export interface LocalAttendanceBulkWorkflowResult {
   reused: boolean;
 }
 
-type RequestOptions = { authGuard?:LocalAuthGuard;method?: string; body?: unknown; query?: Record<string, string | number | boolean | null | undefined> };
+type RequestOptions = { signal?:AbortSignal; authGuard?:LocalAuthGuard;method?: string; body?: unknown; query?: Record<string, string | number | boolean | null | undefined> };
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const query = options.query
     ? Object.entries(options.query).filter(([, value]) => value !== undefined && value !== null).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&")
     : "";
   const response = await localFetch(`${localApiUrl()}${path}${query ? `?${query}` : ""}`, {
+    signal:options.signal,
     method: options.method ?? "GET",
     headers: { "content-type": "application/json" },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   },true,options.authGuard);
   const payload = await response.json().catch(() => ({}));
   options.authGuard?.assertCurrent();
-  if (!response.ok) throw new LocalApiError(payload?.message || payload?.error || `Local API lỗi (${response.status})`, response.status,typeof (payload?.message || payload?.error)==='string', quoteCustomerErrorDetails(payload));
+  if (!response.ok) {
+    const error = new LocalApiError(payload?.message || payload?.error || `Local API lỗi (${response.status})`, response.status,typeof (payload?.message || payload?.error)==='string', quoteCustomerErrorDetails(payload));
+    if (typeof payload?.ghn_edit_not_dispatched === 'boolean') Object.assign(error, {ghnEditNotDispatched:payload.ghn_edit_not_dispatched});
+    throw error;
+  }
   return payload as T;
 }
 
@@ -301,6 +320,30 @@ export async function downloadLocalPayrollRunCsv(id: string): Promise<void> {
 }
 
 export const localApi = {
+  laborRequirementCoverage:(query:{date:string;search?:string;status?:string;offset?:number;limit?:number;review?:'SUBMITTED'})=>request<{rows:import('./product-labor-requirement-types').RequirementCoverageRow[];total:number;counts:Record<string,number>;date:string}>('/api/payroll/labor-code-requirements',{query}),
+  laborRequirementInventory:(date:string)=>request<import('./product-labor-requirement-types').LaborCoverageInventory>('/api/payroll/labor-code-requirements/inventory',{query:{date}}),
+  laborRequirementSchema:(version:1|2=1,authGuard?:LocalAuthGuard)=>request<import('./product-labor-requirement-types').RequirementAuthoringSchema>('/api/payroll/labor-code-requirements/schema',{query:{version},authGuard}),
+  validateLaborRequirement:(body:{definition:import('./product-labor-requirement-types').LaborRequirementDefinition;semantic_fingerprint:string},authGuard?:LocalAuthGuard)=>request<{valid:true;definition:import('./product-labor-requirement-types').LaborRequirementDefinition;content_hash:string}>('/api/payroll/labor-code-requirements/validate',{method:'POST',body,authGuard}),
+  laborRequirementDetail:(code:string,date:string,authGuard?:LocalAuthGuard)=>request<import('./product-labor-requirement-types').RequirementDetail>('/api/payroll/labor-code-requirements/code/'+encodeURIComponent(code),{query:{date},authGuard}),
+  saveLaborRequirementProposal:(body:import('./product-labor-requirement-types').RequirementCommand,authGuard?:LocalAuthGuard)=>request<import('./product-labor-requirement-types').RequirementCommandResult>('/api/payroll/labor-code-requirements/proposals',{method:'POST',body,authGuard}),
+  approveLaborRequirement:(body:import('./product-labor-requirement-types').RequirementCommand,authGuard?:LocalAuthGuard)=>request<import('./product-labor-requirement-types').RequirementCommandResult>('/api/payroll/labor-code-requirements/approve',{method:'POST',body,authGuard}),
+  retireLaborRequirement:(body:import('./product-labor-requirement-types').RequirementCommand,authGuard?:LocalAuthGuard)=>request<import('./product-labor-requirement-types').RequirementCommandResult>('/api/payroll/labor-code-requirements/retire',{method:'POST',body,authGuard}),
+  productSupplyClassifications: (query: {search?: string;status?: string;price_list_id?: string;offset?: number;limit?: number}) => request<ProductSupplyPage>('/api/product-supply-classifications',{query}),
+  productSupplyClassification: (id:string) => request<import('./product-supply-types').ProductSupplyRow>('/api/product-supply-classifications/'+encodeURIComponent(id)),
+  confirmProductSupplyClassifications: (body: {rows: ProductSupplyDecision[];reason: string;idempotency_key: string}) => request<{confirmed: Array<{product_id: string;version: number;route: string}>;reused: boolean}>('/api/product-supply-classifications/confirm',{method:'POST',body}),
+  productSupplyHistory: (id: string) => request<ProductSupplyHistory[]>('/api/product-supply-classifications/'+encodeURIComponent(id)+'/history'),
+  productTechnicalCatalog: (query:{search?:string;offset?:number;limit?:number}) => request<{rows:TechnicalProduct[];total:number}>('/api/product-technical-profiles/catalog',{query}),
+  productTechnicalProfile: (id:string) => request<TechnicalProfileDetail>('/api/product-technical-profiles/'+encodeURIComponent(id)),
+  saveProductTechnicalProfile: (id:string,body:TechnicalProfileInput) => request<TechnicalProfileSaved>('/api/product-technical-profiles/'+encodeURIComponent(id),{method:'PUT',body}),
+  productTechnicalHistory: (id:string) => request<TechnicalProfileHistory[]>('/api/product-technical-profiles/'+encodeURIComponent(id)+'/history'),
+  laborMappingCatalog:(query:{search?:string;date:string;offset?:number})=>request<{rows:LaborCode[];total:number}>('/api/payroll/labor-mappings/catalog',{query:{...query,limit:50}}),
+  laborMappingProducts:(query:{search?:string;date:string;offset?:number;status?:string;price_list_id?:string;view?:'ATTENTION'|'ALL';issue?:string})=>request<import('./product-labor-types').LaborProductPage>('/api/payroll/labor-mappings/products',{query}),
+  laborMappingProduct:(id:string,date:string,diagnostics=false)=>request<LaborResolution>('/api/payroll/labor-mappings/products/'+encodeURIComponent(id),{query:{date,diagnostics:diagnostics?'true':undefined}}),
+  laborMappingVersions:()=>request<LaborDecisionVersion[]>('/api/payroll/labor-mappings/decisions'),
+  saveLaborMapping:(body:LaborDecisionInput)=>request<{results:Array<{decision_id:string;version:number}>;reused:boolean}>('/api/payroll/labor-mappings/decisions',{method:'POST',body}),
+  laborMappingHistory:(id:string)=>request<LaborDecisionVersion[]>('/api/payroll/labor-mappings/decisions/'+encodeURIComponent(id)+'/history'),
+  laborMappingPreview:(product_ids:string[],date:string)=>request<{rows:LaborResolution[];read_only:true}>('/api/payroll/labor-mappings/batch-preview',{method:'POST',body:{product_ids,date}}),
+  confirmLaborMappingBatch:(body:Record<string,unknown>)=>request<{results:Array<{decision_id:string;version:number}>;reused:boolean}>('/api/payroll/labor-mappings/batch-confirm',{method:'POST',body}),
   aiProviders: () => request<{selected:'local'|'f5quota'|'beeknoee';providers:Array<{provider:'f5quota'|'beeknoee';configured:boolean;model:string;base_url:string;protocol:string}>}>('/api/ai/providers'),
   saveAiProvider: (provider:string,body:{api_key?:string;model?:string;activate?:boolean}) => request<{selected:'local'|'f5quota'|'beeknoee';providers:Array<{provider:'f5quota'|'beeknoee';configured:boolean;model:string;base_url:string;protocol:string}>}>('/api/ai/providers/'+encodeURIComponent(provider),{method:'PUT',body}),
   removeAiKey: (provider:string) => request<{selected:'local'|'f5quota'|'beeknoee';providers:Array<{provider:'f5quota'|'beeknoee';configured:boolean;model:string;base_url:string;protocol:string}>}>('/api/ai/providers/'+encodeURIComponent(provider)+'/key',{method:'DELETE'}),
@@ -328,18 +371,19 @@ export const localApi = {
   startSync: () => request<{ started: boolean; mode: string; message: string }>("/api/local-sync/start", { method: "POST", body: {} }),
   snapshot: (table: string, query?: { search?: string; limit?: number; offset?: number }) => request<{ table: string; rows: Array<{ source_key: string; source_updated_at: string | null; last_seen_at: string; payload: Record<string, unknown> }>; total: number; limit: number; offset: number }>(`/api/local-snapshot/${encodeURIComponent(table)}`, { query }),
   customers: (query?: { search?: string; includeInactive?: boolean }) => request<LocalCustomer[]>("/api/customers", { query }),
-  customer: (id: string) => request<LocalCustomerDetails>(`/api/customers/${encodeURIComponent(id)}`),
+  customer: (id: string,signal?:AbortSignal) => request<LocalCustomerDetails>(`/api/customers/${encodeURIComponent(id)}`,{signal}),
   createCustomer: (body: Record<string, unknown>) => request<LocalCustomer>("/api/customers", { method: "POST", body }),
   updateCustomer: (id: string, body: Record<string, unknown>) => request<LocalCustomer>(`/api/customers/${encodeURIComponent(id)}`, { method: "PATCH", body }),
   archiveCustomer: (id: string) => request<{ id: string; is_active: boolean; archived: boolean }>(`/api/customers/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  quotes: (query?: { search?: string; managerId?: string | null; limit?: number; offset?: number }) => request<Array<Record<string, unknown>>>("/api/quotes", { query }),
+  quotes: (query?: QuoteQueryOptions & { limit?: number; offset?: number }) => request<Array<Record<string, unknown>>>("/api/quotes", { query: { ...query } }),
   quoteCustomerSuggestions: (query: { search: string; managerId?: string | null; quoteId?: string }) => request<QuoteCustomerCandidate[]>("/api/quotes/customer-suggestions", { query }),
-  quoteStats: (managerId?: string | null) => request<Record<string, unknown>>("/api/quotes/stats", { query: { managerId } }),
+  quoteStats: (query?: QuoteQueryOptions) => request<Record<string, unknown>>("/api/quotes/stats", { query: { ...query } }),
   quoteData: (id: string) => request<{ quote_data: unknown }>(`/api/quotes/${encodeURIComponent(id)}/quote-data`),
   createQuote: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/quotes", { method: "POST", body }),
   updateQuote: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/quotes/${encodeURIComponent(id)}`, { method: "PATCH", body }),
   approveQuote: (id: string) => request<{ quote: Record<string, unknown>; order: Record<string, unknown>; reused: boolean }>(`/api/quotes/${encodeURIComponent(id)}/approve`, { method: "POST", body: {} }),
   deleteQuote: (id: string) => request<{ id: string }>(`/api/quotes/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  order: (id:string,signal?:AbortSignal) => request<Record<string,unknown>>(`/api/orders/${encodeURIComponent(id)}`,{signal}),
   orders: (query?: { search?: string; managerId?: string | null; limit?: number; offset?: number }) => request<Array<Record<string, unknown>>>("/api/orders", { query }),
   createOrder: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/orders", { method: "POST", body }),
   deleteOrder: (id: string) => request<Record<string, unknown>>(`/api/orders/${encodeURIComponent(id)}`, { method: "DELETE" }),
@@ -347,6 +391,7 @@ export const localApi = {
   duplicateOrders: () => request<Array<{ display_number: string; dup_count: number }>>("/api/orders/duplicates"),
   updateOrder: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/orders/${encodeURIComponent(id)}`, { method: "PATCH", body }),
   contracts: (query?: { search?: string; managerId?: string | null }) => request<Array<Record<string, unknown>>>('/api/contracts', { query }),
+  contractPaymentSummary: (id: string) => request<{ known: boolean; paid: number | null; remaining: number | null; reason: string }>(`/api/contracts/${encodeURIComponent(id)}/payment-summary`),
   createContract: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/contracts', { method: 'POST', body }),
   updateContract: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/contracts/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
   deleteContract: (id: string) => request<Record<string, unknown>>(`/api/contracts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -360,7 +405,7 @@ export const localApi = {
   createExpense: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/expenses', { method: 'POST', body }),
   updateExpense: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/expenses/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
   deleteExpense: (id: string) => request<Record<string, unknown>>(`/api/expenses/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  transactions: (query?: { managerId?: string | null; orderId?: string | null; search?: string }) => request<Array<Record<string, unknown>>>('/api/transactions', { query }),
+  transactions: (query?: { managerId?: string | null; orderId?: string | null; search?: string },signal?:AbortSignal) => request<Array<Record<string, unknown>>>('/api/transactions', { query,signal }),
   createTransaction: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/transactions', { method: 'POST', body }),
   deleteTransaction: (id: string) => request<Record<string, unknown>>(`/api/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   createOrderPayment: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/order-payments', { method: 'POST', body }),
@@ -414,11 +459,16 @@ export const localApi = {
   createShippingCompany: (body: Record<string, unknown>) => request<Record<string, unknown>>('/api/shipping-companies', { method: 'POST', body }),
   updateShippingCompany: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/shipping-companies/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
   deleteShippingCompany: (id: string) => request<Record<string, unknown>>(`/api/shipping-companies/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  ghnEditDetail: (code: string) => request<{ data: Record<string, unknown>; fingerprint: string; pendingAttempt?: GhnEditResult | null }>(`/api/ghn-edit/${encodeURIComponent(code)}/detail`),
+  editGhnOrder: (code: string, body: Record<string, unknown>) => request<GhnEditResult>(`/api/ghn-edit/${encodeURIComponent(code)}`, { method: 'POST', body }),
+  reconcileGhnEdit: (id: string) => request<GhnEditResult>(`/api/ghn-edit-attempts/${encodeURIComponent(id)}/reconcile`, { method: 'POST', body: {} }),
   ghnTracking: (query?: { page?: number; pageSize?: number; search?: string; status?: string; sortBy?: string; sortOrder?: string }) => request<{ rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }>('/api/ghn-tracking', { query }),
   ghnTrackingByOrder: (orderId: string) => request<{ rows: Record<string, unknown>[]; orderCodes: string[] }>(`/api/ghn-tracking/by-order/${encodeURIComponent(orderId)}`),
   replaceGhnTrackingByOrder: (orderId: string, body: { orderCodes: string[]; expectedOrderCodes: string[] }) => request<{ rows: Record<string, unknown>[]; orderCodes: string[] }>(`/api/ghn-tracking/by-order/${encodeURIComponent(orderId)}`, { method: 'PUT', body }),
   checkGhnConnection: () => request<{ configured: boolean; connected: boolean; message: string; checked_at: string }>('/api/ghn-tracking/connection-check', { method: 'POST', body: {} }),
   refreshGhnTracking: (body: { id?: string; orderCode?: string; staleOnly?: boolean; cursor?: string }) => request<{ updated: number; skipped: number; failed: number; has_more: boolean; next_cursor: string | null; limit: number; errors: Array<{ orderCode: string; message: string }> }>('/api/ghn-tracking/refresh', { method: 'POST', body }),
+  importGhnCodes: (codes: string[]) => request<{added:number;skipped:number;processed:number;failed:number;errors:Array<{orderCode:string;message:string}>}>('/api/ghn-tracking/import-codes',{method:'POST',body:{codes}}),
+  importGhnPage: (cursor?: string) => request<{added:number;skipped:number;failed:number;scanned:number;halted:boolean;complete:boolean;totals:Array<{shop_id:string;scanned:number;added:number;skipped:number;failed:number;complete:boolean}>;errors:Array<{orderCode:string;message:string}>;has_more:boolean;next_cursor:string|null;truncated:boolean}>('/api/ghn-tracking/import-page',{method:'POST',body:cursor?{cursor}:{}}),
   createGhnTracking: (body: { ghn_order_code: string; order_id?: string | null }) => request<Record<string, unknown>>('/api/ghn-tracking', { method: 'POST', body }),
   deleteGhnTracking: (id: string) => request<Record<string, unknown>>(`/api/ghn-tracking/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   printGhnTracking: (ids: string[]) => request<{ success: boolean; data: { documents: Array<{ shopId: string; orderCodes: string[]; printUrl: string }> } }>('/api/ghn-tracking/print', { method: 'POST', body: { ids } }),
@@ -484,12 +534,17 @@ export const localApi = {
   productionWorkspace: (authGuard?:LocalAuthGuard) => request<import('./production-workspace-types').ProductionWorkspaceData>('/api/production-workspace',{authGuard}),
   productionWorkspaceDetails:(id:string)=>request<import('./production-workspace-types').ProductionWorkspaceDetails>(`/api/production-workspace/${encodeURIComponent(id)}/details`),
   productionWorkspaceAction:(id:string,action:'receive'|'ship'|'complete'|'repair-tickets'|'cancel-uncut',body:Record<string,unknown>)=>request<Record<string,unknown>>(`/api/production-workspace/${encodeURIComponent(id)}/${action}`,{method:'POST',body}),
+  orderShipments:(orderId:string,authGuard?:LocalAuthGuard)=>request<import('./order-shipment-types').OrderShipmentData>('/api/order-shipments',{query:{order_id:orderId},authGuard}),
+  dispatchOrderShipment:(body:Record<string,unknown>,authGuard?:LocalAuthGuard)=>request<Record<string,unknown>>('/api/order-shipments',{method:'POST',body,authGuard}),
+  receiveOrderShipment:(id:string,body:Record<string,unknown>,authGuard?:LocalAuthGuard)=>request<Record<string,unknown>>(`/api/order-shipments/${encodeURIComponent(id)}/deliver`,{method:'POST',body,authGuard}),
   deliverProductionShipment:(id:string,body:Record<string,unknown>)=>request<Record<string,unknown>>(`/api/production-workspace/shipments/${encodeURIComponent(id)}/deliver`,{method:'POST',body}),
   setProductionWorkerType:(id:string,body:Record<string,unknown>)=>request<Record<string,unknown>>(`/api/production-workspace/workers/${encodeURIComponent(id)}/type`,{method:'POST',body}),
   productionDispatch: (orderId: string) => request<import('./production-dispatch-types').ProductionDispatchData>(`/api/production-dispatch?orderId=${encodeURIComponent(orderId)}`),
   productionReviewQueue:(cursor?:string)=>request<import('./production-dispatch-types').ProductionReviewQueueData>('/api/production-dispatch/review-queue',{query:{limit:50,...(cursor?{cursor}:{})}}),
   myProductionDispatch: () => request<import('./production-dispatch-types').ProductionDispatchData>("/api/production-dispatch/mine"),
   productionDispatchPayPreview: (id:string,workDate:string,quantityGood:string) => request<import('./production-dispatch-types').DispatchPayPreview>(`/api/production-dispatch/assignments/${encodeURIComponent(id)}/pay-preview`,{query:{work_date:workDate,quantity_good:quantityGood}}),
+  productionLaborPreview:(orderId:string,itemId:string,date:string,authGuard?:LocalAuthGuard)=>request<{status:'RESOLVED';piece_rate_code:string;rate_unit:string;reason:string}>('/api/production-dispatch/labor-preview',{query:{production_order_id:orderId,order_item_id:itemId,date},authGuard}),
+  receivedProductionWork:(workerId:string,date:string)=>request<Array<{id:string;piece_rate_code:string;product_name:string;production_order_number:string;remaining_quantity:string}>>('/api/production-dispatch/received-work',{query:{worker_id:workerId,date}}),
   productionDispatchRates: (date: string) => request<import('./production-dispatch-types').DispatchRate[]>(`/api/production-dispatch/rates?date=${encodeURIComponent(date)}`),
   productionDispatchPublications: (mine = false) => request<import('./production-dispatch-types').DispatchPublication[]>("/api/production-dispatch/publications", { query: { mine: mine ? "1" : "0" } }),
   createProductionDispatchPublication: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-dispatch/publications", { method: "POST", body }),
@@ -500,6 +555,7 @@ export const localApi = {
   returnProductionDispatchAssignment: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/assignments/${encodeURIComponent(id)}/return`, { method: "POST", body }),
   rejectProductionDispatchAssignment: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/assignments/${encodeURIComponent(id)}/reject`, { method: "POST", body }),
   reportProductionDispatchAssignment: (id: string, body: Record<string, unknown>,authGuard?:LocalAuthGuard) => request<Record<string, unknown>>(`/api/production-dispatch/assignments/${encodeURIComponent(id)}/reports`, { method: "POST", body,authGuard }),
+  reconcileProductionDispatchLabor: (id: string, body: Record<string, unknown>,authGuard?:LocalAuthGuard) => request<Record<string, unknown>>(`/api/production-dispatch/assignments/${encodeURIComponent(id)}/reconcile-labor`, { method: "POST", body,authGuard }),
   reviewProductionDispatchReport: (id: string, body: Record<string, unknown>,authGuard?:LocalAuthGuard) => request<Record<string, unknown>>(`/api/production-dispatch/reports/${encodeURIComponent(id)}/review`, { method: "POST", body,authGuard }),
   reverseProductionDispatchReport: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/reports/${encodeURIComponent(id)}/reverse`, { method: "POST", body }),
   repairProductionDispatchReport: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/reports/${encodeURIComponent(id)}/repair`, { method: "POST", body }),
@@ -508,18 +564,22 @@ export const localApi = {
   splitProductionDispatchBatch: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-dispatch/batches/${encodeURIComponent(id)}/split`, { method: "POST", body }),
   productionOrder: (id: string) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}`),
   createProductionOrder: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-orders", { method: "POST", body }),
-  createProductionOrderGroup: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/production-orders/groups", { method: "POST", body }),
+  createProductionOrderGroup: (body: Record<string, unknown>, authGuard?:LocalAuthGuard) => request<Record<string, unknown>>("/api/production-orders/groups", { method: "POST", body, authGuard }),
   productionReferenceImages: (productId:string) => request<{product_id:string;reference_images:string[]}>(`/api/production-workspace/reference-images?product_id=${encodeURIComponent(productId)}`),
   saveProductionDraftReference: (id:string,body:Record<string,unknown>) => request<Record<string,unknown>>(`/api/production-workspace/${encodeURIComponent(id)}/draft-reference`,{method:'POST',body}),
   releaseProductionOrder: (id: string, body?: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}/release`, { method: "POST", body: body ?? {} }),
   completeProductionOrder: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}/complete`, { method: "POST", body }),
   transitionProductionOrder: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}/transition`, { method: "POST", body }),
-  productionSourceOrders: () => request<Record<string, unknown>[]>("/api/production/source-orders"),
-  productionSalesRequests: (mine = false) => request<import('./production-dispatch-types').ProductionSalesRequest[]>("/api/production-sales/requests", { query: { mine } }),
-  createProductionSalesRequest: (body: Record<string, unknown>) => request<import('./production-dispatch-types').ProductionSalesRequest>("/api/production-sales/requests", { method: "POST", body }),
-  reviewProductionSalesRequest: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-sales/requests/${encodeURIComponent(id)}/review`, { method: "POST", body }),
-  requestProductionSalesChange: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-sales/requests/${encodeURIComponent(id)}/change-request`, { method: "POST", body }),
-  allocateProductionSalesRequest: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-sales/requests/${encodeURIComponent(id)}/allocate`, { method: "POST", body }),
+  productionSourceOrders: (orderId?: string) => request<Record<string, unknown>[]>("/api/production/source-orders", { query: orderId ? { order_id: orderId } : undefined }),
+  productionSalesRequests: (mine = false, scope?: 'purchase') => request<import('./production-dispatch-types').ProductionSalesRequest[]>("/api/production-sales/requests", { query: { mine: mine ? '1' : '0', scope } }),
+  createProductionSalesRequest: (body: Record<string, unknown>,authGuard?:LocalAuthGuard) => request<import('./production-dispatch-types').ProductionSalesRequest>("/api/production-sales/requests", { method: "POST", body,authGuard }),
+  reviewProductionSalesRequest: (id: string, body: Record<string, unknown>,authGuard?:LocalAuthGuard) => request<Record<string, unknown>>(`/api/production-sales/requests/${encodeURIComponent(id)}/review`, { method: "POST", body,authGuard }),
+  requestProductionSalesChange: (id: string, body: Record<string, unknown>,authGuard?:LocalAuthGuard) => request<Record<string, unknown>>(`/api/production-sales/requests/${encodeURIComponent(id)}/change-request`, { method: "POST", body,authGuard }),
+  allocateProductionSalesRequest: (id: string, body: Record<string, unknown>, authGuard?:LocalAuthGuard) => request<Record<string, unknown>>(`/api/production-sales/requests/${encodeURIComponent(id)}/allocate`, { method: "POST", body, authGuard }),
+  purchaseFulfillment: (requestId:string) => request<import('./production-dispatch-types').PurchaseFulfillmentData>('/api/purchase-fulfillment',{query:{request_id:requestId}}),
+  createPurchaseFulfillmentPlans: (body:Record<string,unknown>) => request<import('./production-dispatch-types').PurchaseFulfillmentData>('/api/purchase-fulfillment/plans',{method:'POST',body}),
+  releasePurchaseFulfillmentPlan: (id:string,body:Record<string,unknown>) => request<Record<string,unknown>>(`/api/purchase-fulfillment/plans/${encodeURIComponent(id)}/release`,{method:'POST',body}),
+  receivePurchaseShortage: (id:string,body:Record<string,unknown>) => request<import('./production-dispatch-types').PurchaseFulfillmentData>(`/api/purchase-fulfillment/shortages/${encodeURIComponent(id)}/receipts`,{method:'POST',body}),
   cuttingEstimates: (orderId: string) => request<import('./production-dispatch-types').CuttingEstimate[]>(`/api/production-orders/${encodeURIComponent(orderId)}/cutting-estimates`),
   createCuttingEstimate: (orderId: string, body: Record<string, unknown>) => request<import('./production-dispatch-types').CuttingEstimate>(`/api/production-orders/${encodeURIComponent(orderId)}/cutting-estimates`, { method: "POST", body }),
   submitCuttingEstimate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/cutting-estimates/${encodeURIComponent(id)}/submit`, { method: "POST", body }),
@@ -624,11 +684,12 @@ export const localApi = {
   approveWorkerPayrollProfile: (id: string, body: Record<string, unknown>) => request<WorkerPayrollProfile>(`/api/payroll/worker-profiles/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
   discardWorkerPayrollProfile: (id: string, body: Record<string, unknown>) => request<WorkerPayrollProfile>(`/api/payroll/worker-profiles/${encodeURIComponent(id)}/discard`, { method: "POST", body }),
   payrollProducts: () => request<Record<string, unknown>[]>("/api/payroll/products"),
-  payrollProductRates: (productId?: string | null) => request<Record<string, unknown>[]>("/api/payroll/product-rates", { query: { productId } }),
-  createProductRate: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/product-rates", { method: "POST", body }),
-  updateProductRate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/product-rates/${encodeURIComponent(id)}`, { method: "PATCH", body }),
-  approveProductRate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/product-rates/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
-  discardProductRate: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/product-rates/${encodeURIComponent(id)}/discard`, { method: "POST", body }),
+  payrollProductRates: (productId?: string | null) => request<LocalProductRateRow[]>("/api/payroll/product-rates", { query: { productId } }),
+  inspectProductRateQuote: (query:ProductRateQuoteRequest) => request<ProductRateQuote>("/api/payroll/product-rates/quote", {query}),
+  createProductRate: (body: LocalProductRateCreate,authGuard?:LocalAuthGuard) => request<LocalProductRateRow>("/api/payroll/product-rates", { method: "POST", body,authGuard }),
+  updateProductRate: (id: string, body: LocalProductRateUpdate) => request<LocalProductRateRow>(`/api/payroll/product-rates/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  approveProductRate: (id: string, body: LocalProductRateAction,authGuard?:LocalAuthGuard) => request<LocalProductRateRow>(`/api/payroll/product-rates/${encodeURIComponent(id)}/approve`, { method: "POST", body,authGuard }),
+  discardProductRate: (id: string, body: LocalProductRateAction) => request<LocalProductRateRow>(`/api/payroll/product-rates/${encodeURIComponent(id)}/discard`, { method: "POST", body }),
   payrollInsurance: (workerId?: string | null) => request<Record<string, unknown>[]>("/api/payroll/insurance", { query: { workerId } }),
   createPayrollInsurance: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/payroll/insurance", { method: "POST", body }),
   updatePayrollInsurance: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/payroll/insurance/${encodeURIComponent(id)}`, { method: "PATCH", body }),
@@ -678,6 +739,7 @@ export const localApi = {
   recordMyOvertime: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/my-attendance/overtime", { method: "POST", body }),
   myProductionEntries: (monthStart?: string) => request<Record<string, unknown>[]>("/api/my-attendance/production-entries", { query: { month: monthStart } }),
   myProductEarnings: (month?: string) => request<import('./production-dispatch-types').ProductEarnings>("/api/my-attendance/earnings", { query: { month } }),
+  myPayrollMonth: (month:string) => request<SelfPayrollMonth>('/api/my-attendance/payroll-month',{query:{month}}),
   confirmMyAttendanceDay: (body: Record<string, unknown>) => request<Record<string, unknown>>("/api/my-attendance/day-confirm", { method: "POST", body }),
 };
 

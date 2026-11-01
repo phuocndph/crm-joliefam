@@ -1,3 +1,5 @@
+import { contractBusinessDate } from "@/lib/contract-calculation";
+import { savedSellerValue } from "@/lib/contract-document";
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -47,7 +49,7 @@ export const EditFrameworkContractDialog = ({ open, onOpenChange, contract }: Pr
   useEffect(() => {
     if (open && contract) {
       setStatus(contract.status || "active");
-      setContractDate(contract.contract_date ? new Date(contract.contract_date).toISOString().slice(0, 10) : "");
+      setContractDate(contractBusinessDate(contract.contract_date));
       setNotes(contract.notes || "");
       const seller = contract.seller_info || {};
       setSellerRep(seller.representative || "​");
@@ -122,14 +124,10 @@ export const EditFrameworkContractDialog = ({ open, onOpenChange, contract }: Pr
       await updateContract.mutateAsync({
         id: contract.id,
         status,
-        contract_date: contractDate,
+        ...(contractDate !== contractBusinessDate(contract.contract_date) ? { contract_date: contractDate || null } : {}),
         notes,
         seller_info: {
-          company_name: companySettings.companyName,
-          address: companySettings.address,
-          phone: companySettings.phone,
-          tax_code: companySettings.taxCode,
-          bank_info: companySettings.bankInfo,
+          ...(contract.seller_info || {}),
           representative: sellerRep,
           position: sellerPos,
         },
@@ -153,7 +151,7 @@ export const EditFrameworkContractDialog = ({ open, onOpenChange, contract }: Pr
 
         <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
           {/* Basic info */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <Label>Mã hợp đồng</Label>
               <Input value={contract?.contract_number || ""} readOnly className="bg-muted" />
@@ -179,14 +177,14 @@ export const EditFrameworkContractDialog = ({ open, onOpenChange, contract }: Pr
           {/* Seller info */}
           <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
             <h3 className="font-semibold text-sm">BÊN A (Bên cung cấp)</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Công ty</Label>
-                <Input value={companySettings.companyName || ""} readOnly className="bg-muted text-xs" />
+                <Input value={savedSellerValue(contract?.seller_info, "company_name", companySettings.companyName)} readOnly className="bg-muted text-xs" />
               </div>
               <div>
                 <Label className="text-xs">Địa chỉ</Label>
-                <Input value={companySettings.address || ""} readOnly className="bg-muted text-xs" />
+                <Input value={savedSellerValue(contract?.seller_info, "address", companySettings.address)} readOnly className="bg-muted text-xs" />
               </div>
               <div>
                 <Label className="text-xs">Người đại diện</Label>
@@ -202,7 +200,7 @@ export const EditFrameworkContractDialog = ({ open, onOpenChange, contract }: Pr
           {/* Buyer info */}
           <div className="p-4 border rounded-lg space-y-3">
             <h3 className="font-semibold text-sm">BÊN B (Bên sử dụng)</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Tên công ty *</Label>
                 <Input value={buyerInfo.company_name} onChange={e => setBuyerInfo(p => ({ ...p, company_name: e.target.value }))} className="text-xs" />

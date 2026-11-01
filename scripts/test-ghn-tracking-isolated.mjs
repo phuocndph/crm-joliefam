@@ -196,6 +196,22 @@ try {
     assert.equal(after.raw_data.source, 'keep-original'); assert.equal(after.raw_data.local_ghn_status_refresh.status, 'delivering');
     assert.equal(after.delivered_date, null); assert.equal((await pool.query('select actor_id from local_auth_audit_events')).rows[0].actor_id, 'employee');
   });
+  await check('refresh derives recipient suffix with audit evidence without changing customer snapshot or linkage', async () => {
+    await seed(); const before = await row('one');
+    onRequest = async (_url,body) => ({...response(body.order_code),to_name:'Recipient_2588P'});
+    assert.equal((await service.refresh('manager',{id:'one'})).updated,1);
+    let after = await row('one');
+    assert.equal(after.internal_order_code,'2588');
+    assert.equal(after.raw_data.local_ghn_status_refresh.to_name,'Recipient_2588P');
+    for (const key of ['customer_name','customer_phone','customer_address','cod_amount','order_id','manager_id','tenant_id','tracking_notes']) assert.deepEqual(after[key],before[key],key);
+    onRequest = async (_url,body) => ({...response(body.order_code),to_name:'Recipient_7777h'});
+    assert.equal((await service.refresh('manager',{id:'one'})).updated,1);
+    after=await row('one'); assert.equal(after.internal_order_code,'7777');
+    assert.equal(after.raw_data.local_ghn_status_refresh.to_name,'Recipient_7777h');
+    onRequest = async (_url,body) => ({...response(body.order_code),to_name:'Recipient without code'});
+    assert.equal((await service.refresh('manager',{id:'one'})).updated,1);
+    assert.equal((await row('one')).internal_order_code,null);
+  });
   await check('four allowed shops use fixed configured header; fifth/wrong code/saved-shop mismatch cannot update', async () => {
     for (const shop of [123,456,789,111]) {
       await seed(String(shop), 'manager', { shop }); onRequest = async (_url, body) => response(body.order_code, 'delivering', shop);

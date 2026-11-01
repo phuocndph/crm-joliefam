@@ -126,7 +126,7 @@ export class ExternalReadAdapters {
     return { id, district: positive(shop.district_id, 'Quận gửi'), metadata: shop };
   }
   private statusFor(config: GhnRuntimeConfig, goong = goongPublicStatus(goongEnvironment(this.env))) {
-    return { ghn: { configured: config.configured, configured_shop_count: config.shops.length, mode: 'read_and_create', source: config.source, settings_mode: config.mode, revision: config.revision, has_saved_key: config.hasSavedKey, variables: ['GHN_API_KEY', 'GHN_SHOP_ID', 'GHN_SHOP_IDS'], writes_supported: true, create_supported:true, edit_supported:false, cancel_supported:false, print_supported:true }, tax: { configured: true, mode: 'public_read_only', provider: 'VietQR' }, goong: { ...goong, capability: 'address_autocomplete', settings_path: '/api-settings', variables: ['GOONG_API_KEY'] }, einvoice: { configured: false, mode: 'draft_only', live_supported: false }, ai: { mode: 'existing_settings', settings_path: '/ai-settings' } };
+    return { ghn: { configured: config.configured, configured_shop_count: config.shops.length, mode: 'read_and_create', source: config.source, settings_mode: config.mode, revision: config.revision, has_saved_key: config.hasSavedKey, variables: ['GHN_API_KEY', 'GHN_SHOP_ID', 'GHN_SHOP_IDS'], writes_supported: true, create_supported:true, edit_supported:true, cancel_supported:false, print_supported:true }, tax: { configured: true, mode: 'public_read_only', provider: 'VietQR' }, goong: { ...goong, capability: 'address_autocomplete', settings_path: '/api-settings', variables: ['GOONG_API_KEY'] }, einvoice: { configured: false, mode: 'draft_only', live_supported: false }, ai: { mode: 'existing_settings', settings_path: '/ai-settings' } };
   }
   status() {
     return this.statusFor(this.staticConfig());
@@ -210,7 +210,7 @@ export class ExternalReadAdapters {
     if (tracking) {
       if (!shops.includes(String(result.data.shop_id))) throw failure('Vận đơn không thuộc cửa hàng GHN đã cấu hình.', 403);
       if (result.data.order_code !== data.order_code) throw failure('GHN trả về mã vận đơn khác yêu cầu.', 502);
-      const row = result.data; payload = { ...row, orderCode: row.order_code, status: row.status, statusText: row.status, customerName: row.to_name, customerPhone: row.to_phone, customerAddress: [row.to_address, row.to_ward_name, row.to_district_name, row.to_province_name].filter(Boolean).join(', '), weight: row.weight, createdDate: row.created_date, expectedDeliveryTime: row.leadtime, deliveredDate: row.finish_date, codAmount: row.cod_amount, trackingUrl: `https://donhang.ghn.vn/?order_code=${encodeURIComponent(row.order_code)}`, rawData: row, logs: [] };
+      const row = result.data; payload = { ...row, orderCode: row.order_code, status: row.status, statusText: row.status, customerName: row.to_name, customerPhone: row.to_phone, customerAddress: [row.to_address, row.to_ward_name, row.to_district_name, row.to_province_name].filter(Boolean).join(', '), weight: row.weight, createdDate: row.created_date, expectedDeliveryTime: row.leadtime, deliveredDate: row.finish_date, codAmount: row.cod_amount, trackingUrl: `https://donhang.ghn.vn/?order_code=${encodeURIComponent(row.order_code)}`, rawData: row, logs: Array.isArray(row.log) ? row.log.map((entry: Body) => ({status:entry.status,updated_date:entry.updated_date||entry.time,comment:entry.comment||entry.description||entry.reason||''})) : [] };
     }
     return { success: true, data: payload, local_only: false, source: 'ghn' };
   }

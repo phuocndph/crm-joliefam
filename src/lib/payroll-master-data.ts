@@ -19,6 +19,13 @@ import type {
 } from "@/integrations/supabase/production-execution-types";
 import { isLocalBackend } from "@/lib/runtime-config";
 import { localApi } from "@/lib/local-api";
+import type {LocalProductRateCreate,LocalProductRateUpdate,LocalProductRateAction} from '@/lib/product-rate-authoring-types';
+
+// Local authoring is closed and exact. These adapters never fetch a newer basis.
+export const createLocalProductPieceRateDraft=(input:LocalProductRateCreate)=>localApi.createProductRate(input);
+export const updateLocalProductPieceRateDraft=(id:string,input:LocalProductRateUpdate)=>localApi.updateProductRate(id,input);
+export const approveLocalProductPieceRate=(id:string,input:LocalProductRateAction)=>localApi.approveProductRate(id,input);
+export const discardLocalProductPieceRateDraft=(id:string,input:LocalProductRateAction)=>localApi.discardProductRate(id,input);
 
 export type {
   BankAccountStatus,
@@ -384,7 +391,7 @@ export async function createProductPieceRateDraft(input: {
   rate: number; effective_from: string; effective_to?: string | null;
   unit?: PieceRateUnit; reason: string; source_reference?: string | null;
 }): Promise<ProductPieceRateVersion> {
-  if (isLocalBackend()) return localApi.createProductRate(input) as unknown as Promise<ProductPieceRateVersion>;
+  if (isLocalBackend()) throw new Error('Dùng biểu mẫu đơn giá local có chuỗi giá và mã thao tác.');
   const { data, error } = await supabase.rpc("create_product_piece_rate_draft", {
     p_product_id: input.product_id || "",
     p_rate: input.rate,
@@ -399,7 +406,7 @@ export async function createProductPieceRateDraft(input: {
 }
 
 export async function approveProductPieceRate(id: string, reason: string) {
-  if (isLocalBackend()) return localApi.approveProductRate(id, { reason }) as unknown as Promise<ProductPieceRateVersion>;
+  if (isLocalBackend()) throw new Error('Dùng thao tác duyệt local có phiên bản nguồn và mã thao tác.');
   const { data, error } = await supabase.rpc("approve_product_piece_rate", {
     p_rate_version_id: id, p_reason: reason, p_supersede_previous: true,
   });
@@ -412,7 +419,7 @@ export async function updateProductPieceRateDraft(input: {
   rate: number; effective_from: string; effective_to?: string | null;
   unit?: PieceRateUnit; source_reference?: string | null; reason: string;
 }): Promise<ProductPieceRateVersion> {
-  if (isLocalBackend()) return localApi.updateProductRate(input.id, input) as unknown as Promise<ProductPieceRateVersion>;
+  if (isLocalBackend()) throw new Error('Dùng biểu mẫu đơn giá local có chuỗi giá và phiên bản nguồn.');
   const { data, error } = await supabase.rpc("update_product_piece_rate_draft", {
     p_rate_version_id: input.id,
     p_rate: input.rate,
@@ -427,7 +434,7 @@ export async function updateProductPieceRateDraft(input: {
 }
 
 export async function discardProductPieceRateDraft(id: string, reason: string) {
-  if (isLocalBackend()) return localApi.discardProductRate(id, { reason }) as unknown as Promise<ProductPieceRateVersion>;
+  if (isLocalBackend()) throw new Error('Dùng thao tác hủy local có phiên bản nguồn và mã thao tác.');
   const { data, error } = await supabase.rpc("discard_product_piece_rate_draft", {
     p_rate_version_id: id,
     p_reason: reason,

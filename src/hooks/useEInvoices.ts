@@ -1,3 +1,4 @@
+import { useAuthReady } from "@/hooks/useAuthReady";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -5,8 +6,10 @@ import { isLocalBackend } from "@/lib/runtime-config";
 import { localApi } from "@/lib/local-api";
 
 export const useEInvoices = (contractId?: string) => {
+  const { user, isReady } = useAuthReady();
   return useQuery({
-    queryKey: ["einvoices", contractId || "all"],
+    queryKey: ["einvoices", user?.id, contractId || "all"],
+    enabled: isReady && Boolean(user),
     queryFn: async () => {
       if (isLocalBackend()) {
         return (await localApi.einvoices(contractId))

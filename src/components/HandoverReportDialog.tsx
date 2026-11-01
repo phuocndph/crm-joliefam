@@ -1,4 +1,5 @@
-import { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useMemo, useReducer } from "react";
+import { createHandoverDefaults, loadHandoverReport, convertHandoverReport, resolveHandoverReport, isLegacyHandover, handoverTemplateVersion, handoverToday, handoverFieldValue, createHandoverSession, handoverEditorReducer, type HandoverItem, type HandoverReportState } from "@/lib/handover-report";
 import { OnlineStampSignature } from "@/components/OnlineStampSignature";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -27,8 +28,6 @@ interface Props {
 
 const FORM_KEY = "handover_report";
 
-interface HandoverItem { name: string; specifications: string; quantity: string; status: string; }
-
 export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) => {
   const printRef = useRef<HTMLDivElement>(null);
   const { settings: companySettings } = useTemplateSettings();
@@ -37,77 +36,37 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
   const [showOnlineStamp, setShowOnlineStamp] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const defaults = useMemo(() => {
-    const seller = contract?.seller_info || {};
-    const buyer = contract?.buyer_info || {};
-    const items = Array.isArray(contract?.items) ? contract.items : [];
-    const sellerName = companySettings.companyName || seller.company_name || "";
-    const sellerAddr = companySettings.address || seller.address || "...";
-    const buyerName = buyer.company_name || contract?.customers?.company || contract?.customers?.name || "—";
-    const partyToText = (label: string, name: string, rep: string, pos: string, addr: string, phone: string, tax: string) => {
-      const lines = [
-        `Công ty: ${name}`,
-        `Đại diện: ${rep || "..."}${pos ? `    Chức vụ: ${pos}` : ""}`,
-      ];
-      if (addr) lines.push(`Địa chỉ: ${addr}`);
-      if (phone) lines.push(`Điện thoại: ${phone}`);
-      if (tax) lines.push(`MST: ${tax}`);
-      return lines.join("\n");
-    };
-    return {
-      title: "BIÊN BẢN BÀN GIAO",
-      subtitle: `(Kèm theo Hợp đồng số: ${contract?.contract_number || ""})`,
-      handover_date: new Date().toISOString().split("T")[0],
-      intro1: `Hôm nay, ngày {ngày_bàn_giao}, tại ${sellerAddr}`,
-      intro2: `Căn cứ Hợp đồng số ${contract?.contract_number || ""} ngày ${contract?.contract_date ? new Date(contract.contract_date).toLocaleDateString("vi-VN") : ""}, hai bên tiến hành bàn giao như sau:`,
-      party_a_label: "BÊN GIAO (Bên A):",
-      party_a_text: partyToText("A", sellerName, seller.representative || "...", seller.position || "Giám đốc", sellerAddr, companySettings.phone || seller.phone || "", companySettings.taxCode || seller.tax_code || ""),
-      party_b_label: "BÊN NHẬN (Bên B):",
-      party_b_text: partyToText("B", buyerName, buyer.representative || "...", buyer.position || "", buyer.address || "", buyer.phone || "", buyer.tax_code || ""),
-      items_title: "I. NỘI DUNG BÀN GIAO:",
-      items: items.map((it: any) => ({
-        name: it.name || "",
-        specifications: it.specifications || it.description || "",
-        quantity: String(it.quantity || 1),
-        status: "Đạt",
-      })) as HandoverItem[],
-      conclusion_title: "II. KẾT LUẬN:",
-      conclusion: "Hàng hóa đạt yêu cầu chất lượng theo hợp đồng. Hai bên thống nhất nghiệm thu đạt.",
-      notes_title: "III. GHI CHÚ:",
-      notes: "",
-      footer_note: "Biên bản được lập thành 02 bản, mỗi bên giữ 01 bản có giá trị pháp lý như nhau.",
-      sign_label_a: "BÊN GIAO (BÊN A)",
-      sign_label_b: "BÊN NHẬN (BÊN B)",
-      sign_caption_a: "(Ký, đóng dấu)",
-      sign_caption_b: "(Ký, ghi rõ họ tên)",
-      sign_name_a: seller.representative && seller.representative !== "..." ? seller.representative : "",
-      sign_name_b: buyer.representative && buyer.representative !== "..." ? buyer.representative : "",
-    };
-  }, [contract, companySettings]);
-
-  const [state, setState] = useState<any>(defaults);
+  const defaults = useMemo(() => createHandoverDefaults(contract, companySettings), [contract, companySettings]);
+  const [session, dispatch] = useReducer(handoverEditorReducer, defaults, createHandoverSession);
+  const state = session.report;
+  const contractKey = String(contract?.id ?? contract?.contract_number ?? "");
 
   useEffect(() => {
     if (!contract) return;
     const saved = contract.document_overrides?.[FORM_KEY];
     const synced = syncContractNumberInOverrides(saved, contract.contract_number);
-    setState({ ...defaults, ...(synced || {}) });
-  }, [contract, defaults]);
+    dispatch({ type: "hydrate", contractKey, open, report: loadHandoverReport(defaults, synced), sourceKey: JSON.stringify(saved ?? null) });
+  }, [open, contract, contractKey, defaults]);
 
   if (!contract) return null;
 
-  const set = (k: string, v: any) => setState((s: any) => ({ ...s, [k]: v }));
+  const edit = (update: (report: HandoverReportState) => HandoverReportState) => dispatch({ type: "edit", update });
+  const set = <K extends keyof HandoverReportState>(k: K, v: HandoverReportState[K]) => edit(s => ({ ...s, [k]: v }));
   const setItem = (i: number, k: keyof HandoverItem, v: string) =>
-    setState((s: any) => ({ ...s, items: s.items.map((it: HandoverItem, idx: number) => idx === i ? { ...it, [k]: v } : it) }));
-  const addItem = () => setState((s: any) => ({ ...s, items: [...s.items, { name: "", specifications: "", quantity: "1", status: "Đạt" }] }));
-  const removeItem = (i: number) => setState((s: any) => ({ ...s, items: s.items.filter((_: any, idx: number) => idx !== i) }));
+    edit(s => ({ ...s, items: s.items.map((it, idx) => idx === i ? { ...it, [k]: v } : it) }));
+  const addItem = () => edit(s => ({ ...s, items: [...s.items, { name: "", specifications: "", quantity: "1", status: handoverTemplateVersion(s) === 3 ? "" : "Đạt" }] }));
+  const removeItem = (i: number) => edit(s => ({ ...s, items: s.items.filter((_, idx) => idx !== i) }));
 
-  const formatDate = (d: string) => d ? new Date(d).toLocaleDateString("vi-VN") : "—";
-  const intro1Resolved = state.intro1.replace("{ngày_bàn_giao}", formatDate(state.handover_date));
+  const legacy = isLegacyHandover(state);
+  const version = handoverTemplateVersion(state);
+  const resolved = resolveHandoverReport(state);
+  const buyerAddress = handoverFieldValue(contract.buyer_info?.address, "address");
+  const onlineStampVisible = version === 1 && showOnlineStamp && Boolean(companySettings.stampUrl || companySettings.signatureUrl);
 
   const handleSave = async () => {
     setSaving(true);
-    const next = { ...(contract.document_overrides || {}), [FORM_KEY]: state };
+    const submitted = state;
+    const next = { ...(contract.document_overrides || {}), [FORM_KEY]: submitted };
     try {
       if (isLocalBackend()) await localApi.updateContract(contract.id, { document_overrides: next });
       else {
@@ -120,26 +79,15 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
       return;
     }
     setSaving(false);
+    dispatch({ type: "saved", contractKey, submitted });
     qc.invalidateQueries({ queryKey: ["contracts"] });
     toast({ title: "Đã lưu nội dung biểu mẫu" });
   };
 
-  const handleRestore = async () => {
-    const next = { ...(contract.document_overrides || {}) };
-    delete next[FORM_KEY];
-    try {
-      if (isLocalBackend()) await localApi.updateContract(contract.id, { document_overrides: next });
-      else {
-        const { error } = await supabase.from("contracts").update({ document_overrides: next }).eq("id", contract.id);
-        if (error) throw error;
-      }
-    } catch (error) {
-      toast({ title: "Lỗi", description: error instanceof Error ? error.message : "Không thể khôi phục biên bản", variant: "destructive" });
-      return;
-    }
-    setState(defaults);
-    qc.invalidateQueries({ queryKey: ["contracts"] });
-    toast({ title: "Đã khôi phục mặc định" });
+  const handleRestore = () => {
+    edit(() => defaults);
+    setShowOnlineStamp(false);
+    toast({ title: "Đã đặt lại bản nháp", description: "Chưa thay đổi biên bản đã lưu. Bấm Lưu để áp dụng." });
   };
 
   const handlePrint = () => {
@@ -156,6 +104,7 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
       th { background: #f0f0f0; }
       .text-center { text-align: center; }
       .font-bold { font-weight: bold; }
+      .whitespace-pre-wrap { white-space: pre-wrap; }
     </style></head><body>${content.innerHTML}</body></html>`);
     win.document.close();
     win.print();
@@ -183,7 +132,7 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
       const font = "Times New Roman";
 
       const headerRow = new DocxTableRow({
-        children: ["TT", "Tên sản phẩm", "Kích thước", "SL", "Tình trạng"].map(text =>
+        children: ["TT", "Tên sản phẩm", resolved.specifications_header, "SL", resolved.status_header].map(text =>
           new DocxTableCell({
             children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 20, font })], alignment: AlignmentType.CENTER })],
             borders: borderStyle,
@@ -197,7 +146,7 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
             new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: item.name || "—", size: 20, font })] })], borders: borderStyle }),
             new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: item.specifications || "—", size: 20, font })] })], borders: borderStyle }),
             new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: item.quantity || "1", size: 20, font })], alignment: AlignmentType.CENTER })], borders: borderStyle }),
-            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: item.status || "Đạt", size: 20, font })], alignment: AlignmentType.CENTER })], borders: borderStyle }),
+            new DocxTableCell({ children: [new Paragraph({ children: [new TextRun({ text: item.status || resolved.status_fallback, size: 20, font })], alignment: AlignmentType.CENTER })], borders: borderStyle }),
           ],
         })
       );
@@ -213,10 +162,10 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
         new Paragraph({ children: [new TextRun({ text: "————————", size: 20, font })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
         new Paragraph({ children: [new TextRun({ text: state.title, bold: true, size: 32, font, color: "1a56db" })], alignment: AlignmentType.CENTER, spacing: { before: 200 } }),
         new Paragraph({ children: [new TextRun({ text: state.subtitle, italics: true, size: 20, font })], alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
-        new Paragraph({ children: [new TextRun({ text: intro1Resolved, size: 20, font })], spacing: { after: 100 } }),
+        ...resolved.eventLines.map(text => new Paragraph({ children: [new TextRun({ text, size: 20, font })], spacing: { after: 100 } })),
         new Paragraph({ children: [new TextRun({ text: state.intro2, size: 20, font })], spacing: { after: 200 } }),
-        ...partyToParas(state.party_a_label, state.party_a_text),
-        ...partyToParas(state.party_b_label, state.party_b_text),
+        ...partyToParas(state.party_a_label, resolved.party_a_text),
+        ...partyToParas(state.party_b_label, resolved.party_b_text),
         new Paragraph({ children: [new TextRun({ text: state.items_title, bold: true, size: 22, font })], spacing: { before: 200 } }),
         new DocxTable({ rows: [headerRow, ...itemRows], width: { size: 100, type: WidthType.PERCENTAGE } }),
         new Paragraph({ children: [new TextRun({ text: state.conclusion_title, bold: true, size: 22, font })], spacing: { before: 200 } }),
@@ -238,7 +187,8 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
                   new Paragraph({ children: [new TextRun({ text: state.sign_label_a, bold: true, size: 22, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ children: [new TextRun({ text: state.sign_caption_a, italics: true, size: 20, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }),
-                  new Paragraph({ children: [new TextRun({ text: state.sign_name_a || "", bold: true, size: 20, font })], alignment: AlignmentType.CENTER }),
+                  new Paragraph({ children: [new TextRun({ text: resolved.sign_name_a || "", bold: true, size: 20, font })], alignment: AlignmentType.CENTER }),
+                  ...(resolved.sign_role_a ? [new Paragraph({ children: [new TextRun({ text: resolved.sign_role_a, size: 20, font })], alignment: AlignmentType.CENTER })] : []),
                 ],
                 borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
               }),
@@ -247,7 +197,8 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
                   new Paragraph({ children: [new TextRun({ text: state.sign_label_b, bold: true, size: 22, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ children: [new TextRun({ text: state.sign_caption_b, italics: true, size: 20, font })], alignment: AlignmentType.CENTER }),
                   new Paragraph({ text: "" }), new Paragraph({ text: "" }), new Paragraph({ text: "" }),
-                  new Paragraph({ children: [new TextRun({ text: state.sign_name_b || "", bold: true, size: 20, font })], alignment: AlignmentType.CENTER }),
+                  new Paragraph({ children: [new TextRun({ text: resolved.sign_name_b || "", bold: true, size: 20, font })], alignment: AlignmentType.CENTER }),
+                  ...(resolved.sign_role_b ? [new Paragraph({ children: [new TextRun({ text: resolved.sign_role_b, size: 20, font })], alignment: AlignmentType.CENTER })] : []),
                 ],
                 borders: noBorder, width: { size: 50, type: WidthType.PERCENTAGE },
               }),
@@ -268,23 +219,41 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
     }
   };
 
-  const seller = contract.seller_info || {};
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Biên bản Bàn giao - {contract.contract_number}</DialogTitle>
+          <DialogTitle>Biên bản giao nhận hàng hóa - {contract.contract_number}</DialogTitle>
         </DialogHeader>
+
+        {legacy && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <p>Đang dùng mẫu đã lưu trước đây. Nội dung, thông tin giao nhận và người ký đã lưu được giữ nguyên. Chuyển sang mẫu mới để dùng phần ký trống và nội dung ghi nhận giao nhận.</p>
+            <Button size="sm" variant="outline" className="mt-2" onClick={() => { edit(s => convertHandoverReport(s, defaults)); setShowOnlineStamp(false); }}>Dùng mẫu bàn giao mới</Button>
+          </div>
+        )}
+        {session.dirty && <p role="status" className="text-sm text-amber-700">Có thay đổi chưa lưu. Biên bản đã lưu chỉ thay đổi khi bấm Lưu.</p>}
+        {!legacy && session.legacyReport && <Button size="sm" variant="outline" className="self-start" onClick={() => dispatch({ type: "back" })}>Quay lại mẫu đã lưu</Button>}
 
         <Accordion type="single" collapsible defaultValue="basic" className="mb-4">
           <AccordionItem value="basic">
-            <AccordionTrigger>Thông tin cơ bản</AccordionTrigger>
+            <AccordionTrigger>Thông tin giao nhận</AccordionTrigger>
             <AccordionContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-1">
-                <div><Label>Ngày bàn giao</Label><Input type="date" value={state.handover_date} onChange={e => set("handover_date", e.target.value)} /></div>
-                <div className="md:col-span-2"><Label>Kết luận</Label><Textarea value={state.conclusion} onChange={e => set("conclusion", e.target.value)} rows={2} /></div>
-                <div className="md:col-span-3"><Label>Ghi chú</Label><Textarea value={state.notes} onChange={e => set("notes", e.target.value)} rows={2} /></div>
+                <div>
+                  <Label htmlFor="handover-date">Ngày giao nhận thực tế</Label>
+                  <div className="flex gap-2"><Input id="handover-date" type="date" value={state.handover_date} onChange={e => set("handover_date", e.target.value)} /><Button variant="outline" size="sm" className="shrink-0" onClick={() => set("handover_date", handoverToday())}>Hôm nay</Button></div>
+                </div>
+                {version !== 1 && <>
+                  <div><Label htmlFor="handover-time">Giờ giao nhận (tùy chọn)</Label><Input id="handover-time" type="time" value={state.handover_time} onChange={e => set("handover_time", e.target.value)} /></div>
+                  <div className="md:col-span-3">
+                    <Label htmlFor="handover-location">Địa điểm giao nhận thực tế</Label>
+                    <Input id="handover-location" value={state.handover_location} onChange={e => set("handover_location", e.target.value)} placeholder="Kho, xưởng hoặc địa chỉ nơi hai bên giao nhận" />
+                    {buyerAddress && <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Button size="sm" variant="outline" onClick={() => set("handover_location", buyerAddress)}>Dùng địa chỉ bên nhận</Button><span>Chỉ sử dụng khi trùng với nơi giao nhận thực tế.</span></div>}
+                  </div>
+                </>}
+                <div className="md:col-span-3"><Label htmlFor="handover-conclusion">Ghi nhận giao nhận</Label><Textarea id="handover-conclusion" value={state.conclusion} onChange={e => set("conclusion", e.target.value)} rows={2} /></div>
+                <div className="md:col-span-3"><Label htmlFor="handover-notes">Ghi chú và nội dung cần xử lý</Label><Textarea id="handover-notes" value={state.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="Ghi rõ hàng thiếu, chênh lệch, lỗi hoặc nội dung hai bên cần xử lý (nếu có)" /></div>
               </div>
             </AccordionContent>
           </AccordionItem>
@@ -297,40 +266,39 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
                   <div><Label>Tiêu đề</Label><Input value={state.title} onChange={e => set("title", e.target.value)} /></div>
                   <div><Label>Phụ đề</Label><Input value={state.subtitle} onChange={e => set("subtitle", e.target.value)} /></div>
                 </div>
-                <div><Label>Câu mở 1 (dùng {`{ngày_bàn_giao}`} để chèn ngày)</Label><Textarea value={state.intro1} onChange={e => set("intro1", e.target.value)} rows={2} /></div>
+                {version === 1 && <div><Label>Câu mở 1 (dùng {`{ngày_bàn_giao}`} để chèn ngày)</Label><Textarea value={state.intro1} onChange={e => set("intro1", e.target.value)} rows={2} /></div>}
                 <div><Label>Câu mở 2</Label><Textarea value={state.intro2} onChange={e => set("intro2", e.target.value)} rows={2} /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Nhãn Bên A</Label><Input value={state.party_a_label} onChange={e => set("party_a_label", e.target.value)} /></div>
-                  <div><Label>Nhãn Bên B</Label><Input value={state.party_b_label} onChange={e => set("party_b_label", e.target.value)} /></div>
-                  <div><Label>Thông tin Bên A</Label><Textarea value={state.party_a_text} onChange={e => set("party_a_text", e.target.value)} rows={5} /></div>
-                  <div><Label>Thông tin Bên B</Label><Textarea value={state.party_b_text} onChange={e => set("party_b_text", e.target.value)} rows={5} /></div>
+                  <div><Label>Nhãn bên giao</Label><Input value={state.party_a_label} onChange={e => set("party_a_label", e.target.value)} /></div>
+                  <div><Label>Nhãn bên nhận</Label><Input value={state.party_b_label} onChange={e => set("party_b_label", e.target.value)} /></div>
+                  <div><Label>Thông tin bên giao</Label><Textarea value={state.party_a_text} onChange={e => set("party_a_text", e.target.value)} rows={5} /></div>
+                  <div><Label>Thông tin bên nhận</Label><Textarea value={state.party_b_text} onChange={e => set("party_b_text", e.target.value)} rows={5} /></div>
                 </div>
                 <div><Label>Tiêu đề mục bàn giao</Label><Input value={state.items_title} onChange={e => set("items_title", e.target.value)} /></div>
-                <div><Label>Tiêu đề mục kết luận</Label><Input value={state.conclusion_title} onChange={e => set("conclusion_title", e.target.value)} /></div>
+                <div><Label>Tiêu đề mục ghi nhận giao nhận</Label><Input value={state.conclusion_title} onChange={e => set("conclusion_title", e.target.value)} /></div>
                 <div><Label>Tiêu đề mục ghi chú</Label><Input value={state.notes_title} onChange={e => set("notes_title", e.target.value)} /></div>
                 <div><Label>Câu kết</Label><Textarea value={state.footer_note} onChange={e => set("footer_note", e.target.value)} rows={2} /></div>
-                <div className="grid grid-cols-2 gap-3">
+                {legacy && <div className="grid grid-cols-2 gap-3">
                   <div><Label>Nhãn ký A</Label><Input value={state.sign_label_a} onChange={e => set("sign_label_a", e.target.value)} /></div>
                   <div><Label>Nhãn ký B</Label><Input value={state.sign_label_b} onChange={e => set("sign_label_b", e.target.value)} /></div>
                   <div><Label>Chú thích ký A</Label><Input value={state.sign_caption_a} onChange={e => set("sign_caption_a", e.target.value)} /></div>
                   <div><Label>Chú thích ký B</Label><Input value={state.sign_caption_b} onChange={e => set("sign_caption_b", e.target.value)} /></div>
-                  <div><Label>Tên người ký A</Label><Input value={state.sign_name_a} onChange={e => set("sign_name_a", e.target.value)} /></div>
-                  <div><Label>Tên người ký B</Label><Input value={state.sign_name_b} onChange={e => set("sign_name_b", e.target.value)} /></div>
-                </div>
+                </div>}
               </div>
             </AccordionContent>
           </AccordionItem>
 
           <AccordionItem value="items">
-            <AccordionTrigger>Danh sách hàng bàn giao ({state.items.length})</AccordionTrigger>
+            <AccordionTrigger>Hàng hóa giao nhận ({state.items.length})</AccordionTrigger>
             <AccordionContent>
               <div className="space-y-2 p-1">
+                <p className="text-xs text-muted-foreground">Đối chiếu và chỉnh số lượng, tình trạng theo hàng thực giao.</p>
                 {state.items.map((it: HandoverItem, i: number) => (
                   <div key={i} className="grid grid-cols-12 gap-2 items-center">
                     <Input className="col-span-4" placeholder="Tên" value={it.name} onChange={e => setItem(i, "name", e.target.value)} />
-                    <Input className="col-span-4" placeholder="Kích thước" value={it.specifications} onChange={e => setItem(i, "specifications", e.target.value)} />
+                    <Input className="col-span-4" placeholder="Quy cách / kích thước" value={it.specifications} onChange={e => setItem(i, "specifications", e.target.value)} />
                     <Input className="col-span-1" placeholder="SL" value={it.quantity} onChange={e => setItem(i, "quantity", e.target.value)} />
-                    <Input className="col-span-2" placeholder="Tình trạng" value={it.status} onChange={e => setItem(i, "status", e.target.value)} />
+                    <Input className="col-span-2" aria-label={`Tình trạng dòng ${i + 1}`} placeholder="Tình trạng thực tế" value={it.status} onChange={e => setItem(i, "status", e.target.value)} />
                     <Button size="icon" variant="ghost" onClick={() => removeItem(i)}><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 ))}
@@ -342,16 +310,15 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
 
         <div className="flex flex-wrap gap-2 mb-4 items-center">
           <Button size="sm" onClick={handleSave} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? "Đang lưu..." : "Lưu"}</Button>
-          <Button size="sm" variant="outline" onClick={handleRestore}><RotateCcw className="h-4 w-4 mr-1" />Khôi phục mặc định</Button>
+          <Button size="sm" variant="outline" onClick={handleRestore}><RotateCcw className="h-4 w-4 mr-1" />Đặt lại bản nháp</Button>
           <div className="border-l mx-1 h-6" />
           <Button size="sm" variant="outline" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />In</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadPDF}><FileDown className="h-4 w-4 mr-1" />Xuất PDF</Button>
           <Button size="sm" variant="outline" onClick={handleDownloadWord}><FileText className="h-4 w-4 mr-1" />Xuất Word</Button>
-          <div className="border-l mx-1 h-6" />
-          <div className="flex items-center gap-2">
+          {version === 1 && <div className="flex items-center gap-2">
             <Switch checked={showOnlineStamp} onCheckedChange={setShowOnlineStamp} />
-            <span className="text-xs font-medium">Ký & đóng dấu online</span>
-          </div>
+            <span className="text-xs font-medium">Chèn ảnh ký & con dấu đã cấu hình</span>
+          </div>}
         </div>
 
         <div ref={printRef} className="bg-white p-6 rounded-lg border space-y-4" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000", lineHeight: 1.6, fontSize: "13px" }}>
@@ -366,16 +333,16 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
             <p className="text-sm italic">{state.subtitle}</p>
           </div>
 
-          <p className="whitespace-pre-wrap">{intro1Resolved}</p>
+          {resolved.eventLines.map((line, index) => <p key={index} className="whitespace-pre-wrap">{line}</p>)}
           <p className="whitespace-pre-wrap">{state.intro2}</p>
 
           <div className="p-3 border rounded">
             <p className="font-bold mb-1">{state.party_a_label}</p>
-            <p className="whitespace-pre-wrap">{state.party_a_text}</p>
+            <p className="whitespace-pre-wrap">{resolved.party_a_text}</p>
           </div>
           <div className="p-3 border rounded">
             <p className="font-bold mb-1">{state.party_b_label}</p>
-            <p className="whitespace-pre-wrap">{state.party_b_text}</p>
+            <p className="whitespace-pre-wrap">{resolved.party_b_text}</p>
           </div>
 
           <p className="font-bold mt-4">{state.items_title}</p>
@@ -384,9 +351,9 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
               <tr style={{ backgroundColor: "#f3f4f6" }}>
                 <th className="border border-gray-400 p-2 text-center w-10">TT</th>
                 <th className="border border-gray-400 p-2 text-left">Tên sản phẩm</th>
-                <th className="border border-gray-400 p-2 text-left">Kích thước</th>
+                <th className="border border-gray-400 p-2 text-left">{resolved.specifications_header}</th>
                 <th className="border border-gray-400 p-2 text-center w-12">SL</th>
-                <th className="border border-gray-400 p-2 text-center">Tình trạng</th>
+                <th className="border border-gray-400 p-2 text-center">{resolved.status_header}</th>
               </tr>
             </thead>
             <tbody>
@@ -396,7 +363,7 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
                   <td className="border border-gray-400 p-2">{item.name || "—"}</td>
                   <td className="border border-gray-400 p-2">{item.specifications || "—"}</td>
                   <td className="border border-gray-400 p-2 text-center">{item.quantity || 1}</td>
-                  <td className="border border-gray-400 p-2 text-center">{item.status || "Đạt"}</td>
+                  <td className="border border-gray-400 p-2 text-center">{item.status || resolved.status_fallback}</td>
                 </tr>
               ))}
             </tbody>
@@ -414,19 +381,19 @@ export const HandoverReportDialog = ({ open, onOpenChange, contract }: Props) =>
 
           <p className="italic text-xs mt-4">{state.footer_note}</p>
 
-          <div className="grid grid-cols-2 gap-8 pt-8 mt-8 text-center" style={{ borderTop: "1px solid #e5e7eb" }}>
+          <div className="grid grid-cols-2 gap-8 pt-8 mt-8 text-center" style={{ borderTop: "1px solid #e5e7eb", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32, textAlign: "center" }}>
             <div>
               <p className="font-bold">{state.sign_label_a}</p>
               <p className="text-xs italic" style={{ color: "#6b7280" }}>{state.sign_caption_a}</p>
-              <OnlineStampSignature show={showOnlineStamp} sellerRep={seller.representative} sellerPos="Giám đốc" />
-              {!showOnlineStamp && <div style={{ height: 80 }}></div>}
-              {state.sign_name_a && !showOnlineStamp && <p className="font-bold">{state.sign_name_a}</p>}
+              {onlineStampVisible ? <OnlineStampSignature show sellerRep={resolved.sign_name_a} sellerPos="" /> : <><div style={{ height: 80 }}></div>{resolved.sign_name_a && <p className="font-bold">{resolved.sign_name_a}</p>}</>}
+              {resolved.sign_role_a && <p className="text-xs">{resolved.sign_role_a}</p>}
             </div>
             <div>
               <p className="font-bold">{state.sign_label_b}</p>
               <p className="text-xs italic" style={{ color: "#6b7280" }}>{state.sign_caption_b}</p>
               <div style={{ height: 80 }}></div>
-              {state.sign_name_b && <p className="font-bold">{state.sign_name_b}</p>}
+              {resolved.sign_name_b && <p className="font-bold">{resolved.sign_name_b}</p>}
+              {resolved.sign_role_b && <p className="text-xs">{resolved.sign_role_b}</p>}
             </div>
           </div>
         </div>

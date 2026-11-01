@@ -1,3 +1,6 @@
+import { contractDateLabel } from "@/lib/contract-calculation";
+import { useQuery } from "@tanstack/react-query";
+import { useAuthReady } from "@/hooks/useAuthReady";
 import { lazy, Suspense, useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useContracts } from "@/hooks/useContracts";
@@ -38,9 +41,9 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
 const isFrameworkContract = (c: any) => c.contract_number?.startsWith("HDNT-");
 
 const ContractManagement = () => {
-  const [user, setUser] = useState<any>(null);
+  const { user } = useAuthReady();
   const { role: userRole } = useUserRole(user);
-  const { data: contracts, isLoading } = useContracts();
+  const { data: contracts, isLoading, isError, refetch } = useContracts();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -58,6 +61,13 @@ const ContractManagement = () => {
   const [einvoiceContract, setEinvoiceContract] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("contracts");
   const { data: einvoices } = useEInvoices();
+  const quoteId = searchParams.get('from_quote');
+  const quoteSource = useQuery({ queryKey: ['contract-quote-source', user?.id, quoteId], enabled: Boolean(user && quoteId), queryFn: async () => {
+    const { data, error } = await supabase.from('quotes').select('*').eq('id', quoteId!).single();
+    if (error) throw error;
+    if (!data) throw new Error('Không tìm thấy báo giá liên kết.');
+    return data;
+  } });
   const prefillData = useMemo(() => {
     const fromQuote = searchParams.get('from_quote');
     if (!fromQuote) return undefined;
@@ -65,21 +75,22 @@ const ContractManagement = () => {
     try { items = JSON.parse(searchParams.get('items') || '[]'); } catch {}
     return {
       quote_id: fromQuote,
-      customer_id: searchParams.get('customer_id') || '',
+      customer_id: quoteSource.data?.customer_id ?? searchParams.get('customer_id') ?? '',
       total_amount: Number(searchParams.get('total') || 0),
       title: searchParams.get('title') || '',
-      items,
+      items: quoteSource.data?.items && Array.isArray(quoteSource.data.items) ? quoteSource.data.items : items,
+      include_vat: quoteSource.data?.include_vat ?? false,
+      vat_rate: quoteSource.data?.vat_rate ?? 8,
+      manager_id: quoteSource.data?.manager_id ?? null,
     };
-  }, [searchParams]);
+  }, [searchParams, quoteSource.data]);
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
-  }, []);
+
 
   useEffect(() => {
     if (prefillData) {
       setShowCreate(true);
-      setSearchParams({}, { replace: true });
+
     }
   }, [prefillData]);
 
@@ -87,13 +98,21 @@ const ContractManagement = () => {
     const matchSearch = !searchTerm ||
       c.contract_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.customers?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+      c.customers?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.customers?.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.buyer_info?.company_name?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = statusFilter === "all" || c.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / 20));
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = filtered.slice((currentPage - 1) * 20, currentPage * 20);
+  useEffect(() => setPage(1), [searchTerm, statusFilter]);
+
   const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
-  const formatDate = (d: string) => d ? new Date(d).toLocaleDateString("vi-VN") : "—";
+  const formatDate = (d: string) => d ? contractDateLabel(d) : "—";
 
   const stats = {
     total: (contracts || []).length,
@@ -112,7 +131,7 @@ const ContractManagement = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <FileSignature className="h-6 w-6 text-primary" />
@@ -139,7 +158,7 @@ const ContractManagement = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="flex-wrap h-auto justify-start">
           <TabsTrigger value="contracts"><FileSignature className="h-4 w-4 mr-1" />Danh sách HĐ</TabsTrigger>
           <TabsTrigger value="templates"><Settings className="h-4 w-4 mr-1" />Mẫu hợp đồng</TabsTrigger>
           <TabsTrigger value="einvoices"><FileText className="h-4 w-4 mr-1" />Hoá đơn ĐT</TabsTrigger>
@@ -147,7 +166,7 @@ const ContractManagement = () => {
 
         <TabsContent value="contracts" className="space-y-4 mt-4">
           {/* Stats */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               { label: "Tổng hợp đồng", value: stats.total, color: "text-foreground" },
               { label: "Đang hiệu lực", value: stats.active, color: "text-blue-600" },
@@ -164,12 +183,12 @@ const ContractManagement = () => {
           </div>
 
           {/* Filters */}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Tìm kiếm hợp đồng..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
             </div>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {["all", "draft", "active", "completed", "cancelled"].map(s => (
                 <Button key={s} size="sm" variant={statusFilter === s ? "default" : "outline"} onClick={() => setStatusFilter(s)}>
                   {s === "all" ? "Tất cả" : statusConfig[s]?.label}
@@ -178,8 +197,17 @@ const ContractManagement = () => {
             </div>
           </div>
 
+          {isError && <div role="alert" className="rounded-md border border-destructive p-3 text-sm">Không tải được hợp đồng. <Button variant="link" onClick={() => refetch()}>Thử lại</Button></div>}
+          <div className="md:hidden space-y-2">
+            {!isLoading && !isError && pageRows.length === 0 && <p className="p-4 text-muted-foreground">{searchTerm || statusFilter !== "all" ? "Không có hợp đồng phù hợp bộ lọc." : "Chưa có hợp đồng."}</p>}
+            {pageRows.map((c) => <Card key={c.id}><CardContent className="p-4 space-y-3">
+              <button className="text-left w-full min-h-11" onClick={() => handleRowClick(c)}><span className="font-semibold text-primary">{c.contract_number}</span><p>{c.buyer_info?.company_name || c.customers?.company || c.customers?.name || "Chưa có khách hàng"}</p></button>
+              <div className="flex flex-wrap justify-between gap-2"><Badge variant={statusConfig[c.status]?.variant}>{statusConfig[c.status]?.label || c.status}</Badge><span>{isFrameworkContract(c) ? "Nguyên tắc" : formatCurrency(c.total_amount)}</span></div>
+              <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => isFrameworkContract(c) ? setEditFrameworkContract(c) : setEditContract(c)}>Sửa</Button>{!isFrameworkContract(c) && <><Button variant="outline" onClick={() => setPaymentRequestContract(c)}>Thanh toán</Button><Button variant="outline" onClick={() => setHandoverContract(c)}>Bàn giao</Button><Button variant="outline" onClick={() => setAdvanceRequestContract(c)}>Tạm ứng</Button></>}<Button variant="outline" onClick={() => setDeleteContract(c)}>Xóa</Button></div>
+            </CardContent></Card>)}
+          </div>
           {/* Table */}
-          <Card>
+          <Card className="hidden md:block">
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
@@ -198,13 +226,13 @@ const ContractManagement = () => {
                   {isLoading ? (
                     <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell></TableRow>
                   ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chưa có hợp đồng nào</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">{isError ? "Không tải được dữ liệu" : searchTerm || statusFilter !== "all" ? "Không có hợp đồng phù hợp bộ lọc" : "Chưa có hợp đồng nào"}</TableCell></TableRow>
                   ) : (
-                    filtered.map((c: any) => {
+                    pageRows.map((c) => {
                       const st = statusConfig[c.status] || statusConfig.draft;
                       const isFramework = isFrameworkContract(c);
                       return (
-                        <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleRowClick(c)}>
+                        <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" tabIndex={0} onKeyDown={e => { if (e.key === "Enter") handleRowClick(c); }} onClick={() => handleRowClick(c)}>
                           <TableCell className="font-medium text-primary">{c.contract_number}</TableCell>
                           <TableCell>
                             <Badge variant={isFramework ? "secondary" : "outline"} className="text-xs">
@@ -219,7 +247,7 @@ const ContractManagement = () => {
                           <TableCell onClick={e => e.stopPropagation()}>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" aria-label={`Thao tác hợp đồng ${c.contract_number}`}><MoreHorizontal className="h-4 w-4" /></Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => handleRowClick(c)}><Eye className="h-4 w-4 mr-2" />Xem</DropdownMenuItem>
@@ -229,7 +257,7 @@ const ContractManagement = () => {
                                     <DropdownMenuItem onClick={() => setHandoverContract(c)}><ClipboardCheck className="h-4 w-4 mr-2" />Biên bản bàn giao</DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => setPaymentRequestContract(c)}><Receipt className="h-4 w-4 mr-2" />Đề nghị thanh toán</DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => setAdvanceRequestContract(c)}><Banknote className="h-4 w-4 mr-2" />Đề nghị tạm ứng</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => setEinvoiceContract(c)}><FileText className="h-4 w-4 mr-2" />Xuất hoá đơn ĐT</DropdownMenuItem>
+                                    {(userRole === "admin" || c.manager_id === user?.id) && <DropdownMenuItem onClick={() => setEinvoiceContract(c)}><FileText className="h-4 w-4 mr-2" />Tạo hóa đơn nháp</DropdownMenuItem>}
                                   </>
                                 )}
                                 <DropdownMenuItem onClick={() => setDeleteContract(c)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Xóa</DropdownMenuItem>
@@ -244,6 +272,7 @@ const ContractManagement = () => {
               </Table>
             </CardContent>
           </Card>
+          {filtered.length > 20 && <div className="flex justify-end items-center gap-3"><Button variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Trước</Button><span>{currentPage} / {pageCount}</span><Button variant="outline" disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)}>Sau</Button></div>}
         </TabsContent>
 
         <TabsContent value="templates" className="mt-4">
@@ -293,10 +322,10 @@ const ContractManagement = () => {
       </Tabs>
 
       {/* Dialogs */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+      <Dialog open={showCreate} onOpenChange={v => { setShowCreate(v); if (!v && prefillData) setSearchParams({}, { replace: true }); }}>
         <DialogContent className="max-w-3xl">
           <DialogHeader><DialogTitle>Tạo hợp đồng kinh tế</DialogTitle></DialogHeader>
-          <CreateContractForm onSuccess={() => setShowCreate(false)} prefillData={prefillData} />
+          {quoteId && quoteSource.isPending ? <p role="status">Đang tải báo giá liên kết...</p> : quoteId && quoteSource.isError ? <div role="alert">Không tải được báo giá. <Button variant="link" onClick={() => quoteSource.refetch()}>Thử lại</Button></div> : <CreateContractForm onSuccess={() => { setShowCreate(false); if (prefillData) setSearchParams({}, { replace: true }); }} prefillData={prefillData} />}
         </DialogContent>
       </Dialog>
 

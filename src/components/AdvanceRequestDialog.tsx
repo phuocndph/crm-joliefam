@@ -1,3 +1,5 @@
+import { contractDateLabel } from "@/lib/contract-calculation";
+import { savedSellerValue } from "@/lib/contract-document";
 import { useRef, useState, useEffect, useMemo } from "react";
 import { OnlineStampSignature } from "@/components/OnlineStampSignature";
 import { Switch } from "@/components/ui/switch";
@@ -42,10 +44,10 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
     const buyer = contract?.buyer_info || {};
     const totalAmount = contract?.total_amount || 0;
     const depositAmount = contract?.deposit_amount || 0;
-    const sellerName = companySettings.companyName || seller.company_name || "";
-    const sellerBank = companySettings.bankInfo || seller.bank_info || "";
-    const sellerTaxCode = companySettings.taxCode || seller.tax_code || "";
-    const sellerAddress = companySettings.address || seller.address || "";
+    const sellerName = savedSellerValue(seller, "company_name", companySettings.companyName);
+    const sellerBank = savedSellerValue(seller, "bank_info", companySettings.bankInfo);
+    const sellerTaxCode = savedSellerValue(seller, "tax_code", companySettings.taxCode);
+    const sellerAddress = savedSellerValue(seller, "address", companySettings.address);
     const buyerName = buyer.company_name || contract?.customers?.company || contract?.customers?.name || "—";
     const bankLines = [
       `- Đơn vị thụ hưởng: ${sellerName}`,
@@ -58,7 +60,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
       subtitle: `(Theo Hợp đồng số: ${contract?.contract_number || ""})`,
       request_date: new Date().toISOString().split("T")[0],
       recipient: `Kính gửi: ${buyerName}`,
-      intro: `Căn cứ Hợp đồng số ${contract?.contract_number || ""} ngày ${contract?.contract_date ? new Date(contract.contract_date).toLocaleDateString("vi-VN") : ""} giữa ${buyerName} và ${sellerName}, chúng tôi đề nghị Quý công ty tạm ứng theo nội dung sau:`,
+      intro: `Căn cứ Hợp đồng số ${contract?.contract_number || ""} ngày ${contract?.contract_date ? contractDateLabel(contract.contract_date) : ""} giữa ${buyerName} và ${sellerName}, chúng tôi đề nghị Quý công ty tạm ứng theo nội dung sau:`,
       row1_label: "Tổng giá trị Hợp đồng",
       row1_amount: totalAmount,
       row2_label: "Số tiền đề nghị tạm ứng",
@@ -86,7 +88,7 @@ export const AdvanceRequestDialog = ({ open, onOpenChange, contract }: Props) =>
   const set = (k: string, v: any) => setState(s => ({ ...s, [k]: v }));
 
   const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
-  const formatDate = (d: string) => d ? new Date(d).toLocaleDateString("vi-VN") : "—";
+  const formatDate = (d: string) => d ? contractDateLabel(d) : "—";
   const amountText = state.amount > 0 ? numberToVietnameseCurrency(state.amount) : "";
 
   const handleSave = async () => {

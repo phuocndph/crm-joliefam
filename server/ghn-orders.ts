@@ -4,6 +4,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { ExternalReadAdapters, type GhnRuntimeConfig } from './external-read-adapters.js';
 import { ghnPrincipal, normalizeGhnDate } from './ghn-tracking.js';
+import { extractGhnOrderNumber } from './ghn-order-number.js';
+import { assertZcrmOrderExecutable } from './zcrm-commerce.js';
 
 const fail = (message: string, status = 400) => Object.assign(new Error(message), { status });
 const integer = (max: number, min = 0) => z.number().int().min(min).max(max);
@@ -95,6 +97,7 @@ export class GhnOrders {
     if (!order || (principal.role !== 'admin' && order.manager_id !== principal.manager)) throw fail('Không tìm thấy đơn hàng trong phạm vi quản lý.',404);
     if (!order.manager_id || !order.tenant_id) throw fail('Đơn hàng thiếu phạm vi quản lý hoặc đơn vị. Cần kiểm tra trước khi tạo GHN.',409);
     if (eligible && !['confirmed','processing','shipped','partially_delivered','delivering'].includes(String(order.status))) throw fail('Trạng thái đơn hàng chưa phù hợp để tạo vận đơn GHN.',409);
+    if (eligible) await assertZcrmOrderExecutable(db,orderId);
     return {manager:String(order.manager_id),tenant:String(order.tenant_id)};
   }
   private async read(actor: string,key:string) {
@@ -240,7 +243,7 @@ export class GhnOrders {
       await client.query(`insert into local_ghn_tracking
         (id,ghn_order_code,internal_order_code,order_id,customer_name,customer_phone,customer_address,package_weight,created_date,expected_delivery_date,cod_amount,ghn_status,ghn_status_text,tracking_url,raw_data,manager_id,tenant_id,is_snapshot_record,local_modified_at,last_updated_at)
         values($1,$2,$3,$4,$5,$6,$7,$8,now(),$9::timestamptz,$10,'ready_to_pick','Chờ lấy hàng',$11,$12::jsonb,$13,$14,false,now(),now())`,
-      [locked.id,locked.order_code,input.orderNumber||locked.client_order_code,locked.order_id,data.to_name,data.to_phone,data.to_address,data.weight,locked.result_data.expected_delivery_time||null,data.cod_amount,
+      [locked.id,locked.order_code,extractGhnOrderNumber(data.to_name),locked.order_id,data.to_name,data.to_phone,data.to_address,data.weight,locked.result_data.expected_delivery_time||null,data.cod_amount,
         'https://donhang.ghn.vn/?order_code='+encodeURIComponent(locked.order_code),JSON.stringify({shop_id:Number(locked.shop_id),client_order_code:locked.client_order_code}),locked.manager_id,locked.tenant_id]);
       await client.query(`insert into local_auth_audit_events(entity_type,entity_id,action,actor_id,reason,after_data)
         values('ghn_order_attempt',$1,'CREATE_GHN_ORDER',$2,'Tạo vận đơn GHN; không thay đổi tài chính, kho hoặc trạng thái đơn CRM',$3::jsonb)`,[locked.id,locked.actor_id,JSON.stringify({reference:locked.client_order_code,order_code:locked.order_code,shop_id:locked.shop_id})]);

@@ -1,0 +1,28 @@
+# Mục 5A — quy tắc mã sửa rèm srem / srem1h
+
+Phạm vi cục bộ: quản trị yêu cầu mã công. Hai code key `srem` và `srem1h` giữ riêng, sau chuẩn hóa codeKey hiện có (NFC, trim, lowercase). Đây là hai loại rèm do người phụ trách chọn thủ công; không suy loại, giá hoặc công dụng từ tên, đơn giá, số thứ tự hay mã gần giống.
+
+## Hành vi
+
+- Helper thuần `server/product-labor-usage-policy.ts` chỉ áp dụng cho hai code key chính xác. Định nghĩa phải là `OTHER_STAGE / REPAIR`, không family/đặc điểm/điều kiện may, nguồn thực tế phải `PIECE`. Cơ sở số lượng là chiếc hoàn thành và lựa chọn thủ công. Hai schema 1/2 giữ nguyên.
+- Writer DRAFT/APPROVE dùng helper sau kiểm tra quyền, nguồn, ownership và **sau receipt replay**. Yêu cầu mới sai bị từ chối trong transaction; receipt đã ghi được trả lại đúng kết quả cũ. `/validate` vẫn chỉ kiểm tra cấu trúc, payload không thêm code/policy. RETIRE giữ quy trình hiện có, không chịu quy tắc mới cho DRAFT/APPROVE. Không sửa lịch sử/seed/migration/schema.
+- Selector nhận đơn vị thực từ canonical catalog. Với mã dành riêng, thiếu hoặc sai `PIECE`, định nghĩa sai, hash/ngữ nghĩa sai đều không chọn requirement. Canonical chọn event mới nhất tại ngày nguồn trước khi kiểm tra; không lùi về bản duyệt cũ để vượt quy tắc.
+- Detail trả `usage_policy` dẫn xuất chỉ cho hai mã; đây không phải dữ liệu client có thể gửi để cấp quyền. Chỉ admin nhận `retirement_candidate`: **APPROVE mới nhất toàn cục theo version**, kể cả tương lai, độc lập requirement đang có hiệu lực. Event RETIRE mới nhất trả null. Manager không nhận trường candidate hoặc metadata admin.
+- Workbench dùng candidate cho nút, định nghĩa, metadata schema và ngày/version mục tiêu thu hồi; expected_stream_revision vẫn là version toàn cục. Tương thích response cũ thiếu trường chỉ khi history chứa APPROVE đúng stream_revision mới nhất; null rõ ràng, history thiếu bản cuối hoặc RETIRE không được lùi về requirement cũ.
+- Hướng dẫn ngắn và nút “Tạo đề xuất sửa hàng” tạo **đề xuất mới** trong schema đang xem, chỉ khi chủ động chọn; dùng hộp xác nhận dirty hiện có. Không sửa đề xuất cũ/receipt, không tự lưu/gửi/duyệt. Nút tạo đề xuất nâng cao may bị ẩn chỉ với policy sửa hàng; mã thường giữ nguyên. Builder chung không đổi; server là nơi bắt buộc chính sách khi ghi.
+
+## Kiểm tra trên bản cố định
+
+Thư mục riêng: `.local-staging-runtime/item5a-repair-policy-20261029`. Preimages ba file có sẵn đã lưu trước sửa; `fixed/`, `fixed-diff.patch`, `freeze-manifest.json` giữ bảy file sản phẩm/test/báo cáo. Không sửa master plan hoặc báo cáo cũ.
+
+- `node scripts/test-product-labor-repair-policy.mjs --run-label=editor-final`: **27/27 nhóm, 190 assertions**. Helper và routes Express đăng ký thật với readPool/transaction giả được inject; 0 kết nối DB thật, 0 source API, 0 operational writes. Bao phủ DRAFT/APPROVE schema1/2 hợp lệ, may/cắt/NONE/đơn vị sai bị chặn không commit, key chuẩn hóa/gần giống, selector hash/latest/no-fallback, receipt cũ, admin thu hồi bản sai hoặc tương lai, manager bị chặn và mã thường không đổi. Fixture transaction rollback không thay thế bằng chứng constraint DB thật; chưa chạy migration hay DB suite.
+- `node scripts/test-product-labor-repair-policy-ui.mjs --run-label=editor-freeze`: **9/9 nhóm**, 0 network ngoài tài liệu fixture và 0 page errors. React Workbench/Builder, receipt store, TanStack Query và style sản phẩm từ **fresh-build-final** chạy thật trong Edge headless; API/auth thay tại biên import. Desktop1280/mobile390 không tràn ngang body/panel; nút sửa hàng cao44px. Có ảnh và metrics tại `ui/editor-freeze/`.
+- UI xác nhận dirty hủy/đồng ý, đề xuất mới không ghi đè bản cũ, không autoapprove, candidate schema2 trong khi editor/history schema1, latestfuture V3 và revision3, schema cần thiết chặn thu hồi/giữ ghi chú khi tải lại, fallback cũ, UNCERTAIN/COMMITTED chặn tạo mới, remount/retry giữ payload và idempotency cũ, khôi phục COMMITTED chỉ GET và không ghi lần hai, proposal schema2 cũ giữ nguyên. Nút nâng cao ẩn ở mã sửa và còn ở mã thường.
+- App/server TypeScript và focused ESLint bốn file sản phẩm: **PASS**. Log cuối tại `app-types-final.log`, `server-types-final.log`, `focused-lint-final.log`.
+- Vite JavaScript API `envFile:false`, output mới `fresh-build-final`, **PASS** (33.20s). Không dùng API bootstrap, `.env`, credentials hoặc service thật. Giữ cảnh báo có sẵn về dữ liệu Browserslist cũ và chunk lớn. Build đầu trước chỉnh nút nâng cao giữ riêng tại `fresh-build` / `build-no-env.log`; không dùng nó làm style cho UI cuối.
+
+Các lần lỗi oracle được giữ nguyên: route attempt1 dùng trùng khóa fixture cho hai hành động; attempt2 fingerprint fixture có undefined khác JSON trên dây. Chỉ sửa fixture tạo khóa và chuẩn hóa payload như JSON thực; không sửa production cho hai lỗi này. UI lần `editor` cố mở lại từ list khi cố tình làm schema toàn trang lỗi nên không có nút Xử lý; sửa trình tự fixture để remount trước rồi làm metadata lỗi trong drawer. Kết quả UI `editor-final`8/8 trước điều chỉnh ẩn nút nâng cao giữ riêng; nghiệm thu cuối dùng `editor-freeze`9/9 và fresh-build-final.
+
+## Giới hạn còn nguyên
+
+Đây là quy tắc quản trị yêu cầu mã công, chưa hoàn thành toàn mục5A hoặc sẵn sàng vận hành. Chọn mã sửa có trả tiền khi phát việc/ghi nhận thực tế còn ở mục11/13. Defect rework vẫn `NON_PAYABLE`; không biến sửa lỗi thành tiền công. API legacy `createProductionEntry` còn chấp nhận mã tùy ý (**LIMIT1**) là nợ kỹ thuật ngoài phạm vi, không được coi là đã cưỡng chế toàn hệ thống. Không đặt pay-ready, không tạo giá/đơn vị/nhóm giá, không sửa nguồn, dữ liệu nghiệp vụ hoặc lịch sử. Không DB/Docker/Supabase/source workbook, không activation/deployment. Kiểm tra UI/API là dữ liệu tổng hợp, không chứng minh dữ liệu hay service đang dùng đã được nâng cấp.

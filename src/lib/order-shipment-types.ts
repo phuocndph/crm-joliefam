@@ -1,0 +1,4 @@
+export interface OrderShipmentCandidate {source_type:'SEW'|'PURCHASE';output_id:string|null;purchase_plan_id:string|null;source_line_key:string;product_name:string;warehouse_id:string;available_quantity:string}
+export interface OrderShipmentLine {id:string;quantity:string;delivered_quantity:string;source_snapshot:{product_name?:string};inventory_document_id:string}
+export interface OrderShipment {id:string;shipment_number:string;status:'DISPATCHED'|'PARTIALLY_DELIVERED'|'DELIVERED';dispatched_at:string;lines:OrderShipmentLine[];receipts:Array<{id:string;quantity:string;recipient_name:string|null;delivery_evidence:string|null;delivered_at:string}>}
+export interface OrderShipmentData {order_id:string;source_changed:boolean;source_validation_error:string|null;candidates:OrderShipmentCandidate[];shipments:OrderShipment[]}

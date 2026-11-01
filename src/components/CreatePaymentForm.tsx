@@ -156,7 +156,7 @@ export function CreatePaymentForm({
     submittedRef.current = true;
     setLoading(true);
     try {
-      const effectiveRemaining = remainingAmount - (hasDeduction ? deductionAmount : 0);
+      const effectiveRemaining = isLocalBackend()?remainingAmount:remainingAmount - (hasDeduction ? deductionAmount : 0);
       if (data.paymentAmount > effectiveRemaining) {
         throw new Error("Số tiền thanh toán không thể lớn hơn số tiền còn lại sau chi phí");
       }
@@ -186,7 +186,7 @@ export function CreatePaymentForm({
         payment_type: data.paymentType,
         installment_number: data.installmentNumber,
         total_installments: 1,
-        remaining_amount: remainingAmount - data.paymentAmount - (hasDeduction ? deductionAmount : 0),
+        remaining_amount: remainingAmount - data.paymentAmount - (!isLocalBackend()&&hasDeduction ? deductionAmount : 0),
         tenant_id: 'default',
         manager_id: managerId,
       };
@@ -347,7 +347,7 @@ export function CreatePaymentForm({
     try {
       if (isLocalBackend()) {
         await localApi.deleteOrderPayments(orderId);
-        await localApi.updateOrder(orderId, { payment_status: "pending", payment_date: null });
+        // Payment state is derived by the server after the deletion.
         toast({ title: "Thành công", description: "Đã xóa tất cả thanh toán trước đó" });
         onSubmit();
         return;
@@ -412,6 +412,7 @@ export function CreatePaymentForm({
         </DialogTitle>
       </DialogHeader>
       
+      {isLocalBackend()&&<p className="text-sm text-muted-foreground mb-3">Số tiền thanh toán là số tiền khách thực trả. Chi phí do bên bán chịu được ghi riêng, không trừ công nợ của khách.</p>}
       {/* Order Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <Card>
@@ -470,7 +471,7 @@ export function CreatePaymentForm({
                 />
                 <Label htmlFor="hasDeduction" className="flex items-center gap-2 cursor-pointer">
                   <Truck className="h-4 w-4" />
-                  Có chi phí phát sinh (phí ship, phí khác...)
+                  {isLocalBackend()?'Ghi thêm chi phí do mình chịu':'Có chi phí phát sinh (phí ship, phí khác...)'}
                 </Label>
               </div>
               
@@ -484,7 +485,7 @@ export function CreatePaymentForm({
                       onChange={(val) => {
                         setDeductionAmount(val);
                         // Auto-adjust payment amount
-                        const newPaymentAmount = remainingAmount - val;
+                        const newPaymentAmount = isLocalBackend()?form.getValues("paymentAmount"):remainingAmount - val;
                         if (newPaymentAmount >= 0) {
                           form.setValue("paymentAmount", newPaymentAmount);
                         }
@@ -519,9 +520,9 @@ export function CreatePaymentForm({
                     />
                   </FormControl>
                   <FormMessage />
-                  {(watchedPaymentAmount + (hasDeduction ? deductionAmount : 0)) > remainingAmount && (
+                  {(watchedPaymentAmount + (!isLocalBackend()&&hasDeduction ? deductionAmount : 0)) > remainingAmount && (
                     <p className="text-sm text-red-600">
-                      Tổng thanh toán + chi phí không thể lớn hơn {formatCurrency(remainingAmount)}
+                      {isLocalBackend()?'Khoản thu không thể lớn hơn':'Tổng thanh toán + chi phí không thể lớn hơn'} {formatCurrency(remainingAmount)}
                     </p>
                   )}
                 </FormItem>
@@ -662,9 +663,9 @@ export function CreatePaymentForm({
                 </div>
                 {hasDeduction && deductionAmount > 0 && (
                   <div className="flex justify-between">
-                    <span>Chi phí phát sinh:</span>
+                    <span>{isLocalBackend()?'Chi phí do mình chịu (ghi riêng):':'Chi phí phát sinh:'}</span>
                     <span className="font-medium text-orange-600">
-                      -{formatCurrency(deductionAmount)}
+                      {isLocalBackend()?'':'-'}{formatCurrency(deductionAmount)}
                     </span>
                   </div>
                 )}
@@ -677,7 +678,7 @@ export function CreatePaymentForm({
                 <div className="flex justify-between border-t pt-2">
                   <span className="font-medium">Còn lại sau thanh toán:</span>
                   <span className="font-medium text-red-600">
-                    {formatCurrency(remainingAmount - (watchedPaymentAmount || 0) - (hasDeduction ? deductionAmount : 0))}
+                    {formatCurrency(remainingAmount - (watchedPaymentAmount || 0) - (!isLocalBackend()&&hasDeduction ? deductionAmount : 0))}
                   </span>
                 </div>
               </div>
@@ -704,7 +705,7 @@ export function CreatePaymentForm({
               <Button type="button" variant="outline" onClick={onClose}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={loading || !watchedPaymentAmount || (watchedPaymentAmount + (hasDeduction ? deductionAmount : 0)) > remainingAmount}>
+              <Button type="submit" disabled={loading || !watchedPaymentAmount || (watchedPaymentAmount + (!isLocalBackend()&&hasDeduction ? deductionAmount : 0)) > remainingAmount}>
                 {loading ? "Đang lưu..." : "Thêm thanh toán"}
               </Button>
             </div>

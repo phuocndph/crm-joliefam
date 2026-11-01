@@ -1,522 +1,1109 @@
-import { useState } from "react";
-import { useEInvoices } from "@/hooks/useEInvoices";
+import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { CreateEInvoiceDialog } from "@/components/CreateEInvoiceDialog";
-import { FileText, Plus, Search, ExternalLink, CheckCircle2, XCircle, Loader2, Settings, KeyRound, RefreshCw, MoreHorizontal, Download, Mail, Ban, Wallet, Wifi, AlertTriangle, Eye, Send, Trash2, Edit3, Replace, Pencil, FileCheck2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuthReady } from "@/hooks/useAuthReady";
-import { useUserRole } from "@/hooks/useUserRole";
-import { toast } from "sonner";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { useEInvoiceActions } from "@/hooks/useEInvoices";
-import { CancelInvoiceDialog, SendEmailDialog, SyncInvoicesDialog } from "@/components/einvoice/InvoiceActionDialogs";
-import { EInvoiceSettingsCard } from "@/components/einvoice/EInvoiceSettingsCard";
-import { useEInvoiceSettings } from "@/hooks/useEInvoiceSettings";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  invoiceRequest,
+  invoiceDownloadBlob,
+  invoiceDownloadBase64,
+  type InvoiceCompany,
+  type InvoiceRecord,
+} from "@/lib/invoice-workspace-api";
+import { InvoiceDraftDialog } from "@/components/einvoice/InvoiceDraftDialog";
+import { InvoiceImportDialog } from "@/components/einvoice/InvoiceImportDialog";
+import {
+  InvoiceProviderSettings,
+  InvoiceSyncDialog,
+} from "@/components/einvoice/InvoiceProviderControls";
+import { InvoiceDetailDialog } from "@/components/einvoice/InvoiceDetailDialog";
 import { isLocalBackend } from "@/lib/runtime-config";
-import { localApi } from "@/lib/local-api";
-import { PreviewPdfDialog } from "@/components/einvoice/PreviewPdfDialog";
-import { ReplaceAdjustDialog } from "@/components/einvoice/ReplaceAdjustDialog";
-import { DownloadMinuteDialog } from "@/components/einvoice/DownloadMinuteDialog";
-import { DraftInvoicesTable } from "@/components/einvoice/DraftInvoicesTable";
-import { IssuedInvoicesTable } from "@/components/einvoice/IssuedInvoicesTable";
-
-const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
-  issued: { label: "Đã phát hành", variant: "default" },
-  draft: { label: "Nháp", variant: "secondary" },
-  error: { label: "Lỗi", variant: "destructive" },
-  cancelled: { label: "Đã huỷ", variant: "destructive" },
+import { toast } from "sonner";
+import { Settings, Plus, Upload, RefreshCw, FileText } from "lucide-react";
+import { invoiceBusinessDate, invoiceToday } from "@/lib/invoice-date";
+import { useSearchParams } from "react-router-dom";
+import {
+  invoicePaymentLabels,
+  invoiceSourceStateLabels,
+} from "@/lib/invoice-workspace-api";
+type List = {
+  rows: InvoiceRecord[];
+  stats: {
+    total: number;
+    incoming: number;
+    outgoing: number;
+    missing_files: number;
+    unlinked: number;
+  };
+  page: number;
+  limit: number;
 };
-
-const SECRET_NAMES = ["VINVOICE_API_URL", "VINVOICE_USERNAME", "VINVOICE_PASSWORD", "VINVOICE_TAX_CODE"] as const;
-
-const EInvoiceManagement = () => {
-  const { data: einvoices, isLoading } = useEInvoices();
-  const [search, setSearch] = useState("");
-  const [showCreate, setShowCreate] = useState(false);
-  const { user } = useAuthReady();
-  const { role } = useUserRole(user);
-  const canManage = role === "admin" || role === "manager";
-  const { query: settingsQuery, testLogin } = useEInvoiceSettings();
-  const settings = settingsQuery.data?.settings;
-  const envFallback = settingsQuery.data?.env_fallback;
-
-  const [configStatus, setConfigStatus] = useState<Record<string, boolean> | null>(null);
-  const [loadingConfig, setLoadingConfig] = useState(false);
-  const [loginResult, setLoginResult] = useState<any>(null);
-  const [loadingLogin, setLoadingLogin] = useState(false);
-  const [templatesResult, setTemplatesResult] = useState<any>(null);
-  const [loadingTemplates, setLoadingTemplates] = useState(false);
-  const [diagnoseResult, setDiagnoseResult] = useState<any>(null);
-  const [loadingDiagnose, setLoadingDiagnose] = useState(false);
-  const [showSync, setShowSync] = useState(false);
-  const [showSyncDrafts, setShowSyncDrafts] = useState(false);
-  const [cancelTarget, setCancelTarget] = useState<any>(null);
-  const [emailTarget, setEmailTarget] = useState<any>(null);
-  const [replaceTarget, setReplaceTarget] = useState<any>(null);
-  const [adjustTarget, setAdjustTarget] = useState<any>(null);
-  const [minuteTarget, setMinuteTarget] = useState<any>(null);
-  const [previewPdf, setPreviewPdf] = useState<{ open: boolean; base64: string | null; title?: string }>({ open: false, base64: null });
-
-  const { downloadFile, updatePayment, issueDraft, deleteDraft, previewDraft } = useEInvoiceActions();
-
-  const callApi = async (action: string, extra: any = {}) => {
-    if (isLocalBackend()) {
-      if (action === "get_templates") return localApi.einvoiceTemplates();
-      if (action === "config_status") return { success: true, local_only: true, status: {}, message: "Hệ thống cục bộ không dùng thông tin bảo mật của Viettel." };
-      throw new Error("SQL cục bộ không gọi dịch vụ Viettel; dữ liệu đã đồng bộ vẫn được giữ nguyên.");
-    }
-    const { data, error } = await supabase.functions.invoke("vinvoice-api", { body: { action, ...extra } });
-    if (error) throw new Error(error.message);
-    return data;
-  };
-
-  const handleCheckConfig = async () => {
-    setLoadingConfig(true);
-    try {
-      const res = await callApi("config_status");
-      setConfigStatus(res?.status || {});
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally { setLoadingConfig(false); }
-  };
-
-  const handleTestLogin = async () => {
-    setLoadingLogin(true);
-    setLoginResult(null);
-    try {
-      const res = await callApi("login");
-      setLoginResult(res);
-      if (res?.success) toast.success("Đăng nhập Viettel thành công");
-      else toast.error(res?.error || "Đăng nhập thất bại");
-    } catch (e: any) {
-      setLoginResult({ success: false, error: e.message });
-      toast.error(e.message);
-    } finally { setLoadingLogin(false); }
-  };
-
-  const handleGetTemplates = async () => {
-    setLoadingTemplates(true);
-    setTemplatesResult(null);
-    try {
-      const res = await callApi("get_templates");
-      setTemplatesResult(res);
-      if (res?.success) toast.success("Đã lấy danh sách mẫu hoá đơn");
-      else toast.error(res?.error || "Lấy mẫu thất bại");
-    } catch (e: any) {
-      setTemplatesResult({ success: false, error: e.message });
-      toast.error(e.message);
-    } finally { setLoadingTemplates(false); }
-  };
-
-  const handleDiagnose = async () => {
-    setLoadingDiagnose(true);
-    setDiagnoseResult(null);
-    try {
-      const today = new Date();
-      const from = new Date(today.getTime() - 30 * 86400000);
-      const fmt = (d: Date) => d.toISOString().slice(0, 10);
-      const res = await callApi("diagnose_read", { fromDate: fmt(from), toDate: fmt(today) });
-      setDiagnoseResult(res);
-      if (res?.success) toast.success("Đã chạy chẩn đoán API");
-      else toast.error(res?.error || "Chẩn đoán thất bại");
-    } catch (e: any) {
-      setDiagnoseResult({ success: false, error: e.message });
-      toast.error(e.message);
-    } finally { setLoadingDiagnose(false); }
-  };
-
-  const matchSearch = (inv: any) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      inv.invoice_number?.toLowerCase().includes(s) ||
-      inv.buyer_name?.toLowerCase().includes(s) ||
-      inv.buyer_tax_code?.toLowerCase().includes(s) ||
-      inv.template_code?.toLowerCase().includes(s)
-    );
-  };
-
-  const all = einvoices || [];
-  const drafts = all.filter((i: any) => i.is_draft || i.status === "draft").filter(matchSearch);
-  const issuedAll = all.filter((i: any) => !i.is_draft && i.status !== "draft").filter(matchSearch);
-
-  const stats = {
-    total: all.length,
-    issued: all.filter((i: any) => i.status === "issued" && !i.is_draft).length,
-    draft: all.filter((i: any) => i.is_draft || i.status === "draft").length,
-    error: all.filter((i: any) => i.status === "error").length,
-    cancelled: all.filter((i: any) => i.status === "cancelled").length,
-  };
-
-  const formatCurrency = (val: number) => (val || 0).toLocaleString("vi-VN") + " ₫";
-
-  const templates = Array.isArray(templatesResult?.data?.lstInvoiceTemplate)
-    ? templatesResult.data.lstInvoiceTemplate
-    : Array.isArray(templatesResult?.data) ? templatesResult.data : [];
-
-  const handlePreviewDraft = async (inv: any) => {
-    setPreviewPdf({ open: true, base64: null, title: `Xem trước nháp ${inv.invoice_number || ""}` });
-    try {
-      const res: any = await previewDraft.mutateAsync({ einvoice_id: inv.id });
-      if (res?.base64) setPreviewPdf({ open: true, base64: res.base64, title: `Xem trước nháp ${inv.invoice_number || ""}` });
-      else { setPreviewPdf({ open: false, base64: null }); }
-    } catch { setPreviewPdf({ open: false, base64: null }); }
-  };
-
-  const handleIssueDraft = async (inv: any) => {
-    if (!confirm(`Phát hành HĐ nháp này lên Viettel?`)) return;
-    await issueDraft.mutateAsync({ einvoice_id: inv.id });
-  };
-
-  const handleDeleteDraft = async (inv: any) => {
-    if (!confirm(`Xoá bản nháp này? Nếu đã đẩy lên Viettel sẽ xoá luôn trên S-Invoice.`)) return;
-    await deleteDraft.mutateAsync({ einvoice_id: inv.id });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <FileText className="h-6 w-6 text-primary" />
-            Hoá đơn điện tử
-          </h1>
-          <p className="text-muted-foreground">Quản lý và phát hành hoá đơn điện tử qua Viettel S-Invoice</p>
-        </div>
-        <Button variant="outline" onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4 mr-1" /> Tạo hoá đơn (nội bộ)
-        </Button>
-      </div>
-
-      {/* Connection banner */}
-      {!settingsQuery.isLoading && (
-        <div className={`rounded-md border p-3 flex items-center justify-between gap-3 ${
-          settings?.last_login_status === "success" ? "border-sidebar-primary/40 bg-sidebar-primary/5" :
-          settings ? "border-yellow-500/40 bg-yellow-500/5" :
-          envFallback?.available ? "border-yellow-500/40 bg-yellow-500/5" :
-          "border-destructive/40 bg-destructive/5"
-        }`}>
-          <div className="flex items-center gap-2 text-sm">
-            {settings?.last_login_status === "success" ? (
-              <CheckCircle2 className="h-4 w-4 text-sidebar-primary" />
-            ) : settings || envFallback?.available ? (
-              <AlertTriangle className="h-4 w-4 text-yellow-600" />
-            ) : (
-              <XCircle className="h-4 w-4 text-destructive" />
-            )}
-            <span className="font-medium">
-              {settings ? (
-                <>Đang kết nối: <code>MST {settings.tax_code}</code> · <code>{settings.username}</code></>
-              ) : envFallback?.available ? (
-                <>Đang dùng tài khoản mặc định: <code>MST {envFallback.tax_code}</code> · <code>{envFallback.username}</code></>
-              ) : (
-                <>Chưa cấu hình tài khoản S-Invoice</>
-              )}
-            </span>
-            {settings?.last_login_at && (
-              <span className="text-xs text-muted-foreground">
-                ({settings.last_login_status === "success" ? "OK" : "lỗi"} lúc {new Date(settings.last_login_at).toLocaleString("vi-VN")})
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="ghost" onClick={() => testLogin.mutate()} disabled={testLogin.isPending}>
-              {testLogin.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Wifi className="h-3 w-3 mr-1" />}
-              Kiểm tra
-            </Button>
-            {canManage && (
-              <Button size="sm" variant="outline" onClick={() => {
-                const tab = document.querySelector('[role="tab"][value="config"]') as HTMLElement | null;
-                tab?.click();
-              }}>
-                <Settings className="h-3 w-3 mr-1" /> Cấu hình
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-
-      <Tabs defaultValue="drafts" className="w-full">
-        <TabsList>
-          <TabsTrigger value="drafts">Chưa phát hành ({stats.draft})</TabsTrigger>
-          <TabsTrigger value="issued">Đã phát hành ({stats.issued + stats.cancelled})</TabsTrigger>
-          {canManage && <TabsTrigger value="config">Cấu hình & Kết nối</TabsTrigger>}
-        </TabsList>
-
-        {/* ===== DRAFTS TAB ===== */}
-        <TabsContent value="drafts" className="space-y-4">
-          <div className="flex items-center gap-2">
-            <div className="relative max-w-sm flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Tìm theo số HĐ, khách hàng, MST..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-            </div>
-            <Button onClick={() => setShowSyncDrafts(true)} variant="outline" size="sm">
-              <RefreshCw className="h-4 w-4 mr-1" /> Đồng bộ nháp từ Viettel
-            </Button>
-          </div>
-
-          <DraftInvoicesTable
-            drafts={drafts as any}
-            isLoading={isLoading}
-            onCreate={() => setShowCreate(true)}
-            onSync={() => setShowSyncDrafts(true)}
-            onIssue={handleIssueDraft}
-            onPreview={handlePreviewDraft}
-            onEdit={handlePreviewDraft}
-            onDelete={handleDeleteDraft}
-          />
-        </TabsContent>
-
-        {/* ===== ISSUED TAB ===== */}
-        <TabsContent value="issued" className="space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="relative max-w-sm flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Tìm theo số HĐ, khách hàng, MST..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-            </div>
-            <Button onClick={() => setShowSync(true)} variant="default">
-              <RefreshCw className="h-4 w-4 mr-1" /> Đồng bộ từ Viettel
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-4 gap-4">
-            {[
-              { label: "Tổng đã phát hành", value: stats.issued + stats.cancelled, color: "text-foreground" },
-              { label: "Đang hiệu lực", value: stats.issued, color: "text-blue-600" },
-              { label: "Đã huỷ", value: stats.cancelled, color: "text-destructive" },
-              { label: "Lỗi", value: stats.error, color: "text-destructive" },
-            ].map((s, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <p className="text-sm text-muted-foreground">{s.label}</p>
-                  <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          <IssuedInvoicesTable
-            invoices={issuedAll as any}
-            isLoading={isLoading}
-            onCreate={() => setShowCreate(true)}
-            onInfo={(inv) => downloadFile.mutate({ transactionUuid: (inv as any).transaction_uuid, fileType: "PDF", einvoice_id: inv.id })}
-            onMenu={(inv) => setEmailTarget(inv as any)}
-          />
-        </TabsContent>
-
-        {canManage && (
-          <TabsContent value="config" className="space-y-4">
-            {/* New per-manager settings */}
-            <EInvoiceSettingsCard canEdit={canManage} />
-
-            {/* Card 1: Secret status */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <KeyRound className="h-4 w-4" /> Trạng thái thông tin bảo mật kết nối
-                </CardTitle>
-                <CardDescription>Kiểm tra thông tin bảo mật kết nối Viettel S-Invoice; giá trị sẽ không hiển thị.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button variant="outline" size="sm" onClick={handleCheckConfig} disabled={loadingConfig}>
-                  {loadingConfig ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Settings className="h-4 w-4 mr-1" />}
-                  Kiểm tra trạng thái
-                </Button>
-                {configStatus && (
-                  <div className="space-y-2">
-                    {SECRET_NAMES.map(name => {
-                      const ok = configStatus[name];
-                      return (
-                        <div key={name} className="flex items-center justify-between border rounded-md px-3 py-2">
-                          <code className="text-sm">{name}</code>
-                          {ok ? (
-                            <Badge className="bg-sidebar-primary text-sidebar-primary-foreground">
-                              <CheckCircle2 className="h-3 w-3 mr-1" /> Đã cấu hình
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive">
-                              <XCircle className="h-3 w-3 mr-1" /> Thiếu
-                            </Badge>
-                          )}
-                        </div>
-                      );
-                    })}
-                    <p className="text-xs text-muted-foreground">
-                      Để cập nhật thông tin bảo mật, vào Lovable → Cài đặt dự án → Secrets, hoặc yêu cầu quản trị viên cập nhật.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Card 2: Test login */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Kiểm tra đăng nhập Viettel</CardTitle>
-                <CardDescription>Gọi <code>/auth/login</code> với tên đăng nhập/mật khẩu đã cấu hình.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button onClick={handleTestLogin} disabled={loadingLogin}>
-                  {loadingLogin && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-                  Kiểm tra đăng nhập
-                </Button>
-                {loginResult && (
-                  <div className={`rounded-md border p-3 ${loginResult.success ? "border-sidebar-primary/40 bg-sidebar-primary/5" : "border-destructive/40 bg-destructive/5"}`}>
-                    {loginResult.success ? (
-                      <div className="space-y-1 text-sm">
-                        <p className="flex items-center gap-2 font-medium text-sidebar-primary">
-                          <CheckCircle2 className="h-4 w-4" /> Đăng nhập thành công
-                        </p>
-                        <p>Xem trước mã xác thực: <code>{loginResult.token_preview}</code></p>
-                        <p>Độ dài: {loginResult.token_length} ký tự</p>
-                        {loginResult.expires_in != null && <p>Hết hạn sau: {loginResult.expires_in}s</p>}
-                      </div>
-                    ) : (
-                      <div className="space-y-1 text-sm text-destructive">
-                        <p className="flex items-center gap-2 font-medium">
-                          <XCircle className="h-4 w-4" /> Đăng nhập thất bại
-                        </p>
-                        <p>{loginResult.error}</p>
-                      </div>
-                    )}
-                    <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-x-auto max-h-48">{JSON.stringify(loginResult, null, 2)}</pre>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Card 3: Templates */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Kiểm tra việc lấy danh sách mẫu hoá đơn</CardTitle>
-                <CardDescription>Yêu cầu Viettel trả về các mẫu/ký hiệu HĐ đã đăng ký cho MST của bạn.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button onClick={handleGetTemplates} disabled={loadingTemplates}>
-                  {loadingTemplates && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-                  Lấy danh sách mẫu HĐ
-                </Button>
-                {templatesResult && (
-                  <>
-                    {templates.length > 0 ? (
-                      <div className="border rounded-md overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Mã mẫu hóa đơn</TableHead>
-                              <TableHead>Ký hiệu hóa đơn</TableHead>
-                              <TableHead>Loại hóa đơn</TableHead>
-                              <TableHead>Trạng thái</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {templates.map((t: any, i: number) => (
-                              <TableRow key={i}>
-                                <TableCell className="font-mono text-xs">{t.templateCode || t.invoiceTemplateCode || "—"}</TableCell>
-                                <TableCell className="font-mono text-xs">{t.invoiceSeries || "—"}</TableCell>
-                                <TableCell>{t.invoiceType || "—"}</TableCell>
-                                <TableCell>{t.status ?? t.statusName ?? "—"}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    ) : templatesResult.success ? (
-                      <p className="text-sm text-yellow-600">
-                        Không có mẫu HĐ nào — cần đăng ký mẫu trong portal SME Viettel trước.
-                      </p>
-                    ) : (
-                      <p className="text-sm text-destructive">{templatesResult.error}</p>
-                    )}
-                    <pre className="text-xs bg-muted p-2 rounded overflow-x-auto max-h-48">{JSON.stringify(templatesResult, null, 2)}</pre>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Card 4: Quick links */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Chẩn đoán đọc dữ liệu Viettel</CardTitle>
-                <CardDescription>Gọi thử các endpoint chính (login, mẫu HĐ, getListInvoiceDataControl, getInvoices) trong 30 ngày gần nhất. Không thay đổi dữ liệu.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button onClick={handleDiagnose} disabled={loadingDiagnose}>
-                  {loadingDiagnose && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-                  Chạy chẩn đoán
-                </Button>
-                {diagnoseResult && (
-                  <>
-                    {Array.isArray(diagnoseResult.results) && (
-                      <div className="border rounded-md overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Endpoint</TableHead>
-                              <TableHead>HTTP</TableHead>
-                              <TableHead>Message</TableHead>
-                              <TableHead>Số bản ghi</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {diagnoseResult.results.map((r: any, i: number) => (
-                              <TableRow key={i}>
-                                <TableCell className="font-mono text-xs">{r.step}</TableCell>
-                                <TableCell className={r.ok ? "text-sidebar-primary" : "text-destructive"}>{r.status ?? (r.ok ? "OK" : "ERR")}</TableCell>
-                                <TableCell className="text-xs">{r.message || r.error || "—"}</TableCell>
-                                <TableCell>{r.count ?? "—"}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                    <pre className="text-xs bg-muted p-2 rounded overflow-x-auto max-h-60">{JSON.stringify(diagnoseResult, null, 2)}</pre>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Card 5: Quick links */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Liên kết nhanh</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                <Button variant="outline" asChild>
-                  <a href="https://sme.viettel.vn" target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 mr-1" /> Portal SME Viettel
-                  </a>
-                </Button>
-                <Button variant="outline" asChild>
-                  <a href="https://vinvoice.viettel.vn" target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 mr-1" /> VinVoice (giao diện cũ)
-                  </a>
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-      </Tabs>
-
-      {showCreate && (
-        <CreateEInvoiceDialog open={showCreate} onOpenChange={setShowCreate} contract={null} />
-      )}
-      {showSync && <SyncInvoicesDialog open={showSync} onOpenChange={setShowSync} />}
-      {showSyncDrafts && <SyncInvoicesDialog open={showSyncDrafts} onOpenChange={setShowSyncDrafts} mode="drafts" />}
-      {cancelTarget && <CancelInvoiceDialog open={!!cancelTarget} onOpenChange={(v) => !v && setCancelTarget(null)} invoice={cancelTarget} />}
-      {emailTarget && <SendEmailDialog open={!!emailTarget} onOpenChange={(v) => !v && setEmailTarget(null)} invoice={emailTarget} />}
-      {replaceTarget && <ReplaceAdjustDialog open={!!replaceTarget} onOpenChange={(v) => !v && setReplaceTarget(null)} einvoice={replaceTarget} mode="replace" />}
-      {adjustTarget && <ReplaceAdjustDialog open={!!adjustTarget} onOpenChange={(v) => !v && setAdjustTarget(null)} einvoice={adjustTarget} mode="adjust" />}
-      {minuteTarget && <DownloadMinuteDialog open={!!minuteTarget} onOpenChange={(v) => !v && setMinuteTarget(null)} einvoice={minuteTarget} />}
-      <PreviewPdfDialog open={previewPdf.open} onOpenChange={(o) => setPreviewPdf({ ...previewPdf, open: o })} base64={previewPdf.base64} title={previewPdf.title} loading={previewDraft.isPending} />
+const money = (v: unknown, c: string) => `${String(v ?? "0")} ${c}`;
+const thisMonth = () => invoiceToday().slice(0, 7);
+export default function EInvoiceManagement() {
+  return isLocalBackend() ? (
+    <InvoiceWorkspace />
+  ) : (
+    <div className="p-6">
+      <h1 className="text-2xl font-semibold">Quản lý hóa đơn</h1>
+      <p>
+        Workspace hóa đơn cần backend local đã cập nhật. Không có thao tác
+        ký/phát hành trong giao diện này.
+      </p>
     </div>
   );
-};
-
-export default EInvoiceManagement;
+}
+function InvoiceWorkspace() {
+  const [urlParams] = useSearchParams();
+  const cache = useQueryClient(),
+    [companyId, setCompanyId] = useState(urlParams.get("company_id") ?? ""),
+    [tab, setTab] = useState(urlParams.get("contract_id") ? "ALL" : "QUEUE"),
+    [period, setPeriod] = useState(
+      urlParams.get("contract_id") ? "" : thisMonth(),
+    ),
+    [from, setFrom] = useState(""),
+    [to, setTo] = useState(""),
+    [contractFilter, setContractFilter] = useState(
+      urlParams.get("contract_id") ?? "",
+    ),
+    [paymentFilter, setPaymentFilter] = useState(""),
+    [missingPdf, setMissingPdf] = useState(false),
+    [missingBusiness, setMissingBusiness] = useState(false),
+    [checklistFilter, setChecklistFilter] = useState(""),
+    [search, setSearch] = useState(""),
+    [status, setStatus] = useState(""),
+    [source, setSource] = useState(""),
+    [missing, setMissing] = useState(false),
+    [unlinked, setUnlinked] = useState(false),
+    [page, setPage] = useState(1),
+    [selected, setSelected] = useState<string | null>(null),
+    [draft, setDraft] = useState(false),
+    [importOpen, setImportOpen] = useState(false),
+    [settings, setSettings] = useState(false),
+    [sync, setSync] = useState(false),
+    [periodOpen, setPeriodOpen] = useState(false),
+    [error, setError] = useState(""),
+    [why, setWhy] = useState(""),
+    [busy, setBusy] = useState(false),
+    [name, setName] = useState(""),
+    [tax, setTax] = useState(""),
+    [address, setAddress] = useState(""),
+    [grantUser, setGrantUser] = useState(""),
+    [grantCaps, setGrantCaps] = useState(["view"]),
+    [adopt, setAdopt] = useState<null | {
+      company_id: string;
+      rows: Record<string, unknown>[];
+    }>(null),
+    [adoptCompany, setAdoptCompany] = useState("");
+  const pending = useRef(false),
+    generation = useRef(0);
+  const companies = useQuery({
+    queryKey: ["invoice-companies"],
+    queryFn: () => invoiceRequest<InvoiceCompany[]>("/companies"),
+  });
+  useEffect(() => {
+    if (!companyId && companies.data)
+      setCompanyId(companies.data[0]?.id ?? "legacy");
+  }, [companies.data, companyId]);
+  useEffect(() => {
+    setPage(1);
+    setBusy(false);
+    setSelected(null);
+    setAdopt(null);
+    generation.current++;
+    const lifecycle = generation;
+    return () => {
+      lifecycle.current++;
+    };
+  }, [
+    companyId,
+    tab,
+    period,
+    from,
+    to,
+    contractFilter,
+    paymentFilter,
+    missingPdf,
+    missingBusiness,
+    checklistFilter,
+    search,
+    status,
+    source,
+    missing,
+    unlinked,
+  ]);
+  const company = companies.data?.find((c) => c.id === companyId),
+    can = (cap: string) => !!company?.capabilities.includes(cap);
+  const users = useQuery({
+    queryKey: ["invoice-users", companyId],
+    queryFn: () =>
+      invoiceRequest<Record<string, unknown>[]>(
+        "/users?company_id=" + encodeURIComponent(companyId),
+      ),
+    enabled: settings && can("configure"),
+  });
+  const contractFilters = useQuery({
+    queryKey: ["invoice-workspace", "contract-filters", companyId],
+    queryFn: () =>
+      invoiceRequest<Record<string, unknown>[]>(
+        "/contracts?company_id=" + encodeURIComponent(companyId),
+      ),
+    enabled: !!company,
+  });
+  const params = new URLSearchParams({
+    company_id: companyId,
+    page: String(page),
+    limit: "25",
+    ...(period && !from && !to ? { period } : {}),
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+    ...(contractFilter ? { contract_id: contractFilter } : {}),
+    ...(paymentFilter ? { payment_state: paymentFilter } : {}),
+    ...(missingPdf ? { missing_pdf: "true" } : {}),
+    ...(missingBusiness ? { missing_business: "true" } : {}),
+    ...(checklistFilter ? { checklist: checklistFilter } : {}),
+    ...(search ? { search } : {}),
+    ...(status ? { status } : {}),
+    ...(source ? { source } : {}),
+    ...(missing ? { missing_file: "true" } : {}),
+    ...(unlinked ? { unlinked: "true" } : {}),
+    ...(tab === "QUEUE"
+      ? { queue: "true" }
+      : tab === "IN"
+        ? { direction: "IN" }
+        : tab === "OUT"
+          ? { direction: "OUT" }
+          : {}),
+  });
+  const invoices = useQuery({
+    queryKey: ["invoice-workspace", "list", params.toString()],
+    queryFn: ({ signal }) =>
+      invoiceRequest<List>("/invoices?" + params, "GET", undefined, signal),
+    enabled: !!companyId,
+  });
+  const periods = useQuery({
+    queryKey: ["invoice-workspace", "periods", companyId, period],
+    queryFn: () =>
+      invoiceRequest<{
+        rows: Record<string, unknown>[];
+        changed_since_close: boolean;
+      }>("/periods?" + new URLSearchParams({ company_id: companyId, period })),
+    enabled: !!company && can("review") && !!period,
+  });
+  const refresh = async () => {
+    await cache.invalidateQueries({ queryKey: ["invoice-workspace"] });
+    await cache.invalidateQueries({ queryKey: ["invoice-companies"] });
+  };
+  const run = async (fn: () => Promise<unknown>, success: string) => {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    const gen = generation.current;
+    try {
+      await fn();
+      if (gen === generation.current) {
+        toast.success(success);
+        setWhy("");
+        await refresh();
+      }
+    } catch (e) {
+      if (gen === generation.current)
+        setError(e instanceof Error ? e.message : "Không xử lý được.");
+    } finally {
+      pending.current = false;
+      if (gen === generation.current) setBusy(false);
+    }
+  };
+  const exportList = async () => {
+    try {
+      const result = await invoiceRequest<{
+        filename: string;
+        content: string;
+        has_more: boolean;
+      }>("/export?" + params);
+      invoiceDownloadBlob(
+        new Blob([result.content], { type: "text/csv;charset=utf-8" }),
+        result.filename,
+      );
+      if (result.has_more)
+        toast.info(
+          "Đã xuất trang dữ liệu. Chuyển trang để xuất phần tiếp theo.",
+        );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Không xuất được.");
+    }
+  };
+  const exportDocs = async () => {
+    try {
+      const result = await invoiceRequest<{ filename: string; base64: string }>(
+        "/export-documents",
+        "POST",
+        {
+          company_id: companyId,
+          invoice_ids: invoices.data?.rows.map((r) => r.id),
+        },
+      );
+      invoiceDownloadBase64(result.base64, result.filename, "application/zip");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Không xuất được.");
+    }
+  };
+  const adoption = async (id: string) => {
+    if (!adoptCompany) return;
+    await run(async () => {
+      setAdopt(
+        await invoiceRequest("/adoption/preview", "POST", {
+          company_id: adoptCompany,
+          ids: [id],
+        }),
+      );
+    }, "Đã đối chiếu MST; xem trước khi xác nhận");
+  };
+  return (
+    <div className="mx-auto max-w-[1500px] space-y-5 p-4 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold">
+            <FileText className="h-6 w-6" />
+            Quản lý hóa đơn
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Tiếp nhận bằng chứng, quản lý nháp và đối chiếu hồ sơ
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            disabled={!can("import")}
+            onClick={() => setSync(true)}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Đồng bộ
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!can("import")}
+            onClick={() => setImportOpen(true)}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Nhập tệp
+          </Button>
+          <Button disabled={!can("draft")} onClick={() => setDraft(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Tạo nháp
+          </Button>
+          <Button
+            variant="outline"
+            aria-label="Cấu hình doanh nghiệp và nguồn"
+            onClick={() => setSettings(true)}
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      <div className="rounded border bg-muted/30 p-3 text-sm">
+        Viettel: kiểm tra kết nối và đọc hóa đơn trong Cấu hình/Đồng bộ.
+        CQT/đầu vào: nhập tệp tải hợp lệ. CRM không ký/phát hành hóa đơn.
+      </div>
+      {(error || companies.isError) && (
+        <div
+          role="alert"
+          className="rounded border border-destructive p-3 text-sm"
+        >
+          <p>{error || companies.error?.message}</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setError("");
+              void companies.refetch();
+              void invoices.refetch();
+            }}
+          >
+            Thử lại
+          </Button>
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <Label>Doanh nghiệp/MST</Label>
+          <select
+            className="h-10 w-full rounded border bg-background px-2"
+            value={companyId}
+            onChange={(e) => setCompanyId(e.target.value)}
+          >
+            <option value="" disabled>
+              Chọn doanh nghiệp
+            </option>
+            {companies.data?.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.legal_name} · {c.tax_code}
+              </option>
+            ))}
+            <option value="legacy">Dữ liệu cũ — chưa gắn doanh nghiệp</option>
+          </select>
+        </div>
+        <div>
+          <Label>Kỳ xem (bỏ trống để xem tất cả)</Label>
+          <Input
+            type="month"
+            value={period}
+            onChange={(e) => {
+              setPeriod(e.target.value);
+              setFrom("");
+              setTo("");
+            }}
+          />
+        </div>
+        <div>
+          <Label>Tìm số, ký hiệu, đối tác/MST</Label>
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Tìm hóa đơn…"
+          />
+        </div>
+      </div>
+      <details className="rounded border p-3">
+        <summary>Bộ lọc ngày, hợp đồng, tiền và hồ sơ</summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <Label>Từ ngày</Label>
+            <Input
+              type="date"
+              value={from}
+              onChange={(e) => {
+                setFrom(e.target.value);
+                setPeriod("");
+              }}
+            />
+          </div>
+          <div>
+            <Label>Đến ngày (bao gồm ngày này)</Label>
+            <Input
+              type="date"
+              value={to}
+              onChange={(e) => {
+                setTo(e.target.value);
+                setPeriod("");
+              }}
+            />
+          </div>
+          <div>
+            <Label>Hợp đồng</Label>
+            <select
+              className="h-10 w-full rounded border bg-background"
+              value={contractFilter}
+              onChange={(e) => setContractFilter(e.target.value)}
+            >
+              <option value="">Mọi hợp đồng</option>
+              {contractFilters.data?.map((c) => (
+                <option key={String(c.id)} value={String(c.id)}>
+                  {String(c.contract_number)} · {String(c.buyer_name ?? "")}
+                </option>
+              ))}
+            </select>
+            {contractFilters.error && (
+              <p className="text-xs text-destructive">
+                {contractFilters.error.message}
+              </p>
+            )}
+          </div>
+          <div>
+            <Label>Tình trạng tiền</Label>
+            <select
+              className="h-10 w-full rounded border bg-background"
+              value={paymentFilter}
+              onChange={(e) => setPaymentFilter(e.target.value)}
+            >
+              <option value="">Mọi tình trạng tiền</option>
+              {Object.entries(invoicePaymentLabels).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label>Đánh giá bộ hồ sơ</Label>
+            <select
+              className="h-10 w-full rounded border bg-background"
+              value={checklistFilter}
+              onChange={(e) => setChecklistFilter(e.target.value)}
+            >
+              <option value="">Mọi bộ hồ sơ</option>
+              <option value="UNASSESSED">Còn mục chưa đánh giá</option>
+              <option value="MISSING">Thiếu mục đã đánh dấu cần có</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="flex gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={missingPdf}
+                onChange={(e) => setMissingPdf(e.target.checked)}
+              />
+              Chưa có PDF gốc (kể cả không áp dụng)
+            </label>
+            <label className="flex gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={missingBusiness}
+                onChange={(e) => setMissingBusiness(e.target.checked)}
+              />
+              Chưa có hợp đồng/hồ sơ chi phí hiện hành
+            </label>
+          </div>
+        </div>
+      </details>
+      {companyId === "legacy" && (
+        <div className="rounded border border-amber-300 p-3 text-sm">
+          <p>
+            Dữ liệu lịch sử vẫn theo quyền người phụ trách. Không đoán doanh
+            nghiệp; chỉ tiếp nhận khi MST chứng minh một chiều.
+          </p>
+          <select
+            aria-label="Doanh nghiệp để tiếp nhận dữ liệu cũ"
+            className="mt-2 h-10 w-full rounded border bg-background"
+            value={adoptCompany}
+            onChange={(e) => setAdoptCompany(e.target.value)}
+          >
+            <option value="">
+              Chọn doanh nghiệp để đối chiếu từng hóa đơn
+            </option>
+            {companies.data
+              ?.filter((c) => c.capabilities.includes("import"))
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.legal_name} · {c.tax_code}
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          [
+            "Đầu vào",
+            invoices.data?.stats.incoming ?? 0,
+            () => {
+              setTab("IN");
+              setMissing(false);
+              setUnlinked(false);
+            },
+          ],
+          [
+            "Đầu ra",
+            invoices.data?.stats.outgoing ?? 0,
+            () => {
+              setTab("OUT");
+              setMissing(false);
+              setUnlinked(false);
+            },
+          ],
+          [
+            "Chưa gắn hồ sơ",
+            invoices.data?.stats.unlinked ?? 0,
+            () => {
+              setTab("ALL");
+              setUnlinked(true);
+              setMissing(false);
+            },
+          ],
+          [
+            "Thiếu XML gốc",
+            invoices.data?.stats.missing_files ?? 0,
+            () => {
+              setTab("ALL");
+              setMissing(true);
+              setUnlinked(false);
+            },
+          ],
+        ].map(([label, count, click]) => (
+          <button
+            key={String(label)}
+            className="rounded-lg border p-4 text-left hover:bg-muted"
+            onClick={click as () => void}
+          >
+            <span className="text-sm text-muted-foreground">
+              {String(label)}
+            </span>
+            <p className="text-2xl font-semibold">{String(count)}</p>
+          </button>
+        ))}
+      </div>
+      {periods.data?.changed_since_close && (
+        <p role="alert" className="rounded border border-amber-300 p-3 text-sm">
+          Có bằng chứng hoặc hồ sơ thay đổi sau snapshot chốt kỳ. Mở lại và đối
+          chiếu; snapshot cũ được giữ nguyên.
+        </p>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap rounded-lg border p-1">
+          {[
+            ["QUEUE", "Cần xử lý"],
+            ["IN", "Đầu vào"],
+            ["OUT", "Đầu ra"],
+            ...(tab === "ALL" ? [["ALL", "Theo bộ lọc"]] : []),
+          ].map(([id, label]) => (
+            <Button
+              key={id}
+              variant={tab === id ? "secondary" : "ghost"}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!invoices.data?.rows.length}
+            onClick={() => void exportList()}
+          >
+            Xuất danh sách/trang
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!can("files") || !invoices.data?.rows.length}
+            onClick={() => void exportDocs()}
+          >
+            Xuất bộ chứng từ/trang
+          </Button>
+          {can("review") && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!period}
+              onClick={() => setPeriodOpen(true)}
+            >
+              Kiểm tra & chốt kỳ
+            </Button>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <select
+          aria-label="Trạng thái xử lý"
+          className="h-10 rounded border bg-background px-2"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          <option value="">Mọi trạng thái</option>
+          <option value="draft">Nháp</option>
+          <option value="needs_review">Cần kiểm tra</option>
+          <option value="reviewed">Đã kiểm tra nội bộ</option>
+        </select>
+        <select
+          aria-label="Nguồn hóa đơn"
+          className="h-10 rounded border bg-background px-2"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+        >
+          {[
+            ["", "Mọi nguồn"],
+            ["CRM", "Nháp CRM"],
+            ["VIETTEL", "API Viettel chỉ đọc"],
+            ["VIETTEL_FILE", "Tệp Viettel"],
+            ["TAX_FILE", "Tệp cổng thuế"],
+            ["USER_FILE", "Tệp bổ sung"],
+            ["LEGACY", "Lịch sử"],
+          ].map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={missing}
+            onChange={(e) => setMissing(e.target.checked)}
+          />
+          Thiếu XML gốc
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={unlinked}
+            onChange={(e) => setUnlinked(e.target.checked)}
+          />
+          Chưa gắn hồ sơ
+        </label>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setStatus("");
+            setSource("");
+            setMissing(false);
+            setUnlinked(false);
+            setSearch("");
+          }}
+        >
+          Xóa bộ lọc
+        </Button>
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          {invoices.isLoading ? (
+            <p role="status" className="p-6">
+              Đang tải hóa đơn…
+            </p>
+          ) : invoices.isError ? (
+            <div role="alert" className="p-6">
+              <p>{invoices.error.message}</p>
+              <Button onClick={() => void invoices.refetch()}>
+                Thử tải lại
+              </Button>
+            </div>
+          ) : !invoices.data?.rows.length ? (
+            <div className="space-y-2 p-8 text-center">
+              <p>Chưa có hóa đơn trong phạm vi này.</p>
+              <p className="text-sm text-muted-foreground">
+                Chọn doanh nghiệp/kỳ khác hoặc nhập tệp hợp lệ. Dữ liệu cũ nằm ở
+                phạm vi riêng.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="hidden overflow-auto md:block">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40">
+                    <tr>
+                      {[
+                        "Số/ký hiệu · ngày",
+                        "Đối tác/MST",
+                        "Trước thuế · VAT · Tổng",
+                        "Hợp đồng/hồ sơ",
+                        "Xử lý",
+                      ].map((h) => (
+                        <th key={h} className="p-3 text-left">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.data.rows.map((r) => (
+                      <tr key={r.id} className="border-t hover:bg-muted/30">
+                        <td className="p-3">
+                          <button
+                            className="text-left font-medium hover:underline"
+                            onClick={() => setSelected(r.id)}
+                          >
+                            {r.invoice_number || "Nháp CRM"} ·{" "}
+                            {r.invoice_series || "Chưa xác minh ký hiệu"}
+                          </button>
+                          <p className="text-xs text-muted-foreground">
+                            {invoiceBusinessDate(r.issued_date ?? r.created_at)}
+                          </p>
+                        </td>
+                        <td className="p-3">
+                          {r.direction === "IN" ? r.seller_name : r.buyer_name}
+                          <p className="text-xs text-muted-foreground">
+                            {String(
+                              r.direction === "IN"
+                                ? (r.seller_tax_code ?? "")
+                                : (r.buyer_tax_code ?? ""),
+                            )}
+                          </p>
+                        </td>
+                        <td className="p-3 tabular-nums">
+                          <p>
+                            {r.total_amount} · VAT {r.vat_amount}
+                          </p>
+                          <strong>{money(r.total_with_vat, r.currency)}</strong>
+                        </td>
+                        <td className="p-3">
+                          {Number(r.contract_count) > 0
+                            ? String(r.contract_count) + " hợp đồng"
+                            : "Chưa phân bổ hợp đồng"}
+                          <p className="text-xs text-muted-foreground">
+                            {r.missing_xml
+                              ? "Thiếu XML gốc"
+                              : "Có XML bằng chứng"}
+                          </p>
+                        </td>
+                        <td className="p-3">
+                          <p>
+                            {r.source_kind === "CRM"
+                              ? "Nháp CRM"
+                              : (invoiceSourceStateLabels[String(r.status)] ??
+                                "Nguồn cần xác minh")}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {r.review_state === "reviewed"
+                              ? "Đã kiểm tra nội bộ"
+                              : "Cần kiểm tra"}
+                            <span className="block">
+                              {invoicePaymentLabels[String(r.payment_state)] ??
+                                "Chưa đánh giá tiền"}
+                            </span>
+                            <span className="block">
+                              {r.checklist_unassessed
+                                ? "Hồ sơ chưa đánh giá"
+                                : r.checklist_missing
+                                  ? "Thiếu hồ sơ cần có"
+                                  : "Đã đánh giá bộ hồ sơ"}
+                            </span>
+                          </p>
+                          {companyId === "legacy" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={!adoptCompany || busy}
+                              onClick={() => void adoption(r.id)}
+                            >
+                              Đối chiếu MST
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="space-y-3 p-3 md:hidden">
+                {invoices.data.rows.map((r) => (
+                  <button
+                    key={r.id}
+                    className="w-full space-y-2 rounded border p-3 text-left"
+                    onClick={() => setSelected(r.id)}
+                  >
+                    <p className="font-medium">
+                      {r.invoice_number || "Nháp CRM"} ·{" "}
+                      {r.invoice_series || "Chưa xác minh ký hiệu"}
+                    </p>
+                    <p>{r.direction === "IN" ? r.seller_name : r.buyer_name}</p>
+                    <p>
+                      {money(r.total_with_vat, r.currency)} ·{" "}
+                      {r.review_state === "reviewed"
+                        ? "Đã kiểm tra"
+                        : "Cần kiểm tra"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {r.missing_xml ? "Thiếu XML gốc" : "Có XML bằng chứng"}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <p>
+          {invoices.data?.stats.total ?? 0} hóa đơn · Trang {page}
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            disabled={page <= 1 || invoices.isFetching}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            Trước
+          </Button>
+          <Button
+            variant="outline"
+            disabled={
+              !invoices.data ||
+              page * 25 >= invoices.data.stats.total ||
+              invoices.isFetching
+            }
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Sau
+          </Button>
+        </div>
+      </div>
+      <InvoiceDraftDialog
+        open={draft}
+        onOpenChange={setDraft}
+        companyId={companyId}
+        onSaved={() => void refresh()}
+      />
+      <InvoiceImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        companyId={companyId}
+        onSaved={() => void refresh()}
+      />
+      <InvoiceDetailDialog
+        id={selected}
+        onClose={() => setSelected(null)}
+        company={company}
+        onSaved={() => void refresh()}
+      />
+      {company && (
+        <InvoiceSyncDialog
+          key={company.id + ":sync"}
+          company={company}
+          open={sync}
+          onOpenChange={setSync}
+          onSaved={() => void refresh()}
+        />
+      )}
+      <Dialog
+        open={settings}
+        onOpenChange={(v) => {
+          if (!busy) setSettings(v);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Doanh nghiệp và quyền hóa đơn</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm">
+            Quyền module hợp đồng và quyền doanh nghiệp đều được kiểm tra. Tài
+            khoản nguồn được cấu hình riêng theo MST.
+          </p>
+          {error && (
+            <p role="alert" className="text-destructive">
+              {error}
+            </p>
+          )}
+          <Label>Tên pháp nhân mới</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+          <Label>MST</Label>
+          <Input value={tax} onChange={(e) => setTax(e.target.value)} />
+          <Label>Địa chỉ</Label>
+          <Input value={address} onChange={(e) => setAddress(e.target.value)} />
+          <Button
+            disabled={busy || !why.trim() || !name || !tax}
+            onClick={() =>
+              void run(async () => {
+                const result = await invoiceRequest<InvoiceCompany>(
+                  "/companies",
+                  "POST",
+                  { legal_name: name, tax_code: tax, address, reason: why },
+                );
+                setCompanyId(result.id);
+                setName("");
+                setTax("");
+              }, "Đã tạo phạm vi doanh nghiệp")
+            }
+          >
+            Tạo doanh nghiệp/MST
+          </Button>
+          {can("configure") && (
+            <>
+              <hr />
+              <Label>Tài khoản được cấp quyền</Label>
+              <select
+                className="h-10 w-full rounded border bg-background"
+                value={grantUser}
+                onChange={(e) => setGrantUser(e.target.value)}
+              >
+                <option value="">Chọn người dùng</option>
+                {users.data?.map((u) => (
+                  <option key={String(u.user_id)} value={String(u.user_id)}>
+                    {String(u.name || u.email)} · {String(u.email)}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ["view", "Xem"],
+                  ["import", "Nhập tệp"],
+                  ["draft", "Soạn nháp"],
+                  ["link", "Gắn/đối chiếu"],
+                  ["review", "Kiểm tra/chốt"],
+                  ["configure", "Cấu hình quyền"],
+                  ["files", "Tải tệp gốc"],
+                ].map(([cap, label]) => (
+                  <label key={cap} className="flex gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={grantCaps.includes(cap)}
+                      onChange={(e) =>
+                        setGrantCaps(
+                          e.target.checked
+                            ? [...grantCaps, cap]
+                            : grantCaps.filter((c) => c !== cap),
+                        )
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <Button
+                disabled={busy || !why.trim() || !grantUser}
+                onClick={() =>
+                  void run(
+                    () =>
+                      invoiceRequest(
+                        "/companies/" + companyId + "/grants",
+                        "POST",
+                        {
+                          user_id: grantUser,
+                          capabilities: grantCaps,
+                          reason: why,
+                        },
+                      ),
+                    "Đã lưu phạm vi quyền",
+                  )
+                }
+              >
+                Lưu quyền doanh nghiệp đang chọn
+              </Button>
+            </>
+          )}
+          <Label>Lý do</Label>
+          <Textarea value={why} onChange={(e) => setWhy(e.target.value)} />
+          {company && can("configure") && (
+            <InvoiceProviderSettings key={company.id} company={company} />
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={periodOpen}
+        onOpenChange={(v) => {
+          if (!busy) setPeriodOpen(v);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Kiểm tra kỳ {period}</DialogTitle>
+          </DialogHeader>
+          {error && (
+            <p role="alert" className="text-destructive">
+              {error}
+            </p>
+          )}
+          <p className="text-sm">
+            Chốt là snapshot nội bộ, không khóa tiếp nhận bằng chứng mới. Mọi
+            thay đổi sau chốt được cảnh báo; bản cũ vẫn được giữ.
+          </p>
+          {periods.data?.rows.map((row) => (
+            <div key={String(row.id)} className="rounded border p-3 text-sm">
+              <p>
+                {String(row.closed_at)} ·{" "}
+                {row.reopened_at ? "Đã mở lại" : "Đang chốt"}
+              </p>
+              <p className="break-all text-xs">
+                SHA256 {String(row.content_hash)}
+              </p>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    const result = await invoiceRequest<{
+                      filename: string;
+                      content: string;
+                    }>("/periods/" + row.id + "/export");
+                    invoiceDownloadBlob(
+                      new Blob([result.content], { type: "application/json" }),
+                      result.filename,
+                    );
+                  }, "Đã tải snapshot kỳ")
+                }
+              >
+                Tải snapshot đã chốt
+              </Button>
+              {!row.reopened_at && (
+                <Button
+                  variant="outline"
+                  disabled={busy || !why.trim()}
+                  onClick={() =>
+                    void run(
+                      () =>
+                        invoiceRequest(
+                          "/periods/" + row.id + "/reopen",
+                          "POST",
+                          { reason: why },
+                        ),
+                      "Đã mở lại kỳ",
+                    )
+                  }
+                >
+                  Mở lại có lý do
+                </Button>
+              )}
+            </div>
+          ))}
+          <Label>Lý do chốt/mở lại</Label>
+          <Textarea value={why} onChange={(e) => setWhy(e.target.value)} />
+          <Button
+            disabled={
+              busy ||
+              !why.trim() ||
+              periods.data?.rows.some((r) => !r.reopened_at)
+            }
+            onClick={() =>
+              void run(
+                () =>
+                  invoiceRequest("/periods/close", "POST", {
+                    company_id: companyId,
+                    period,
+                    reason: why,
+                  }),
+                "Đã lưu snapshot kỳ",
+              )
+            }
+          >
+            Lưu snapshot chốt kỳ
+          </Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!adopt}
+        onOpenChange={(v) => {
+          if (!v && !busy) setAdopt(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xác nhận doanh nghiệp từ MST</DialogTitle>
+          </DialogHeader>
+          {adopt?.rows.map((r) => (
+            <div key={String(r.id)} className="rounded border p-3 text-sm">
+              <p>
+                MST bán: {String(r.seller_tax_code)} · MST mua:{" "}
+                {String(r.buyer_tax_code)}
+              </p>
+              <p>
+                {r.eligible
+                  ? "Đủ bằng chứng chiều " + r.direction
+                  : "Chưa đủ bằng chứng — không được gắn"}
+              </p>
+            </div>
+          ))}
+          <p className="text-sm">
+            Giữ quyền người phụ trách cũ, thêm quyền doanh nghiệp; không tự mở
+            rộng phạm vi xem.
+          </p>
+          <Label>Lý do tiếp nhận</Label>
+          <Textarea value={why} onChange={(e) => setWhy(e.target.value)} />
+          <Button
+            disabled={
+              busy || !why.trim() || !adopt?.rows.every((r) => r.eligible)
+            }
+            onClick={() =>
+              void run(async () => {
+                await invoiceRequest("/adoption/commit", "POST", {
+                  ...adopt,
+                  reason: why,
+                });
+                setAdopt(null);
+              }, "Đã gắn theo bằng chứng MST")
+            }
+          >
+            Xác nhận gắn doanh nghiệp
+          </Button>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

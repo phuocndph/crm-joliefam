@@ -1,8 +1,10 @@
+import {readGhnProviderJson} from './ghn-provider-json.js';
 import type express from 'express';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ExternalReadAdapters, type GhnRuntimeConfig } from './external-read-adapters.js';
+import { extractGhnOrderNumber } from './ghn-order-number.js';
 
 const fail = (message: string, status = 400) => Object.assign(new Error(message), { status });
 const terminal = ['delivered', 'self_delivered', 'cancel', 'cancelled', 'returned', 'lost', 'damage'];
@@ -217,6 +219,7 @@ export class GhnTrackingRefresh {
         const patch = {
           status: data.status, label: labels[data.status] || data.status,
           expected: normalizeGhnDate(data.expectedDeliveryTime), delivered: normalizeGhnDate(data.deliveredDate),
+          recipientName: typeof data.customerName === 'string' && data.customerName.trim() ? data.customerName.slice(0,500) : null,
         };
         const client = await this.pool.connect();
         try {
@@ -239,8 +242,9 @@ export class GhnTrackingRefresh {
           await client.query(`update local_ghn_tracking set ghn_status=$2,ghn_status_text=$3,
             expected_delivery_date=coalesce($4::timestamptz,expected_delivery_date),
             delivered_date=coalesce($5::timestamptz,delivered_date),
-            raw_data=coalesce(raw_data,'{}'::jsonb)||jsonb_build_object('local_ghn_status_refresh',jsonb_build_object('order_code',ghn_order_code,'status',$2::text,'checked_at',now())),
-            last_updated_at=now(),updated_at=now(),local_modified_at=now() where id=$1`, [row.id, patch.status, patch.label, patch.expected, patch.delivered]);
+            internal_order_code=case when $6::text is null then internal_order_code else $7::text end,
+            raw_data=coalesce(raw_data,'{}'::jsonb)||jsonb_build_object('local_ghn_status_refresh',coalesce(raw_data->'local_ghn_status_refresh','{}'::jsonb)||jsonb_strip_nulls(jsonb_build_object('order_code',ghn_order_code,'status',$2::text,'checked_at',now(),'to_name',$6::text))),
+            last_updated_at=now(),updated_at=now(),local_modified_at=now() where id=$1`, [row.id, patch.status, patch.label, patch.expected, patch.delivered, patch.recipientName, extractGhnOrderNumber(patch.recipientName)]);
           await client.query(`insert into local_auth_audit_events(entity_type,entity_id,action,actor_id,reason,before_data,after_data)
             values('ghn_tracking',$1,'REFRESH_STATUS',$2,'Cập nhật trạng thái vận đơn từ GHN',$3::jsonb,$4::jsonb)`,
           [row.id, actor, JSON.stringify({ status: row.ghn_status }), JSON.stringify(patch)]);
@@ -260,9 +264,16 @@ export class GhnTrackingRefresh {
 
 const trackingCode = z.string().trim().regex(/^[A-Za-z0-9_-]{3,60}$/);
 const trackingCodes = z.array(trackingCode).min(0).max(100);
-const trackingSelect = `select g.* from local_ghn_tracking g left join local_orders o on o.id=g.order_id`;
+// The recipient convention is authoritative, independently of CRM linkage.
+// A refresh retains its verified name as evidence without changing customer data.
+const recipientNameSql = `coalesce(nullif(g.raw_data#>>'{local_ghn_status_refresh,to_name}',''),nullif(g.customer_name,''),g.raw_data->>'to_name','')`;
+export const ghnInternalOrderCodeSql = `coalesce(substring(${recipientNameSql} from '_([0-9]{3,5})(?:[pPhH]|[[:space:]]*[hH][oO][aA][nN])?[[:space:]]*$'),
+  substring(${recipientNameSql} from '_([0-9]{3,5})([^A-Za-z0-9_]|$)'),
+  substring(${recipientNameSql} from '(?:^|[[:space:]-])([0-9]{3,5})[[:space:]]*(?:[pP]|[hH]|[hH][oO][aA][nN])[[:space:]]*$'))`;
+const trackingSelect = `select g.*,${ghnInternalOrderCodeSql} internal_order_code from local_ghn_tracking g left join local_orders o on o.id=g.order_id`;
 const trackingPublic = (row: Record<string, unknown>) => ({
   ...row,
+  internal_order_code: extractGhnOrderNumber((row.raw_data as { local_ghn_status_refresh?: { to_name?: unknown }; to_name?: unknown } | null)?.local_ghn_status_refresh?.to_name || row.customer_name || (row.raw_data as { to_name?: unknown } | null)?.to_name),
   package_weight: row.package_weight === null || row.package_weight === undefined ? null : Number(row.package_weight),
   cod_amount: row.cod_amount === null || row.cod_amount === undefined ? null : Number(row.cod_amount),
 });
@@ -273,6 +284,7 @@ const trackingPublic = (row: Record<string, unknown>) => ({
  * business data and therefore use short, scoped database transactions.
  */
 export class GhnTrackingManagement {
+  private readonly importSecret = randomBytes(32);
   constructor(private pool: Pool, private adapter: ExternalReadAdapters, private fetcher: typeof fetch = fetch) {}
 
   private async lockActor(client: PoolClient, actor: string) {
@@ -329,7 +341,7 @@ export class GhnTrackingManagement {
     if (!config.shops.includes(shopId)) throw fail('Vận đơn không thuộc cửa hàng GHN đã cấu hình.', 403);
     if (typeof data.status !== 'string' || !/^[a-z_]{1,60}$/.test(data.status)) throw fail('Dữ liệu trạng thái GHN không hợp lệ.', 502);
     const weight = Number(data.weight), cod = Number(data.codAmount);
-    if (!Number.isSafeInteger(weight) || weight < 1 || weight > 50000 || !Number.isSafeInteger(cod) || cod < 0 || cod > 50000000) throw fail('Dữ liệu kiện hàng hoặc COD GHN không hợp lệ.', 502);
+    if (!Number.isSafeInteger(weight) || weight < 1 || weight > 999999999999999 || !Number.isSafeInteger(cod) || cod < 0) throw fail('Dữ liệu kiện hàng hoặc COD GHN không hợp lệ.', 502);
     return { config, data, shopId, weight, cod };
   }
 
@@ -340,7 +352,7 @@ export class GhnTrackingManagement {
     const statuses = query.status.split(',').map((value) => value.trim()).filter((value) => value && value !== 'all').slice(0, 50);
     const order = buildGhnTrackingOrder(query.sortBy, query.sortOrder);
     const visible = ghnVisibleSql.replace(/\$(\d+)/g, (_, value) => `$${Number(value) + 2}`);
-    const where = "($1='' or lower(coalesce(g.ghn_order_code,'')) like '%'||$1||'%' or lower(coalesce(g.internal_order_code,'')) like '%'||$1||'%' or lower(coalesce(g.customer_name,'')) like '%'||$1||'%' or lower(coalesce(g.customer_phone,'')) like '%'||$1||'%' or lower(coalesce(g.customer_address,'')) like '%'||$1||'%' or lower(coalesce(g.ghn_status,'')) like '%'||$1||'%' or lower(coalesce(g.ghn_status_text,'')) like '%'||$1||'%') and (cardinality($2::text[])=0 or g.ghn_status=any($2::text[]))";
+    const where = `($1='' or lower(coalesce(g.ghn_order_code,'')) like '%'||$1||'%' or lower(coalesce(${ghnInternalOrderCodeSql},'')) like '%'||$1||'%' or lower(coalesce(g.customer_name,'')) like '%'||$1||'%' or lower(coalesce(g.customer_phone,'')) like '%'||$1||'%' or lower(coalesce(g.customer_address,'')) like '%'||$1||'%' or lower(coalesce(g.ghn_status,'')) like '%'||$1||'%' or lower(coalesce(g.ghn_status_text,'')) like '%'||$1||'%') and (cardinality($2::text[])=0 or g.ghn_status=any($2::text[]))`;
     const values: unknown[] = [search, statuses, principal.role, principal.manager];
     const count = await this.pool.query(`select count(*)::int count from local_ghn_tracking g left join local_orders o on o.id=g.order_id where ${visible} and ${where}`, values);
     const rows = await this.pool.query(`${trackingSelect} where ${visible} and ${where} order by ${order.sql} limit $5 offset $6`, [...values, query.pageSize, (query.page - 1) * query.pageSize]);
@@ -387,14 +399,14 @@ export class GhnTrackingManagement {
           if (any.order_id && String(any.order_id) !== order.id) throw fail('Mã GHN đã liên kết với một đơn CRM khác.', 409);
           const visible = (await this.visibleRow(client, principal, String(any.id), 'id')).rows[0];
           if (!visible) throw fail('Mã GHN không nằm trong phạm vi quản lý.', 404);
-          await client.query(`update local_ghn_tracking set order_id=$2,internal_order_code=$3,manager_id=$4,tenant_id=$5,local_modified_at=now(),updated_at=now() where id=$1`, [any.id, order.id, order.internal, order.manager, order.tenant]);
+          await client.query(`update local_ghn_tracking set order_id=$2,internal_order_code=$3,manager_id=$4,tenant_id=$5,local_modified_at=now(),updated_at=now() where id=$1`, [any.id, order.id, extractGhnOrderNumber(any.customer_name), order.manager, order.tenant]);
         } else {
           const detail = verified.get(code);
           if (!detail) throw fail('Mã GHN mới chưa được xác minh.', 409);
           const data = detail.data;
           await client.query(`insert into local_ghn_tracking(id,ghn_order_code,order_id,internal_order_code,customer_name,customer_phone,customer_address,package_weight,created_date,expected_delivery_date,delivered_date,cod_amount,ghn_status,ghn_status_text,tracking_url,raw_data,manager_id,tenant_id,is_snapshot_record,local_modified_at,last_updated_at,created_at,updated_at)
             values(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8::timestamptz,$9::timestamptz,$10::timestamptz,$11,$12,$13,$14,$15::jsonb,$16,$17,false,now(),now(),now(),now())`,
-          [code, order.id, order.internal, String(data.customerName || '').slice(0, 500), data.customerPhone || null, data.customerAddress || null, detail.weight, normalizeGhnDate(data.createdDate), normalizeGhnDate(data.expectedDeliveryTime), normalizeGhnDate(data.deliveredDate), detail.cod, data.status, String(data.statusText || data.status).slice(0, 200), String(data.trackingUrl || ''), JSON.stringify({ shop_id: Number(detail.shopId), provider_verified_at: new Date().toISOString() }), order.manager, order.tenant]);
+          [code, order.id, extractGhnOrderNumber(data.customerName), String(data.customerName || '').slice(0, 500), data.customerPhone || null, data.customerAddress || null, detail.weight, normalizeGhnDate(data.createdDate), normalizeGhnDate(data.expectedDeliveryTime), normalizeGhnDate(data.deliveredDate), detail.cod, data.status, String(data.statusText || data.status).slice(0, 200), String(data.trackingUrl || ''), JSON.stringify({ shop_id: Number(detail.shopId), provider_verified_at: new Date().toISOString() }), order.manager, order.tenant]);
         }
       }
       await client.query(`insert into local_auth_audit_events(entity_type,entity_id,action,actor_id,reason,after_data) values('ghn_tracking',$1,'REPLACE_ORDER_LINKS',$2,'Cập nhật liên kết mã GHN của đơn CRM',$3::jsonb)`, [order.id, actor, JSON.stringify({ added: add.length, detached: remove.length })]);
@@ -404,33 +416,118 @@ export class GhnTrackingManagement {
     finally { client.release(); }
   }
 
-  async import(actor: string, raw: unknown) {
+  async importCodes(actor: string, input: unknown) {
+    const body = z.object({ codes: z.array(trackingCode).min(1).max(10) }).strict().parse(input);
+    await ghnPrincipal(this.pool, actor);
+    const result = { added: 0, skipped: 0, processed: 0, failed: 0, errors: [] as Array<{ orderCode: string; message: string }> };
+    for (const code of body.codes) {
+      await ghnPrincipal(this.pool, actor);
+      try {
+        const exists = (await this.pool.query("select 1 from local_ghn_tracking where ghn_order_code=$1 union all select 1 from local_projection_tombstones t left join local_source_snapshots s on s.source_table='ghn_tracking' and s.source_key=t.source_key where (t.source_table='ghn_tracking_codes' and t.source_key=$1) or (t.source_table='ghn_tracking' and s.payload->>'ghn_order_code'=$1) limit 1", [code])).rows.length;
+        if (exists) result.skipped++;
+        else { const row = await this.import(actor, { ghn_order_code: code }, { expectedShopId: '', activeOnly: false, missingOnly: true }); if ('skipped' in row) result.skipped++; else result.added++; }
+        result.processed++;
+      } catch { result.failed++; result.errors.push({ orderCode: code, message: 'Không xác minh được mã GHN. Đã dừng; những mã đã nhập được giữ nguyên.' }); break; }
+    }
+    return result;
+  }
+
+  async importPage(actor: string, input: unknown) {
+    const body = z.object({ cursor: z.string().max(200000).optional() }).strict().parse(input);
+    await ghnPrincipal(this.pool, actor);
+    const config = await this.adapter.snapshot();
+    if (!config.configured || config.mode === 'DISABLED' || !config.shops.length) throw fail('GHN chưa được cấu hình.', 503);
+    type Counts = { shop_id: string; scanned: number; added: number; skipped: number; failed: number; complete: boolean };
+    let position = { version: 2, actor, revision: config.revision, mode: config.mode, shops: config.shops.join(','), shop: 0, offset: 0, touched: Date.now(), recent: [] as string[], totals: config.shops.map(shop_id => ({ shop_id, scanned: 0, added: 0, skipped: 0, failed: 0, complete: false })) as Counts[] };
+    if (body.cursor) {
+      try {
+        const [payload, signature, extra] = body.cursor.split('.');
+        const expected = createHmac('sha256', this.importSecret).update(payload).digest(), provided = Buffer.from(signature, 'base64url');
+        if (extra || provided.length !== expected.length || !timingSafeEqual(provided, expected)) throw Error();
+        const p = JSON.parse(Buffer.from(payload, 'base64url').toString());
+        if (p.version !== 2 || p.actor !== actor || p.revision !== config.revision || p.mode !== config.mode || p.shops !== config.shops.join(',') || Date.now() - p.touched > 86400000 || p.touched > Date.now() || ![p.shop, p.offset].every(v => Number.isSafeInteger(v) && v >= 0) || p.shop >= config.shops.length || !Array.isArray(p.recent) || p.recent.length > 16 || !p.recent.every((v: unknown) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v)) || !Array.isArray(p.totals) || p.totals.length !== config.shops.length || !p.totals.every((row: Counts, index: number) => row.shop_id === config.shops[index] && (['scanned', 'added', 'skipped', 'failed'] as const).every(key => Number.isSafeInteger(row[key]) && row[key] >= 0) && typeof row.complete === 'boolean')) throw Error();
+        position = p;
+      } catch { throw fail('Lượt đồng bộ đã hết hạn hoặc cấu hình thay đổi. Hãy bắt đầu lại.', 409); }
+    }
+    const shop = config.shops[position.shop], pageSize = 10;
+    // One-way provider read. Omitting status/date filters requests the complete provider listing.
+    const response = await this.fetcher('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order', { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000), headers: { 'Content-Type': 'application/json', Token: config.token, ShopId: shop }, body: JSON.stringify({ offset: position.offset, limit: pageSize, client_id: null }) });
+    let envelope;
+    try { envelope = await readGhnProviderJson(response); } catch { throw fail('GHN trả về danh sách không hợp lệ hoặc quá lớn. Lượt đồng bộ chưa hoàn tất.', 502); }
+    const pageData = envelope.data as { orders?: unknown; total?: unknown; total_count?: unknown; has_more?: unknown } | undefined;
+    const candidates = Array.isArray(pageData?.orders) ? pageData.orders : envelope.data;
+    if (!response.ok || envelope.code !== 200 || !Array.isArray(candidates) || candidates.length > pageSize) throw fail(`Không lấy được danh sách GHN (HTTP ${response.status}, mã GHN ${typeof envelope.code === 'number' && Number.isSafeInteger(envelope.code) ? envelope.code : 'không hợp lệ'}). API danh sách có thể không được GHN hỗ trợ; chưa hoàn tất đồng bộ.`, 502);
+    const declaredTotal = pageData?.total_count ?? pageData?.total;
+    if (declaredTotal !== undefined && (!Number.isSafeInteger(declaredTotal) || Number(declaredTotal) < 0)) throw fail('GHN trả tổng số vận đơn không hợp lệ.', 502);
+    const moreByTotal = declaredTotal !== undefined && position.offset + candidates.length < Number(declaredTotal);
+    if (!candidates.length && (moreByTotal || pageData?.has_more === true)) throw fail('GHN trả trang trống trước khi hết dữ liệu. Lượt đồng bộ chưa hoàn tất.', 502);
+    const fingerprint = createHash('sha256').update(JSON.stringify(candidates.map(row => row?.order_code))).digest('hex');
+    if (candidates.length && position.recent.includes(fingerprint)) throw fail('GHN lặp lại trang dữ liệu; đã dừng để tránh đồng bộ vô hạn. Có thể bắt đầu lại lượt mới.', 502);
+    const result = { added: 0, skipped: 0, failed: 0, scanned: 0, errors: [] as Array<{ orderCode: string; message: string }>, halted: false, has_more: false, next_cursor: null as string | null, truncated: false, complete: false, totals: position.totals };
+    const unique = new Set<string>(), counts = position.totals[position.shop];
+    counts.failed = 0; // The cursor resumes at the unresolved code; successful retry resolves it.
+    for (const candidate of candidates) {
+      const current = await this.adapter.snapshot();
+      if (current.revision !== config.revision || current.mode !== config.mode || current.shops.join(',') !== config.shops.join(',')) throw fail('Cấu hình GHN đã thay đổi. Dừng lượt đồng bộ; dữ liệu đã nhập được giữ nguyên.', 409);
+      await ghnPrincipal(this.pool, actor);
+      const parsed = trackingCode.safeParse(candidate?.order_code);
+      if (!parsed.success) { result.failed++; counts.failed++; result.halted = true; result.errors.push({ orderCode: '', message: 'GHN trả mã vận đơn không hợp lệ.' }); break; }
+      const orderCode = parsed.data;
+      try {
+        const existing = unique.has(orderCode) || (await this.pool.query("select 1 from local_ghn_tracking where ghn_order_code=$1 union all select 1 from local_projection_tombstones t left join local_source_snapshots s on s.source_table='ghn_tracking' and s.source_key=t.source_key where (t.source_table='ghn_tracking_codes' and t.source_key=$1) or (t.source_table='ghn_tracking' and s.payload->>'ghn_order_code'=$1) limit 1", [orderCode])).rows.length;
+        unique.add(orderCode);
+        if (existing) { result.skipped++; counts.skipped++; }
+        else {
+          const imported = await this.import(actor, { ghn_order_code: orderCode }, { expectedShopId: '', activeOnly: false, missingOnly: true });
+          if ('skipped' in imported) { result.skipped++; counts.skipped++; } else { result.added++; const actualShop = String(((imported as Record<string, unknown>).raw_data as { shop_id?: unknown } | undefined)?.shop_id || shop); position.totals.find(row => row.shop_id === actualShop)!.added++; }
+        }
+        result.scanned++; counts.scanned++;
+      } catch { result.failed++; counts.failed++; result.halted = true; result.errors.push({ orderCode, message: 'Chưa nhập được vận đơn; đã dừng tại mã này để tiếp tục sau.' }); break; }
+    }
+    position.offset += result.scanned;
+    if (!result.halted) {
+      position.recent = [...position.recent, fingerprint].slice(-16);
+      if (candidates.length < pageSize && !moreByTotal && pageData?.has_more !== true) { counts.complete = true; position.shop++; position.offset = 0; position.recent = []; }
+    }
+    position.touched = Date.now();
+    result.has_more = position.shop < config.shops.length;
+    result.complete = !result.has_more && !result.halted;
+    if (result.has_more) { const payload = Buffer.from(JSON.stringify(position)).toString('base64url'); result.next_cursor = payload + '.' + createHmac('sha256', this.importSecret).update(payload).digest('base64url'); }
+    return result;
+  }
+
+  async import(actor: string, raw: unknown, options?: {expectedShopId:string;activeOnly:boolean;missingOnly?:boolean}) {
     const body = z.object({ ghn_order_code: trackingCode, order_id: z.string().min(1).max(100).nullable().optional() }).strict().parse(raw);
     const principal = await ghnPrincipal(this.pool, actor);
     // Capture the target order before the provider read.  The commit path locks
     // and compares it again, so an ownership/tenant change cannot redirect a
     // verified shipment into a different CRM scope mid-request.
+    if((await this.pool.query("select 1 from local_projection_tombstones where source_table='ghn_tracking_codes' and source_key=$1",[body.ghn_order_code])).rows.length)throw fail('Vận đơn đã được xóa khỏi CRM; không tự nhập lại.',409);
     const requestedOrder = body.order_id ? await this.orderScope(this.pool, principal, body.order_id) : null;
     const verified = await this.verifyProviderDetail(body.ghn_order_code);
     const { config, data, shopId, weight: verifiedWeight, cod: verifiedCod } = verified;
+    if(options?.expectedShopId && options.expectedShopId!==shopId)throw fail('Vận đơn không thuộc cửa hàng đang nhập.',403);
+    if(options?.activeOnly && terminal.includes(String(data.status)))return {skipped:true};
     const client = await this.pool.connect();
     try {
       const commitPrincipal = await this.begin(client, actor);
+      if((await client.query("select 1 from local_projection_tombstones where source_table='ghn_tracking_codes' and source_key=$1",[body.ghn_order_code])).rows.length)throw fail('Vận đơn đã được xóa khỏi CRM; không tự nhập lại.',409);
       const order = body.order_id ? await this.orderScope(client, commitPrincipal, body.order_id, 'for update') : null;
       if (requestedOrder && (!order || requestedOrder.manager !== order.manager || requestedOrder.tenant !== order.tenant || requestedOrder.internal !== order.internal)) {
         throw fail('Đơn CRM đã thay đổi trong lúc xác minh GHN. Hãy tải lại trước khi tiếp tục.', 409);
       }
       await this.lockConfig(client, config);
       const existing = (await client.query(`${trackingSelect} where g.ghn_order_code=$1 for update of g`, [body.ghn_order_code])).rows[0];
+      if (existing && options?.missingOnly) { await client.query('commit'); return { skipped: true }; }
       const priorShop = String((existing?.raw_data as { shop_id?: unknown } | null)?.shop_id ?? '');
       if (priorShop && priorShop !== shopId) throw fail('Cửa hàng GHN khác dữ liệu đã xác minh trước đó.', 409);
       if (existing && existing.order_id && (!order || String(existing.order_id) !== order.id)) throw fail('Mã GHN đã liên kết với một đơn CRM khác.', 409);
       if (existing && !(await this.visibleRow(client, commitPrincipal, String(existing.id), 'id')).rows[0]) throw fail('Mã GHN không nằm trong phạm vi quản lý.', 404);
-      const owner = order ? { manager: order.manager, tenant: order.tenant, internal: order.internal, orderId: order.id } : { manager: commitPrincipal.manager, tenant: 'local-tenant', internal: null, orderId: null };
+      const owner = order ? { manager: order.manager, tenant: order.tenant, internal: extractGhnOrderNumber(data.customerName), orderId: order.id } : { manager: commitPrincipal.manager, tenant: 'local-tenant', internal: extractGhnOrderNumber(data.customerName), orderId: null };
       const values = [body.ghn_order_code, owner.orderId, owner.internal, String(data.customerName || '').slice(0, 500), data.customerPhone || null, data.customerAddress || null, verifiedWeight, normalizeGhnDate(data.createdDate), normalizeGhnDate(data.expectedDeliveryTime), normalizeGhnDate(data.deliveredDate), verifiedCod, data.status, String(data.statusText || data.status).slice(0, 200), String(data.trackingUrl || ''), JSON.stringify({ shop_id: Number(shopId), provider_verified_at: new Date().toISOString() }), owner.manager, owner.tenant];
       let row;
       if (existing) {
-        row = (await client.query(`update local_ghn_tracking set order_id=coalesce($1::text,order_id),internal_order_code=case when $1::text is null then internal_order_code else $2::text end,customer_name=case when nullif(customer_name,'') is null then $3 else customer_name end,customer_phone=coalesce(customer_phone,$4),customer_address=coalesce(customer_address,$5),package_weight=coalesce(package_weight,$6),created_date=coalesce(created_date,$7::timestamptz),expected_delivery_date=coalesce(expected_delivery_date,$8::timestamptz),delivered_date=coalesce(delivered_date,$9::timestamptz),cod_amount=coalesce(cod_amount,$10),ghn_status=case when coalesce(ghn_status,'') in ('','local_only') then $11 else ghn_status end,ghn_status_text=case when coalesce(ghn_status_text,'') in ('','Chưa xác minh từ GHN') then $12 else ghn_status_text end,tracking_url=coalesce(nullif(tracking_url,''),$13),raw_data=coalesce(raw_data,$14::jsonb),manager_id=case when $1::text is null then coalesce(manager_id,$15) else $15 end,tenant_id=case when $1::text is null then coalesce(tenant_id,$16) else $16 end,local_modified_at=now(),updated_at=now() where id=$17 returning *`, [...values.slice(1), existing.id])).rows[0];
+        row = (await client.query(`update local_ghn_tracking set order_id=coalesce($1::text,order_id),internal_order_code=case when nullif(customer_name,'') is null then $2::text else internal_order_code end,customer_name=case when nullif(customer_name,'') is null then $3 else customer_name end,customer_phone=coalesce(customer_phone,$4),customer_address=coalesce(customer_address,$5),package_weight=coalesce(package_weight,$6),created_date=coalesce(created_date,$7::timestamptz),expected_delivery_date=coalesce(expected_delivery_date,$8::timestamptz),delivered_date=coalesce(delivered_date,$9::timestamptz),cod_amount=coalesce(cod_amount,$10),ghn_status=case when coalesce(ghn_status,'') in ('','local_only') then $11 else ghn_status end,ghn_status_text=case when coalesce(ghn_status_text,'') in ('','Chưa xác minh từ GHN') then $12 else ghn_status_text end,tracking_url=coalesce(nullif(tracking_url,''),$13),raw_data=coalesce(raw_data,$14::jsonb),manager_id=case when $1::text is null then coalesce(manager_id,$15) else $15 end,tenant_id=case when $1::text is null then coalesce(tenant_id,$16) else $16 end,local_modified_at=now(),updated_at=now() where id=$17 returning *`, [...values.slice(1), existing.id])).rows[0];
       } else {
         row = (await client.query(`insert into local_ghn_tracking(id,ghn_order_code,order_id,internal_order_code,customer_name,customer_phone,customer_address,package_weight,created_date,expected_delivery_date,delivered_date,cod_amount,ghn_status,ghn_status_text,tracking_url,raw_data,manager_id,tenant_id,is_snapshot_record,local_modified_at,last_updated_at,created_at,updated_at) values(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8::timestamptz,$9::timestamptz,$10::timestamptz,$11,$12,$13,$14,$15::jsonb,$16,$17,false,now(),now(),now(),now()) returning *`, values)).rows[0];
       }
@@ -464,6 +561,7 @@ export class GhnTrackingManagement {
         throw fail('Liên kết vận đơn đã thay đổi. Hãy tải lại trước khi xóa.', 409);
       }
       for (const row of rows) await client.query(`insert into local_projection_tombstones(source_table,source_key,tombstone_kind) values('ghn_tracking',$1,'LOCAL') on conflict(source_table,source_key) do update set tombstone_kind='LOCAL',updated_at=now()`, [row.id]);
+      for (const row of rows) await client.query("insert into local_projection_tombstones(source_table,source_key,tombstone_kind) values('ghn_tracking_codes',$1,'LOCAL') on conflict(source_table,source_key) do update set tombstone_kind='LOCAL',updated_at=now()",[row.ghn_order_code]);
       if (rows.length) await client.query('delete from local_ghn_tracking where id=any($1::text[])', [rows.map((row) => row.id)]);
       await client.query(`insert into local_auth_audit_events(entity_type,entity_id,action,actor_id,reason,after_data) values('ghn_tracking',$1,'DELETE_TRACKING',$2,'Xóa bản ghi theo dõi khỏi CRM cục bộ',$3::jsonb)`, [selector.id || selector.orderId!, actor, JSON.stringify({ count: rows.length })]);
       await client.query('commit');
@@ -581,6 +679,8 @@ export function registerGhnTrackingManagement(app: express.Express, service: Ghn
   app.get('/api/ghn-tracking/by-order/:orderId', async (req, res) => { try { res.setHeader('Cache-Control', 'no-store'); res.json(await service.byOrder(actor(), req.params.orderId)); } catch (error) { sendError(res, error); } });
   app.put('/api/ghn-tracking/by-order/:orderId', async (req, res) => { try { res.json(await service.replaceOrderCodes(actor(), req.params.orderId, req.body)); } catch (error) { sendError(res, error); } });
   app.post('/api/ghn-tracking', async (req, res) => { try { res.status(201).json(await service.import(actor(), req.body)); } catch (error) { sendError(res, error); } });
+  app.post('/api/ghn-tracking/import-codes', async (req,res) => { try {res.json(await service.importCodes(actor(),req.body));} catch(error){sendError(res,error);} });
+  app.post('/api/ghn-tracking/import-page', async (req,res) => { try {res.json(await service.importPage(actor(),req.body));} catch(error){sendError(res,error);} });
   app.post('/api/ghn-tracking/print', async (req, res) => { try { res.setHeader('Cache-Control', 'no-store'); res.json(await service.print(actor(), req.body)); } catch (error) { sendError(res, error); } });
   app.delete('/api/ghn-tracking/by-order/:orderId', async (req, res) => { try { res.json(await service.removeByOrder(actor(), req.params.orderId)); } catch (error) { sendError(res, error); } });
   app.delete('/api/ghn-tracking/:id', async (req, res) => { try { res.json(await service.remove(actor(), req.params.id)); } catch (error) { sendError(res, error); } });

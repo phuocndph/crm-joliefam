@@ -1,4 +1,7 @@
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { collectProductCategories } from '@/lib/product-categories';
 import { supabase } from '@/integrations/supabase/client';
 import { isLocalBackend } from '@/lib/runtime-config';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -22,6 +25,8 @@ import { MobileProductList } from '@/components/MobileProductList';
 
 const ProductImageLibrary = lazy(() => import('@/components/ProductImageLibrary'));
 const ProductManufacturingStandards = lazy(() => import('@/components/ProductManufacturingStandards'));
+const ProductSupplyClassification = lazy(() => import('@/components/ProductSupplyClassification'));
+const ProductTechnicalProfiles = lazy(() => import('@/components/ProductTechnicalProfiles'));
 
 interface Product {
   id: string;
@@ -56,7 +61,9 @@ interface PriceList {
 const ProductManagement = () => {
   const productListColumns = 'id, name, description, price, cost_price, sku, category, specifications, in_stock, manager_id, tenant_id, price_list_id, created_at, updated_at';
   const [user, setUser] = useState<any>(null);
+  const [authResolved, setAuthResolved] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const productsRequest = useRef(0);
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,11 +84,43 @@ const ProductManagement = () => {
   const [stockFilter, setStockFilter] = useState('all');
   const [selectedPriceList, setSelectedPriceList] = useState<string>('');
   const [importLoading, setImportLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [googleSheetsUrl, setGoogleSheetsUrl] = useState('');
   const [showColumnMapping, setShowColumnMapping] = useState(false);
   const { role: currentUserRole, loading: roleLoading } = useUserRole(user);
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
+  const categoryQueryKey = ['product-categories', isLocalBackend() ? 'local' : 'hosted', user?.id, selectedPriceList];
+  const { data: categories = [], isFetching: categoriesLoading, isError: categoriesFailed, refetch: refetchCategories } = useQuery({
+    queryKey: categoryQueryKey,
+    enabled: Boolean(user?.id && selectedPriceList),
+    retry: false,
+    queryFn: ({ signal }) => {
+      let usePublicCatalog = false;
+      return collectProductCategories(async (offset, pageSize) => {
+        if (!usePublicCatalog) {
+          const result = await supabase.from('products').select('id, category')
+            .eq('price_list_id', selectedPriceList).order('id', { ascending: true })
+            .range(offset, offset + pageSize - 1);
+          if (result.error || offset !== 0 || result.data?.length || isLocalBackend()) return result;
+          usePublicCatalog = true;
+        }
+        // Project only public category/id fields. Outer ordering and range paginate
+        // by unique id instead of the RPC's nonunique category/SKU ordering.
+        return supabase.rpc('get_products_catalog', {
+          _price_list_id: selectedPriceList, _search: null, _category: null, _in_stock: null,
+          _limit: 2147483647, _offset: 0,
+        }).select('id, category').order('id', { ascending: true }).range(offset, offset + pageSize - 1);
+      }, signal);
+    },
+  });
+  const refreshProductData = async () => {
+    await Promise.all([
+      fetchProducts(),
+      queryClient.invalidateQueries({ queryKey: categoryQueryKey }),
+    ]);
+  };
 
   // Price List Form state
   const [priceListName, setPriceListName] = useState('');
@@ -105,7 +144,22 @@ const ProductManagement = () => {
 
   // Create form collapse state
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [activeProductTab, setActiveProductTab] = useState('products');
+  const [showImportSheetBar, setShowImportSheetBar] = useState(false);
+  const [productParams,setProductParams] = useSearchParams();
+  const canManageLocalProductSetup = isLocalBackend() && ['admin','manager'].includes(currentUserRole || '');
+  const requestedProductTab = productParams.get('tab') || 'products';
+  const productTabAllowed = (tab:string) => ['products','price-lists','image-library','manufacturing-standards'].includes(tab)
+    || (canManageLocalProductSetup && ['supply-classification','technical-profiles'].includes(tab));
+  const activeProductTab = productTabAllowed(requestedProductTab) ? requestedProductTab : 'products';
+  const setActiveProductTab = (tab:string) => {
+    const next = new URLSearchParams(productParams);
+    next.set('tab',productTabAllowed(tab)?tab:'products');
+    setProductParams(next);
+  };
+  useEffect(()=>{
+    if(!authResolved || roleLoading || requestedProductTab===activeProductTab)return;
+    const next=new URLSearchParams(productParams);next.set('tab','products');setProductParams(next,{replace:true});
+  },[authResolved,roleLoading,requestedProductTab,activeProductTab,productParams,setProductParams]);
 
   // Product Form state
   const [name, setName] = useState('');
@@ -134,6 +188,7 @@ const ProductManagement = () => {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
+      setAuthResolved(true);
     });
   }, []);
 
@@ -148,7 +203,12 @@ const ProductManagement = () => {
   }, [activeSearchTerm, categoryFilter, stockFilter, selectedPriceList]);
 
   useEffect(() => {
+    setCategoryFilter('all');
+  }, [selectedPriceList]);
+
+  useEffect(() => {
     if (user) fetchProducts();
+    return () => { productsRequest.current++; };
   }, [user, currentPage, activeSearchTerm, categoryFilter, stockFilter, selectedPriceList]);
 
   // Tự động chọn bảng giá đầu tiên khi có dữ liệu
@@ -180,6 +240,7 @@ const ProductManagement = () => {
   };
 
   const fetchProducts = async () => {
+    const request = ++productsRequest.current;
     // Do not issue a broad products query while the price-list selection is
     // still being resolved. The first price list is selected asynchronously.
     if (!selectedPriceList) {
@@ -212,6 +273,7 @@ const ProductManagement = () => {
       };
 
       let { data, error, count } = await buildQuery(currentPage);
+      if (request !== productsRequest.current) return;
       let fromPublic = false;
 
       // Fallback: nếu RLS ẩn sản phẩm (khác manager), dùng RPC catalog an toàn
@@ -226,12 +288,14 @@ const ProductManagement = () => {
           _limit: itemsPerPage,
           _offset: offset,
         });
+        if (request !== productsRequest.current) return;
         if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
           // Lấy lại giá gốc cho các role được phép (admin/manager/accountant)
           let costMap: Record<string, number | null> = {};
           const { data: costRows } = await (supabase as any).rpc('get_products_cost_prices', {
             _ids: rpcData.map((r: any) => r.id),
           });
+          if (request !== productsRequest.current) return;
           if (Array.isArray(costRows)) {
             costMap = Object.fromEntries(costRows.map((c: any) => [c.id, c.cost_price]));
           }
@@ -247,6 +311,7 @@ const ProductManagement = () => {
           .from('products' as any)
           .select('id', { count: 'exact', head: true })
           .eq('price_list_id', selectedPriceList || '');
+        if (request !== productsRequest.current) return;
         const realCount = headCheck.count || 0;
         const lastPage = Math.max(1, Math.ceil(realCount / itemsPerPage));
         if (lastPage !== currentPage) {
@@ -254,6 +319,7 @@ const ProductManagement = () => {
           return;
         }
         ({ data, error, count } = await buildQuery(1));
+        if (request !== productsRequest.current) return;
         if (!error) setCurrentPage(1);
       }
 
@@ -268,6 +334,7 @@ const ProductManagement = () => {
         setCurrentPage(newTotalPages);
       }
     } catch (error: any) {
+      if (request !== productsRequest.current) return;
       console.error('Error fetching products:', error);
       const detail = [error?.message, error?.hint, error?.code].filter(Boolean).join(' | ');
       toast({
@@ -276,113 +343,231 @@ const ProductManagement = () => {
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      if (request === productsRequest.current) setLoading(false);
     }
+  };
+
+  const fetchAllProductsByScope = async (scope: 'selected' | 'all'): Promise<Product[]> => {
+    let allProducts: Product[] = [];
+    let offset = 0;
+    const batchSize = 1000;
+    while (true) {
+      let query = supabase
+        .from('products' as any)
+        .select('id, name, description, price, cost_price, sku, category, specifications, in_stock, price_list_id, created_at, updated_at');
+      if (scope === 'selected' && selectedPriceList) {
+        query = query.eq('price_list_id', selectedPriceList);
+      }
+      const { data, error } = await query
+        .order('category', { ascending: true })
+        .order('sku', { ascending: true })
+        .range(offset, offset + batchSize - 1);
+      if (error) throw error;
+      const batch = (data as unknown as Product[]) || [];
+      allProducts = [...allProducts, ...batch];
+      if (batch.length < batchSize) break;
+      offset += batchSize;
+    }
+
+    // Fallback to catalog RPC when hosted RLS hides products owned by another manager
+    if (!isLocalBackend() && allProducts.length === 0 && scope === 'selected' && selectedPriceList) {
+      const { data: rpcData, error: rpcError } = await (supabase as any).rpc('get_products_catalog', {
+        _price_list_id: selectedPriceList,
+        _search: null,
+        _category: null,
+        _in_stock: null,
+        _limit: 10000,
+        _offset: 0,
+      });
+      if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+        let costMap: Record<string, number | null> = {};
+        const { data: costRows } = await (supabase as any).rpc('get_products_cost_prices', {
+          _ids: rpcData.map((r: any) => r.id),
+        });
+        if (Array.isArray(costRows)) {
+          costMap = Object.fromEntries(costRows.map((c: any) => [c.id, c.cost_price]));
+        }
+        allProducts = rpcData.map((r: any) => ({ ...r, cost_price: costMap[r.id] ?? null })) as Product[];
+      }
+    }
+
+    return allProducts;
+  };
+
+  const stripProductDimensions = (rawName: string, sku = '', category = ''): string => {
+    const name = String(rawName ?? '').trim();
+    if (!name) return name;
+
+    const pureDimRegex = /^[\d.,]+(?:\s*(?:m|mm|cm|f|g|kg))?(?:\s*[xX*×-]\s*[\d.,]+(?:\s*(?:m|mm|cm|f|g|kg))?)+$/i;
+    if (pureDimRegex.test(name)) {
+      const skuCleaned = stripProductDimensions(sku, '', '');
+      if (skuCleaned && !pureDimRegex.test(skuCleaned)) return skuCleaned;
+      if (category) return String(category).trim();
+    }
+
+    const cleaned = name
+      .replace(/\(\s*(?:dùng\s+cho\s+)?(?:đệm|giường|nệm|size|cỡ|kích\s+thước)[^)]*\)/giu, ' ')
+      .replace(/\b(?:cho\s+(?:giường|đệm|nệm)|(?<!váy\s)(?:giường|đệm|nệm))\s+\d+(?:[.,]\d+)?\s*(?:m\d*|[xX*×]\d+(?:[.,]\d+)?)?\b/giu, ' ')
+      .replace(/\bdưới\s+\d+(?:[.,]\d+)?\s*(?:m|mm)\d*\b/giu, ' ')
+      .replace(/\bsize\s+(?:\d+(?:[.,]\d+)?(?:\s*[xX*×-]\s*\d+(?:[.,]\d+)?)*(?:\s*(?:cm|mm|m|f|g))?|s|m|l|xl|xxl)\b/giu, ' ')
+      .replace(/\b[sS]?\d+(?:[.,]\d+)?\s*(?:cm|mm|m|f)?(?:\s*[xX*×]\s*\d+(?:[.,]\d+)?\s*(?:cm|mm|m|f|g|kg)?)+\b/giu, ' ')
+      .replace(/\b\d{2,3}\s*-\s*\d{2,3}(?:\s*cm)?\b/giu, ' ')
+      .replace(/\bD\d{2,4}(?:\s*cm)?\b/giu, ' ')
+      .replace(/\b\d+\s*(?:m|mm)(?:\s*\d+)?\b/giu, ' ')
+      .replace(/\b(?:diễu\s+)?\d+\s*f\b/giu, (m) => (m.toLowerCase().startsWith('diễu') ? 'diễu' : ' '))
+      .replace(/\b(Tấm\s+trang\s+trí)\s+\d{2,3}\s*:?/giu, '$1')
+      .replace(/\b(Ga\s+chun\s+lụa\s+tổng\s+hợp)\s+\d{1,2}\b/giu, '$1')
+      .replace(/\s+\b(?:S|M|L|XL|XXL|2XL|3XL)\b\s*$/u, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/[\s,:-]+$/g, '')
+      .trim();
+
+    return cleaned || name;
+  };
+
+  const populateProductWorksheet = (
+    sheet: any,
+    items: Product[],
+    priceListMap: Map<string, PriceList>,
+    includePriceListCol: boolean
+  ) => {
+    sheet.columns = [
+      { header: 'STT', key: 'stt', width: 7 },
+      ...(includePriceListCol ? [{ header: 'Bảng giá', key: 'price_list_name', width: 26 }] : []),
+      { header: 'Mã SP', key: 'sku', width: 18 },
+      { header: 'Danh mục', key: 'category', width: 28 },
+      { header: 'Tên sản phẩm', key: 'name', width: 44 },
+      { header: 'Quy cách', key: 'specifications', width: 22 },
+      { header: 'Giá gốc', key: 'cost_price', width: 16 },
+      { header: 'Giá bán', key: 'price', width: 16 },
+      { header: 'Kho', key: 'in_stock', width: 10 },
+      { header: 'Mô tả', key: 'description', width: 42 },
+    ];
+
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+    headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+    headerRow.height = 26;
+
+    items.forEach((p, i) => {
+      const pl = p.price_list_id ? priceListMap.get(p.price_list_id) : undefined;
+      sheet.addRow({
+        stt: i + 1,
+        ...(includePriceListCol ? { price_list_name: pl ? `${pl.name} (${pl.year})` : 'Chưa gán bảng giá' } : {}),
+        sku: p.sku || '',
+        category: p.category || '',
+        name: stripProductDimensions(p.name || '', p.sku || '', p.category || ''),
+        specifications: p.specifications || '',
+        cost_price: Number(p.cost_price || 0),
+        price: Number(p.price || 0),
+        in_stock: p.in_stock ? 'Còn' : 'Hết',
+        description: p.description || '',
+      });
+    });
+
+    sheet.getColumn('cost_price').numFmt = '#,##0';
+    sheet.getColumn('price').numFmt = '#,##0';
+
+    for (let i = 2; i <= items.length + 1; i++) {
+      const row = sheet.getRow(i);
+      if (i % 2 === 0) {
+        row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+      }
+      row.alignment = { vertical: 'middle', wrapText: true };
+    }
+  };
+
+  const triggerWorkbookDownload = async (workbook: any, fileName: string) => {
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   };
 
   const exportToExcel = async () => {
     if (!selectedPriceList) {
-      toast({ title: "Lỗi", description: "Vui lòng chọn bảng giá trước", variant: "destructive" });
+      await exportAllProductsToExcel();
       return;
     }
+    setExportLoading(true);
     try {
-      toast({ title: "Đang xuất...", description: "Đang tải toàn bộ sản phẩm để xuất Excel" });
-      
-      // Fetch ALL products for this price list (no pagination)
-      let allProducts: Product[] = [];
-      let offset = 0;
-      const batchSize = 1000;
-      while (true) {
-        const { data, error } = await supabase
-          .from('products' as any)
-          .select('id, name, description, price, cost_price, sku, category, specifications, in_stock, price_list_id, created_at, updated_at')
-          .eq('price_list_id', selectedPriceList)
-          .order('category', { ascending: true })
-          .order('sku', { ascending: true })
-          .range(offset, offset + batchSize - 1);
-        if (error) throw error;
-        const batch = (data as unknown as Product[]) || [];
-        allProducts = [...allProducts, ...batch];
-        if (batch.length < batchSize) break;
-        offset += batchSize;
-      }
-
+      toast({ title: "Đang xuất Excel...", description: "Đang tải toàn bộ sản phẩm của bảng giá hiện tại" });
+      const allProducts = await fetchAllProductsByScope('selected');
       const ExcelJS = await import('exceljs');
-      const { saveAs } = await import('file-saver');
-      
       const workbook = new ExcelJS.Workbook();
+      const priceListMap = new Map(priceLists.map((pl) => [pl.id, pl]));
       const priceListName = (priceLists.find(p => p.id === selectedPriceList)?.name || 'Bảng giá').replace(/[*?:\\/\[\]]/g, '-');
-      const sheet = workbook.addWorksheet(priceListName.substring(0, 31));
+      const sheet = workbook.addWorksheet(priceListName.substring(0, 31) || 'SanPham');
 
-      // Header row
-      sheet.columns = [
-        { header: 'STT', key: 'stt', width: 6 },
-        { header: 'Mã SP', key: 'sku', width: 18 },
-        { header: 'Danh mục', key: 'category', width: 30 },
-        { header: 'Tên sản phẩm', key: 'name', width: 45 },
-        { header: 'Quy cách', key: 'specifications', width: 20 },
-        { header: 'Giá gốc', key: 'cost_price', width: 15 },
-        { header: 'Giá bán', key: 'price', width: 15 },
-        { header: 'Kho', key: 'in_stock', width: 8 },
-        { header: 'Mô tả', key: 'description', width: 40 },
-      ];
+      populateProductWorksheet(sheet, allProducts, priceListMap, false);
 
-      // Style header
-      const headerRow = sheet.getRow(1);
-      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
-      headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
-      headerRow.height = 28;
+      const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9À-ỹ\s-_]/g, '').trim().replace(/\s+/g, '-');
+      const fileName = `SanPham-${sanitize(priceListName) || 'BangGia'}.xlsx`;
+      await triggerWorkbookDownload(workbook, fileName);
 
-      // Add data
-      allProducts.forEach((p, i) => {
-        sheet.addRow({
-          stt: i + 1,
-          sku: p.sku || '',
-          category: p.category || '',
-          name: p.name,
-          specifications: p.specifications || '',
-          cost_price: p.cost_price || 0,
-          price: p.price || 0,
-          in_stock: p.in_stock ? 'Còn' : 'Hết',
-          description: p.description || '',
-        });
-      });
-
-      // Format currency columns
-      sheet.getColumn('cost_price').numFmt = '#,##0';
-      sheet.getColumn('price').numFmt = '#,##0';
-
-      // Alternate row colors
-      for (let i = 2; i <= allProducts.length + 1; i++) {
-        const row = sheet.getRow(i);
-        if (i % 2 === 0) {
-          row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
-        }
-        row.alignment = { vertical: 'middle', wrapText: true };
-      }
-
-      const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9À-ỹ\s-]/g, '').trim();
-      const fileName = `BangGia-${sanitize(priceListName)}.xlsx`;
-
-      const buffer = await workbook.xlsx.writeBuffer();
-      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName);
-
-      toast({ title: "Thành công", description: `Đã xuất ${allProducts.length} sản phẩm ra file Excel` });
+      toast({ title: "Thành công", description: `Đã tải xuống ${allProducts.length} sản phẩm ra file ${fileName}` });
     } catch (error) {
       console.error('Export error:', error);
       toast({ title: "Lỗi", description: "Không thể xuất file Excel", variant: "destructive" });
+    } finally {
+      setExportLoading(false);
     }
   };
 
+  const exportAllProductsToExcel = async () => {
+    setExportLoading(true);
+    try {
+      toast({ title: "Đang xuất toàn bộ sản phẩm...", description: "Đang tổng hợp sản phẩm từ tất cả bảng giá" });
+      const allProducts = await fetchAllProductsByScope('all');
+      const ExcelJS = await import('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      const priceListMap = new Map(priceLists.map((pl) => [pl.id, pl]));
 
-  const getUniqueCategories = () => {
-    const categories = products
-      .map(p => p.category)
-      .filter(Boolean)
-      .filter((value, index, self) => self.indexOf(value) === index);
-    return categories;
+      // Sheet 1: Toàn bộ sản phẩm
+      const masterSheet = workbook.addWorksheet('Toàn bộ sản phẩm');
+      populateProductWorksheet(masterSheet, allProducts, priceListMap, true);
+
+      // Các sheet tiếp theo: tách theo từng bảng giá có sản phẩm
+      const usedSheetNames = new Set<string>(['Toàn bộ sản phẩm']);
+      for (const pl of priceLists) {
+        const listProducts = allProducts.filter((p) => p.price_list_id === pl.id);
+        if (listProducts.length === 0) continue;
+        let baseName = pl.name.replace(/[*?:\\/\[\]]/g, '-').trim().substring(0, 28) || 'BangGia';
+        let sheetName = baseName;
+        let counter = 2;
+        while (usedSheetNames.has(sheetName)) {
+          sheetName = `${baseName.substring(0, 25)} (${counter++})`;
+        }
+        usedSheetNames.add(sheetName);
+        const plSheet = workbook.addWorksheet(sheetName);
+        populateProductWorksheet(plSheet, listProducts, priceListMap, false);
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const fileName = `ToanBoSanPham-${today}.xlsx`;
+      await triggerWorkbookDownload(workbook, fileName);
+
+      toast({
+        title: "Thành công",
+        description: `Đã tải xuống toàn bộ ${allProducts.length} sản phẩm ra file ${fileName}`,
+      });
+    } catch (error) {
+      console.error('Export all products error:', error);
+      toast({ title: "Lỗi", description: "Không thể xuất toàn bộ sản phẩm ra Excel", variant: "destructive" });
+    } finally {
+      setExportLoading(false);
+    }
   };
+
 
   const handleCreatePriceList = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -553,7 +738,7 @@ const ProductManagement = () => {
         setGoogleSheetsUrl('');
         // Force refresh products to show updated data
         setCurrentPage(1);
-        await fetchProducts();
+        await refreshProductData();
       } else {
         throw new Error(data.error);
       }
@@ -617,7 +802,7 @@ const ProductManagement = () => {
       setInStock(true);
       
       setCurrentPage(1);
-      fetchProducts();
+      void refreshProductData();
     } catch (error: any) {
       console.error('Error creating product:', error);
       toast({
@@ -728,7 +913,7 @@ const ProductManagement = () => {
 
       setBulkPasteText('');
       setCurrentPage(1);
-      fetchProducts();
+      void refreshProductData();
     } catch (error: any) {
       console.error('Error bulk creating products:', error);
       toast({
@@ -768,7 +953,7 @@ const ProductManagement = () => {
 
       setShowDeleteAllDialog(false);
       setCurrentPage(1);
-      fetchProducts();
+      void refreshProductData();
     } catch (error: any) {
       console.error('Error deleting all products:', error);
       toast({
@@ -807,7 +992,7 @@ const ProductManagement = () => {
       });
 
       setEditingProduct(null);
-      fetchProducts();
+      void refreshProductData();
     } catch (error: any) {
       console.error('Error updating product:', error);
       toast({
@@ -835,7 +1020,7 @@ const ProductManagement = () => {
       });
 
       setDeletingProduct(null);
-      fetchProducts();
+      void refreshProductData();
     } catch (error: any) {
       console.error('Error deleting product:', error);
       toast({
@@ -866,7 +1051,6 @@ const ProductManagement = () => {
     }).format(price);
   };
 
-  // Remove this function as it's now handled by getUniqueCategories async function above
 
   if (roleLoading || loading) {
     return <div className="flex justify-center items-center h-64">Đang tải...</div>;
@@ -890,14 +1074,36 @@ const ProductManagement = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gradient-subtle rounded-lg border p-6 shadow-soft">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold text-foreground">Quản lý sản phẩm</h1>
-            <p className="text-muted-foreground">
-              Quản lý bảng giá và sản phẩm
-            </p>
-          </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Quản lý sản phẩm</h1>
+          <p className="text-sm text-muted-foreground">
+            Tra cứu, chỉnh sửa sản phẩm và bảng giá theo chuẩn bảng tính gọn gàng
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedPriceList && (
+            <Button
+              size="sm"
+              onClick={exportToExcel}
+              disabled={exportLoading}
+              variant="outline"
+              className="h-9 flex items-center gap-1.5"
+            >
+              <Download className="h-4 w-4" />
+              {exportLoading ? 'Đang xuất...' : `Tải Excel bảng giá (${totalProducts})`}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            onClick={exportAllProductsToExcel}
+            disabled={exportLoading}
+            variant="secondary"
+            className="h-9 flex items-center gap-1.5"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {exportLoading ? 'Đang xuất...' : 'Tải toàn bộ SP (Excel)'}
+          </Button>
         </div>
       </div>
 
@@ -919,11 +1125,15 @@ const ProductManagement = () => {
             <Factory className="h-4 w-4" />
             Định mức sản xuất
           </TabsTrigger>
+          {isLocalBackend() && ['admin','manager'].includes(currentUserRole || '') && <TabsTrigger value="supply-classification" className="min-h-11">Phân loại sản phẩm</TabsTrigger>}
+          {isLocalBackend() && ['admin','manager'].includes(currentUserRole || '') && <TabsTrigger value="technical-profiles" className="min-h-11">Đặc điểm sản phẩm</TabsTrigger>}
         </TabsList>
+        {isLocalBackend() && ['admin','manager'].includes(currentUserRole || '') && <TabsContent value="supply-classification"><Suspense fallback={<div role="status">Đang tải phân loại…</div>}>{activeProductTab === 'supply-classification' && <ProductSupplyClassification userId={user?.id || ''}/>}</Suspense></TabsContent>}
+        {isLocalBackend() && ['admin','manager'].includes(currentUserRole || '') && <TabsContent value="technical-profiles"><Suspense fallback={<div role="status">Đang tải đặc điểm…</div>}>{activeProductTab === 'technical-profiles' && <ProductTechnicalProfiles userId={user?.id || ''}/>}</Suspense></TabsContent>}
 
         <TabsContent value="manufacturing-standards" className="space-y-6">
           <Suspense fallback={<div className="flex min-h-64 items-center justify-center">Đang tải định mức sản xuất...</div>}>
-            {activeProductTab === 'manufacturing-standards' && <ProductManufacturingStandards />}
+            {activeProductTab === 'manufacturing-standards' && <ProductManufacturingStandards currentUser={user} />}
           </Suspense>
         </TabsContent>
 
@@ -1048,229 +1258,278 @@ const ProductManagement = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="products" className="space-y-6">
-          {/* Price List Selection & Stats */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-2">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-xl font-bold flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Package className="h-4 w-4 text-primary" />
-                  </div>
-                  Chọn bảng giá để xem sản phẩm
-                </CardTitle>
-                <CardDescription className="text-sm">
-                  Chọn bảng giá để hiển thị danh sách sản phẩm tương ứng
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Select value={selectedPriceList} onValueChange={setSelectedPriceList}>
-                  <SelectTrigger className="w-full h-14 bg-muted/30 hover:bg-muted/50 transition-all duration-200 border-2 hover:border-primary/40 focus:border-primary">
-                    <SelectValue placeholder="Chọn bảng giá để bắt đầu..." />
-                  </SelectTrigger>
-                  <SelectContent className="bg-background border shadow-lg max-h-[300px] z-50">
-                    {priceLists.map((priceList) => (
-                      <SelectItem 
-                        key={priceList.id} 
-                        value={priceList.id}
-                        className="hover:bg-accent/60 focus:bg-accent/60 cursor-pointer py-4 px-3 transition-colors"
-                      >
-                        <div className="flex items-center justify-between w-full min-w-0">
-                          <div className="flex flex-col items-start min-w-0 flex-1 mr-3">
-                            <div className="flex items-center gap-2 w-full">
-                              <span className="font-semibold text-foreground text-base truncate">
-                                {priceList.name}
-                              </span>
-                              <Badge 
-                                variant={priceList.status === 'active' ? 'default' : 'secondary'} 
-                                className="text-xs font-medium shrink-0"
-                              >
-                                {priceList.status === 'active' ? 'Đang dùng' : 'Nháp'}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Calendar className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm text-muted-foreground">Năm {priceList.year}</span>
-                            </div>
+        <TabsContent value="products" className="space-y-4">
+          {/* Unified Toolbar: Price List + Search & Filters + Quick Actions */}
+          <Card className="border-border shadow-none">
+            <CardContent className="p-4 space-y-3">
+              {/* Row 1: Price List Selector + Stats + Primary Actions */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1 min-w-0">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+                    Bảng giá:
+                  </Label>
+                  <Select value={selectedPriceList} onValueChange={setSelectedPriceList}>
+                    <SelectTrigger className="w-full sm:w-[320px] h-9 bg-background">
+                      <SelectValue placeholder="Chọn bảng giá để bắt đầu..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border shadow-lg max-h-[320px] z-50">
+                      {priceLists.map((priceList) => (
+                        <SelectItem
+                          key={priceList.id}
+                          value={priceList.id}
+                          className="cursor-pointer py-2 px-3"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm text-foreground">
+                              {priceList.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              ({priceList.year})
+                            </span>
+                            <Badge
+                              variant={priceList.status === 'active' ? 'default' : 'secondary'}
+                              className="text-[10px] px-1.5 py-0 h-4"
+                            >
+                              {priceList.status === 'active' ? 'Đang dùng' : 'Nháp'}
+                            </Badge>
                           </div>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                
-                {selectedPriceList && (
-                  <div className="mt-4 p-3 bg-primary/5 rounded-lg border border-primary/10">
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
-                      <span className="text-sm font-medium text-primary">
-                        Đang hiển thị sản phẩm từ: {priceLists.find(p => p.id === selectedPriceList)?.name}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm font-medium">Thống kê sản phẩm</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Tổng dòng trong bảng giá:</span>
-                  <span className="font-bold text-primary">{totalProducts}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Dòng đang hiển thị:</span>
-                  <span className="font-medium text-accent">{products.length} dòng</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Trang:</span>
-                  <span className="font-medium text-muted-foreground">{currentPage}/{totalPages}</span>
-                </div>
-                {selectedPriceList && (
-                  <div className="pt-2 border-t">
-                    <span className="text-xs text-muted-foreground">
-                      Bảng giá: {priceLists.find(p => p.id === selectedPriceList)?.name}
-                    </span>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-          {/* Import and Actions */}
-          {selectedPriceList && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileSpreadsheet className="h-5 w-5" />
-                  Nhập dữ liệu & Quản lý
-                </CardTitle>
-                <CardDescription>
-                  Nhập sản phẩm từ Google Sheets hoặc thêm thủ công
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1">
-                    <Input
-                      placeholder="Nhập liên kết Google Sheets để tải dữ liệu..."
-                      value={googleSheetsUrl}
-                      onChange={(e) => setGoogleSheetsUrl(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Định dạng: Mã SP | Danh mục | Tên SP | Quy cách | Giá gốc | Giá bán | Mô tả
-                    </p>
+                  {selectedPriceList && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="secondary" className="font-normal text-xs">
+                        Tổng: <strong className="ml-1 text-foreground">{totalProducts}</strong> mã
+                      </Badge>
+                      <span>•</span>
+                      <span>Trang {currentPage}/{totalPages}</span>
+                    </div>
+                  )}
+                </div>
+
+                {selectedPriceList && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => setShowCreateForm(!showCreateForm)}
+                      variant={showCreateForm ? "secondary" : "default"}
+                      className="h-9 gap-1.5"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {showCreateForm ? 'Đóng form thêm SP' : 'Thêm sản phẩm'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowImportSheetBar(!showImportSheetBar)}
+                      className="h-9 gap-1.5"
+                    >
+                      <FileSpreadsheet className="h-4 w-4" />
+                      Nhập Google Sheets
+                    </Button>
+                    {products.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowDeleteAllDialog(true)}
+                        className="h-9 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Xóa bảng giá này
+                      </Button>
+                    )}
                   </div>
-                  <div className="flex gap-2">
-                    <Button 
+                )}
+              </div>
+
+              {/* Collapsible Google Sheets Import Bar */}
+              {selectedPriceList && showImportSheetBar && (
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2 border-t border-border/60">
+                  <Input
+                    placeholder="Dán liên kết Google Sheets (Mã SP | Danh mục | Tên SP | Quy cách | Giá gốc | Giá bán | Mô tả)..."
+                    value={googleSheetsUrl}
+                    onChange={(e) => setGoogleSheetsUrl(e.target.value)}
+                    className="h-9 text-sm flex-1"
+                  />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
                       onClick={() => setShowColumnMapping(true)}
                       disabled={!googleSheetsUrl}
-                      variant="outline"
-                      className="flex items-center gap-2"
+                      className="h-9 gap-1.5"
                     >
-                      <Settings className="h-4 w-4" />
-                      Nhập dữ liệu
+                      <Settings className="h-3.5 w-3.5" />
+                      Cấu hình & Nhập
                     </Button>
                     <Button
-                      onClick={() => {
-                        setShowCreateForm(true);
-                        document.getElementById('create-product-form')?.scrollIntoView({ behavior: 'smooth' });
-                      }}
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowImportSheetBar(false)}
+                      className="h-9"
                     >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Thêm SP
-                    </Button>
-                    <Button
-                      onClick={exportToExcel}
-                      variant="outline"
-                      className="flex items-center gap-2"
-                    >
-                      <Download className="h-4 w-4" />
-                      Tải Excel
+                      Đóng
                     </Button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
+
+              {/* Row 2: Search & Filter Bar */}
+              {selectedPriceList && (
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-2 border-t border-border/60">
+                  <div className="sm:col-span-6 flex gap-1.5">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="search"
+                        placeholder="Tìm theo mã SP, tên sản phẩm, mô tả..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setActiveSearchTerm(searchTerm);
+                          }
+                        }}
+                        className="pl-8 h-9 text-sm"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setActiveSearchTerm(searchTerm)}
+                      className="h-9 px-3 shrink-0"
+                    >
+                      Tìm
+                    </Button>
+                  </div>
+
+                  <div className="sm:col-span-3">
+                    <select
+                      aria-label="Lọc theo danh mục"
+                      value={categoryFilter}
+                      onChange={event => setCategoryFilter(event.target.value)}
+                      disabled={categoriesLoading && categories.length === 0}
+                      className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                    >
+                      <option value="all">{categoriesLoading && categories.length === 0 ? 'Đang tải danh mục…' : 'Tất cả danh mục'}</option>
+                      {categoryFilter !== 'all' && !categories.includes(categoryFilter) && <option value={categoryFilter}>{categoryFilter}</option>}
+                      {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                    {categoriesFailed && <div role="alert" className="mt-1 text-xs text-destructive">
+                      Không tải được đầy đủ danh mục.
+                      <Button type="button" variant="link" size="sm" className="h-auto px-1 py-0 text-xs" disabled={categoriesLoading} onClick={() => void refetchCategories()}>Thử lại</Button>
+                    </div>}
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <Select value={stockFilter} onValueChange={setStockFilter}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Tất cả kho" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tất cả kho</SelectItem>
+                        <SelectItem value="in-stock">Còn hàng</SelectItem>
+                        <SelectItem value="out-of-stock">Hết hàng</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="sm:col-span-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSearchTerm('');
+                        setActiveSearchTerm('');
+                        setCategoryFilter('all');
+                        setStockFilter('all');
+                        setCurrentPage(1);
+                      }}
+                      disabled={!searchTerm && !activeSearchTerm && categoryFilter === 'all' && stockFilter === 'all'}
+                      className="w-full h-9 text-xs text-muted-foreground hover:text-foreground px-2"
+                      title="Xóa bộ lọc"
+                    >
+                      Đặt lại
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {selectedPriceList && (
             <>
-              {/* Create Product Form */}
-              <Card id="create-product-form">
-                <CardHeader 
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => setShowCreateForm(!showCreateForm)}
-                >
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Plus className="h-5 w-5" />
-                      Thêm sản phẩm mới
+              {/* Collapsible Create Product Form */}
+              {showCreateForm && (
+                <Card id="create-product-form" className="border-border shadow-none">
+                  <CardHeader className="py-3 px-4 border-b bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base font-semibold flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        Thêm sản phẩm vào bảng giá "{priceLists.find(p => p.id === selectedPriceList)?.name}"
+                      </CardTitle>
+                      <Button variant="ghost" size="sm" type="button" onClick={() => setShowCreateForm(false)} className="h-7 text-xs">
+                        Đóng
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="sm" type="button">
-                      {showCreateForm ? 'Thu gọn' : 'Mở rộng'}
-                    </Button>
-                  </CardTitle>
-                  <CardDescription>
-                    Điền thông tin để tạo sản phẩm mới trong bảng giá đã chọn
-                  </CardDescription>
-                </CardHeader>
-                {showCreateForm && (
-                  <CardContent>
+                  </CardHeader>
+                  <CardContent className="p-4">
                     <Tabs defaultValue="single" className="w-full">
-                      <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="single">Thêm từng sản phẩm</TabsTrigger>
-                        <TabsTrigger value="bulk">Thêm nhiều sản phẩm</TabsTrigger>
+                      <TabsList className="grid w-full max-w-md grid-cols-2 h-9">
+                        <TabsTrigger value="single" className="text-xs">Thêm từng sản phẩm</TabsTrigger>
+                        <TabsTrigger value="bulk" className="text-xs">Dán hàng loạt từ Excel</TabsTrigger>
                       </TabsList>
-                      
+
                       <TabsContent value="single" className="mt-4">
-                        <form onSubmit={handleCreateProduct} className="space-y-4">
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="sku">Mã SP *</Label>
+                        <form onSubmit={handleCreateProduct} className="space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div className="space-y-1.5">
+                              <Label htmlFor="sku" className="text-xs">Mã SP *</Label>
                               <Input
                                 id="sku"
                                 value={sku}
                                 onChange={(e) => setSku(e.target.value)}
                                 required
                                 placeholder="VD: SP001"
+                                className="h-9 text-sm"
                               />
                             </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="name">Tên sản phẩm *</Label>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="name" className="text-xs">Tên sản phẩm *</Label>
                               <Input
                                 id="name"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 required
                                 placeholder="Tên sản phẩm"
+                                className="h-9 text-sm"
                               />
                             </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="category">Danh mục</Label>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="category" className="text-xs">Danh mục</Label>
                               <Input
                                 id="category"
                                 value={category}
                                 onChange={(e) => setCategory(e.target.value)}
                                 placeholder="Danh mục"
+                                className="h-9 text-sm"
                               />
                             </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="specifications">Quy cách</Label>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="specifications" className="text-xs">Quy cách</Label>
                               <Input
                                 id="specifications"
                                 value={specifications}
                                 onChange={(e) => setSpecifications(e.target.value)}
-                                placeholder="Quy cách"
+                                placeholder="VD: 160x200cm"
+                                className="h-9 text-sm"
                               />
                             </div>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="costPrice">Giá gốc (VND)</Label>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="space-y-1.5">
+                              <Label htmlFor="costPrice" className="text-xs">Giá gốc (VND)</Label>
                               <Input
                                 id="costPrice"
                                 type="number"
@@ -1278,10 +1537,11 @@ const ProductManagement = () => {
                                 value={costPrice}
                                 onChange={(e) => setCostPrice(e.target.value)}
                                 placeholder="0"
+                                className="h-9 text-sm"
                               />
                             </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="price">Giá bán (VND)</Label>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="price" className="text-xs">Giá bán (VND)</Label>
                               <Input
                                 id="price"
                                 type="number"
@@ -1289,38 +1549,41 @@ const ProductManagement = () => {
                                 value={price}
                                 onChange={(e) => setPrice(e.target.value)}
                                 placeholder="0"
+                                className="h-9 text-sm"
                               />
                             </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="inStock">Tình trạng</Label>
-                              <div className="flex items-center space-x-2 h-10">
+                            <div className="space-y-1.5">
+                              <Label htmlFor="inStock" className="text-xs">Tình trạng</Label>
+                              <div className="flex items-center space-x-2 h-9">
                                 <Switch
                                   id="inStock"
                                   checked={inStock}
                                   onCheckedChange={setInStock}
                                 />
-                                <Label htmlFor="inStock" className="text-sm">
+                                <Label htmlFor="inStock" className="text-sm font-normal">
                                   {inStock ? 'Còn hàng' : 'Hết hàng'}
                                 </Label>
                               </div>
                             </div>
                           </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="description">Mô tả</Label>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="description" className="text-xs">Mô tả</Label>
                             <Textarea
                               id="description"
                               value={description}
                               onChange={(e) => setDescription(e.target.value)}
                               rows={2}
-                              placeholder="Mô tả chi tiết sản phẩm..."
+                              placeholder="Mô tả chất liệu, thông số sản phẩm..."
+                              className="text-sm"
                             />
                           </div>
                           <div className="flex gap-2">
-                            <Button type="submit" disabled={createProductLoading}>
-                              {createProductLoading ? 'Đang tạo...' : 'Tạo sản phẩm'}
+                            <Button type="submit" size="sm" disabled={createProductLoading}>
+                              {createProductLoading ? 'Đang tạo...' : 'Lưu sản phẩm'}
                             </Button>
-                            <Button 
-                              type="button" 
+                            <Button
+                              type="button"
+                              size="sm"
                               variant="outline"
                               onClick={() => {
                                 setName('');
@@ -1333,398 +1596,260 @@ const ProductManagement = () => {
                                 setInStock(true);
                               }}
                             >
-                              Xóa form
+                              Xóa trắng
                             </Button>
                           </div>
                         </form>
                       </TabsContent>
-                      
+
                       <TabsContent value="bulk" className="mt-4">
-                        <div className="space-y-4">
-                          <div className="bg-muted/50 p-4 rounded-lg border">
-                            <h4 className="font-medium mb-3 text-sm flex items-center gap-2">
-                              <FileSpreadsheet className="h-4 w-4" />
-                              Nhập dữ liệu theo cột (dán từ Excel)
-                            </h4>
-                            <p className="text-xs text-muted-foreground mb-3">
-                              Sao chép dữ liệu từ Excel và dán vào ô bên dưới. Mỗi dòng là một sản phẩm, các cột tự động phân tách.
-                            </p>
-                            
-                            {/* Table header visual guide */}
-                            <div className="overflow-x-auto mb-3">
-                              <Table>
-                                <TableHeader>
-                                  <TableRow className="bg-background">
-                                    <TableHead className="text-xs font-bold border">Mã SP *</TableHead>
-                                    <TableHead className="text-xs font-bold border">Tên SP *</TableHead>
-                                    <TableHead className="text-xs font-bold border">Danh mục</TableHead>
-                                    <TableHead className="text-xs font-bold border">Quy cách</TableHead>
-                                    <TableHead className="text-xs font-bold border">Giá gốc</TableHead>
-                                    <TableHead className="text-xs font-bold border">Giá bán</TableHead>
-                                    <TableHead className="text-xs font-bold border">Mô tả</TableHead>
-                                    <TableHead className="text-xs font-bold border">Tình trạng</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  <TableRow className="bg-muted/30">
-                                    <TableCell className="text-xs border font-mono">SP001</TableCell>
-                                    <TableCell className="text-xs border font-mono">Áo thun trắng</TableCell>
-                                    <TableCell className="text-xs border font-mono">Áo</TableCell>
-                                    <TableCell className="text-xs border font-mono">Size M</TableCell>
-                                    <TableCell className="text-xs border font-mono">100000</TableCell>
-                                    <TableCell className="text-xs border font-mono">150000</TableCell>
-                                    <TableCell className="text-xs border font-mono">Cotton 100%</TableCell>
-                                    <TableCell className="text-xs border font-mono">1</TableCell>
-                                  </TableRow>
-                                </TableBody>
-                              </Table>
-                            </div>
-                            
-                            <div className="space-y-1 text-xs text-muted-foreground">
-                              <p>✓ Sao chép trực tiếp từ Excel (dùng phím Tab để phân tách cột)</p>
-                              <p>✓ Hoặc nhập thủ công với dấu "|" phân tách: <code className="bg-background px-1 rounded">SP001 | Áo thun | Áo | ...</code></p>
-                              <p>✓ Tình trạng: 1 = Còn hàng, 0 = Hết hàng</p>
-                              <p>✓ Chỉ cần Mã SP và Tên SP là bắt buộc</p>
-                            </div>
-                          </div>
-                          
-                          <div className="space-y-2">
-                            <Label htmlFor="bulkPaste" className="text-sm font-medium">
-                              Dán dữ liệu từ Excel (theo cột)
-                            </Label>
-                            <Textarea
-                              id="bulkPaste"
-                              value={bulkPasteText}
-                              onChange={(e) => setBulkPasteText(e.target.value)}
-                              rows={12}
-                              placeholder="Chọn và sao chép các cột từ Excel, sau đó dán vào đây...&#10;&#10;Ví dụ:&#10;SP001    Áo thun trắng    Áo    Size M    100000    150000    Cotton 100%    1&#10;SP002    Quần jean xanh    Quần    Size L    200000    300000    Jean co giãn    1"
-                              className="font-mono text-xs resize-none"
-                            />
-                            <p className="text-xs text-muted-foreground">
+                        <div className="space-y-3">
+                          <p className="text-xs text-muted-foreground">
+                            Thứ tự cột khi dán từ Excel: <strong>Mã SP* | Tên SP* | Danh mục | Quy cách | Giá gốc | Giá bán | Mô tả | Tình trạng (1/0)</strong>
+                          </p>
+                          <Textarea
+                            id="bulkPaste"
+                            value={bulkPasteText}
+                            onChange={(e) => setBulkPasteText(e.target.value)}
+                            rows={8}
+                            placeholder={"SP001	Chăn hè T250	Chăn hè	190x235cm	350000	425000	Vải T250	1"}
+                            className="font-mono text-xs resize-none"
+                          />
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">
                               Đã dán {bulkPasteText.trim().split('\n').filter(l => l.trim()).length} dòng
-                            </p>
-                          </div>
-                          
-                          <div className="flex gap-2">
-                            <Button 
-                              onClick={handleBulkPaste} 
-                              disabled={bulkPasteLoading || !bulkPasteText.trim()}
-                            >
-                              {bulkPasteLoading ? 'Đang xử lý...' : 'Thêm tất cả sản phẩm'}
-                            </Button>
-                            <Button 
-                              type="button" 
-                              variant="outline"
-                              onClick={() => setBulkPasteText('')}
-                            >
-                              Xóa
-                            </Button>
+                            </span>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setBulkPasteText('')}
+                              >
+                                Xóa
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={handleBulkPaste}
+                                disabled={bulkPasteLoading || !bulkPasteText.trim()}
+                              >
+                                {bulkPasteLoading ? 'Đang xử lý...' : 'Thêm tất cả'}
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </TabsContent>
                     </Tabs>
                   </CardContent>
-                )}
-              </Card>
+                </Card>
+              )}
 
-              {/* Search and Filter */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Search className="h-5 w-5" />
-                    Tìm kiếm và lọc
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="search">Tìm kiếm</Label>
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
-                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="search"
-                            placeholder="Tìm sản phẩm, mã SP..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                setActiveSearchTerm(searchTerm);
-                              }
-                            }}
-                            className="pl-8"
-                          />
-                        </div>
-                        <Button 
-                          onClick={() => setActiveSearchTerm(searchTerm)}
-                          className="shrink-0"
-                        >
-                          <Search className="h-4 w-4 mr-2" />
-                          Tìm
-                        </Button>
-                      </div>
+              {/* Clean Spreadsheet-style Products Table */}
+              <Card className="border-border shadow-none overflow-hidden">
+                <CardContent className="p-0">
+                  {loading ? (
+                    <div className="text-center py-12 px-6">
+                      <div className="animate-spin h-7 w-7 border-2 border-primary border-t-transparent rounded-full mx-auto mb-3"></div>
+                      <p className="text-sm text-muted-foreground">Đang tải danh sách sản phẩm...</p>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Danh mục</Label>
-                      <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Tất cả danh mục" />
-                        </SelectTrigger>
-                         <SelectContent>
-                           <SelectItem value="all">Tất cả danh mục</SelectItem>
-                           {getUniqueCategories().map((cat) => (
-                             <SelectItem key={cat} value={cat!}>
-                               {cat}
-                             </SelectItem>
-                           ))}
-                         </SelectContent>
-                      </Select>
+                  ) : products.length === 0 ? (
+                    <div className="text-center py-12 px-6 text-muted-foreground">
+                      <Package className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                      <p className="text-base font-medium text-foreground mb-1">Không tìm thấy sản phẩm</p>
+                      <p className="text-xs">
+                        {selectedPriceList
+                          ? `Chưa có sản phẩm phù hợp trong bảng giá "${priceLists.find(p => p.id === selectedPriceList)?.name}"`
+                          : "Vui lòng chọn bảng giá để xem sản phẩm"}
+                      </p>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Tình trạng</Label>
-                      <Select value={stockFilter} onValueChange={setStockFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Tất cả" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Tất cả</SelectItem>
-                          <SelectItem value="in-stock">Còn hàng</SelectItem>
-                          <SelectItem value="out-of-stock">Hết hàng</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-end">
-                       <Button 
-                         variant="outline" 
-                         onClick={() => {
-                           setSearchTerm('');
-                           setActiveSearchTerm('');
-                           setCategoryFilter('all');
-                           setStockFilter('all');
-                           setCurrentPage(1);
-                         }}
-                         className="w-full"
-                       >
-                         Xóa bộ lọc
-                       </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Products List */}
-              <Card>
-                <CardHeader>
-                   <CardTitle className="flex items-center justify-between">
-                     <div className="flex items-center gap-2">
-                       <Package className="h-5 w-5" />
-                       Danh sách sản phẩm
-                     </div>
-                     <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-sm">
-                          Trang {currentPage}/{totalPages} - {products.length}/{totalProducts} dòng (theo bảng giá)
-                        </Badge>
-                        {products.length > 0 && (
-                         <Button
-                           variant="destructive"
-                           size="sm"
-                           onClick={() => setShowDeleteAllDialog(true)}
-                           className="flex items-center gap-2"
-                         >
-                           <Trash2 className="h-4 w-4" />
-                           Xóa toàn bộ
-                         </Button>
-                       )}
-                     </div>
-                   </CardTitle>
-                </CardHeader>
-                 <CardContent className="p-0">
-                   {loading ? (
-                     <div className="text-center py-12 px-6">
-                       <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-                       <p className="text-muted-foreground">Đang tải sản phẩm...</p>
-                     </div>
-                   ) : products.length === 0 ? (
-                     <div className="text-center py-12 px-6 text-muted-foreground">
-                       <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                       <p className="text-lg font-medium mb-2">Không có sản phẩm</p>
-                       <p className="text-sm">
-                         {selectedPriceList 
-                           ? `Không có sản phẩm nào trong bảng giá "${priceLists.find(p => p.id === selectedPriceList)?.name}"`
-                           : "Vui lòng chọn bảng giá để xem sản phẩm"
-                         }
-                       </p>
-                     </div>
-                   ) : (
-                     <>
-                       <div className="overflow-x-auto">
-                          {isMobile ? (
-                            <div className="p-2">
-                              <MobileProductList
-                                products={products}
-                                formatPrice={formatPrice}
-                                onEdit={openEditDialog}
-                                onDelete={setDeletingProduct}
-                              />
-                            </div>
-                          ) : (
-                           <Table>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto">
+                        {isMobile ? (
+                          <div className="p-2">
+                            <MobileProductList
+                              products={products.map((p) => ({
+                                ...p,
+                                name: stripProductDimensions(p.name || '', p.sku || '', p.category || ''),
+                              }))}
+                              formatPrice={formatPrice}
+                              onEdit={openEditDialog}
+                              onDelete={setDeletingProduct}
+                            />
+                          </div>
+                        ) : (
+                          <Table className="w-full text-sm">
                             <TableHeader>
-                              <TableRow className="border-b border-border bg-muted/30">
-                                <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[100px]">
+                              <TableRow className="border-b border-border bg-muted/50 hover:bg-muted/50">
+                                <TableHead className="h-9 px-3 text-center font-semibold text-xs text-muted-foreground w-[48px]">
+                                  STT
+                                </TableHead>
+                                <TableHead className="h-9 px-3 text-left font-semibold text-xs text-muted-foreground w-[140px]">
                                   Mã SP
                                 </TableHead>
-                                <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
-                                  Danh mục
-                                </TableHead>
-                                <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 min-w-[200px]">
+                                <TableHead className="h-9 px-3 text-left font-semibold text-xs text-muted-foreground min-w-[240px]">
                                   Tên sản phẩm
                                 </TableHead>
-                                <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[140px]">
+                                <TableHead className="h-9 px-3 text-left font-semibold text-xs text-muted-foreground w-[180px]">
+                                  Danh mục
+                                </TableHead>
+                                <TableHead className="h-9 px-3 text-left font-semibold text-xs text-muted-foreground w-[140px]">
                                   Quy cách
                                 </TableHead>
-                                <TableHead className="h-12 px-4 text-right align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
+                                <TableHead className="h-9 px-3 text-right font-semibold text-xs text-muted-foreground w-[120px]">
                                   Giá gốc
                                 </TableHead>
-                                <TableHead className="h-12 px-4 text-right align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[120px]">
+                                <TableHead className="h-9 px-3 text-right font-semibold text-xs text-muted-foreground w-[120px]">
                                   Giá bán
                                 </TableHead>
-                                <TableHead className="h-12 px-4 text-center align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[80px]">
+                                <TableHead className="h-9 px-3 text-center font-semibold text-xs text-muted-foreground w-[76px]">
                                   Kho
                                 </TableHead>
-                                <TableHead className="h-12 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 min-w-[180px]">
+                                <TableHead className="h-9 px-3 text-left font-semibold text-xs text-muted-foreground min-w-[200px] max-w-[280px]">
                                   Mô tả
                                 </TableHead>
-                                <TableHead className="h-12 px-4 text-center align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 w-[100px]">
+                                <TableHead className="h-9 px-3 text-right font-semibold text-xs text-muted-foreground w-[84px]">
                                   Thao tác
                                 </TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {products.map((product) => (
-                                <TableRow 
-                                  key={product.id} 
-                                  className="border-b border-border hover:bg-white hover:text-accent transition-colors duration-200 group"
-                                >
-                                  <TableCell className="p-4 align-middle font-mono text-sm font-medium">
-                                    {product.sku || '-'}
-                                  </TableCell>
-                                  <TableCell className="p-4 align-middle">
-                                    <Badge variant="outline" className="text-xs bg-muted/50 group-hover:bg-accent/10 group-hover:text-accent group-hover:border-accent/30">
-                                      {product.category || 'Chưa phân loại'}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell className="p-4 align-middle font-medium">
-                                    <div className="line-clamp-2 leading-relaxed">
-                                      {product.name}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="p-4 align-middle text-sm text-muted-foreground group-hover:text-accent/80">
-                                    <div className="line-clamp-1">
-                                      {product.specifications || '-'}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="p-4 align-middle text-right font-medium text-muted-foreground group-hover:text-accent/80">
-                                    {product.cost_price ? formatPrice(product.cost_price) : '-'}
-                                  </TableCell>
-                                  <TableCell className="p-4 align-middle text-right font-bold text-primary group-hover:text-accent">
-                                    {product.price ? formatPrice(product.price) : '-'}
-                                  </TableCell>
-                                  <TableCell className="p-4 align-middle text-center">
-                                    <Badge 
-                                      variant={product.in_stock ? 'default' : 'destructive'} 
-                                      className="text-xs group-hover:bg-accent/10 group-hover:text-accent group-hover:border-accent/30"
-                                    >
-                                      {product.in_stock ? 'Còn' : 'Hết'}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell className="p-4 align-middle text-sm text-muted-foreground group-hover:text-accent/80">
-                                    <div className="line-clamp-2 leading-relaxed">
-                                      {product.description || '-'}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="p-4 align-middle text-center">
-                                    <div className="flex justify-center gap-1">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => openEditDialog(product)}
-                                        className="h-8 w-8 p-0 hover:bg-accent/10 hover:text-accent"
+                              {products.map((product, index) => {
+                                const cleanedName = stripProductDimensions(
+                                  product.name || '',
+                                  product.sku || '',
+                                  product.category || ''
+                                );
+                                const rowNumber = (currentPage - 1) * itemsPerPage + index + 1;
+                                return (
+                                  <TableRow
+                                    key={product.id}
+                                    className="border-b border-border/60 even:bg-muted/15 hover:bg-muted/40 transition-colors"
+                                  >
+                                    <TableCell className="py-2 px-3 text-center text-xs text-muted-foreground tabular-nums">
+                                      {rowNumber}
+                                    </TableCell>
+                                    <TableCell className="py-2 px-3 align-middle font-mono text-xs font-semibold text-foreground whitespace-nowrap">
+                                      {product.sku || '—'}
+                                    </TableCell>
+                                    <TableCell className="py-2 px-3 align-middle font-medium text-foreground">
+                                      <div className=" truncate max-w-[300px]" title={cleanedName}>
+                                        {cleanedName}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="py-2 px-3 align-middle text-xs text-muted-foreground">
+                                      <div className="truncate max-w-[180px]" title={product.category || 'Chưa phân loại'}>
+                                        {product.category || '—'}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="py-2 px-3 align-middle font-mono text-xs text-foreground whitespace-nowrap">
+                                      {product.specifications || '—'}
+                                    </TableCell>
+                                    <TableCell className="py-2 px-3 align-middle text-right text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                                      {product.cost_price ? formatPrice(product.cost_price) : '—'}
+                                    </TableCell>
+                                    <TableCell className="py-2 px-3 align-middle text-right font-semibold text-foreground tabular-nums whitespace-nowrap">
+                                      {product.price ? formatPrice(product.price) : '—'}
+                                    </TableCell>
+                                    <TableCell className="py-2 px-3 align-middle text-center">
+                                      <span
+                                        className={
+                                          product.in_stock
+                                            ? 'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                            : 'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-destructive/10 text-destructive'
+                                        }
                                       >
-                                        <Edit className="h-4 w-4" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setDeletingProduct(product)}
-                                        className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
+                                        {product.in_stock ? 'Còn' : 'Hết'}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="py-2 px-3 align-middle text-xs text-muted-foreground max-w-[280px]">
+                                      <div className="truncate" title={product.description || ''}>
+                                        {product.description || '—'}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="py-2 px-3 align-middle text-right whitespace-nowrap">
+                                      <div className="inline-flex items-center justify-end gap-0.5">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => openEditDialog(product)}
+                                          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                          title="Chỉnh sửa"
+                                        >
+                                          <Edit className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => setDeletingProduct(product)}
+                                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                          title="Xóa"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
                             </TableBody>
                           </Table>
-                          )}
-                       </div>
-                       
-                       {/* Pagination Controls */}
-                       {totalPages > 1 && (
-                         <div className="flex items-center justify-between px-6 py-4 border-t">
-                           <div className="text-sm text-muted-foreground">
-                             Hiển thị {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, totalProducts)} của {totalProducts} sản phẩm
-                           </div>
-                           
-                           <Pagination>
-                             <PaginationContent>
-                               <PaginationItem>
-                                 <PaginationPrevious 
-                                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                   className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                                 />
-                               </PaginationItem>
-                               
-                               {/* Page numbers */}
-                               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                 let pageNum;
-                                 if (totalPages <= 5) {
-                                   pageNum = i + 1;
-                                 } else if (currentPage <= 3) {
-                                   pageNum = i + 1;
-                                 } else if (currentPage >= totalPages - 2) {
-                                   pageNum = totalPages - 4 + i;
-                                 } else {
-                                   pageNum = currentPage - 2 + i;
-                                 }
-                                 
-                                 return (
-                                   <PaginationItem key={pageNum}>
-                                     <PaginationLink
-                                       onClick={() => setCurrentPage(pageNum)}
-                                       isActive={pageNum === currentPage}
-                                       className="cursor-pointer"
-                                     >
-                                       {pageNum}
-                                     </PaginationLink>
-                                   </PaginationItem>
-                                 );
-                               })}
-                               
-                               <PaginationItem>
-                                 <PaginationNext 
-                                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                   className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                                 />
-                               </PaginationItem>
-                             </PaginationContent>
-                           </Pagination>
-                         </div>
-                       )}
-                     </>
-                   )}
-                 </CardContent>
+                        )}
+                      </div>
+
+                      {/* Compact Pagination Footer */}
+                      {totalPages > 1 && (
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-2.5 border-t bg-muted/20">
+                          <div className="text-xs text-muted-foreground">
+                            Hiển thị <strong>{(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, totalProducts)}</strong> / <strong>{totalProducts}</strong> sản phẩm
+                          </div>
+
+                          <Pagination className="mx-0 w-auto">
+                            <PaginationContent>
+                              <PaginationItem>
+                                <PaginationPrevious
+                                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                  className={currentPage === 1 ? 'pointer-events-none opacity-50 h-8 text-xs' : 'cursor-pointer h-8 text-xs'}
+                                />
+                              </PaginationItem>
+
+                              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                let pageNum;
+                                if (totalPages <= 5) {
+                                  pageNum = i + 1;
+                                } else if (currentPage <= 3) {
+                                  pageNum = i + 1;
+                                } else if (currentPage >= totalPages - 2) {
+                                  pageNum = totalPages - 4 + i;
+                                } else {
+                                  pageNum = currentPage - 2 + i;
+                                }
+
+                                return (
+                                  <PaginationItem key={pageNum}>
+                                    <PaginationLink
+                                      onClick={() => setCurrentPage(pageNum)}
+                                      isActive={pageNum === currentPage}
+                                      className="cursor-pointer h-8 w-8 text-xs"
+                                    >
+                                      {pageNum}
+                                    </PaginationLink>
+                                  </PaginationItem>
+                                );
+                              })}
+
+                              <PaginationItem>
+                                <PaginationNext
+                                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                  className={currentPage === totalPages ? 'pointer-events-none opacity-50 h-8 text-xs' : 'cursor-pointer h-8 text-xs'}
+                                />
+                              </PaginationItem>
+                            </PaginationContent>
+                          </Pagination>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
               </Card>
             </>
           )}
@@ -1970,7 +2095,7 @@ const ProductManagement = () => {
         onOpenChange={setShowColumnMapping}
         googleSheetsUrl={googleSheetsUrl}
         priceListId={selectedPriceList}
-        onImportComplete={fetchProducts}
+        onImportComplete={refreshProductData}
       />
     </div>
   );

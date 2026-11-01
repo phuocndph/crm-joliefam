@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -20,6 +20,9 @@ import {
 
 type Draft = {
   id: string;
+  manager_id?: string | null;
+  invoice_action?: string | null;
+  is_snapshot_record?: boolean;
   template_code?: string | null;
   invoice_series?: string | null;
   created_at: string;
@@ -41,6 +44,7 @@ interface Props {
   onPreview?: (inv: Draft) => void;
   onEdit?: (inv: Draft) => void;
   onDelete?: (inv: Draft) => void;
+  canDelete?: (inv: Draft) => boolean;
 }
 
 type SortKey =
@@ -77,6 +81,7 @@ export function DraftInvoicesTable({
   onPreview,
   onEdit,
   onDelete,
+  canDelete,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [pageSize, setPageSize] = useState(10);
@@ -87,6 +92,8 @@ export function DraftInvoicesTable({
 
   const total = drafts.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => { setPage(p => Math.min(p, pageCount)); setSelected(new Set()); }, [drafts, pageCount]);
 
   const sorted = useMemo(() => {
     if (!sortKey) return drafts;
@@ -163,7 +170,7 @@ export function DraftInvoicesTable({
         <button
           onClick={() => setCollapsed(c => !c)}
           className="p-1 rounded hover:bg-muted text-muted-foreground"
-          aria-label="toggle"
+          aria-label={collapsed ? "Mở danh sách hóa đơn" : "Thu gọn danh sách hóa đơn"}
         >
           {collapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
         </button>
@@ -171,58 +178,9 @@ export function DraftInvoicesTable({
 
       {!collapsed && (
         <>
-          {/* Action bar */}
-          <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={selected.size === 0}
-              onClick={() => {
-                const first = sorted.find(r => selected.has(r.id));
-                if (first) onIssue?.(first);
-              }}
-            >
-              Phát hành
-            </Button>
-
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <Button
-                onClick={onCreate}
-                size="sm"
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                <Plus className="h-4 w-4 mr-1" /> Lập hoá đơn
-              </Button>
-              <Button
-                onClick={onSync}
-                size="sm"
-                className="bg-slate-800 hover:bg-slate-900 text-white"
-              >
-                <CloudUpload className="h-4 w-4 mr-1" /> Phát hành nhiều hoá đơn
-              </Button>
-              <Button
-                size="sm"
-                className="bg-slate-800 hover:bg-slate-900 text-white"
-              >
-                <Download className="h-4 w-4 mr-1" /> Nhập hóa đơn
-              </Button>
-              <Button
-                size="sm"
-                className="bg-slate-800 hover:bg-slate-900 text-white"
-              >
-                <List className="h-4 w-4 mr-1" /> Tiện ích
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={selected.size === 0}
-              >
-                <Trash2 className="h-4 w-4 mr-1" /> Xoá
-              </Button>
-              <Button variant="outline" size="icon" className="h-8 w-8 bg-slate-800 text-white hover:bg-slate-900 border-slate-800">
-                <Menu className="h-4 w-4" />
-              </Button>
-            </div>
+          <div className="flex flex-wrap justify-end gap-2 px-4 py-3 border-b">
+            {onCreate && <Button onClick={onCreate} size="sm"><Plus className="h-4 w-4 mr-1" />Lập hóa đơn</Button>}
+            {onSync && <Button variant="outline" onClick={onSync} size="sm"><CloudUpload className="h-4 w-4 mr-1" />Đồng bộ nháp</Button>}
           </div>
 
           {/* Table */}
@@ -262,10 +220,10 @@ export function DraftInvoicesTable({
                       <td className={td + " text-center"}>{start + idx + 1}</td>
                       <td className={td}>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => onIssue?.(inv)} className="text-blue-600 hover:text-blue-800" title="Phát hành"><CloudUpload className="h-4 w-4" /></button>
-                          <button onClick={() => onPreview?.(inv)} className="text-blue-600 hover:text-blue-800" title="Tải về"><Download className="h-4 w-4" /></button>
-                          <button onClick={() => onEdit?.(inv)} className="text-blue-600 hover:text-blue-800" title="Sửa"><Pencil className="h-4 w-4" /></button>
-                          <button onClick={() => onDelete?.(inv)} className="text-red-600 hover:text-red-800" title="Xoá"><Trash2 className="h-4 w-4" /></button>
+                          {onIssue && <button onClick={() => onIssue?.(inv)} aria-label="Phát hành" className="text-blue-600 hover:text-blue-800" title="Phát hành"><CloudUpload className="h-4 w-4" /></button>}
+                          {onPreview && <button onClick={() => onPreview?.(inv)} aria-label="Xem trước" className="text-blue-600 hover:text-blue-800" title="Tải về"><Download className="h-4 w-4" /></button>}
+                          {onEdit && <button onClick={() => onEdit?.(inv)} aria-label="Sửa" className="text-blue-600 hover:text-blue-800" title="Sửa"><Pencil className="h-4 w-4" /></button>}
+                          {onDelete && (!canDelete || canDelete(inv)) && <button onClick={() => onDelete?.(inv)} aria-label="Xóa" className="text-red-600 hover:text-red-800" title="Xoá"><Trash2 className="h-4 w-4" /></button>}
                         </div>
                       </td>
                       <td className={td}>{(inv.template_code || "1") + "/" + (inv.invoice_series || "001")}</td>

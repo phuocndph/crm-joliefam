@@ -30,13 +30,22 @@ export async function capturePayrollSourceFingerprint(queryable: Queryable, star
   return { version: 2, sha256: createHash('sha256').update(stable({ start, end, standardDays, scope, sources })).digest('hex') };
 }
 
+export function payrollOvertimeRateMatchesBasis(rate: Record<string, unknown>, compensationType: unknown) {
+  if (compensationType === 'MONTHLY_MANAGER' || compensationType === 'MONTHLY_HELPER') {
+    return rate.attendance_method === 'DAY' && rate.compensation_type === compensationType;
+  }
+  if (compensationType === 'HOURLY') return rate.attendance_method === 'HOUR' && rate.compensation_type === 'HOURLY';
+  return rate.attendance_method === 'HOUR';
+}
+
 export async function resolvePayrollOvertimeRate(queryable: Queryable, workerId: string, workDate: string, compensationType: string | null) {
-  const result = await queryable.query(`select r.id,r.attendance_method,
+  const result = await queryable.query(`select r.id,r.attendance_method,r.compensation_type,
     case when r.attendance_method='HOUR' then r.rate_amount else r.rate_amount/nullif(r.standard_days_per_month,0)/nullif(r.standard_hours_per_day,0) end::numeric::text unit_rate,
     r.rate_amount::numeric::text base_rate_amount,r.standard_days_per_month::numeric::text standard_days_per_month,r.standard_hours_per_day::numeric::text standard_hours_per_day
     from local_worker_rates r where r.worker_id=$1 and r.status='APPROVED' and r.effective_from <= $2::date and (r.effective_to is null or r.effective_to >= $2::date)
     and (r.attendance_method='HOUR' or (r.attendance_method='DAY' and $3::text in ('MONTHLY_MANAGER','MONTHLY_HELPER')))`, [workerId, workDate, compensationType]);
-  const hourly = result.rows.filter(row => row.attendance_method === 'HOUR');
-  const winners = hourly.length ? hourly : result.rows;
-  return winners.length === 1 && Number(winners[0].unit_rate) > 0 ? winners[0] : null;
+  const winners = result.rows.filter(row => payrollOvertimeRateMatchesBasis(row, compensationType));
+  if (winners.length !== 1 || !(Number(winners[0].unit_rate) > 0)) return null;
+  const {compensation_type: _basis, ...selected} = winners[0];
+  return selected;
 }

@@ -33,6 +33,7 @@ import {
   type RequirementResult,
 } from "@/lib/bom-management";
 import type { InventoryItem } from "@/lib/inventory-management";
+import ProductTechnicalProfileEditor from './ProductTechnicalProfileEditor';
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -108,9 +109,9 @@ function emptyBomLine(material?: InventoryItem): BomLineInput {
   };
 }
 
-const ProductManufacturingStandards = () => {
+const ProductManufacturingStandards = ({currentUser}:{currentUser?:AuthUser|null}) => {
   const { toast } = useToast();
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(currentUser ?? null);
   const { role, loading: roleLoading } = useUserRole(user);
   const { hasPermission, loading: permissionLoading } = useEmployeePermissions(user, role);
 
@@ -167,9 +168,9 @@ const ProductManufacturingStandards = () => {
   const selectedCuttingVersion = cuttingVersions.find((item) => item.id === selectedCuttingVersionId) ?? null;
 
   useEffect(() => {
-    if (isLocalBackend()) return;
+    if (isLocalBackend()) {setUser(currentUser ?? null);return;}
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
-  }, []);
+  }, [currentUser]);
 
   const loadCatalogs = useCallback(async () => {
     setLoading(true);
@@ -469,16 +470,18 @@ const ProductManufacturingStandards = () => {
     }
   });
 
-  if (roleLoading || permissionLoading || loading) {
+  const authorityPending=roleLoading||permissionLoading||loading;
+  const retainTechnicalEditor=isLocalBackend()&&busy&&!!selectedProduct&&!!user?.id&&currentUser?.id===user.id;
+  if (authorityPending&&!retainTechnicalEditor) {
     return <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   }
 
-  if (!canView) {
+  if (!canView&&!(authorityPending&&retainTechnicalEditor)) {
     return <Alert variant="destructive"><ShieldCheck className="h-4 w-4" /><AlertTitle>Không có quyền truy cập</AlertTitle><AlertDescription>Cần quyền Định mức sản xuất - Xem BOM.</AlertDescription></Alert>;
   }
 
   return (
-    <div className="grid min-h-[680px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+    <fieldset disabled={authorityPending} className="grid min-w-0 min-h-[680px] gap-4 border-0 p-0 lg:grid-cols-[280px_minmax(0,1fr)]">
       <aside className="overflow-hidden rounded-md border bg-background">
         <div className="border-b p-3">
           <div className="relative">
@@ -492,6 +495,7 @@ const ProductManufacturingStandards = () => {
               <button
                 key={product.id}
                 type="button"
+                disabled={busy}
                 onClick={() => setSelectedProductId(product.id)}
                 className={`mb-1 w-full rounded-md px-3 py-2 text-left transition-colors ${selectedProductId === product.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
               >
@@ -527,13 +531,14 @@ const ProductManufacturingStandards = () => {
 
             <Tabs defaultValue="profile" className="space-y-4">
               <TabsList className="h-auto flex-wrap justify-start">
-                <TabsTrigger value="profile"><Ruler className="mr-2 h-4 w-4" />Hồ sơ sản xuất</TabsTrigger>
-                <TabsTrigger value="bom"><ClipboardList className="mr-2 h-4 w-4" />BOM</TabsTrigger>
-                <TabsTrigger value="cutting"><Factory className="mr-2 h-4 w-4" />Định mức cắt</TabsTrigger>
-                <TabsTrigger value="calculator"><Calculator className="mr-2 h-4 w-4" />Nhu cầu vật tư</TabsTrigger>
+                <TabsTrigger value="profile" disabled={busy}><Ruler className="mr-2 h-4 w-4" />Hồ sơ sản xuất</TabsTrigger>
+                <TabsTrigger value="bom" disabled={busy}><ClipboardList className="mr-2 h-4 w-4" />BOM</TabsTrigger>
+                <TabsTrigger value="cutting" disabled={busy}><Factory className="mr-2 h-4 w-4" />Định mức cắt</TabsTrigger>
+                <TabsTrigger value="calculator" disabled={busy}><Calculator className="mr-2 h-4 w-4" />Nhu cầu vật tư</TabsTrigger>
               </TabsList>
 
               <TabsContent value="profile" className="space-y-5">
+                {isLocalBackend() && (roleLoading || ['admin','manager'].includes(role || '')) ? <ProductTechnicalProfileEditor key={selectedProduct.id} productId={selectedProduct.id} userId={user?.id || ''} authorityKey={String(role)+'|'+canManageBom} authorityReady={!roleLoading&&!permissionLoading} onSavingChange={setBusy} onSaved={()=>loadProductWorkspace(selectedProduct.id)}/> : <>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-2 md:col-span-2"><Label>Loại sản xuất</Label><Select value={profileForm.manufacturing_type} onValueChange={(value) => setProfileForm((current) => ({ ...current, manufacturing_type: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{manufacturingTypes.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
                   <div className="space-y-2"><Label>Đơn vị kích thước</Label><Select value={profileForm.dimension_unit} onValueChange={(value) => setProfileForm((current) => ({ ...current, dimension_unit: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="MM">mm</SelectItem><SelectItem value="CM">cm</SelectItem><SelectItem value="METER">m</SelectItem></SelectContent></Select></div>
@@ -542,7 +547,8 @@ const ProductManufacturingStandards = () => {
                   <div className="space-y-2"><Label>Dài thành phẩm</Label><Input type="number" min="0" step="0.01" value={profileForm.finished_length} onChange={(event) => setProfileForm((current) => ({ ...current, finished_length: event.target.value }))} /></div>
                   <div className="space-y-2"><Label>Cao thành phẩm</Label><Input type="number" min="0" step="0.01" value={profileForm.finished_height} onChange={(event) => setProfileForm((current) => ({ ...current, finished_height: event.target.value }))} /></div>
                 </div>
-                {canManageBom && <Button onClick={handleSaveProfile} disabled={busy}><Save className="mr-2 h-4 w-4" />Lưu hồ sơ</Button>}
+                {canManageBom && !isLocalBackend() && <Button onClick={handleSaveProfile} disabled={busy}><Save className="mr-2 h-4 w-4" />Lưu hồ sơ</Button>}
+                </>}
               </TabsContent>
 
               <TabsContent value="bom" className="space-y-4">
@@ -704,7 +710,7 @@ const ProductManufacturingStandards = () => {
           </div>
         ) : <Alert><AlertTriangle className="h-4 w-4" /><AlertTitle>Chưa chọn sản phẩm</AlertTitle></Alert>}
       </section>
-    </div>
+    </fieldset>
   );
 };
 

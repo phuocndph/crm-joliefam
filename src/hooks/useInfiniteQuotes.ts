@@ -1,3 +1,5 @@
+import { applyHostedQuoteFilters, normalizeQuoteFilters, type QuoteQueryOptions } from '@/lib/quote-filters';
+import { resolveQuoteDates } from '@/lib/quote-dates';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
@@ -37,30 +39,15 @@ export const formatQuote = (quote: any) => {
     customerPhone: snapshot('customerPhone', /(?:^|\n)Điện thoại:[ \t]*([^\n\r]*)/, quote.customers?.phone),
     customerAddress: snapshot('customerAddress', /(?:^|\n)Địa chỉ:[ \t]*([^\n\r]*)/, quote.customers?.address),
     customerCompany: quote.customers?.company || '',
-    quoteDate: quote.created_at,
-    expiryDate: (() => {
-      const raw = extract(/Ngày hết hạn:\s*([^\n\r]+)/);
-      if (!raw) return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      const dmy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (dmy) {
-        const d = new Date(parseInt(dmy[3]), parseInt(dmy[2]) - 1, parseInt(dmy[1]), 12, 0, 0);
-        return !isNaN(d.getTime()) ? d.toISOString() : raw;
-      }
-      const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (iso) {
-        const d = new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]), 12, 0, 0);
-        return !isNaN(d.getTime()) ? d.toISOString() : raw;
-      }
-      return raw;
-    })(),
+    ...resolveQuoteDates(quote),
     responsible: quote.assignees?.name || 'Chưa phân công',
     totalAmount: quote.total_amount || 0,
   };
 };
 
-export const useInfiniteQuotes = (opts?: { managerId?: string | null; search?: string }) => {
+export const useInfiniteQuotes = (opts?: QuoteQueryOptions) => {
   const queryClient = useQueryClient();
-  const search = (opts?.search || '').trim();
+  const filters = normalizeQuoteFilters(opts);
 
   useEffect(() => {
     if (isLocalBackend()) return;
@@ -81,13 +68,13 @@ export const useInfiniteQuotes = (opts?: { managerId?: string | null; search?: s
   }, [queryClient]);
 
   return useInfiniteQuery({
-    queryKey: ['quotes-infinite', opts?.managerId ?? 'all', search],
+    queryKey: ['quotes-infinite', opts?.managerId ?? 'all', filters],
     initialPageParam: 0,
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
       if (isLocalBackend()) {
-        const rows = await localApi.quotes({ search, managerId: opts?.managerId, limit: PAGE_SIZE, offset: from });
+        const rows = await localApi.quotes({ ...filters, managerId: opts?.managerId, limit: PAGE_SIZE, offset: from });
         return rows.map(formatQuote);
       }
       let query = supabase
@@ -99,16 +86,10 @@ export const useInfiniteQuotes = (opts?: { managerId?: string | null; search?: s
           customers ( name, email, phone, address, company ),
           assignees ( name )
         `)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false, nullsFirst: false }).order('id', { ascending: false })
         .range(from, to);
 
-      if (opts?.managerId && opts.managerId !== 'all') {
-        query = query.eq('manager_id', opts.managerId);
-      }
-      if (search) {
-        const esc = search.replace(/[%,()]/g, ' ');
-        query = query.or(`quote_number.ilike.%${esc}%,notes.ilike.%${esc}%`);
-      }
+      query = applyHostedQuoteFilters(query, filters, opts?.managerId);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -116,6 +97,7 @@ export const useInfiniteQuotes = (opts?: { managerId?: string | null; search?: s
     },
     getNextPageParam: (lastPage, allPages) =>
       lastPage.length < PAGE_SIZE ? undefined : allPages.length,
+    retry: false,
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,

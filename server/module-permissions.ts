@@ -22,13 +22,36 @@ const tablePermissions: Record<string, readonly string[]> = {
 for (const table of ['fabric_inventory','fabric_transactions','fabric_transfers','fabric_types','fabric_usage','fabric_variants','fabric_widths','warehouses']) tablePermissions[table] = ['fabric_management'];
 const lookupRights = ['customers','customer_care','quotes','orders','contracts','reports'];
 const productLookupRights = ['products','quotes','orders','bom_view','production_view','reports','cash_flow'];
-const canonicalTables = new Set(['customers','products','products_public','price_lists','quotes','orders','contracts','expenses','transactions','order_payments','inventory_items','bom_headers','bom_lines','bom_versions','production_orders','production_outputs','production_order_operations','production_operation_logs']);
+const canonicalTables = new Set(['customers','products','products_public','price_lists','quotes','orders','contracts','contract_templates','einvoices','expenses','transactions','order_payments','inventory_items','bom_headers','bom_lines','bom_versions','production_orders','production_outputs','production_order_operations','production_operation_logs']);
 for (const table of ['assignees','shipping_companies','ghn_tracking','fabric_types','fabric_variants','fabric_widths','fabric_inventory','fabric_transactions','fabric_transfers','knowledge_documents']) canonicalTables.add(table);
 export function moduleRequirement(method: string, requestPath: string, body: Record<string, unknown> = {}): ModuleRequirement {
   let decodedPath: string;
   try { decodedPath = decodeURIComponent(requestPath); } catch { return false; }
   const path = decodedPath.toLowerCase().replace(/\/+$/, '');
+  if (path.startsWith('/api/zcrm-admin')) return null; // Dedicated real-session role/owner checks.
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/.*zcrm/.test(path)) return false;
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:order[_.-](?:refunds|returns))(?:[._/-]|$)/.test(path)) return false;
   const read = method === 'GET' || method === 'HEAD';
+  // Canonical payroll prices have one API. Adapter handlers trim table aliases;
+  // apply the same normalization before denying raw and action aliases.
+  const rateAliasPath = path.replace(/^(\/api\/local-(?:snapshot|table|rpc|functions)\/)([^/]+)/, (_match, prefix: string, alias: string) => prefix + alias.trim());
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:(?:local|list|get|create|update|save|set|upsert|delete|approve|discard|retire|resolve|count|search|export|preview|history)[_./-])*product[_.-]rate[_.-]action[_.-]receipts(?:[._/-]|$)/.test(rateAliasPath)) return false;
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:(?:local|list|get|create|update|save|set|upsert|delete|approve|discard|retire|resolve|count|search|export|preview|history)[_./-])*product[_.-]rates(?:[._/-]|$)/.test(rateAliasPath)) return false;
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local_)?product_supply/.test(path)) return false;
+  if (path.startsWith('/api/product-supply-classifications')) return [];
+   // Purchase fulfillment applies its own request ownership and inventory
+   // capability checks.  Do not turn this into an administrator-only route.
+   if (path.startsWith('/api/purchase-fulfillment')) return null;
+  // Shipment handlers check current grants and order ownership before replay.
+  if (path === '/api/order-shipments' || path.startsWith('/api/order-shipments/')) return null;
+  if (path.startsWith('/api/product-technical-profiles')) return [];
+  if (path.startsWith('/api/payroll/labor-mappings')) return [];
+  if (path.startsWith('/api/payroll/labor-code-requirements')) return [];
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:(?:local|list|get|create|update|save|set|upsert|delete|approve|retire|submit|discard|resolve|count|search|export|preview|history)[_.-])*(?:labor[_.-]requirements?|labor[_.-]code[_.-]requirements?)(?:[._/-]|s|$)/.test(path)) return false;
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:(?:list|get|create|update|save|set|upsert|delete|approve|retire)[_.-])?(?:labor[_.-]mapping|product[_.-]labor)(?:[._/-]|s|$)/.test(path)) return false;
+  // Profile facts and confirmation history have one versioned writer. Generic
+  // aliases must never create a shadow master or forge confirmed metadata.
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:(?:list|get|create|update|save|set|upsert|delete)[_.-])?(?:product[_.-]technical|product[_.-]manufacturing[_.-]profiles?|manufacturing[_.-](?:profiles?|records))(?:[._/-]|$)/.test(path)) return false;
   // Payroll data has action and worker scope checks in canonical routes. Never
   // expose raw imported versions through a compatibility alias, even to a
   // manager whose role intentionally excludes bank/insurance management.
@@ -39,13 +62,17 @@ export function moduleRequirement(method: string, requestPath: string, body: Rec
   if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:(?:list|get|create|update|save|set|upsert|delete)[_.-])?goong[_.-]?(?:settings|config)(?:[._/-]|$)/.test(path)) return false;
   if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:(?:integration|external)[_.-]?(?:private|settings)|external[_.-]?integration[_.-]?(?:private|settings)?|(?:ghn|goong)[_.-]?(?:settings|config)|einvoice[_.-]?settings)(?:[._/-]|$)/.test(path)) return false;
   if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:ai[_.-]private|ai[_.-]provider|f5quota|beeknoee)(?:[._/-]|$)/.test(path)) return false;
+  if (/^\/api\/local-(?:snapshot|table|rpc|functions)\/(?:local[_.-])?(?:(?:list|get|create|update|save|set|upsert|delete)[_.-])?invoice[_.-]/.test(path)) return false;
+  if(path.startsWith('/api/invoice-workspace'))return ['contracts'];
   if (path.startsWith('/api/ai/providers')) return [];
   if (path === '/api/ai/my-settings') return null;
   const adapter = path.match(/^\/api\/local-(snapshot|table)\/([^/]+)/);
   if (adapter) {
-    const [,kind,table] = adapter;
+    const [,kind,rawTable] = adapter;
+    const table = rawTable.replace(/^local[_.-]/, '');
     if (['einvoice_settings','integration_private','external_integration_settings','ghn_settings','goong_settings','ghn_order_attempts'].includes(table)) return false;
     if(table==='ai_config'&&!read)return null; // Handler enforces administrator, not manager.
+    if (kind === 'snapshot' && ['contracts','contract_templates','einvoices'].includes(table)) return false;
     if (kind === 'snapshot' && read && table === 'user_roles') return null;
     if (kind === 'table' && canonicalTables.has(table)) return false;
     if (table === 'assignees') return read ? lookupRights : [];
@@ -86,6 +113,7 @@ export function moduleRequirement(method: string, requestPath: string, body: Rec
   if (path.startsWith('/api/local-sync')) return [];
   if (path.startsWith('/api/dashboard')) return ['dashboard'];
   if (/^\/api\/quotes\/[^/]+\/approve$/.test(path)) return ['quote_approval'];
+  if (method === 'PATCH' && /^\/api\/quotes\/[^/]+$/.test(path) && body.status === 'rejected') return ['quote_approval'];
   if (path.startsWith('/api/quotes') || path.startsWith('/api/quote-template-settings')) return read ? ['quotes','reports'] : ['quotes'];
   if (path.startsWith('/api/customers')) return read ? lookupRights : ['customers','customer_care'];
   if (path.startsWith('/api/catalog/')) return read ? productLookupRights : ['products'];
@@ -96,7 +124,7 @@ export function moduleRequirement(method: string, requestPath: string, body: Rec
   if (path.startsWith('/api/order-payments')) return ['orders','cash_flow','transactions'];
   if (path.startsWith('/api/assignees')) return read ? lookupRights : [];
   if (path.startsWith('/api/shipping-companies')) return ['shipping_companies'];
-  if (path.startsWith('/api/ghn-tracking') || path.startsWith('/api/ghn-orders')) return ['ghn_tracking','orders'];
+  if (path.startsWith('/api/ghn-tracking') || path.startsWith('/api/ghn-orders') || path.startsWith('/api/ghn-edit')) return ['ghn_tracking','orders'];
   if (path.startsWith('/api/knowledge/')) return ['knowledge_base'];
   if (path.startsWith('/api/fabrics/')) return ['fabric_management'];
   if (path.startsWith('/api/cost/')) {

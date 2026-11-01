@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { SafeTooltipProvider } from "@/components/SafeTooltipProvider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,7 +45,6 @@ const WebScraperPage = lazy(() => import("./pages/WebScraperPage"));
 const ShippingCompanyPage = lazy(() => import("./pages/ShippingCompanyPage"));
 const MobileMenu = lazy(() => import("./pages/MobileMenu"));
 import MainLayout from "./components/layout/MainLayout";
-import MobileLayout from "./components/layout/MobileLayout";
 import NotFound from "./pages/NotFound";
 import { isLocalBackend } from "@/lib/runtime-config";
 import { LocalGhnCreateHostProvider } from "@/components/LocalGhnCreateHost";
@@ -91,7 +90,6 @@ const AppErrorFallback = () => (
 
 const AppRoutes = () => {
   const isMobile = useIsMobile();
-  const LayoutComponent = isMobile ? MobileLayout : MainLayout;
 
   useEffect(() => {
     if (isLocalBackend()) return;
@@ -137,7 +135,7 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<Auth />} />
-      <Route path="/" element={<LayoutComponent />}>
+      <Route path="/" element={<MainLayout />}>
         <Route path="menu" element={<MobileMenu />} />
         <Route path="dashboard" element={isLocalBackend() ? <LocalDashboardPage /> : isMobile ? <MobileMenu /> : <Dashboard />} />
         <Route path="user-management" element={<UserManagement />} />
@@ -187,6 +185,21 @@ const RouteLoadingFallback = () => (
   </div>
 );
 
+// Stable data-router host enables the requirement editor's public navigation blocker.
+const appRouter = createBrowserRouter([{
+  id: "app-shell",
+  path: "*",
+  element: (
+    <LocalGhnCreateHostProvider>
+      <ErrorBoundary fallback={<AppErrorFallback />}>
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <AppRoutes />
+        </Suspense>
+      </ErrorBoundary>
+    </LocalGhnCreateHostProvider>
+  ),
+}]);
+
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
@@ -194,15 +207,7 @@ const App = () => {
         <SafeTooltipProvider>
           <Toaster />
           <Sonner />
-          <BrowserRouter>
-            <LocalGhnCreateHostProvider>
-            <ErrorBoundary fallback={<AppErrorFallback />}>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <AppRoutes />
-              </Suspense>
-            </ErrorBoundary>
-            </LocalGhnCreateHostProvider>
-          </BrowserRouter>
+          <RouterProvider router={appRouter} />
         </SafeTooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

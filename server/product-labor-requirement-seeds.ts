@@ -1,0 +1,822 @@
+// Frozen seed identity, never regenerated from a mutable family schema at runtime.
+import type {RequirementDefinition} from './product-labor-requirement-schema.js';
+export const laborRequirementSeedHash='a658a5b160be41cdc928a3bcf0a725f5583827c8e7f6c813868928ed0352d2a1';
+export const laborRequirementSeedManifest: Array<{code_key:string;stream_id:string;semantic_fingerprint:string;definition:RequirementDefinition;content_hash:string;legacy_id:string;legacy_version:string;effective_from:string;version:number}>=[
+  {
+    "code_key": "vgo",
+    "stream_id": "a75c15a3-79fa-fbb1-1c71-eec858beff78",
+    "semantic_fingerprint": "8101a7371c1f1b5b4786bded85bc31ecdd9b681c2a0f0b0e33aa6c7c578001a4",
+    "definition": {
+      "schema_version": 1,
+      "disposition": "SEWING_APPLICABLE",
+      "stage": "SEWING",
+      "family": "PILLOW_CASE",
+      "required_fields": [
+        "manufacturing_type",
+        "material",
+        "joining",
+        "quilting",
+        "topstitch",
+        "sewing_method",
+        "pillow_subtype",
+        "closure",
+        "ruffle"
+      ],
+      "conditional_fields": [
+        {
+          "field": "joining",
+          "value": "YES",
+          "required": [
+            "joining_detail"
+          ]
+        }
+      ],
+      "conditions": {
+        "manufacturing_type": {
+          "op": "eq",
+          "value": "PILLOW_CASE"
+        },
+        "pillow_subtype": {
+          "op": "eq",
+          "value": "BOLSTER"
+        },
+        "material": {
+          "op": "eq",
+          "value": "COTTON"
+        },
+        "ruffle": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "joining": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "quilting": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "topstitch": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "sewing_method": {
+          "op": "eq",
+          "value": "STANDARD"
+        }
+      }
+    },
+    "content_hash": "e3d35cb3ecaeda231e77f67af7c760fde621a84e9e8f86dba72f7f4b7db8bb7b",
+    "legacy_id": "labor-code/vgo",
+    "legacy_version": "2026-10-29.1",
+    "effective_from": "0001-01-01",
+    "version": 1
+  },
+  {
+    "code_key": "vgol",
+    "stream_id": "4f9c09d2-b813-475a-d500-2ff80b5f266c",
+    "semantic_fingerprint": "8b98d0a7ec1d158dcc51fc6f7429d6422d492e79db99a0b1a4fdd11335587e7a",
+    "definition": {
+      "schema_version": 1,
+      "disposition": "SEWING_APPLICABLE",
+      "stage": "SEWING",
+      "family": "PILLOW_CASE",
+      "required_fields": [
+        "manufacturing_type",
+        "material",
+        "joining",
+        "quilting",
+        "topstitch",
+        "sewing_method",
+        "pillow_subtype",
+        "closure",
+        "ruffle"
+      ],
+      "conditional_fields": [
+        {
+          "field": "joining",
+          "value": "YES",
+          "required": [
+            "joining_detail"
+          ]
+        }
+      ],
+      "conditions": {
+        "manufacturing_type": {
+          "op": "eq",
+          "value": "PILLOW_CASE"
+        },
+        "pillow_subtype": {
+          "op": "eq",
+          "value": "BOLSTER"
+        },
+        "material": {
+          "op": "eq",
+          "value": "SILK"
+        },
+        "ruffle": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "joining": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "quilting": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "topstitch": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "sewing_method": {
+          "op": "eq",
+          "value": "STANDARD"
+        }
+      }
+    },
+    "content_hash": "1c1d1a5c548cb63ec327511dda7bad3455a2051146e80f732908bb444bf96989",
+    "legacy_id": "labor-code/vgol",
+    "legacy_version": "2026-10-29.1",
+    "effective_from": "0001-01-01",
+    "version": 1
+  },
+  {
+    "code_key": "vgolb",
+    "stream_id": "6f5e6f3e-30a6-f4b3-fc44-6cdffcb7f1e1",
+    "semantic_fingerprint": "079da57d948f35612f027867bc113d18fd6c10c63c86fab9589c81a3fb3dc660",
+    "definition": {
+      "schema_version": 1,
+      "disposition": "SEWING_APPLICABLE",
+      "stage": "SEWING",
+      "family": "PILLOW_CASE",
+      "required_fields": [
+        "manufacturing_type",
+        "material",
+        "joining",
+        "quilting",
+        "topstitch",
+        "sewing_method",
+        "pillow_subtype",
+        "closure",
+        "ruffle"
+      ],
+      "conditional_fields": [
+        {
+          "field": "joining",
+          "value": "YES",
+          "required": [
+            "joining_detail"
+          ]
+        }
+      ],
+      "conditions": {
+        "manufacturing_type": {
+          "op": "eq",
+          "value": "PILLOW_CASE"
+        },
+        "pillow_subtype": {
+          "op": "eq",
+          "value": "BOLSTER"
+        },
+        "material": {
+          "op": "eq",
+          "value": "SILK"
+        },
+        "ruffle": {
+          "op": "eq",
+          "value": "YES"
+        },
+        "joining": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "quilting": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "topstitch": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "sewing_method": {
+          "op": "eq",
+          "value": "STANDARD"
+        }
+      }
+    },
+    "content_hash": "a01f4609d89f25d5566df76e03a68be76a27165c77a647877bdd618f46ecd0d2",
+    "legacy_id": "labor-code/vgolb",
+    "legacy_version": "2026-10-29.1",
+    "effective_from": "0001-01-01",
+    "version": 1
+  },
+  {
+    "code_key": "gcl",
+    "stream_id": "d3d6fba0-f175-7c56-9387-0e6eac19a807",
+    "semantic_fingerprint": "a3c794540efa893384ba635d4822fa2adf07f2c955afafa5408d994a38d45d11",
+    "definition": {
+      "schema_version": 1,
+      "disposition": "SEWING_APPLICABLE",
+      "stage": "SEWING",
+      "family": "FITTED_SHEET",
+      "required_fields": [
+        "manufacturing_type",
+        "material",
+        "joining",
+        "quilting",
+        "topstitch",
+        "sewing_method",
+        "width_mm",
+        "elastic",
+        "straps",
+        "waterproof",
+        "ruffle"
+      ],
+      "conditional_fields": [
+        {
+          "field": "joining",
+          "value": "YES",
+          "required": [
+            "joining_detail"
+          ]
+        },
+        {
+          "field": "elastic",
+          "value": "YES",
+          "required": [
+            "elastic_type"
+          ]
+        }
+      ],
+      "conditions": {
+        "manufacturing_type": {
+          "op": "eq",
+          "value": "FITTED_SHEET"
+        },
+        "material": {
+          "op": "eq",
+          "value": "COTTON"
+        },
+        "elastic": {
+          "op": "eq",
+          "value": "YES"
+        },
+        "elastic_type": {
+          "op": "eq",
+          "value": "LUON"
+        },
+        "joining": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "quilting": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "topstitch": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "straps": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "waterproof": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "ruffle": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "sewing_method": {
+          "op": "eq",
+          "value": "STANDARD"
+        },
+        "width_mm": {
+          "op": "range",
+          "min": "1000",
+          "min_inclusive": true,
+          "max_inclusive": true
+        }
+      }
+    },
+    "content_hash": "03237befebdefd4334b42a3bb496865ff91cee564c02eacd1cdddbb6451d98b7",
+    "legacy_id": "labor-code/gcl",
+    "legacy_version": "2026-10-29.1",
+    "effective_from": "0001-01-01",
+    "version": 1
+  },
+  {
+    "code_key": "gclc",
+    "stream_id": "0276430d-ae5b-e483-3778-9c82349ec524",
+    "semantic_fingerprint": "70de4d7e3e51bc5e8e181ee6485e34ff9813560936f5d7302ae2ae9b3711545e",
+    "definition": {
+      "schema_version": 1,
+      "disposition": "SEWING_APPLICABLE",
+      "stage": "SEWING",
+      "family": "FITTED_SHEET",
+      "required_fields": [
+        "manufacturing_type",
+        "material",
+        "joining",
+        "quilting",
+        "topstitch",
+        "sewing_method",
+        "width_mm",
+        "elastic",
+        "straps",
+        "waterproof",
+        "ruffle"
+      ],
+      "conditional_fields": [
+        {
+          "field": "joining",
+          "value": "YES",
+          "required": [
+            "joining_detail"
+          ]
+        },
+        {
+          "field": "elastic",
+          "value": "YES",
+          "required": [
+            "elastic_type"
+          ]
+        }
+      ],
+      "conditions": {
+        "manufacturing_type": {
+          "op": "eq",
+          "value": "FITTED_SHEET"
+        },
+        "material": {
+          "op": "eq",
+          "value": "COTTON"
+        },
+        "elastic": {
+          "op": "eq",
+          "value": "YES"
+        },
+        "elastic_type": {
+          "op": "eq",
+          "value": "LUON"
+        },
+        "joining": {
+          "op": "eq",
+          "value": "YES"
+        },
+        "joining_detail": {
+          "op": "in",
+          "values": [
+            "ONE_SIDE",
+            "TWO_SIDES"
+          ]
+        },
+        "quilting": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "topstitch": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "straps": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "waterproof": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "ruffle": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "sewing_method": {
+          "op": "eq",
+          "value": "STANDARD"
+        },
+        "width_mm": {
+          "op": "range",
+          "min": "1000",
+          "min_inclusive": true,
+          "max_inclusive": true
+        }
+      }
+    },
+    "content_hash": "a7c509ac094ce1b8a8315418ff8162ce9e175562a8b71af1f0c14760521b0f01",
+    "legacy_id": "labor-code/gclc",
+    "legacy_version": "2026-10-29.1",
+    "effective_from": "0001-01-01",
+    "version": 1
+  },
+  {
+    "code_key": "gcll",
+    "stream_id": "b215bf33-3547-346d-acfb-f3af787fc0d9",
+    "semantic_fingerprint": "f469cffe5cb7a9748257a5eb50c36d813167f1062d916b0da8912c47e376010e",
+    "definition": {
+      "schema_version": 1,
+      "disposition": "SEWING_APPLICABLE",
+      "stage": "SEWING",
+      "family": "FITTED_SHEET",
+      "required_fields": [
+        "manufacturing_type",
+        "material",
+        "joining",
+        "quilting",
+        "topstitch",
+        "sewing_method",
+        "width_mm",
+        "elastic",
+        "straps",
+        "waterproof",
+        "ruffle"
+      ],
+      "conditional_fields": [
+        {
+          "field": "joining",
+          "value": "YES",
+          "required": [
+            "joining_detail"
+          ]
+        },
+        {
+          "field": "elastic",
+          "value": "YES",
+          "required": [
+            "elastic_type"
+          ]
+        }
+      ],
+      "conditions": {
+        "manufacturing_type": {
+          "op": "eq",
+          "value": "FITTED_SHEET"
+        },
+        "material": {
+          "op": "eq",
+          "value": "SILK"
+        },
+        "elastic": {
+          "op": "eq",
+          "value": "YES"
+        },
+        "elastic_type": {
+          "op": "eq",
+          "value": "LUON"
+        },
+        "joining": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "quilting": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "topstitch": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "straps": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "waterproof": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "ruffle": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "sewing_method": {
+          "op": "eq",
+          "value": "STANDARD"
+        },
+        "width_mm": {
+          "op": "range",
+          "min": "1000",
+          "min_inclusive": true,
+          "max_inclusive": true
+        }
+      }
+    },
+    "content_hash": "d089716bb26bec5ae75127479f8e1bb144b402cc3945fafba6be839904e5b32a",
+    "legacy_id": "labor-code/gcll",
+    "legacy_version": "2026-10-29.1",
+    "effective_from": "0001-01-01",
+    "version": 1
+  },
+  {
+    "code_key": "gcb1",
+    "stream_id": "194e4f16-8742-6151-72c1-1929714a083d",
+    "semantic_fingerprint": "8da78dcd5d64da9bad0a82a0436ec06cc819fa18d2eb987b47725c794b08ebdf",
+    "definition": {
+      "schema_version": 1,
+      "disposition": "SEWING_APPLICABLE",
+      "stage": "SEWING",
+      "family": "FITTED_SHEET",
+      "required_fields": [
+        "manufacturing_type",
+        "material",
+        "joining",
+        "quilting",
+        "topstitch",
+        "sewing_method",
+        "width_mm",
+        "elastic",
+        "straps",
+        "waterproof",
+        "ruffle"
+      ],
+      "conditional_fields": [
+        {
+          "field": "joining",
+          "value": "YES",
+          "required": [
+            "joining_detail"
+          ]
+        },
+        {
+          "field": "elastic",
+          "value": "YES",
+          "required": [
+            "elastic_type"
+          ]
+        }
+      ],
+      "conditions": {
+        "manufacturing_type": {
+          "op": "eq",
+          "value": "FITTED_SHEET"
+        },
+        "material": {
+          "op": "eq",
+          "value": "COTTON"
+        },
+        "elastic": {
+          "op": "eq",
+          "value": "YES"
+        },
+        "elastic_type": {
+          "op": "eq",
+          "value": "LUON"
+        },
+        "joining": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "quilting": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "topstitch": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "straps": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "waterproof": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "ruffle": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "sewing_method": {
+          "op": "eq",
+          "value": "STANDARD"
+        },
+        "width_mm": {
+          "op": "range",
+          "max": "1000",
+          "min_inclusive": true,
+          "max_inclusive": false
+        }
+      }
+    },
+    "content_hash": "122195f7eca37098d813df70443da8c15e44c88dc85437502e99c4a1f95deb4b",
+    "legacy_id": "labor-code/gcb1",
+    "legacy_version": "2026-10-29.1",
+    "effective_from": "0001-01-01",
+    "version": 1
+  },
+  {
+    "code_key": "gcb1c",
+    "stream_id": "9cb103d0-eb7a-26ec-4a3c-6ad70895861e",
+    "semantic_fingerprint": "38fdf492135e23bcc04f147180a7e0668f9d95efce9b52cd2eb5de34eb05cd4d",
+    "definition": {
+      "schema_version": 1,
+      "disposition": "SEWING_APPLICABLE",
+      "stage": "SEWING",
+      "family": "FITTED_SHEET",
+      "required_fields": [
+        "manufacturing_type",
+        "material",
+        "joining",
+        "quilting",
+        "topstitch",
+        "sewing_method",
+        "width_mm",
+        "elastic",
+        "straps",
+        "waterproof",
+        "ruffle"
+      ],
+      "conditional_fields": [
+        {
+          "field": "joining",
+          "value": "YES",
+          "required": [
+            "joining_detail"
+          ]
+        },
+        {
+          "field": "elastic",
+          "value": "YES",
+          "required": [
+            "elastic_type"
+          ]
+        }
+      ],
+      "conditions": {
+        "manufacturing_type": {
+          "op": "eq",
+          "value": "FITTED_SHEET"
+        },
+        "material": {
+          "op": "eq",
+          "value": "COTTON"
+        },
+        "elastic": {
+          "op": "eq",
+          "value": "YES"
+        },
+        "elastic_type": {
+          "op": "eq",
+          "value": "LUON"
+        },
+        "joining": {
+          "op": "eq",
+          "value": "YES"
+        },
+        "joining_detail": {
+          "op": "in",
+          "values": [
+            "ONE_SIDE",
+            "TWO_SIDES"
+          ]
+        },
+        "quilting": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "topstitch": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "straps": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "waterproof": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "ruffle": {
+          "op": "eq",
+          "value": "NO"
+        },
+        "sewing_method": {
+          "op": "eq",
+          "value": "STANDARD"
+        },
+        "width_mm": {
+          "op": "range",
+          "max": "1000",
+          "min_inclusive": true,
+          "max_inclusive": false
+        }
+      }
+    },
+    "content_hash": "a32fa3a618ef03df49d08de10725d7f37aa64eb6404def3965c9885bfa60a9be",
+    "legacy_id": "labor-code/gcb1c",
+    "legacy_version": "2026-10-29.1",
+    "effective_from": "0001-01-01",
+    "version": 1
+  },
+  {
+    "code_key": "chm",
+    "stream_id": "544cbc63-5bea-991e-8868-ddb68216b638",
+    "semantic_fingerprint": "a90649292bf5add324507c0a8d9fb2fddf22f055cf66f55565b64d1e7c83873b",
+    "definition": {
+      "schema_version": 1,
+      "disposition": "SEWING_APPLICABLE",
+      "stage": "SEWING",
+      "family": "DUVET_INSERT",
+      "required_fields": [
+        "manufacturing_type",
+        "material",
+        "joining",
+        "quilting",
+        "topstitch",
+        "sewing_method"
+      ],
+      "conditional_fields": [
+        {
+          "field": "joining",
+          "value": "YES",
+          "required": [
+            "joining_detail"
+          ]
+        },
+        {
+          "field": "material",
+          "value": "MICROFIBER",
+          "required": [
+            "microfiber_weight"
+          ]
+        }
+      ],
+      "conditions": {
+        "manufacturing_type": {
+          "op": "eq",
+          "value": "DUVET_INSERT"
+        },
+        "material": {
+          "op": "eq",
+          "value": "MICROFIBER"
+        },
+        "sewing_method": {
+          "op": "eq",
+          "value": "STANDARD"
+        }
+      }
+    },
+    "content_hash": "0d07eb93c2826bc1b174d3284c2fd913abdf7e0d6554cd070573e6c92c3f3e30",
+    "legacy_id": "labor-code/chm",
+    "legacy_version": "2026-10-29.1",
+    "effective_from": "0001-01-01",
+    "version": 1
+  },
+  {
+    "code_key": "chanhecm",
+    "stream_id": "36aa0f48-000a-7a74-953c-75166140b3f2",
+    "semantic_fingerprint": "855d640389203b7b7f51c31d07ac3e0234a21a4da56baead175c7404772d10fb",
+    "definition": {
+      "schema_version": 1,
+      "disposition": "SEWING_APPLICABLE",
+      "stage": "SEWING",
+      "family": "DUVET_INSERT",
+      "required_fields": [
+        "manufacturing_type",
+        "material",
+        "joining",
+        "quilting",
+        "topstitch",
+        "sewing_method"
+      ],
+      "conditional_fields": [
+        {
+          "field": "joining",
+          "value": "YES",
+          "required": [
+            "joining_detail"
+          ]
+        },
+        {
+          "field": "material",
+          "value": "MICROFIBER",
+          "required": [
+            "microfiber_weight"
+          ]
+        }
+      ],
+      "conditions": {
+        "manufacturing_type": {
+          "op": "eq",
+          "value": "DUVET_INSERT"
+        },
+        "material": {
+          "op": "eq",
+          "value": "MICROFIBER"
+        },
+        "sewing_method": {
+          "op": "eq",
+          "value": "MACHINE_T233"
+        }
+      }
+    },
+    "content_hash": "abfc51f723b655421ba49f1fabd3fd1b71d54a497861904668a4615c00a181c3",
+    "legacy_id": "labor-code/chanhecm",
+    "legacy_version": "2026-10-29.1",
+    "effective_from": "0001-01-01",
+    "version": 1
+  }
+];

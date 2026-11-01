@@ -1,10 +1,12 @@
-import React, { lazy, Suspense, useState, useEffect, useRef, useCallback } from "react";
+import { quoteCalendarDate, quoteCalendarDateIso, resolveQuoteDates } from '@/lib/quote-dates';
+import React, { lazy, Suspense, useState, useEffect, useRef, useCallback, useId } from "react";
+import { parseQuotePriceInput, quoteFormPreview } from '@/lib/quote-form-preview';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical, Save } from "lucide-react";
+import { CalendarIcon, Settings, X, Plus, Trash2, Search, Image, GripVertical, Save, Eye } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "react-beautiful-dnd";
 import { ProductSelectionForm } from './ProductSelectionForm';
 import { transformImageUrl } from '@/lib/imageUrl';
@@ -14,7 +16,9 @@ import { AuthStatusBadge } from './AuthStatusBadge';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { useProductSearch, highlightSearchTerms } from "@/lib/searchUtils";
+import { QuoteProductPicker } from "./QuoteProductPicker";
+import { QuotePreviewDialog } from "./QuotePreviewDialog";
+import type { SearchableProduct } from "@/lib/searchUtils";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +52,23 @@ const localQuoteManagerId = (me: LocalMe): string => {
 const ProductImageLibrary = lazy(() => import('./ProductImageLibrary'));
 const initialQuoteData = (value: unknown) => { try { return quoteObject(value); } catch { return {}; } };
 const draftLineAmount = (quantity: number, price: number) => { try { return quoteLineAmount(quantity, price); } catch { return 0; } };
+const createEmptyQuoteLine = (): QuoteItem => ({
+  id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  name: '',
+  sku: '',
+  price: 0,
+  quantity: 1,
+  total: 0,
+  description: '',
+  specifications: ''
+});
+const isBlankQuoteLine = (item: QuoteItem) =>
+  !item.name?.trim() &&
+  !item.sku?.trim() &&
+  !item.description?.trim() &&
+  !item.specifications?.trim() &&
+  !item.selectedImage &&
+  typeof item.price === 'number' && item.price === 0;
 const customerNameKey = (value: string) => value.trim().normalize('NFC').replace(/\s+/g, ' ').toLocaleLowerCase('vi');
 const quoteFormSchema = z.object({
   title: z.string().min(1, "Tiêu đề báo giá là bắt buộc"),
@@ -114,17 +135,27 @@ export function CreateQuoteForm({
   onSubmit,
   initialData
 }: CreateQuoteFormProps) {
+  const quoteFormId = useId();
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
+  const [priceListsLoading, setPriceListsLoading] = useState(true);
+  const [priceListsError, setPriceListsError] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedProducts, setSelectedProducts] = useState<QuoteItem[]>([]);
+  const [productsPriceListId, setProductsPriceListId] = useState('');
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState('');
+  const productsRequest = useRef(0);
+  const productsMounted = useRef(true);
+  const invalidateProductsRequest = useCallback(() => { productsRequest.current++; }, []);
+  const [selectedProducts, setSelectedProducts] = useState<QuoteItem[]>(() => initialData ? [] : [createEmptyQuoteLine()]);
+  // Keep intermediate decimal input (for example "1,") until the editor blurs.
+  const [priceEditing, setPriceEditing] = useState<Record<string, string>>({});
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const creationKey = useRef(crypto.randomUUID());
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchHistory, setSearchHistory] = useState<string[]>([]);
-  const [showSearchHistory, setShowSearchHistory] = useState(false);
-  const [currentEditingIndex, setCurrentEditingIndex] = useState<number>(-1);
+  const [productPickerTarget, setProductPickerTarget] = useState<{ lineId: string; priceListId: string; catalog: Product[]; initialSearch: string } | null>(null);
+  const productPickerTrigger = useRef<HTMLButtonElement | null>(null);
+  const productPickerFallback = useRef<HTMLDivElement | null>(null);
   const [showImageLibrary, setShowImageLibrary] = useState(false);
   const [currentImageEditingIndex, setCurrentImageEditingIndex] = useState<number>(-1);
   const [imageDialogOpen, setImageDialogOpen] = useState<{
@@ -194,60 +225,13 @@ export function CreateQuoteForm({
   const [newProductSpecifications, setNewProductSpecifications] = useState('');
   const [newProductInStock, setNewProductInStock] = useState(true);
 
-  // Helper function to safely parse dates
-  const parseDate = (dateString: string | Date): Date => {
-    if (!dateString) {
-      return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    }
-    if (dateString instanceof Date) {
-      return dateString;
-    }
-
-    // Try different date formats
-    const formats = [
-    // ISO format
-    () => new Date(dateString),
-    // Vietnamese dd/MM/yyyy format
-    () => {
-      const parts = dateString.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-      if (parts) {
-        return new Date(parseInt(parts[3]), parseInt(parts[2]) - 1, parseInt(parts[1]));
-      }
-      return null;
-    },
-    // Extract from notes format (Ngày hết hạn: dd/MM/yyyy)
-    () => {
-      const match = dateString.match(/Ngày hết hạn:\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
-      if (match) {
-        const parts = match[1].match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-        if (parts) {
-          return new Date(parseInt(parts[3]), parseInt(parts[2]) - 1, parseInt(parts[1]));
-        }
-      }
-      return null;
-    }];
-    for (const formatFn of formats) {
-      try {
-        const date = formatFn();
-        if (date && !isNaN(date.getTime())) {
-          return date;
-        }
-      } catch (error) {
-        // Continue to next format
-      }
-    }
-
-    // If all parsing fails, return a default date
-    console.warn('Unable to parse date:', dateString);
-    return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  };
   const form = useForm<QuoteFormData>({
     resolver: zodResolver(quoteFormSchema),
     defaultValues: {
       title: initialData?.title || initialQuoteData(initialData?.quote_data).title as string || "BẢNG BÁO GIÁ",
       quoteNumber: initialData?.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
-      quoteDate: initialData?.quoteDate ? new Date(initialData.quoteDate) : initialData?.created_at ? new Date(initialData.created_at) : new Date(),
-      expiryDate: initialData ? parseDate(initialData.expiryDate || initialData.notes) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      quoteDate: initialData ? quoteCalendarDate(resolveQuoteDates(initialData).quoteDate) : new Date(),
+      expiryDate: initialData ? quoteCalendarDate(resolveQuoteDates(initialData).expiryDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       customerName: initialData?.customerName || "",
       phone: initialData?.customerPhone || "",
       email: initialData?.customerEmail || "",
@@ -280,6 +264,10 @@ export function CreateQuoteForm({
       })()
     }
   });
+  const selectedPriceListId = form.watch('priceList');
+  const catalogReady = Boolean(selectedPriceListId && productsPriceListId === selectedPriceListId && !productsLoading && !productsError);
+  const savedPriceListLabel = priceListsLoading ? 'Bảng giá đã lưu (đang kiểm tra)' : priceListsError ? 'Bảng giá đã lưu (chưa xác minh)' : `Bảng giá ${selectedPriceListId} (không còn hoạt động)`;
+  const selectedPriceListLabel = priceLists.find(row => row.id === selectedPriceListId)?.name || (selectedPriceListId ? savedPriceListLabel : 'Chưa chọn');
 
   useEffect(() => {
     setSelectedCustomerId(initialData?.customer_id || null);
@@ -318,11 +306,30 @@ export function CreateQuoteForm({
     return () => subscription.unsubscribe();
   }, [form]);
 
-  // Debounce search term for better performance
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
-
-  // Use the enhanced search utilities
-  const searchResult = useProductSearch(products, debouncedSearchTerm);
+  const productPickerReady = Boolean(productPickerTarget && catalogReady && productPickerTarget.priceListId === selectedPriceListId && productPickerTarget.catalog === products && selectedProducts.some(line => line.id === productPickerTarget.lineId));
+  useEffect(() => {
+    if (productPickerTarget && !productPickerReady) setProductPickerTarget(null);
+  }, [productPickerTarget, productPickerReady]);
+  const selectCatalogProduct = (product: SearchableProduct) => {
+    if (!productPickerReady || !productPickerTarget) return;
+    const current = products.find(row => row.id === product.id);
+    if (!current) return;
+    const targetId = productPickerTarget.lineId;
+    setPriceEditing(previous => { const next = { ...previous }; delete next[targetId]; return next; });
+    setSelectedProducts(previous => previous.map(line => line.id !== targetId ? line : {
+      id: line.id,
+      name: current.name,
+      sku: current.sku || '',
+      price: current.price || 0,
+      quantity: line.quantity,
+      total: (current.price || 0) * line.quantity,
+      originalProductId: current.id,
+      description: current.description || '',
+      specifications: current.specifications || ''
+    }));
+    setProductPickerTarget(null);
+    toast({ title: "Thành công", description: "Đã chọn " + current.name });
+  };
 
   // Load user, role, and manager ID
   useEffect(() => {
@@ -378,11 +385,6 @@ export function CreateQuoteForm({
   // Load price lists and products
   useEffect(() => {
     loadPriceLists();
-    // Load search history from localStorage
-    const savedHistory = localStorage.getItem('product_search_history');
-    if (savedHistory) {
-      setSearchHistory(JSON.parse(savedHistory));
-    }
   }, []);
 
   // Search customers from database
@@ -478,6 +480,7 @@ export function CreateQuoteForm({
         
         console.log('Processed items for selectedProducts:', processedItems);
         setSelectedProducts(processedItems);
+        setPriceEditing({});
 
         // Parse quote_data for payment info
         let paymentData = {
@@ -500,8 +503,8 @@ export function CreateQuoteForm({
         form.reset({
           title: initialData.title || initialQuoteData(initialData.quote_data).title as string || "BẢNG BÁO GIÁ",
           quoteNumber: initialData.quote_number || `BG-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`,
-          quoteDate: initialData.quoteDate ? new Date(initialData.quoteDate) : initialData.created_at ? new Date(initialData.created_at) : new Date(),
-          expiryDate: parseDate(initialData.expiryDate || initialData.notes),
+          quoteDate: quoteCalendarDate(resolveQuoteDates(initialData).quoteDate),
+          expiryDate: quoteCalendarDate(resolveQuoteDates(initialData).expiryDate),
           customerName: initialData.customerName || "",
           phone: initialData.customerPhone || "",
           email: initialData.customerEmail || "",
@@ -518,94 +521,70 @@ export function CreateQuoteForm({
       }
     }
   }, [initialData, form]);
-  useEffect(() => {
-    const selectedPriceList = form.watch("priceList");
-    if (selectedPriceList) {
-      loadProducts(selectedPriceList);
-    } else {
-      // Clear products if no price list is selected, but don't clear selectedProducts when editing
-      setProducts([]);
-      // Only clear selectedProducts if we're not editing an existing quote
-      if (!initialData) {
-        setSelectedProducts([]);
-      }
-    }
-  }, [form.watch("priceList"), initialData]);
-
-  // Filter selected products when products change - but don't filter when editing existing quote
-  useEffect(() => {
-    console.log('Products filter useEffect triggered, products.length:', products.length, 'selectedProducts.length:', selectedProducts.length, 'initialData:', !!initialData);
-    if (products.length > 0 && !initialData) {
-      // Only filter when creating new quotes, not when editing existing ones
-      setSelectedProducts(prevSelected => {
-        const filtered = prevSelected.filter(selectedItem => 
-          products.some(product => product.id === (selectedItem.originalProductId || selectedItem.id))
-        );
-        console.log('Filtered selectedProducts from', prevSelected.length, 'to', filtered.length);
-        return filtered;
-      });
-    }
-  }, [products, initialData]);
   const loadPriceLists = async () => {
+    setPriceListsLoading(true);
+    setPriceListsError(false);
     try {
       if (isLocalBackend()) {
-        setPriceLists(await localApi.catalogPriceLists() as PriceList[]);
+        setPriceLists((await localApi.catalogPriceLists() as PriceList[]).filter(row => row.status === 'active'));
         return;
       }
-      const {
-        data,
-        error
-      } = await supabase.from("price_lists").select("id, name, year, status").eq("status", "active").order("year", {
-        ascending: false
-      });
+      const { data, error } = await supabase.from("price_lists").select("id, name, year, status").eq("status", "active").order("year", { ascending: false });
       if (error) throw error;
       setPriceLists(data || []);
     } catch (error) {
-      console.error("Error loading price lists:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách bảng giá",
-        variant: "destructive"
-      });
+      setPriceListsError(true);
+      toast({ title: "Lỗi", description: "Không thể tải danh sách bảng giá", variant: "destructive" });
+    } finally {
+      setPriceListsLoading(false);
     }
   };
-  const loadProducts = async (priceListId: string) => {
+
+  const loadProducts = useCallback(async (priceListId: string) => {
+    // A delayed create-product refresh must not invalidate the catalog for a newer selection.
+    if (!productsMounted.current || form.getValues('priceList') !== priceListId) return;
+    const request = ++productsRequest.current;
+    const isCurrent = () => productsMounted.current && request === productsRequest.current && form.getValues('priceList') === priceListId;
+    setProducts([]);
+    setProductsPriceListId(priceListId);
+    setProductsLoading(Boolean(priceListId));
+    setProductsError('');
+    if (!priceListId) return;
     try {
       if (isLocalBackend()) {
         const data = await localApi.catalogProducts({ priceListId });
-        setProducts(data as unknown as Product[]);
+        if (isCurrent()) setProducts(data as unknown as Product[]);
         return;
       }
       let { data, error } = await supabase.from("products").select("id, name, description, price, cost_price, sku, category, specifications, in_stock, price_list_id").eq("price_list_id", priceListId).eq("in_stock", true).order("name");
       if (error) throw error;
-      // Fallback: dùng RPC catalog an toàn khi RLS ẩn sản phẩm của manager khác (không trả cost_price)
+      if (!isCurrent()) return;
+      // Preserve the existing safe catalog fallback when RLS hides another manager's products.
       if (!data || data.length === 0) {
         const { data: rpcData, error: rpcError } = await (supabase as any).rpc('get_products_catalog', {
-          _price_list_id: priceListId,
-          _in_stock: true,
-          _limit: 10000,
-          _offset: 0,
+          _price_list_id: priceListId, _in_stock: true, _limit: 10000, _offset: 0,
         });
-        if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
-          data = rpcData.map((r: any) => ({ ...r, cost_price: null })) as any;
-        }
+        if (rpcError) throw rpcError;
+        if (Array.isArray(rpcData)) data = rpcData.map((row: Product) => ({ ...row, cost_price: null }));
       }
-      const products = (data as unknown as Product[]) || [];
-      console.log('Loaded products with descriptions:', products.map(p => ({
-        id: p.id,
-        name: p.name,
-        description: p.description
-      })));
-      setProducts(products);
+      if (isCurrent()) setProducts((data as unknown as Product[]) || []);
     } catch (error) {
-      console.error("Error loading products:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách sản phẩm",
-        variant: "destructive"
-      });
+      if (isCurrent()) setProductsError('Không thể tải danh sách sản phẩm. Các dòng đã nhập được giữ nguyên.');
+    } finally {
+      if (isCurrent()) setProductsLoading(false);
     }
-  };
+  }, [form]);
+
+  useEffect(() => {
+    productsMounted.current = true;
+    return () => { productsMounted.current = false; invalidateProductsRequest(); };
+  }, [invalidateProductsRequest]);
+
+  useEffect(() => {
+    // Catalog requests never own quote lines, including manual and restored draft lines.
+    void loadProducts(selectedPriceListId);
+    return invalidateProductsRequest;
+  }, [selectedPriceListId, loadProducts, invalidateProductsRequest]);
   const addProduct = (product: Product) => {
     // Always create a new item with unique ID to allow multiple instances of same product
     const newItem: QuoteItem = {
@@ -659,26 +638,8 @@ export function CreateQuoteForm({
   };
   const removeProduct = (productId: string) => {
     setSelectedProducts(prev => prev.filter(item => item.id !== productId));
+    setPriceEditing(previous => { const next = { ...previous }; delete next[productId]; return next; });
   };
-
-  // Save search term to history
-  const saveSearchToHistory = (term: string) => {
-    if (term.trim() && !searchHistory.includes(term.trim())) {
-      const newHistory = [term.trim(), ...searchHistory.slice(0, 9)]; // Keep only 10 most recent
-      setSearchHistory(newHistory);
-      localStorage.setItem('product_search_history', JSON.stringify(newHistory));
-    }
-  };
-
-  // Handle search input change with history saving
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    if (value.trim() && value.length > 2) {
-      // Save to history after a delay
-      setTimeout(() => saveSearchToHistory(value), 1000);
-    }
-  };
-
 
   // Handle creating new product
   const handleCreateProduct = async (e: React.FormEvent) => {
@@ -750,15 +711,8 @@ export function CreateQuoteForm({
       setNewProductInStock(true);
       setShowCreateProduct(false);
 
-      // Refresh products list
-      if (selectedPriceList) {
-        const {
-          data: updatedProducts
-        } = await supabase.from('products').select('id, name, description, price, cost_price, sku, category, specifications, in_stock, manager_id, tenant_id, price_list_id, created_at, updated_at').eq('price_list_id', selectedPriceList).order('name');
-        if (updatedProducts) {
-          setProducts(updatedProducts);
-        }
-      }
+      await loadProducts(selectedPriceList);
+
     } catch (error: any) {
       console.error('Error creating product:', error);
       toast({
@@ -817,7 +771,8 @@ export function CreateQuoteForm({
       }
     }
 
-    if (selectedProducts.length === 0) {
+    const nonBlankProducts = selectedProducts.filter(item => !isBlankQuoteLine(item));
+    if (nonBlankProducts.length === 0) {
       toast({
         title: "Lỗi",
         description: "Vui lòng chọn ít nhất một sản phẩm",
@@ -831,7 +786,7 @@ export function CreateQuoteForm({
 
       // Calculate total
       if (isLocalBackend() && initialData?.status === 'approved') throw new Error('Báo giá đã duyệt không thể sửa. Hãy nhân bản thành bản nháp mới.');
-      const calculation = calculateQuote({ items: selectedProducts, includeVAT: data.includeVAT, vatRate: data.vatRate, payment1: data.payment1, payment2: data.payment2 });
+      const calculation = calculateQuote({ items: nonBlankProducts, includeVAT: data.includeVAT, vatRate: data.vatRate, payment1: data.payment1, payment2: data.payment2 });
       const { subtotal, vatAmount, total: calculatedTotal } = calculation;
       // Prepare quote data
       const baseQuoteData = {
@@ -854,7 +809,7 @@ export function CreateQuoteForm({
           vatRate: data.vatRate,
           payment1: data.payment1 || 0,
           payment2: data.payment2 || 0,
-        quoteDate: data.quoteDate.toISOString() // Lưu ngày báo giá vào quote_data thay vì created_at
+        quoteDate: quoteCalendarDateIso(data.quoteDate) // Lưu ngày báo giá vào quote_data thay vì created_at
       }),
       tenant_id: "default",
       manager_id: managerId // CRITICAL: Include manager_id for RLS validation during updates
@@ -867,7 +822,7 @@ export function CreateQuoteForm({
           customer: { name: data.customerName, phone: data.phone, email: data.email, address: data.address },
           items: calculation.items,
           quote_data: JSON.parse(baseQuoteData.quote_data),
-          created_at: data.quoteDate.toISOString(),
+          created_at: quoteCalendarDateIso(data.quoteDate),
         };
         if (initialData) {
           delete localData.manager_id; // Editing never reassigns the persisted owner, including null.
@@ -886,13 +841,12 @@ export function CreateQuoteForm({
 
       if (initialData) {
         // Update existing quote - also sync created_at with quoteDate
-        const adjustedQuoteDate = new Date(data.quoteDate);
-        adjustedQuoteDate.setHours(12, 0, 0, 0);
+        const adjustedQuoteDate = quoteCalendarDateIso(data.quoteDate);
         const {
           error
         } = await supabase.from("quotes").update({
           ...baseQuoteData,
-          created_at: adjustedQuoteDate.toISOString(),
+          created_at: adjustedQuoteDate,
         }).eq('id', initialData.id);
         if (error) throw error;
 
@@ -938,7 +892,7 @@ export function CreateQuoteForm({
             const orderTotal = calculatedTotal; // This is always correct: subtotal + VAT (if included)
 
             const orderUpdateData = {
-              items: JSON.stringify(selectedProducts),
+              items: JSON.stringify(calculation.items),
               total_amount: orderTotal,
               notes: `Được cập nhật từ báo giá ${data.quoteNumber} (${new Date().toLocaleString('vi-VN')})\nKhách hàng: ${data.customerName}\nĐiện thoại: ${data.phone}`,
               updated_at: new Date().toISOString(),
@@ -971,7 +925,7 @@ export function CreateQuoteForm({
               // Sử dụng ngày hiện tại cho created_at, lưu quoteDate vào notes
               total_amount: orderTotal,
               status: 'pending',
-              items: JSON.stringify(selectedProducts),
+              items: JSON.stringify(calculation.items),
               notes: null,
               tenant_id: 'default',
               quote_id: initialData.id
@@ -991,7 +945,7 @@ export function CreateQuoteForm({
         // Create new quote - chỉ khi tạo mới mới set created_at và manager_id
         const quoteDataWithCreatedAt = {
           ...baseQuoteData,
-          created_at: data.quoteDate.toISOString(),
+          created_at: quoteCalendarDateIso(data.quoteDate),
           manager_id: managerId // Use correct manager_id based on role
         };
         const {
@@ -1049,11 +1003,16 @@ export function CreateQuoteForm({
 
   useEffect(() => {
     if (accountChanged || initialData || !currentUser?.id || isLoadingUser || customerAccount.current !== currentUser.id) return; // Never mix account drafts
-    if (!watchedValues.customerName && selectedProducts.length === 0) return; // Don't save empty forms
+    const hasMeaningfulProducts = selectedProducts.some(item => !isBlankQuoteLine(item));
+    if (!watchedValues.customerName && !hasMeaningfulProducts) return; // Don't save empty forms
     
     try {
       const draft = {
-        formData: watchedValues,
+        formData: {
+          ...watchedValues,
+          quoteDate: watchedValues.quoteDate ? quoteCalendarDateIso(watchedValues.quoteDate) : null,
+          expiryDate: watchedValues.expiryDate ? quoteCalendarDateIso(watchedValues.expiryDate) : null,
+        },
         customerId: selectedCustomerId,
         customerName: selectedCustomerName,
         accountId: currentUser.id,
@@ -1087,12 +1046,13 @@ export function CreateQuoteForm({
 
   const restoreDraft = () => {
     if (accountChanged || customerAccount.current !== currentUser?.id || !savedDraft || savedDraft.accountId !== currentUser?.id || initialData) return;
+    setPriceEditing({});
     try {
       const { formData, selectedProducts: draftProducts } = savedDraft;
       form.reset({
         ...formData,
-        quoteDate: formData.quoteDate ? new Date(formData.quoteDate) : new Date(),
-        expiryDate: formData.expiryDate ? new Date(formData.expiryDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        quoteDate: quoteCalendarDate(formData.quoteDate),
+        expiryDate: quoteCalendarDate(formData.expiryDate),
       });
       setSelectedCustomerId(savedDraft.customerId || null);
       setSelectedCustomerName(savedDraft.customerName || formData.customerName || '');
@@ -1118,813 +1078,906 @@ export function CreateQuoteForm({
 
   // Ensure all totals are correctly calculated
   // Incomplete new rows may exist while typing; submit always validates the full list.
-  let displayCalculation = { subtotal: 0, vatAmount: 0, total: 0, remaining: 0 };
-  try { displayCalculation = calculateQuote({ items: selectedProducts.map(item => ({ ...item, name: item.name || 'Dòng đang nhập' })), includeVAT: watchedValues.includeVAT, vatRate: watchedValues.vatRate, payment1: watchedValues.payment1, payment2: watchedValues.payment2 }); } catch { /* Incomplete input is validated on save. */ }
-  const { subtotal, vatAmount, total, remaining } = displayCalculation;
-  return <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold text-foreground">
+  const activeLinesForDisplay = selectedProducts.filter(item => !isBlankQuoteLine(item));
+  const { lineErrors, validLineCount, calculationError, calculation: displayCalculation } = quoteFormPreview(
+    selectedProducts.flatMap((item, index) => isBlankQuoteLine(item) ? [] : [{ item, index, id: item.id }]), {
+      includeVAT: watchedValues.includeVAT,
+      vatRate: watchedValues.vatRate,
+      payment1: watchedValues.payment1,
+      payment2: watchedValues.payment2
+    });
+  const { subtotal, vatAmount, total, remaining } = displayCalculation ?? { subtotal: null, vatAmount: null, total: null, remaining: null };
+  const [showLivePreview, setShowLivePreview] = useState(false);
+  const previewAmount = (value: number | null) => value === null ? 'Chưa thể tính' : `${value.toLocaleString('vi-VN')} đ`;
+  const canOpenLivePreview = Boolean(displayCalculation && validLineCount > 0 && !calculationError);
+  const livePreviewQuote = canOpenLivePreview && displayCalculation ? {
+    id: initialData?.id || 'draft-preview',
+    quote_number: watchedValues.quoteNumber || initialData?.quote_number || 'NHAP',
+    status: initialData?.status || 'draft',
+    created_at: watchedValues.quoteDate ? quoteCalendarDateIso(watchedValues.quoteDate) : new Date().toISOString(),
+    notes: watchedValues.expiryDate ? `Ngày hết hạn: ${format(watchedValues.expiryDate, 'dd/MM/yyyy')}` : '',
+    include_vat: Boolean(watchedValues.includeVAT),
+    vat_rate: Number(watchedValues.vatRate ?? 8),
+    subtotal: displayCalculation.subtotal,
+    vat_amount: displayCalculation.vatAmount,
+    total_amount: displayCalculation.total,
+    items: activeLinesForDisplay,
+    quote_data: {
+      title: watchedValues.title || 'BẢNG BÁO GIÁ',
+      customerName: (watchedValues.customerName || '').trim() || 'Khách hàng (Bản nháp)',
+      customerPhone: (watchedValues.phone || '').trim(),
+      customerEmail: (watchedValues.email || '').trim(),
+      customerAddress: (watchedValues.address || '').trim(),
+      includeVAT: Boolean(watchedValues.includeVAT),
+      vatRate: Number(watchedValues.vatRate ?? 8),
+      subtotal: displayCalculation.subtotal,
+      vatAmount: displayCalculation.vatAmount,
+      total: displayCalculation.total,
+      payment1: Number(watchedValues.payment1 ?? 0),
+      payment2: Number(watchedValues.payment2 ?? 0),
+      remaining: displayCalculation.remaining,
+      items: activeLinesForDisplay,
+    },
+  } : null;
+
+  return (
+    <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-clip bg-background text-foreground">
+      {productPickerTarget && (
+        <QuoteProductPicker
+          key={productPickerTarget.lineId}
+          products={products}
+          ready={productPickerReady}
+          initialSearch={productPickerTarget.initialSearch}
+          onSelect={selectCatalogProduct}
+          onClose={() => setProductPickerTarget(null)}
+          onRestoreFocus={() => {
+            const trigger = productPickerTrigger.current;
+            if (trigger?.isConnected) trigger.focus();
+            else productPickerFallback.current?.focus();
+          }}
+        />
+      )}
+
+      {/* Sticky Header */}
+      <div className="z-20 shrink-0 border-b bg-background px-4 sm:px-5 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0">
+            <h1 className="text-base font-semibold text-foreground truncate">
               {initialData ? 'Chỉnh sửa báo giá' : 'Tạo báo giá mới'}
             </h1>
-            <div className="flex items-center gap-2">
-              {lastSavedAt && !initialData && (
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Save className="h-3 w-3" />
-                  Đã lưu nháp lúc {lastSavedAt}
-                </span>
-              )}
-              <AuthStatusBadge />
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            {watchedValues.quoteNumber && (
+              <span className="max-w-full truncate text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded border border-border/60">
+                {watchedValues.quoteNumber}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {lastSavedAt && !initialData && (
+              <span className="text-xs text-muted-foreground hidden sm:inline-flex items-center gap-1">
+                <Save className="h-3 w-3" />
+                Đã lưu nháp {lastSavedAt}
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={onClose}
+              aria-label="Đóng"
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Draft recovery banner */}
       {showDraftRecovery && savedDraft && (
-        <div className="border-b bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
-          <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              📝 Bạn có bản nháp chưa lưu từ {savedDraft.savedAt ? format(new Date(savedDraft.savedAt), 'HH:mm dd/MM/yyyy', { locale: vi }) : 'trước đó'}. Khôi phục?
-            </p>
-            <div className="flex items-center gap-2">
-              <Button type="button" size="sm" variant="default" onClick={restoreDraft}>
-                Khôi phục
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={discardDraft}>
-                Bỏ qua
-              </Button>
-            </div>
+        <div className="shrink-0 border-b bg-muted/50 px-4 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs sm:text-sm text-foreground">
+            Bạn có bản nháp chưa lưu từ{' '}
+            <span className="font-medium">
+              {savedDraft.savedAt ? format(new Date(savedDraft.savedAt), 'HH:mm dd/MM/yyyy', { locale: vi }) : 'trước đó'}
+            </span>
+            . Bạn có muốn khôi phục không?
+          </p>
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" variant="default" className="h-7 text-xs px-2.5" onClick={restoreDraft}>
+              Khôi phục
+            </Button>
+            <Button type="button" size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={discardDraft}>
+              Bỏ qua
+            </Button>
           </div>
         </div>
       )}
 
-      <div className="container mx-auto px-4 py-6 space-y-6">
+      <div ref={productPickerFallback} tabIndex={-1} className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-5 py-4">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            {/* Thông tin báo giá */}
-            <Card>
-              <CardHeader className="bg-blue-50">
-                <CardTitle className="text-blue-700">Thông tin báo giá</CardTitle>
+          <form id={quoteFormId} onSubmit={form.handleSubmit(handleSubmit)} className="min-w-0 space-y-4">
+            {/* Khối 1: Thông tin chứng từ & Khách hàng */}
+            <Card className="border shadow-none">
+              <CardHeader className="py-2.5 px-4 border-b bg-muted/30">
+                <CardTitle className="text-sm font-semibold text-foreground">Thông tin chung & Khách hàng</CardTitle>
               </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField control={form.control} name="title" render={({
-                  field
-                }) => <FormItem>
-                        <FormLabel>
-                          Tiêu đề báo giá <span className="text-red-500">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="BẢNG BÁO GIÁ" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>} />
+              <CardContent className="p-4 space-y-4">
+                {/* Hàng 1: Thông tin chứng từ */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                  <FormField control={form.control} name="quoteNumber" render={({ field }) => (
+                    <FormItem className="space-y-1">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">
+                        Số báo giá <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="BG-20261027-001" className="h-9 text-sm font-mono" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
 
-                  <FormField control={form.control} name="quoteNumber" render={({
-                  field
-                }) => <FormItem>
-                        <FormLabel>
-                          Số báo giá <span className="text-red-500">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="BG-20250721-627" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>} />
-
-                  <FormField control={form.control} name="quoteDate" render={({
-                  field
-                }) => <FormItem>
-                        <FormLabel>
-                          Ngày báo giá <span className="text-red-500">*</span>
-                        </FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button type="button" variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                                {field.value ? format(field.value, "dd/MM/yyyy", { locale: vi }) : <span>Chọn ngày</span>}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                           <PopoverContent className="w-auto p-0" align="start">
-                             <Calendar 
-                               mode="single" 
-                               selected={field.value} 
-                               onSelect={(date) => {
-                                 if (date) {
-                                   field.onChange(date);
-                                 }
-                               }}
-                               disabled={date => date < new Date("1900-01-01")} 
-                               initialFocus 
-                               className={cn("p-3 pointer-events-auto")}
-                             />
-                           </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>} />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField control={form.control} name="expiryDate" render={({
-                  field
-                }) => <FormItem>
-                        <FormLabel>
-                          Ngày hết hạn <span className="text-red-500">*</span>
-                        </FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button type="button" variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                                {field.value ? format(field.value, "dd/MM/yyyy", { locale: vi }) : <span>Chọn ngày</span>}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                           <PopoverContent className="w-auto p-0" align="start">
-                             <Calendar 
-                               mode="single" 
-                               selected={field.value} 
-                               onSelect={(date) => {
-                                 if (date) {
-                                   field.onChange(date);
-                                 }
-                               }}
-                               disabled={date => date < new Date()} 
-                               initialFocus 
-                               className={cn("p-3 pointer-events-auto")}
-                             />
-                           </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>} />
-
-                  <FormField control={form.control} name="priceList" render={({
-                  field
-                }) => <FormItem>
-                        <FormLabel>
-                          Bảng giá <span className="text-red-500">*</span>
-                        </FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormField control={form.control} name="quoteDate" render={({ field }) => (
+                    <FormItem className="space-y-1">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">
+                        Ngày báo giá <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Bảng Báo Giá Tháng 6 (2025)" />
-                            </SelectTrigger>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={cn("w-full h-9 pl-3 text-left font-normal text-sm", !field.value && "text-muted-foreground")}
+                            >
+                              {field.value ? format(field.value, "dd/MM/yyyy", { locale: vi }) : <span>Chọn ngày</span>}
+                              <CalendarIcon className="ml-auto h-3.5 w-3.5 opacity-50" />
+                            </Button>
                           </FormControl>
-                           <SelectContent>
-                             {priceLists.map(priceList => <SelectItem key={priceList.id} value={priceList.id}>
-                                 {priceList.name} ({priceList.year})
-                               </SelectItem>)}
-                           </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>} />
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={(date) => {
+                              if (date) {
+                                field.onChange(date);
+                              }
+                            }}
+                            disabled={date => date < new Date("1900-01-01")}
+                            initialFocus
+                            className={cn("p-3 pointer-events-auto")}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
 
-                  <FormField control={form.control} name="responsible" render={({
-                  field
-                }) => <FormItem>
-                        <FormLabel>Người phụ trách</FormLabel>
-                        <AssigneeManagement value={field.value} onChange={field.onChange} placeholder="Chọn người phụ trách" />
-                        <FormMessage />
-                      </FormItem>} />
+                  <FormField control={form.control} name="expiryDate" render={({ field }) => (
+                    <FormItem className="space-y-1">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">
+                        Ngày hết hạn <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={cn("w-full h-9 pl-3 text-left font-normal text-sm", !field.value && "text-muted-foreground")}
+                            >
+                              {field.value ? format(field.value, "dd/MM/yyyy", { locale: vi }) : <span>Chọn ngày</span>}
+                              <CalendarIcon className="ml-auto h-3.5 w-3.5 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={(date) => {
+                              if (date) {
+                                field.onChange(date);
+                              }
+                            }}
+                            disabled={date => date < new Date()}
+                            initialFocus
+                            className={cn("p-3 pointer-events-auto")}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+
+                  <FormField control={form.control} name="priceList" render={({ field }) => (
+                    <FormItem className="space-y-1">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">
+                        Bảng giá <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <Select onValueChange={value => { if (value) field.onChange(value); }} value={field.value || ""}>
+                        <FormControl>
+                          <SelectTrigger className="h-9 text-sm">
+                            <SelectValue placeholder="Chọn bảng giá" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {field.value && !priceLists.some(row => row.id === field.value) && <SelectItem value={field.value} disabled>{savedPriceListLabel}</SelectItem>}
+                          {priceLists.map(priceList => <SelectItem key={priceList.id} value={priceList.id}>
+                              {priceList.name} ({priceList.year})
+                            </SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+
+                  <FormField control={form.control} name="responsible" render={({ field }) => (
+                    <FormItem className="space-y-1">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">Người phụ trách</FormLabel>
+                      <AssigneeManagement value={field.value} onChange={field.onChange} placeholder="Chọn người phụ trách" />
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+
+                  <FormField control={form.control} name="title" render={({ field }) => (
+                    <FormItem className="space-y-1">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">
+                        Tiêu đề báo giá <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="BẢNG BÁO GIÁ" className="h-9 text-sm" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
                 </div>
 
-                <div ref={customerSection} className="space-y-3">
-                  {selectedCustomerId && <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                    <span>Đã liên kết khách hàng: <strong>{selectedCustomerName || form.getValues('customerName')}</strong>. Số điện thoại, email và địa chỉ đang nhập chỉ áp dụng cho báo giá này.</span>
-                    <Button type="button" variant="outline" size="sm" onClick={() => { setSelectedCustomerId(null);setSelectedCustomerName('');setCustomerConflict(null);form.setFocus('customerName'); }}>Đổi khách hàng</Button>
-                  </div>}
-                  {customerConflict && <div role="alert" className="space-y-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950">
-                    <p>{customerConflict.message}</p>
-                    <p>Chọn đúng hồ sơ để liên kết. Sản phẩm và thông tin giao hàng đã nhập được giữ lại.</p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {customerConflict.candidates.map(customer => <button key={customer.id} type="button" onClick={() => chooseCustomer(customer, true)} className="min-w-0 rounded-md border border-amber-300 bg-background p-3 text-left hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-ring">
-                        <span className="block font-medium">{customer.name}{!customer.is_active && ' (ngừng hoạt động)'}</span>
-                        <span className="block break-words text-xs">{[customer.phone, customer.email, customer.address].filter(Boolean).join(' • ') || 'Chưa có thông tin liên hệ'}</span>
-                      </button>)}
+                {/* Cảnh báo hoặc liên kết khách hàng */}
+                <div ref={customerSection} className="space-y-2.5 empty:hidden">
+                  {selectedCustomerId && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs sm:text-sm">
+                      <span>
+                        Đã liên kết khách hàng: <strong>{selectedCustomerName || form.getValues('customerName')}</strong>. Số điện thoại, email và địa chỉ đang nhập chỉ áp dụng cho báo giá này.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setSelectedCustomerId(null);
+                          setSelectedCustomerName('');
+                          setCustomerConflict(null);
+                          form.setFocus('customerName');
+                        }}
+                      >
+                        Đổi khách hàng
+                      </Button>
                     </div>
-                  </div>}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField control={form.control} name="customerName" render={({
-                  field
-                }) => <FormItem className="relative">
-                        <FormLabel>
-                          Tên khách hàng <span className="text-red-500">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input 
-                              {...field} 
-                              placeholder="Nhập tên khách hàng để tìm..." 
-                              className="pl-9"
-                              onChange={(e) => {
-                                field.onChange(e);
-                                beginCustomerSearch('name', e.target.value);
-                              }}
-                              onFocus={() => {
-                                if (field.value && field.value.length >= 2) {
-                                  beginCustomerSearch('name', field.value);
-                                }
-                              }}
-                              onBlur={leaveCustomerSearch}
-                            />
-                          </div>
-                        </FormControl>
-                        {customerDropdown('name')}
-                        <FormMessage />
-                      </FormItem>} />
-
-                  <FormField control={form.control} name="phone" render={({
-                  field
-                }) => <FormItem className="relative">
-                        <FormLabel>Số điện thoại</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input 
-                              {...field} 
-                              placeholder="Nhập SĐT để tìm khách hàng..." 
-                              className="pl-9"
-                              onChange={(e) => {
-                                field.onChange(e);
-                                beginCustomerSearch('phone', e.target.value);
-                              }}
-                              onFocus={() => {
-                                if (field.value && field.value.length >= 2) {
-                                  beginCustomerSearch('phone', field.value);
-                                }
-                              }}
-                              onBlur={leaveCustomerSearch}
-                            />
-                          </div>
-                        </FormControl>
-                        {customerDropdown('phone')}
-                        <FormMessage />
-                      </FormItem>} />
+                  )}
+                  {customerConflict && (
+                    <div role="alert" className="space-y-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950">
+                      <p>{customerConflict.message}</p>
+                      <p>Chọn đúng hồ sơ để liên kết. Sản phẩm và thông tin giao hàng đã nhập được giữ lại.</p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {customerConflict.candidates.map(customer => (
+                          <button
+                            key={customer.id}
+                            type="button"
+                            onClick={() => chooseCustomer(customer, true)}
+                            className="min-w-0 rounded-md border border-amber-300 bg-background p-2.5 text-left hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <span className="block font-medium">{customer.name}{!customer.is_active && ' (ngừng hoạt động)'}</span>
+                            <span className="block break-words text-xs">{[customer.phone, customer.email, customer.address].filter(Boolean).join(' • ') || 'Chưa có thông tin liên hệ'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField control={form.control} name="email" render={({
-                  field
-                }) => <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="VD: email@example.com" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>} />
+                {/* Hàng 2: Thông tin khách hàng */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 pt-3 border-t border-border/60">
+                  <FormField control={form.control} name="customerName" render={({ field }) => (
+                    <FormItem className="relative space-y-1 lg:col-span-4">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">
+                        Tên khách hàng <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                          <Input
+                            {...field}
+                            aria-label="Tên khách hàng"
+                            placeholder="Nhập tên khách hàng để tìm..."
+                            className="pl-8 h-9 text-sm"
+                            onChange={(e) => {
+                              field.onChange(e);
+                              beginCustomerSearch('name', e.target.value);
+                            }}
+                            onFocus={() => {
+                              if (field.value && field.value.length >= 2) {
+                                beginCustomerSearch('name', field.value);
+                              }
+                            }}
+                            onBlur={leaveCustomerSearch}
+                          />
+                        </div>
+                      </FormControl>
+                      {customerDropdown('name')}
+                      <FormMessage />
+                    </FormItem>
+                  )} />
 
-                  <FormField control={form.control} name="address" render={({
-                  field
-                }) => <FormItem className="relative">
-                        <FormLabel>Địa chỉ</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input 
-                              {...field} 
-                              placeholder="Nhập địa chỉ để tìm khách hàng..." 
-                              className="pl-9"
-                              onChange={(e) => {
-                                field.onChange(e);
-                                beginCustomerSearch('address', e.target.value);
-                              }}
-                              onFocus={() => {
-                                if (field.value && field.value.length >= 2) {
-                                  beginCustomerSearch('address', field.value);
-                                }
-                              }}
-                              onBlur={leaveCustomerSearch}
-                            />
-                          </div>
-                        </FormControl>
-                        {customerDropdown('address')}
-                        <FormMessage />
-                      </FormItem>} />
+                  <FormField control={form.control} name="phone" render={({ field }) => (
+                    <FormItem className="relative space-y-1 lg:col-span-2">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">Số điện thoại</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                          <Input
+                            {...field}
+                            aria-label="Số điện thoại khách hàng"
+                            placeholder="Nhập SĐT..."
+                            className="pl-8 h-9 text-sm"
+                            onChange={(e) => {
+                              field.onChange(e);
+                              beginCustomerSearch('phone', e.target.value);
+                            }}
+                            onFocus={() => {
+                              if (field.value && field.value.length >= 2) {
+                                beginCustomerSearch('phone', field.value);
+                              }
+                            }}
+                            onBlur={leaveCustomerSearch}
+                          />
+                        </div>
+                      </FormControl>
+                      {customerDropdown('phone')}
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+
+                  <FormField control={form.control} name="address" render={({ field }) => (
+                    <FormItem className="relative space-y-1 lg:col-span-4">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">Địa chỉ</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                          <Input
+                            {...field}
+                            aria-label="Địa chỉ khách hàng"
+                            placeholder="Nhập địa chỉ giao hàng / tìm KH..."
+                            className="pl-8 h-9 text-sm"
+                            onChange={(e) => {
+                              field.onChange(e);
+                              beginCustomerSearch('address', e.target.value);
+                            }}
+                            onFocus={() => {
+                              if (field.value && field.value.length >= 2) {
+                                beginCustomerSearch('address', field.value);
+                              }
+                            }}
+                            onBlur={leaveCustomerSearch}
+                          />
+                        </div>
+                      </FormControl>
+                      {customerDropdown('address')}
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+
+                  <FormField control={form.control} name="email" render={({ field }) => (
+                    <FormItem className="space-y-1 lg:col-span-2">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">Email</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="email@congty.com" className="h-9 text-sm" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
                 </div>
               </CardContent>
             </Card>
 
-            {/* Danh sách sản phẩm */}
-            <Card>
-              <CardHeader className="bg-green-50">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-green-700">Danh sách sản phẩm lựa chọn</CardTitle>
-                    <p className="text-sm text-green-600">
-                      Bảng giá: {priceLists.find(p => p.id === watchedValues.priceList)?.name || "Chưa chọn"} ({products.length} sản phẩm có sẵn)
-                    </p>
+            {/* Khối 2: Danh sách sản phẩm */}
+            <Card className="border shadow-none">
+              <CardHeader className="py-2.5 px-4 border-b bg-muted/30">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <CardTitle className="text-sm font-semibold text-foreground">Danh sách sản phẩm</CardTitle>
+                    <span className="text-xs text-muted-foreground">
+                      Bảng giá: <strong className="font-medium text-foreground">{selectedPriceListLabel}</strong>
+                      {catalogReady && ` • ${products.length} sản phẩm trong danh mục`}
+                    </span>
                   </div>
-                   <div className="flex gap-2 flex-wrap">
-                    {products.length > 0 && (
-                      <AIQuoteFill
-                        products={products}
-                        priceListId={watchedValues.priceList}
-                        onProductsSelected={async (items) => {
-                           // Reuse the module-level image cache populated by
-                           // AIQuoteFill instead of listing every folder again.
-                           const allImageFiles = await loadImageFiles();
-
-                          const normalize = (text: string) => text.toLowerCase()
-                            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                            .replace(/đ/g, 'd').replace(/Đ/g, 'd')
-                            .replace(/[^a-z0-9]/g, '');
-
-                          const extractKeywords = (text: string) => {
-                            const norm = normalize(text);
-                            // Split by common separators and filter meaningful words (3+ chars)
-                            return norm.match(/[a-z0-9]{3,}/g) || [];
-                          };
-
-                          const newItems = items.map((item) => {
-                            const originalProduct = products.find(p => p.id === item.matchedProductId);
-                            
-                            let selectedImage = '';
-                            const productName = originalProduct?.name || item.customName;
-                            const normalizedProductName = normalize(productName);
-                            const normalizedCustomName = normalize(item.customName);
-                            const normalizedSpecs = normalize(item.specifications || '');
-                            const productKeywords = extractKeywords(productName);
-                            const customKeywords = extractKeywords(item.customName);
-                            const allSearchKeywords = [...new Set([...productKeywords, ...customKeywords])];
-                            
-                            if (allImageFiles.length > 0 && normalizedProductName) {
-                              let bestMatch: { name: string; folder: string; score: number } | null = null;
-                              for (const img of allImageFiles) {
-                                const normalizedFileName = normalize(img.name.replace(/\.[^.]+$/, ''));
-                                const normalizedFullPath = normalize(img.folder ? `${img.folder}/${img.name}` : img.name);
-                                const normalizedFolder = normalize(img.folder || '');
-                                let score = 0;
-                                
-                                // Exact match on file name
-                                if (normalizedFileName === normalizedProductName || normalizedFileName === normalizedCustomName) {
-                                  score = 100;
-                                }
-                                // Full path contains product name
-                                else if (normalizedFullPath.includes(normalizedProductName) && normalizedProductName.length > 5) {
-                                  score = 85;
-                                }
-                                // File name contains product name
-                                else if (normalizedFileName.includes(normalizedProductName) && normalizedProductName.length > 5) {
-                                  score = 80;
-                                }
-                                // Product name contains file name (file is meaningful, not random)
-                                else if (normalizedProductName.includes(normalizedFileName) && normalizedFileName.length > 8) {
-                                  score = 65;
-                                }
-                                // Keyword overlap scoring
-                                else {
-                                  const fileKeywords = extractKeywords(img.name.replace(/\.[^.]+$/, ''));
-                                  const folderKeywords = extractKeywords(img.folder || '');
-                                  const allFileKeywords = [...fileKeywords, ...folderKeywords];
-                                  
-                                  let overlap = 0;
-                                  for (const kw of allSearchKeywords) {
-                                    if (allFileKeywords.some(fk => fk.includes(kw) || kw.includes(fk))) {
-                                      overlap++;
-                                    }
-                                  }
-                                  if (overlap >= 2) score = Math.min(overlap * 20, 60);
-                                  else if (overlap === 1 && allSearchKeywords.length <= 3) score = 15;
-                                }
-                                
-                                // Folder name matches product category - bonus
-                                if (normalizedFolder && score > 0) {
-                                  if (normalizedProductName.includes(normalizedFolder) || normalizedFolder.includes(normalize(originalProduct?.category || ''))) {
-                                    score += 5;
-                                  }
-                                }
-                                
-                                if (score >= 15 && (!bestMatch || score > bestMatch.score)) {
-                                  bestMatch = { ...img, score };
-                                }
-                              }
-                              
-                              if (bestMatch) {
-                                const path = bestMatch.folder ? `${bestMatch.folder}/${bestMatch.name}` : bestMatch.name;
-                                const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path);
-                                selectedImage = urlData.publicUrl;
-                                console.log(`Image matched for "${productName}": ${path} (score: ${bestMatch.score})`);
-                              } else {
-                                console.log(`No image match for "${productName}"`);
-                              }
-                            }
-
-                            return {
-                              id: `${item.matchedProductId}-${Date.now()}-${Math.random()}`,
-                              name: item.customName,
-                              sku: originalProduct?.sku || '',
-                              price: item.price,
-                              quantity: item.quantity,
-                              total: item.price * item.quantity,
-                              description: originalProduct?.description || '',
-                              specifications: item.specifications,
-                              selectedImage,
-                              originalProductId: item.matchedProductId,
-                            };
-                          });
-                          setSelectedProducts(prev => [...prev, ...newItems]);
-                        }}
-                      />
-                    )}
-                    <Button type="button" className="bg-green-600 hover:bg-green-700" onClick={() => {
-                    const newItem: QuoteItem = {
-                      id: `temp-${Date.now()}`,
-                      name: '',
-                      sku: '',
-                      price: 0,
-                      quantity: 1,
-                      total: 0
-                    };
-                    setSelectedProducts(prev => [...prev, newItem]);
-                  }}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Thêm sản phẩm
-                    </Button>
-                    <Button type="button" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50" onClick={() => setShowCreateProduct(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!catalogReady}
+                      className="h-8 text-xs"
+                      onClick={() => setShowCreateProduct(true)}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
                       Tạo sản phẩm mới
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        setSelectedProducts(prev => [...prev, createEmptyQuoteLine()]);
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
+                      Thêm sản phẩm
                     </Button>
                   </div>
                 </div>
+
+                {catalogReady && products.length > 0 && (
+                  <div className="pt-2">
+                    <AIQuoteFill
+                      products={products}
+                      priceListId={watchedValues.priceList}
+                      onProductsSelected={async (items) => {
+                        const request = productsRequest.current;
+                        const allImageFiles = await loadImageFiles();
+                        if (!productsMounted.current || request !== productsRequest.current || form.getValues('priceList') !== selectedPriceListId) return;
+
+                        const normalize = (text: string) => text.toLowerCase()
+                          .normalize('NFD').replace(/[̀-ͯ]/g, '')
+                          .replace(/đ/g, 'd').replace(/Đ/g, 'd')
+                          .replace(/[^a-z0-9]/g, '');
+
+                        const extractKeywords = (text: string) => {
+                          const norm = normalize(text);
+                          return norm.match(/[a-z0-9]{3,}/g) || [];
+                        };
+
+                        const newItems = items.map((item) => {
+                          const originalProduct = products.find(p => p.id === item.matchedProductId);
+                          let selectedImage = '';
+                          const productName = originalProduct?.name || item.customName;
+                          const normalizedProductName = normalize(productName);
+                          const normalizedCustomName = normalize(item.customName);
+                          const productKeywords = extractKeywords(productName);
+                          const customKeywords = extractKeywords(item.customName);
+                          const allSearchKeywords = [...new Set([...productKeywords, ...customKeywords])];
+
+                          if (allImageFiles.length > 0 && normalizedProductName) {
+                            let bestMatch: { name: string; folder: string; score: number } | null = null;
+                            for (const img of allImageFiles) {
+                              const normalizedFileName = normalize(img.name.replace(/.[^.]+$/, ''));
+                              const normalizedFullPath = normalize(img.folder ? `${img.folder}/${img.name}` : img.name);
+                              const normalizedFolder = normalize(img.folder || '');
+                              let score = 0;
+
+                              if (normalizedFileName === normalizedProductName || normalizedFileName === normalizedCustomName) {
+                                score = 100;
+                              } else if (normalizedFullPath.includes(normalizedProductName) && normalizedProductName.length > 5) {
+                                score = 85;
+                              } else if (normalizedFileName.includes(normalizedProductName) && normalizedProductName.length > 5) {
+                                score = 80;
+                              } else if (normalizedProductName.includes(normalizedFileName) && normalizedFileName.length > 8) {
+                                score = 65;
+                              } else {
+                                const fileKeywords = extractKeywords(img.name.replace(/.[^.]+$/, ''));
+                                const folderKeywords = extractKeywords(img.folder || '');
+                                const allFileKeywords = [...fileKeywords, ...folderKeywords];
+
+                                let overlap = 0;
+                                for (const kw of allSearchKeywords) {
+                                  if (allFileKeywords.some(fk => fk.includes(kw) || kw.includes(fk))) {
+                                    overlap++;
+                                  }
+                                }
+                                if (overlap >= 2) score = Math.min(overlap * 20, 60);
+                                else if (overlap === 1 && allSearchKeywords.length <= 3) score = 15;
+                              }
+
+                              if (normalizedFolder && score > 0) {
+                                if (normalizedProductName.includes(normalizedFolder) || normalizedFolder.includes(normalize(originalProduct?.category || ''))) {
+                                  score += 5;
+                                }
+                              }
+
+                              if (score >= 15 && (!bestMatch || score > bestMatch.score)) {
+                                bestMatch = { ...img, score };
+                              }
+                            }
+
+                            if (bestMatch) {
+                              const imgPath = bestMatch.folder ? `${bestMatch.folder}/${bestMatch.name}` : bestMatch.name;
+                              const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(imgPath);
+                              selectedImage = urlData.publicUrl;
+                            }
+                          }
+
+                          return {
+                            id: `${item.matchedProductId}-${Date.now()}-${Math.random()}`,
+                            name: item.customName,
+                            sku: originalProduct?.sku || '',
+                            price: item.price,
+                            quantity: item.quantity,
+                            total: item.price * item.quantity,
+                            description: originalProduct?.description || '',
+                            specifications: item.specifications,
+                            selectedImage,
+                            originalProductId: item.matchedProductId,
+                          };
+                        });
+                        setSelectedProducts(prev => [...prev.filter(row => !isBlankQuoteLine(row)), ...newItems]);
+                      }}
+                    />
+                  </div>
+                )}
               </CardHeader>
+
               <CardContent className="p-0">
-                <div className="overflow-x-auto border border-gray-300 rounded-lg bg-white">
-                  <Table className="w-full border-collapse">
-                      <TableHeader>
-                        <TableRow className="bg-gray-100 border-b border-gray-300">
-                          <TableHead className="font-semibold text-center w-16 min-w-16 text-gray-800 border-r border-gray-300 p-3 h-12">STT</TableHead>
-                          <TableHead className="font-semibold text-center w-32 min-w-32 text-gray-800 border-r border-gray-300 p-3 h-12">Chọn sản phẩm</TableHead>
-                          <TableHead className="font-semibold w-48 min-w-48 text-gray-800 border-r border-gray-300 p-3 h-12">Tên sản phẩm</TableHead>
-                          <TableHead className="font-semibold text-center w-20 min-w-20 text-gray-800 border-r border-gray-300 p-3 h-12">Hình ảnh</TableHead>
-                          <TableHead className="font-semibold w-40 min-w-40 text-gray-800 border-r border-gray-300 p-3 h-12">Mô tả sản phẩm</TableHead>
-                          <TableHead className="font-semibold w-32 min-w-32 text-gray-800 border-r border-gray-300 p-3 h-12">Quy cách</TableHead>
-                          <TableHead className="font-semibold text-right w-28 min-w-28 text-gray-800 border-r border-gray-300 p-3 h-12">Đơn giá</TableHead>
-                          <TableHead className="font-semibold text-center w-24 min-w-24 text-gray-800 border-r border-gray-300 p-3 h-12">Số lượng</TableHead>
-                          <TableHead className="font-semibold text-right w-32 min-w-32 text-gray-800 border-r border-gray-300 p-3 h-12">Thành tiền</TableHead>
-                          <TableHead className="font-semibold text-center w-20 min-w-20 text-gray-800 p-3 h-12">Thao tác</TableHead>
-                        </TableRow>
-                     </TableHeader>
-                     <DragDropContext onDragEnd={handleDragEnd}>
-                       <Droppable droppableId="products">
-                         {(provided, snapshot) => (
-                           <TableBody 
-                             {...provided.droppableProps} 
-                             ref={provided.innerRef}
-                             className={snapshot.isDraggingOver ? "bg-accent/20" : ""}
-                           >
-                             {selectedProducts.map((item, index) => (
-                               <Draggable key={item.id} draggableId={item.id} index={index}>
-                                 {(provided, snapshot) => (
-                                    <TableRow 
-                                      ref={provided.innerRef}
-                                      {...provided.draggableProps}
-                                      className={cn(
-                                        "h-20 border-b border-gray-300 hover:bg-gray-50",
-                                        snapshot.isDragging && "bg-white shadow-lg border-primary/20 z-50"
-                                      )}
-                                      style={provided.draggableProps.style}
-                                    >
-                                      <TableCell className="w-16 min-w-16 p-3 text-center border-r border-gray-300 bg-gray-50">
-                                        <div className="flex items-center justify-center gap-2">
-                                          <div 
-                                            {...provided.dragHandleProps}
-                                            className="cursor-grab active:cursor-grabbing p-2 rounded hover:bg-gray-200"
-                                          >
-                                            <GripVertical className="h-4 w-4 text-gray-600" />
-                                          </div>
-                                          <span className="text-sm font-medium text-gray-700 min-w-[1.5rem]">
-                                            {index + 1}
-                                          </span>
+                {productsLoading && (
+                  <p role="status" className="px-4 py-2.5 text-xs text-muted-foreground border-b bg-muted/10">
+                    Đang tải danh sách sản phẩm… Các dòng đã nhập được giữ nguyên.
+                  </p>
+                )}
+                {productsError && (
+                  <div role="alert" className="flex items-center gap-3 px-4 py-2.5 text-xs text-destructive border-b bg-destructive/5">
+                    <span>{productsError}</span>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => void loadProducts(selectedPriceListId)}>
+                      Thử tải lại sản phẩm
+                    </Button>
+                  </div>
+                )}
+                {!selectedPriceListId && (
+                  <p className="px-4 py-2 text-xs text-muted-foreground border-b bg-muted/10">
+                    Chọn bảng giá ở trên để tra cứu từ danh mục, hoặc nhập trực tiếp sản phẩm vào bảng bên dưới.
+                  </p>
+                )}
+
+                <div className="max-w-full min-w-0 overflow-x-auto bg-background" role="region" aria-label="Bảng sản phẩm, có thể cuộn ngang" tabIndex={0}>
+                  <Table disableWrapper className="w-full border-collapse">
+                    <TableHeader>
+                      <TableRow className="bg-muted/40 border-b">
+                        <TableHead className="font-medium text-xs text-center w-12 min-w-[48px] text-muted-foreground border-r px-2 py-2 h-9">#</TableHead>
+                        <TableHead className="font-medium text-xs min-w-[260px] text-muted-foreground border-r px-2.5 py-2 h-9">Sản phẩm / Mã SP</TableHead>
+                        <TableHead className="font-medium text-xs text-center w-14 min-w-[56px] text-muted-foreground border-r px-2 py-2 h-9">Ảnh</TableHead>
+                        <TableHead className="font-medium text-xs min-w-[180px] text-muted-foreground border-r px-2.5 py-2 h-9">Mô tả</TableHead>
+                        <TableHead className="font-medium text-xs min-w-[150px] text-muted-foreground border-r px-2.5 py-2 h-9">Quy cách</TableHead>
+                        <TableHead className="font-medium text-xs text-right w-32 min-w-[128px] text-muted-foreground border-r px-2.5 py-2 h-9">Đơn giá</TableHead>
+                        <TableHead className="font-medium text-xs text-center w-20 min-w-[84px] text-muted-foreground border-r px-2 py-2 h-9">SL</TableHead>
+                        <TableHead className="font-medium text-xs text-right w-32 min-w-[128px] text-muted-foreground border-r px-2.5 py-2 h-9">Thành tiền</TableHead>
+                        <TableHead className="font-medium text-xs text-center w-10 min-w-[40px] text-muted-foreground px-1.5 py-2 h-9"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <DragDropContext onDragEnd={handleDragEnd}>
+                      <Droppable droppableId="products">
+                        {(provided, snapshot) => (
+                          <TableBody
+                            {...provided.droppableProps}
+                            ref={provided.innerRef}
+                            className={snapshot.isDraggingOver ? "bg-muted/20" : ""}
+                          >
+                            {selectedProducts.map((item, index) => (
+                              <Draggable key={item.id} draggableId={item.id} index={index}>
+                                {(provided, snapshot) => (
+                                  <TableRow
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    className={cn(
+                                      "border-b hover:bg-muted/15 align-middle",
+                                      snapshot.isDragging && "bg-background shadow-md border-primary/30 z-50"
+                                    )}
+                                    style={provided.draggableProps.style}
+                                  >
+                                    {/* STT + Drag */}
+                                    <TableCell className="w-12 min-w-[48px] px-1.5 py-1.5 text-center border-r bg-muted/10">
+                                      <div className="flex items-center justify-center gap-0.5">
+                                        <div
+                                          {...provided.dragHandleProps}
+                                          className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted text-muted-foreground"
+                                          title="Kéo để đổi thứ tự"
+                                        >
+                                          <GripVertical className="h-3.5 w-3.5" />
                                         </div>
-                                      </TableCell>
-                                     <TableCell className="w-32 min-w-32 p-3 border-r border-gray-300">
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button type="button" variant="outline" className="w-full h-12 text-left justify-start gap-2 border-2 border-dashed border-blue-300 bg-blue-50" onClick={() => { setCurrentEditingIndex(index); setSearchTerm(item.sku || item.name || ''); }}>
-                                  <Search className="h-4 w-4 text-blue-600" />
-                                   <span className="text-blue-600">
-                                     {item.sku ? item.sku : item.name ? `${item.name.substring(0, 15)}...` : 'Chọn sản phẩm từ danh sách'}
-                                   </span>
-                                </Button>
-                              </DialogTrigger>
-                               <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-y-auto w-full">
-                                <DialogHeader>
-                                  <DialogTitle className="flex items-center gap-2">
-                                    <Search className="h-5 w-5" />
-                                    Chọn sản phẩm từ danh sách
-                                  </DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                   {/* Search Input */}
-                                   <div className="relative">
-                                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                                     <Input 
-                                       placeholder="Tìm kiếm theo tên, mã sản phẩm..." 
-                                       value={searchTerm} 
-                                       onChange={e => handleSearchChange(e.target.value)}
-                                       onFocus={() => setShowSearchHistory(true)}
-                                       onBlur={() => setTimeout(() => setShowSearchHistory(false), 200)}
-                                       className="pl-10 h-12 text-base border-2 focus:border-blue-500" 
-                                     />
-                                     
-                                     {/* Search History Dropdown */}
-                                     {showSearchHistory && searchHistory.length > 0 && !searchTerm && (
-                                       <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-md shadow-lg z-50 mt-1">
-                                         <div className="p-2 border-b bg-gray-50">
-                                           <span className="text-sm text-gray-600 font-medium">Tìm kiếm gần đây:</span>
-                                         </div>
-                                         {searchHistory.map((term, index) => (
-                                           <div
-                                             key={index}
-                                             className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
-                                             onClick={() => {
-                                               setSearchTerm(term);
-                                               setShowSearchHistory(false);
-                                             }}
-                                           >
-                                             <div className="flex items-center gap-2">
-                                               <Search className="h-3 w-3 text-gray-400" />
-                                               <span className="text-sm">{term}</span>
-                                             </div>
-                                           </div>
-                                         ))}
-                                       </div>
-                                     )}
-                                   </div>
-                                  
-                                    {/* Search Results Summary */}
-                                    {debouncedSearchTerm && <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-md">
-                                        <p className="text-sm text-blue-700">
-                                          Hiển thị <strong>{searchResult.resultCount}</strong> sản phẩm phù hợp nhất cho "{debouncedSearchTerm}"
-                                          {searchResult.totalMatches && searchResult.totalMatches > searchResult.resultCount && 
-                                            <span className="ml-1 text-blue-600">
-                                              (từ {searchResult.totalMatches} kết quả)
-                                            </span>
-                                          }
-                                        </p>
-                                      </div>}
+                                        <span className="text-xs font-mono text-muted-foreground min-w-[1.25rem]">
+                                          {index + 1}
+                                        </span>
+                                      </div>
+                                    </TableCell>
 
-                                     {/* Products Table */}
-                                     <div className="max-h-[70vh] overflow-y-auto border border-gray-300 rounded-lg bg-white">
-                                       {Object.entries(searchResult.groupedResults).map(([category, categoryProducts]) => (
-                                         <div key={category} className="border-b border-gray-200 last:border-b-0">
-                                           {/* Category Header */}
-                                           <div className="sticky top-0 bg-gray-100 px-4 py-3 border-b border-gray-300 z-10">
-                                             <h4 className="font-semibold text-red-600 text-sm flex items-center gap-2">
-                                               <span className="bg-red-600 text-white text-xs px-2 py-1 rounded-full">
-                                                 {categoryProducts.length}
-                                               </span>
-                                               {category}
-                                             </h4>
-                                           </div>
-                                           
-                                           {/* Products Table */}
-                                           <Table className="w-full border-collapse">
-                                             <TableHeader>
-                                               <TableRow className="bg-gray-50 border-b border-gray-300">
-                                                 <TableHead className="font-semibold text-gray-800 border-r border-gray-300 p-3 w-32 min-w-32">Mã SP</TableHead>
-                                                 <TableHead className="font-semibold text-gray-800 border-r border-gray-300 p-3">Tên sản phẩm</TableHead>
-                                                 <TableHead className="font-semibold text-gray-800 border-r border-gray-300 p-3">Mô tả</TableHead>
-                                                 <TableHead className="font-semibold text-gray-800 p-3 text-right w-28">Đơn giá</TableHead>
-                                               </TableRow>
-                                             </TableHeader>
-                                             <TableBody>
-                                               {categoryProducts.map(product => (
-                                                 <TableRow 
-                                                   key={product.id} 
-                                                   className="cursor-pointer hover:bg-blue-50 border-b border-gray-300 transition-colors" 
-                                                   onClick={() => {
-                                                     console.log('Selected product data:', product);
-                                                     const newProducts = [...selectedProducts];
-                                                     newProducts[index] = {
-                                                       id: `${product.id}-${Date.now()}-${Math.random()}`,
-                                                       name: product.name,
-                                                       sku: product.sku || '',
-                                                       price: product.price || 0,
-                                                       quantity: item.quantity,
-                                                       total: (product.price || 0) * item.quantity,
-                                                       originalProductId: product.id,
-                                                       description: product.description || '',
-                                                       specifications: product.specifications || ''
-                                                     };
-                                                     console.log('New product item:', newProducts[index]);
-                                                     setSelectedProducts(newProducts);
-                                                     setSearchTerm("");
-                                                     toast({
-                                                       title: "Thành công",
-                                                       description: `Đã chọn ${product.name}`
-                                                     });
-                                                   }}
-                                                 >
-                                                   <TableCell className="border-r border-gray-300 p-3 font-mono text-sm font-semibold text-blue-600 w-32 min-w-32 whitespace-nowrap">
-                                                     {product.sku || 'NO-SKU'}
-                                                   </TableCell>
-                                                   <TableCell className="border-r border-gray-300 p-3 font-medium text-sm">
-                                                     {product.name}
-                                                   </TableCell>
-                                                   <TableCell className="border-r border-gray-300 p-3 text-xs text-gray-600">
-                                                     {product.description || product.specifications || '-'}
-                                                   </TableCell>
-                                                   <TableCell className="p-3 text-right font-mono font-bold text-green-600 text-sm">
-                                                     {(product.price || 0).toLocaleString()}đ
-                                                   </TableCell>
-                                                 </TableRow>
-                                               ))}
-                                             </TableBody>
-                                           </Table>
-                                         </div>
-                                       ))}
-                                     </div>
-                                  
-                                   {searchResult.resultCount === 0 && debouncedSearchTerm && <div className="text-center py-8 text-gray-500">
-                                       <Search className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                                       <p>Không tìm thấy sản phẩm nào với từ khóa "{debouncedSearchTerm}"</p>
-                                       <p className="text-xs mt-2">Hãy thử tìm kiếm với từ khóa khác hoặc kiểm tra chính tả</p>
-                                     </div>}
-                                </div>
-                              </DialogContent>
-                            </Dialog>
-                            </TableCell>
-                             <TableCell className="w-48 min-w-48 p-2 border-r border-gray-300">
-                              <Textarea value={item.name} onChange={e => {
-                           const newProducts = [...selectedProducts];
-                           newProducts[index] = {
-                             ...item,
-                             name: e.target.value
-                           };
-                           setSelectedProducts(newProducts);
-                         }} placeholder="Tên sản phẩm" className="border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-medium text-sm w-full min-h-[2.5rem] resize-none rounded-none bg-white" rows={2} />
-                            </TableCell>
-                            <TableCell className="w-20 min-w-20 p-2 border-r border-gray-300">
-                             <Dialog open={imageDialogOpen[index] || false} onOpenChange={open => {
-                          setImageDialogOpen(prev => ({
-                            ...prev,
-                            [index]: open
-                          }));
-                        }}>
-                              <DialogTrigger asChild>
-                                 <Button variant="outline" size="sm" className="h-12 w-16 border-2 border-dashed border-gray-300 hover:border-blue-500 flex flex-col items-center justify-center gap-1" type="button">
-                                  {item.selectedImage ? <img src={transformImageUrl(item.selectedImage, { width: 100, quality: 70 })} alt="Selected" className="w-12 h-12 object-cover rounded" loading="lazy" /> : <>
-                                      <Image className="h-4 w-4 text-gray-400" />
-                                      <span className="text-xs text-gray-500">Chọn ảnh</span>
-                                    </>}
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
-                                <DialogHeader>
-                                  <DialogTitle>Chọn hình ảnh sản phẩm</DialogTitle>
-                                </DialogHeader>
-                                <div className="h-[70vh] overflow-y-auto">
-                                  <Suspense fallback={<div className="py-12 text-center text-muted-foreground">Đang tải thư viện hình ảnh...</div>}>
-                                    <ProductImageLibrary hideDeleteButton={true} onSelectImage={imageUrl => {
-                                const newProducts = [...selectedProducts];
-                                newProducts[index] = {
-                                  ...newProducts[index],
-                                  selectedImage: imageUrl
-                                };
-                                setSelectedProducts(newProducts);
+                                    {/* Gộp Chọn SP + Tên sản phẩm */}
+                                    <TableCell className="min-w-[260px] p-1.5 border-r">
+                                      <div className="flex items-center gap-1.5">
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={!catalogReady}
+                                          title={catalogReady ? "Chọn sản phẩm từ bảng giá" : "Chọn bảng giá trước để tra cứu danh mục"}
+                                          className="h-8 px-2 text-xs font-normal shrink-0 gap-1 bg-muted/20 hover:bg-muted"
+                                          onClick={event => {
+                                            productPickerTrigger.current = event.currentTarget;
+                                            setProductPickerTarget({
+                                              lineId: item.id,
+                                              priceListId: selectedPriceListId,
+                                              catalog: products,
+                                              initialSearch: item.sku || item.name || ''
+                                            });
+                                          }}
+                                        >
+                                          <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                                          <span className={cn("max-w-[84px] truncate", item.sku ? "font-mono font-medium text-foreground" : "text-muted-foreground")}>
+                                            {item.sku ? item.sku : "Danh mục"}
+                                          </span>
+                                        </Button>
+                                        <Input
+                                          value={item.name}
+                                          aria-label={`Tên sản phẩm dòng ${index + 1}`}
+                                          aria-invalid={Boolean(lineErrors[item.id])}
+                                          aria-describedby={lineErrors[item.id] ? `${quoteFormId}-line-${item.id}` : undefined}
+                                          onChange={e => {
+                                            const newProducts = [...selectedProducts];
+                                            newProducts[index] = {
+                                              ...item,
+                                              name: e.target.value
+                                            };
+                                            setSelectedProducts(newProducts);
+                                          }}
+                                          placeholder="Nhập tên sản phẩm..."
+                                          className="h-8 text-sm flex-1 min-w-[140px]"
+                                        />
+                                      </div>
+                                      {lineErrors[item.id] && <p id={`${quoteFormId}-line-${item.id}`} className="mt-1 max-w-[260px] whitespace-normal text-xs text-destructive" role="alert">{lineErrors[item.id]}</p>}
+                                    </TableCell>
 
-                                // Đóng dialog ngay lập tức
-                                setImageDialogOpen(prev => ({
-                                  ...prev,
-                                  [index]: false
-                                }));
-                                toast({
-                                  title: "Thành công",
-                                  description: "Đã chọn hình ảnh cho sản phẩm"
-                                });
-                                    }} />
-                                  </Suspense>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
-                          </TableCell>
-                             <TableCell className="w-40 min-w-40 p-2 border-r border-gray-300">
-                               <div className="flex items-start space-x-1">
-                                <Textarea value={item.description || ''} onChange={e => {
-                             const newProducts = [...selectedProducts];
-                             newProducts[index] = {
-                               ...item,
-                               description: e.target.value
-                             };
-                             setSelectedProducts(newProducts);
-                           }} placeholder="Mô tả sản phẩm" className="border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 flex-1 min-h-[2.5rem] resize-none rounded-none bg-white" rows={2} />
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button type="button" variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa mô tả chi tiết">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                      <path d="M12 20h9" />
-                                      <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
-                                    </svg>
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-md">
-                                  <DialogHeader>
-                                    <DialogTitle>Chỉnh sửa mô tả sản phẩm</DialogTitle>
-                                  </DialogHeader>
-                                  <div className="space-y-4">
-                                    <div>
-                                      <Label htmlFor={`description-${index}`}>Mô tả chi tiết</Label>
-                                      <Textarea id={`description-${index}`} value={item.description || ''} onChange={e => {
-                                    const newProducts = [...selectedProducts];
-                                    newProducts[index] = {
-                                      ...item,
-                                      description: e.target.value
-                                    };
-                                    setSelectedProducts(newProducts);
-                                  }} placeholder="Nhập mô tả chi tiết sản phẩm..." className="min-h-32 resize-none" />
-                                    </div>
-                                  </div>
-                                </DialogContent>
-                              </Dialog>
-                            </div>
-                          </TableCell>
-                             <TableCell className="w-32 min-w-32 p-2 border-r border-gray-300">
-                               <div className="flex items-start space-x-1">
-                                <Textarea value={(item as any).specifications || ''} onChange={e => {
-                             const newProducts = [...selectedProducts];
-                             newProducts[index] = {
-                               ...item,
-                               specifications: e.target.value
-                             };
-                             setSelectedProducts(newProducts);
-                           }} placeholder="Quy cách" className="border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 flex-1 min-h-[2.5rem] resize-none rounded-none bg-white" rows={2} />
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button type="button" variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 p-2" title="Chỉnh sửa quy cách chi tiết">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                      <path d="M12 20h9" />
-                                      <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
-                                    </svg>
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-md">
-                                  <DialogHeader>
-                                    <DialogTitle>Chỉnh sửa quy cách sản phẩm</DialogTitle>
-                                  </DialogHeader>
-                                  <div className="space-y-4">
-                                    <div>
-                                      <Label htmlFor={`specifications-${index}`}>Quy cách chi tiết</Label>
-                                      <Textarea id={`specifications-${index}`} value={(item as any).specifications || ''} onChange={e => {
-                                    const newProducts = [...selectedProducts];
-                                    newProducts[index] = {
-                                      ...item,
-                                      specifications: e.target.value
-                                    };
-                                    setSelectedProducts(newProducts);
-                                  }} placeholder="Nhập quy cách chi tiết sản phẩm..." className="min-h-32 resize-none" />
-                                    </div>
-                                  </div>
-                                </DialogContent>
-                              </Dialog>
-                            </div>
-                          </TableCell>
-                            <TableCell className="w-28 min-w-28 text-right p-2 border-r border-gray-300">
-                              <Input 
-                                type="text" 
-                                value={item.price.toLocaleString('vi-VN')} 
-                                onChange={e => {
-                                  const value = e.target.value.replace(/[^\d]/g, ''); // Remove non-digits
-                                  const price = parseFloat(value) || 0;
-                                  updatePrice(item.id, price);
-                                }} 
-                                className="w-full text-right font-mono text-blue-600 font-semibold border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-none bg-white" 
-                                placeholder="0" 
-                              />
-                            </TableCell>
-                            <TableCell className="w-24 min-w-24 text-center p-2 border-r border-gray-300">
-                              <Input type="number" value={item.quantity} onChange={e => {
-                           const quantity = Number(e.target.value);
-                           updateQuantity(item.id, quantity);
-                         }} className="w-full h-10 text-center border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm font-semibold rounded-none bg-white" min="0.000001" step="any" />
-                           </TableCell>
-                             <TableCell className="w-32 min-w-32 text-right font-mono font-bold text-green-600 text-sm p-2 border-r border-gray-300 bg-green-50">
-                               {item.total.toLocaleString('vi-VN')}đ
-                            </TableCell>
-                            <TableCell className="w-20 min-w-20 text-center p-2">
-                             <Button type="button" variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 h-8 w-8" onClick={() => removeProduct(item.id)}>
-                              <Trash2 className="w-5 h-5" />
-                            </Button>
-                                     </TableCell>
-                                    </TableRow>
+                                    {/* Hình ảnh */}
+                                    <TableCell className="w-14 min-w-[56px] p-1.5 text-center border-r">
+                                      <Dialog
+                                        open={imageDialogOpen[index] || false}
+                                        onOpenChange={open => {
+                                          setImageDialogOpen(prev => ({
+                                            ...prev,
+                                            [index]: open
+                                          }));
+                                        }}
+                                      >
+                                        <DialogTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-8 w-10 p-0 border-dashed mx-auto flex items-center justify-center"
+                                            type="button"
+                                            title="Chọn hình ảnh sản phẩm"
+                                          >
+                                            {item.selectedImage ? (
+                                              <img
+                                                src={transformImageUrl(item.selectedImage, { width: 80, quality: 70 })}
+                                                alt="Selected"
+                                                className="w-full h-full object-cover rounded-sm"
+                                                loading="lazy"
+                                              />
+                                            ) : (
+                                              <Image className="h-3.5 w-3.5 text-muted-foreground" />
+                                            )}
+                                          </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+                                          <DialogHeader>
+                                            <DialogTitle>Chọn hình ảnh sản phẩm</DialogTitle>
+                                          </DialogHeader>
+                                          <div className="h-[70vh] overflow-y-auto">
+                                            <Suspense fallback={<div className="py-12 text-center text-muted-foreground">Đang tải thư viện hình ảnh...</div>}>
+                                              <ProductImageLibrary
+                                                hideDeleteButton={true}
+                                                onSelectImage={imageUrl => {
+                                                  const newProducts = [...selectedProducts];
+                                                  newProducts[index] = {
+                                                    ...newProducts[index],
+                                                    selectedImage: imageUrl
+                                                  };
+                                                  setSelectedProducts(newProducts);
+                                                  setImageDialogOpen(prev => ({
+                                                    ...prev,
+                                                    [index]: false
+                                                  }));
+                                                  toast({
+                                                    title: "Thành công",
+                                                    description: "Đã chọn hình ảnh cho sản phẩm"
+                                                  });
+                                                }}
+                                              />
+                                            </Suspense>
+                                          </div>
+                                        </DialogContent>
+                                      </Dialog>
+                                    </TableCell>
+
+                                    {/* Mô tả */}
+                                    <TableCell className="min-w-[180px] p-1.5 border-r">
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          value={item.description || ''}
+                                          aria-label={`Mô tả dòng ${index + 1}`}
+                                          onChange={e => {
+                                            const newProducts = [...selectedProducts];
+                                            newProducts[index] = {
+                                              ...item,
+                                              description: e.target.value
+                                            };
+                                            setSelectedProducts(newProducts);
+                                          }}
+                                          placeholder="Mô tả..."
+                                          className="h-8 text-sm flex-1"
+                                        />
+                                        <Dialog>
+                                          <DialogTrigger asChild>
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                                              title="Chỉnh sửa mô tả chi tiết"
+                                            >
+                                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                                <path d="M12 20h9" />
+                                                <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
+                                              </svg>
+                                            </Button>
+                                          </DialogTrigger>
+                                          <DialogContent className="sm:max-w-md">
+                                            <DialogHeader>
+                                              <DialogTitle>Chỉnh sửa mô tả sản phẩm</DialogTitle>
+                                            </DialogHeader>
+                                            <div className="space-y-3">
+                                              <div>
+                                                <Label htmlFor={`description-${index}`}>Mô tả chi tiết</Label>
+                                                <Textarea
+                                                  id={`description-${index}`}
+                                                  value={item.description || ''}
+                                                  onChange={e => {
+                                                    const newProducts = [...selectedProducts];
+                                                    newProducts[index] = {
+                                                      ...item,
+                                                      description: e.target.value
+                                                    };
+                                                    setSelectedProducts(newProducts);
+                                                  }}
+                                                  placeholder="Nhập mô tả chi tiết sản phẩm..."
+                                                  className="min-h-32 resize-y mt-1.5"
+                                                />
+                                              </div>
+                                            </div>
+                                          </DialogContent>
+                                        </Dialog>
+                                      </div>
+                                    </TableCell>
+
+                                    {/* Quy cách */}
+                                    <TableCell className="min-w-[150px] p-1.5 border-r">
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          value={(item as any).specifications || ''}
+                                          aria-label={`Quy cách dòng ${index + 1}`}
+                                          onChange={e => {
+                                            const newProducts = [...selectedProducts];
+                                            newProducts[index] = {
+                                              ...item,
+                                              specifications: e.target.value
+                                            };
+                                            setSelectedProducts(newProducts);
+                                          }}
+                                          placeholder="Quy cách..."
+                                          className="h-8 text-sm flex-1"
+                                        />
+                                        <Dialog>
+                                          <DialogTrigger asChild>
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                                              title="Chỉnh sửa quy cách chi tiết"
+                                            >
+                                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                                <path d="M12 20h9" />
+                                                <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
+                                              </svg>
+                                            </Button>
+                                          </DialogTrigger>
+                                          <DialogContent className="sm:max-w-md">
+                                            <DialogHeader>
+                                              <DialogTitle>Chỉnh sửa quy cách sản phẩm</DialogTitle>
+                                            </DialogHeader>
+                                            <div className="space-y-3">
+                                              <div>
+                                                <Label htmlFor={`specifications-${index}`}>Quy cách chi tiết</Label>
+                                                <Textarea
+                                                  id={`specifications-${index}`}
+                                                  value={(item as any).specifications || ''}
+                                                  onChange={e => {
+                                                    const newProducts = [...selectedProducts];
+                                                    newProducts[index] = {
+                                                      ...item,
+                                                      specifications: e.target.value
+                                                    };
+                                                    setSelectedProducts(newProducts);
+                                                  }}
+                                                  placeholder="Nhập quy cách chi tiết sản phẩm..."
+                                                  className="min-h-32 resize-y mt-1.5"
+                                                />
+                                              </div>
+                                            </div>
+                                          </DialogContent>
+                                        </Dialog>
+                                      </div>
+                                    </TableCell>
+
+                                    {/* Đơn giá */}
+                                    <TableCell className="w-32 min-w-[128px] text-right p-1.5 border-r">
+                                      <Input
+                                        type="text"
+                                        aria-label={`Đơn giá dòng ${index + 1}`}
+                                        inputMode="decimal"
+                                        value={priceEditing[item.id] ?? (Number.isFinite(item.price) ? item.price.toLocaleString('vi-VN', { maximumFractionDigits: 6 }) : '')}
+                                        onChange={e => {
+                                          const raw = e.target.value;
+                                          setPriceEditing(previous => ({ ...previous, [item.id]: raw }));
+                                          const price = parseQuotePriceInput(raw);
+                                          updatePrice(item.id, price);
+                                        }}
+                                        onBlur={() => setPriceEditing(previous => { const next = { ...previous }; delete next[item.id]; return next; })}
+                                        className="w-full h-8 text-right font-mono tabular-nums text-sm"
+                                        placeholder="0"
+                                      />
+                                    </TableCell>
+
+                                    {/* Số lượng */}
+                                    <TableCell className="w-20 min-w-[84px] text-center p-1.5 border-r">
+                                      <Input
+                                        type="number"
+                                        aria-label={`Số lượng dòng ${index + 1}`}
+                                        value={item.quantity}
+                                        onChange={e => {
+                                          const quantity = Number(e.target.value);
+                                          updateQuantity(item.id, quantity);
+                                        }}
+                                        className="w-full h-8 text-center font-mono tabular-nums text-sm"
+                                        min="0.000001"
+                                        step="any"
+                                      />
+                                    </TableCell>
+
+                                    {/* Thành tiền */}
+                                    <TableCell className="w-32 min-w-[128px] text-right font-mono tabular-nums font-semibold text-sm text-foreground px-2.5 py-1.5 border-r whitespace-nowrap">
+                                      {lineErrors[item.id] ? '—' : `${item.total.toLocaleString('vi-VN')} đ`}
+                                    </TableCell>
+
+                                    {/* Xóa */}
+                                    <TableCell className="w-10 min-w-[40px] text-center p-1">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="text-muted-foreground hover:text-destructive h-7 w-7"
+                                        onClick={() => removeProduct(item.id)}
+                                        title="Xóa dòng"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
                                 )}
                               </Draggable>
                             ))}
                             {provided.placeholder}
                             {selectedProducts.length === 0 && (
                               <TableRow>
-                                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                                  Chưa có sản phẩm nào. Nhấn "Thêm sản phẩm" để bắt đầu.
+                                <TableCell colSpan={9} className="text-center py-6 text-xs text-muted-foreground">
+                                  Chưa có sản phẩm nào. Nhấn "Thêm dòng sản phẩm" để bắt đầu.
                                 </TableCell>
                               </TableRow>
                             )}
@@ -1934,182 +1987,259 @@ export function CreateQuoteForm({
                     </DragDropContext>
                   </Table>
                 </div>
+
+                {/* Thanh chân bảng sản phẩm */}
+                <div className="px-3 py-2 border-t bg-muted/15 flex items-center justify-between">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                    onClick={() => setSelectedProducts(prev => [...prev, createEmptyQuoteLine()])}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Thêm dòng sản phẩm
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {validLineCount}/{activeLinesForDisplay.length} dòng hợp lệ
+                  </span>
+                </div>
               </CardContent>
             </Card>
 
+            {calculationError && <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">{calculationError}</div>}
 
-            {/* Tổng kết thanh toán */}
-            <Card>
-              <CardHeader className="bg-purple-50">
-                <CardTitle className="text-purple-700">Tổng kết thanh toán</CardTitle>
+            {/* Khối 3: Tổng kết thanh toán (2 cột Trái - Phải) */}
+            <Card className="border shadow-none">
+              <CardHeader className="py-2.5 px-4 border-b bg-muted/30">
+                <CardTitle className="text-sm font-semibold text-foreground">Thanh toán & Tổng kết giá trị</CardTitle>
               </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center space-x-2">
-                    <FormField control={form.control} name="includeVAT" render={({
-                    field
-                  }) => <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+              <CardContent className="p-4">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                  {/* Cột trái: Thiết lập VAT & Kế hoạch tạm ứng */}
+                  <div className="lg:col-span-7 space-y-3">
+                    <div className="flex flex-wrap items-center gap-4 rounded-md border bg-muted/15 px-3.5 py-2.5">
+                      <FormField control={form.control} name="includeVAT" render={({ field }) => (
+                        <FormItem className="flex flex-row items-center space-x-2.5 space-y-0">
                           <FormControl>
                             <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                           </FormControl>
-                          <FormLabel className="text-sm font-normal">
-                            Bao gồm VAT
+                          <FormLabel className="text-sm font-medium cursor-pointer">
+                            Bao gồm thuế GTGT (VAT)
                           </FormLabel>
-                        </FormItem>} />
+                        </FormItem>
+                      )} />
+
+                      <FormField control={form.control} name="vatRate" render={({ field }) => (
+                        <FormItem className="flex items-center gap-2 space-y-0 ml-auto">
+                          <FormLabel className="text-xs text-muted-foreground whitespace-nowrap">Thuế VAT (%)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.001"
+                              {...field}
+                              disabled={!watchedValues.includeVAT}
+                              onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                              placeholder="8"
+                              className="h-8 w-24 text-right font-mono tabular-nums text-sm"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <FormField control={form.control} name="payment1" render={({ field }) => (
+                        <FormItem className="space-y-1">
+                          <FormLabel className="text-xs font-medium text-muted-foreground">Dự kiến thanh toán lần 1 (VNĐ)</FormLabel>
+                          <FormControl>
+                            <CurrencyInput value={field.value} onChange={field.onChange} placeholder="0" className="h-9 text-sm font-mono tabular-nums" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+
+                      <FormField control={form.control} name="payment2" render={({ field }) => (
+                        <FormItem className="space-y-1">
+                          <FormLabel className="text-xs font-medium text-muted-foreground">Dự kiến thanh toán lần 2 (VNĐ)</FormLabel>
+                          <FormControl>
+                            <CurrencyInput value={field.value} onChange={field.onChange} placeholder="0" className="h-9 text-sm font-mono tabular-nums" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      Đây là kế hoạch thanh toán dự kiến trên báo giá, không phải khoản thực thu. Tiền thực nhận được ghi nhận qua phiếu thu riêng.
+                    </p>
                   </div>
 
-                  <FormField control={form.control} name="vatRate" render={({
-                  field
-                }) => <FormItem>
-                        <FormLabel>Thuế VAT (%)</FormLabel>
-                        <FormControl>
-                          <Input type="number" min="0" max="100" step="0.001" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} placeholder="8" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>} />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField control={form.control} name="payment1" render={({
-                  field
-                }) => <FormItem>
-                        <FormLabel>Dự kiến thanh toán lần 1 (VNĐ)</FormLabel>
-                        <FormControl>
-                          <CurrencyInput value={field.value} onChange={field.onChange} placeholder="0" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>} />
-
-                  <FormField control={form.control} name="payment2" render={({
-                  field
-                }) => <FormItem>
-                        <FormLabel>Dự kiến thanh toán lần 2 (VNĐ)</FormLabel>
-                        <FormControl>
-                          <CurrencyInput value={field.value} onChange={field.onChange} placeholder="0" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>} />
-                </div>
-
-                 {/* Calculation Summary */}
-                <div className="border-t pt-4 space-y-2">
-                  <div className="flex justify-between text-sm font-medium">
-                    <span>TỔNG GIÁ TRỊ ĐƠN HÀNG CHƯA BAO GỒM GTGT:</span>
-                    <span className="text-blue-600 font-bold">{subtotal.toLocaleString()}đ</span>
-                  </div>
-                  {watchedValues.includeVAT && <>
-                      <div className="flex justify-between text-sm font-medium">
-                        <span>GTGT ({watchedValues.vatRate}%):</span>
-                        <span className="text-orange-600">{vatAmount.toLocaleString()}đ</span>
+                  {/* Cột phải: Bảng tổng hợp kiểu hóa đơn */}
+                  <div className="lg:col-span-5 rounded-lg border bg-muted/20 p-3.5 space-y-2 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Tạm tính (chưa GTGT):</span>
+                      <span className="font-mono tabular-nums font-medium">{previewAmount(subtotal)}</span>
+                    </div>
+                    {watchedValues.includeVAT && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Thuế GTGT ({watchedValues.vatRate}%):</span>
+                        <span className="font-mono tabular-nums font-medium">{previewAmount(vatAmount)}</span>
                       </div>
-                      <div className="flex justify-between text-sm font-medium">
-                        <span>TỔNG TIỀN ĐÃ BAO GỒM GTGT:</span>
-                        <span className="text-green-600 font-bold">{total.toLocaleString()}đ</span>
+                    )}
+                    <div className="flex justify-between items-baseline border-t pt-2.5">
+                      <span className="font-semibold text-foreground">Tổng cộng thanh toán:</span>
+                      <span className="font-mono tabular-nums text-base font-bold text-foreground">{previewAmount(total)}</span>
+                    </div>
+                    <div className="border-t pt-2 space-y-1 text-xs">
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Dự kiến thanh toán lần 1:</span>
+                        <span className="font-mono tabular-nums">{(watchedValues.payment1 || 0).toLocaleString('vi-VN')} đ</span>
                       </div>
-                    </>}
-                  <div className="flex justify-between text-sm font-medium">
-                    <span>DỰ KIẾN THANH TOÁN LẦN 1:</span>
-                    <span className="text-purple-600">{(watchedValues.payment1 || 0).toLocaleString()}đ</span>
-                  </div>
-                  <div className="flex justify-between text-sm font-medium"><span>DỰ KIẾN THANH TOÁN LẦN 2:</span><span>{(watchedValues.payment2 || 0).toLocaleString()}đ</span></div>
-                  <p className="text-xs text-muted-foreground">Đây là kế hoạch thanh toán, không phải khoản đã thu. Tiền thực nhận được ghi bằng phiếu thu riêng.</p>
-                  <div className="flex justify-between text-sm font-medium text-red-600">
-                    <span>CÒN LẠI THEO KẾ HOẠCH:</span>
-                    <span className="font-bold">{remaining.toLocaleString()}đ</span>
-                  </div>
-                  
-                  {/* Debug button */}
-                  <div className="pt-2 border-t">
-                    <Button type="button" variant="outline" size="sm" onClick={recalculateAllTotals} className="w-full text-xs">
-                      🔄 Tính lại tổng tiền
-                    </Button>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Dự kiến thanh toán lần 2:</span>
+                        <span className="font-mono tabular-nums">{(watchedValues.payment2 || 0).toLocaleString('vi-VN')} đ</span>
+                      </div>
+                      <div className="flex justify-between font-medium text-foreground pt-1">
+                        <span>Còn lại theo kế hoạch:</span>
+                        <span className="font-mono tabular-nums font-semibold">{previewAmount(remaining)}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Action Buttons */}
-            {accountChanged && <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
-              <p>Tài khoản đăng nhập đã thay đổi. Vui lòng đóng và mở lại biểu mẫu trước khi lưu báo giá.</p>
-              {!onClose && <Button type="button" variant="outline" className="mt-2" onClick={() => window.location.reload()}>Tải lại trang</Button>}
-            </div>}
-            {!accountChanged && isLocalBackend() && identityError && <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
-              <p>{identityError}</p>
-              <Button type="button" variant="outline" className="mt-2" disabled={isLoadingUser || isLoading} onClick={() => setIdentityAttempt(attempt => attempt + 1)}>Thử tải lại quyền</Button>
-            </div>}
-            <div className="flex justify-end gap-4">
-              <Button type="button" variant="outline" onClick={onClose}>
-                Hủy
-              </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={accountChanged || isLoading || isLoadingUser || !managerId}>
-                {isLoadingUser ? 'Đang tải...' : isLoading ? 'Đang lưu...' : initialData ? 'Cập nhật báo giá' : 'Tạo báo giá'}
-              </Button>
-            </div>
+            {/* Cảnh báo tài khoản / quyền */}
+            {accountChanged && (
+              <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+                <p>Tài khoản đăng nhập đã thay đổi. Vui lòng đóng và mở lại biểu mẫu trước khi lưu báo giá.</p>
+                {!onClose && <Button type="button" variant="outline" className="mt-2" onClick={() => window.location.reload()}>Tải lại trang</Button>}
+              </div>
+            )}
+            {!accountChanged && isLocalBackend() && identityError && (
+              <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+                <p>{identityError}</p>
+                <Button type="button" variant="outline" className="mt-2" disabled={isLoadingUser || isLoading} onClick={() => setIdentityAttempt(attempt => attempt + 1)}>Thử tải lại quyền</Button>
+              </div>
+            )}
+
           </form>
         </Form>
       </div>
 
+            {/* Sticky Footer */}
+            <div className="z-20 shrink-0 min-w-0 border-t bg-background px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                <span className="text-muted-foreground">Tổng thanh toán:</span>
+                <span className="font-mono tabular-nums text-base font-bold text-foreground">
+                  {previewAmount(total)}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  ({validLineCount}/{activeLinesForDisplay.length} dòng hợp lệ)
+                </span>
+              </div>
+              <div className="flex items-center gap-2 ml-auto">
+                <Button type="button" variant="outline" size="sm" className="h-9 px-3.5" onClick={onClose}>
+                  Hủy
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3.5"
+                  disabled={!canOpenLivePreview}
+                  onClick={() => setShowLivePreview(true)}
+                  title="Xem trước bản in báo giá ngay khi đang soạn"
+                >
+                  <Eye className="mr-1.5 h-3.5 w-3.5" />
+                  Xem trước
+                </Button>
+                <Button
+                  type="submit"
+                  form={quoteFormId}
+                  size="sm"
+                  className="h-9 px-5"
+                  disabled={accountChanged || isLoading || isLoadingUser || !managerId || Boolean(calculationError)}
+                >
+                  {isLoadingUser ? 'Đang tải...' : isLoading ? 'Đang lưu...' : initialData ? 'Cập nhật báo giá' : 'Tạo báo giá'}
+                </Button>
+              </div>
+            </div>
+
       {/* Create New Product Dialog */}
       <Dialog open={showCreateProduct} onOpenChange={setShowCreateProduct}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5" />
-              Tạo sản phẩm mới
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Plus className="h-4 w-4" />
+              Tạo sản phẩm mới vào bảng giá
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreateProduct} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="newSku">Mã SP *</Label>
-                <Input id="newSku" value={newProductSku} onChange={e => setNewProductSku(e.target.value)} placeholder="VD: SP001" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="newSku" className="text-xs">Mã SP *</Label>
+                <Input id="newSku" value={newProductSku} onChange={e => setNewProductSku(e.target.value)} placeholder="VD: SP001" className="h-9 text-sm" />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="newName">Tên sản phẩm *</Label>
-                <Input id="newName" value={newProductName} onChange={e => setNewProductName(e.target.value)} required placeholder="Tên sản phẩm" />
+              <div className="space-y-1.5">
+                <Label htmlFor="newName" className="text-xs">Tên sản phẩm *</Label>
+                <Input id="newName" value={newProductName} onChange={e => setNewProductName(e.target.value)} required placeholder="Tên sản phẩm" className="h-9 text-sm" />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="newCategory">Danh mục</Label>
-                <Input id="newCategory" value={newProductCategory} onChange={e => setNewProductCategory(e.target.value)} placeholder="Danh mục" />
+              <div className="space-y-1.5">
+                <Label htmlFor="newCategory" className="text-xs">Danh mục</Label>
+                <Input id="newCategory" value={newProductCategory} onChange={e => setNewProductCategory(e.target.value)} placeholder="Danh mục" className="h-9 text-sm" />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="newSpecifications">Quy cách</Label>
-                <Input id="newSpecifications" value={newProductSpecifications} onChange={e => setNewProductSpecifications(e.target.value)} placeholder="Quy cách" />
+              <div className="space-y-1.5">
+                <Label htmlFor="newSpecifications" className="text-xs">Quy cách</Label>
+                <Input id="newSpecifications" value={newProductSpecifications} onChange={e => setNewProductSpecifications(e.target.value)} placeholder="Quy cách" className="h-9 text-sm" />
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="newCostPrice">Giá gốc (VND)</Label>
-                <Input id="newCostPrice" type="number" step="1000" value={newProductCostPrice} onChange={e => setNewProductCostPrice(e.target.value)} placeholder="0" />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="newCostPrice" className="text-xs">Giá gốc (VND)</Label>
+                <Input id="newCostPrice" type="number" step="1000" value={newProductCostPrice} onChange={e => setNewProductCostPrice(e.target.value)} placeholder="0" className="h-9 text-sm" />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="newPrice">Giá bán (VND)</Label>
-                <Input id="newPrice" type="number" step="1000" value={newProductPrice} onChange={e => setNewProductPrice(e.target.value)} placeholder="0" />
+              <div className="space-y-1.5">
+                <Label htmlFor="newPrice" className="text-xs">Giá bán (VND)</Label>
+                <Input id="newPrice" type="number" step="1000" value={newProductPrice} onChange={e => setNewProductPrice(e.target.value)} placeholder="0" className="h-9 text-sm" />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="newInStock">Tình trạng</Label>
-                <div className="flex items-center space-x-2 h-10">
+              <div className="space-y-1.5">
+                <Label htmlFor="newInStock" className="text-xs">Tình trạng</Label>
+                <div className="flex items-center space-x-2 h-9">
                   <Switch id="newInStock" checked={newProductInStock} onCheckedChange={setNewProductInStock} />
-                  <Label htmlFor="newInStock" className="text-sm">
+                  <Label htmlFor="newInStock" className="text-sm font-normal">
                     {newProductInStock ? 'Còn hàng' : 'Hết hàng'}
                   </Label>
                 </div>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="newDescription">Mô tả</Label>
-              <Textarea id="newDescription" value={newProductDescription} onChange={e => setNewProductDescription(e.target.value)} rows={2} placeholder="Mô tả chi tiết sản phẩm..." />
+            <div className="space-y-1.5">
+              <Label htmlFor="newDescription" className="text-xs">Mô tả</Label>
+              <Textarea id="newDescription" value={newProductDescription} onChange={e => setNewProductDescription(e.target.value)} rows={2} placeholder="Mô tả chi tiết sản phẩm..." className="text-sm" />
             </div>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setShowCreateProduct(false)}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowCreateProduct(false)}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={createProductLoading}>
+              <Button type="submit" size="sm" disabled={createProductLoading}>
                 {createProductLoading ? 'Đang tạo...' : 'Tạo sản phẩm'}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
-    </div>;
+
+      {showLivePreview && livePreviewQuote && (
+        <QuotePreviewDialog
+          open={showLivePreview}
+          onOpenChange={setShowLivePreview}
+          quote={livePreviewQuote}
+        />
+      )}
+    </div>
+  );
 }

@@ -679,10 +679,12 @@ async function fetchOrderDetail(ghnApiKey: string, orderCode: string) {
 function extractOrderNumber(toName: string): string {
   if (!toName) return '';
   // Ưu tiên: _<số>p (hoặc P/h/H) ở cuối tên - đây là quy ước user dùng (vd: ..._2588p)
-  let m = toName.match(/_(\d{3,5})[pPhH]?\s*$/);
+  let m = toName.match(/_(\d{3,5})(?:[pPhH]|\s*hoan)?\s*$/i);
   if (m) return m[1];
   // Fallback: _<số> bất kỳ trong tên
   m = toName.match(/_(\d{3,5})\b/);
+  if (m) return m[1];
+  m = toName.match(/(?:^|[\s-])(\d{3,5})\s*(?:p|h|hoan)\s*$/i);
   if (m) return m[1];
   return '';
 }

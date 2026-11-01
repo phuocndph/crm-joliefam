@@ -54,18 +54,33 @@ The first API start applies append-only SQL from `server/db/migrations` and idem
 
 ## Import the sewing piece-rate workbook
 
-The importer reads `ma_sp`, product name and `don_gia` from the `don-gia-moi`
-sheet. It validates every row and writes only to PostgreSQL local. Run a dry-run
-first, then apply the same command after checking the counts:
+Ưu tiên nhập Excel và duyệt nháp tại `/production-attendance?tab=rates`.
+CLI đọc cột A:C (`ma_sp`, tên công may, `don_gia`) của sheet `don-gia-moi`;
+giá tính cho một sản phẩm hoàn thành (PIECE). Mã giữ nguyên văn; giá thập phân
+hoặc giá lớn phải định dạng Text, không dùng công thức trong A:C.
+
+CLI chỉ gọi API HTTP loopback với phiên đăng nhập cá nhân đã có của quản lý/quản
+trị viên qua stdin; không đọc database, .env hoặc tạo phiên hộ. Không truyền token
+thật vào tham số, biến môi trường, tệp hay lịch sử lệnh. Khi chưa có công cụ cấp
+stdin tin cậy, dùng giao diện quản lý. Ví dụ **phiên giả** (API thực sẽ từ chối):
 
 ```powershell
-npm run import:local-piece-rates -- --file="C:\path\to\luong_2026.xlsx" --effective-from=2026-01-01
-npm run import:local-piece-rates:apply -- --file="C:\path\to\luong_2026.xlsx" --effective-from=2026-01-01
+'synthetic-session-not-a-real-secret' | npm run import:local-piece-rates -- --file="C:\path\to\luong_2026.xlsx" --api-url=http://127.0.0.1:8787 --session-stdin --effective-from=2026-01-01
+'synthetic-session-not-a-real-secret' | npm run import:local-piece-rates:apply -- --file="C:\path\to\luong_2026.xlsx" --api-url=http://127.0.0.1:8787 --session-stdin --effective-from=2026-01-01
 ```
 
-The import is transactional and idempotent. It creates missing local products,
-reuses an unambiguous existing SKU, records approved effective-dated rates and
-stops without partial writes when a conflicting active rate exists.
+Không có `--apply`: chỉ xem trước, chưa nhập. Có `--apply`: gửi trực tiếp để tạo
+DRAFT; quản lý xem và duyệt sau. Không tạo sản phẩm/bảng giá bán hoặc tự APPROVED.
+Đã bỏ `--price-list`. Chỉ nhận origin `http://127.0.0.1:<port>` hoặc
+`http://[::1]:<port>`, không nhận localhost/DNS/chuyển hướng.
+
+Nếu mất phản hồi apply, lặp lại đúng lệnh với cùng file, ngày và tài khoản để nhận
+receipt cũ, không tạo thêm nháp. Đổi tên file đơn thuần giữ nguyên fingerprint;
+đổi nội dung/ngày là nguồn mới. Receipt có thể là lịch sử sau duyệt/hủy: tải lại
+giao diện để xem trạng thái hiện tại. Quyền hiện hành luôn được kiểm tra lại.
+Nguồn import direct-PG cũ không được tự chuyển thành receipt API.
+
+Chi tiết giới hạn, định dạng và kiểm chứng: [H3–H5 lifecycle](product-rate-lifecycle-h3h5-2026-10-29.md).
 
 ## Supabase -> local preservation sync
 

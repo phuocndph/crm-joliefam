@@ -1,4 +1,4 @@
-import type {ProductionQueueAssignment,ProductionQueueReport} from './production-dispatch-types';
+import {dispatchLabels,type ProductionQueueAssignment,type ProductionQueueReport} from './production-dispatch-types';
 // Durable per-line requests. This is deliberately not an atomic bulk transaction.
 export type QueueStatus='DRAFT'|'SENDING'|'SUCCESS'|'ERROR'|'UNKNOWN';
 export type QueueKind='REPORT'|'REVIEW';
@@ -55,6 +55,16 @@ export function inProductionContext(row:{production_batch_id:string;order_item_i
 export function productionBulkCandidates(assignments:ProductionQueueAssignment[],reports:ProductionQueueReport[],actorId:string,own:boolean,context?:{batchId?:string;itemId?:string;stage?:string}){
   const jobs=assignments.filter(a=>inProductionContext(a,context)&&(!own||['RELEASED','IN_PROGRESS'].includes(a.order_status)&&['PLANNED','IN_PROGRESS'].includes(a.batch_status)&&a.own_assignment&&a.dispatch_status==='ACCEPTED'&&Number(a.remaining_quantity)>0));
   return {jobs,reports:reports.filter(r=>r.status==='SUBMITTED'&&r.created_by!==actorId&&jobs.some(a=>a.id===r.assignment_id))};
+}
+/** A new shift is an explicit new draft, never a replay/reset of an uncertain request. */
+export function nextProductionReportDraft(row:ProductionQueueRow,mode:QueueKind,assignments:ProductionQueueAssignment[],reports:ProductionQueueReport[],actorId:string,today:string,context?:{batchId?:string;itemId?:string;stage?:string}):ProductionQueueRow|null{
+  if(mode!=='REPORT'||row.kind!=='REPORT'||row.status!=='SUCCESS'||!row.resultId?.trim()||!actorId||!inProductionContext({production_batch_id:row.fields.batchId,order_item_id:row.fields.itemId,stage:row.fields.stage},context))return null;
+  const report=reports.find(report=>report.id===row.resultId&&report.assignment_id===row.targetId&&report.created_by===actorId);
+  if(!report||report.stage!==row.fields.stage||report.work_date!==row.fields.date||row.payload?.work_date!==report.work_date)return null;
+  const job=productionBulkCandidates(assignments,reports,actorId,true,context).jobs.find(job=>job.id===row.targetId&&job.dispatch_stage===report.stage);
+  if(!job)return null;
+  const date=reportDate(job,today);if(!date)return null;
+  return {id:row.id,targetId:job.id,kind:'REPORT',label:`${job.production_order_number} · ${job.product_name} · ${dispatchLabels[job.dispatch_stage]}`,status:'DRAFT',fields:{date,good:'',rework:'0',remake:'0',defect:'0',notes:'',batchId:job.production_batch_id,itemId:job.order_item_id||'',stage:job.dispatch_stage}};
 }
 export function buildProductionQueuePayload(row:ProductionQueueRow,assignments:ProductionQueueAssignment[],reports:ProductionQueueReport[],actorId:string,today:string,context?:{batchId?:string;itemId?:string;stage?:string}):Record<string,unknown>{
   const candidates=productionBulkCandidates(assignments,reports,actorId,row.kind==='REPORT',context),f=row.fields;

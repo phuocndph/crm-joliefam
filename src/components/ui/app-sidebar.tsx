@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Star } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pin } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   NAVIGATION_GROUPS,
@@ -73,7 +73,7 @@ export function AppSidebar() {
   }));
   const topItems = navigationItemsInSection(visibleItems, 'top');
   const accountItems = navigationItemsInSection(visibleItems, 'account');
-  const active = (path: string) => location.pathname === path;
+  const active = (path: string) => location.pathname === path || (path === '/production-attendance' && location.pathname === '/payroll-settings');
 
   useEffect(() => {
     if (activeGroup) setOpenGroups(current => current[activeGroup] ? current : { ...current, [activeGroup]: true });
@@ -87,7 +87,7 @@ export function AppSidebar() {
         {collapsed && <div className="space-y-1">{topItems.map(item => <CollapsedNavigationLink key={item.id} item={item} active={active(item.path)} />)}</div>}
 
         {!collapsed && visibleFavoriteItems.length > 0 && <section className="border-y py-2" aria-label="Đã ghim">
-          <p className="flex items-center gap-2 px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60"><Star className="h-3.5 w-3.5 fill-current" />Đã ghim</p>
+          <p className="flex items-center gap-2 px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60"><Pin className="h-3 w-3" aria-hidden="true" />Đã ghim</p>
           {visibleFavoriteItems.map(item => <NavigationItemRow key={`pin-${item.id}`} item={item} active={active(item.path)} favorite onToggleFavorite={toggleFavorite} />)}
         </section>}
 
@@ -101,7 +101,7 @@ export function AppSidebar() {
             <Button type="button" variant="ghost" className="h-10 w-full justify-start gap-2 px-2 text-sm font-semibold" aria-expanded={expanded} onClick={() => setOpenGroups(current => ({ ...current, [group.id]: !current[group.id] }))}>
               <group.icon className="h-4 w-4" /><span className="flex-1 text-left">{group.label}</span>{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </Button>
-            {expanded && <div className="space-y-1 pb-1">{items.map(item => <NavigationItemRow key={item.id} item={item} active={active(item.path)} favorite={favoriteIds.includes(item.id)} onToggleFavorite={toggleFavorite} />)}</div>}
+            {expanded && <div className="ml-3 space-y-1 border-l border-sidebar-border/50 pb-1 pl-2">{items.map(item => <NavigationItemRow key={item.id} item={item} active={active(item.path)} favorite={favoriteIds.includes(item.id)} onToggleFavorite={toggleFavorite} />)}</div>}
           </section>;
         })}
       </nav>

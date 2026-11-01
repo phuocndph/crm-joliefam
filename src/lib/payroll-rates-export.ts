@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import {parseExactProductPrice,productRateUnitLabel,isProductRateISODate,literalProductRateText} from './product-rate-display';
 
 export type PayrollRateExportRow = {
   productCode: string;
@@ -15,15 +16,6 @@ const statusLabels: Record<string, string> = {
   APPROVED: "Đã duyệt", DRAFT: "Nháp", RETIRED: "Đã kết thúc", SUPERSEDED: "Đã thay thế",
 };
 
-function excelDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error(`Ngày hiệu lực ${value} không đúng định dạng.`);
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    throw new Error(`Ngày hiệu lực ${value} không hợp lệ.`);
-  }
-  return date;
-}
-
 /** An informational export of the displayed rows, preserving their order. */
 export function buildPayrollRatesWorkbook(rows: readonly PayrollRateExportRow[]) {
   if (!rows.length) throw new Error("Không có đơn giá để xuất. Hãy kiểm tra bộ lọc.");
@@ -32,7 +24,7 @@ export function buildPayrollRatesWorkbook(rows: readonly PayrollRateExportRow[])
   const sheet = workbook.addWorksheet("Bảng giá công may");
   sheet.columns = [
     { header: "STT", key: "order", width: 8 },
-    { header: "Mã sản phẩm", key: "code", width: 22 },
+    { header: "Mã công Excel", key: "code", width: 22 },
     { header: "Tên công việc / sản phẩm", key: "name", width: 44 },
     { header: "Đơn giá (đồng)", key: "rate", width: 20 },
     { header: "Đơn vị", key: "unit", width: 16 },
@@ -43,31 +35,36 @@ export function buildPayrollRatesWorkbook(rows: readonly PayrollRateExportRow[])
   ];
   sheet.getColumn("code").numFmt = "@";
   sheet.getColumn("rate").numFmt = "#,##0.##";
-  sheet.getColumn("from").numFmt = "dd/mm/yyyy";
-  sheet.getColumn("to").numFmt = "dd/mm/yyyy";
+  sheet.getColumn("from").numFmt = "@";
+  sheet.getColumn("to").numFmt = "@";
+  sheet.getCell('D1').note='Giá có phần lẻ hoặc vượt giới hạn Excel được lưu dạng văn bản để giữ chính xác.';
   rows.forEach((item, index) => {
-    const amount = Number(item.rate);
-    if (String(item.rate).trim() === "" || !Number.isFinite(amount) || amount < 0) {
-      throw new Error(`Đơn giá của mã ${item.productCode} không hợp lệ; chưa thể xuất Excel.`);
-    }
-    sheet.addRow({
+    const context=`Dòng ${index+1} (${item.productCode})`;
+    // Numeric legacy Supabase values retain their already available precision.
+    const price=parseExactProductPrice(typeof item.rate==='number'?String(item.rate):item.rate);
+    if(!price)throw new Error(`${context}: đơn giá không hợp lệ; chưa thể xuất Excel.`);
+    if(!isProductRateISODate(item.effectiveFrom)||item.effectiveTo!==null&&(!isProductRateISODate(item.effectiveTo)||item.effectiveTo<item.effectiveFrom))throw new Error(`${context}: ngày hiệu lực không hợp lệ.`);
+    const unit=productRateUnitLabel(item.unit);if(unit==='Đơn vị không hợp lệ')throw new Error(`${context}: đơn vị không hợp lệ.`);
+    const numeric=price.fraction==='00'&&price.whole.length<=15;
+    const row=sheet.addRow({
       order: index + 1,
-      code: String(item.productCode),
-      name: String(item.productName),
-      rate: amount,
-      unit: item.unit === "SET" ? "Bộ" : "Sản phẩm",
-      from: excelDate(item.effectiveFrom),
-      to: item.effectiveTo ? excelDate(item.effectiveTo) : "Không giới hạn",
-      source: item.source || "Chưa ghi nguồn",
-      status: statusLabels[item.status] ?? "Chưa xác định",
+      code: literalProductRateText(item.productCode,context+' mã công'),
+      name: literalProductRateText(item.productName,context+' tên'),
+      rate: numeric?Number(price.whole):price.canonical,
+      unit,
+      from: item.effectiveFrom,
+      to: item.effectiveTo??"Không giới hạn",
+      source: literalProductRateText(item.source??"Chưa ghi nguồn",context+' nguồn'),
+      status: literalProductRateText(statusLabels[item.status]??item.status,context+' trạng thái'),
     });
+    row.getCell('rate').numFmt=numeric?'#,##0':'@';
   });
   sheet.views = [{ state: "frozen", xSplit: 2, ySplit: 1 }];
   sheet.autoFilter = { from: "A1", to: `I${sheet.rowCount}` };
   sheet.getRow(1).height = 32;
   sheet.getRow(1).eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
+    cell.font = { bold: true, color: { argb: "FF202020" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F1F1" } };
     cell.alignment = { vertical: "middle", wrapText: true };
   });
   sheet.eachRow((row, rowNumber) => {
@@ -76,7 +73,6 @@ export function buildPayrollRatesWorkbook(rows: readonly PayrollRateExportRow[])
     row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
       cell.alignment = { vertical: "middle", horizontal: columnNumber === 4 ? "right" : "left", wrapText: true };
       cell.border = { bottom: { style: "hair", color: { argb: "FFD8E1EA" } } };
-      if (rowNumber % 2 === 0) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F6FA" } };
     });
   });
   return workbook;

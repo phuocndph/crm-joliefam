@@ -1,5 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
-import { canonicalQuote, quoteObject } from './quote-calculation.js';
+import { assertSavedQuoteFinancials, calculateQuote, canonicalQuote, quoteObject } from './quote-calculation.js';
 type Database = Pool | PoolClient;
 export function stableQuoteFingerprint(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableQuoteFingerprint).join(',')}]`;
@@ -30,11 +30,11 @@ export const publicQuoteData = (value: unknown) => {
 };
 export function approvalFinancialSnapshot(quote: Record<string, unknown>) {
   try {
-    const result = canonicalQuote(quote);
-    for (const key of ['subtotal', 'vat_rate', 'vat_amount', 'total_amount'] as const)
-      if (Number(quote[key]) !== result[key]) throw new Error('Tổng tiền hoặc VAT không khớp dòng sản phẩm.');
-    if (quote.include_vat !== result.include_vat) throw new Error('Tùy chọn VAT không khớp.');
-    return result;
+    const data = quoteObject(quote.quote_data);
+    const calculated = calculateQuote({ items: quote.items, includeVAT: quote.include_vat ?? data.includeVAT,
+      vatRate: quote.vat_rate ?? data.vatRate, payment1: data.payment1, payment2: data.payment2 });
+    assertSavedQuoteFinancials(quote, calculated, data);
+    return canonicalQuote(quote);
   } catch (error) {
     throw Object.assign(new Error(`Báo giá cũ chưa hợp lệ: ${(error as Error).message} Hãy sửa bản nháp hoặc nhân bản để kiểm tra lại trước khi duyệt.`), { status: 409 });
   }

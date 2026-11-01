@@ -1,3 +1,4 @@
+import { resolveQuoteDates } from '@/lib/quote-dates';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
@@ -92,24 +93,7 @@ export const useQuotes = (opts?: { managerId?: string | null }) => {
           customerPhone: customer?.phone || extractFromNotes(/Điện thoại:\s*([^\n\r]+)/),
           customerAddress: customer?.address || extractFromNotes(/Địa chỉ:\s*([^\n\r]+)/),
           customerCompany: customer?.company || '',
-          quoteDate: quote.created_at,
-          expiryDate: (() => {
-            const raw = extractFromNotes(/Ngày hết hạn:\s*([^\n\r]+)/);
-            if (!raw) return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-            // Support dd/MM/yyyy
-            const dmy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-            if (dmy) {
-              const d = new Date(parseInt(dmy[3]), parseInt(dmy[2]) - 1, parseInt(dmy[1]), 12, 0, 0);
-              return !isNaN(d.getTime()) ? d.toISOString() : raw;
-            }
-            // Support yyyy-MM-dd (legacy)
-            const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-            if (iso) {
-              const d = new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]), 12, 0, 0);
-              return !isNaN(d.getTime()) ? d.toISOString() : raw;
-            }
-            return raw;
-          })(),
+          ...resolveQuoteDates(quote),
           responsible: assignee?.name || 'Chưa phân công',
           totalAmount: quote.total_amount || 0
         };

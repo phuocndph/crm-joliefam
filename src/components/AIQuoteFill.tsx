@@ -325,23 +325,23 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
   };
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full sm:w-auto">
       <CollapsibleTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50">
-          <Sparkles className="h-4 w-4" />
-          AI tự chọn sản phẩm
+        <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-medium">
+          <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+          AI chọn nhanh
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-3">
-        <Card className="border-purple-200 bg-purple-50/50">
-          <CardContent className="pt-4 space-y-3">
+      <CollapsibleContent className="mt-2.5">
+        <Card className="border bg-muted/20 shadow-none">
+          <CardContent className="p-3.5 space-y-3">
             <div className="relative">
               <Textarea
                 placeholder="Mô tả yêu cầu khách hàng hoặc dán ảnh (Ctrl+V)... VD: Khách cần 2 bộ drap giường 1m8 cao 12cm, 3 gối ôm"
                 value={request}
                 onChange={(e) => setRequest(e.target.value)}
                 onPaste={handlePaste}
-                className="bg-white min-h-[80px]"
+                className="bg-background min-h-[72px] text-sm"
                 disabled={isLoading}
               />
             </div>
@@ -350,11 +350,11 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
             {imagePreview && (
               <div className="flex items-start gap-2">
                 <div className="relative group">
-                  <img src={imagePreview} alt="Xem trước" className="w-24 h-24 object-cover rounded-lg border-2 border-purple-300" />
+                  <img src={imagePreview} alt="Xem trước" className="w-20 h-20 object-cover rounded-md border" />
                   <button
                     type="button"
                     onClick={removeImage}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-80 hover:opacity-100 transition-opacity"
+                    className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-90 hover:opacity-100 transition-opacity"
                     disabled={isLoading}
                   >
                     <X className="h-3.5 w-3.5" />
@@ -366,16 +366,16 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
               </div>
             )}
 
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5 flex-wrap">
               {imageFile ? (
-                <Button type="button" onClick={handleAnalyzeImage} disabled={isAnalyzingImage} className="bg-orange-600 hover:bg-orange-700 gap-2">
-                  {isAnalyzingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                <Button type="button" size="sm" onClick={handleAnalyzeImage} disabled={isAnalyzingImage} className="h-8 text-xs gap-1.5">
+                  {isAnalyzingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
                   {isAnalyzingImage ? "Đang phân tích ảnh..." : "Phân tích ảnh"}
                 </Button>
               ) : (
-                <Button type="button" onClick={handleAIFill} disabled={isLoading || !request.trim()} className="bg-purple-600 hover:bg-purple-700 gap-2">
-                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  {isLoading ? "Đang phân tích..." : "AI tự chọn sản phẩm"}
+                <Button type="button" size="sm" onClick={handleAIFill} disabled={isLoading || !request.trim()} className="h-8 text-xs gap-1.5">
+                  {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  {isLoading ? "Đang phân tích..." : "Phân tích & gợi ý SP"}
                 </Button>
               )}
 
@@ -393,87 +393,87 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
                 size="sm"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isLoading}
-                className="gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50"
+                className="h-8 text-xs gap-1.5"
               >
-                <Camera className="h-4 w-4" />
-                Gửi ảnh
+                <Camera className="h-3.5 w-3.5" />
+                Tải ảnh
               </Button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 ml-auto">
                 <Switch
                   id="include-images"
                   checked={includeImages}
                   onCheckedChange={setIncludeImages}
                   disabled={isLoading}
                 />
-                <Label htmlFor="include-images" className="text-sm text-muted-foreground flex items-center gap-1 cursor-pointer">
+                <Label htmlFor="include-images" className="text-xs text-muted-foreground flex items-center gap-1 cursor-pointer">
                   {includeImages ? <ImageIcon className="h-3.5 w-3.5" /> : <ImageOff className="h-3.5 w-3.5" />}
-                  {includeImages ? "Có hình ảnh" : "Không hình ảnh"}
+                  {includeImages ? "Kèm ảnh SP" : "Không kèm ảnh"}
                 </Label>
               </div>
             </div>
 
             {previewItems && previewItems.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-purple-800">Kết quả AI ({previewItems.length} sản phẩm):</p>
-                <div className="rounded-md border border-purple-200 bg-white overflow-auto">
+              <div className="space-y-2.5 pt-1">
+                <p className="text-xs font-semibold text-foreground">Kết quả gợi ý ({previewItems.length} sản phẩm):</p>
+                <div className="rounded-md border bg-background overflow-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[40px]">#</TableHead>
-                        {includeImages && <TableHead className="w-[60px]">Ảnh</TableHead>}
-                        <TableHead>Tên sản phẩm</TableHead>
-                        <TableHead>Quy cách</TableHead>
-                        <TableHead className="text-right">SL</TableHead>
-                        <TableHead className="text-right">Đơn giá</TableHead>
-                        <TableHead className="text-right">Thành tiền</TableHead>
-                         <TableHead>Ghi chú</TableHead>
-                         <TableHead className="w-[80px]">Trạng thái</TableHead>
-                       </TableRow>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="w-[40px] text-xs">#</TableHead>
+                        {includeImages && <TableHead className="w-[56px] text-xs">Ảnh</TableHead>}
+                        <TableHead className="text-xs">Tên sản phẩm</TableHead>
+                        <TableHead className="text-xs">Quy cách</TableHead>
+                        <TableHead className="text-right text-xs">SL</TableHead>
+                        <TableHead className="text-right text-xs">Đơn giá</TableHead>
+                        <TableHead className="text-right text-xs">Thành tiền</TableHead>
+                        <TableHead className="text-xs">Ghi chú</TableHead>
+                        <TableHead className="w-[96px] text-xs">Độ khớp</TableHead>
+                      </TableRow>
                     </TableHeader>
                     <TableBody>
                       {previewItems.map((item, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>{idx + 1}</TableCell>
+                        <TableRow key={idx} className="text-xs">
+                          <TableCell className="py-2">{idx + 1}</TableCell>
                           {includeImages && (
-                            <TableCell>
+                            <TableCell className="py-2">
                               {item.previewImageUrl ? (
-                                <img src={item.previewImageUrl} alt="" className="w-10 h-10 object-cover rounded border" />
+                                <img src={item.previewImageUrl} alt="" className="w-9 h-9 object-cover rounded border" />
                               ) : (
-                                <div className="w-10 h-10 bg-muted rounded border flex items-center justify-center">
-                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                <div className="w-9 h-9 bg-muted rounded border flex items-center justify-center">
+                                  <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
                                 </div>
                               )}
                             </TableCell>
                           )}
-                          <TableCell className="font-medium">{item.customName}</TableCell>
-                          <TableCell>{item.specifications}</TableCell>
-                          <TableCell className="text-right">{item.quantity}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(item.price)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(item.price * item.quantity)}</TableCell>
-                          <TableCell>
+                          <TableCell className="py-2 font-medium">{item.customName}</TableCell>
+                          <TableCell className="py-2">{item.specifications}</TableCell>
+                          <TableCell className="py-2 text-right font-mono tabular-nums">{item.quantity}</TableCell>
+                          <TableCell className="py-2 text-right font-mono tabular-nums">{formatCurrency(item.price)}</TableCell>
+                          <TableCell className="py-2 text-right font-mono tabular-nums font-medium">{formatCurrency(item.price * item.quantity)}</TableCell>
+                          <TableCell className="py-2">
                             {item.note && (
-                              <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 bg-amber-50 whitespace-normal">
-                                <AlertTriangle className="h-3 w-3 mr-1 inline" />
+                              <Badge variant="outline" className="text-[11px] font-normal whitespace-normal">
+                                <AlertTriangle className="h-3 w-3 mr-1 inline text-muted-foreground" />
                                 {item.note}
                               </Badge>
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-2">
                             {item.matchQuality === 'exact' && (
-                              <Badge className="text-xs bg-green-100 text-green-700 border-green-300">✓ Chính xác</Badge>
+                              <Badge variant="secondary" className="text-[11px] font-normal">Chính xác</Badge>
                             )}
                             {item.matchQuality === 'fallback_size' && (
-                              <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-300">↕ Size gần nhất</Badge>
+                              <Badge variant="outline" className="text-[11px] font-normal">Size gần nhất</Badge>
                             )}
                             {item.matchQuality === 'fallback_product' && (
-                              <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-300">⚠ SP gần giống</Badge>
+                              <Badge variant="outline" className="text-[11px] font-normal">SP tương đương</Badge>
                             )}
                             {item.matchQuality === 'uncertain' && (
-                              <Badge className="text-xs bg-red-100 text-red-700 border-red-300">❌ Không chắc</Badge>
+                              <Badge variant="outline" className="text-[11px] font-normal text-destructive border-destructive/40">Cần kiểm tra</Badge>
                             )}
                             {!item.matchQuality && (
-                              <Badge className="text-xs bg-gray-100 text-gray-600 border-gray-300">— N/A</Badge>
+                              <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground">—</Badge>
                             )}
                           </TableCell>
                         </TableRow>
@@ -481,12 +481,12 @@ export function AIQuoteFill({ products, onProductsSelected, priceListId }: AIQuo
                     </TableBody>
                   </Table>
                 </div>
-                <div className="flex gap-2">
-                  <Button type="button" onClick={handleApply} className="bg-green-600 hover:bg-green-700 gap-2">
-                    <Check className="h-4 w-4" /> Áp dụng
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" size="sm" variant="outline" onClick={handleCancel} className="h-8 text-xs gap-1.5">
+                    <X className="h-3.5 w-3.5" /> Hủy
                   </Button>
-                  <Button type="button" variant="outline" onClick={handleCancel} className="gap-2">
-                    <X className="h-4 w-4" /> Hủy
+                  <Button type="button" size="sm" onClick={handleApply} className="h-8 text-xs gap-1.5">
+                    <Check className="h-3.5 w-3.5" /> Đưa vào báo giá
                   </Button>
                 </div>
               </div>

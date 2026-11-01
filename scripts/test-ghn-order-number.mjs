@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {extractGhnOrderNumber} from '../server/ghn-order-number.ts';
+import {ghnInternalOrderCodeSql} from '../server/ghn-tracking.ts';
+const cases=[['thủy hạnh_anh hưng-5187hoan','5187'],['Tên-5187HOAN','5187'],['Tên-5187 p','5187'],['Tên-5187H','5187'],['Tên-0901235187hoan',null],['Tên-123456hoan',null],['Tên-5187unknown',null],['Tên-5187',null],['Tên_1234 ghi chú-5187hoan','1234'],['thoa korea_nguyễn thường 5247hoan','5247'],['Tên 5247hoan','5247'],['Tên 5247 HOAN','5247'],['Tên 5247p','5247'],['Tên 5247H','5247'],['Tên 0901235247hoan',null],['Tên 123456hoan',null],['Tên 5247xyz',null],['Tên 5247',null],['Tên abc5247hoan',null],['Chị Hằng_5205hoan','5205'],['Chị Hằng_5205 HOAN','5205'],['Chị Hằng_5205HoAn  ','5205'],['A_123p','123'],['A_12345H','12345'],['A_5205','5205'],['A_5205 ghi chú','5205'],['A_123456hoan',null],['A_5205abc',null],['A_5205hoann',null],['A_12hoan',null],['A_5205hoanx',null]];
+for(const [name,expected] of cases)assert.equal(extractGhnOrderNumber(name),expected,name);
+const values=cases.map(([name])=>`('${name.replaceAll("'","''")}')`).join(',');
+const sql=`select coalesce(${ghnInternalOrderCodeSql},'<null>') from (values ${values}) input(customer_name) cross join lateral (select input.customer_name, '{}'::jsonb raw_data) g`;
+const result=spawnSync('docker',['exec','crm-joliefam-local-postgres','psql','-U','crm_local','-d','postgres','-At','-v','ON_ERROR_STOP=1','-c',sql],{encoding:'utf8',windowsHide:true});
+assert.equal(result.status,0,result.stderr);assert.deepEqual(result.stdout.trim().split(/\r?\n/),cases.map(([,expected])=>expected??'<null>'));
+console.log('PASS recipient order-code JS/Postgres SQL parity: hoan case/whitespace, legacy suffix/fallback, rejects6digits/unknown suffix. Readonly SELECT only.');

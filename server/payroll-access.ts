@@ -31,6 +31,20 @@ export async function authorizePayrollRequest(req: Request, res: Response, db: P
   const can = (permission: string) => payrollCapability(role, permission, grants);
   const elevated = ['admin', 'manager', 'accountant'].includes(role);
   const manager = ['admin', 'manager'].includes(role);
+  if (key === 'monthly') {
+    if (!elevated || !can('payroll_view')) throw forbidden();
+    if (path.endsWith('/adjustments') && !can('payroll_worker_manage')) throw forbidden();
+    if (path.endsWith('/payments') && !can('payroll_audit')) throw forbidden();
+    if (path.endsWith('/export') && req.query.format === 'bank' && !can('payroll_bank_manage')) throw forbidden();
+    return;
+  }
+  if (key === 'labor-mappings' || key === 'labor-code-requirements') {
+    const preview = read || path === '/api/payroll/labor-mappings/batch-preview';
+    if (!manager || !(preview ? can('payroll_rate_view') || can('payroll_rate_manage') : can('payroll_rate_manage'))) throw forbidden();
+    // Product/template ownership, immutable decision history and replay guards
+    // are enforced by the canonical labor-mapping handlers, not worker scope.
+    return;
+  }
   const config = resources[key];
   if (path === '/api/payroll/bank-accounts/proposal' && !can('payroll_bank_manage')) throw forbidden();
   if (['rule-versions','calendar-versions'].includes(key)) {

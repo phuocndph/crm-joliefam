@@ -1,3 +1,6 @@
+import { extractGhnExportCodes, parseGhnCsv } from '@/lib/ghn-history-export';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
+import { ghnStatusLabel } from '@/lib/ghn-status';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuthReady } from '@/hooks/useAuthReady';
-import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil, Search, Printer } from 'lucide-react';
+import { Loader2, ExternalLink, Trash2, Plus, RefreshCw, Download, Pencil, Search, Printer, CircleCheck, CircleAlert, CircleHelp, RotateCcw } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { User } from '@supabase/supabase-js';
 import { GHNTrackingFilters, FilterState } from '@/components/GHNTrackingFilters';
@@ -105,6 +108,10 @@ export default function GHNTrackingPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<GHNTrackingData | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<GHNTrackingData | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deleteBusy = useRef(false);
+  const deleteCancel = useRef<HTMLButtonElement>(null);
   const [printing, setPrinting] = useState(false);
   const [printDialogIds, setPrintDialogIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -113,12 +120,28 @@ export default function GHNTrackingPage() {
   const [connection, setConnection] = useState<Awaited<ReturnType<typeof localApi.checkGhnConnection>> | null>(null);
   const [checkingConnection, setCheckingConnection] = useState(false);
   const [connectionError, setConnectionError] = useState('');
+  const [importCursor,setImportCursor] = useState<string | undefined>();
+  const [importing,setImporting] = useState(false);
+  const [importError,setImportError] = useState('');
+  const [exportCodes,setExportCodes] = useState<string[]>([]);
+  const [exportDone,setExportDone] = useState(0);
+  const [exportAdded,setExportAdded] = useState(0);
+  const exportFileInput = useRef<HTMLInputElement>(null);
+  const [stoppingImport,setStoppingImport] = useState(false);
+  const [importProgress,setImportProgress] = useState<Awaited<ReturnType<typeof localApi.importGhnPage>> | null>(null);
+  const importBusy = useRef(false), importStop = useRef(false), importGeneration = useRef(0);
+  useEffect(() => () => { importStop.current = true; importGeneration.current++; }, []);
   const [refreshCursor, setRefreshCursor] = useState<string | null>(null);
   
   const { user: authUser, isReady } = useAuthReady();
   const [user, setUser] = useState<User | null>(null);
   useEffect(() => { setUser(authUser); }, [authUser]);
   const userId = user?.id || '';
+  useEffect(() => {
+    importStop.current = true; importGeneration.current++;
+    setImportProgress(null); setExportCodes([]); setExportDone(0); setExportAdded(0); setImporting(false); setStoppingImport(false); setLoading(false);
+    try { setImportCursor(userId ? sessionStorage.getItem(`ghn-history-import:${userId}`) || undefined : undefined); } catch { setImportCursor(undefined); }
+  }, [userId]);
   const { role, roleReady } = useUserRole(user);
   const authReady = isReady && roleReady;
   const isMobile = useIsMobile();
@@ -490,9 +513,71 @@ export default function GHNTrackingPage() {
     }
   };
 
+  const chooseGhnExport = async (file?: File) => {
+    if (!file || loading) return;
+    const generation = importGeneration.current;
+    try {
+      if (file.size > 20 * 1024 * 1024) throw new Error('File tối đa 20 MB.');
+      let rows: unknown[][];
+      if (/\.csv$/i.test(file.name)) rows = parseGhnCsv(await file.text());
+      else if (/\.xlsx$/i.test(file.name)) {
+        const ExcelJS = await import('exceljs'); const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(await file.arrayBuffer());
+        const sheet = workbook.worksheets[0]; if (!sheet) throw new Error('File Excel không có trang dữ liệu.');
+        if (sheet.rowCount > 100000 || sheet.columnCount > 500) throw new Error('File vượt 100.000 dòng hoặc 500 cột. Hãy chia nhỏ file xuất GHN.');
+        rows = []; sheet.eachRow({ includeEmpty: true }, row => { rows.push(Array.from({ length: sheet.columnCount }, (_, index) => row.getCell(index + 1).text)); });
+      } else throw new Error('Chọn file .xlsx hoặc .csv xuất từ GHN. Với .xls, hãy lưu lại thành .xlsx.');
+      const codes = extractGhnExportCodes(rows);
+      if (generation !== importGeneration.current) return;
+      setExportCodes(codes); setExportDone(0); setExportAdded(0); setImportError('');
+    } catch (error) { if (generation === importGeneration.current) setImportError(error instanceof Error ? error.message : 'Không đọc được file GHN.'); }
+  };
+
+  const importGhnExport = async () => {
+    if (!user || loading || importBusy.current || !exportCodes.length) return;
+    const generation = importGeneration.current;
+    importBusy.current = true; importStop.current = false; setLoading(true); setImporting(true); setStoppingImport(false); setImportError('');
+    let offset = exportDone;
+    try {
+      while (offset < exportCodes.length && !importStop.current) {
+        const result = await localApi.importGhnCodes(exportCodes.slice(offset, offset + 10));
+        if (generation !== importGeneration.current) break;
+        offset += result.processed; setExportDone(offset); setExportAdded(value => value + result.added);
+        if (result.failed) { setImportError(`${result.errors[0]?.orderCode}: ${result.errors[0]?.message}`); break; }
+        if (!result.processed) throw new Error('Không có tiến triển. Đã dừng nhập file.');
+      }
+      if (generation === importGeneration.current && offset === exportCodes.length) toast.success('Đã xác minh hết mã trong file GHN.');
+    } catch (error) { if (generation === importGeneration.current) setImportError(error instanceof Error ? error.message : 'Nhập file chưa hoàn tất.'); }
+    finally { importBusy.current = false; if (generation === importGeneration.current) { setLoading(false); setImporting(false); setStoppingImport(false); await loadTrackingData(); } }
+  };
+
   const importAllOrdersFromGHN = async () => {
     if (!user) return;
-    if (isLocalBackend()) { toast.info('Nhập dữ liệu GHN cần kết nối dịch vụ bên ngoài; hệ thống cục bộ không tự gọi GHN.'); return; }
+    if (isLocalBackend()) {
+      if (loading || importBusy.current) return;
+      importBusy.current = true; importStop.current = false;
+      setLoading(true); setImporting(true); setStoppingImport(false); setImportError('');
+      const generation = importGeneration.current;
+      let cursor = importCursor, latest = importProgress;
+      const remember = (value?: string) => {
+        setImportCursor(value);
+        try { if (value) sessionStorage.setItem(`ghn-history-import:${user.id}`, value); else sessionStorage.removeItem(`ghn-history-import:${user.id}`); } catch { /* In-memory resume remains available. */ }
+      };
+      try {
+        while (!importStop.current) {
+          const result = await localApi.importGhnPage(cursor);
+          if (generation !== importGeneration.current) break;
+          latest = result; setImportProgress(result);
+          if (result.has_more && (!result.next_cursor || result.next_cursor === cursor)) throw new Error('Đồng bộ chưa hoàn tất: máy chủ không trả trang tiếp theo.');
+          cursor = result.next_cursor || undefined; remember(cursor);
+          if (result.halted || result.failed) { setImportError(result.errors[0]?.message || 'Đồng bộ chưa hoàn tất.'); toast.error(`Đã dừng tại ${result.errors[0]?.orderCode || 'trang lỗi'}. ${result.errors[0]?.message || 'Bấm tiếp tục để thử lại.'}`); break; }
+          if (!result.has_more) { toast.success('Đã duyệt hết danh sách GHN trả về; dữ liệu có sẵn được giữ nguyên.'); break; }
+        }
+        if (generation === importGeneration.current && importStop.current && latest?.has_more) toast.info('Đã dừng. Có thể tiếp tục đồng bộ sau.');
+      } catch (error) { if (generation === importGeneration.current) { const message = `Đồng bộ chưa hoàn tất. ${error instanceof Error ? error.message : 'Không lấy được dữ liệu GHN.'}`; setImportError(message); toast.error(message); } }
+      finally { importBusy.current = false; if (generation === importGeneration.current) { setLoading(false); setImporting(false); setStoppingImport(false); await loadTrackingData(); } }
+      return;
+    }
 
     setLoading(true);
 
@@ -570,28 +655,26 @@ export default function GHNTrackingPage() {
     }
   };
 
-  const removeTracking = async (id: string) => {
+  const confirmRemoveTracking = async () => {
+    if (!deleteTarget || deleteBusy.current) return;
+    const target = deleteTarget;
+    deleteBusy.current = true;
+    setDeleting(true);
     try {
-      if (isLocalBackend()) {
-        await localApi.deleteGhnTracking(id);
-        toast.success('Đã xóa mã theo dõi cục bộ');
-        await loadTrackingData();
-        return;
+      if (isLocalBackend()) await localApi.deleteGhnTracking(target.id);
+      else {
+        const { error } = await supabase.from('ghn_tracking').delete().eq('id', target.id);
+        if (error) throw error;
       }
-      const { error } = await supabase
-        .from('ghn_tracking')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        throw error;
-      }
-
-      toast.success('Đã xóa tracking');
+      setSelectedOrders(previous => { const next = new Set(previous); next.delete(target.ghn_order_code); return next; });
+      setDeleteTarget(null);
+      toast.success('\u0110\u00e3 x\u00f3a m\u00e3 theo d\u00f5i');
       await loadTrackingData();
-    } catch (error: any) {
-      console.error('Error removing tracking:', error);
-      toast.error('Lỗi xóa tracking');
+    } catch {
+      toast.error('Kh\u00f4ng x\u00f3a \u0111\u01b0\u1ee3c m\u00e3 theo d\u00f5i. Vui l\u00f2ng th\u1eed l\u1ea1i.');
+    } finally {
+      deleteBusy.current = false;
+      setDeleting(false);
     }
   };
 
@@ -661,24 +744,26 @@ export default function GHNTrackingPage() {
   const startIdx = totalTrackingCount === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const endIdx = Math.min(safePage * pageSize, totalTrackingCount);
 
+  const connectionStatus = checkingConnection ? 'Đang kiểm tra kết nối GHN' : connection?.connected ? 'GHN đã kết nối' : connection?.configured ? 'GHN kết nối chưa thành công' : connectionError ? 'Không kiểm tra được kết nối GHN' : connection ? 'GHN chưa cấu hình kết nối' : 'GHN chưa kiểm tra kết nối';
+  const connectionDescription = [connectionStatus, connectionError || connection?.message].filter(Boolean).join('. ');
+
   return (
     <div className="container mx-auto py-6 space-y-6 max-w-full">
       <Card className="w-full">
-        <CardHeader className="px-3 sm:px-6">
+        <CardHeader className="px-3 sm:px-6 flex flex-row items-center justify-between gap-2 space-y-0">
           <CardTitle>Theo dõi đơn hàng GHN</CardTitle>
+          {isLocalBackend() && <div className="flex shrink-0 items-center gap-1">
+            <span role="status" aria-live="polite" aria-label={connectionDescription} title={connectionDescription} className="inline-flex p-1">
+              {checkingConnection ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" /> : connection?.connected ? <CircleCheck aria-hidden="true" className="h-4 w-4 text-emerald-600" /> : connectionError || connection ? <CircleAlert aria-hidden="true" className="h-4 w-4 text-destructive" /> : <CircleHelp aria-hidden="true" className="h-4 w-4 text-muted-foreground" />}
+            </span>
+            <Button variant="ghost" size="icon" onClick={checkConnection} disabled={checkingConnection} className="h-8 w-8" aria-label={`Kiểm tra lại kết nối GHN. ${connectionDescription}`} title="Kiểm tra lại kết nối GHN">
+              <RefreshCw aria-hidden="true" className={`h-4 w-4 ${checkingConnection ? 'animate-spin' : ''}`} />
+            </Button>
+            {refreshCursor && <Button variant="ghost" size="icon" className="h-8 w-8" disabled={loading} onClick={() => setRefreshCursor(null)} aria-label="Bắt đầu lượt cập nhật mới" title="Bắt đầu lượt cập nhật mới"><RotateCcw aria-hidden="true" className="h-4 w-4" /></Button>}
+          </div>}
         </CardHeader>
         <CardContent className="px-2 sm:px-6">
-          {isLocalBackend() && <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between" role="status" aria-live="polite">
-            <div className="space-y-1 text-sm">
-              <p className="font-medium">GHN: {checkingConnection ? 'Đang kiểm tra kết nối…' : connection?.connected ? 'Đã kết nối' : connection?.configured ? 'Đã cấu hình, kết nối chưa thành công' : connectionError ? 'Không kiểm tra được kết nối' : connection ? 'Chưa cấu hình kết nối' : 'Chưa kiểm tra kết nối'}</p>
-              <p className="text-muted-foreground">{connectionError || connection?.message || 'Kiểm tra kết nối trước khi cập nhật vận đơn.'}</p>
-              <p className="text-muted-foreground">Cập nhật trạng thái vận đơn đã lưu, tối đa 50 mã mỗi lượt. Lượt tự động chỉ lấy dữ liệu cũ hơn 1 giờ.</p>
-            </div>
-            <Button variant="outline" onClick={checkConnection} disabled={checkingConnection} className="shrink-0">
-              <RefreshCw className={`mr-2 h-4 w-4 ${checkingConnection ? 'animate-spin' : ''}`} />Kiểm tra lại kết nối
-            </Button>
-            {refreshCursor && <Button variant="ghost" disabled={loading} onClick={() => setRefreshCursor(null)}>Bắt đầu lượt mới</Button>}
-          </div>}
+          {importError && <p role="alert" className="mb-3 text-sm text-destructive">{importError}</p>}
           <div className="space-y-4 mb-6">
             <div className="flex items-center gap-2">
               <Button
@@ -697,6 +782,19 @@ export default function GHNTrackingPage() {
               >
                 Nhiều đơn
               </Button>
+              {localBackend && <>
+                <input ref={exportFileInput} type="file" accept=".xlsx,.csv" className="hidden" onChange={event => { void chooseGhnExport(event.target.files?.[0]); event.target.value = ''; }} />
+                <Button variant="outline" onClick={() => exportFileInput.current?.click()} disabled={loading}>
+                  {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}Chọn file GHN
+                </Button>
+                {exportCodes.length > 0 && <><span className="text-xs text-muted-foreground" role="status">{exportDone}/{exportCodes.length} mã · {exportAdded} mới</span><Button variant="outline" disabled={loading || exportDone === exportCodes.length || !connection?.connected} onClick={importGhnExport}>{exportDone ? 'Tiếp tục nhập' : 'Nhập mã từ file'}</Button></>}
+                {importing && <Button variant="outline" size="sm" disabled={stoppingImport} onClick={() => { importStop.current = true; setStoppingImport(true); }}>{stoppingImport ? 'Đang dừng…' : 'Dừng'}</Button>}
+                {!importing && importCursor && <Button variant="ghost" size="icon" className="h-8 w-8" title="Bắt đầu lại đồng bộ từ GHN" aria-label="Bắt đầu lại đồng bộ từ GHN" disabled={loading} onClick={() => { setImportCursor(undefined); setImportProgress(null); try { sessionStorage.removeItem(`ghn-history-import:${userId}`); } catch { /* Optional resume storage. */ } }}><RotateCcw className="h-4 w-4" /></Button>}
+                {importProgress && <span className="text-xs text-muted-foreground" role="status" title={importProgress.totals.map(row => `Shop ${row.shop_id}: duyệt ${row.scanned}, mới ${row.added}, bỏ qua ${row.skipped}, lỗi ${row.failed}${row.complete ? ' (đã duyệt hết)' : ''}`).join('\n')}>
+                  {importProgress.totals.reduce((sum,row)=>sum+row.scanned,0)} đã duyệt · {importProgress.totals.reduce((sum,row)=>sum+row.added,0)} mới · {importProgress.totals.reduce((sum,row)=>sum+row.skipped,0)} bỏ qua{importProgress.totals.some(row=>row.failed) ? ' · có lỗi' : ''}{importProgress.complete ? ' · xong lượt' : ''}
+                </span>}
+              </>}
+
             </div>
 
             {!isMultipleMode ? (
@@ -862,11 +960,11 @@ export default function GHNTrackingPage() {
                       </td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-medium text-center min-w-[80px]">{(safePage - 1) * pageSize + index + 1}</td>
                       <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[150px]">{item.ghn_order_code}</td>
-                      <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[120px]">{item.internal_order_code || '-'}</td>
+                      <td className="border border-gray-300 px-4 py-3 text-sm font-mono min-w-[120px]">{item.internal_order_code || 'Kh\u00f4ng c\u00f3 m\u00e3 trong t\u00ean ng\u01b0\u1eddi nh\u1eadn'}</td>
                        <td className="border border-gray-300 px-4 py-3 text-sm min-w-[180px]">
                          <div className="flex items-center gap-2">
                            <Badge className={statusColors[item.ghn_status || ''] || 'bg-gray-100 text-gray-800'}>
-                             {item.ghn_status_text || item.ghn_status || '-'}
+                             {ghnStatusLabel(item.ghn_status)}
                            </Badge>
                            <Button
                              onClick={() => updateSingleTracking(item.ghn_order_code)}
@@ -915,7 +1013,7 @@ export default function GHNTrackingPage() {
                           </Button>
                           {!FINAL_STATUSES.includes(item.ghn_status || '') && (
                             <Button
-                              onClick={() => isLocalBackend() ? toast.info('Chỉnh sửa đơn GHN cần kết nối dịch vụ GHN; hệ thống cục bộ chỉ giữ bản chụp dữ liệu.') : (setEditingRecord(item), setEditDialogOpen(true))}
+                              onClick={() => { setEditingRecord(item); setEditDialogOpen(true); }}
                               variant="ghost"
                               size="sm"
                               className="text-blue-600 hover:text-blue-800"
@@ -925,7 +1023,9 @@ export default function GHNTrackingPage() {
                             </Button>
                           )}
                           <Button
-                            onClick={() => removeTracking(item.id)}
+                            onClick={() => { if (!deleteBusy.current) setDeleteTarget(item); }}
+                            disabled={deleting}
+                            aria-label={`X\u00f3a theo d\u00f5i ${item.ghn_order_code}`}
                             variant="ghost"
                             size="sm"
                             className="text-red-600 hover:text-red-800"
@@ -966,14 +1066,14 @@ export default function GHNTrackingPage() {
                             <span className="text-xs text-muted-foreground">#{(safePage - 1) * pageSize + index + 1}</span>
                             <span className="font-mono text-sm font-semibold truncate">{item.ghn_order_code}</span>
                           </div>
-                          {item.internal_order_code && (
+                          {(
                             <div className="text-xs text-muted-foreground font-mono mt-0.5">
-                              {item.internal_order_code}
+                              {item.internal_order_code || 'Kh\u00f4ng c\u00f3 m\u00e3 trong t\u00ean ng\u01b0\u1eddi nh\u1eadn'}
                             </div>
                           )}
                         </div>
                         <Badge className={`${statusColors[item.ghn_status || ''] || 'bg-muted text-muted-foreground'} shrink-0`}>
-                          {item.ghn_status_text || item.ghn_status || '-'}
+                          {ghnStatusLabel(item.ghn_status)}
                         </Badge>
                       </div>
 
@@ -1053,7 +1153,7 @@ export default function GHNTrackingPage() {
                         </Button>
                         {!isFinal && (
                           <Button
-                            onClick={() => isLocalBackend() ? toast.info('Chỉnh sửa đơn GHN cần kết nối dịch vụ GHN; hệ thống cục bộ chỉ giữ bản chụp dữ liệu.') : (setEditingRecord(item), setEditDialogOpen(true))}
+                            onClick={() => { setEditingRecord(item); setEditDialogOpen(true); }}
                             variant="outline"
                             size="icon"
                             className="h-9 w-9 text-blue-600"
@@ -1063,7 +1163,9 @@ export default function GHNTrackingPage() {
                           </Button>
                         )}
                         <Button
-                          onClick={() => removeTracking(item.id)}
+                          onClick={() => { if (!deleteBusy.current) setDeleteTarget(item); }}
+                            disabled={deleting}
+                            aria-label={`X\u00f3a theo d\u00f5i ${item.ghn_order_code}`}
                           variant="outline"
                           size="icon"
                           className="h-9 w-9 text-destructive"
@@ -1104,6 +1206,23 @@ export default function GHNTrackingPage() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !deleteBusy.current) setDeleteTarget(null); }}>
+        <AlertDialogContent onOpenAutoFocus={(event) => { event.preventDefault(); deleteCancel.current?.focus(); }} onEscapeKeyDown={(event) => { if (deleteBusy.current) event.preventDefault(); }}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xóa 1 mã theo dõi?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Mã GHN: <strong className="font-mono text-foreground">{deleteTarget?.ghn_order_code}</strong>. Chỉ xóa khỏi danh sách theo dõi CRM, không hủy vận đơn tại GHN.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel ref={deleteCancel} disabled={deleting}>Hủy</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={deleting} onClick={(event) => { event.preventDefault(); void confirmRemoveTracking(); }}>
+              {deleting ? 'Đang xóa…' : 'Xóa theo dõi'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <EditGHNOrderDialog
         open={editDialogOpen}

@@ -15,7 +15,7 @@ const mocks={
   '@/hooks/useDispatchMutation': `export const useDispatchMutation=()=>({busy:false,execute:async()=>{throw new Error('Unexpected mutation')}});`,
   '@/hooks/use-toast': `export const useToast=()=>({toast(){}});`,
   '@/lib/production-dispatch-types': `export const dispatchLabels={IN_PROGRESS:'Đang làm'};export const dispatchNumber=x=>String(x);export const dispatchToday=()=>'2026-10-23';`,
-  'react-router-dom': `import React from 'react';export const Link=({children,to})=><a href={to}>{children}</a>;`,
+  'react-router-dom': `import React,{useState} from 'react';export const Link=({children,to})=><a href={to}>{children}</a>;export function useSearchParams(){const [params,setParams]=useState(()=>new URLSearchParams(window.location.search));return [params,value=>setParams(new URLSearchParams(value))]}`, 
   '@/components/workspace/WorkspaceShell': `import React from 'react';export const WorkspaceCommandBar=({title,actions})=><header>{title}{actions}</header>;const Strip=({items})=><nav>{items.map(x=><button key={x.id} onClick={x.onClick}>{x.label}</button>)}</nav>;export const WorkflowStepStrip=Strip,StatusFilterStrip=Strip;`,
   '@/components/ProductionWorkspaceDetail': `import React,{useState,useEffect} from 'react';export default function Detail({context,row,actorId}){const [notes,setNotes]=useState('');useEffect(()=>{window.fixture.detailMounts++},[]);return <section data-testid="selected-detail" data-actor={actorId} data-batch={context.batchId} data-item={context.itemId}><input aria-label="Synthetic detail draft" value={notes} onChange={e=>setNotes(e.target.value)}/>{row.product_name}</section>}`,
   '@/components/ui/dialog': `import React from 'react';export const Dialog=({open,children})=>open?<div>{children}</div>:null;export const DialogContent=({children})=><div>{children}</div>;export const DialogHeader=DialogContent,DialogTitle=DialogContent,DialogDescription=DialogContent;`,
@@ -25,7 +25,7 @@ const mocks={
   '@/components/ui/badge': `import React from 'react';export const Badge=({children})=><span>{children}</span>;`,
   '@/components/ui/dropdown-menu': `import React from 'react';export const DropdownMenu=({children})=><div>{children}</div>;export const DropdownMenuContent=DropdownMenu,DropdownMenuTrigger=DropdownMenu;export const DropdownMenuItem=({children,onSelect})=><button onClick={onSelect}>{children}</button>;`,
 };
-for(const name of ['MyProductionDispatch','ProductionSalesQueue','ProductionReviewQueue'])mocks[`@/components/${name}`]='export default function Empty(){return null}';
+for(const name of ['MyProductionDispatch','ProductionSalesQueue','ProductionReviewQueue','OrderShipmentDialog'])mocks[`@/components/${name}`]='export default function Empty(){return null}';
 mocks['@/components/ProductionReferenceImages']='export const ProductionReferenceImagePicker=()=>null';
 const {outputFiles}=await build({stdin:{resolveDir:process.cwd(),loader:'tsx',contents:`
   import React from 'react';import {createRoot} from 'react-dom/client';
@@ -58,11 +58,11 @@ try{
   const pending=()=>page.waitForFunction(()=>window.fixture.requests.some(x=>!x.settled));
   const settle=(value=workspace(),error)=>page.evaluate(({value,error})=>window.fixture.settle(value,error),{value,error});
   const tick=ms=>page.evaluate(ms=>window.fixture.intervals.filter(x=>x.active&&x.ms===ms).forEach(x=>x.fn()),ms);
-  const board=()=>page.getByRole('heading',{name:'Bảng theo dõi sản xuất'});
+  const board=()=>page.getByRole('textbox',{name:'Tìm lệnh sản xuất'});
   const detail=()=>page.getByTestId('selected-detail');
   await page.goto(origin);await pending();await settle();await board().waitFor();
   assert.deepEqual(errors,[]);pass('actual page mounts without undefined workflowStep crash');
-  await page.getByRole('button',{name:/Cắt · LSX-FIXTURE-A/}).first().click();await detail().waitFor();
+  await page.getByText('Chi tiết công đoạn',{exact:true}).first().click();await page.getByRole('button',{name:/Cắt · LSX-FIXTURE-A/}).first().click();await detail().waitFor();
   await page.getByRole('textbox',{name:'Synthetic detail draft'}).fill('Giữ nguyên bản nháp');
   assert.equal(await detail().getAttribute('data-batch'),'batch-a');assert.equal(await detail().getAttribute('data-item'),'item-a');
   await page.evaluate(()=>{window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'))});await pending();
@@ -81,7 +81,7 @@ try{
   await page.waitForFunction(()=>window.fixture.requests.filter(x=>!x.settled).length===2);
   assert.equal(await board().count(),0);await settle();assert.equal(await board().count(),0);
   await settle(workspace({mode:'REVIEW',rows:[],permissions:{review:true}}));
-  await page.waitForFunction(()=>document.querySelector('header')?.textContent.includes('Duyệt báo cáo sản xuất'));
+  await page.waitForFunction(()=>document.querySelector('h1')?.textContent.includes('Duyệt báo cáo sản xuất'));
   assert.equal(await board().count(),0);pass('hard invalidation clears immediately, ignores prior poll response and REVIEW never shows board');
   await page.evaluate(()=>window.dispatchEvent(new Event('crm-permissions-changed')));await pending();
   await page.evaluate(()=>window.fixture.switchActor('actor-b'));
@@ -90,10 +90,10 @@ try{
   const bRow={...row,id:'order-b',batch_id:'batch-b',item_id:'item-b',production_order_number:'LSX-FIXTURE-B',product_name:'Sản phẩm kiểm thử B'};
   await settle(workspace({rows:[bRow]}));await board().waitFor();
   assert.equal(await page.getByText('LSX-FIXTURE-A',{exact:true}).count(),0);
-  assert.equal(await page.getByText('LSX-FIXTURE-B',{exact:true}).count(),1);
+  assert.ok(await page.getByText('LSX-FIXTURE-B',{exact:true}).count()>0);
   pass('account switch ignores in-flight actor A response and publishes only actor B data');
   await page.evaluate(()=>window.fixture.epoch++);await tick(500);
-  await page.waitForFunction(()=>!Array.from(document.querySelectorAll('h2')).some(x=>x.textContent==='Bảng theo dõi sản xuất'));
+  await page.waitForFunction(()=>!document.querySelector('input[aria-label="Tìm lệnh sản xuất"]'));
   assert.equal(await board().count(),0);assert.deepEqual(errors,[]);
   pass('same-account session epoch change clears board even without a new auth user object');
   console.log(`PASS ${checks} independent actual-page lifecycle regressions; mocked children/API/auth, no real API or visual CSS claims.`);

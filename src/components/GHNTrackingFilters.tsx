@@ -1,3 +1,4 @@
+import { ghnStatusOptions as statusOptions } from '@/lib/ghn-status';
 import React from 'react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -21,31 +22,7 @@ interface GHNTrackingFiltersProps {
   isLocal: boolean;
 }
 
-const statusOptions = [
-  { value: 'delivered', label: 'Đã giao hàng' },
-  { value: 'self_delivered', label: 'Tự giao thành công' },
-  { value: 'delivering', label: 'Đang giao hàng' },
-  { value: 'storing', label: 'Đang lưu kho' },
-  { value: 'transporting', label: 'Đang vận chuyển' },
-  { value: 'sorting', label: 'Đang phân loại' },
-  { value: 'picking', label: 'Đang lấy hàng' },
-  { value: 'ready_to_pick', label: 'Sẵn sàng lấy hàng' },
-  { value: 'picked', label: 'Đã lấy hàng' },
-  { value: 'returned', label: 'Đã hoàn hàng' },
-  { value: 'return', label: 'Chờ chuyển hoàn' },
-  { value: 'waiting_to_return', label: 'Chờ hoàn hàng' },
-  { value: 'returning', label: 'Đang hoàn hàng' },
-  { value: 'return_transporting', label: 'Đang vận chuyển hoàn' },
-  { value: 'return_sorting', label: 'Đang phân loại hoàn' },
-  { value: 'return_fail', label: 'Hoàn hàng thất bại' },
-  { value: 'delivery_fail', label: 'Giao hàng thất bại' },
-  { value: 'exception', label: 'Bất thường' },
-  { value: 'cancel', label: 'Đã hủy' },
-  { value: 'cancelled', label: 'Đã hủy đơn' },
-  { value: 'lost', label: 'Thất lạc' },
-  { value: 'damage', label: 'Hư hỏng' },
-  { value: 'local_only', label: 'Chưa đồng bộ GHN' },
-];
+
 
 const sortOptions = [
   { value: 'priority', label: 'Ưu tiên xử lý', localOnly: true },

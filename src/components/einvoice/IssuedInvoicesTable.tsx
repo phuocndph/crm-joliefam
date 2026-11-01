@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -20,6 +20,7 @@ import {
 
 type Issued = {
   id: string;
+  transaction_uuid?: string | null;
   invoice_number?: string | null;
   template_code?: string | null;
   invoice_series?: string | null;
@@ -95,6 +96,8 @@ export function IssuedInvoicesTable({
 
   const total = invoices.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => { setPage(p => Math.min(p, pageCount)); setSelected(new Set()); }, [invoices, pageCount]);
 
   const sorted = useMemo(() => {
     if (!sortKey) return invoices;
@@ -180,21 +183,9 @@ export function IssuedInvoicesTable({
 
       {!collapsed && (
         <>
-          <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
-            <Button variant="outline" size="sm" onClick={onSendCqt} disabled={selected.size === 0}>
-              Gửi CQ Thuế
-            </Button>
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <Button onClick={onCreate} size="sm" className="bg-red-600 hover:bg-red-700 text-white">
-                <Plus className="h-4 w-4 mr-1" /> Lập hoá đơn
-              </Button>
-              <Button size="sm" className="bg-slate-800 hover:bg-slate-900 text-white">
-                <List className="h-4 w-4 mr-1" /> Tiện ích
-              </Button>
-              <Button variant="outline" size="icon" className="h-8 w-8 bg-slate-800 text-white hover:bg-slate-900 border-slate-800">
-                <Menu className="h-4 w-4" />
-              </Button>
-            </div>
+          <div className="flex flex-wrap justify-end gap-2 px-4 py-3 border-b">
+            {onCreate && <Button onClick={onCreate} size="sm"><Plus className="h-4 w-4 mr-1" />Lập hóa đơn</Button>}
+            {onSendCqt && <Button variant="outline" onClick={onSendCqt}>Gửi CQ Thuế</Button>}
           </div>
 
           <div className="overflow-x-auto">
@@ -234,12 +225,12 @@ export function IssuedInvoicesTable({
                       <td className={td + " text-center"}>{start + idx + 1}</td>
                       <td className={td}>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => onInfo?.(inv)} className="text-blue-600 hover:text-blue-800" title="Thông tin">
+                          {onInfo && <button onClick={() => onInfo?.(inv)} className="text-blue-600 hover:text-blue-800" title="Thông tin">
                             <Info className="h-4 w-4" />
-                          </button>
-                          <button onClick={() => onMenu?.(inv)} className="text-blue-600 hover:text-blue-800" title="Thao tác">
+                          </button>}
+                          {onMenu && <button onClick={() => onMenu?.(inv)} className="text-blue-600 hover:text-blue-800" title="Thao tác">
                             <List className="h-4 w-4" />
-                          </button>
+                          </button>}
                         </div>
                       </td>
                       <td className={td}>{(inv.template_code || "1") + "/" + (inv.invoice_series || "001")}</td>

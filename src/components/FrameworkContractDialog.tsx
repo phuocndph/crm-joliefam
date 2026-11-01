@@ -1,3 +1,5 @@
+import { contractDateLabel } from "@/lib/contract-calculation";
+import { savedSellerValue } from "@/lib/contract-document";
 import { useRef, useState } from "react";
 import { OnlineStampSignature } from "@/components/OnlineStampSignature";
 import { Switch } from "@/components/ui/switch";
@@ -61,17 +63,17 @@ export const FrameworkContractDialog = ({ open, onOpenChange, contract }: Props)
 
   if (!contract) return null;
 
-  const formatDate = (d: string) => d ? new Date(d).toLocaleDateString("vi-VN") : "—";
+  const formatDate = (d: string) => d ? contractDateLabel(d) : "—";
 
   const seller = contract.seller_info || {};
   const buyer = contract.buyer_info || {};
-  const sellerName = companySettings.companyName || seller.company_name || "";
+  const sellerName = savedSellerValue(seller, "company_name", companySettings.companyName);
   const sellerRep = seller.representative || "...";
   const sellerPos = seller.position || "Giám đốc";
-  const sellerAddr = companySettings.address || seller.address || "...";
-  const sellerPhone = companySettings.phone || seller.phone || "";
-  const sellerTax = companySettings.taxCode || seller.tax_code || "";
-  const sellerBank = companySettings.bankInfo || seller.bank_info || "";
+  const sellerAddr = savedSellerValue(seller, "address", companySettings.address);
+  const sellerPhone = savedSellerValue(seller, "phone", companySettings.phone);
+  const sellerTax = savedSellerValue(seller, "tax_code", companySettings.taxCode);
+  const sellerBank = savedSellerValue(seller, "bank_info", companySettings.bankInfo);
   
   const buyerName = buyer.company_name || contract.customers?.company || contract.customers?.name || "—";
   const buyerRep = buyer.representative || "...";

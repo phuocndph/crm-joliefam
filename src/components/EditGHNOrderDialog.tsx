@@ -1,3 +1,7 @@
+import { buildGhnEditFee } from '@/lib/ghn-edit-fee';
+import { eligibleGhnServices } from '@/lib/ghn-quote-comparison';
+import { createGhnEditRequestGate, staleGhnEditResponse, isStaleGhnEditResponse } from '@/lib/ghn-edit-request-state';
+import { localApi, type GhnEditResult } from '@/lib/local-api';
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -47,6 +51,16 @@ interface EditGHNOrderDialogProps {
 export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSuccess }: EditGHNOrderDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const editGate=useRef(createGhnEditRequestGate());
+  editGate.current.context(`${open}:${trackingRecord?.id || ''}:${trackingRecord?.ghn_order_code || ''}`);
+  const infoDirty=useRef(false);
+  const [reloadVersion,setReloadVersion]=useState(0);
+  const [verifiedCode,setVerifiedCode]=useState('');
+  const [localFingerprint,setLocalFingerprint] = useState('');
+  const [editResult,setEditResult] = useState<GhnEditResult | null>(null);
+  const localBaseline = useRef<Record<string,unknown>>({});
+  const localRequest = useRef<Record<string,unknown> | null>(null);
+  const submitBusy = useRef(false);
   const [prefilling, setPrefilling] = useState(false);
 
   // Shop
@@ -79,7 +93,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const [codFailedEnabled, setCodFailedEnabled] = useState(false);
   const [codFailedAmount, setCodFailedAmount] = useState(20000);
 
-  useEffect(() => { setInsuranceValue(codAmount); }, [codAmount]);
+
 
   // Multi-product items
   const [productItems, setProductItems] = useState<Array<{ name: string; weight: number; quantity: number; length: number; width: number; height: number }>>([
@@ -114,6 +128,8 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const [services, setServices] = useState<GHNService[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [serviceTypeId, setServiceTypeId] = useState("");
+  const [feeError,setFeeError]=useState('');
+  const [multipleSourceItems,setMultipleSourceItems]=useState(false);
   const [feeDetail, setFeeDetail] = useState<FeeDetail | null>(null);
   const [loadingFee, setLoadingFee] = useState(false);
   const [feeStatus, setFeeStatus] = useState<"idle" | "loading" | "done">("idle");
@@ -132,7 +148,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
     maxWidth: Math.max(...productItems.map(p => p.width)),
     sumHeight: productItems.reduce((sum, p) => sum + p.height * p.quantity, 0),
   } : null;
-  const effectiveDims = isHeavyCargo && heavyCargoCalc
+  const effectiveDims = isLocalBackend() && productItems.length===1 ? {length:productItems[0].length,width:productItems[0].width,height:productItems[0].height} : isHeavyCargo && heavyCargoCalc
     ? { length: heavyCargoCalc.maxLength, width: heavyCargoCalc.maxWidth, height: heavyCargoCalc.sumHeight }
     : { length, width, height };
 
@@ -145,25 +161,23 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   const addressInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
-  const hasPrefilledRef = useRef(false);
   const userTypingRef = useRef(false);
 
   // Pre-fill: luôn fetch live từ GHN trước, fallback sang raw_data nếu lỗi
   useEffect(() => {
-    if (!trackingRecord || !open || hasPrefilledRef.current) {
-      if (!open) hasPrefilledRef.current = false;
-      return;
-    }
-    hasPrefilledRef.current = true;
+    setLocalFingerprint('');setVerifiedCode('');setEditResult(null);localRequest.current=null;infoDirty.current=false;userTypingRef.current=false;setAddressSuggestions([]);setShowSuggestions(false);
+    if (!trackingRecord || !open) return;
+    let cancelled=false;
 
     const applyPrefill = (raw: any) => {
+      if(cancelled)return;
       setToName(raw.to_name || trackingRecord.customer_name || "");
       setToPhone(raw.to_phone || trackingRecord.customer_phone || "");
       setToAddress(raw.to_address || trackingRecord.customer_address || "");
       const cod = raw.cod_amount ?? trackingRecord.cod_amount ?? 0;
       setCodAmount(cod);
       setInitialCodAmount(cod);
-      setInsuranceValue(raw.insurance_value ?? cod);
+      setInsuranceValue(raw.insurance_value ?? (isLocalBackend() ? 0 : cod));
       setWeight(raw.weight ?? trackingRecord.package_weight ?? 500);
       setLength(raw.length ?? 30);
       setWidth(raw.width ?? 20);
@@ -197,6 +211,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       } catch (err) {
         console.warn('[GHN Edit] Parse items failed:', err);
       }
+      setMultipleSourceItems(isLocalBackend() && parsedItems.length > 1);
       if (parsedItems.length > 0) {
         // Gộp TẤT CẢ sản phẩm thành 1 kiện duy nhất theo quy tắc GHN của project
         const mergedName = parsedItems
@@ -205,24 +220,24 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           .join(" - ");
         setProductItems([{
           name: mergedName || raw.content || "Hàng hóa",
-          weight: raw.weight || 1000,
+          weight: isLocalBackend() ? Number(raw.weight ?? 0) : raw.weight || 1000,
           quantity: 1,
-          length: raw.length || 10,
-          width: raw.width || 10,
-          height: raw.height || 10,
+          length: isLocalBackend() ? Number(raw.length ?? 0) : raw.length || 10,
+          width: isLocalBackend() ? Number(raw.width ?? 0) : raw.width || 10,
+          height: isLocalBackend() ? Number(raw.height ?? 0) : raw.height || 10,
         }]);
       } else {
         setProductItems([{
           name: raw.content || "Hàng hóa",
-          weight: raw.weight || 1000,
+          weight: isLocalBackend() ? Number(raw.weight ?? 0) : raw.weight || 1000,
           quantity: 1,
-          length: raw.length || 10,
-          width: raw.width || 10,
-          height: raw.height || 10,
+          length: isLocalBackend() ? Number(raw.length ?? 0) : raw.length || 10,
+          width: isLocalBackend() ? Number(raw.width ?? 0) : raw.width || 10,
+          height: isLocalBackend() ? Number(raw.height ?? 0) : raw.height || 10,
         }]);
       }
 
-      setFeeDetail(null);
+      setFeeDetail(null);setFeeError('');
       setFeeStatus("idle");
       setServices([]);
       
@@ -249,7 +264,10 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       setPrefilling(true);
       try {
         if (isLocalBackend()) {
-          applyPrefill(trackingRecord.raw_data || {});
+          const result = await localApi.ghnEditDetail(trackingRecord.ghn_order_code);
+          if(cancelled)return;
+          setVerifiedCode(trackingRecord.ghn_order_code);setLocalFingerprint(result.fingerprint); localBaseline.current=result.data; localRequest.current=null; setEditResult(result.pendingAttempt || null);
+          applyPrefill(result.data);
           return;
         }
         const { data, error } = await supabase.functions.invoke('ghn-tracking', {
@@ -258,7 +276,8 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         if (error) throw error;
         if (!data?.success) throw new Error(data?.error || 'GHN trả về lỗi');
         applyPrefill(data.data || {});
-      } catch (e: any) {
+      } catch (e: any) { if(isStaleGhnEditResponse(e))return;
+        if(cancelled)return;
         console.warn('[GHN Edit] Live fetch failed, dùng snapshot cũ:', e?.message);
         toast({
           title: 'Không lấy được dữ liệu mới từ GHN',
@@ -268,28 +287,31 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         });
         applyPrefill(trackingRecord.raw_data || {});
       } finally {
-        setPrefilling(false);
+        if(!cancelled)setPrefilling(false);
       }
     })();
-  }, [trackingRecord, open, toast]);
+    return()=>{cancelled=true;};
+  }, [trackingRecord, open, toast, reloadVersion]);
 
   // Fetch address suggestions
   const fetchAddressSuggestions = useCallback(async (searchText: string, isSelected: boolean) => {
-    if (isSelected || isLocalBackend()) return;
+    if (isSelected) return;
     if (!searchText || searchText.length < 2) {
       setAddressSuggestions([]); setShowSuggestions(false); return;
     }
+    const request=editGate.current.begin('autocomplete');
     setLoadingSuggestions(true);
     try {
       const { data, error } = await supabase.functions.invoke('ghn-tracking', {
         body: { action: 'address_autocomplete', input: searchText }
       });
+      if(!editGate.current.current(request))return;
       if (error) throw error;
       const suggestions = data?.data || [];
       setAddressSuggestions(suggestions);
       if (suggestions.length > 0) setShowSuggestions(true);
     } catch (e) { console.error('Goong autocomplete error:', e); }
-    finally { setLoadingSuggestions(false); }
+    finally { if(editGate.current.current(request))setLoadingSuggestions(false); }
   }, []);
 
   useEffect(() => {
@@ -299,8 +321,9 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   }, [debouncedAddress, open, addressSelected, fetchAddressSuggestions]);
 
   const callGHN = useCallback(async (action: string, body: Record<string, any> = {}) => {
-    if (isLocalBackend()) throw new Error('Local chỉ cho phép xem snapshot GHN; thao tác đồng bộ cần dịch vụ bên ngoài.');
+    const request=editGate.current.begin(action,['get_provinces','get_shops'].includes(action));
     const { data, error } = await supabase.functions.invoke('ghn-tracking', { body: { action, ...body } });
+    if(!editGate.current.current(request))throw staleGhnEditResponse();
     if (error) {
       const detailMessage = data?.error || error.message;
       throw new Error(detailMessage);
@@ -397,24 +420,24 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       const data = await callGHN('get_shops');
       setShops(data);
       if (data?.length > 0 && !selectedShopId) setSelectedShopId(String(data[0]._id));
-    } catch (e: any) { console.error(e); toast({ title: "Lỗi tải danh sách shop", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingShops(false); }
+    } catch (e: any) { if(isStaleGhnEditResponse(e))return; console.error(e); toast({ title: "Lỗi tải danh sách shop", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingShops(false); }
   };
 
   const loadProvinces = async () => {
     setLoadingProvinces(true);
-    try { setProvinces(await callGHN('get_provinces')); } catch (e: any) { console.error(e); toast({ title: "Lỗi tải tỉnh/thành", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingProvinces(false); }
+    try { setProvinces(await callGHN('get_provinces')); } catch (e: any) { if(isStaleGhnEditResponse(e))return; console.error(e); toast({ title: "Lỗi tải tỉnh/thành", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingProvinces(false); }
   };
 
   // Pre-fill location from raw_data when provinces loaded
   useEffect(() => {
-    if (provinces.length > 0 && open && !prefillLocationDone) {
+    if (provinces.length > 0 && open && !prefilling && (!isLocalBackend() || verifiedCode===trackingRecord?.ghn_order_code && !!localFingerprint) && !prefillLocationDone) {
       setPrefillLocationDone(true);
       const targetDistrictId = prefillDistrictIdRef.current;
       const targetWardCode = prefillWardCodeRef.current;
       
       if (targetDistrictId) {
         // Use address text matching to find province only, then set district/ward from raw_data
-        const addr = trackingRecord?.raw_data?.to_address || trackingRecord?.customer_address || "";
+        const addr = isLocalBackend() ? [localBaseline.current.to_address,localBaseline.current.to_ward_name,localBaseline.current.to_district_name,localBaseline.current.to_province_name].filter(Boolean).join(', ') : trackingRecord?.raw_data?.to_address || trackingRecord?.customer_address || "";
         const normalizedAddr = normalizeText(addr);
         
         // Find province from address text
@@ -455,28 +478,30 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         // No raw_data district, fallback to autoMatch from address text
         if (!autoMatchDone) {
           setAutoMatchDone(true);
-          const addr = trackingRecord?.raw_data?.to_address || trackingRecord?.customer_address || "";
+          const addr = isLocalBackend() ? [localBaseline.current.to_address,localBaseline.current.to_ward_name,localBaseline.current.to_district_name,localBaseline.current.to_province_name].filter(Boolean).join(', ') : trackingRecord?.raw_data?.to_address || trackingRecord?.customer_address || "";
           if (addr) autoMatchFromText(addr);
         }
       }
     }
-  }, [provinces, open, prefillLocationDone, callGHN, autoMatchDone, autoMatchFromText, trackingRecord]);
+  }, [provinces, open, prefilling, localFingerprint, verifiedCode, prefillLocationDone, callGHN, autoMatchDone, autoMatchFromText, trackingRecord]);
 
   const loadDistricts = async (provId: number) => {
+    editGate.current.invalidateIntent();infoDirty.current=true;
     setLoadingDistricts(true);
     setDistricts([]); setWards([]); setDistrictId(""); setWardCode("");
     setServices([]); setServiceTypeId(""); setFeeDetail(null); setFeeStatus("idle");
-    try { setDistricts(await callGHN('get_districts', { provinceId: provId })); } catch (e: any) { console.error(e); toast({ title: "Lỗi tải quận/huyện", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingDistricts(false); }
+    try { setDistricts(await callGHN('get_districts', { provinceId: provId })); } catch (e: any) { if(isStaleGhnEditResponse(e))return; console.error(e); toast({ title: "Lỗi tải quận/huyện", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingDistricts(false); }
   };
 
   const loadWards = async (distId: number) => {
+    editGate.current.invalidateIntent();infoDirty.current=true;
     setLoadingWards(true); setWards([]); setWardCode(""); setFeeDetail(null); setFeeStatus("idle");
-    try { setWards(await callGHN('get_wards', { districtId: distId })); } catch (e: any) { console.error(e); toast({ title: "Lỗi tải phường/xã", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingWards(false); }
+    try { setWards(await callGHN('get_wards', { districtId: distId })); } catch (e: any) { if(isStaleGhnEditResponse(e))return; console.error(e); toast({ title: "Lỗi tải phường/xã", description: e.message, variant: "destructive", duration: 8000 }); } finally { setLoadingWards(false); }
   };
 
   useEffect(() => {
-    if (districtId && selectedShopId) loadServices(parseInt(districtId));
-  }, [districtId, selectedShopId]);
+    if (open && !prefilling && districtId && selectedShopId) loadServices(parseInt(districtId));
+  }, [open, prefilling, districtId, selectedShopId, totalItemWeight]);
 
   const loadServices = async (toDistrictId: number) => {
     setLoadingServices(true); setServices([]);
@@ -484,7 +509,8 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
     try {
       const selectedShop = shops.find(s => String(s._id) === selectedShopId);
       const fromDistrictId = selectedShop?.district_id || 1490;
-      const data = await callGHN('get_services', { fromDistrictId, toDistrictId, shopId: selectedShopId || undefined });
+      const available = await callGHN('get_services', { fromDistrictId, toDistrictId, shopId: selectedShopId || undefined });
+      const data = isLocalBackend() ? eligibleGhnServices(available || [],totalItemWeight,1) : available;
       setServices(data || []);
       // Prefer pre-filled serviceTypeId if it exists in the loaded services
       if (savedServiceTypeId && data?.some((s: GHNService) => String(s.service_type_id) === savedServiceTypeId)) {
@@ -501,21 +527,25 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   };
 
   useEffect(() => {
-    if (districtId && wardCode && serviceTypeId && weight > 0) {
+    if (open && !prefilling && !loadingServices && selectedShopId && shops.length && services.length && districtId && wardCode && serviceTypeId && weight > 0) {
       const timer = setTimeout(() => calculateFee(), 500);
       return () => clearTimeout(timer);
     }
-  }, [districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount, length, width, height, codFailedEnabled, codFailedAmount, productItems]);
+  }, [open, prefilling, loadingServices, selectedShopId, shops, services, provinceId, toAddress, districtId, wardCode, serviceTypeId, weight, insuranceValue, codAmount, length, width, height, codFailedEnabled, codFailedAmount, productItems]);
 
   const calculateFee = async () => {
     if (!districtId || !wardCode || !serviceTypeId) return;
+    if(isLocalBackend() && multipleSourceItems){setFeeDetail(null);setFeeError('Đơn có nhiều dòng kiện/hàng: chưa hỗ trợ tính lại cước tại màn hình sửa. Kiểm tra cước trên GHN để tránh gộp sai kiện.');setFeeStatus('idle');return;}
+    const localQuote=isLocalBackend()?buildGhnEditFee({provinceId,districtId,wardCode,address:toAddress,weight:totalItemWeight,length:effectiveDims.length,width:effectiveDims.width,height:effectiveDims.height,cod:codAmount,insurance:insuranceValue,codFailed:codFailedEnabled?codFailedAmount:0,services,serviceTypeId}):null;
+    if(localQuote&&!localQuote.feeData){setFeeDetail(null);setFeeError(localQuote.error);setFeeStatus('idle');return;}
+    setFeeError('');
     setLoadingFee(true); setFeeStatus("loading");
     try {
       const selectedShop = shops.find(s => String(s._id) === selectedShopId);
       const selectedService = services.find(s => s.service_type_id === parseInt(serviceTypeId));
       const data = await callGHN('calculate_fee', {
         shopId: selectedShopId || undefined,
-        feeData: {
+        feeData: localQuote?.feeData || {
           service_type_id: parseInt(serviceTypeId),
           service_id: selectedService?.service_id,
           from_district_id: selectedShop?.district_id,
@@ -539,22 +569,24 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         }
       });
       setFeeDetail(data); setFeeStatus("done");
-    } catch (e: any) {
-      toast({ title: "Lỗi tính cước", description: e.message, variant: "destructive", duration: 8000 });
+    } catch (e: any) { if(isStaleGhnEditResponse(e))return;
+      if(isLocalBackend())setFeeError(e.message || 'Không lấy được cước GHN.');
+      else toast({ title: "Lỗi tính cước", description: e.message, variant: "destructive", duration: 8000 });
       setFeeStatus("idle");
     } finally { setLoadingFee(false); }
   };
 
   const handleSubmit = async () => {
-    if (!trackingRecord) return;
-    if (!toName || !toPhone || !toAddress || !districtId || !wardCode) {
+    if (!trackingRecord || submitBusy.current) return;
+    if (!isLocalBackend() && (!toName || !toPhone || !toAddress || !districtId || !wardCode)) {
       toast({ title: "Thiếu thông tin", description: "Vui lòng điền đầy đủ thông tin bắt buộc", variant: "destructive" });
       return;
     }
-    if (loadingFee || feeStatus === "loading") {
+    if (!isLocalBackend() && (loadingFee || feeStatus === "loading")) {
       toast({ title: "Vui lòng đợi tính cước xong", description: "Hệ thống đang tính cước, vui lòng thử lại sau giây lát", variant: "destructive" });
       return;
     }
+    submitBusy.current=true;
     setLoading(true);
     try {
       // GHN khoá nhiều trường theo trạng thái đơn (vd "content", "items", "insurance_value"
@@ -566,7 +598,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         to_address: toAddress,
         to_district_id: parseInt(districtId),
         to_ward_code: wardCode,
-        weight: totalItemWeight || weight,
+        weight: isLocalBackend()?totalItemWeight:totalItemWeight || weight,
         length: effectiveDims.length,
         width: effectiveDims.width,
         height: effectiveDims.height,
@@ -574,6 +606,24 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
         required_note: requiredNote,
         cod_failed_amount: codFailedEnabled ? codFailedAmount : 0,
       };
+
+      if (isLocalBackend()) {
+        if (!localFingerprint || verifiedCode!==trackingRecord.ghn_order_code) throw new Error('C\u1ea7n t\u1ea3i d\u1eef li\u1ec7u m\u1edbi t\u1eeb GHN tr\u01b0\u1edbc khi l\u01b0u.');
+        if (!localRequest.current) {
+          const infoChanged=infoDirty.current && Object.entries(updateData).some(([key,value])=>String(localBaseline.current[key] ?? '')!==String(value));
+          if (!infoChanged && codAmount===initialCodAmount) { toast({title:'Kh\u00f4ng c\u00f3 thay \u0111\u1ed5i'}); return; }
+          localRequest.current={idempotencyKey:crypto.randomUUID(),expectedFingerprint:localFingerprint,...(infoChanged?{info:updateData}:{}),...(codAmount!==initialCodAmount?{codAmount}:{})};
+        }
+        const result=await localApi.editGhnOrder(trackingRecord.ghn_order_code,localRequest.current);
+        setEditResult(result);
+        const pending=[result.info.status,result.cod.status].some(value=>['READY','IN_FLIGHT','UNKNOWN'].includes(value));
+        if (!pending) {
+          localRequest.current=null;
+          const fresh=await localApi.ghnEditDetail(trackingRecord.ghn_order_code);setLocalFingerprint(fresh.fingerprint);localBaseline.current=fresh.data;setInitialCodAmount(Number(fresh.data.cod_amount)||0);
+          onSuccess();
+        }
+        return;
+      }
 
       // 1. Update order info — bọc try riêng để lỗi update_order không chặn update_cod
       let updateOrderError: string | null = null;
@@ -624,9 +674,17 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
       }
       onSuccess();
       onOpenChange(false);
-    } catch (e: any) {
+    } catch (e: any) { if(isStaleGhnEditResponse(e))return;
+      if(isLocalBackend() && e?.ghnEditNotDispatched){
+        localRequest.current=null;
+        if(e.status===409){
+          setLocalFingerprint('');
+          try{const fresh=await localApi.ghnEditDetail(trackingRecord.ghn_order_code);setLocalFingerprint(fresh.fingerprint);setVerifiedCode(trackingRecord.ghn_order_code);localBaseline.current=fresh.data;setInitialCodAmount(Number(fresh.data.cod_amount)||0);setEditResult(fresh.pendingAttempt || null);}catch{/* Remains disabled until reopened/refetched. */}
+          toast({title:'D\u1eef li\u1ec7u \u0111\u00e3 thay \u0111\u1ed5i',description:'\u0110\u00e3 t\u1ea3i l\u1ea1i m\u1ed1c GHN. Ki\u1ec3m tra n\u1ed9i dung r\u1ed3i b\u1ea5m l\u01b0u l\u1ea1i; ch\u01b0a t\u1ef1 g\u1eedi.'});return;
+        }
+      }
       toast({ title: "Lỗi cập nhật đơn GHN", description: e.message, variant: "destructive", duration: 8000 });
-    } finally { setLoading(false); }
+    } finally { submitBusy.current=false; setLoading(false); }
   };
 
   const fmt = (n: number) => n.toLocaleString("vi-VN") + " đ";
@@ -635,7 +693,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
   if (!trackingRecord) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(value) => { if (!submitBusy.current) onOpenChange(value); }}>
       <DialogContent className="max-w-5xl h-[90vh] max-h-[90vh] overflow-hidden p-0 flex flex-col" aria-describedby={undefined}>
         <div className="px-6 pt-5 pb-3 border-b shrink-0">
           <DialogHeader>
@@ -650,13 +708,28 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
           </DialogHeader>
         </div>
 
+        {isLocalBackend() && !prefilling && !localFingerprint && !localRequest.current && <div className="mx-6 mt-3 border p-3 text-sm">
+          <p>Chưa xác minh được thông tin GHN. Tải lại sẽ thay nội dung đang nhập.</p>
+          <Button variant="outline" size="sm" disabled={loading} onClick={()=>setReloadVersion(value=>value+1)}>Tải lại từ GHN</Button>
+        </div>}
+        {isLocalBackend() && editResult && <div className="mx-6 mt-3 border p-3 text-sm space-y-2" role="status">
+          <p>Thông tin: {editOutcomeLabel(editResult.info.status)}. COD: {editOutcomeLabel(editResult.cod.status)}.</p>
+          {!editResult.snapshotSynced && <p>Bản lưu CRM chưa được xác nhận đồng bộ.</p>}
+          <Button size="sm" variant="outline" disabled={loading} onClick={async()=>{
+            if(submitBusy.current)return;submitBusy.current=true;setLoading(true);
+            try{const result=await localApi.reconcileGhnEdit(editResult.attemptId);setEditResult(result);const pending=[result.info.status,result.cod.status].some(value=>['READY','IN_FLIGHT','UNKNOWN'].includes(value));if(!pending){localRequest.current=null;const fresh=await localApi.ghnEditDetail(trackingRecord.ghn_order_code);setLocalFingerprint(fresh.fingerprint);localBaseline.current=fresh.data;setInitialCodAmount(Number(fresh.data.cod_amount)||0);onSuccess();}}
+            catch{toast({title:'Chưa kiểm tra được kết quả',variant:'destructive'});}
+            finally{submitBusy.current=false;setLoading(false);}
+          }}>Kiểm tra kết quả GHN</Button>
+        </div>}
+
         <div className="mx-6 mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 shrink-0">
-          Có thể chỉnh sửa <b>địa chỉ</b>, <b>người nhận</b>, <b>sản phẩm</b>, <b>khối lượng/kích thước</b>, <b>COD</b>, <b>ghi chú</b>. Riêng <b>Tổng giá trị hàng hóa</b> (bảo hiểm) không thể đổi sau khi tạo đơn trên GHN.
+          Có thể chỉnh sửa <b>địa chỉ</b>, <b>người nhận</b>, <b>khối lượng/kích thước</b>, <b>COD</b>, <b>ghi chú</b>. Nội dung sản phẩm giữ nguyên. Riêng <b>Tổng giá trị hàng hóa</b> (bảo hiểm) không thể đổi sau khi tạo đơn trên GHN.
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] flex-1 min-h-0 overflow-hidden">
           {/* LEFT COLUMN */}
-          <div className="overflow-y-auto">
+          <div className="overflow-y-auto" onChangeCapture={(event)=>{editGate.current.invalidate('calculate_fee');if(!(event.target as HTMLElement).closest('[data-ghn-cod]'))infoDirty.current=true;}}>
 
             {/* BÊN GỬI */}
             <div className="px-6 py-5 border-b">
@@ -664,7 +737,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
               {loadingShops ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Đang tải shop...</div>
               ) : shops.length > 1 ? (
-                <Select value={selectedShopId} onValueChange={setSelectedShopId}>
+                <Select value={selectedShopId} onValueChange={setSelectedShopId} disabled={isLocalBackend()}>
                   <SelectTrigger className="text-sm bg-background"><SelectValue placeholder="Chọn shop gửi hàng" /></SelectTrigger>
                   <SelectContent className="max-h-60">
                     {shops.map(s => <SelectItem key={s._id} value={String(s._id)}>{s.name} - {s.address}</SelectItem>)}
@@ -700,7 +773,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                     <Input
                       ref={addressInputRef}
                       value={toAddress}
-                      onChange={e => { userTypingRef.current = true; setToAddress(e.target.value); setAddressSelected(false); setShowSuggestions(true); }}
+                      onChange={e => { editGate.current.invalidateIntent(); userTypingRef.current = true; setToAddress(e.target.value); setAddressSelected(false); setShowSuggestions(true); }}
                       onFocus={() => { if (addressSuggestions.length > 0 && !addressSelected) setShowSuggestions(true); }}
                       placeholder="Nhập để tìm địa chỉ..."
                       className="text-sm pl-8"
@@ -711,7 +784,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                     <div ref={suggestionsRef} className="absolute left-0 right-0 top-full mt-1 z-50 rounded-md border bg-popover shadow-lg max-h-60 overflow-y-auto">
                       {addressSuggestions.map((s, i) => (
                         <button key={i} type="button" className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors border-b last:border-b-0"
-                          onClick={() => { setToAddress(s.description); setShowSuggestions(false); setAddressSelected(true); userTypingRef.current = false; autoMatchFromText(s.description); }}>
+                          onClick={() => { editGate.current.invalidateIntent();infoDirty.current=true;setToAddress(s.description); setShowSuggestions(false); setAddressSelected(true); userTypingRef.current = false; autoMatchFromText(s.description); }}>
                           <div className="flex items-start gap-2">
                             <MapPin className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
                             <div className="min-w-0">
@@ -746,7 +819,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Phường/Xã <span className="text-destructive">*</span></Label>
-                    <Select value={wardCode} onValueChange={setWardCode} disabled={!districtId}>
+                    <Select value={wardCode} onValueChange={value=>{editGate.current.invalidateIntent();infoDirty.current=true;setWardCode(value);}} disabled={!districtId}>
                       <SelectTrigger className="text-sm"><SelectValue placeholder={loadingWards ? "Tải..." : "Chọn"} /></SelectTrigger>
                       <SelectContent className="max-h-60">
                         {wards.map(w => <SelectItem key={w.WardCode} value={w.WardCode}>{w.WardName}</SelectItem>)}
@@ -777,7 +850,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                     <div className="flex items-center justify-between">
                       <Badge variant="outline" className="text-xs">SP {index + 1}</Badge>
                       {productItems.length > 1 && (
-                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeProductItem(index)}>
+                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" disabled={isLocalBackend()} onClick={() => removeProductItem(index)}>
                           <X className="h-4 w-4" />
                         </Button>
                       )}
@@ -785,35 +858,35 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                     <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-1.5">
                         <Label className="text-sm">Sản phẩm <span className="text-destructive">*</span></Label>
-                        <Input value={item.name} onChange={e => updateProductItem(index, 'name', e.target.value)} placeholder="Nhập tên sản phẩm" className="text-sm" />
+                        <Input readOnly={isLocalBackend()} value={item.name} onChange={e => updateProductItem(index, 'name', e.target.value)} placeholder="Nhập tên sản phẩm" className="text-sm" />
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-sm">KL (gram) <span className="text-destructive">*</span></Label>
-                        <Input type="number" value={item.weight} onChange={e => updateProductItem(index, 'weight', parseInt(e.target.value) || 0)} className="text-sm" />
+                        <Input readOnly={isLocalBackend() && multipleSourceItems} type="number" value={item.weight} onChange={e => updateProductItem(index, 'weight', parseInt(e.target.value) || 0)} className="text-sm" />
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-sm">Số lượng <span className="text-destructive">*</span></Label>
-                        <Input type="number" value={item.quantity} onChange={e => updateProductItem(index, 'quantity', parseInt(e.target.value) || 1)} min={1} className="text-sm" />
+                        <Input readOnly={isLocalBackend()} type="number" value={item.quantity} onChange={e => updateProductItem(index, 'quantity', parseInt(e.target.value) || 1)} min={1} className="text-sm" />
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-1.5">
                         <Label className="text-sm">Dài (cm) <span className="text-destructive">*</span></Label>
-                        <Input type="number" value={item.length} onChange={e => updateProductItem(index, 'length', parseInt(e.target.value) || 0)} className="text-sm" />
+                        <Input readOnly={isLocalBackend() && multipleSourceItems} type="number" value={item.length} onChange={e => updateProductItem(index, 'length', parseInt(e.target.value) || 0)} className="text-sm" />
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-sm">Rộng (cm) <span className="text-destructive">*</span></Label>
-                        <Input type="number" value={item.width} onChange={e => updateProductItem(index, 'width', parseInt(e.target.value) || 0)} className="text-sm" />
+                        <Input readOnly={isLocalBackend() && multipleSourceItems} type="number" value={item.width} onChange={e => updateProductItem(index, 'width', parseInt(e.target.value) || 0)} className="text-sm" />
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-sm">Cao (cm) <span className="text-destructive">*</span></Label>
-                        <Input type="number" value={item.height} onChange={e => updateProductItem(index, 'height', parseInt(e.target.value) || 0)} className="text-sm" />
+                        <Input readOnly={isLocalBackend() && multipleSourceItems} type="number" value={item.height} onChange={e => updateProductItem(index, 'height', parseInt(e.target.value) || 0)} className="text-sm" />
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-              <Button type="button" variant="outline" className="w-full mt-3" onClick={addProductItem}>+ Thêm 1 sản phẩm</Button>
+              <Button type="button" variant="outline" className="w-full mt-3" onClick={addProductItem} disabled={isLocalBackend()}>+ Thêm 1 sản phẩm</Button>
             </div>
 
             {/* THÔNG TIN ĐƠN HÀNG */}
@@ -828,15 +901,15 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Dài (cm)</Label>
-                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxLength : length} onChange={e => setLength(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
+                      <Input type="number" value={isLocalBackend() ? effectiveDims.length : isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxLength : length} onChange={e => setLength(parseInt(e.target.value) || 0)} readOnly={isLocalBackend() || isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Rộng (cm)</Label>
-                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxWidth : width} onChange={e => setWidth(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
+                      <Input type="number" value={isLocalBackend() ? effectiveDims.width : isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.maxWidth : width} onChange={e => setWidth(parseInt(e.target.value) || 0)} readOnly={isLocalBackend() || isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm">Cao (cm)</Label>
-                      <Input type="number" value={isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.sumHeight : height} onChange={e => setHeight(parseInt(e.target.value) || 0)} readOnly={isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
+                      <Input type="number" value={isLocalBackend() ? effectiveDims.height : isHeavyCargo && heavyCargoCalc ? heavyCargoCalc.sumHeight : height} onChange={e => setHeight(parseInt(e.target.value) || 0)} readOnly={isLocalBackend() || isHeavyCargo} className={`text-sm ${isHeavyCargo ? 'bg-muted cursor-not-allowed' : ''}`} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm text-muted-foreground">KL quy đổi</Label>
@@ -860,12 +933,12 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Tổng tiền thu hộ (COD)</Label>
-                    <CurrencyInput value={codAmount} onChange={v => setCodAmount(v)} className="text-sm" />
+                    <CurrencyInput data-ghn-cod value={codAmount} onChange={v => setCodAmount(v)} className="text-sm" />
                     <p className="text-xs text-muted-foreground">Tối đa 5.000.000đ. COD sẽ cập nhật qua API riêng.</p>
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <Checkbox id="cod-failed-edit" checked={codFailedEnabled} onCheckedChange={(v) => setCodFailedEnabled(!!v)} />
+                      <Checkbox id="cod-failed-edit" checked={codFailedEnabled} onCheckedChange={(v) => {editGate.current.invalidate('calculate_fee');infoDirty.current=true;setCodFailedEnabled(!!v);}} />
                       <Label htmlFor="cod-failed-edit" className="text-sm font-medium cursor-pointer">Giao thất bại thu tiền</Label>
                     </div>
                     <CurrencyInput value={codFailedAmount} onChange={v => setCodFailedAmount(v)} disabled={!codFailedEnabled} className="text-sm" />
@@ -909,7 +982,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
               ) : services.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4">Vui lòng chọn địa chỉ nhận hàng trước để xem gói dịch vụ.</p>
               ) : (
-                <RadioGroup value={serviceTypeId} onValueChange={v => { setServiceTypeId(v); setFeeDetail(null); setFeeStatus("idle"); }} className="grid grid-cols-2 gap-4">
+                <RadioGroup value={serviceTypeId} onValueChange={v => { editGate.current.invalidate('calculate_fee');setServiceTypeId(v); setFeeDetail(null); setFeeStatus("idle"); }} className="grid grid-cols-2 gap-4">
                   {services.map(s => (
                     <label key={s.service_id} htmlFor={`svc-edit-${s.service_id}`}
                       className={`relative flex flex-col rounded-lg border-2 p-4 cursor-pointer transition-colors ${serviceTypeId === String(s.service_type_id) ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}>
@@ -932,7 +1005,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-3">
                   <Label className="text-sm font-medium">Lưu ý giao hàng <span className="text-destructive">*</span></Label>
-                  <RadioGroup value={requiredNote} onValueChange={setRequiredNote} className="space-y-2">
+                  <RadioGroup value={requiredNote} onValueChange={value=>{editGate.current.invalidate('calculate_fee');infoDirty.current=true;setRequiredNote(value);}} className="space-y-2">
                     <div className="flex items-center gap-2"><RadioGroupItem value="KHONGCHOXEMHANG" id="rn-edit-1" /><Label htmlFor="rn-edit-1" className="text-sm font-normal cursor-pointer">Không cho xem hàng</Label></div>
                     <div className="flex items-center gap-2"><RadioGroupItem value="CHOXEMHANGKHONGTHU" id="rn-edit-2" /><Label htmlFor="rn-edit-2" className="text-sm font-normal cursor-pointer">Cho xem hàng không cho thử</Label></div>
                     <div className="flex items-center gap-2"><RadioGroupItem value="CHOTHUHANG" id="rn-edit-3" /><Label htmlFor="rn-edit-3" className="text-sm font-normal cursor-pointer">Cho thử hàng</Label></div>
@@ -959,6 +1032,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
                 </div>
               )}
 
+              {feeError && <p className="text-sm text-destructive" role="status">{feeError}</p>}
               <div className="flex justify-between items-baseline pt-1 border-t">
                 <span className="text-sm text-muted-foreground">Tổng phí:</span>
                 <span className="text-xl font-bold text-primary">
@@ -986,7 +1060,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
               <Separator />
 
               <div className="space-y-1.5">
-                <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
+                <Select value={paymentTypeId} onValueChange={setPaymentTypeId} disabled={isLocalBackend()}>
                   <SelectTrigger className="text-sm"><SelectValue placeholder="Vui lòng chọn bên trả phí" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">Người gửi trả phí</SelectItem>
@@ -998,7 +1072,7 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
 
             <div className="p-4 border-t flex gap-2">
               <Button variant="outline" className="flex-1 text-primary border-primary hover:bg-primary/10" onClick={() => onOpenChange(false)} disabled={loading}>Hủy</Button>
-              <Button className="flex-1 gap-2" onClick={handleSubmit} disabled={loading}>
+              <Button className="flex-1 gap-2" onClick={handleSubmit} disabled={loading || prefilling || isLocalBackend() && (!localFingerprint || !!editResult && [editResult.info.status,editResult.cod.status].some(value=>['READY','IN_FLIGHT','UNKNOWN'].includes(value)))}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
                 {loading ? "Đang cập nhật..." : "CẬP NHẬT ĐƠN"}
               </Button>
@@ -1009,3 +1083,5 @@ export function EditGHNOrderDialog({ open, onOpenChange, trackingRecord, onSucce
     </Dialog>
   );
 }
+
+function editOutcomeLabel(status:string):string { return ({SUCCESS:'\u0110\u00e3 c\u1eadp nh\u1eadt',FAILED:'Ch\u01b0a c\u1eadp nh\u1eadt',UNKNOWN:'Ch\u01b0a x\u00e1c \u0111\u1ecbnh - kh\u00f4ng g\u1eedi l\u1ea1i',IN_FLIGHT:'\u0110ang x\u1eed l\u00fd',READY:'\u0110ang ch\u1edd',NOT_REQUESTED:'Kh\u00f4ng thay \u0111\u1ed5i'} as Record<string,string>)[status] || 'Ch\u01b0a x\u00e1c \u0111\u1ecbnh'; }

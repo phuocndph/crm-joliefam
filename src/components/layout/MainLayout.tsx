@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileNavigationChrome } from "./MobileLayout";
 import { useQueryClient } from '@tanstack/react-query';
 import type { User as AuthUser } from "@supabase/supabase-js";
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
@@ -24,6 +26,7 @@ function DesktopNavigationSearch({ pathname }: { pathname: string }) {
 
 const MainLayout = () => {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
@@ -135,12 +138,13 @@ const MainLayout = () => {
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
         {/* Sidebar */}
-        <AppSidebar />
+        {!isMobile && <AppSidebar />}
         
         {/* Main Content */}
         <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+          {isMobile && <MobileNavigationChrome user={user} role={userRole} onChangePassword={() => setShowChangePasswordDialog(true)} onSignOut={handleSignOut} />}
           {/* Header */}
-          <header className="h-16 min-w-0 border-b bg-card shadow-soft flex items-center justify-between gap-2 px-3 sm:px-4">
+          <header className="h-16 min-w-0 border-b bg-card shadow-soft hidden md:flex items-center justify-between gap-2 px-3 sm:px-4">
             <div className="flex min-w-0 items-center gap-2 sm:gap-4">
               <SidebarTrigger className="hover:bg-sidebar-accent" />
               <div className="flex items-center gap-3">
@@ -155,7 +159,7 @@ const MainLayout = () => {
             </div>
             
             <div className="flex shrink-0 items-center gap-1 sm:gap-2 xl:gap-4">
-              <div className="hidden md:block lg:w-56 xl:w-72"><DesktopNavigationSearch pathname={location.pathname} /></div>
+              <div className="hidden md:block lg:w-56 xl:w-72">{!isMobile && <DesktopNavigationSearch pathname={location.pathname} />}</div>
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -193,7 +197,7 @@ const MainLayout = () => {
           </header>
           
           {/* Page Content */}
-          <main className="min-w-0 flex-1 overflow-x-hidden bg-gradient-card p-3 sm:p-4 lg:p-6">
+          <main className="min-w-0 flex-1 overflow-x-hidden bg-gradient-card p-4 pb-24 md:pb-4 lg:p-6">
             <Outlet />
           </main>
         </div>

@@ -16,6 +16,7 @@ const rounded = (numerator: bigint, denominator: bigint) => {
   if (result > BigInt(Number.MAX_SAFE_INTEGER)) return failure('Giá trị báo giá vượt giới hạn cho phép.');
   return Number(result);
 };
+export { decimal as businessDecimal, rounded as roundBusinessAmount };
 export const quoteObject = (value: unknown): Record<string, unknown> => {
   if (value == null) return {};
   let parsed = value;
@@ -87,12 +88,43 @@ export function assertSavedQuoteFinancials(source: Record<string, unknown>, resu
   for (const [field, expected] of Object.entries(rootFields)) if (Object.prototype.hasOwnProperty.call(source, field)) compare(source[field], expected, field);
   const dataFields = { subtotal: result.subtotal, vatRate: result.vatRate, vatAmount: result.vatAmount, total: result.total, totalAmount: result.total };
   for (const [field, expected] of Object.entries(dataFields)) if (Object.prototype.hasOwnProperty.call(data, field)) compare(data[field], expected, `Snapshot ${field}`);
+  if (Object.prototype.hasOwnProperty.call(data, 'remaining')) {
+    // Remaining is signed. Compare exact decimal values, accepting both the exact
+    // payment remainder and the persisted representation from the existing JS formula.
+    const signed = (value: unknown) => {
+      if (typeof value !== 'number' && typeof value !== 'string') return failure('Snapshot remaining phải là số hợp lệ.');
+      const text = String(value).trim();
+      const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(text);
+      if (!match || text.length > 80 || !Number.isFinite(Number(text)) || Math.abs(Number(match[4] || 0)) > 324) return failure('Snapshot remaining phải là số hữu hạn hợp lệ.');
+      const fraction = match[3] || '', scale = fraction.length - Number(match[4] || 0);
+      const numerator = BigInt(match[2] + fraction) * (match[1] ? -1n : 1n);
+      return { numerator: scale < 0 ? numerator * 10n ** BigInt(-scale) : numerator, denominator: scale > 0 ? 10n ** BigInt(scale) : 1n };
+    };
+    const first = decimal(data.payment1 ?? 0, 'Dự kiến thanh toán lần 1'), second = decimal(data.payment2 ?? 0, 'Dự kiến thanh toán lần 2');
+    const denominator = first.denominator * second.denominator;
+    const exact = { numerator: BigInt(result.total) * denominator - first.numerator * second.denominator - second.numerator * first.denominator, denominator };
+    const saved = signed(data.remaining), legacy = signed(result.remaining);
+    const matches = (expected: typeof saved) => saved.numerator * expected.denominator === expected.numerator * saved.denominator;
+    if (!matches(exact) && !matches(legacy)) failure('Snapshot remaining đã lưu không khớp tổng tiền/kế hoạch thanh toán. Hãy sửa bản nháp hoặc nhân bản để kiểm tra lại.');
+  }
   if (Object.prototype.hasOwnProperty.call(source, 'include_vat') && source.include_vat !== result.includeVAT) failure('Tùy chọn VAT đã lưu không khớp.');
   if (Object.prototype.hasOwnProperty.call(data, 'includeVAT') && data.includeVAT !== result.includeVAT) failure('Snapshot tùy chọn VAT đã lưu không khớp.');
   const items = typeof source.items === 'string' ? JSON.parse(source.items) : source.items;
   if (Array.isArray(items)) items.forEach((item, index) => {
     if (item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, 'total')) compare(item.total, result.items[index].total, `Thành tiền dòng ${index + 1}`);
   });
+  if (Object.prototype.hasOwnProperty.call(data, 'items')) {
+    let nested = data.items;
+    if (typeof nested === 'string') { try { nested = JSON.parse(nested); } catch { failure('Snapshot dòng sản phẩm không phải JSON hợp lệ.'); } }
+    if (!Array.isArray(nested) || nested.length !== result.items.length) failure('Snapshot số dòng sản phẩm không khớp.');
+    (nested as unknown[]).forEach((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) failure(`Snapshot dòng ${index + 1} không hợp lệ.`);
+      const row = item as Record<string, unknown>, expected = result.items[index];
+      compare(row.quantity, expected.quantity, `Snapshot số lượng dòng ${index + 1}`);
+      compare(row.price, expected.price, `Snapshot đơn giá dòng ${index + 1}`);
+      if (Object.prototype.hasOwnProperty.call(row, 'total')) compare(row.total, expected.total, `Snapshot thành tiền dòng ${index + 1}`);
+    });
+  }
 }
 export function canonicalQuote(body: Record<string, unknown>) {
   const data = quoteObject(body.quote_data);

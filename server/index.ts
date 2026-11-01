@@ -1,9 +1,18 @@
+import { GhnEditing, registerGhnEditing } from './ghn-edit.js';
+import {hydrateOrderFinancials,orderFinancialProjection,orderFinancialCtes,customerListCreditDerivedSql,type OrderFinancialSchema} from './order-financial.js';
+import { registerInvoiceWorkspace } from './invoice-workspace.js';
+import { registerProductSupplyClassifications } from './product-fulfillment-classification.js';
+import { registerProductTechnicalProfiles } from './product-technical-profiles.js';
+import { registerProductLaborMappings } from './product-labor-mappings.js';
+import { registerProductLaborRequirements } from './product-labor-requirements.js';
+import { normalizeQuoteFilters, quoteFilterSql } from './quote-filters.js';
 import { workerMasterPatch, validateWorkerMaster, requireWorkerMasterReason } from "./payroll-worker-master.js";
 import { preservePayrollApprovalHistory } from "./payroll-approval-history.js";
 import { readPayrollReconciliation } from "./payroll-reconciliation.js";
 import { registerPayrollBundleApproval, lockPayrollWorkerConfiguration } from "./payroll-bundle-approval.js";
 import { registerPayrollRules, payrollV3Checks, payrollSourceContext, payrollLocation, resolvePayrollCalendar, resolvePayrollRule, payrollV3OvertimeRate } from "./payroll-rules.js";
 import { capturePayrollSourceFingerprint } from "./payroll-snapshot.js";
+import { registerPayrollMonthly } from './payroll-monthly.js';
 import { ExternalReadAdapters } from "./external-read-adapters.js";
 import { GhnOrders, registerGhnOrders } from './ghn-orders.js';
 import { GhnTrackingManagement, ghnPrincipal, ghnVisibleSql, registerGhnTracking, registerGhnTrackingManagement, requireGhnTrackingVisible } from "./ghn-tracking.js";
@@ -28,6 +37,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PoolClient } from "pg";
 import { resolveQuoteCustomer, quoteCustomerCandidate, quoteCustomerConflictDetails, quoteCustomerNameKey, quoteCustomerPhoneKey } from "./quote-customer.js";
+import { registerContractRoutes } from './contract-routes.js';
+import { contractPrincipal, canInvoice } from './contract-policy.js';
 import { canonicalQuote, quoteObject } from './quote-calculation.js';
 import { quoteOwnerScope, requireQuoteScope, assertQuoteStatus, publicQuoteData, approvalFinancialSnapshot, stableQuoteFingerprint } from './quote-policy.js';
 import { bootstrapDatabase, pool } from "./db/bootstrap.js";
@@ -37,22 +48,39 @@ import { payrollPermissions, payrollCapability, delegablePayrollPermissions, val
 import { authorizePayrollRequest } from './payroll-access.js';
 import { businessDateKey } from './business-date.js';
 import { registerIntegrationAccess } from './integration-access.js';
+import { registerZcrmCommerce } from './zcrm-commerce.js';
 import { LocalAiProvider, registerAiProviders } from './ai-provider.js';
 import { ExternalIntegrationSettings, registerExternalIntegrationSettings } from './external-integration-settings.js';
 import { GoongIntegrationSettings, registerGoongIntegrationSettings } from './goong-integration-settings.js';
 import { LocalAiWorkflows } from './ai-workflows.js';
 import { registerProductionDispatch, assertProductionDispatchSettled } from "./production-dispatch.js";
+import {registerProductRateQuote} from "./product-rate-quote.js";
+import {registerProductRateAuthoring,assertProductRateAuthoringAuthority} from "./product-rate-authoring.js";
+import {codeKey} from "./product-labor-resolver.js";
+import {loadEffectiveApprovedProductRates,lockProductRateConfigShared,listRuntimePieceRates,selectRuntimePieceRate} from './product-rate-consumption.js';
+import {rateFields,rateRangesOverlap,rateNameKey,assertRateInsertAllowed,type RateFields,type RateSource} from "./product-rate-inputs.mjs";
 import { registerProductionWorkspace } from "./production-workspace.js";
 import {
   assertLegacyFabricVariantsWritable,
   calculateBomMaterialLine,
+  createInitialDraftCuttingPlan,
   cuttingGrid,
   cuttingRequirementForOutput,
   registerProductionSalesWorkflow,
 } from "./production-sales-workflow.js";
+import { registerPurchaseFulfillment } from './purchase-fulfillment.js';
+import {assertPaidCurtainRepair} from './dispatch-labor.js';
+import {laborCodeUsagePolicy} from './product-labor-usage-policy.js';
+import {registerOrderShipments} from './order-shipments.js';
 
 const app = express();
 const allowedLocalOrigins = runtime.allowedOrigins;
+const orderFinancialSchema:OrderFinancialSchema = runtime.startupMode === 'normal'
+  ? 'full-ledgers'
+  : 'verified-item5a-receipts-only';
+const customerOrderTenantPredicate = runtime.zcrmEnabled
+  ? "(o.tenant_id is not distinct from $3 or ($3::text is null and o.intake_source='ZCRM' and exists(select 1 from zcrm.customer_grants g join zcrm.connections z on z.id=g.connection_id where g.customer_id=o.customer_id and z.id=o.intake_connection_id and z.tenant_id=o.tenant_id)))"
+  : "o.tenant_id is not distinct from $3";
 const isAllowedLocalOrigin = (origin: string | undefined) =>
   !origin || allowedLocalOrigins.has(origin);
 app.use((req, res, next) => {
@@ -71,6 +99,10 @@ app.use((req, res, next) => {
   }
   next();
 });
+app.use((req,res,next)=>{
+  if (/^Bearer\s+jf_zcrm_/i.test(req.get('authorization') || '') && !/^\/api\/zcrm\/v1(?:\/|$)/i.test(req.path)) return res.status(401).json({message:'Khóa ZCRM chỉ dùng cho API dịch vụ ZCRM.'});
+  next();
+});
 app.use(
   cors({
     origin(origin, callback) {
@@ -80,11 +112,14 @@ app.use(
 );
 const browserJsonParser = express.json({ limit: '25mb' });
 const agentJsonParser = express.json({ limit: '32kb' });
+const zcrmJsonParser = express.json({ limit: '2mb' });
 app.use((req, res, next) => {
+  if (/^\/api\/zcrm(?:\/|$)/i.test(req.path)) return zcrmJsonParser(req,res,next);
   const machine = /^\/api\/(?:mcp|integrations)(?:\/|$)/i.test(req.path);
   (machine ? agentJsonParser : browserJsonParser)(req, res, next);
 });
 app.use((error: { status?: number }, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (/^\/api\/zcrm(?:\/|$)/i.test(req.path)) return res.status(error.status===413?413:400).json({message:error.status===413?'Yêu cầu ZCRM vượt 2 MB.':'Nội dung JSON không hợp lệ.',code:'INVALID_JSON'});
   if (/^\/api\/(?:mcp|integrations)(?:\/|$)/i.test(req.path)) {
     return res.status(error.status === 413 ? 413 : 400).json({ message: error.status === 413 ? 'Yêu cầu Agent vượt 32 KB.' : 'Nội dung JSON không hợp lệ.' });
   }
@@ -486,7 +521,10 @@ app.get("/api/local-auth/me", async (req, res) => {
   }
 });
 
-registerIntegrationAccess(app, pool, resolveLocalCaller);
+if (runtime.startupMode === 'normal') {
+  registerIntegrationAccess(app, pool, resolveLocalCaller);
+  registerZcrmCommerce({app,pool,resolveCaller:resolveLocalCaller});
+}
 
 app.use(async (req, res, next) => {
   const scope = protectedLocalRequest(req);
@@ -865,17 +903,18 @@ function sendError(res: express.Response, error: unknown) {
     .json(quoteCustomerConflictDetails(error) ? { message, ...quoteCustomerConflictDetails(error) } : code ? { message, code } : { message });
 }
 // Register before legacy routes as well as before payroll/source mutations.
-registerProductionDispatch(app, {
+const productionDispatchService=registerProductionDispatch(app, {
   actor: currentLocalActor,
   role: currentLocalRole,
   transaction: withLocalTransaction,
   lockShared: lockPayrollSourceShared,
+  lockRateConfigShared: lockProductRateConfigShared,
   sendError,
   lockDay: lockAttendanceDay,
   writable: assertWorkflowWritable,
   dayAllowsWork: assertDayStatusAllowsWork,
   reviewScope: assertLocalReviewScope,
-  createEntry: createProductionEntry,
+  createEntry: (body,worker,client)=>createProductionEntry(body,worker,client,true),
   workflowEvent: recordWorkflowEvent,
 });
 registerProductionSalesWorkflow(app, {
@@ -884,7 +923,22 @@ registerProductionSalesWorkflow(app, {
   transaction: withLocalTransaction,
   sendError,
 });
+registerPurchaseFulfillment(app, {
+  actor: currentLocalActor,
+  role: currentLocalRole,
+  transaction: withLocalTransaction,
+  capability: requireLocalCapability,
+  sendError,
+});
+registerOrderShipments(app,{actor:currentLocalActor,role:currentLocalRole,transaction:withLocalTransaction,lockShared:lockPayrollSourceShared,sendError});
 registerProductionWorkspace(app, {actor:currentLocalActor,role:currentLocalRole,transaction:withLocalTransaction,lockShared:lockPayrollSourceShared,sendError});
+registerProductSupplyClassifications(app, {actor:currentLocalActor,role:currentLocalRole,transaction:withLocalTransaction,sendError});
+registerProductTechnicalProfiles(app, {actor:currentLocalActor,role:currentLocalRole,transaction:withLocalTransaction,sendError});
+registerProductLaborMappings(app,{actor:currentLocalActor,role:currentLocalRole,capability:write=>requireLocalCapability(pool,write?['payroll_rate_manage']:['payroll_rate_view','payroll_rate_manage']),transaction:withLocalTransaction,sendError});
+registerProductLaborRequirements(app,{actor:currentLocalActor,role:currentLocalRole,capability:write=>requireLocalCapability(pool,write?['payroll_rate_manage']:['payroll_rate_view','payroll_rate_manage']),transaction:withLocalTransaction,sendError});
+registerProductRateQuote(app,{pool,actor:currentLocalActor,role:currentLocalRole,sendError});
+registerProductRateAuthoring(app,{pool,actor:currentLocalActor,role:currentLocalRole,lockShared:lockPayrollSourceShared,sendError});
+registerPayrollMonthly(app,{pool,actor:currentLocalActor,role:currentLocalRole,sync:body=>createLocalPayrollRun(body,true),preflight:(db,start,end,days,ids)=>payrollPreflight(db,start,end,days,ids??undefined),audit:(table,id,action,reason,db)=>payrollAudit(table,id,action,reason,db),sendError});
 const idempotencyConflict = (key: string) =>
   Object.assign(
     new Error(`Idempotency key '${key}' đã được dùng cho payload khác.`),
@@ -1143,16 +1197,19 @@ const externalSettings = new ExternalIntegrationSettings(pool);
 const goongSettings = new GoongIntegrationSettings(pool);
 const externalRead = new ExternalReadAdapters(process.env, fetch, () => externalSettings.snapshot(), () => goongSettings.snapshot());
 const ghnOrders = new GhnOrders(pool, externalRead);
-registerGhnOrders(app, ghnOrders, currentLocalActor);
-registerExternalIntegrationSettings(app, externalSettings, externalRead, currentLocalActor, currentLocalRole);
-registerGoongIntegrationSettings(app, goongSettings, currentLocalActor, currentLocalRole);
-registerGhnTracking(app, pool, externalRead, currentLocalActor, sendError);
-registerGhnTrackingManagement(app, new GhnTrackingManagement(pool, externalRead), currentLocalActor, sendError);
-app.get('/api/external-integrations/status', async (_req, res) => {
-  if (!['admin','manager'].includes(currentLocalRole())) return res.status(403).json({message:'Chỉ quản trị viên hoặc quản lý được xem cấu hình tích hợp.'});
-  try { res.setHeader('Cache-Control', 'no-store'); res.json(await externalRead.getStatus()); }
-  catch { res.status(503).json({ message: 'Không thể đọc trạng thái tích hợp. Vui lòng thử lại.' }); }
-});
+if (runtime.startupMode === 'normal') {
+  registerGhnOrders(app, ghnOrders, currentLocalActor);
+  registerGhnEditing(app, new GhnEditing(pool, externalRead), currentLocalActor, sendError);
+  registerExternalIntegrationSettings(app, externalSettings, externalRead, currentLocalActor, currentLocalRole);
+  registerGoongIntegrationSettings(app, goongSettings, currentLocalActor, currentLocalRole);
+  registerGhnTracking(app, pool, externalRead, currentLocalActor, sendError);
+  registerGhnTrackingManagement(app, new GhnTrackingManagement(pool, externalRead), currentLocalActor, sendError);
+  app.get('/api/external-integrations/status', async (_req, res) => {
+    if (!['admin','manager'].includes(currentLocalRole())) return res.status(403).json({message:'Chỉ quản trị viên hoặc quản lý được xem cấu hình tích hợp.'});
+    try { res.setHeader('Cache-Control', 'no-store'); res.json(await externalRead.getStatus()); }
+    catch { res.status(503).json({ message: 'Không thể đọc trạng thái tích hợp. Vui lòng thử lại.' }); }
+  });
+}
 
 app.get('/api/ai/my-settings',async (req,res)=>{
  try {
@@ -1632,7 +1689,7 @@ app.post("/api/local-functions/:name", async (req, res) => {
         });
       if (action === "get_settings") {
         const settings = await pool.query(
-          "select id,manager_id,tax_code,username,api_url,default_invoice_type,default_template_code,default_serial,last_login_at,last_login_status,last_login_error,(password is not null and password <> '') has_password from local_einvoice_settings order by updated_at desc nulls last limit 1",
+          "select id,manager_id,tax_code,username,api_url,default_invoice_type,default_template_code,default_serial,last_login_at,last_login_status,last_login_error,(password is not null and password <> '') has_password from local_einvoice_settings where manager_id=$1 order by updated_at desc nulls last limit 1", [currentLocalActor()],
         );
         return res.json({
           success: true,
@@ -1642,13 +1699,14 @@ app.post("/api/local-functions/:name", async (req, res) => {
         });
       }
       if (action === "get_templates") {
+        const p = await contractPrincipal(pool, currentLocalActor(), currentLocalRole());
         const templates = await pool.query(
-          "select distinct template_code,invoice_series from local_einvoices where template_code is not null order by template_code,invoice_series",
+          "select template_code,invoice_series,manager_id from local_einvoices where template_code is not null and company_id is null order by template_code,invoice_series",
         );
         return res.json({
           success: true,
           local_only: true,
-          data: { lstInvoiceTemplate: templates.rows },
+          data: { lstInvoiceTemplate: templates.rows.filter(row => canInvoice(p, row)) },
         });
       }
       return res.json({
@@ -1780,6 +1838,11 @@ app.get("/api/local-sync/runs", async (_req, res) => {
 });
 
 const startLocalIncrementalSync = async (trigger: "manual" | "scheduled") => {
+  if (runtime.startupMode !== 'normal') {
+    throw Object.assign(new Error("Đồng bộ Supabase chỉ được phép ở chế độ khởi động normal."), {
+      status: 503,
+    });
+  }
   if (trigger === "scheduled" && !localSyncAutomaticEnabled) {
     return {
       started: false,
@@ -1886,7 +1949,7 @@ app.get("/api/local-snapshot/:table", async (req, res) => {
     const table = String(req.params.table || "").trim();
     if (!table) throw new Error("Thiếu tên bảng snapshot.");
     // Canonical quotes have dedicated scoped endpoints; raw snapshots may contain stale owners/receipts.
-    if (table === 'quotes') return res.status(403).json({ message: 'Vui lòng dùng danh sách báo giá có kiểm soát quyền.' });
+    if (['quotes','contracts','contract_templates','einvoices'].includes(table)) return res.status(403).json({ message: 'Vui lòng dùng API chứng từ có kiểm soát quyền.' });
     if (table === 'user_roles' && !['admin','manager'].includes(currentLocalRole())) {
       const roles = await pool.query('select id,user_id,role,assigned_by,is_active from local_user_roles where user_id=$1 and is_active', [localActor(req)]);
       return res.json({ table, rows: roles.rows.map(payload => ({ source_key: payload.id, payload })), total: roles.rows.length, limit: 100, offset: 0 });
@@ -1974,18 +2037,18 @@ app.post("/api/local-rpc/:name", async (req, res) => {
         where.push(`manager_id=$${values.length}`);
       }
       const { rows } = await pool.query(
-        `select
+        `with scoped_orders as(select o.* from local_orders o where ${where.join(" and ")} and not exists(select 1 from local_projection_tombstones t where t.source_table='orders' and t.source_key=o.id)) ${orderFinancialCtes(orderFinancialSchema)} select bool_or(finance_incomplete) finance_incomplete,
         count(*)::int total,
         count(*) filter (where status='pending')::int pending_count,
         count(*) filter (where status='processing')::int processing_count,
         count(*) filter (where status in ('delivered','self_delivered'))::int completed_count,
         count(*) filter (where status not in ('delivered','self_delivered','shipped','cancelled','returned') and coalesce(delivery_date,created_at + interval '6 days') < now())::int overdue_count,
-        coalesce(sum(greatest(coalesce(total_amount,0) - coalesce(paid.total_paid,0),0)) filter (where status not in ('cancelled','returned')),0)::numeric total_receivable,
-        coalesce(sum(total_amount) filter (where status in ('delivered','self_delivered')),0)::numeric total_value
-        from local_orders o left join (select p.order_id,sum(p.payment_amount) total_paid from local_order_payments p where not exists (select 1 from local_projection_tombstones t where t.source_table='order_payments' and t.source_key=p.id) group by p.order_id) paid on paid.order_id=o.id
-        where ${where.join(" and ")}`,
+        coalesce(sum(remaining_amount) filter (where status<>'cancelled'),0)::numeric total_receivable,
+        coalesce(sum(total_amount-return_credit) filter (where status in ('delivered','self_delivered')),0)::numeric total_value
+        from financial_orders`,
         values,
       );
+      if(rows[0]?.finance_incomplete)throw Object.assign(new Error('Sổ thu/hoàn/trả chưa khớp; cần đối chiếu trước khi tổng hợp.'),{status:503,code:'DATA_INCOMPLETE'});
       return res.json({ data: rows[0] || {}, local_only: true });
     }
     if (name === "get_quote_stats") {
@@ -2453,9 +2516,9 @@ app.get("/api/customers", async (req, res) => {
       from local_customers c
       left join (
         select customer_id, count(*) filter (where status is distinct from 'cancelled')::int order_count,
-          coalesce(sum(total_amount) filter (where status is distinct from 'cancelled'), 0)::numeric total_spent,
+          coalesce(sum(o.total_amount-coalesce(credit.amount,0)) filter (where o.status is distinct from 'cancelled'), 0)::numeric total_spent,
           max(created_at) filter (where status is distinct from 'cancelled') last_purchase_date
-        from local_orders group by customer_id
+        from local_orders o ${customerListCreditDerivedSql(orderFinancialSchema)} where not exists(select 1 from local_projection_tombstones t where t.source_table='orders' and t.source_key=o.id) group by customer_id
       ) order_stats on order_stats.customer_id = c.id
       left join (select customer_id, count(*)::int quote_count from local_quotes group by customer_id) quote_stats
         on quote_stats.customer_id = c.id
@@ -2485,17 +2548,18 @@ app.get("/api/customers", async (req, res) => {
 app.get("/api/customers/:id", async (req, res) => {
   try {
     const customerResult = await pool.query(
-      "select * from local_customers where id=$1",
+      "select * from local_customers c where id=$1 and is_active and not exists(select 1 from local_projection_tombstones t where t.source_table='customers' and t.source_key=c.id)",
       [req.params.id],
     );
     const customer = customerResult.rows[0];
     if (!customer)
       return res.status(404).json({ message: "Không tìm thấy khách hàng." });
     const quoteScope = await quoteOwnerScope(pool, currentLocalActor(), currentLocalRole());
+    if(quoteScope&&customer.manager_id!==quoteScope&&!(await pool.query(`select 1 from local_orders o where customer_id=$1 and manager_id=$2 and ${customerOrderTenantPredicate} and not exists(select 1 from local_projection_tombstones t where t.source_table='orders' and t.source_key=o.id) limit 1`,[customer.id,quoteScope,customer.tenant_id])).rows[0])return res.status(404).json({message:'Không tìm thấy khách trong phạm vi phụ trách.'});
     const [orders, quotes] = await Promise.all([
       pool.query(
-        "select * from local_orders where customer_id=$1 order by created_at desc nulls last",
-        [req.params.id],
+        `select * from local_orders o where customer_id=$1 and ($2='' or manager_id=$2) and ${customerOrderTenantPredicate} and not exists(select 1 from local_projection_tombstones t where t.source_table='orders' and t.source_key=o.id) order by created_at desc nulls last`,
+        [req.params.id,quoteScope,customer.tenant_id],
       ),
       pool.query(
         "select * from local_quotes where customer_id=$1 and ($2='' or manager_id=$2) order by created_at desc nulls last",
@@ -2511,7 +2575,7 @@ app.get("/api/customers/:id", async (req, res) => {
       : { rows: [] };
     res.json({
       customer,
-      orders: orders.rows,
+      orders: (await hydrateOrderFinancials(pool,orders.rows,orderFinancialSchema)).map(localOrderRow),
       quotes: quotes.rows.map(localQuoteRow),
       payments: payments.rows,
     });
@@ -2714,7 +2778,7 @@ const localOrderRow = (row: Record<string, unknown>) => {
     customers: customer,
     assignees: assignee,
     order_payments: payments,
-    total_paid: totalPaid,
+    ...orderFinancialProjection(row,row.total_paid??totalPaid,row.refunded??0,row.return_credit??0),
     total_amount: asNumber(row.total_amount),
     subtotal: asNumber(row.subtotal),
     vat_rate: asNumber(row.vat_rate),
@@ -2724,14 +2788,13 @@ const localOrderRow = (row: Record<string, unknown>) => {
 
 app.get("/api/quotes", async (req, res) => {
   try {
-    const search = String(req.query.search || "")
-      .trim()
-      .toLowerCase();
-    const managerId = String(req.query.managerId || "").trim();
-    const effectiveManagerId = await quoteOwnerScope(pool, currentLocalActor(), currentLocalRole(), managerId);
+    const filters = normalizeQuoteFilters(req.query);
+    const effectiveManagerId = await quoteOwnerScope(pool, currentLocalActor(), currentLocalRole(), req.query.managerId);
     const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 5000);
     const offset = Math.max(Number(req.query.offset || 0), 0);
-    const params: unknown[] = [search, effectiveManagerId, limit, offset];
+    if (!Number.isInteger(limit) || !Number.isInteger(offset)) throw Object.assign(new Error('Phân trang không hợp lệ.'), { status: 400 });
+    const membership = quoteFilterSql(filters, effectiveManagerId);
+    const params = [...membership.values, limit, offset];
     const { rows } = await pool.query(
       `
       select q.*, c.name customer_name, c.email customer_email, c.phone customer_phone,
@@ -2742,10 +2805,9 @@ app.get("/api/quotes", async (req, res) => {
       left join local_source_snapshots assignee
         on assignee.source='SUPABASE' and assignee.source_table='assignees'
         and assignee.source_key=q.assignee_id and not assignee.is_deleted
-      where ($1='' or lower(coalesce(q.quote_number,'')) like '%'||$1||'%' or lower(coalesce(q.notes,'')) like '%'||$1||'%')
-        and ($2='' or q.manager_id=$2)
-      order by q.created_at desc nulls last
-      limit $3 offset $4`,
+      where ${membership.where}
+      order by q.created_at desc nulls last, q.id desc
+      limit $${params.length - 1} offset $${params.length}`,
       params,
     );
     res.json(rows.map(localQuoteRow));
@@ -2846,8 +2908,9 @@ app.post("/api/quotes", async (req, res) => {
 
 app.get("/api/quotes/stats", async (req, res) => {
   try {
-    const managerId = String(req.query.managerId || "").trim();
-    const effectiveManagerId = await quoteOwnerScope(pool, currentLocalActor(), currentLocalRole(), managerId);
+    const filters = normalizeQuoteFilters(req.query);
+    const effectiveManagerId = await quoteOwnerScope(pool, currentLocalActor(), currentLocalRole(), req.query.managerId);
+    const membership = quoteFilterSql(filters, effectiveManagerId);
     const { rows } = await pool.query(
       `
       select count(*)::int total,
@@ -2856,8 +2919,8 @@ app.get("/api/quotes/stats", async (req, res) => {
         count(*) filter (where status='approved')::int approved_count,
         count(*) filter (where status='rejected')::int rejected_count,
         coalesce(sum(total_amount) filter (where status='approved'),0)::numeric approved_value
-      from local_quotes where ($1='' or manager_id=$1)`,
-      [effectiveManagerId],
+      from local_quotes q where ${membership.where}`,
+      membership.values,
     );
     res.json(
       rows[0] || {
@@ -2967,6 +3030,7 @@ app.post("/api/quotes/:id/approve", async (req, res) => {
     const quote = quoteResult.rows[0];
     if (!quote) throw Object.assign(new Error("Không tìm thấy báo giá."), { status: 404 });
     await requireQuoteScope(client, currentLocalActor(), currentLocalRole(), quote);
+    const financial = approvalFinancialSnapshot(quote);
     const customerId = await resolveQuoteCustomer(client, {}, quote, true);
     const existing = await client.query("select * from local_orders where quote_id=$1 order by created_at desc for update", [quote.id]);
     if (existing.rows.length > 1) throw Object.assign(new Error("Báo giá đã liên kết nhiều đơn hàng; vui lòng kiểm tra trước khi duyệt."), { status: 409 });
@@ -2983,7 +3047,6 @@ app.post("/api/quotes/:id/approve", async (req, res) => {
       await client.query("commit");
       return res.json({ quote: localQuoteRow(updated.rows[0]), order: localOrderRow({ ...order, order_payments: payments.rows }), reused: true });
     }
-    const financial = approvalFinancialSnapshot(quote);
     if (!['draft', 'sent'].includes(quote.status)) throw Object.assign(new Error('Báo giá không ở trạng thái chờ duyệt. Hãy nhân bản thành bản nháp mới.'), { status: 409 });
     const orderNumber = String(
       req.body?.order_number || `ORD-LOCAL-${Date.now()}`,
@@ -3080,7 +3143,7 @@ app.get("/api/orders", async (req, res) => {
         on assignee.source='SUPABASE' and assignee.source_table='assignees'
         and assignee.source_key=o.assignee_id and not assignee.is_deleted
       where ($1='' or lower(coalesce(o.order_number,'')) like '%'||$1||'%' or lower(coalesce(o.display_order_number,'')) like '%'||$1||'%' or lower(coalesce(o.notes,'')) like '%'||$1||'%' or lower(coalesce(c.name,quote_name.quote_customer_name,'')) like '%'||$1||'%')
-        and ($2='' or o.manager_id=$2)
+        and ($2='' or o.manager_id=$2) and not exists(select 1 from local_projection_tombstones t where t.source_table='orders' and t.source_key=o.id)
       order by o.created_at desc nulls last limit $3 offset $4`,
       params,
     );
@@ -3130,7 +3193,7 @@ app.get("/api/orders", async (req, res) => {
       { id: String(row.id), ghn_order_code: String(row.ghn_order_code) },
     ]));
     res.json(
-      rows.map((row) =>
+      (await hydrateOrderFinancials(pool,rows,orderFinancialSchema)).map((row) =>
         localOrderRow({ ...row, order_payments: byOrder.get(row.id) || [], ghn_tracking: trackingByOrder.get(String(row.id)) || [] }),
       ),
     );
@@ -3195,24 +3258,17 @@ app.get("/api/orders/stats", async (req, res) => {
   try {
     const managerId = String(req.query.managerId || "").trim();
     const effectiveManagerId = managerId === "all" ? "" : managerId;
-    const { rows } = await pool.query(
-      `
-      select count(*)::int total,
-        count(*) filter (where status='pending')::int pending_count,
-        count(*) filter (where status='processing')::int processing_count,
-        count(*) filter (where status in ('delivered','self_delivered'))::int completed_count,
-        coalesce(sum(total_amount) filter (where status not in ('cancelled','returned')),0)::numeric total_value
-      from local_orders where ($1='' or manager_id=$1)`,
-      [effectiveManagerId],
-    );
+    const { rows } = await pool.query(`with scoped_orders as(select o.* from local_orders o where ($1='' or manager_id=$1) and not exists(select 1 from local_projection_tombstones t where t.source_table='orders' and t.source_key=o.id)) ${orderFinancialCtes(orderFinancialSchema)}
+      select bool_or(finance_incomplete) finance_incomplete,count(*)::int total,count(*) filter(where status='pending')::int pending_count,count(*) filter(where status='processing')::int processing_count,count(*) filter(where status in ('delivered','self_delivered'))::int completed_count,coalesce(sum(total_amount-return_credit) filter(where status<>'cancelled'),0)::numeric total_value,coalesce(sum(remaining_amount) filter(where status<>'cancelled'),0)::numeric total_receivable from financial_orders`,[effectiveManagerId]);
     const row = rows[0] || {};
+    if(row.finance_incomplete)throw Object.assign(new Error('Sổ thu/hoàn/trả chưa khớp; cần đối chiếu trước khi tổng hợp.'),{status:503,code:'DATA_INCOMPLETE'});
     res.json({
       total: Number(row.total || 0),
       pendingCount: Number(row.pending_count || 0),
       processingCount: Number(row.processing_count || 0),
       completedCount: Number(row.completed_count || 0),
       overdueCount: 0,
-      totalReceivable: 0,
+      totalReceivable: Number(row.total_receivable||0),
       totalValue: Number(row.total_value || 0),
     });
   } catch (error) {
@@ -3230,6 +3286,16 @@ app.get("/api/orders/duplicates", async (_req, res) => {
     sendError(res, error);
   }
 });
+
+app.get("/api/orders/:id",async(req,res)=>{try{
+ const owner=await quoteOwnerScope(pool,currentLocalActor(),currentLocalRole());
+ const row=(await pool.query(`select o.*,c.name customer_name,c.email customer_email,c.phone customer_phone,c.company customer_company,c.customer_code,c.address customer_address,c.addresses customer_addresses,a.name assignee_name from local_orders o left join local_customers c on c.id=o.customer_id left join local_assignees a on a.id=o.assignee_id where o.id=$1 and ($2='' or o.manager_id=$2) and not exists(select 1 from local_projection_tombstones t where t.source_table='orders' and t.source_key=o.id)`,[req.params.id,owner])).rows[0];
+ if(!row)return res.status(404).json({message:'Không tìm thấy đơn trong phạm vi phụ trách.'});
+ const projected=(await hydrateOrderFinancials(pool,[row],orderFinancialSchema))[0];
+ const payments=(await pool.query("select * from local_order_payments p where order_id=$1 and not exists(select 1 from local_projection_tombstones t where t.source_table='order_payments' and t.source_key=p.id)",[row.id])).rows;
+ let tracking:unknown[]=[];try{const p=await ghnPrincipal(pool,currentLocalActor());tracking=(await pool.query(`select g.id,g.ghn_order_code from local_ghn_tracking g left join local_orders o on o.id=g.order_id where ${ghnVisibleSql} and g.order_id=$3`,[p.role,p.manager,row.id])).rows;}catch(e){if(Number((e as {status?:number}).status)!==403)throw e;}
+ res.json(localOrderRow({...projected,order_payments:payments,ghn_tracking:tracking}));
+ }catch(e){sendError(res,e);}});
 
 app.patch("/api/orders/:id", async (req, res) => {
   try {
@@ -3264,7 +3330,7 @@ app.patch("/api/orders/:id", async (req, res) => {
     );
     if (!rows[0])
       return res.status(404).json({ message: "Không tìm thấy đơn hàng." });
-    res.json(localOrderRow({ ...rows[0], order_payments: [] }));
+    res.json(localOrderRow((await hydrateOrderFinancials(pool,rows,orderFinancialSchema))[0]));
   } catch (error) {
     sendError(res, error);
   }
@@ -3346,244 +3412,6 @@ const localContractRow = (row: Record<string, unknown>) => ({
   deposit_amount: asNumber(row.deposit_amount),
   vat_rate: asNumber(row.vat_rate),
   deposit_percentage: asNumber(row.deposit_percentage),
-});
-
-app.get("/api/contracts", async (req, res) => {
-  try {
-    const search = String(req.query.search || "")
-      .trim()
-      .toLowerCase();
-    const managerId = String(req.query.managerId || "").trim();
-    const { rows } = await pool.query(
-      `select c.*,cu.name customer_name,cu.email customer_email,cu.phone customer_phone,cu.address customer_address,cu.company customer_company,a.name assignee_name from local_contracts c left join local_customers cu on cu.id=c.customer_id left join local_assignees a on a.id=c.manager_id where ($1='' or lower(coalesce(c.contract_number,'')) like '%'||$1||'%' or lower(coalesce(c.title,'')) like '%'||$1||'%' or lower(coalesce(cu.name,'')) like '%'||$1||'%') and ($2='' or c.manager_id=$2) order by c.created_at desc nulls last`,
-      [search, managerId === "all" ? "" : managerId],
-    );
-    res.json(rows.map(localContractRow));
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-
-app.post("/api/contracts", async (req, res) => {
-  try {
-    const b = req.body || {};
-    const number = String(b.contract_number || "").trim();
-    if (!number) throw new Error("Số hợp đồng là bắt buộc.");
-    const { rows } = await pool.query(
-      `insert into local_contracts(id,contract_number,customer_id,quote_id,order_id,template_id,title,status,contract_date,start_date,end_date,subtotal,vat_rate,vat_amount,total_amount,deposit_amount,deposit_percentage,include_vat,items,terms,legal_basis,articles,seller_info,buyer_info,content,document_overrides,notes,manager_id,tenant_id,created_at,updated_at,is_snapshot_record,local_modified_at) values(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,coalesce($7,'draft'),$8::timestamptz,$9::timestamptz,$10::timestamptz,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb,$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25::jsonb,$26,'local-admin','local-tenant',now(),now(),false,now()) returning *`,
-      [
-        number,
-        b.customer_id || null,
-        b.quote_id || null,
-        b.order_id || null,
-        b.template_id || null,
-        b.title || "",
-        b.status || "draft",
-        b.contract_date || null,
-        b.start_date || null,
-        b.end_date || null,
-        Number(b.subtotal || 0),
-        Number(b.vat_rate || 0),
-        Number(b.vat_amount || 0),
-        Number(b.total_amount || 0),
-        Number(b.deposit_amount || 0),
-        b.deposit_percentage ?? null,
-        Boolean(b.include_vat),
-        JSON.stringify(Array.isArray(b.items) ? b.items : []),
-        JSON.stringify(Array.isArray(b.terms) ? b.terms : []),
-        JSON.stringify(Array.isArray(b.legal_basis) ? b.legal_basis : []),
-        JSON.stringify(Array.isArray(b.articles) ? b.articles : []),
-        JSON.stringify(b.seller_info || {}),
-        JSON.stringify(b.buyer_info || {}),
-        b.content || null,
-        JSON.stringify(b.document_overrides || {}),
-        b.notes || null,
-      ],
-    );
-    res.status(201).json(localContractRow(rows[0]));
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-
-app.patch("/api/contracts/:id", async (req, res) => {
-  try {
-    const allowed = [
-      "contract_number",
-      "customer_id",
-      "quote_id",
-      "order_id",
-      "template_id",
-      "title",
-      "status",
-      "contract_date",
-      "start_date",
-      "end_date",
-      "subtotal",
-      "vat_rate",
-      "vat_amount",
-      "total_amount",
-      "deposit_amount",
-      "deposit_percentage",
-      "include_vat",
-      "items",
-      "terms",
-      "legal_basis",
-      "articles",
-      "seller_info",
-      "buyer_info",
-      "content",
-      "document_overrides",
-      "notes",
-      "manager_id",
-    ];
-    const fields = Object.keys(req.body || {}).filter((key) =>
-      allowed.includes(key),
-    );
-    if (!fields.length)
-      throw new Error("Không có dữ liệu hợp đồng cần cập nhật.");
-    const jsonFields = new Set([
-      "items",
-      "terms",
-      "legal_basis",
-      "articles",
-      "seller_info",
-      "buyer_info",
-      "document_overrides",
-    ]);
-    const values: unknown[] = [req.params.id];
-    const assignments = fields.map((field) => {
-      values.push(
-        jsonFields.has(field)
-          ? JSON.stringify(req.body[field])
-          : req.body[field],
-      );
-      return `${field}=$${values.length}${jsonFields.has(field) ? "::jsonb" : ""}`;
-    });
-    const { rows } = await pool.query(
-      `update local_contracts set ${assignments.join(",")},local_modified_at=now(),updated_at=now() where id=$1 returning *`,
-      values,
-    );
-    if (!rows[0])
-      return res.status(404).json({ message: "Không tìm thấy hợp đồng." });
-    res.json(localContractRow(rows[0]));
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-app.delete("/api/contracts/:id", async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      "delete from local_contracts where id=$1 returning id",
-      [req.params.id],
-    );
-    if (!rows[0])
-      return res.status(404).json({ message: "Không tìm thấy hợp đồng." });
-    res.json(rows[0]);
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-
-app.get("/api/contract-templates", async (_req, res) => {
-  try {
-    const { rows } = await pool.query(
-      "select * from local_contract_templates order by created_at desc nulls last",
-    );
-    res.json(
-      rows.map((row) => ({
-        ...row,
-        legal_basis: parseJsonValue(row.legal_basis, []),
-        seller_info: parseJsonValue(row.seller_info, {}),
-        item_columns: parseJsonValue(row.item_columns, []),
-        articles: parseJsonValue(row.articles, []),
-        payment_terms: parseJsonValue(row.payment_terms, {}),
-        vat_rate: asNumber(row.vat_rate),
-      })),
-    );
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-app.post("/api/contract-templates", async (req, res) => {
-  try {
-    const b = req.body || {};
-    if (!String(b.name || "").trim())
-      throw new Error("Tên mẫu hợp đồng là bắt buộc.");
-    const { rows } = await pool.query(
-      "insert into local_contract_templates(id,name,legal_basis,seller_info,item_columns,articles,include_vat,vat_rate,payment_terms,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at) values(gen_random_uuid()::text,$1,$2::jsonb,$3::jsonb,$4::jsonb,$5::jsonb,$6,$7,$8::jsonb,'local-tenant',false,now(),now(),now()) returning *",
-      [
-        b.name,
-        JSON.stringify(b.legal_basis || []),
-        JSON.stringify(b.seller_info || {}),
-        JSON.stringify(b.item_columns || []),
-        JSON.stringify(b.articles || []),
-        Boolean(b.include_vat),
-        Number(b.vat_rate ?? 8),
-        JSON.stringify(b.payment_terms || {}),
-      ],
-    );
-    res.status(201).json(rows[0]);
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-app.patch("/api/contract-templates/:id", async (req, res) => {
-  try {
-    const allowed = [
-      "name",
-      "legal_basis",
-      "seller_info",
-      "item_columns",
-      "articles",
-      "include_vat",
-      "vat_rate",
-      "payment_terms",
-    ];
-    const fields = Object.keys(req.body || {}).filter((key) =>
-      allowed.includes(key),
-    );
-    if (!fields.length)
-      throw new Error("Không có dữ liệu mẫu hợp đồng cần cập nhật.");
-    const jsonFields = new Set([
-      "legal_basis",
-      "seller_info",
-      "item_columns",
-      "articles",
-      "payment_terms",
-    ]);
-    const values: unknown[] = [req.params.id];
-    const assignments = fields.map((field) => {
-      values.push(
-        jsonFields.has(field)
-          ? JSON.stringify(req.body[field])
-          : req.body[field],
-      );
-      return `${field}=$${values.length}${jsonFields.has(field) ? "::jsonb" : ""}`;
-    });
-    const { rows } = await pool.query(
-      `update local_contract_templates set ${assignments.join(",")},local_modified_at=now(),updated_at=now() where id=$1 returning *`,
-      values,
-    );
-    if (!rows[0])
-      return res.status(404).json({ message: "Không tìm thấy mẫu hợp đồng." });
-    res.json(rows[0]);
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-app.delete("/api/contract-templates/:id", async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      "delete from local_contract_templates where id=$1 returning id",
-      [req.params.id],
-    );
-    if (!rows[0])
-      return res.status(404).json({ message: "Không tìm thấy mẫu hợp đồng." });
-    res.json(rows[0]);
-  } catch (error) {
-    sendError(res, error);
-  }
 });
 
 app.get("/api/quote-template-settings", async (_req, res) => {
@@ -3829,25 +3657,15 @@ app.delete("/api/transactions/:id", async (req, res) => {
     sendError(res, error);
   }
 });
-app.post("/api/order-payments", async (req, res) => {
-  try {
-    const b = req.body || {};
-    const { rows } = await pool.query(
-      "insert into local_order_payments(id,order_id,payment_amount,payment_date,payment_type,payment_method,installment_number,notes,is_snapshot_record,local_modified_at,created_at,updated_at) values(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,false,now(),now(),now()) returning *",
-      [
-        b.order_id,
-        Number(b.payment_amount || 0),
-        b.payment_date || new Date().toISOString(),
-        b.payment_type || null,
-        b.payment_method || null,
-        b.installment_number ?? null,
-        b.notes || null,
-      ],
-    );
-    res.status(201).json(rows[0]);
-  } catch (error) {
-    sendError(res, error);
-  }
+app.post("/api/order-payments",async(req,res)=>{
+ const client=await pool.connect();try{
+  const b=req.body||{},amount=Number(b.payment_amount);
+  if(!Number.isSafeInteger(amount)||amount<=0)throw Object.assign(new Error('Số tiền VND phải nguyên và lớn hơn 0.'),{status:422});
+  await client.query('begin');const row=(await client.query('select id,total_amount from local_orders where id=$1 for update',[b.order_id])).rows[0];if(!row)throw new Error('Không tìm thấy đơn hàng.');
+  const before=(await hydrateOrderFinancials(client,[row],orderFinancialSchema))[0];if(amount>before.remaining_amount)throw Object.assign(new Error('Khoản thu vượt số còn phải thu.'),{status:422});
+  const payment=(await client.query("insert into local_order_payments(id,order_id,payment_amount,payment_date,payment_type,payment_method,installment_number,notes,is_snapshot_record,local_modified_at,created_at,updated_at) values(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,false,now(),now(),now()) returning *",[b.order_id,amount,b.payment_date||new Date().toISOString(),b.payment_type||null,b.payment_method||null,b.installment_number??null,b.notes||null])).rows[0];
+  await recalculateLocalOrderPayment(client,String(b.order_id));await client.query('commit');res.status(201).json(payment);
+ }catch(e){await client.query('rollback').catch(()=>undefined);sendError(res,e);}finally{client.release();}
 });
 app.get("/api/order-payments", async (req, res) => {
   try {
@@ -3870,20 +3688,11 @@ app.get("/api/order-payments", async (req, res) => {
 // order/payment ledgers remain the single source of truth.
 app.get("/api/order-payments/summary", async (_req, res) => {
   try {
-    const { rows } = await pool.query(`
-      select o.id order_id,o.order_number,o.payment_status,o.total_amount,
-        o.payment_date final_payment_date,c.name customer_name,c.customer_code,
-        coalesce(sum(p.payment_amount),0)::numeric total_paid,
-        greatest(coalesce(o.total_amount,0)-coalesce(sum(p.payment_amount),0),0)::numeric remaining_amount,
-        count(p.id)::int payment_count,min(p.payment_date) first_payment_date,max(p.payment_date) last_payment_date
-      from local_orders o
-      left join local_customers c on c.id=o.customer_id
-      left join local_order_payments p on p.order_id=o.id
-        and not exists (select 1 from local_projection_tombstones t where t.source_table='order_payments' and t.source_key=p.id)
-      group by o.id,o.order_number,o.payment_status,o.total_amount,o.payment_date,c.name,c.customer_code
-      order by o.created_at desc`);
+    const scope=await quoteOwnerScope(pool,currentLocalActor(),currentLocalRole());
+    const {rows}=await pool.query(`select o.*,o.id order_id,c.name customer_name,c.customer_code,o.payment_date final_payment_date from local_orders o left join local_customers c on c.id=o.customer_id where ($1='' or o.manager_id=$1) and not exists(select 1 from local_projection_tombstones t where t.source_table='orders' and t.source_key=o.id) order by o.created_at desc`,[scope]);
+    const projected=await hydrateOrderFinancials(pool,rows,orderFinancialSchema);
     res.json(
-      rows.map((row) => ({
+      projected.map((row) => ({
         ...row,
         total_amount: asNumber(row.total_amount),
         total_paid: asNumber(row.total_paid),
@@ -3911,43 +3720,40 @@ app.post("/api/order-payments/record", async (req, res) => {
       [orderId],
     );
     if (!orderResult.rows[0]) throw new Error("Không tìm thấy đơn hàng.");
-    const paidResult = await client.query(
-      "select coalesce(sum(payment_amount),0)::numeric paid from local_order_payments where order_id=$1 and not exists (select 1 from local_projection_tombstones t where t.source_table='order_payments' and t.source_key=local_order_payments.id)",
-      [orderId],
-    );
-    const paidBefore = Number(paidResult.rows[0]?.paid || 0);
+    const financial=(await hydrateOrderFinancials(client,orderResult.rows,orderFinancialSchema))[0];
     const deductionAmount = Number(deduction?.amount || 0);
-    const settled = paidBefore + amount + deductionAmount;
-    const totalAmount = Number(orderResult.rows[0].total_amount || 0);
-    const status =
-      settled >= totalAmount ? "paid" : settled > 0 ? "partial" : "pending";
+    for(const value of [amount,deductionAmount])if(!Number.isSafeInteger(value)||value<0)throw Object.assign(new Error('Số tiền VND phải nguyên, không âm.'),{status:422});
+    const gross=amount;
+    if(!Number.isSafeInteger(gross)||gross>financial.remaining_amount)throw Object.assign(new Error('Khoản thu vượt số tiền còn phải thu theo sổ gốc.'),{status:422});
+    const receiptNotes=[payment.notes||'',deductionAmount>0?`Chi phí do bên bán chịu: ${deductionAmount} VND; khoản thu khách ${amount} VND được ghi độc lập.`:''].filter(Boolean).join('\n');
     const paymentResult = await client.query(
       `
       insert into local_order_payments(id,order_id,payment_amount,payment_date,payment_type,payment_method,installment_number,notes,is_snapshot_record,local_modified_at,created_at,updated_at)
       values(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,false,now(),now(),now()) returning *`,
       [
         orderId,
-        amount,
+        gross,
         payment.payment_date || new Date().toISOString(),
         payment.payment_type || null,
         payment.payment_method || null,
         payment.installment_number ?? null,
-        payment.notes || null,
+        receiptNotes || null,
       ],
     );
+    const afterReceipt=(await hydrateOrderFinancials(client,orderResult.rows,orderFinancialSchema))[0],status=afterReceipt.payment_status;
     await client.query(
       `
       insert into local_transactions(id,amount,date,type,description,category,payment_type,order_id,installment_number,total_installments,remaining_amount,manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at)
       values(gen_random_uuid()::text,$1,$2,'income',$3,'order_payment',$4,$5,$6,$7,$8,$9,'local-tenant',false,now(),now(),now())`,
       [
-        amount,
+        gross,
         payment.payment_date || new Date().toISOString(),
         transaction.description || `Thanh toán đơn hàng ${orderId}`,
         payment.payment_type || null,
         orderId,
         payment.installment_number ?? null,
         transaction.total_installments ?? 1,
-        Math.max(totalAmount - settled, 0),
+        afterReceipt.remaining_amount,
         payment.manager_id || "local-admin",
       ],
     );
@@ -3993,11 +3799,13 @@ app.post("/api/order-payments/record", async (req, res) => {
           : null,
       ],
     );
+    const updatedFinancial=afterReceipt;
     await client.query("commit");
     res.status(201).json({
       payment: paymentResult.rows[0],
       order: localOrderRow({
         ...orderUpdate.rows[0],
+        ...updatedFinancial,
         order_payments: [paymentResult.rows[0]],
       }),
       reused: false,
@@ -4018,29 +3826,25 @@ async function recalculateLocalOrderPayment(
     [orderId],
   );
   if (!orderResult.rows[0]) return null;
-  const paidResult = await client.query(
-    "select coalesce(sum(payment_amount),0)::numeric paid,max(payment_date) last_payment_date from local_order_payments where order_id=$1 and not exists (select 1 from local_projection_tombstones t where t.source_table='order_payments' and t.source_key=local_order_payments.id)",
-    [orderId],
-  );
-  const paid = Number(paidResult.rows[0]?.paid || 0);
-  const total = Number(orderResult.rows[0].total_amount || 0);
-  const status =
-    paid >= total && total > 0 ? "paid" : paid > 0 ? "partial" : "pending";
+  const financial=(await hydrateOrderFinancials(client,orderResult.rows,orderFinancialSchema))[0];
+  const status=financial.payment_status;
   const { rows } = await client.query(
     "update local_orders set payment_status=$2,payment_date=$3,updated_at=now(),local_modified_at=now() where id=$1 returning *",
     [
       orderId,
       status,
-      status === "paid" ? paidResult.rows[0]?.last_payment_date || null : null,
+      status === "paid" ? financial.last_payment_date || null : null,
     ],
   );
-  return rows[0] || null;
+  return rows[0] ? {...rows[0],...financial} : null;
 }
 
 app.delete("/api/order-payments/by-id/:id", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("begin");
+    const lookup=(await client.query("select order_id from local_order_payments where id=$1",[req.params.id])).rows[0];
+    if(lookup)await client.query("select id from local_orders where id=$1 for update",[lookup.order_id]);
     const paymentResult = await client.query(
       "select id,order_id,payment_amount,payment_date from local_order_payments where id=$1 for update",
       [req.params.id],
@@ -5261,7 +5065,7 @@ const localEInvoiceRow = (
 app.get("/api/einvoice-settings", async (_req, res) => {
   try {
     const { rows } = await pool.query(
-      "select id,manager_id,tax_code,username,api_url,default_invoice_type,default_template_code,default_serial,last_login_at,last_login_status,last_login_error,(password is not null and password <> '') has_password from local_einvoice_settings order by updated_at desc nulls last limit 1",
+      "select id,manager_id,tax_code,username,api_url,default_invoice_type,default_template_code,default_serial,last_login_at,last_login_status,last_login_error,(password is not null and password <> '') has_password from local_einvoice_settings where manager_id=$1 order by updated_at desc nulls last limit 1", [currentLocalActor()],
     );
     res.json({
       settings: rows[0] || null,
@@ -5278,13 +5082,14 @@ app.post("/api/einvoice-settings", async (_req, res) => {
 app.get("/api/einvoice-templates", async (_req, res) => {
   try {
     const { rows } = await pool.query(
-      "select distinct template_code,invoice_series from local_einvoices where template_code is not null order by template_code,invoice_series",
+      "select template_code,invoice_series,manager_id from local_einvoices where template_code is not null and company_id is null order by template_code,invoice_series",
     );
     const grouped = new Map<
       string,
       { templateCode: string; templateName: string; invoiceSeries: string[] }
     >();
-    for (const row of rows) {
+    const p = await contractPrincipal(pool, currentLocalActor(), currentLocalRole());
+    for (const row of rows.filter(row => canInvoice(p, row))) {
       const code = String(row.template_code);
       const item = grouped.get(code) || {
         templateCode: code,
@@ -5307,152 +5112,8 @@ app.get("/api/einvoice-templates", async (_req, res) => {
     sendError(res, error);
   }
 });
-app.get("/api/einvoices", async (req, res) => {
-  try {
-    const contractId = String(req.query.contractId || "").trim();
-    const { rows } = await pool.query(
-      "select * from local_einvoices where ($1='' or contract_id=$1) order by created_at desc",
-      [contractId],
-    );
-    res.json(rows.map(localEInvoiceRow));
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-app.post("/api/einvoices/draft", async (req, res) => {
-  try {
-    const body = (
-      req.body && typeof req.body === "object" ? req.body : {}
-    ) as Record<string, unknown>;
-    const contract = (
-      body.contract && typeof body.contract === "object" ? body.contract : {}
-    ) as Record<string, unknown>;
-    const options = (
-      body.options && typeof body.options === "object" ? body.options : {}
-    ) as Record<string, unknown>;
-    const items = Array.isArray(contract.items)
-      ? (contract.items as Record<string, unknown>[])
-      : [];
-    const subtotal = Number(
-      contract.subtotal ||
-        items.reduce(
-          (s: number, i: Record<string, unknown>) =>
-            s + Number(i.quantity || 1) * Number(i.unit_price || i.price || 0),
-          0,
-        ),
-    );
-    const vatRate = Number(contract.vat_rate || 0);
-    const vatAmount = Number(contract.vat_amount ?? (subtotal * vatRate) / 100);
-    const total = Number(contract.total_amount ?? subtotal + vatAmount);
-    const id = randomUUID();
-    const payload = { contract, options };
-    const buyer = (
-      contract.buyer_info && typeof contract.buyer_info === "object"
-        ? contract.buyer_info
-        : {}
-    ) as Record<string, unknown>;
-    const { rows } = await pool.query(
-      `insert into local_einvoices(id,contract_id,transaction_uuid,invoice_type,template_code,invoice_series,status,is_draft,total_amount,vat_amount,total_with_vat,buyer_name,buyer_tax_code,buyer_address,buyer_email,buyer_company,request_data,draft_payload,invoice_action,currency,payment_method,is_snapshot_record,local_modified_at) values($1,$2,$3,$4,$5,$6,'draft',true,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,'local_draft',$17,$18,false,now()) returning *`,
-      [
-        id,
-        contract.id || null,
-        `local-draft-${id}`,
-        options.invoiceType || "01GTKT",
-        options.templateCode || null,
-        options.invoiceSeries || null,
-        total,
-        vatAmount,
-        total,
-        buyer.name || buyer.representative || null,
-        buyer.tax_code || null,
-        buyer.address || null,
-        buyer.email || null,
-        buyer.company_name || buyer.company || null,
-        JSON.stringify(contract),
-        JSON.stringify(payload),
-        options.currency || "VND",
-        options.paymentMethod || null,
-      ],
-    );
-    res.status(201).json({
-      success: true,
-      local_only: true,
-      invoice: localEInvoiceRow(rows[0]),
-    });
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-app.post("/api/einvoices/:id/issue", async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      "update local_einvoices set status='local_draft',is_draft=true,updated_at=now() where id=$1 returning *",
-      [req.params.id],
-    );
-    if (!rows[0])
-      return res.status(404).json({ message: "Không tìm thấy hóa đơn nháp." });
-    await pool.query(
-      "insert into local_einvoice_actions(id,einvoice_id,action,payload,status) values($1,$2,'issue_local',$3::jsonb,'LOCAL_ONLY')",
-      [
-        randomUUID(),
-        req.params.id,
-        JSON.stringify({ note: "Local không phát hành Viettel" }),
-      ],
-    );
-    res.json({
-      success: false,
-      local_only: true,
-      message:
-        "Đã giữ hóa đơn ở trạng thái nháp local. Phát hành Viettel cần kết nối dịch vụ bên ngoài.",
-      invoice: localEInvoiceRow(rows[0]),
-    });
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-app.post("/api/einvoices/:id/preview", async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      "select * from local_einvoices where id=$1",
-      [req.params.id],
-    );
-    if (!rows[0])
-      return res.status(404).json({ message: "Không tìm thấy hóa đơn." });
-    const invoice = localEInvoiceRow(rows[0]);
-    const base64 = simplePdf([
-      "CRM LOCAL - HOA DON NHAP",
-      `Ma hoa don: ${invoice.invoice_number || invoice.id}`,
-      `Khach hang: ${invoice.buyer_name || ""}`,
-      `Ma so thue: ${invoice.buyer_tax_code || ""}`,
-      `Tong tien: ${invoice.total_with_vat || invoice.total_amount || 0} ${invoice.currency || "VND"}`,
-      `Trang thai: ${invoice.status || "draft"}`,
-    ]);
-    res.json({
-      success: true,
-      local_only: true,
-      invoice,
-      base64,
-      fileName: `invoice-${invoice.invoice_number || invoice.id}.pdf`,
-    });
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-app.delete("/api/einvoices/:id", async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      "delete from local_einvoices where id=$1 and is_draft returning id",
-      [req.params.id],
-    );
-    if (!rows[0])
-      return res
-        .status(404)
-        .json({ message: "Chỉ có thể xóa hóa đơn nháp local." });
-    res.json({ success: true, id: rows[0].id, local_only: true });
-  } catch (error) {
-    sendError(res, error);
-  }
-});
+registerInvoiceWorkspace({app,pool,actor:currentLocalActor,role:currentLocalRole,storageRoot:runtime.storageRoot,sendError,simplePdf});
+registerContractRoutes({ app, pool, actor: currentLocalActor, role: currentLocalRole, contractRow: localContractRow, invoiceRow: localEInvoiceRow, sendError, simplePdf });
 
 const parseArrayField = (value: unknown) => parseJsonValue(value, []);
 app.get("/api/shipping-companies", async (_req, res) => {
@@ -6243,14 +5904,32 @@ app.get("/api/workers", async (_req, res) => {
 
 app.post("/api/workers", async (req, res) => {
   try {
-    const employeeCode = String(
-      bodyValue(req.body, "employee_code", "employeeCode") || "",
-    ).trim();
     const displayName = String(
       bodyValue(req.body, "display_name", "displayName") || "",
     ).trim();
-    if (!employeeCode || !displayName)
-      throw new Error("Mã nhân viên và họ tên là bắt buộc.");
+    if (!displayName)
+      throw new Error("Họ tên nhân viên là bắt buộc.");
+    let employeeCode = String(
+      bodyValue(req.body, "employee_code", "employeeCode") || "",
+    ).trim();
+    if (!employeeCode) {
+      const existingCodes = await pool.query("select employee_code from local_workers");
+      const used = new Set(existingCodes.rows.map((r) => String(r.employee_code || "").trim().toUpperCase()));
+      let nextNum = existingCodes.rows.length + 1;
+      for (const r of existingCodes.rows) {
+        const m = /^NV0*(\d+)$/i.exec(String(r.employee_code || "").trim());
+        if (m) {
+          const n = Number(m[1]);
+          if (Number.isFinite(n) && n >= nextNum) nextNum = n + 1;
+        }
+      }
+      employeeCode = `NV${String(nextNum).padStart(3, "0")}`;
+      while (used.has(employeeCode.toUpperCase())) {
+        nextNum += 1;
+        employeeCode = `NV${String(nextNum).padStart(3, "0")}`;
+      }
+    }
+    const workerType = String(bodyValue(req.body, "worker_type", "workerType") || "SEWER").trim() || "SEWER";
     const { rows } = await pool.query(
       `insert into local_workers(employee_code, display_name, worker_type, position_title)
       values($1,$2,$3,$4) returning id, 'local-tenant' tenant_id, user_id, employee_code, display_name,
@@ -6259,10 +5938,13 @@ app.post("/api/workers", async (req, res) => {
       [
         employeeCode,
         displayName,
-        bodyValue(req.body, "worker_type", "workerType") || "GENERIC",
+        workerType,
         bodyValue(req.body, "position_title", "positionTitle") || null,
       ],
     );
+    // A name-only worker is deliberately a non-financial record. Management
+    // configures and approves compensation explicitly before any attendance can
+    // become payroll-ready; creating a worker must never invent a wage.
     res.status(201).json({ ...rows[0], created_by: currentLocalActor() });
   } catch (error) {
     sendError(res, error);
@@ -6478,11 +6160,134 @@ async function resolveWorkerRate(
   date: string,
 ) {
   const { rows } = await client.query(
-    `select * from local_worker_rates where worker_id=$1 and attendance_method=$2 and status='APPROVED' and effective_from <= $3::date
-    and (effective_to is null or effective_to >= $3::date) order by effective_from desc, created_at desc limit 1`,
+    `with applicable as (
+       select *, dense_rank() over (order by effective_from desc) effective_rank
+       from local_worker_rates
+       where worker_id=$1 and attendance_method=$2 and status='APPROVED'
+         and effective_from <= $3::date
+         and (effective_to is null or effective_to >= $3::date)
+     )
+     select * from applicable where effective_rank=1 order by created_at desc`,
     [workerId, method, date],
   );
+  if (rows.length > 1)
+    throw new Error(
+      "Có nhiều đơn giá hiệu lực cùng ngày. Hãy giữ một mức lương được duyệt trước khi duyệt công.",
+    );
   return rows[0] || null;
+}
+
+const missingAttendanceRateMessage =
+  "Chưa có đơn giá hiệu lực cho ngày chấm công này. Hãy thiết lập và duyệt lương trước khi duyệt công.";
+
+type PendingAttendanceRateSnapshot = {
+  attendanceId: string;
+  rateId: string;
+  rateAmount: string;
+  monthlySalarySnapshot: string | null;
+  rateBasis: string;
+  standardDays: string | null;
+};
+
+/**
+ * A name-only worker may record DAY/HOUR facts, but those rows intentionally
+ * remain unpriced. Before approval we resolve the effective management-approved
+ * rate in the same transaction. This function only reads and validates so bulk
+ * approval can reject the whole request before its first write.
+ */
+async function prepareAttendanceRateSnapshot(
+  client: PoolClient,
+  attendanceId: string,
+): Promise<PendingAttendanceRateSnapshot | null> {
+  const { rows } = await client.query(
+    `select id, worker_id, work_date::text work_date, attendance_method, rate_id,
+      rate_amount, calculated_amount, monthly_salary_snapshot, rate_basis,
+      workflow_status, check_in_time, check_out_time
+     from local_attendance where id=$1 for update`,
+    [attendanceId],
+  );
+  const attendance = rows[0];
+  if (!attendance) throw new Error("Không tìm thấy bản ghi chấm công.");
+
+  // Never reinterpret existing priced/history rows. Only the fully blank
+  // snapshots created by the unpriced DAY/HOUR capture path are hydrated.
+  if (
+    attendance.workflow_status !== "SUBMITTED" ||
+    attendance.rate_basis !== "UNPRICED_CAPTURE" ||
+    attendance.rate_id !== null ||
+    attendance.rate_amount !== null ||
+    attendance.calculated_amount !== null ||
+    (attendance.attendance_method === "DAY" &&
+      attendance.monthly_salary_snapshot !== null)
+  )
+    return null;
+
+  const method = String(attendance.attendance_method);
+  if (!['DAY', 'HOUR'].includes(method))
+    throw new Error(missingAttendanceRateMessage);
+  const rate = await resolveWorkerRate(
+    client,
+    String(attendance.worker_id),
+    method,
+    String(attendance.work_date).slice(0, 10),
+  );
+  if (!rate || !(Number(rate.rate_amount) > 0))
+    throw new Error(missingAttendanceRateMessage);
+
+  const standardDays =
+    method === "DAY" ? String(rate.standard_days_per_month || "") : null;
+  if (
+    method === "DAY" &&
+    (!Number.isFinite(Number(standardDays)) || Number(standardDays) <= 0)
+  )
+    throw new Error("Mức lương tháng chưa có số ngày công chuẩn hợp lệ.");
+
+  return {
+    attendanceId: String(attendance.id),
+    rateId: String(rate.id),
+    rateAmount: String(rate.rate_amount),
+    monthlySalarySnapshot: method === "DAY" ? String(rate.rate_amount) : null,
+    rateBasis:
+      method === "DAY"
+        ? "MONTHLY_SALARY"
+        : attendance.check_in_time && attendance.check_out_time
+          ? "HOURLY_RATE_CLOCK"
+          : "LEGACY_MANUAL_HOURS",
+    standardDays,
+  };
+}
+
+async function applyAttendanceRateSnapshot(
+  client: PoolClient,
+  snapshot: PendingAttendanceRateSnapshot | null,
+) {
+  if (!snapshot) return;
+  const { rows } = await client.query(
+    `update local_attendance
+     set rate_id=$2,
+         rate_amount=$3::numeric,
+         calculated_amount=case
+           when attendance_method='DAY' then day_units * $3::numeric / nullif($6::numeric, 0)
+           when attendance_method='HOUR' then worked_minutes / 60 * $3::numeric
+         end,
+         monthly_salary_snapshot=$4::numeric,
+         rate_basis=$5
+     where id=$1
+       and rate_id is null
+       and rate_amount is null
+       and calculated_amount is null
+     returning id`,
+    [
+      snapshot.attendanceId,
+      snapshot.rateId,
+      snapshot.rateAmount,
+      snapshot.monthlySalarySnapshot,
+      snapshot.rateBasis,
+      snapshot.standardDays,
+    ],
+  );
+  if (!rows[0])
+    throw new Error("Bản ghi chấm công đã thay đổi, vui lòng tải lại.");
 }
 
 async function attendanceRowQuery(
@@ -7334,6 +7139,10 @@ app.post("/api/attendance/bulk-workflow", async (req, res) => {
       );
       const eligibleCounts = countBulkWorkflowCandidates(eligible);
 
+      const pendingRateSnapshots = new Map<
+        string,
+        PendingAttendanceRateSnapshot | null
+      >();
       // Validate every source fact before the first write. If even one record
       // belongs to a leader-confirmed day or locked payroll period, the whole
       // transaction rolls back without leaving a partial approval behind.
@@ -7357,11 +7166,24 @@ app.post("/api/attendance/bulk-workflow", async (req, res) => {
           candidate.workDate,
           candidate.currentStatus,
         );
+        if (
+          request.targetStatus === "APPROVED" &&
+          candidate.sourceType === "ATTENDANCE"
+        )
+          pendingRateSnapshots.set(
+            candidate.id,
+            await prepareAttendanceRateSnapshot(client, candidate.id),
+          );
       }
 
       const processedCounts = emptyBulkWorkflowCounts();
       for (const candidate of eligible) {
         const config = bulkWorkflowSourceConfig[candidate.sourceType];
+        if (candidate.sourceType === "ATTENDANCE")
+          await applyAttendanceRateSnapshot(
+            client,
+            pendingRateSnapshots.get(candidate.id) ?? null,
+          );
         const { rows } = await client.query(
           `
           update ${config.table}
@@ -7538,6 +7360,12 @@ async function createAttendance(
   const method = String(
     bodyValue(body, "attendance_method", "attendanceMethod") || "HOUR",
   );
+  if (method === "OUTPUT") {
+    throw Object.assign(
+      new Error("Sản lượng phải báo qua việc đã nhận hoặc phiếu sản lượng độc lập của quản lý có lý do; không ghi vào chấm công ngày/giờ."),
+      { status: 409 },
+    );
+  }
   const date = String(
     bodyValue(body, "work_date", "workDate") ||
       businessDateKey(),
@@ -7664,7 +7492,7 @@ async function createAttendance(
     if (!worker.rows[0])
       throw new Error("Nhân sự không tồn tại hoặc đã ngưng làm việc.");
     const rate = await resolveWorkerRate(client, workerId, method, date);
-    if (!rate)
+    if (!rate && method === "OUTPUT")
       throw new Error(
         "Nhân sự chưa có đơn giá hiệu lực cho hình thức chấm công này.",
       );
@@ -7677,17 +7505,19 @@ async function createAttendance(
     // Keep the source rate as a PostgreSQL numeric snapshot. JavaScript is only
     // used for input validation; the actual amount is calculated in SQL below.
     const monthlySalarySnapshot =
-      method === "DAY" ? String(rate.rate_amount) : null;
-    const rateBasis =
-      method === "DAY"
+      rate && method === "DAY" ? String(rate.rate_amount) : null;
+    const rateBasis = !rate
+      ? "UNPRICED_CAPTURE"
+      : method === "DAY"
         ? "MONTHLY_SALARY"
         : method === "HOUR"
           ? checkIn && checkOut
             ? "HOURLY_RATE_CLOCK"
             : "LEGACY_MANUAL_HOURS"
           : "LEGACY_OUTPUT_RATE";
-    const standardDays = String(rate.standard_days_per_month || "");
+    const standardDays = rate ? String(rate.standard_days_per_month || "") : null;
     if (
+      rate &&
       method === "DAY" &&
       (!Number.isFinite(Number(standardDays)) || Number(standardDays) <= 0)
     ) {
@@ -7698,6 +7528,7 @@ async function createAttendance(
       day_units, work_hours, worked_minutes, check_in_time, check_out_time, break_minutes, output_quantity, rate_id, rate_amount, calculated_amount, monthly_salary_snapshot, rate_basis, activity_name, idempotency_key, idempotency_fingerprint, notes, workflow_status)
       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
         case
+          when $13::uuid is null or $14::numeric is null then null
           when $4='DAY' then $6::numeric * $14::numeric / nullif($15::numeric, 0)
           when $4='HOUR' then $8::numeric / 60 * $14::numeric
           when $4='OUTPUT' then $12::numeric * $14::numeric
@@ -7720,8 +7551,8 @@ async function createAttendance(
         checkOut,
         breakMinutes,
         outputQuantity,
-        rate.id,
-        rate.rate_amount,
+        rate?.id ?? null,
+        rate?.rate_amount ?? null,
         standardDays,
         monthlySalarySnapshot,
         rateBasis,
@@ -7790,7 +7621,7 @@ const selfAttendanceMethodLabel = (method: string) => {
 };
 
 /**
- * Resolve the employee's attendance flow from approved local payroll rates.
+ * Resolve the employee's attendance flow from approved rates and payroll sources.
  * The browser may display this context, but the API also uses it to reject a
  * self-service submission that does not match the approved configuration.
  */
@@ -7818,6 +7649,15 @@ async function attendanceContextForWorker(workerId: string, workDate: string) {
   const methods = Array.from(
     new Set(components.map((row) => String(row.attendance_method))),
   );
+  try {
+    const source = await payrollSourceContext(pool, workerId, date);
+    if (source.assignment.compensation_type === 'PIECE_RATE' && source.profile.piece_output_enabled === true && !methods.includes('OUTPUT')) {
+      methods.push('OUTPUT');
+    }
+  } catch (error) {
+    // Incomplete approved source configuration cannot authorize product output.
+    if (Number((error as { status?: number }).status) !== 409) throw error;
+  }
   const primaryMethod = methods.includes("HOUR")
     ? "HOUR"
     : methods.includes("DAY")
@@ -7881,6 +7721,31 @@ async function requireSelfWorker(req: express.Request) {
     );
   return { actor, worker };
 }
+
+// This narrower reader rejects ambiguous links and is rechecked under the source guard.
+async function payrollSelfWorker(db: Pick<PoolClient, 'query'>, actor: string, expectedId?: string) {
+  const profile = await db.query('select user_id from local_user_profiles where user_id=$1 and is_active for share', [actor]);
+  const roles = await db.query('select user_id from local_user_roles where user_id=$1 and is_active for share', [actor]);
+  const workers = await db.query('select id::text from local_workers where user_id=$1 and is_active order by id for share', [actor]);
+  if (!profile.rows.length || !roles.rows.length || workers.rows.length !== 1 || (expectedId && workers.rows[0].id !== expectedId))
+    throw Object.assign(new Error('Tài khoản cần được liên kết với đúng một hồ sơ nhân sự đang hoạt động để xem lương tháng.'), {status:403});
+  return String(workers.rows[0].id);
+}
+
+app.get('/api/my-attendance/payroll-month', async (req, res) => {
+  res.setHeader('cache-control', 'no-store');
+  try {
+    if (Object.keys(req.query).some(key => key !== 'month')) throw Object.assign(new Error('Chỉ được chọn tháng cho bảng lương của chính mình.'), {status:400});
+    const month = String(req.query.month || '');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || Number(month.slice(0,4)) < 1) throw new Error('Tháng lương không hợp lệ.');
+    const actor = localActor(req);
+    const workerId = await payrollSelfWorker(pool, actor);
+    const year = Number(month.slice(0,4)), number = Number(month.slice(5));
+    const leap = year%4===0 && (year%100!==0 || year%400===0);
+    const days = [31,leap?29:28,31,30,31,30,31,31,30,31,30,31][number-1];
+    res.json(await createLocalPayrollRun({period_start:month+'-01',period_end:month+'-'+days}, true, {actor,workerId}));
+  } catch (error) { sendError(res,error); }
+});
 
 app.get("/api/my-attendance", async (req, res) => {
   try {
@@ -8297,6 +8162,8 @@ app.post('/api/attendance/approve-close',async(req,res)=>{try{
     await assertWorkflowWritable(client,worker,date,String(summary.closure?.status||'OPEN'));
     if(!summary.classified)throw new Error('Ngày chưa có dữ liệu để chốt.');
     if(!proxy && (!summary.confirmation_current||summary.closure?.status!=='EMPLOYEE_CONFIRMED'))throw Object.assign(new Error('Cần nhân viên xác nhận lại hoặc quản lý xác nhận hộ có lý do.'),{status:409});
+    const unpriced=(await client.query(`select 1 from local_attendance where worker_id=$1 and work_date=$2::date and not is_reversed and workflow_status='SUBMITTED' and attendance_method in ('DAY','HOUR') and rate_id is null and rate_amount is null and calculated_amount is null limit 1`,[worker,date])).rows[0];
+    if(unpriced)throw Object.assign(new Error('Bản ghi chưa có đơn giá. Duyệt công trước sau khi thiết lập lương, rồi xác nhận lại ngày để chốt.'),{status:409});
     if(proxy){const confirmed=(await client.query(`insert into local_day_closures(worker_id,work_date,status,reason,idempotency_key,confirmed_revision,confirmation_actor_id,confirmation_kind,confirmation_reason,confirmed_at) values($1,$2,'EMPLOYEE_CONFIRMED',$3,$4,$5,$6,'PROXY',$3,now()) on conflict(worker_id,work_date) do update set status='EMPLOYEE_CONFIRMED',reason=excluded.reason,idempotency_key=excluded.idempotency_key,confirmed_revision=excluded.confirmed_revision,confirmation_actor_id=excluded.confirmation_actor_id,confirmation_kind='PROXY',confirmation_reason=excluded.reason,confirmed_at=now() returning id`,[worker,date,reason,key,summary.current_revision,currentLocalActor()])).rows[0];await recordWorkflowEvent(client,'DAY_CLOSURE',String(confirmed.id),'PROXY_CONFIRM',summary.closure?.status||'OPEN','EMPLOYEE_CONFIRMED',reason,key+':proxy');}
     for(const source of summary.sources.filter(row=>row.status==='SUBMITTED')){
       await assertLocalReviewScope(client,worker,date,source.source_type,source.id);const config=bulkWorkflowSourceConfig[source.source_type as BulkWorkflowSourceType];
@@ -8426,6 +8293,11 @@ app.post("/api/attendance/status", async (req, res) => {
           String(row.work_date),
           String(row.workflow_status),
         );
+      const pendingRateSnapshot =
+        status === "APPROVED" || status === "LOCKED"
+          ? await prepareAttendanceRateSnapshot(client, id)
+          : null;
+      await applyAttendanceRateSnapshot(client, pendingRateSnapshot);
       const { rows } = await client.query(
         "update local_attendance set workflow_status=$2,workflow_reason=$3,workflow_at=now(),workflow_actor_id=$5 where id=$1 and workflow_status=$4 returning id",
         [id, status, reason || null, row.workflow_status, currentLocalActor()],
@@ -8977,36 +8849,35 @@ app.get("/api/production/products", async (req, res) => {
     const costVisible = !["employee", "team_leader"].includes(
       currentLocalRole(),
     );
-    const { rows } = await pool.query(
-      `
-      select r.id, r.id rate_id, r.product_id,
-        nullif(btrim(r.piece_rate_code), '') piece_rate_code,
-        p.sku, coalesce(nullif(r.piece_rate_name, ''), p.name) name,
-        p.category, l.name price_list_name, l.year price_list_year,
-        1::int sku_match_count, r.rate_unit, r.rate,
-        true rate_available, ${costVisible ? "true" : "false"} rate_visible,
-        'EXCEL_CODE' mapping_status
-      from local_product_rates r
-      left join local_products p on p.id = r.product_id
-      left join local_price_lists l on l.id = p.price_list_id
-      where r.status = 'APPROVED'
-        and r.effective_from <= $1::date
-        and (r.effective_to is null or r.effective_to >= $1::date)
-        and nullif(btrim(r.piece_rate_code), '') is not null
-        and coalesce(l.is_active, true)
-        and ($2 = '' or r.piece_rate_code ilike '%' || $2 || '%' or p.sku ilike '%' || $2 || '%'
-          or coalesce(r.piece_rate_name, p.name) ilike '%' || $2 || '%')
-      order by coalesce(r.piece_rate_name, p.name), r.piece_rate_code`,
-      [
-        req.query.workDate || businessDateKey(),
-        String(req.query.search || ""),
-      ],
-    );
+    const search = String(req.query.search || "").trim().toLocaleLowerCase('vi');
+    // Classify the complete effective set before display/search filters so a
+    // conflicting peer cannot disappear and make a rate look selectable.
+    const rows = listRuntimePieceRates(await loadEffectiveApprovedProductRates(
+      pool,
+      String(req.query.workDate || businessDateKey()),
+    )).filter(row => {
+      if (row.price_list_active === false) return false;
+      if (!search) return true;
+      return [row.piece_rate_code, row.product_sku, row.piece_rate_name || row.product_name]
+        .some(value => String(value || '').toLocaleLowerCase('vi').includes(search));
+    });
     res.json(
       rows.map((row) => ({
-        ...row,
-        rate: costVisible ? asNumber(row.rate) : null,
+        id: row.id,
+        rate_id: row.id,
+        product_id: row.product_id,
+        piece_rate_code: String(row.piece_rate_code || '').trim(),
+        sku: row.product_sku || null,
+        name: String(row.piece_rate_name || row.product_name || '').trim() || null,
+        category: row.product_category || null,
+        price_list_name: row.price_list_name || null,
+        price_list_year: row.price_list_year || null,
+        sku_match_count: 1,
+        rate_unit: row.rate_unit,
+        rate: costVisible ? asNumber(row.rate_exact) : null,
         rate_available: true,
+        rate_visible: costVisible,
+        mapping_status: 'EXCEL_CODE',
       })),
     );
   } catch (error) {
@@ -9017,6 +8888,7 @@ async function createProductionEntry(
   body: Record<string, unknown>,
   workerOverride?: string,
   transactionClient?: PoolClient,
+  trustedDispatch=false,
 ) {
   const key = String(
     body.idempotency_key || body.idempotencyKey || randomUUID(),
@@ -9050,9 +8922,13 @@ async function createProductionEntry(
     workerId,
     workDate,
     quantity: qty,
-    notes: body.notes || null,
+    notes: body.notes || null,standaloneReason:body.standalone_reason||null,workKind:body.work_kind||null,
   });
   const execute = async (client: PoolClient) => {
+    // Source -> shared price configuration -> request key -> day is the
+    // common writer order for direct entries, dispatch and workbook import.
+    await lockPayrollSourceShared(client);
+    await lockProductRateConfigShared(client);
     await lockAttendanceIdempotency(client, "PRODUCTION_ENTRY", key);
     const existing = await client.query(
       "select id,calculated_amount,idempotency_fingerprint,workflow_status from local_production_entries where idempotency_key=$1",
@@ -9083,6 +8959,12 @@ async function createProductionEntry(
         calculated_amount: asNumber(existing.rows[0].calculated_amount),
       };
     }
+    if(!trustedDispatch){
+      if(!['admin','manager'].includes(currentLocalRole()))throw Object.assign(new Error('Sản lượng phải ghi từ việc đã nhận; mở mục Việc sản xuất.'),{status:403});
+      const standaloneReason=String(body.standalone_reason||'').trim();
+      if(standaloneReason.length<3||standaloneReason.length>1000)throw Object.assign(new Error('Sản lượng ngoài lệnh cần lý do riêng từ 3 đến 1.000 ký tự.'),{status:409});
+      if(body.assignment_id||body.production_order_id||body.order_item_id||body.source_stage_event_id)throw Object.assign(new Error('Sản lượng thuộc lệnh phải báo qua việc đã nhận.'),{status:409});
+    }
     await lockAttendanceDay(client, workerId, workDate);
     await assertLocalSourceWriteScope(client, workerId, workDate);
     await assertWorkflowWritable(client, workerId, workDate, "SUBMITTED");
@@ -9092,76 +8974,44 @@ async function createProductionEntry(
       workDate,
       "ghi sản lượng",
     );
-    const rateParams: unknown[] = [workDate];
-    let rateFilter = "";
-    if (requestedRateId) {
-      rateParams.unshift(requestedRateId);
-      rateFilter = "r.id=$1";
-    } else if (requestedPieceRateCode) {
-      rateParams.unshift(requestedPieceRateCode);
-      rateFilter = "lower(r.piece_rate_code)=lower($1)";
-    } else {
-      rateParams.unshift(requestedProductId);
-      // Older clients submitted the picker id as product_id; accept both
-      // the CRM product id and the approved local rate id during transition.
-      rateFilter = "(r.product_id=$1 or r.id=$1)";
+    const rate = await selectRuntimePieceRate(client, {
+      date: workDate,
+      rateId: requestedRateId || undefined,
+      productId: requestedProductId || undefined,
+      pieceRateCode: requestedPieceRateCode || undefined,
+    });
+    if(!trustedDispatch){
+      const overlap=(await client.query(`select 1 from local_assignments a where a.worker_id=$1 and a.dispatch_stage='SEWING' and lower(trim(a.piece_rate_code))=lower(trim($2)) and a.dispatch_status in ('PENDING','ACCEPTED') and a.assigned_from<=$3::date and (a.assigned_to is null or a.assigned_to>=$3::date) limit 1`,[workerId,rate.piece_rate_code,workDate])).rows[0];
+      if(overlap)throw Object.assign(new Error('Nhân sự đã có việc sản xuất cùng mã trong ngày; chọn việc đã nhận để tránh chấm trùng.'),{status:409});
+      if(laborCodeUsagePolicy(rate.piece_rate_code)){
+        if(body.work_kind!=='CURTAIN_REPAIR')throw Object.assign(new Error('Công sửa rèm phải được quản lý chọn riêng và ghi rõ lý do.'),{status:409});
+        await assertPaidCurtainRepair(client,String(rate.piece_rate_code),workDate);
+      }
     }
-    const productRate = await client.query(
-      `
-      select r.*, p.sku product_sku, p.name product_name, p.is_active product_active
-      from local_product_rates r
-      left join local_products p on p.id = r.product_id
-      where ${rateFilter} and r.status='APPROVED'
-        and r.effective_from <= $2::date
-        and (r.effective_to is null or r.effective_to >= $2::date)
-        and nullif(btrim(r.piece_rate_code), '') is not null
-      order by r.effective_from desc, r.created_at desc
-      limit 1`,
-      rateParams,
-    );
-    if (!productRate.rows[0])
-      throw new Error("Sản phẩm chưa có đơn giá đã duyệt trong ngày làm.");
-    const rate = productRate.rows[0];
-    if (
-      requestedProductId &&
-      rate.product_id &&
-      String(rate.product_id) !== requestedProductId &&
-      String(rate.id) !== requestedProductId
-    )
-      throw new Error("Sản phẩm không khớp mã công may đã chọn.");
-    if (
-      requestedPieceRateCode &&
-      rate.piece_rate_code &&
-      String(rate.piece_rate_code).toLowerCase() !==
-        requestedPieceRateCode.toLowerCase()
-    )
-      throw new Error("Mã công may không khớp đơn giá đã chọn.");
     const productId = rate.product_id || null;
     const pieceRateCode = String(rate.piece_rate_code || "").trim() || null;
-    if (!pieceRateCode)
-      throw new Error(
-        "Sản phẩm chưa được gắn mã công may Excel. Không dùng SKU CRM để tính lương.",
-      );
     const pieceRateName =
       String(rate.piece_rate_name || rate.product_name || "").trim() || null;
     const { rows } = await client.query(
       `
-      insert into local_production_entries(worker_id,product_id,piece_rate_code,piece_rate_name_snapshot,rate_unit_snapshot,work_date,quantity,rate_id,rate_amount,calculated_amount,idempotency_key,idempotency_fingerprint,notes)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$7::numeric*$9::numeric,$10,$11,$12)
+      insert into local_production_entries(worker_id,product_id,piece_rate_code,piece_rate_name_snapshot,rate_unit_snapshot,work_date,quantity,rate_id,rate_amount,calculated_amount,idempotency_key,idempotency_fingerprint,notes,source_stage_event_id,standalone_reason)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$7::numeric*$9::numeric,$10,$11,$12,$13,$14)
       returning id, calculated_amount`,
       [
         workerId,
         productId,
         pieceRateCode,
         pieceRateName,
-        rate.rate_unit || "PIECE",
+        rate.rate_unit,
         workDate,
         qty,
         rate.id,
-        rate.rate,
+        rate.rate_exact,
         key,
         productionFingerprint,
         body.notes || null,
+        trustedDispatch?body.source_stage_event_id||null:null,
+        trustedDispatch?null:String(body.standalone_reason||'').trim(),
       ],
     );
     await recordWorkflowEvent(
@@ -9198,6 +9048,10 @@ app.post("/api/production/entries", async (req, res) => {
           new Error("Tài khoản này chưa được cấu hình chấm công theo sản lượng cho ngày này."),
           { status: 409 },
         );
+    }
+    if(req.body.assignment_id){
+      const result=await productionDispatchService.reportLinkedOutput(String(req.body.assignment_id),{work_date:req.body.work_date,quantity_good:req.body.quantity,quantity_rework:0,quantity_remake:0,quantity_defect:0,notes:req.body.notes||null,idempotency_key:req.body.idempotency_key});
+      return res.status(201).json({...result,source:'ASSIGNMENT_REPORT',cost_visible:false,calculated_amount:null});
     }
     const result = await createProductionEntry(req.body || {}, worker?.id);
     const costVisible = !["employee", "team_leader"].includes(
@@ -9247,12 +9101,13 @@ app.post("/api/production/entries/status", async (req, res) => {
         String(candidate.rows[0].work_date),
       );
       const current = await client.query(
-        "select id,worker_id,work_date,workflow_status,is_reversed from local_production_entries where id=$1 for update",
+        "select id,worker_id,work_date,workflow_status,is_reversed,source_stage_event_id from local_production_entries where id=$1 for update",
         [id],
       );
       if (!current.rows[0])
         throw new Error("Không tìm thấy bản ghi sản lượng.");
       const row = current.rows[0];
+      if(row.source_stage_event_id)throw Object.assign(new Error('Sản lượng từ giao việc phải duyệt hoặc đảo tại báo cáo công đoạn.'),{status:409});
       assertWorkflowTransition(String(row.workflow_status), status, reason);
       await assertLocalReviewScope(
         client,
@@ -9919,68 +9774,7 @@ app.get("/api/manufacturing/products", async (req, res) => {
   }
 });
 
-app.get("/api/manufacturing/products/:productId/profile", async (req, res) => {
-  try {
-    const local = await operationalManufacturingParent(
-      pool,
-      "manufacturing_profile",
-      req.params.productId,
-      "Hồ sơ kích thước sản xuất",
-    );
-    res.json(local ? manufacturingPayload(local) : null);
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-
-app.put("/api/manufacturing/products/:productId/profile", async (req, res) => {
-  try {
-    await requireLocalCapability(pool, ["bom_manage", "cutting_profiles"]);
-    const product = await pool.query(
-      "select id from local_products where id::text=$1 and is_active",
-      [req.params.productId],
-    );
-    if (!product.rows[0])
-      throw manufacturingError("Không tìm thấy sản phẩm đang hoạt động.", 404);
-    const existing = await operationalManufacturingParent(
-      pool,
-      "manufacturing_profile",
-      req.params.productId,
-      "Hồ sơ kích thước sản xuất",
-    );
-    if (req.body.id && existing && String(req.body.id) !== String(existing.id))
-      throw manufacturingError("Mã hồ sơ sản xuất không khớp hồ sơ local hiện tại.");
-    const width = Number(req.body.finished_width);
-    const length = Number(req.body.finished_length);
-    const height = req.body.finished_height == null ? null : Number(req.body.finished_height);
-    const unit = String(req.body.dimension_unit || "").toUpperCase();
-    if (!(width > 0) || !(length > 0) || (height != null && !(height > 0)))
-      throw manufacturingError("Kích thước thành phẩm phải là số dương.");
-    if (!["MM", "CM", "METER"].includes(unit))
-      throw manufacturingError("Đơn vị kích thước sản xuất không hợp lệ.");
-    const payload = {
-      ...req.body,
-      id: existing?.id || req.body.id || randomUUID(),
-      product_id: req.params.productId,
-      finished_width: width,
-      finished_length: length,
-      finished_height: height,
-      dimension_unit: unit,
-      is_active: req.body.is_active !== false,
-    };
-    res.json(
-      await saveManufacturingRecord({
-        id: String(payload.id),
-        recordType: "manufacturing_profile",
-        productId: req.params.productId,
-        status: "ACTIVE",
-        payload,
-      }),
-    );
-  } catch (error) {
-    sendError(res, error);
-  }
-});
+// Profile GET/PUT is registered by the shared versioned technical-profile writer.
 
 app.get("/api/manufacturing/products/:productId/bom", async (req, res) => {
   try {
@@ -10981,7 +10775,15 @@ app.delete("/api/catalog/price-lists/:id", async (req, res) => {
   }
 });
 
+const catalogRateCanonicalRequired = (res: express.Response) => res.status(409).json({
+  code: "PRODUCT_RATE_CANONICAL_REQUIRED",
+  message: "Đơn giá công may được tạo nháp và duyệt tại mục Đơn giá công may.",
+  canonical_path: "/production-attendance?tab=rates",
+});
+
 app.post("/api/catalog/products", async (req, res) => {
+  const wageFields = ["rate", "piece_rate_code", "pieceRateCode", "piece_rate_name", "pieceRateName", "effective_from", "effectiveFrom", "effective_to", "effectiveTo", "rate_reason", "rateReason", "source_reference", "sourceReference"];
+  if (wageFields.some(key => req.body?.[key] !== undefined && req.body?.[key] !== null && req.body?.[key] !== "")) return catalogRateCanonicalRequired(res);
   const client = await pool.connect();
   try {
     const sku = String(req.body.sku || "").trim();
@@ -11000,18 +10802,10 @@ app.post("/api/catalog/products", async (req, res) => {
       req.body.cost_price === ""
         ? null
         : Number(req.body.cost_price);
-    const rate =
-      req.body.rate === null ||
-      req.body.rate === undefined ||
-      req.body.rate === ""
-        ? null
-        : Number(req.body.rate);
     if (price !== null && (!Number.isFinite(price) || price < 0))
       throw new Error("Gia ban khong hop le.");
     if (costPrice !== null && (!Number.isFinite(costPrice) || costPrice < 0))
       throw new Error("Gia von khong hop le.");
-    if (rate !== null && (!Number.isFinite(rate) || rate < 0))
-      throw new Error("Don gia san luong khong hop le.");
     const priceListId = req.body.price_list_id
       ? String(req.body.price_list_id)
       : null;
@@ -11041,21 +10835,6 @@ app.post("/api/catalog/products", async (req, res) => {
       ],
     );
     const productId = rows[0].id as string;
-    if (rate !== null) {
-      await client.query(
-        `insert into local_product_rates(product_id,piece_rate_code,piece_rate_name,rate,rate_unit,effective_from,status,reason)
-        values($1,nullif(btrim($2),''),nullif(btrim($3),''),$4,$5,$6,'APPROVED',$7)`,
-        [
-          productId,
-          req.body.piece_rate_code || req.body.pieceRateCode || null,
-          req.body.piece_rate_name || req.body.pieceRateName || req.body.name || null,
-          rate,
-          req.body.rate_unit || "PIECE",
-          req.body.effective_from || businessDateKey(),
-          req.body.rate_reason || "Local catalog",
-        ],
-      );
-    }
     await client.query("COMMIT");
     const result = await pool.query(`${catalogProductSelect} where p.id=$1`, [
       productId,
@@ -11235,28 +11014,8 @@ app.delete("/api/catalog/products/:id", async (req, res) => {
   }
 });
 
-app.post("/api/catalog/products/:id/rate", async (req, res) => {
-  try {
-    const rate = Number(req.body.rate);
-    if (!Number.isFinite(rate) || rate < 0)
-      throw new Error("Don gia san luong khong hop le.");
-    const { rows } = await pool.query(
-      `insert into local_product_rates(product_id,piece_rate_code,piece_rate_name,rate,rate_unit,effective_from,status,reason)
-      values($1,nullif(btrim($2),''),nullif(btrim($3),''),$4,$5,$6,'APPROVED',$7) returning id, product_id, piece_rate_code, piece_rate_name, rate, rate_unit, effective_from, effective_to, status, reason, created_at`,
-      [
-        req.params.id,
-        req.body.piece_rate_code || req.body.pieceRateCode || null,
-        req.body.piece_rate_name || req.body.pieceRateName || null,
-        rate,
-        req.body.rate_unit || "PIECE",
-        req.body.effective_from || businessDateKey(),
-        req.body.reason || "Local catalog",
-      ],
-    );
-    res.status(201).json({ ...rows[0], rate: asNumber(rows[0].rate) });
-  } catch (error) {
-    sendError(res, error);
-  }
+app.post("/api/catalog/products/:id/rate", async (_req, res) => {
+  return catalogRateCanonicalRequired(res);
 });
 
 app.post("/api/catalog/products/:id/active", async (req, res) => {
@@ -11845,6 +11604,7 @@ app.post("/api/production-orders/groups", async (req, res) => {
         `insert into local_production_batches(production_order_id,batch_number,planned_quantity,status,created_by) values($1,$2,$3,'PLANNED',$4) returning id`,
         [createdOrder.id, number, quantity, currentLocalActor()],
       );
+      const cuttingEstimate = await createInitialDraftCuttingPlan(client,createdOrder.id,{id:orderItemResult.rows[0].id,fabric_variant_id:line.fabric_variant_id || null},{id:batchResult.rows[0].id,planned_quantity:quantity},line.cutting_plan,currentLocalActor());
       created.push({
         ...createdOrder,
         quantity_planned: asNumber(createdOrder.quantity_planned),
@@ -11856,6 +11616,7 @@ app.post("/api/production-orders/groups", async (req, res) => {
         notes: line.notes || notes,
         source_order_item_key: line.source_order_item_key || null,
         production_batch_id: batchResult.rows[0].id,
+        cutting_estimate_id: cuttingEstimate?.id || null,
       });
       await client.query("insert into local_dispatch_audit_events(production_order_id,action,actor_id,data) values($1,'CREATE_ORDER',$2,$3::jsonb)", [createdOrder.id, currentLocalActor(), JSON.stringify(created[created.length-1])]);
     }
@@ -13509,70 +13270,8 @@ app.get("/api/payroll/products", async (_req, res) => {
     sendError(res, error);
   }
 });
-app.get("/api/payroll/product-rates", async (req, res) => {
-  try {
-    const values = req.query.productId ? [String(req.query.productId)] : [];
-    const { rows } = await pool.query(
-      `
-      select r.id,'local-tenant' tenant_id,r.product_id,r.piece_rate_code,r.piece_rate_name,
-        p.sku product_sku,coalesce(nullif(r.piece_rate_name,''),p.name) display_name,
-        r.rate_unit unit,r.rate,'VND' currency_code,
-        r.effective_from,r.effective_to,r.status,r.reason,r.source_reference,
-        'local-admin' created_by,case when r.status='APPROVED' then 'local-admin' end approved_by,
-        r.created_at,r.created_at updated_at,case when r.status='APPROVED' then r.created_at end approved_at
-      from local_product_rates r left join local_products p on p.id=r.product_id
-      ${values.length ? "where r.product_id=$1" : ""}
-      order by r.effective_from desc,r.created_at desc`,
-      values,
-    );
-    res.json(rows.map((row) => ({ ...row, rate: asNumber(row.rate) })));
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-app.post("/api/payroll/product-rates", async (req, res) => {
-  try {
-    const productId = String(req.body.product_id || "").trim() || null;
-    const pieceRateCode = payrollPieceRateCode(req.body.piece_rate_code ?? req.body.pieceRateCode);
-    const pieceRateName = String(req.body.piece_rate_name ?? req.body.pieceRateName ?? "").trim() || null;
-    const rate = Number(req.body.rate);
-    const effectiveFrom = String(req.body.effective_from || "");
-    if (
-      !pieceRateCode ||
-      !Number.isFinite(rate) ||
-      rate < 0 ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)
-    )
-      throw new Error("Mã công may Excel, đơn giá và ngày hiệu lực là bắt buộc.");
-    if (productId) {
-      const product = await pool.query(
-        "select id from local_products where id=$1 and is_active=true",
-        [productId],
-      );
-      if (!product.rows[0]) throw new Error("Không tìm thấy sản phẩm CRM đang hoạt động.");
-    }
-    const { rows } = await pool.query(
-      `
-      insert into local_product_rates(product_id,piece_rate_code,piece_rate_name,rate,rate_unit,effective_from,effective_to,status,reason,source_reference,local_modified_at)
-      values($1,$2,$3,$4,$5,$6,$7,'DRAFT',$8,$9,now())
-      returning id,'local-tenant' tenant_id,product_id,piece_rate_code,piece_rate_name,rate_unit unit,rate,'VND' currency_code,effective_from,effective_to,status,reason,source_reference,'local-admin' created_by,created_at,created_at updated_at`,
-      [
-        productId,
-        pieceRateCode,
-        pieceRateName,
-        rate,
-        req.body.unit || "PIECE",
-        effectiveFrom,
-        req.body.effective_to || null,
-        req.body.reason || "Local payroll",
-        req.body.source_reference || null,
-      ],
-    );
-    res.status(201).json({ ...rows[0], rate: asNumber(rows[0].rate) });
-  } catch (error) {
-    sendError(res, error);
-  }
-});
+
+
 
 const payrollAudit = async (
   entityType: string,
@@ -13701,6 +13400,7 @@ const bulkIdempotency = (sheet: string, row: number, values: Record<string, unkn
   bulkText(values.idempotency_key) || `excel:${fingerprint}:${sheet}:${row}`;
 const bulkNaturalKey = (sheet: string, values: Record<string, unknown>) => {
   if (bulkText(values.idempotency_key)) return `${sheet}|${bulkText(values.idempotency_key)}`;
+  if (sheet === "BANG_GIA_CONG_MAY") return `${sheet}|${codeKey(values.ma_sp)}|${bulkText(values.tu_ngay)}`;
   const parts: Record<string, string[]> = {
     NHAN_SU: ["ma_nv"], NHOM_CHINH_SACH: ["ma_nhom"], PHAN_LOAI_LUONG: ["ma_nv", "tu_ngay"],
     HO_SO_LUONG: ["ma_nv", "tu_ngay"], PHAN_CONG_TO: ["ma_to_truong", "ma_nv", "tu_ngay"], MUC_LUONG: ["ma_nv", "hinh_thuc_luong", "tu_ngay"],
@@ -13743,6 +13443,7 @@ async function validatePayrollBulkRows(rawRows: unknown[], fingerprint: string) 
   const seen = new Set<string>();
   const closureDays = new Set<string>();
   const closureKeys = new Set<string>();
+  const priceRows: Array<{row:number;value:RateFields}> = [];
   const payrollBulkMaxRows = 10000;
   if (rawRows.length > payrollBulkMaxRows) throw new Error(`File vượt quá giới hạn ${payrollBulkMaxRows.toLocaleString("vi-VN")} dòng.`);
   const workersResult = await pool.query("select id,employee_code from local_workers");
@@ -13768,12 +13469,25 @@ async function validatePayrollBulkRows(rawRows: unknown[], fingerprint: string) 
     const definition = payrollBulkRequired[sheet] || [];
     for (const field of definition) if (!bulkText(values[field]) && values[field] !== 0 && values[field] !== false) errors.push({ sheet, row: rowNumber, field, message: "Trường bắt buộc chưa có dữ liệu." });
     for (const [field, value] of Object.entries(values)) {
+      if (sheet === "BANG_GIA_CONG_MAY" && ["ma_sp","ten_sp","don_gia","don_vi","tu_ngay","den_ngay"].includes(field)) continue;
       if (payrollBulkDateFields.has(field) && bulkText(value) && !isValidPayrollDate(bulkText(value))) errors.push({ sheet, row: rowNumber, field, message: "Ngày không hợp lệ, dùng định dạng YYYY-MM-DD." });
       if (payrollBulkNumericFields.has(field) && bulkText(value) && (!/^-?(?:\d+\.?\d*|\.\d+)$/.test(bulkText(value)) || !Number.isFinite(Number(value)))) errors.push({ sheet, row: rowNumber, field, message: "Giá trị phải là số hợp lệ." });
       if (payrollBulkPositiveFields.has(field) && bulkText(value) && Number(value) <= 0) errors.push({ sheet, row: rowNumber, field, message: "Giá trị phải lớn hơn 0." });
       if (payrollBulkNonNegativeFields.has(field) && bulkText(value) && Number(value) < 0) errors.push({ sheet, row: rowNumber, field, message: "Giá trị không được âm." });
       if (payrollBulkBooleanFields.has(field) && bulkText(value) && !["TRUE", "FALSE", "YES", "NO", "1", "0", "CÓ", "KHÔNG", "CO", "KHONG"].includes(bulkText(value).toUpperCase()) && typeof value !== "boolean") errors.push({ sheet, row: rowNumber, field, message: "Giá trị chỉ nhận CÓ/KHÔNG hoặc TRUE/FALSE." });
       if (payrollBulkEnums[field] && bulkText(value) && !payrollBulkEnums[field].has(bulkText(value).toUpperCase())) errors.push({ sheet, row: rowNumber, field, message: `Giá trị ${bulkText(value)} không hợp lệ.` });
+    }
+    if (sheet === "BANG_GIA_CONG_MAY") {
+      try {
+        const value = rateFields({code:values.ma_sp,name:values.ten_sp,rate:values.don_gia,unit:values.don_vi,effective_from:values.tu_ngay,effective_to:values.den_ngay});
+        for (const previous of priceRows.filter(item=>codeKey(item.value.code)===codeKey(value.code))) {
+          if (rateNameKey(previous.value.name)!==rateNameKey(value.name) || previous.value.unit!==value.unit || rateRangesOverlap(previous.value,value)) {
+            const message = `Mã công may trùng khoảng hiệu lực hoặc khác tên/đơn vị giữa dòng ${previous.row} và ${rowNumber}; khóa riêng không bỏ qua kiểm tra này.`;
+            errors.push({sheet,row:previous.row,field:"ma_sp",message},{sheet,row:rowNumber,field:"ma_sp",message});
+          }
+        }
+        priceRows.push({row:rowNumber,value});
+      } catch (error) { errors.push({sheet,row:rowNumber,field:error&&typeof error==='object'&&'field' in error?String(error.field):"don_gia",message:error instanceof Error?error.message:"Dữ liệu đơn giá không hợp lệ."}); }
     }
     const from = bulkText(values.tu_ngay || values.tu_ky || values.ngay);
     const to = bulkText(values.den_ngay || values.den_ky);
@@ -13820,6 +13534,7 @@ app.post("/api/payroll/import/preview", async (req, res) => {
     if (!rawRows.length) throw new Error("File chưa có dòng dữ liệu hợp lệ.");
     const sheets = [...new Set(payrollRealRows(rawRows).map((item: unknown) => bulkText((item as Record<string, unknown>)?.sheet)).filter(Boolean))] as string[];
     for (const sheet of sheets) await requirePayrollBulkCapability(payrollBulkCapabilities[sheet] || "payroll_view");
+    if (sheets.includes("BANG_GIA_CONG_MAY")) await assertProductRateAuthoringAuthority(pool,currentLocalActor(),currentLocalRole(),true);
     const fingerprint = payloadFingerprint({ template_key: req.body?.template_key || "payroll-v1", source_name: req.body?.source_name || "excel", rows: payrollRealRows(rawRows) });
     const result = await validatePayrollBulkRows(rawRows, fingerprint);
     const invalidRows = bulkInvalidRowCount(result.errors);
@@ -13846,7 +13561,7 @@ app.post("/api/payroll/import/preview", async (req, res) => {
   } catch (error) { sendError(res, error); }
 });
 
-async function applyPayrollBulkRow(item: { sheet: string; row: number; values: Record<string, unknown> }, fingerprint: string, workerMap: Map<string, string>, groupMap: Map<string, string>, client: PoolClient) {
+async function applyPayrollBulkRow(item: { sheet: string; row: number; values: Record<string, unknown> }, fingerprint: string, workerMap: Map<string, string>, groupMap: Map<string, string>, client: PoolClient, priceSources?: RateSource[]) {
   const { sheet, row, values } = item;
   const actor = currentLocalActor();
   const worker = (code: unknown) => workerMap.get(bulkText(code).toLowerCase()) || "";
@@ -13916,9 +13631,12 @@ async function applyPayrollBulkRow(item: { sheet: string; row: number; values: R
     await payrollAudit("worker_rates", result.rows[0].id, "BULK_CREATE", reason, client); return { id: result.rows[0].id };
   }
   if (sheet === "BANG_GIA_CONG_MAY") {
-    const pieceRateCode = payrollPieceRateCode(values.ma_sp);
-    const result = await client.query(`insert into local_product_rates(product_id,piece_rate_code,piece_rate_name,rate,rate_unit,effective_from,effective_to,status,reason,source_reference,local_modified_at) values(null,$1,$2,$3,$4,$5,$6,'DRAFT',$7,$8,now()) returning id`, [pieceRateCode, bulkText(values.ten_sp), Number(values.don_gia), bulkNormalizedValue("don_vi", values.don_vi) || "PIECE", bulkText(values.tu_ngay), bulkText(values.den_ngay) || null, reason, bulkText(values.nguon) || null]);
-    await payrollAudit("product_rates", result.rows[0].id, "BULK_CREATE", reason, client); return { id: result.rows[0].id, piece_rate_code: pieceRateCode };
+    const value = rateFields({code:values.ma_sp,name:values.ten_sp,rate:values.don_gia,unit:values.don_vi,effective_from:values.tu_ngay,effective_to:values.den_ngay});
+    if (!priceSources) throw new Error("Thiếu nguồn đơn giá trong giao dịch nhập.");
+    assertRateInsertAllowed(priceSources,value,codeKey,{draft:true});
+    const result = await client.query(`insert into local_product_rates(product_id,piece_rate_code,piece_rate_name,rate,rate_unit,effective_from,effective_to,status,reason,source_reference,local_modified_at) values(null,$1,$2,$3::numeric,$4,$5,$6,'DRAFT',$7,$8,now()) returning id`, [value.code,value.name,value.rate,value.unit,value.effective_from,value.effective_to,reason,bulkText(values.nguon)||null]);
+    priceSources.push({id:result.rows[0].id,product_id:null,piece_rate_code:value.code,piece_rate_name:value.name,rate_exact:value.rate,rate_unit:value.unit,effective_from:value.effective_from,effective_to:value.effective_to,status:'DRAFT',source_reference:bulkText(values.nguon)||null});
+    await payrollAudit("product_rates", result.rows[0].id, "BULK_CREATE", reason, client); return { id: result.rows[0].id, piece_rate_code: value.code };
   }
   if (sheet === "BHXH") {
     const result = await client.query(`insert into local_social_insurance_versions(worker_id,employee_amount,effective_from,effective_to,source_reference,reason,created_by) values($1,$2,$3,$4,$5,$6,$7) returning id`, [workerId, Number(values.so_tien_nv), bulkText(values.tu_ngay), bulkText(values.den_ngay) || null, bulkText(values.nguon), reason, actor]);
@@ -13944,7 +13662,7 @@ async function applyPayrollBulkRow(item: { sheet: string; row: number; values: R
   }
   if (sheet === "CHAM_CONG_NGAY") return createAttendance({ worker_id: workerId, attendance_method: "DAY", work_date: bulkText(values.ngay), day_units: Number(values.so_cong), activity_name: bulkText(values.cong_viec) || null, notes: bulkText(values.ghi_chu) || null, idempotency_key: key }, false, client);
   if (sheet === "CHAM_CONG_GIO") return createAttendance({ worker_id: workerId, attendance_method: "HOUR", work_date: bulkText(values.ngay), check_in_time: bulkText(values.gio_vao), check_out_time: bulkText(values.gio_ra), break_minutes: Number(values.phut_nghi || 0), activity_name: bulkText(values.cong_viec) || null, notes: bulkText(values.ghi_chu) || null, idempotency_key: key }, false, client);
-  if (sheet === "CHAM_SAN_LUONG") return createProductionEntry({ worker_id: workerId, piece_rate_code: bulkText(values.ma_sp), work_date: bulkText(values.ngay), quantity: Number(values.so_luong), notes: bulkText(values.ghi_chu) || null, idempotency_key: key }, undefined, client);
+  if (sheet === "CHAM_SAN_LUONG") return createProductionEntry({ worker_id: workerId, piece_rate_code: bulkText(values.ma_sp), work_date: bulkText(values.ngay), quantity: Number(values.so_luong), notes: bulkText(values.ghi_chu) || null, standalone_reason:bulkText(values.ghi_chu)||null,work_kind:['srem','srem1h'].includes(bulkText(values.ma_sp).trim().toLowerCase())?'CURTAIN_REPAIR':null,idempotency_key: key }, undefined, client);
   if (sheet === "TANG_CA") return createOvertime({ worker_id: workerId, work_date: bulkText(values.ngay), overtime_type: bulkNormalizedValue("loai_tang_ca", values.loai_tang_ca), overtime_minutes: Number(values.so_phut), reason, idempotency_key: key }, undefined, client);
   if (sheet === "TRANG_THAI_NGAY_CONG") {
     const date = bulkText(values.ngay), status = bulkNormalizedValue("trang_thai", values.trang_thai), fingerprintValue = payloadFingerprint(values), mealEligible = values.huong_tien_an === undefined ? false : bulkBoolToken(values.huong_tien_an);
@@ -14035,8 +13753,16 @@ app.post("/api/payroll/import/apply", async (req, res) => {
       // Workbook imports can create or update employees. Acquire the shared
       // payroll-source lock before the NHAN_SU handler takes worker row locks.
       await lockPayrollSourceShared(client);
+      if (sheets.includes("BANG_GIA_CONG_MAY")) {
+        await client.query("select pg_advisory_xact_lock(hashtextextended('payroll-product-rate-config',0))");
+      } else if (sheets.includes("CHAM_SAN_LUONG")) {
+        // Consumption-only workbooks must take the same configuration lock
+        // before their import/day/request locks, never inside a later entry.
+        await lockProductRateConfigShared(client);
+      }
       await client.query("select pg_advisory_xact_lock(hashtextextended($1,0))",[`payroll-import:${actor}:${fingerprint}`]);
       for (const sheet of sheets) await requirePayrollBulkCapability(payrollBulkCapabilities[sheet] || 'payroll_view',client);
+      if (sheets.includes("BANG_GIA_CONG_MAY")) await assertProductRateAuthoringAuthority(client,currentLocalActor(),currentLocalRole(),true);
       const closureRows = check.rows.filter(item=>item.sheet==='CHOT_NGAY');
       const existing = await client.query(
         "select id,status,result from local_payroll_import_batches where actor_id=$1 and fingerprint=$2 for update",
@@ -14097,8 +13823,9 @@ app.post("/api/payroll/import/apply", async (req, res) => {
       const rank = new Map(dependencyOrder.map((sheet, index) => [sheet, index]));
       const orderedRows = [...check.rows].sort((a, b) => (rank.get(a.sheet) ?? 999) - (rank.get(b.sheet) ?? 999) || a.row - b.row);
       const results: Array<Record<string, unknown>> = [];
+      const priceSources: RateSource[] | undefined = sheets.includes("BANG_GIA_CONG_MAY") ? (await client.query("select id,product_id,piece_rate_code,piece_rate_name,rate::text rate_exact,rate_unit,effective_from::text,effective_to::text,status,source_reference,source_row from local_product_rates order by id for update")).rows : undefined;
       for (const item of orderedRows) {
-        results.push({ sheet: item.sheet, row: item.row, ...(await applyPayrollBulkRow(item, fingerprint, check.workerMap, check.groupMap, client)) });
+        results.push({ sheet: item.sheet, row: item.row, ...(await applyPayrollBulkRow(item, fingerprint, check.workerMap, check.groupMap, client, priceSources)) });
       }
       const result = { ok: true, imported: results.length, results, status: "DRAFT_OR_SUBMITTED", ...(closureRows.length ? {review_scope:closureSnapshots.map(snapshot=>({row:snapshot.row,worker_id:snapshot.worker_id}))} : {}) };
       await client.query(
@@ -15106,87 +14833,9 @@ app.post("/api/payroll/rates/:id/discard", async (req, res) => {
   }
 });
 
-app.patch("/api/payroll/product-rates/:id", async (req, res) => {
-  try {
-    const pieceRateCode = payrollPieceRateCode(req.body.piece_rate_code ?? req.body.pieceRateCode);
-    const pieceRateName = String(req.body.piece_rate_name ?? req.body.pieceRateName ?? "").trim() || null;
-    const rate = payrollNumber(req.body.rate, "Đơn giá sản phẩm");
-    const from = payrollDate(req.body.effective_from, "Ngày hiệu lực");
-    const reason = String(req.body.reason || "").trim();
-    if (!reason) throw new Error("Lý do cập nhật là bắt buộc.");
-    const { rows } = await pool.query(
-      `update local_product_rates set piece_rate_code=$2,piece_rate_name=$3,rate=$4,rate_unit=$5,effective_from=$6,effective_to=$7,source_reference=$8,reason=$9,updated_at=now(),local_modified_at=now() where id=$1 and status='DRAFT' returning id,'local-tenant' tenant_id,product_id,piece_rate_code,piece_rate_name,rate_unit unit,rate,'VND' currency_code,effective_from,effective_to,status,reason,source_reference,'local-admin' created_by,created_at,updated_at`,
-      [
-        req.params.id,
-        pieceRateCode,
-        pieceRateName,
-        rate,
-        req.body.unit || "PIECE",
-        from,
-        req.body.effective_to
-          ? payrollDate(req.body.effective_to, "Ngày kết thúc")
-          : null,
-        req.body.source_reference || null,
-        reason,
-      ],
-    );
-    if (!rows[0]) throw new Error("Chỉ được sửa đơn giá ở trạng thái nháp.");
-    await payrollAudit("product_rates", req.params.id, "UPDATE", reason);
-    res.json({ ...rows[0], rate: asNumber(rows[0].rate) });
-  } catch (error) {
-    sendError(res, error);
-  }
-});
-app.post("/api/payroll/product-rates/:id/approve", async (req, res) => {
-  const client = await pool.connect();
-  try {
-    await client.query("begin");
-    await lockPayrollSourceShared(client);
-    await client.query("select pg_advisory_xact_lock(hashtextextended('payroll-product-rate-config',0))");
-    const current = await client.query(
-      "select * from local_product_rates where id=$1 for update",
-      [req.params.id],
-    );
-    if (!current.rows[0] || current.rows[0].status !== "DRAFT")
-      throw new Error("Chỉ được duyệt đơn giá nháp.");
-    const row = current.rows[0];
-    payrollPieceRateCode(row.piece_rate_code);
-    await preservePayrollApprovalHistory(client, "local_product_rates", row.id, currentLocalActor(), String(req.body.reason || "Duyệt đơn giá"));
-    const { rows } = await client.query(
-      `update local_product_rates set status='APPROVED',updated_at=now(),local_modified_at=now() where id=$1 returning id,'local-tenant' tenant_id,product_id,piece_rate_code,piece_rate_name,rate_unit unit,rate,'VND' currency_code,effective_from,effective_to,status,reason,source_reference,'local-admin' created_by,created_at,updated_at,created_at approved_at,'local-admin' approved_by`,
-      [req.params.id],
-    );
-    await client.query(
-      "insert into local_payroll_audit_events(entity_type,entity_id,action,reason,actor_id) values('product_rates',$1,'APPROVE',$2,$3)",
-      [req.params.id, req.body.reason || "Duyệt đơn giá", currentLocalActor()],
-    );
-    await client.query("commit");
-    res.json({ ...rows[0], rate: asNumber(rows[0].rate) });
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined);
-    sendError(res, error);
-  } finally {
-    client.release();
-  }
-});
-app.post("/api/payroll/product-rates/:id/discard", async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `update local_product_rates set status='RETIRED',updated_at=now(),local_modified_at=now() where id=$1 and status='DRAFT' returning id,'local-tenant' tenant_id,product_id,rate_unit unit,rate,'VND' currency_code,effective_from,effective_to,status,reason,source_reference,'local-admin' created_by,created_at,updated_at`,
-      [req.params.id],
-    );
-    if (!rows[0]) throw new Error("Không tìm thấy đơn giá nháp.");
-    await payrollAudit(
-      "product_rates",
-      req.params.id,
-      "DISCARD",
-      req.body.reason,
-    );
-    res.json({ ...rows[0], rate: asNumber(rows[0].rate) });
-  } catch (error) {
-    sendError(res, error);
-  }
-});
+
+
+
 
 const insuranceSelect = `id,'local-tenant' tenant_id,worker_id,calculation_type,employee_amount,currency_code,effective_from,effective_to,status,source_reference,reason,created_by,approved_by,created_at,updated_at,approved_at`;
 app.get("/api/payroll/insurance", async (req, res) => {
@@ -16205,7 +15854,22 @@ app.get("/api/payroll/preflight", async (req, res) => {
   }
 });
 
-async function createLocalPayrollRun(input: Record<string, unknown>) {
+async function projectSelfPayrollMonth(client: PoolClient, runId: string, self: {actor:string;workerId:string}, start:string,end:string,status:'PREVIEW'|'LOCKED') {
+  await payrollSelfWorker(client,self.actor,self.workerId);
+  const pending = await payrollPendingIssues(client,start,end,[self.workerId]);
+  const record = (await client.query(`select id,gross_amount::text,deductions_amount::text,net_amount::text,payment_amount::text from local_payroll_records where run_id=$1 and worker_id=$2`,[runId,self.workerId])).rows[0];
+  if (!record) throw Object.assign(new Error('Chưa có kết quả lương của bạn cho tháng này.'),{status:404});
+  const exceptions = (await client.query(`select code from local_payroll_exceptions where run_id=$1 and (worker_id=$2 or worker_id is null) and severity='BLOCKING' and resolved_at is null`,[runId,self.workerId])).rows;
+  const blocked = exceptions.length > 0;
+  const items = blocked ? [] : (await client.query(`select item_type,item_direction,quantity::text,unit_rate::text,multiplier::text,amount_precise::text,formula from local_payroll_items where payroll_record_id=$1 and worker_id=$2 order by created_at,item_type,id`,[record.id,self.workerId])).rows;
+  await payrollSelfWorker(client,self.actor,self.workerId);
+  return {month:start.slice(0,7),status:blocked?'BLOCKED':status,calculated_at:new Date().toISOString(),
+    amounts:blocked?null:{gross:record.gross_amount,deductions:record.deductions_amount,net:record.net_amount,payment:record.payment_amount},items,
+    pending_count:pending.length,pending_message:pending.length?'Nguồn đang chờ duyệt chưa được tính vào số tiền này.':null,
+    issues:exceptions.map(row=>({code:String(row.code),message:'Kết quả lương cần được quản lý đối soát trước khi sử dụng.'}))};
+}
+
+async function createLocalPayrollRun(input: Record<string, unknown>, monthly = false, self?: {actor:string;workerId:string}) {
   const defaults = defaultPeriod();
   const periodStart = periodFromInput(
     input.period_start ?? input.periodStart,
@@ -16223,12 +15887,12 @@ async function createLocalPayrollRun(input: Record<string, unknown>) {
   const idempotencyKey = String(
     input.idempotency_key ?? input.idempotencyKey ?? randomUUID(),
   );
-  const requestedWorkerIds = parsePayrollWorkerScope(
+  const requestedWorkerIds = self ? [self.workerId] : parsePayrollWorkerScope(
     Object.hasOwn(input, "worker_ids")
       ? input.worker_ids
       : input.workerIds,
   );
-  const existing = await findPayrollRunByIdempotency(pool, idempotencyKey);
+  const existing = self ? null : await findPayrollRunByIdempotency(pool, idempotencyKey);
   if (existing) {
     if (!payrollRunMatchesRequest(existing, periodStart, periodEnd, standardDays, requestedWorkerIds))
       throw idempotencyConflict(idempotencyKey);
@@ -16247,9 +15911,17 @@ async function createLocalPayrollRun(input: Record<string, unknown>) {
     await client.query(
       "select pg_advisory_xact_lock(hashtextextended('local-attendance-payroll-source-guard', 0))",
     );
+    if (self) {
+      await payrollSelfWorker(client,self.actor,self.workerId);
+      const closed=(await client.query(`select r.id from local_payroll_runs r join local_payroll_periods p on p.id=r.period_id
+        join local_payroll_records pr on pr.run_id=r.id and pr.worker_id=$3
+        where p.period_start=$1::date and p.period_end=$2::date and p.status='CLOSED' and r.status='LOCKED' order by r.run_number desc limit 1`,[periodStart,periodEnd,self.workerId])).rows[0];
+      if(closed){const projected=await projectSelfPayrollMonth(client,String(closed.id),self,periodStart,periodEnd,'LOCKED');await client.query('ROLLBACK');return projected;}
+      if((await client.query("select 1 from local_payroll_periods where status='CLOSED' and period_start<=$2::date and period_end>=$1::date limit 1",[periodStart,periodEnd])).rows[0])throw Object.assign(new Error('Chưa có kết quả tháng đã khóa cho hồ sơ của bạn. Liên hệ quản lý để đối soát.'),{status:404});
+    }
     // A concurrent retry may have waited on the source lock while the first
     // request created the run. Re-check before touching the payroll period.
-    const lockedExisting = await findPayrollRunByIdempotency(
+    const lockedExisting = self ? null : await findPayrollRunByIdempotency(
       client,
       idempotencyKey,
     );
@@ -16258,6 +15930,13 @@ async function createLocalPayrollRun(input: Record<string, unknown>) {
         throw idempotencyConflict(idempotencyKey);
       await client.query("COMMIT");
       return localPayrollRunDetails(String(lockedExisting.id));
+    }
+    if (monthly && !self) {
+      await assertPayrollWorkerScope(client, requestedWorkerIds);
+      const closed = (await client.query(`select r.* from local_payroll_runs r join local_payroll_periods p on p.id=r.period_id
+        where p.period_start=$1::date and p.period_end=$2::date and p.status='CLOSED' and r.status='LOCKED' order by r.run_number desc`, [periodStart, periodEnd])).rows;
+      const locked = closed.find(run => payrollRunMatchesRequest({...run,period_start:periodStart,period_end:periodEnd},periodStart,periodEnd,standardDays,requestedWorkerIds));
+      if (locked) { await client.query('COMMIT'); return localPayrollRunDetails(String(locked.id)); }
     }
     if ((await client.query("select 1 from local_payroll_periods where status='CLOSED' and period_start <= $2::date and period_end >= $1::date limit 1", [periodStart,periodEnd])).rows[0])
       throw Object.assign(new Error('Kỳ lương giao với kỳ đã đóng; không được tính trùng nguồn. Hãy dùng kỳ điều chỉnh riêng.'),{status:409});
@@ -16282,9 +15961,29 @@ async function createLocalPayrollRun(input: Record<string, unknown>) {
       standardDays,
       requestedWorkerIds,
     );
-    if(preflight.blocking_count>0)throw Object.assign(new Error(`Còn ${preflight.blocking_count} lỗi chặn; cần duyệt cấu hình/đối soát nguồn trước khi tính.`),{status:409,preflight});
+    if (monthly) {
+      preflight.issues = preflight.issues.filter(issue => !['UNAPPROVED_ATTENDANCE','UNAPPROVED_PRODUCTION','UNAPPROVED_OVERTIME','UNAPPROVED_ADJUSTMENT'].includes(issue.code));
+      preflight.blocking_count = preflight.issues.filter(issue => issue.severity === 'BLOCKING').length;
+    }
+    if(preflight.blocking_count>0){
+      if(self){
+        await payrollSelfWorker(client,self.actor,self.workerId);
+        const pending=await payrollPendingIssues(client,periodStart,periodEnd,[self.workerId]);
+        const projected={month:periodStart.slice(0,7),status:'BLOCKED',calculated_at:new Date().toISOString(),amounts:null,items:[],pending_count:pending.length,pending_message:pending.length?'Nguồn đang chờ duyệt chưa được tính vào lương.':null,issues:preflight.issues.filter(issue=>!issue.worker_id||issue.worker_id===self.workerId).map(issue=>({code:issue.code,message:'Cấu hình hoặc nguồn lương của bạn cần được quản lý kiểm tra.'}))};
+        await client.query('ROLLBACK');return projected;
+      }
+      throw Object.assign(new Error(`Còn ${preflight.blocking_count} lỗi chặn; cần duyệt cấu hình/đối soát nguồn trước khi tính.`),{status:409,preflight});
+    }
     const resolvedWorkerIds = preflight.resolved_worker_ids;
     const sourceFingerprint = await capturePayrollSourceFingerprint(client, periodStart, periodEnd, standardDays, requestedWorkerIds);
+    if (monthly && !self) {
+      const candidates = (await client.query(`select r.*,p.period_start::text,p.period_end::text from local_payroll_runs r join local_payroll_periods p on p.id=r.period_id
+        where r.period_id=$1 and r.status='PREVIEW' and r.calculation_version='local-payroll-v3' order by r.run_number desc`,[period.id])).rows;
+      const current = candidates.find(run => payrollRunMatchesRequest(run,periodStart,periodEnd,standardDays,requestedWorkerIds)
+        && run.config_snapshot?.source_fingerprint?.sha256===sourceFingerprint.sha256
+        && JSON.stringify(run.config_snapshot?.worker_scope?.resolved_worker_ids)===JSON.stringify(preflight.resolved_worker_ids));
+      if (current) { await client.query('COMMIT'); return localPayrollRunDetails(String(current.id)); }
+    }
 
     const attendanceResult = await client.query(
       `
@@ -16608,7 +16307,7 @@ async function createLocalPayrollRun(input: Record<string, unknown>) {
       .digest("hex");
     // Keep one active preview per open period. Older previews remain immutable
     // for audit/history, but cannot be mistaken for the current calculation.
-    const supersededResult = await client.query(
+    const supersededResult = self ? {rows:[]} : await client.query(
       "update local_payroll_runs set status='SUPERSEDED' where period_id=$1 and status='PREVIEW' returning id",
       [period.id],
     );
@@ -16734,6 +16433,7 @@ async function createLocalPayrollRun(input: Record<string, unknown>) {
       `update local_payroll_records set payment_amount=round(net_amount,0), rounding_delta=round(net_amount,0)-net_amount where run_id=$1`,
       [runId],
     );
+    if (self) {const projected=await projectSelfPayrollMonth(client,String(runId),self,periodStart,periodEnd,'PREVIEW');await client.query('ROLLBACK');return projected;}
     await client.query("COMMIT");
     return localPayrollRunDetails(runId);
   } catch (error) {
@@ -17198,9 +16898,43 @@ app.post("/api/production-attendance/:id/reverse", async (req, res) => {
 });
 
 const port = runtime.port;
-bootstrapDatabase()
-  .then(() =>
-    app.listen(port, runtime.host, () => {
+const databaseStartup = runtime.startupMode === 'verify-item5a'
+  ? (async () => {
+      try {
+        const result = await bootstrapDatabase();
+      console.log('Item5A technical verify-and-exit passed; no API listener, sync, or integration was started.', result);
+      } finally {
+        // Technical verification must release the client pool on both pass and
+        // failure; no API listener or scheduler is created in this branch.
+        await pool.end();
+      }
+    })()
+  : runtime.startupMode === 'serve-installed'
+    ? (async () => {
+        try {
+          await bootstrapDatabase();
+          return app.listen(port, runtime.host, () => {
+            console.log(`Local CRM API installed and listening on http://127.0.0.1:${port}`);
+          });
+        } catch (error) {
+          await pool.end().catch(() => undefined);
+          throw error;
+        }
+      })()
+  : runtime.startupMode === 'serve-verified-item5a'
+    ? (async () => {
+        try {
+          await bootstrapDatabase();
+          return app.listen(port, runtime.host, () => {
+            console.log(`Local CRM API verified for Item5A and listening on http://127.0.0.1:${port}`);
+          });
+        } catch (error) {
+          await pool.end().catch(() => undefined);
+          throw error;
+        }
+      })()
+  : bootstrapDatabase()
+    .then(() => app.listen(port, runtime.host, () => {
       console.log(`Local CRM API listening on http://127.0.0.1:${port}`);
       if (localSyncAutomaticEnabled) {
         localSyncTimer = setInterval(() => {
@@ -17226,8 +16960,8 @@ bootstrapDatabase()
           "Local incremental sync scheduler disabled by backend mode/configuration.",
         );
       }
-    }),
-  )
+    }));
+databaseStartup
   .catch((error) => {
     console.error("Local database bootstrap failed", error);
     process.exitCode = 1;

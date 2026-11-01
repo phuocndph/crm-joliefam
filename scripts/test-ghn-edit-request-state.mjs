@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {createGhnEditRequestGate} from '../src/lib/ghn-edit-request-state.ts';
+const gate=createGhnEditRequestGate();gate.context('open:record-A');const initial=gate.begin('get_districts');gate.context('open:record-B');assert.equal(gate.current(initial),false);
+const beforeManual=gate.begin('get_wards');gate.invalidateIntent();assert.equal(gate.current(beforeManual),false);
+const old=gate.begin('get_districts'),latest=gate.begin('get_districts');assert.equal(gate.current(old),false);assert.equal(gate.current(latest),true);
+const autocomplete=gate.begin('autocomplete');gate.context('closed:record-B');assert.equal(gate.current(autocomplete),false);
+console.log('PASS GHN edit request gate: record switch, close, manual intent and latest hierarchy response.');
+
+gate.context('open:C');const wards=gate.begin('get_wards'),reference=gate.begin('get_provinces',true);gate.invalidate('calculate_fee');assert.equal(gate.current(wards),true);gate.invalidateIntent();assert.equal(gate.current(wards),false);assert.equal(gate.current(reference),true);gate.context('closed:C');assert.equal(gate.current(reference),false);
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+import ts from 'typescript';
+import {staleGhnEditResponse} from '../src/lib/ghn-edit-request-state.ts';
+const source=await readFile(new URL('../src/components/EditGHNOrderDialog.tsx',import.meta.url),'utf8');
+const ast=ts.createSourceFile('dialog.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let initializer;
+function walk(n){if(ts.isVariableDeclaration(n)&&n.name.getText(ast)==='callGHN')initializer=n.initializer.getText(ast);ts.forEachChild(n,walk);}walk(ast);
+const pending=[];const liveGate=createGhnEditRequestGate();liveGate.context('A');
+const handler=vm.runInNewContext(ts.transpileModule('const handler='+initializer,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';handler',{useCallback:fn=>fn,editGate:{current:liveGate},staleGhnEditResponse,supabase:{functions:{invoke:()=>new Promise(resolve=>pending.push(resolve))}}});
+const stale=handler('get_wards',{districtId:1});liveGate.context('B');pending.shift()({data:{success:true,data:['old ward']}});await assert.rejects(()=>stale,e=>e.ghnEditStale===true);
+const liveReference=handler('get_provinces');liveGate.invalidate('calculate_fee');liveGate.invalidateIntent();pending.shift()({data:{success:true,data:['valid province']}});assert.deepEqual(Array.from(await liveReference),['valid province']);
+const ward=handler('get_wards',{districtId:2});liveGate.invalidate('calculate_fee');pending.shift()({data:{success:true,data:['current ward']}});assert.deepEqual(Array.from(await ward),['current ward']);
+const before=handler('get_districts',{provinceId:1});const after=handler('get_districts',{provinceId:2});pending.shift()({data:{success:true,data:['old district']}});pending.shift()({data:{success:true,data:['new district']}});await assert.rejects(()=>before,e=>e.ghnEditStale===true);assert.deepEqual(Array.from(await after),['new district']);
+console.log('PASS actual GHN bridge callback: switched record/latest hierarchy rejected; initial references survive typing and COD does not discard wards.');

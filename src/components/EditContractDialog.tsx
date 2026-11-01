@@ -1,3 +1,4 @@
+import { canonicalContract, validateContractDates, contractLineAmount, contractBusinessDate } from "@/lib/contract-calculation";
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -75,13 +76,13 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
         contract_number: contract.contract_number || "",
         customer_id: contract.customer_id || "",
         status: contract.status || "draft",
-        contract_date: contract.contract_date?.slice(0, 10) || "",
-        start_date: contract.start_date?.slice(0, 10) || "",
-        end_date: contract.end_date?.slice(0, 10) || "",
+        contract_date: contractBusinessDate(contract.contract_date),
+        start_date: contractBusinessDate(contract.start_date),
+        end_date: contractBusinessDate(contract.end_date),
         notes: contract.notes || "",
         include_vat: contract.include_vat || false,
-        vat_rate: contract.vat_rate || 8,
-        deposit_percentage: contract.deposit_percentage || 70,
+        vat_rate: contract.vat_rate ?? 8,
+        deposit_percentage: contract.deposit_percentage ?? 70,
         deposit_mode: ((contract.seller_info as any)?.deposit_mode as "percent" | "amount" | "none") || ((contract.deposit_amount && !contract.deposit_percentage) ? "amount" : "percent"),
         deposit_fixed_amount: contract.deposit_amount || 0,
         seller_representative: (contract.seller_info as any)?.representative || "",
@@ -105,15 +106,15 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
 
       // Load items
       const contractItems = contract.items;
-      if (Array.isArray(contractItems) && contractItems.length > 0) {
+      if (Array.isArray(contractItems)) {
         setItems(contractItems.map((it: any) => ({
           name: it.name || "",
           specifications: it.specifications || "",
-          quantity: it.quantity || 1,
+          quantity: it.quantity ?? 1,
           price: it.price || 0,
         })));
       } else {
-        setItems([{ ...emptyItem }]);
+        setItems([]);
       }
 
       setShowLinkCustomer(!!contract.customer_id);
@@ -277,14 +278,15 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
   };
 
   // Calculations
-  const subtotal = items.reduce((s, it) => s + (it.quantity || 0) * (it.price || 0), 0);
-  const vatAmount = formData.include_vat ? subtotal * formData.vat_rate / 100 : 0;
-  const totalAmount = subtotal + vatAmount;
-  const depositAmount = formData.deposit_mode === "none"
-    ? 0
-    : formData.deposit_mode === "percent"
-      ? totalAmount * formData.deposit_percentage / 100
-      : formData.deposit_fixed_amount;
+  const originalItems = (Array.isArray(contract?.items) ? contract.items : []).map((it) => ({ name: it.name || "", specifications: it.specifications || "", quantity: it.quantity ?? 1, price: it.price || 0 }));
+  const originalMode = contract?.seller_info?.deposit_mode || ((contract?.deposit_amount && !contract?.deposit_percentage) ? "amount" : "percent");
+  const financialUnchanged = JSON.stringify(items) === JSON.stringify(originalItems) && formData.include_vat === Boolean(contract?.include_vat) && formData.vat_rate === (contract?.vat_rate ?? 8) && formData.deposit_percentage === (contract?.deposit_percentage ?? 70) && formData.deposit_fixed_amount === (contract?.deposit_amount || 0) && formData.deposit_mode === originalMode;
+  let calculationError = "";
+  let calculated = { subtotal: 0, vat_amount: 0, total_amount: 0, deposit_amount: 0 };
+  try {
+    calculated = financialUnchanged ? { subtotal: contract.subtotal ?? 0, vat_amount: contract.vat_amount ?? 0, total_amount: contract.total_amount ?? 0, deposit_amount: contract.deposit_amount ?? 0 } : canonicalContract({ ...formData, items, deposit_amount: formData.deposit_fixed_amount, seller_info: { deposit_mode: formData.deposit_mode } });
+  } catch (error) { calculationError = error instanceof Error ? error.message : "Dữ liệu số tiền không hợp lệ."; }
+  const subtotal = calculated.subtotal, vatAmount = calculated.vat_amount, totalAmount = calculated.total_amount, depositAmount = calculated.deposit_amount;
 
   const addItem = () => setItems([...items, { ...emptyItem }]);
   const removeItem = (i: number) => setItems(items.filter((_, j) => j !== i));
@@ -294,7 +296,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
     setItems(u);
   };
 
-  const formatCurrency = (val: number) => val.toLocaleString("vi-VN") + " ₫";
+  const formatCurrency = (val: number) => calculationError ? '—' : val.toLocaleString("vi-VN") + " ₫";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -304,32 +306,37 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
     }
 
     try {
-      await updateContract.mutateAsync({
+      if (calculationError) throw new Error(calculationError);
+      validateContractDates(formData);
+      const payload: Record<string, unknown> = {
         id: contract.id,
         title: formData.title,
         customer_id: formData.customer_id || null,
-        total_amount: totalAmount,
-        subtotal,
-        vat_amount: vatAmount,
-        include_vat: formData.include_vat,
-        vat_rate: formData.vat_rate,
-        deposit_amount: depositAmount,
-        deposit_percentage: formData.deposit_percentage,
-        contract_date: formData.contract_date,
-        start_date: formData.start_date || null,
-        end_date: formData.end_date || null,
+        ...(!financialUnchanged ? {
+          total_amount: totalAmount,
+          subtotal,
+          vat_amount: vatAmount,
+          include_vat: formData.include_vat,
+          vat_rate: formData.vat_rate,
+          deposit_amount: depositAmount,
+          deposit_percentage: formData.deposit_percentage,
+          items: items.map((it, i) => ({ ...it, total: contractLineAmount(it.quantity, it.price), stt: i + 1 })),
+        } : {}),
+        ...(formData.contract_date !== contractBusinessDate(contract.contract_date) ? { contract_date: formData.contract_date || null } : {}),
+        ...(formData.start_date !== contractBusinessDate(contract.start_date) ? { start_date: formData.start_date || null } : {}),
+        ...(formData.end_date !== contractBusinessDate(contract.end_date) ? { end_date: formData.end_date || null } : {}),
         notes: formData.notes || null,
         status: formData.status,
-        items: items.map((it, i) => ({ ...it, total: it.quantity * it.price, stt: i + 1 })),
         buyer_info: buyerInfo,
         seller_info: {
           ...((contract.seller_info as any) || {}),
           representative: formData.seller_representative,
           position: formData.seller_position,
           include_shipping: formData.include_shipping,
-          deposit_mode: formData.deposit_mode,
+          ...(!financialUnchanged ? { deposit_mode: formData.deposit_mode } : {}),
         },
-      });
+      };
+      await updateContract.mutateAsync(payload);
       toast({ title: "Cập nhật hợp đồng thành công!" });
       onOpenChange(false);
     } catch (error: any) {
@@ -344,8 +351,9 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
           <DialogTitle>Chỉnh sửa hợp đồng {contract?.contract_number}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-5 max-h-[75vh] overflow-y-auto pr-2">
+          {calculationError && <p role="alert" className="rounded-md border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900">{calculationError}</p>}
           {/* Basic info */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label>Tiêu đề</Label>
               <Input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} />
@@ -368,7 +376,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
           <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
             <Label className="text-base font-semibold">THÔNG TIN BÊN A (Bên bán)</Label>
             <p className="text-xs text-muted-foreground">Bổ sung người đại diện Bên A</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Người đại diện Bên A</Label>
                 <Input value={formData.seller_representative} onChange={e => setFormData(p => ({ ...p, seller_representative: e.target.value }))} placeholder="Ông/Bà..." />
@@ -421,7 +429,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
               <Label>Tên công ty / Cá nhân *</Label>
               <Input value={buyerInfo.company_name} onChange={e => setBuyerInfo(p => ({ ...p, company_name: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Người đại diện</Label>
                 <Input value={buyerInfo.representative} onChange={e => setBuyerInfo(p => ({ ...p, representative: e.target.value }))} />
@@ -435,7 +443,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
               <Label>Địa chỉ</Label>
               <Input value={buyerInfo.address} onChange={e => setBuyerInfo(p => ({ ...p, address: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Mã số thuế</Label>
                 <div className="flex gap-1">
@@ -450,7 +458,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
                 <Input value={buyerInfo.phone} onChange={e => setBuyerInfo(p => ({ ...p, phone: e.target.value }))} />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <Label>Ngân hàng</Label>
                 <Input value={buyerInfo.bank_name} onChange={e => setBuyerInfo(p => ({ ...p, bank_name: e.target.value }))} />
@@ -496,7 +504,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
                 const newItems = extractedItems.map(it => ({
                   name: it.name || "",
                   specifications: it.specifications || "",
-                  quantity: it.quantity || 1,
+                  quantity: it.quantity ?? 1,
                   price: it.price || 0,
                 }));
                 // Always replace old items with new extracted items
@@ -525,7 +533,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
                       <td className="p-1"><Input value={item.specifications} onChange={e => updateItem(i, "specifications", e.target.value)} placeholder="Kích thước" className="h-8" /></td>
                       <td className="p-1"><Input type="number" value={item.quantity} onChange={e => updateItem(i, "quantity", Number(e.target.value))} className="h-8 text-right" /></td>
                       <td className="p-1"><Input type="number" value={item.price} onChange={e => updateItem(i, "price", Number(e.target.value))} className="h-8 text-right" /></td>
-                      <td className="p-2 text-right font-medium">{formatCurrency(item.quantity * item.price)}</td>
+                      <td className="p-2 text-right font-medium">{formatCurrency(contractLineAmount(item.quantity, item.price))}</td>
                       <td className="p-1">
                         {items.length > 1 && (
                           <Button type="button" size="icon" variant="ghost" onClick={() => removeItem(i)} className="h-7 w-7 text-destructive">
@@ -594,7 +602,7 @@ export const EditContractDialog = ({ open, onOpenChange, contract }: Props) => {
           </div>
 
           {/* Dates */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <Label>Ngày ký</Label>
               <Input type="date" value={formData.contract_date} onChange={e => setFormData(p => ({ ...p, contract_date: e.target.value }))} />

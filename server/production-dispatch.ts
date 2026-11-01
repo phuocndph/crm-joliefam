@@ -6,6 +6,9 @@ import { pool } from './db/bootstrap.js';
 import { cuttingRequirementForOutput } from './production-sales-workflow.js';
 import {projectedProductionImages} from './production-reference-images.js';
 import {cuttingScope} from './production-uncut-cancellations.js';
+import {resolveDispatchLabor,validateDispatchLabor,publicLaborAssignment} from './dispatch-labor.js';
+import {codeKey} from './product-labor-resolver.js';
+import {listRuntimePieceRates,loadEffectiveApprovedProductRates,selectRuntimePieceRate} from './product-rate-consumption.js';
 
 type Body = Record<string, unknown>;
 type Row = Record<string, any>;
@@ -14,6 +17,7 @@ interface Dependencies {
   role: () => string;
   transaction: <T>(fn: (client: PoolClient) => Promise<T>) => Promise<T>;
   lockShared: (client: PoolClient) => Promise<void>;
+  lockRateConfigShared: (client: PoolClient) => Promise<void>;
   sendError: (res: express.Response, error: unknown) => void;
   lockDay: (client: PoolClient, worker: string, date: string) => Promise<void>;
   writable: (client: PoolClient, worker: string, date: string, status: string) => Promise<void>;
@@ -103,11 +107,18 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       const replay = (await client.query('select * from local_dispatch_requests where idempotency_key=$1', [key])).rows[0];
       if (replay) {
         if (replay.actor_id !== d.actor() || replay.fingerprint !== fingerprint) fail('Khóa chống gửi trùng đã dùng cho tài khoản hoặc nội dung khác.', 409);
-        return { ...replay.result, reused: true };
+        if(action==='ASSIGN'||action==='PUBLISH'||action.startsWith('RECONCILE_LABOR'))await manager(client);
+        if(replay.result.worker_id)await scope(client,String(replay.result.worker_id),String(replay.result.work_date||replay.result.assigned_from||today()),action.startsWith('review:')||action.startsWith('reverse:'));
+        if(action.startsWith('review:')||action.startsWith('reverse:'))await permission(client,['production_manage','production_attendance_approve']);
+        return { ...publicLaborAssignment(replay.result), reused: true };
       }
+      // New dispatch writers take configuration before parent/assignment/day
+      // locks. Replay deliberately returns above without recalculating prices.
+      await d.lockRateConfigShared(client);
+      await client.query("select pg_advisory_xact_lock_shared(hashtextextended('labor-mapping-writer',0))");
       const result = await fn(client, key);
       await client.query('insert into local_dispatch_requests(idempotency_key,actor_id,fingerprint,result) values($1,$2,$3,$4::jsonb)', [key, d.actor(), fingerprint, JSON.stringify(result)]);
-      return result;
+      return result.labor_basis?publicLaborAssignment(result):result;
     });
   }
   async function consumption(client: PoolClient, id: string) {
@@ -244,7 +255,7 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       join local_workers w on w.user_id=$1 and w.is_active where p.status='OPEN' and p.assigned_from<=current_date and (p.assigned_to is null or p.assigned_to>=current_date)
       and ((p.stage='CUTTING' and upper(w.worker_type)='CUTTER') or (p.stage='SEWING' and upper(w.worker_type) in ('SEWER','SEWING')) or (p.stage='FINISHING' and upper(w.worker_type)='IRONING') or (p.stage='COUNTING' and upper(w.worker_type) in ('QC','PACKER')))
       and (p.eligible_supervisor_worker_id is null or exists(select 1 from local_payroll_team_assignments t where t.supervisor_worker_id=p.eligible_supervisor_worker_id and t.worker_id=w.id and t.status='ACTIVE' and t.effective_from<=current_date and (t.effective_to is null or t.effective_to>=current_date))) order by p.created_at desc`, [d.actor()])).rows : (await pool.query(`select p.*,coalesce((select sum(coalesce(a.accepted_quantity,a.allocated_quantity)-a.returned_quantity) from local_assignments a where a.publication_id=p.id and a.dispatch_status<>'REJECTED'),0) claimed_quantity from local_production_job_publications p where p.production_order_id=$1 order by p.created_at desc`, params.slice(0,1))).rows;
-    for(const row of [...assignments,...publications])row.reference_images=projectedProductionImages(row.reference_images);
+    for(const row of [...assignments,...publications]){row.reference_images=projectedProductionImages(row.reference_images);row.labor_basis_status=row.repair_ticket_id?'NON_PAYABLE':row.labor_basis?'PINNED':'RECONCILIATION_REQUIRED';delete row.labor_basis;}
     const materialTargets=[...assignments.filter(a=>a.dispatch_stage==='CUTTING'),...publications.filter(p=>p.stage==='CUTTING')];
     for(const target of materialTargets){
       target.no_material_required=Boolean((await pool.query("select 1 from local_cutting_estimates where production_order_id=$1 and production_batch_id=$2 and estimate_kind='BASE' and status='APPROVED' and no_material_required",[target.production_order_id,target.production_batch_id])).rows[0]);
@@ -290,21 +301,27 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
     const assignments=[...new Map(page.map(row=>[row.assignment.id,row.assignment])).values()];
     res.json({assignments,reports:page.map(row=>row.report),total:result.total,has_more,next_cursor:has_more?page.at(-1)!.id:null,limit});
   }catch(error){d.sendError(res,error);}});
-  app.get('/api/production-dispatch/assignments/:id/pay-preview',async(req,res)=>{try{
+  app.get('/api/production-dispatch/received-work',async(req,res)=>{try{const result=await d.transaction(async client=>{await manager(client);const worker=String(req.query.worker_id||''),date=workDate(req.query.date||today());await scope(client,worker,date);return(await client.query(`select a.id,a.piece_rate_code,i.product_name,o.production_order_number,a.accepted_quantity-a.returned_quantity-coalesce((select sum(e.quantity_received) from local_production_stage_events e where e.assignment_id=a.id and e.source_stage_event_id is null and e.status in ('SUBMITTED','APPROVED','LOCKED')),0) remaining_quantity from local_assignments a join local_production_orders o on o.id=a.production_order_id join local_production_order_items i on i.id=a.order_item_id where a.worker_id=$1 and a.dispatch_stage='SEWING' and a.dispatch_status='ACCEPTED' and a.assigned_from<=$2::date and (a.assigned_to is null or a.assigned_to>=$2::date) and o.status in ('RELEASED','IN_PROGRESS') order by a.created_at desc`,[worker,date])).rows;});res.json(result);}catch(error){d.sendError(res,error);}});
+  app.get('/api/production-dispatch/labor-preview',async(req,res)=>{try{const result=await d.transaction(async client=>{await manager(client);await d.lockRateConfigShared(client);await client.query("select pg_advisory_xact_lock_shared(hashtextextended('labor-mapping-writer',0))");return resolveDispatchLabor(client,String(req.query.production_order_id||''),String(req.query.order_item_id||''),workDate(req.query.date||today()));});res.json({status:'RESOLVED',piece_rate_code:result.basis.piece_rate_code,rate_unit:'PIECE',reason:'Mã công từ hồ sơ kỹ thuật và ánh xạ đã duyệt.'});}catch(error){d.sendError(res,error);}});
+  app.post('/api/production-dispatch/assignments/:id/reconcile-labor',async(req,res)=>{try{res.json(await mutate(`RECONCILE_LABOR:${req.params.id}`,req.body,async client=>{await manager(client);const a=await assignment(client,String(req.params.id));await scope(client,a.worker_id,String(a.assigned_from));if(a.repair_ticket_id||a.dispatch_stage!=='SEWING')fail('Công việc không cần đối soát mã may.');const reason=String(req.body.reason||'').trim();if(reason.length<3)fail('Nhập lý do đối soát ít nhất 3 ký tự.');const resolved=await resolveDispatchLabor(client,a.production_order_id,a.order_item_id,String(a.assigned_from));if(codeKey(a.piece_rate_code)!==codeKey(resolved.basis.piece_rate_code))fail('Mã công hiện tại không khớp; không tự thay mã của việc đã giao.',409);await client.query('update local_assignments set labor_basis=$2::jsonb where id=$1',[a.id,JSON.stringify(resolved.basis)]);await audit(client,a.production_order_id,'RECONCILE_LABOR',{...a,labor_basis:resolved.basis},req.body);return publicLaborAssignment({...a,labor_basis:resolved.basis});}));}catch(error){d.sendError(res,error);}});
+  app.get('/api/production-dispatch/assignments/:id/pay-preview',async(req,res)=>{try{const result=await d.transaction(async client=>{await d.lockRateConfigShared(client);await client.query("select pg_advisory_xact_lock_shared(hashtextextended('labor-mapping-writer',0))");
     const date=workDate(req.query.work_date),good=quantity(req.query.quantity_good,true);
-    const a=(await pool.query(`select a.*,o.status order_status,b.status batch_status from local_assignments a join local_workers w on w.id=a.worker_id and w.user_id=$2 and w.is_active join local_production_orders o on o.id=a.production_order_id join local_production_batches b on b.id=a.production_batch_id where a.id=$1 and a.dispatch_stage is not null`,[req.params.id,d.actor()])).rows[0];
+    const a=(await client.query(`select a.*,o.status order_status,b.status batch_status from local_assignments a join local_workers w on w.id=a.worker_id and w.user_id=$2 and w.is_active join local_production_orders o on o.id=a.production_order_id join local_production_batches b on b.id=a.production_batch_id where a.id=$1 and a.dispatch_stage is not null`,[req.params.id,d.actor()])).rows[0];
     if(!a)fail('Chỉ được xem tiền dự kiến cho công việc của chính mình.',403);
     if(a.dispatch_status!=='ACCEPTED'||!['RELEASED','IN_PROGRESS'].includes(a.order_status)||!['PLANNED','IN_PROGRESS'].includes(a.batch_status)||date<a.assigned_from||a.assigned_to&&date>a.assigned_to)fail('Công việc hoặc ngày làm không đủ điều kiện báo cáo.',409);
-    const remaining=(await pool.query(`select $2::numeric-$3::numeric-coalesce(sum(quantity_received),0) quantity from local_production_stage_events where assignment_id=$1 and source_stage_event_id is null and status in ('SUBMITTED','APPROVED','LOCKED')`,[a.id,a.accepted_quantity,a.returned_quantity])).rows[0].quantity;
-    if((await pool.query('select $1::numeric>$2::numeric exceeds',[good,remaining])).rows[0].exceeds)fail('Số đạt vượt phần còn lại chưa báo cáo.',409);
+    const remaining=(await client.query(`select $2::numeric-$3::numeric-coalesce(sum(quantity_received),0) quantity from local_production_stage_events where assignment_id=$1 and source_stage_event_id is null and status in ('SUBMITTED','APPROVED','LOCKED')`,[a.id,a.accepted_quantity,a.returned_quantity])).rows[0].quantity;
+    if((await client.query('select $1::numeric>$2::numeric exceeds',[good,remaining])).rows[0].exceeds)fail('Số đạt vượt phần còn lại chưa báo cáo.',409);
     const base={work_date:date,quantity_good:good,piece_rate_code:a.piece_rate_code,rate_unit:a.rate_unit,rate_amount:null,pending_amount:null};
-    if(a.dispatch_stage!=='SEWING'||a.repair_ticket_id)return res.json({...base,status:'NON_PAYABLE',reason:a.repair_ticket_id?'Hàng trả sửa / kiểm lại không tính tiền sản phẩm lần hai.':'Công đoạn này tính theo hồ sơ lương ngày / giờ, không cộng tiền may.'});
-    const profiles=(await pool.query("select piece_output_enabled from local_worker_payroll_profiles where worker_id=$1 and status='APPROVED' and effective_from<=$2::date and (effective_to is null or effective_to>=$2::date)",[a.worker_id,date])).rows;
-    if(profiles.length!==1||profiles[0].piece_output_enabled!==true)return res.json({...base,status:'UNAVAILABLE',reason:'Hồ sơ lương sản lượng thiếu, trùng hoặc chưa bật. Liên hệ quản lý.'});
-    const rates=(await pool.query("select rate,coalesce(rate_unit,'PIECE') rate_unit,round($3::numeric*rate,2)::text pending_amount from local_product_rates where lower(piece_rate_code)=lower($1) and status='APPROVED' and effective_from<=$2::date and (effective_to is null or effective_to>=$2::date)",[a.piece_rate_code,date,good])).rows;
-    if(rates.length!==1||rates[0].rate_unit!==a.rate_unit)return res.json({...base,status:'UNAVAILABLE',reason:'Thiếu, trùng hoặc sai đơn vị đơn giá hiệu lực. Liên hệ quản lý.'});
-    return res.json({...base,status:'READY',rate_amount:rates[0].rate,pending_amount:rates[0].pending_amount,reason:null});
-  }catch(error){d.sendError(res,error);}});
+    if(a.dispatch_stage!=='SEWING'||a.repair_ticket_id)return ({...base,status:'NON_PAYABLE',reason:a.repair_ticket_id?'Hàng trả sửa / kiểm lại không tính tiền sản phẩm lần hai.':'Công đoạn này tính theo hồ sơ lương ngày / giờ, không cộng tiền may.'});
+    const profiles=(await client.query("select piece_output_enabled from local_worker_payroll_profiles where worker_id=$1 and status='APPROVED' and effective_from<=$2::date and (effective_to is null or effective_to>=$2::date)",[a.worker_id,date])).rows;
+    if(profiles.length!==1||profiles[0].piece_output_enabled!==true)return ({...base,status:'UNAVAILABLE',reason:'Hồ sơ lương sản lượng thiếu, trùng hoặc chưa bật. Liên hệ quản lý.'});
+    let rate;
+    try { await validateDispatchLabor(client,a,date);rate=await selectRuntimePieceRate(client,{date,pieceRateCode:a.piece_rate_code}); }
+    catch { return ({...base,status:'UNAVAILABLE',reason:'Thiếu, trùng hoặc sai đơn vị đơn giá hiệu lực. Liên hệ quản lý.'}); }
+    if(String(rate.rate_unit)!==String(a.rate_unit))return ({...base,status:'UNAVAILABLE',reason:'Thiếu, trùng hoặc sai đơn vị đơn giá hiệu lực. Liên hệ quản lý.'});
+    const pending=(await client.query('select round($1::numeric*$2::numeric,2)::text pending_amount',[good,rate.rate_exact])).rows[0].pending_amount;
+    return ({...base,status:'READY',rate_amount:rate.rate_exact,pending_amount:pending,reason:null});
+  });res.json(result);}catch(error){d.sendError(res,error);}});
   app.get('/api/production-dispatch/publications', async (req, res) => {
     try {
       const mine = String(req.query.mine || '') === '1';
@@ -316,7 +333,9 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       await permission(awaitClientProxy(),['production_manage','production_operations']);
       if (d.role()==='employee') fail('Nhân viên chỉ xem mã công trên công việc của mình.',403);
       const date=workDate(req.query.date || today());
-      const rows=(await pool.query("select id,piece_rate_code,piece_rate_name,rate_unit from local_product_rates where status='APPROVED' and piece_rate_code is not null and effective_from<=$1::date and (effective_to is null or effective_to>=$1::date) order by piece_rate_code",[date])).rows;
+      const rows=listRuntimePieceRates(await loadEffectiveApprovedProductRates(pool,date))
+        .map(row=>({id:row.id,piece_rate_code:row.piece_rate_code,piece_rate_name:row.piece_rate_name,rate_unit:row.rate_unit}))
+        .sort((a,b)=>String(a.piece_rate_code).localeCompare(String(b.piece_rate_code),'vi'));
       res.json(rows);
     } catch(error) { d.sendError(res,error); }
   });
@@ -340,18 +359,17 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       if(stage==='CUTTING')await cuttingPlanCapacity(client,b.production_order_id,b.production_batch_id,b.order_item_id,qty);
       if ((await client.query('select $1::numeric+$2::numeric+$3::numeric>$4::numeric exceeds', [cap.reserved, open, qty, cap.capacity])).rows[0].exceeds) fail(stage === 'CUTTING' ? 'Phân công vượt kế hoạch lô cắt hoặc phần đã công khai.' : 'Phân công may vượt số đã cắt đạt hoặc phần đã công khai.');
       if (stage === 'CUTTING') await cuttingGate(client, String(b.production_order_id), String(b.production_batch_id), String((await client.query('select ($1::numeric+$2::numeric+$3::numeric)::text qty', [cap.reserved, open, qty])).rows[0].qty));
-      let code: string | null = null, unit: string | null = null;
+      let code: string | null = null, unit: string | null = null;let laborBasis:Row|null=null;
       if(stage==='SEWING'&&b.repair_ticket_id){code='SUA_KHONG_TINH_CONG';unit='PIECE';}
       if (stage === 'SEWING'&&!b.repair_ticket_id) {
-        code = String(b.piece_rate_code || '').trim();
-        if (!code) fail('Phải chọn mã tính công may trong bảng Excel, không dùng SKU thay thế.');
-        const rates = (await client.query("select piece_rate_code,rate_unit from local_product_rates where lower(piece_rate_code)=lower($1) and status='APPROVED' and effective_from<=$2::date and (effective_to is null or effective_to>=$2::date)", [code, from])).rows;
-        if (rates.length !== 1) fail('Mã công may chưa có một đơn giá duy nhất đã duyệt trong ngày giao.');
-        code = rates[0].piece_rate_code; unit = rates[0].rate_unit || 'PIECE';
+        const resolved=await resolveDispatchLabor(client,String(b.production_order_id),String(b.order_item_id||''),from);
+        if(b.piece_rate_code&&codeKey(b.piece_rate_code)!==codeKey(resolved.basis.piece_rate_code))fail('Mã công gửi lên không khớp hồ sơ và ánh xạ đã duyệt.',409);
+        code=resolved.basis.piece_rate_code;unit='PIECE';laborBasis=resolved.basis;
       }
       const row = (await client.query("insert into local_assignments(production_order_id,production_batch_id,order_item_id,worker_id,assigned_from,assigned_to,notes,dispatch_stage,allocated_quantity,dispatch_status,piece_rate_code,rate_unit,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,'PENDING',$10,$11,$12) returning *", [b.production_order_id, b.production_batch_id, b.order_item_id || null, b.worker_id, from, b.assigned_to || null, b.notes || null, stage, qty, code, unit, d.actor()])).rows[0];
+      if(laborBasis)await client.query('update local_assignments set labor_basis=$2::jsonb where id=$1',[row.id,JSON.stringify(laborBasis)]);
       if(b.repair_ticket_id)await client.query('update local_assignments set repair_ticket_id=$2 where id=$1',[row.id,b.repair_ticket_id]);
-      await audit(client, row.production_order_id, 'ASSIGN', row, b, qty); return row;
+      await audit(client, row.production_order_id, 'ASSIGN', {...row,labor_basis:laborBasis}, b, qty); return publicLaborAssignment({...row,labor_basis:laborBasis});
     })); } catch (error) { d.sendError(res, error); }
   });
   app.post('/api/production-dispatch/publications', async (req, res) => {
@@ -373,20 +391,19 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       if(stage==='CUTTING')await cuttingPlanCapacity(client,b.production_order_id,b.production_batch_id,b.order_item_id,qty);
       if ((await client.query('select $1::numeric+$2::numeric+$3::numeric>$4::numeric exceeds', [cap.reserved, open, qty, cap.capacity])).rows[0].exceeds) fail(stage === 'CUTTING' ? 'Tổng việc công khai vượt kế hoạch lô cắt.' : 'Tổng việc công khai vượt số đã cắt đạt và duyệt.');
       if (stage === 'CUTTING') await cuttingGate(client, String(b.production_order_id), String(b.production_batch_id), String((await client.query('select ($1::numeric+$2::numeric+$3::numeric)::text qty', [cap.reserved, open, qty])).rows[0].qty));
-      let code: string | null = null, unit: string | null = null;
+      let code: string | null = null, unit: string | null = null;let laborBasis:Row|null=null;
       if(stage==='SEWING'&&b.repair_ticket_id){code='SUA_KHONG_TINH_CONG';unit='PIECE';}
       if (stage === 'SEWING'&&!b.repair_ticket_id) {
-        code = String(b.piece_rate_code || '').trim();
-        if (!code) fail('Phải chọn mã tính công may.');
-        const rates = (await client.query("select piece_rate_code,rate_unit from local_product_rates where lower(piece_rate_code)=lower($1) and status='APPROVED' and effective_from<=$2::date and (effective_to is null or effective_to>=$2::date)", [code, from])).rows;
-        if (rates.length !== 1) fail('Mã công may chưa có một đơn giá duy nhất đã duyệt trong ngày công khai.');
-        code = rates[0].piece_rate_code; unit = rates[0].rate_unit || 'PIECE';
+        const resolved=await resolveDispatchLabor(client,String(b.production_order_id),String(b.order_item_id||''),from);
+        if(b.piece_rate_code&&codeKey(b.piece_rate_code)!==codeKey(resolved.basis.piece_rate_code))fail('Mã công gửi lên không khớp hồ sơ và ánh xạ đã duyệt.',409);
+        code=resolved.basis.piece_rate_code;unit='PIECE';laborBasis=resolved.basis;
       }
       const row = (await client.query(`insert into local_production_job_publications(production_order_id,production_batch_id,order_item_id,stage,quantity,eligible_worker_type,eligible_supervisor_worker_id,piece_rate_code,rate_unit,assigned_from,assigned_to,notes,created_by)
         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`, [b.production_order_id,b.production_batch_id,b.order_item_id,stage,qty,eligible,b.eligible_supervisor_worker_id||null,code,unit,from,b.assigned_to||null,b.notes||null,d.actor()])).rows[0];
+      if(laborBasis)await client.query('update local_production_job_publications set labor_basis=$2::jsonb where id=$1',[row.id,JSON.stringify(laborBasis)]);
       if(b.repair_ticket_id)await client.query('update local_production_job_publications set repair_ticket_id=$2 where id=$1',[row.id,b.repair_ticket_id]);
       await client.query("insert into local_dispatch_audit_events(production_order_id,action,quantity,reason,actor_id,data) values($1,'PUBLISH',$2,$3,$4,$5::jsonb)", [row.production_order_id,qty,b.notes||null,d.actor(),JSON.stringify(row)]);
-      return row;
+      return publicLaborAssignment({...row,labor_basis:laborBasis});
     })); } catch (error) { d.sendError(res, error); }
   });
   app.post('/api/production-dispatch/publications/:id/claim', async (req, res) => {
@@ -403,6 +420,7 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       await workerForStage(client, worker.id, publication.stage);
       if (publication.eligible_supervisor_worker_id && !(await client.query(`select 1 from local_payroll_team_assignments where supervisor_worker_id=$1 and worker_id=$2 and status='ACTIVE'
         and effective_from<=$3::date and (effective_to is null or effective_to>=$3::date)`, [publication.eligible_supervisor_worker_id,worker.id,date])).rows[0]) fail('Bạn không thuộc tổ được nhận công việc này.', 403);
+      await validateDispatchLabor(client,publication,date);
       const qty = quantity(req.body.quantity);
       const claimed = (await client.query("select coalesce(sum(coalesce(accepted_quantity,allocated_quantity)-returned_quantity),0) quantity from local_assignments where publication_id=$1 and dispatch_status<>'REJECTED'", [publication.id])).rows[0].quantity;
       if ((await client.query('select $1::numeric+$2::numeric>$3::numeric exceeds', [claimed,qty,publication.quantity])).rows[0].exceeds) fail('Số lượng nhận vượt phần công việc còn mở.', 409);
@@ -411,9 +429,10 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       if (publication.stage === 'CUTTING') await cuttingGate(client, publication.production_order_id, publication.production_batch_id, String((await client.query('select ($1::numeric+$2::numeric)::text qty', [cap.reserved,qty])).rows[0].qty));
       const row = (await client.query(`insert into local_assignments(production_order_id,production_batch_id,order_item_id,worker_id,assigned_from,assigned_to,notes,dispatch_stage,allocated_quantity,accepted_quantity,dispatch_status,piece_rate_code,rate_unit,created_by,accepted_by,accepted_at,publication_id)
         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,'ACCEPTED',$10,$11,$12,$12,now(),$13) returning *`, [publication.production_order_id,publication.production_batch_id,publication.order_item_id,worker.id,publication.assigned_from,publication.assigned_to,publication.notes,publication.stage,qty,publication.piece_rate_code,publication.rate_unit,d.actor(),publication.id])).rows[0];
+      if(publication.labor_basis)await client.query('update local_assignments set labor_basis=$2::jsonb where id=$1',[row.id,JSON.stringify(publication.labor_basis)]);
       if(publication.repair_ticket_id)await client.query('update local_assignments set repair_ticket_id=$2 where id=$1',[row.id,publication.repair_ticket_id]);
       await audit(client,row.production_order_id,'CLAIM',row,req.body,qty);
-      return row;
+      return publicLaborAssignment({...row,labor_basis:publication.labor_basis});
     })); } catch (error) { d.sendError(res, error); }
   });
   app.post('/api/production-dispatch/publications/:id/close', async (req, res) => {
@@ -438,6 +457,7 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       if (d.role() !== 'employee') await manager(client);
       const reason = String(req.body.reason || '').trim();
       if (action === 'accept') {
+        await validateDispatchLabor(client,a,today());
         if (a.dispatch_status !== 'PENDING') fail('Việc đã nhận hoặc từ chối, không thể nhận lại.');
         const qty = quantity(req.body.quantity, true);
         const check = (await client.query('select $1::numeric>$2::numeric exceeds,$1::numeric<$2::numeric shortfall', [qty, a.allocated_quantity])).rows[0];
@@ -458,29 +478,29 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       await audit(client, a.production_order_id, 'RETURN', row, req.body, qty); return row;
     })); } catch (error) { d.sendError(res, error); }
   });
-  app.post('/api/production-dispatch/assignments/:id/reports', async (req, res) => {
-    try { res.status(201).json(await mutate(`REPORT:${req.params.id}`, req.body, async (client, key) => {
-      const a = await assignment(client, String(req.params.id));
-      const date = workDate(req.body.work_date);
+  async function reportLinkedOutput(id:string,body:Body){return mutate(`REPORT:${id}`,body,async(client,key)=>{
+      const a = await assignment(client, String(id));
+      const date = workDate(body.work_date);
       await scope(client, a.worker_id, date);
       if (d.role() !== 'employee') await manager(client);
       if (a.dispatch_status !== 'ACCEPTED' || date < a.assigned_from || (a.assigned_to && date > a.assigned_to)) fail('Việc chưa nhận hoặc ngày báo cáo ngoài thời hạn giao việc.');
-      const good = quantity(req.body.quantity_good, true), rework = quantity(req.body.quantity_rework, true), remake = quantity(req.body.quantity_remake, true), defect = quantity(req.body.quantity_defect, true);
+      await validateDispatchLabor(client,a,date);
+      const good = quantity(body.quantity_good, true), rework = quantity(body.quantity_rework, true), remake = quantity(body.quantity_remake, true), defect = quantity(body.quantity_defect, true);
       const total = (await client.query('select ($1::numeric+$2::numeric+$3::numeric+$4::numeric)::text qty', [good, rework, remake, defect])).rows[0].qty;
       quantity(total);
-      if (req.body.quantity_received !== undefined && Number(quantity(req.body.quantity_received)) !== Number(total)) fail('Số lượng xử lý phải bằng tổng đạt, sửa, làm lại và lỗi.');
+      if (body.quantity_received !== undefined && Number(quantity(body.quantity_received)) !== Number(total)) fail('Số lượng xử lý phải bằng tổng đạt, sửa, làm lại và lỗi.');
       const used = await consumption(client, a.id);
       if ((await client.query('select $1::numeric+$2::numeric+$3::numeric>$4::numeric exceeds', [total, used, a.returned_quantity, a.accepted_quantity])).rows[0].exceeds) fail('Báo cáo vượt số lượng đã nhận còn lại.');
       if (a.dispatch_stage === 'CUTTING') await cuttingGate(client, a.production_order_id, a.production_batch_id, String((await client.query('select ($1::numeric+$2::numeric)::text qty', [used, total])).rows[0].qty));
       await d.lockDay(client, a.worker_id, date);
       await d.writable(client, a.worker_id, date, 'SUBMITTED');
       await d.dayAllowsWork(client, a.worker_id, date, 'báo cáo công đoạn');
-      const row = (await client.query("insert into local_production_stage_events(production_order_id,production_batch_id,order_item_id,assignment_id,stage,worker_id,quantity_received,quantity_good,quantity_rework,quantity_remake,quantity_defect,work_date,occurred_at,created_by,notes,idempotency_key,is_payable) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12::date::timestamptz,$13,$14,$15,true) returning *", [a.production_order_id, a.production_batch_id, a.order_item_id, a.id, a.dispatch_stage, a.worker_id, total, good, rework, remake, defect, date, d.actor(), req.body.notes || null, `dispatch-report:${key}`])).rows[0];
+      const row = (await client.query("insert into local_production_stage_events(production_order_id,production_batch_id,order_item_id,assignment_id,stage,worker_id,quantity_received,quantity_good,quantity_rework,quantity_remake,quantity_defect,work_date,occurred_at,created_by,notes,idempotency_key,is_payable) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12::date::timestamptz,$13,$14,$15,true) returning *", [a.production_order_id, a.production_batch_id, a.order_item_id, a.id, a.dispatch_stage, a.worker_id, total, good, rework, remake, defect, date, d.actor(), body.notes || null, `dispatch-report:${key}`])).rows[0];
       if(a.repair_ticket_id||a.dispatch_stage!=='SEWING')await client.query('update local_production_stage_events set is_payable=false where id=$1',[row.id]);
       await client.query("update local_production_orders set status='IN_PROGRESS',local_modified_at=now(),updated_at=now() where id=$1", [a.production_order_id]);
-      await audit(client, a.production_order_id, 'REPORT', row, req.body, total); return row;
-    })); } catch (error) { d.sendError(res, error); }
-  });
+      await audit(client, a.production_order_id, 'REPORT', row, body, total); return row;
+    });}
+  app.post('/api/production-dispatch/assignments/:id/reports',async(req,res)=>{try{res.status(201).json(await reportLinkedOutput(String(req.params.id),req.body||{}));}catch(error){d.sendError(res,error);}});
   app.post('/api/production-dispatch/reports/:id/repair', async (req, res) => {
     try { res.status(201).json(await mutate(`REPAIR:${req.params.id}`, req.body, async (client,key) => {
       const sourcePointer = (await client.query('select production_order_id,production_batch_id,assignment_id from local_production_stage_events where id=$1', [req.params.id])).rows[0];
@@ -543,6 +563,7 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       const target = action === 'reverse' ? 'REVERSED' : String(req.body.target_status || '');
       if ((action === 'reverse' && e.status !== 'APPROVED') || (action === 'review' && (e.status !== 'SUBMITTED' || !['APPROVED', 'REJECTED'].includes(target)))) fail('Trạng thái báo cáo không cho phép thao tác này.');
       if (target !== 'APPROVED' && !reason) fail('Từ chối hoặc đảo báo cáo phải có lý do.');
+      if(target==='APPROVED'&&e.is_payable!==false)await validateDispatchLabor(client,a,String(e.work_date));
       await d.lockDay(client, a.worker_id, e.work_date);
       await d.writable(client, a.worker_id, e.work_date, e.status);
       await d.dayAllowsWork(client, a.worker_id, e.work_date, 'duyệt công đoạn');
@@ -574,10 +595,10 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       }
       await client.query("select set_config('app.dispatch_write','on',true)");
       let entryId = e.production_entry_id;
-      if (a.dispatch_stage === 'SEWING' && target === 'APPROVED' && e.is_payable !== false && Number(e.quantity_good) > 0) {
-        const rates = (await client.query("select * from local_product_rates where lower(piece_rate_code)=lower($1) and status='APPROVED' and effective_from<=$2::date and (effective_to is null or effective_to>=$2::date)", [a.piece_rate_code, e.work_date])).rows;
-        if (rates.length !== 1 || (rates[0].rate_unit || 'PIECE') !== a.rate_unit) fail('Mã công may phải có một đơn giá đã duyệt, cùng đơn vị tại ngày làm.');
-        const entry = await d.createEntry({ worker_id: a.worker_id, piece_rate_code: a.piece_rate_code, work_date: e.work_date, quantity: e.quantity_good, notes: e.notes || `Giao việc ${a.id}`, idempotency_key: `dispatch-pay:${e.id}` }, undefined, client);
+      if (a.dispatch_stage === 'SEWING' && !a.repair_ticket_id && target === 'APPROVED' && e.is_payable !== false && Number(e.quantity_good) > 0) {
+        const rate = await selectRuntimePieceRate(client, { date: String(e.work_date), pieceRateCode: a.piece_rate_code });
+        if (String(rate.rate_unit) !== String(a.rate_unit)) fail('Mã công may phải có một đơn giá đã duyệt, cùng đơn vị tại ngày làm.', 409);
+        const entry = await d.createEntry({ worker_id: a.worker_id, piece_rate_code: a.piece_rate_code, work_date: e.work_date, quantity: e.quantity_good, notes: e.notes || `Giao việc ${a.id}`, idempotency_key: `dispatch-pay:${e.id}`, source_stage_event_id:e.id }, undefined, client);
         entryId = String(entry.id);
         await client.query("update local_production_entries set source_stage_event_id=$2,workflow_status='APPROVED',workflow_reason=$3,workflow_actor_id=$4,workflow_at=now() where id=$1", [entryId, e.id, reason || null, d.actor()]);
         await d.workflowEvent(client, 'PRODUCTION_ENTRY', String(entryId), 'STATUS', 'SUBMITTED', 'APPROVED', reason || null, `dispatch-approve:${key}`);
@@ -634,4 +655,5 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       return row;
     })); } catch(error) { d.sendError(res,error); }
   });
+  return {reportLinkedOutput};
 }

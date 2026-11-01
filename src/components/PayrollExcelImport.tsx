@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PayrollDialogContent as DialogContent } from "@/components/payroll/PayrollDialogContent";
+import {rateCellValue} from "../../server/product-rate-inputs.mjs";
 
 type ImportRow = { sheet: string; row: number; values: Record<string, unknown> };
 type ClosureReview = {row:number;employee_code:string;target_status:string;reason:string;summary:AttendanceDaySummary};
@@ -170,10 +171,14 @@ async function readWorkbook(file: File): Promise<ImportRow[]> {
     for (let rowNumber = headerRow + 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
       const valuesArray = (sheet.getRow(rowNumber).values as unknown[]).slice(1);
       const values: Record<string, unknown> = {};
-      headers.forEach((header, index) => { if (header) values[header] = cellValue(valuesArray[index]); });
+      const priceSheet = sheet.name === "BANG_GIA_CONG_MAY";
+      if (priceSheet && ["VI_DU", "MẪU", "MAU", "DEMO"].includes(String(cellValue(valuesArray[headers.indexOf("__example")]) ?? "").trim().toUpperCase())) continue;
+      headers.forEach((header, index) => { if (header) values[header] = priceSheet && ["ma_sp","ten_sp","don_gia","don_vi","tu_ngay","den_ngay"].includes(header) ? rateCellValue(valuesArray[index],header,`Bảng giá công may · dòng ${rowNumber}`) : cellValue(valuesArray[index]); });
       const meaningful = Object.entries(values).some(([key, value]) => key !== "__example" && String(value ?? "").trim() !== "");
       const marker = String(values.__example ?? "").trim().toUpperCase();
-      if (meaningful && !["VI_DU", "MẪU", "MAU", "DEMO"].includes(marker)) rows.push({ sheet: sheet.name, row: rowNumber, values });
+      if (meaningful && !["VI_DU", "MẪU", "MAU", "DEMO"].includes(marker)) {
+        rows.push({ sheet: sheet.name, row: rowNumber, values });
+      }
     }
   });
   return rows;

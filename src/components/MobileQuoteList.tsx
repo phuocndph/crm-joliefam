@@ -1,3 +1,4 @@
+import { formatQuoteDate, resolveQuoteDates } from '@/lib/quote-dates';
 import React from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,14 +30,13 @@ interface Props {
 }
 
 const fmt = (n?: number) => (n || 0).toLocaleString("vi-VN") + "đ";
-const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString("vi-VN") : "—");
 
 const statusBorder: Record<string, string> = {
-  draft: "border-l-gray-400",
-  sent: "border-l-blue-500",
-  approved: "border-l-sidebar-primary",
-  rejected: "border-l-red-500",
-  expired: "border-l-orange-500",
+  draft: "border-l-slate-300",
+  sent: "border-l-slate-500",
+  approved: "border-l-slate-800",
+  rejected: "border-l-rose-400",
+  expired: "border-l-amber-400",
 };
 
 export const MobileQuoteList: React.FC<Props> = ({
@@ -89,10 +89,10 @@ export const MobileQuoteList: React.FC<Props> = ({
               </div>
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Calendar className="h-3.5 w-3.5 shrink-0" />
-                <span>Tạo: {fmtDate(q.quoteDate || q.created_at)}</span>
+                <span>Tạo: {formatQuoteDate(resolveQuoteDates(q).quoteDate)}</span>
               </div>
               <div className="flex items-center gap-1.5 text-muted-foreground justify-end">
-                <span>HH: {fmtDate(q.expiryDate)}</span>
+                <span>HH: {formatQuoteDate(resolveQuoteDates(q).expiryDate)}</span>
               </div>
             </div>
 
@@ -106,7 +106,7 @@ export const MobileQuoteList: React.FC<Props> = ({
               <Button size="sm" variant="outline" className="flex-1 h-9 gap-1" onClick={() => isLocalBackend() && q.status === 'approved' ? onDuplicate(q) : onEdit(q)}>
                 <Edit className="h-3.5 w-3.5" /> {isLocalBackend() && q.status === 'approved' ? 'Nhân bản để sửa' : 'Sửa'}
               </Button>
-              {canApprove && q.status === "draft" && (
+              {canApprove && ["draft", "sent"].includes(q.status) && (
                 <Button
                   size="sm"
                   variant="default"
@@ -131,8 +131,8 @@ export const MobileQuoteList: React.FC<Props> = ({
                       <Calculator className="h-4 w-4 mr-2" /> Báo giá phụ
                     </DropdownMenuItem>
                   )}
-                  {canApprove && q.status === "draft" && (
-                    <DropdownMenuItem onClick={() => onReject(q)} className="text-orange-600">
+                  {canApprove && ["draft", "sent"].includes(q.status) && (
+                    <DropdownMenuItem onClick={() => onReject(q)} className="text-destructive focus:text-destructive">
                       <XCircle className="h-4 w-4 mr-2" /> Từ chối
                     </DropdownMenuItem>
                   )}
@@ -145,7 +145,7 @@ export const MobileQuoteList: React.FC<Props> = ({
                     <FileSignature className="h-4 w-4 mr-2" /> Tạo hợp đồng
                   </DropdownMenuItem>
                   {canManage && !(isLocalBackend() && q.status === 'approved') && (
-                    <DropdownMenuItem onClick={() => onDelete(q)} className="text-red-600 focus:text-red-600">
+                    <DropdownMenuItem onClick={() => onDelete(q)} className="text-destructive focus:text-destructive">
                       <Trash2 className="h-4 w-4 mr-2" /> Xóa
                     </DropdownMenuItem>
                   )}

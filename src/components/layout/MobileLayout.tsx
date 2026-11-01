@@ -54,7 +54,7 @@ type MobileNavigationShellProps = {
   onSignOut: () => Promise<void>;
 };
 
-function MobileNavigationShell({ user, role, onChangePassword, onSignOut }: MobileNavigationShellProps) {
+export function MobileNavigationChrome({ user, role, onChangePassword, onSignOut }: MobileNavigationShellProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -65,7 +65,7 @@ function MobileNavigationShell({ user, role, onChangePassword, onSignOut }: Mobi
   const active = (path: string) => location.pathname === path;
   const closeMenu = () => setIsMenuOpen(false);
 
-  return <div className="min-h-screen bg-background">
+  return <>
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b bg-card px-4 shadow-soft">
       <div className="flex min-w-0 items-center gap-2">
         <div className="rounded-lg bg-gradient-primary p-1.5"><Building2 className="h-5 w-5 text-white" /></div>
@@ -77,7 +77,6 @@ function MobileNavigationShell({ user, role, onChangePassword, onSignOut }: Mobi
       </div>
     </header>
 
-    <main className="min-h-[calc(100vh-3.5rem)] pb-20"><div className="p-4"><Outlet /></div></main>
 
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t bg-card" aria-label="Điều hướng nhanh">
       <div className="flex items-center justify-around gap-1 px-1 py-2">
@@ -114,7 +113,7 @@ function MobileNavigationShell({ user, role, onChangePassword, onSignOut }: Mobi
         </Sheet>
       </div>
     </nav>
-  </div>;
+  </>;
 }
 
 const MobileLayout = () => {
@@ -178,7 +177,8 @@ const MobileLayout = () => {
   </NavigationProvider>;
 
   return <NavigationProvider actorId={user?.id} role={userRole} hasPermission={hasPermission} accessResolved={permissionDataResolved}>
-    <MobileNavigationShell user={user} role={userRole} onChangePassword={() => setShowChangePasswordDialog(true)} onSignOut={handleSignOut} />
+    <MobileNavigationChrome user={user} role={userRole} onChangePassword={() => setShowChangePasswordDialog(true)} onSignOut={handleSignOut} />
+    <main className="min-h-[calc(100vh-3.5rem)] pb-20"><div className="p-4"><Outlet /></div></main>
     <ChangePasswordDialog open={showChangePasswordDialog} onOpenChange={setShowChangePasswordDialog} />
   </NavigationProvider>;
 };

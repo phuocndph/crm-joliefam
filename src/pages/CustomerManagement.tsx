@@ -1,3 +1,6 @@
+import {useSearchParams} from 'react-router-dom';
+import {localApi} from '@/lib/local-api';
+import {isLocalBackend} from '@/lib/runtime-config';
 import React, { useState, useEffect, useMemo } from "react";
 import { Search, Plus, FileText, Eye, Edit, Trash2, Filter, MoreHorizontal, Users, UserCheck, Building2, Calendar, Phone, MapPin, ShoppingCart, DollarSign, Clock, Star, ArrowRight, ExternalLink, CreditCard } from "lucide-react";
 import { CreatePaymentForm } from "@/components/CreatePaymentForm";
@@ -53,14 +56,19 @@ const formatCustomerDate = (value: unknown, pattern: string) => {
 
 export default function CustomerManagement() {
   const isMobile = useIsMobile();
+  const [linkParams,setLinkParams]=useSearchParams(),customerId=linkParams.get("customerId")||linkParams.get("customer_id");
+  const [linked,setLinked]=useState<Awaited<ReturnType<typeof localApi.customer>>|null>(null),[linkError,setLinkError]=useState(""),[linkBusy,setLinkBusy]=useState(false);
+  useEffect(()=>{if(!customerId||!isLocalBackend())return;const controller=new AbortController();let active=true;setLinked(null);setLinkError("");setLinkBusy(true);void localApi.customer(customerId,controller.signal).then(data=>{if(active)setLinked(data);}).catch(e=>{if(active)setLinkError(e instanceof Error?e.message:"Không tải được hồ sơ khách.");}).finally(()=>{if(active)setLinkBusy(false);});return()=>{active=false;controller.abort();};},[customerId]);
+  const closeLink=()=>setLinkParams(prev=>{const next=new URLSearchParams(prev);next.delete("customerId");next.delete("customer_id");return next;},{replace:true});
+  const linkedDialog=<Dialog open={!!customerId&&isLocalBackend()} onOpenChange={open=>{if(!open)closeLink();}}><DialogContent className="max-w-3xl max-h-[90dvh] overflow-auto"><DialogHeader><DialogTitle>Hồ sơ khách hàng</DialogTitle><DialogDescription>Đúng hồ sơ theo mã liên kết; đơn hàng được giới hạn theo quyền của bạn.</DialogDescription></DialogHeader>{linkBusy?<p>Đang tải hồ sơ…</p>:linkError?<p role="alert" className="text-destructive">{linkError}</p>:linked&&<div className="space-y-3"><h3 className="font-semibold">{linked.customer.name}</h3><p>{linked.customer.customer_code} · {linked.customer.phone}</p><p>{linked.customer.address}</p><h4 className="font-medium">Đơn hàng của hồ sơ này</h4>{linked.orders.length?linked.orders.map(o=><div className="border p-3" key={String(o.id)}><a className="underline" href={"/orders?order_id="+encodeURIComponent(String(o.id))}>{String(o.order_number||o.id)}</a><p>{Number(o.total_amount||0).toLocaleString("vi-VN")} đ · Còn phải thu: {Number(o.remaining_amount||0).toLocaleString("vi-VN")} đ</p></div>):<p>Chưa có đơn trong phạm vi được phép.</p>}</div>}</DialogContent></Dialog>;
   if (isMobile) {
     return (
       <div className="p-4">
-        <MobileCustomerManagement />
+        {linkedDialog}<MobileCustomerManagement />
       </div>
     );
   }
-  return <CustomerManagementDesktop />;
+  return <>{linkedDialog}<CustomerManagementDesktop /></>;
 }
 
 interface CustomerPhone {
@@ -123,30 +131,40 @@ interface CustomerQuote {
 
 // Component wrapper để tính toán payment info
 function PaymentWrapper({ order, onClose, onSubmit }: { order: any, onClose: () => void, onSubmit: () => void }) {
+  const [paymentError,setPaymentError]=useState('');
   const [paymentInfo, setPaymentInfo] = useState<{totalPaid: number, remainingAmount: number, orderExpenses: number} | null>(null);
   
   useEffect(() => {
+    const controller=new AbortController();let active=true;
+    setPaymentInfo(null);setPaymentError('');
     const fetchPaymentInfo = async () => {
       try {
+        if(isLocalBackend()){
+          const [current,transactions]=await Promise.all([localApi.order(order.id,controller.signal),localApi.transactions({orderId:order.id},controller.signal)]);
+          if(typeof current.total_paid!=='number'||typeof current.remaining_amount!=='number'||!Number.isFinite(current.total_paid)||!Number.isFinite(current.remaining_amount))throw new Error('Chưa xác nhận được công nợ từ sổ gốc; cần tải lại hồ sơ.');
+          const expenses=transactions.filter(row=>row.type==='expense').map(row=>Number(row.amount));
+          if(expenses.some(amount=>!Number.isFinite(amount)))throw new Error('Chưa xác định được chi phí của đơn; cần tải lại hồ sơ.');
+          if(active)setPaymentInfo({totalPaid:Number(current.total_paid||0),remainingAmount:Number(current.remaining_amount||0),orderExpenses:expenses.reduce((sum,amount)=>sum+amount,0)});return;
+        }
         const [paymentsRes, expensesRes] = await Promise.all([
           supabase.from('order_payments').select('payment_amount').eq('order_id', order.id),
           supabase.from('transactions').select('amount').eq('order_id', order.id).eq('type', 'expense'),
         ]);
-        
         const totalPaid = paymentsRes.data?.reduce((sum, p) => sum + (p.payment_amount || 0), 0) || 0;
         const orderExpenses = expensesRes.data?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0;
         const remainingAmount = (order.total_amount || 0) - totalPaid - orderExpenses;
-        
-        setPaymentInfo({ totalPaid, remainingAmount, orderExpenses });
+        if(active)setPaymentInfo({ totalPaid, remainingAmount, orderExpenses });
       } catch (error) {
+        if(!active)return;
         console.error('Error fetching payment info:', error);
+        if(isLocalBackend()){setPaymentError(error instanceof Error?error.message:'Không xác nhận được công nợ/chi phí. Đóng và mở lại hồ sơ.');return;}
         setPaymentInfo({ totalPaid: 0, remainingAmount: order.total_amount || 0, orderExpenses: 0 });
       }
     };
-    
-    fetchPaymentInfo();
+    void fetchPaymentInfo();return()=>{active=false;controller.abort();};
   }, [order.id, order.total_amount]);
-  
+
+  if(paymentError)return <p role="alert" className="text-destructive">{paymentError}</p>;
   if (!paymentInfo) {
     return <div className="text-center py-4">Đang tải thông tin thanh toán...</div>;
   }
@@ -274,7 +292,10 @@ function CustomerManagementDesktop() {
   const loadCustomers = async () => {
     try {
       setLoading(true);
-      
+      if(isLocalBackend()){
+        const rows=await localApi.customers();
+        setCustomers(rows.map(c=>({...c,phones:Array.isArray(c.phones)?c.phones:[],addresses:Array.isArray(c.addresses)?c.addresses:[],tags:Array.isArray(c.tags)?c.tags:[],auto_tags:Array.isArray(c.auto_tags)?c.auto_tags:[],purchase_count:Number(c.purchase_count||0),total_spent:Number(c.total_spent||0)} as Customer)).filter(c=>c.purchase_count>0));return;
+      }
       // Load customers và orders để tính toán tổng hợp
       const [customersResult, ordersResult, quotesResult] = await Promise.all([
         supabase
@@ -386,6 +407,7 @@ function CustomerManagementDesktop() {
       // Load orders và quotes cho customer này và tất cả customers cùng tên
       const customerIds = customer.grouped_ids || [customer.id];
       const customerName = customer.name.trim();
+      if(isLocalBackend()){const detail=await localApi.customer(customer.id);setCustomerOrders(detail.orders as unknown as CustomerOrder[]);setCustomerQuotes(detail.quotes as unknown as CustomerQuote[]);setPayments(detail.payments);return;}
       
       const [ordersResult, quotesResult] = await Promise.all([
         supabase
@@ -485,6 +507,7 @@ function CustomerManagementDesktop() {
 
   const calculateRemainingAmount = async (orderId: string, totalAmount: number) => {
     try {
+      if(isLocalBackend())return Number((await localApi.order(orderId)).remaining_amount||0);
       const { data } = await supabase
         .from('order_payments')
         .select('payment_amount')
@@ -1008,6 +1031,7 @@ function CustomerManagementDesktop() {
                               size="sm"
                               variant="outline"
                               onClick={async () => {
+                                if(isLocalBackend()){try{setSelectedOrderDetail(await localApi.order(order.id));}catch(e){toast({title:'Không tải được đơn',description:e instanceof Error?e.message:'Thử mở lại hồ sơ.',variant:'destructive'});}return;}
                                 const { data, error } = await supabase
                                   .from('orders')
                                   .select('id, order_number, display_order_number, total_amount, status, payment_status, created_at, items')
@@ -1284,7 +1308,7 @@ function CustomerManagementDesktop() {
                       
                       const orderPayments = payments.filter(p => p.order_id === selectedOrderDetail.id);
                       const totalPaid = orderPayments.reduce((sum, payment) => sum + payment.payment_amount, 0);
-                      const remaining = total - totalPaid;
+                      const remaining = isLocalBackend()?Number(selectedOrderDetail.remaining_amount??0):total-totalPaid;
 
                       return (
                         <>

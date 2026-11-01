@@ -27,6 +27,8 @@ export interface ManufacturingProfile {
   default_bom_id: string | null;
   default_cutting_profile_id: string | null;
   is_active: boolean;
+  _revision?: number;
+  _source_fingerprint?: string;
 }
 
 export interface BomHeader { id: string; product_id: string; code: string; name: string; is_active: boolean }
@@ -106,6 +108,7 @@ export async function getManufacturingProfile(productId: string): Promise<Manufa
 export async function saveManufacturingProfile(input: {
   product_id: string; manufacturing_type: string; finished_width: number; finished_length: number;
   finished_height?: number | null; dimension_unit: string; extra_dimensions?: Json; is_active?: boolean;
+  _revision?:number;_source_fingerprint?:string;idempotency_key?:string;reason?:string;
 }) {
   if (isLocalBackend()) return localApi.saveManufacturingProfile(input) as unknown as Promise<ManufacturingProfile>;
   const { data, error } = await supabase.rpc("save_product_manufacturing_profile", {

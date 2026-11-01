@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { localApi, type LocalCatalogProduct } from "@/lib/local-api";
+import {Link} from "react-router-dom";
 
 type ProductForm = {
   sku: string;
@@ -17,10 +18,9 @@ type ProductForm = {
   specifications: string;
   price: string;
   cost_price: string;
-  rate: string;
 };
 
-const emptyForm: ProductForm = { sku: "", name: "", category: "", description: "", specifications: "", price: "", cost_price: "", rate: "" };
+const emptyForm: ProductForm = { sku: "", name: "", category: "", description: "", specifications: "", price: "", cost_price: "" };
 const money = (value: number | null) => value === null ? "-" : `${Math.round(value).toLocaleString("vi-VN")} đ`;
 
 const LocalProductCatalogPage = () => {
@@ -67,7 +67,6 @@ const LocalProductCatalogPage = () => {
       specifications: product.specifications || "",
       price: product.price === null ? "" : String(product.price),
       cost_price: product.cost_price === null ? "" : String(product.cost_price),
-      rate: product.current_rate === null ? "" : String(product.current_rate),
     });
     setShowForm(true);
   };
@@ -87,16 +86,12 @@ const LocalProductCatalogPage = () => {
       if (!payload.name) throw new Error("Tên sản phẩm là bắt buộc.");
       if (editing) {
         await localApi.updateCatalogProduct(editing.id, payload);
-        if (form.rate !== "" && Number(form.rate) !== editing.current_rate) {
-          await localApi.setCatalogProductRate(editing.id, { rate: Number(form.rate), rate_unit: editing.rate_unit, reason: "Cập nhật từ danh mục cục bộ" });
-        }
         toast({ title: "Đã cập nhật sản phẩm" });
       } else {
         if (!form.sku.trim()) throw new Error("Mã sản phẩm là bắt buộc.");
         await localApi.createCatalogProduct({
           ...payload,
           sku: form.sku.trim(),
-          rate: form.rate === "" ? null : Number(form.rate),
           price_list_id: selectedPriceList || null,
         });
         toast({ title: "Đã tạo sản phẩm" });
@@ -157,7 +152,7 @@ const LocalProductCatalogPage = () => {
 
       {showForm && (
         <Card>
-          <CardHeader><CardTitle>{editing ? "Sửa sản phẩm" : "Thêm sản phẩm"}</CardTitle><CardDescription>Giá và đơn giá chỉ là số, không nhập ký hiệu tiền.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>{editing ? "Sửa sản phẩm" : "Thêm sản phẩm"}</CardTitle><CardDescription>Giá bán và giá vốn không nhập ký hiệu tiền.</CardDescription></CardHeader>
           <CardContent>
             <form onSubmit={submit} className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2"><Label>Mã sản phẩm</Label><Input value={form.sku} onChange={(event) => update("sku", event.target.value)} disabled={!!editing} required /></div>
@@ -166,7 +161,7 @@ const LocalProductCatalogPage = () => {
               <div className="space-y-2"><Label>Quy cách</Label><Input value={form.specifications} onChange={(event) => update("specifications", event.target.value)} placeholder="Cotton, size S-XL" /></div>
               <div className="space-y-2"><Label>Giá bán (VNĐ)</Label><Input type="number" min="0" value={form.price} onChange={(event) => update("price", event.target.value)} /></div>
               <div className="space-y-2"><Label>Giá vốn (VNĐ)</Label><Input type="number" min="0" value={form.cost_price} onChange={(event) => update("cost_price", event.target.value)} /></div>
-              <div className="space-y-2"><Label>Đơn giá sản lượng (VNĐ/sản phẩm)</Label><Input type="number" min="0" value={form.rate} onChange={(event) => update("rate", event.target.value)} /></div>
+              <div className="md:col-span-2"><Button type="button" variant="outline" className="min-h-11" asChild><Link to="/production-attendance?tab=rates">Đơn giá công may</Link></Button></div>
               <div className="space-y-2 md:col-span-2"><Label>Mô tả</Label><Textarea value={form.description} onChange={(event) => update("description", event.target.value)} rows={3} /></div>
               <div className="flex justify-end gap-2 md:col-span-2"><Button type="button" variant="outline" onClick={() => setShowForm(false)}>Hủy</Button><Button type="submit" disabled={saving}>{saving ? "Đang lưu..." : "Lưu sản phẩm"}</Button></div>
             </form>
@@ -175,12 +170,12 @@ const LocalProductCatalogPage = () => {
       )}
 
       <Card>
-        <CardHeader><CardTitle>Danh sách sản phẩm</CardTitle><CardDescription>Đơn giá hiện hành được dùng khi ghi nhận sản lượng.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Danh sách sản phẩm</CardTitle></CardHeader>
         <CardContent className="p-0">
           {loading ? <div className="p-8 text-center text-muted-foreground">Đang tải...</div> : products.length === 0 ? <div className="p-8 text-center text-muted-foreground">Chưa có sản phẩm phù hợp.</div> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1100px] text-sm">
-                <thead className="border-b bg-muted/40"><tr><th className="px-4 py-3 text-left">Mã</th><th className="px-4 py-3 text-left">Sản phẩm</th><th className="px-4 py-3 text-left">Nhóm</th><th className="px-4 py-3 text-right">Giá vốn</th><th className="px-4 py-3 text-right">Giá bán</th><th className="px-4 py-3 text-center">Kho</th><th className="px-4 py-3 text-right">Đơn giá SL</th><th className="px-4 py-3 text-center">Trạng thái</th><th className="px-4 py-3 text-right">Thao tác</th></tr></thead>
+                <thead className="border-b bg-muted/40"><tr><th className="px-4 py-3 text-left">Mã</th><th className="px-4 py-3 text-left">Sản phẩm</th><th className="px-4 py-3 text-left">Nhóm</th><th className="px-4 py-3 text-right">Giá vốn</th><th className="px-4 py-3 text-right">Giá bán</th><th className="px-4 py-3 text-center">Kho</th><th className="px-4 py-3 text-center">Trạng thái</th><th className="px-4 py-3 text-right">Thao tác</th></tr></thead>
                 <tbody className="divide-y">
                   {products.map((product) => <tr key={product.id} className="hover:bg-muted/20">
                     <td className="px-4 py-3 font-mono font-medium">{product.sku}</td>
@@ -189,7 +184,6 @@ const LocalProductCatalogPage = () => {
                     <td className="px-4 py-3 text-right">{money(product.cost_price)}</td>
                     <td className="px-4 py-3 text-right">{money(product.price)}</td>
                     <td className="px-4 py-3 text-center"><Badge variant={product.in_stock ? "default" : "destructive"}>{product.in_stock ? "Còn" : "Hết"}</Badge></td>
-                    <td className="px-4 py-3 text-right font-medium">{money(product.current_rate)}</td>
                     <td className="px-4 py-3 text-center"><Badge variant={product.is_active ? "default" : "secondary"}>{product.is_active ? "Đang dùng" : "Tạm ngưng"}</Badge></td>
                     <td className="px-4 py-3"><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => openEdit(product)}><Pencil className="mr-1 h-3.5 w-3.5" />Sửa</Button><Button size="sm" variant="ghost" onClick={() => void toggleActive(product)}>{product.is_active ? "Ngưng" : "Kích hoạt"}</Button></div></td>
                   </tr>)}

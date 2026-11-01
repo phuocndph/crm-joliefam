@@ -571,7 +571,7 @@ export default function ProductionOrdersPage() {
         </div>
       </div>
 
-      {(canSubmitSales||canManageSales)&&<ProductionSalesQueue canSubmit={canSubmitSales} canManage={canManageSales} onAllocated={loadAll}/>}
+      {(canSubmitSales||canManageSales)&&<ProductionSalesQueue canSubmit={canSubmitSales} canManage={canManageSales} canPurchase={false} onAllocated={loadAll}/>}
 
       <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
         <div className="rounded-md border bg-background overflow-hidden">

@@ -1,3 +1,4 @@
+import { ghnStatusLabel } from '@/lib/ghn-status';
 import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -156,7 +157,7 @@ export function GHNOrderDetailDialog({ ghnOrderCode, open, onOpenChange }: GHNOr
                 <div className="flex justify-between text-sm gap-2">
                   <span className="text-muted-foreground shrink-0">Trạng thái hiện tại:</span>
                   <Badge className={`${statusColors[data.status] || "bg-muted text-muted-foreground"} text-xs`}>
-                    {data.statusText || data.status}
+                    {ghnStatusLabel(data.status)}
                   </Badge>
                 </div>
                 {(raw.shipper_name || raw.shipper_phone) && (
@@ -230,7 +231,7 @@ export function GHNOrderDetailDialog({ ghnOrderCode, open, onOpenChange }: GHNOr
                               .map((log, i) => (
                                 <tr key={i} className="border-b last:border-0">
                                   <td className="p-3 text-primary font-medium">
-                                    {getStatusTextFromLog(log.status)}
+                                    {ghnStatusLabel(log.status)}
                                   </td>
                                   <td className="p-3 text-muted-foreground">{log.comment || ""}</td>
                                   <td className="p-3 text-right font-medium">{fmtTime(log.updated_date)}</td>
@@ -274,30 +275,3 @@ function buildFullAddress(raw: any): string {
   return [raw.to_address, raw.to_ward_name, raw.to_district_name, raw.to_province_name].filter(Boolean).join(", ");
 }
 
-function getStatusTextFromLog(status: string): string {
-  const map: Record<string, string> = {
-    'ready_to_pick': 'Sẵn sàng lấy hàng',
-    'picking': 'Đang lấy hàng',
-    'picked': 'Đã lấy hàng',
-    'storing': 'Lưu kho',
-    'transporting': 'Đang vận chuyển',
-    'sorting': 'Đang phân loại',
-    'delivering': 'Đang giao hàng',
-    'delivered': 'Đã giao hàng',
-    'delivery_fail': 'Giao hàng thất bại',
-    'returning': 'Đang trả hàng',
-    'returned': 'Hoàn hàng thành công',
-    'cancel': 'Đã hủy',
-    'waiting_to_return': 'Chờ trả hàng',
-    'return_transporting': 'Đang vận chuyển trả hàng',
-    'return_sorting': 'Phân loại trả hàng',
-    'money_collect_delivering': 'Thu tiền người nhận',
-    'money_collect_picking': 'Thu tiền người gửi',
-    'exception': 'Ngoại lệ',
-    'damage': 'Hư hỏng',
-    'lost': 'Thất lạc',
-    'ready_to_deliver': 'Sẵn sàng giao hàng',
-    'nhap_hang_vao_buu_cuc_giao': 'Nhập hàng vào bưu cục giao',
-  };
-  return map[status] || status;
-}
